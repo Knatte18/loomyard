@@ -36,7 +36,8 @@ Both cleanups converge with the parallel `dotlyx-scratch-hygiene` task toward on
 - Delete the `_pattern` junction end to end: `template.yaml`'s `pathspec` default, `fabricengine/pull.go`'s `patternDirName`, `fabricengine/status.go`'s `_pattern` pathspec entry and tracked-prefix branch, and every `_pattern` junction assertion across the fabricengine test suite.
 - Re-scope `fabricengine`'s PATTERN-residue detection from the `_pattern` directory to the new `_lyx/PATTERN.md` + `_lyx/pattern/` paths; keep the `PatternResidue` feature.
 - Remove `"_raddle"` from `HubReservedNames()`, from `status.go`'s host-pollution `ls-files` pathspec and its `HasPrefix` branch, and from the geometry-literal owner map.
-- Delete `HostPollution.ReportOnly` and its branch, now that no report-only pollution class remains.
+- Delete `PollutionEntry.ReportOnly` and both its writers, now that no report-only pollution class remains.
+- Un-reserve `_pattern` as a slug name too: with `pathspec` empty it leaves `IsReservedHubName`'s junction-name union, so `internal/lyxcwd/lyxcwd_test.go`'s `TestIsReservedHubName_Pattern` inverts.
 - Widen the Pattern Leaf Invariant's allowlist to admit `internal/lyxdirs`.
 - Update every doc, code comment, and design doc that describes either the `_pattern` junction or `_raddle` as hub-level/junction-reached geometry.
 - Delete `manifest/designs/pattern.md` (overdue Documentation Lifecycle deletion — the module has landed).
@@ -78,7 +79,7 @@ Both cleanups converge with the parallel `dotlyx-scratch-hygiene` task toward on
 
 - **Decision:** add `internal/lyxdirs` to `internal/pattern/leaf_enforcement_test.go`'s `allowedImports`, and to `CONSTRAINTS.md`'s Pattern Leaf Invariant prose, in the same commit.
 - **Rationale:** the invariant's load-bearing half is real and permanent — `builderengine/spawn.go`, `burlerengine/engine.go`, `loomengine/plan.go`, and `websterengine/render.go` all import `internal/pattern`, so a reverse import is a genuine cycle.
-  The allowlist *form* is stricter than that reason requires, but `internal/lyxdirs` is a stdlib-free zero-import leaf (its own invariant, `CONSTRAINTS.md`'s Lyx Directory Token Invariant), so it cannot participate in a cycle by construction.
+  The allowlist *form* is stricter than that reason requires, but `internal/lyxdirs` is stdlib-only and a zero-import leaf (its own invariant — `CONSTRAINTS.md:36`'s Lyxdirs Single-Declarer Invariant), so it cannot participate in a cycle by construction.
   Keeping the allowlist means a stray feature-package import is still caught with no list maintenance as new feature packages appear;
   the one-line cost is paid only when a genuinely-safe leaf is added, and paying it forces the conscious cycle-safety check.
 - **Rejected:** relaxing to a banlist — needs maintenance every time a feature package is added.
@@ -105,6 +106,11 @@ Both cleanups converge with the parallel `dotlyx-scratch-hygiene` task toward on
   Its reason to exist — agent-binding text authored by a human needs re-checking when the host history it was written against is rewritten — is untouched by moving the files.
 - **Rejected:** deleting the whole surface — throws away a working signal for a relocation.
   Widening to all of `_lyx` and renaming — every config and loom-status commit becomes residue, drowning the signal the narrow pathspec was chosen to produce.
+- **How the new pathspec strings are built:** from `lyxdirs.LyxDirName`, never as bare `"_lyx/PATTERN.md"` / `"_lyx/pattern"` literals — e.g. `lyxdirs.LyxDirName + "/PATTERN.md"`.
+  `internal/fabricengine` already imports `internal/lyxdirs` (`status.go:25`), so this adds no dependency.
+  Git pathspecs are always forward-slashed, so these are string concatenations, not `filepath.Join` calls;
+  `"/PATTERN.md"` and `"/pattern"` are not policed tokens, so only the `_lyx` half needs to come from the const.
+- **`TestEnforcement_GeometryLiterals` will not catch a violation here.** It matches whole tokens by exact equality, so a bare `"_lyx/PATTERN.md"` literal is not equal to `"_lyx"` and passes unpoliced. Building from `lyxdirs.LyxDirName` is therefore a **review obligation**, not a machine-enforced one — call it out explicitly in the plan's card so it is not assumed covered.
 
 ### No migration
 
@@ -116,16 +122,38 @@ Both cleanups converge with the parallel `dotlyx-scratch-hygiene` task toward on
 - **Rejected:** documenting manual operator steps — there is no operator to document them for.
   A reconcile migration branch — `reconcile` deliberately never moves weft content, and `_lyx` specifically holds the hard refusal against fabric touching what might be hand-authored.
   A one-shot CLI verb — a whole new command surface for a one-time event that will never fire.
-- **Note for the implementer:** `applyStaleRemoval` (`internal/fabricengine/reconcile.go:391-434`) already removes any on-disk junction absent from `RepoWiredNames`, so a stale `_pattern` junction tears itself down on the next `lyx fabric reconcile` with no new code.
-  This is background, not a deliverable — no test needs to pin it and no doc needs to describe it.
+- **Note for the implementer — the free teardown applies to fresh clones only.** `applyStaleRemoval` (`internal/fabricengine/reconcile.go:391-434`) removes any on-disk junction absent from `RepoWiredNames`, so a `_pattern` junction tears itself down on the next `lyx fabric reconcile` — **but only once that repo's recorded `pathspec` is actually empty.**
+  It will not be.
+  `yamlengine.applyExistingOverrides` (`internal/yamlengine/reconcile.go:117`) copies each existing leaf value onto the template, so a deployed `<BoardDir>/_lyx/config/fabric.yaml` keeps `pathspec: _pattern` through any number of `lyx config reconcile` runs.
+  `Config.Dirs()` therefore still yields `_pattern`, `RepoWiredNames` still contains it, and `applyStaleRemoval` never classifies the junction as stale.
+  Changing `template.yaml` governs **newly cloned repos only**.
+  That is accepted, not a defect to fix: the sole deployed repo is the throwaway SANDBOX, which is re-cloned rather than migrated.
+  Do not write a test asserting teardown-on-upgrade, and do not describe an upgrade path in the docs — neither exists.
 
-### `HostPollution.ReportOnly` is deleted with `_raddle`
+### `PollutionEntry.ReportOnly` is deleted; the scan-error entry relies on an empty `Remedy`
 
-- **Decision:** remove the `ReportOnly` field from `internal/fabricengine/status.go`'s host-pollution type, along with the `_raddle` branch that was its only writer.
-- **Rationale:** `status.go:35` documents `ReportOnly` as existing for `_raddle` alone — report-only because no junction is wired for it, so no automated `git rm --cached` remedy applies.
-  Every remaining pollution class (`_lyx`) carries a remedy.
-  Leaving a field no code path can ever set is precisely the dead scaffolding this task exists to remove.
-- **Rejected:** keeping it for future report-only classes — hypothetical requirement, no current user.
+- **Decision:** remove the `ReportOnly` field from `internal/fabricengine/status.go:30`'s `PollutionEntry` type, along with **both** its writers: the `_raddle` classification branch (`status.go:222-223`) and the synthetic scan-error entry (`status.go:149-152`).
+  The scan-error entry keeps its existing shape otherwise — `Path` holding the `<scan error: %v>` text, `Remedy` left empty.
+  No replacement error field, and no change to `Status`'s non-fatal-and-continue behavior.
+- **Rationale:** the field's own doc comment defines it as "true when no automated remedy is available", and `Remedy`'s doc comment already says "Empty when the entry is report-only" — the two carry identical information, so `Remedy == ""` is an exact substitute for both writers.
+  `Remedy` is `json:"remedy,omitempty"`, so a JSON consumer already sees the key absent on a report-only entry;
+  dropping `ReportOnly` removes a redundant `report_only` key rather than a signal.
+  Once `_raddle` leaves, every genuine pollution class (`_lyx`) carries a remedy, so a boolean whose only remaining writer is a synthetic error placeholder is dead scaffolding of exactly the kind this task removes.
+- **Rejected:** keeping the field for future report-only classes — hypothetical requirement, no current user.
+  Adding a dedicated error field or returning the scan error instead — turns a non-fatal inline report into new error-propagation scope for a case the existing `Path` text already describes.
+- **Correction to an earlier framing:** the `_raddle` branch was **not** the field's only writer. The scan-error entry is a second one, and the plan must handle it.
+
+### PATTERN content joins `_lyx` commit routing — intended
+
+- **Decision:** accept that hand-authored PATTERN content becomes ordinary `_lyx` content for commit-routing purposes.
+  No carve-out, no exclusion mechanism.
+- **Rationale:** every round-loop caller commits with `ScopedPathspec(l.AnchorRel, ["_lyx"])` (`internal/fabriccli/weft_verbs.go:102`; the shape is pinned by `committed_lyxonly_integration_test.go:29` and `weftgit_exclude_test.go:293`).
+  Before this task, `_pattern` sat outside that pathspec, so an automated weft commit could not sweep up a PATTERN edit.
+  After the move it can, and will.
+  That is the direct consequence of the decision to collapse `_pattern` into `_lyx` — PATTERN becomes durable, git-tracked weft content like `_lyx/config`, which is already auto-committed the same way.
+  Building an exclusion to keep it out would re-create the separation this task exists to remove, at higher cost than the junction it replaces.
+- **Consequence to expect:** PATTERN edits now land in weft commits authored by the round loop rather than only in deliberate operator commits, so `PatternResidue` will flag more commits after a warp rewrite than the `_pattern`-era version did. That is more signal, not noise — each flagged commit genuinely touched PATTERN content against the invalidated baseline.
+- **Rejected:** a `_lyx/PATTERN.md` + `_lyx/pattern/` carve-out in `ScopedPathspec` or `classify.go` — the Fabric Git Invariant's cross-module exclusions are positive-only by design, and a negative carve-out would be a new mechanism built for one directory.
 
 ### `_raddle` un-reservation keeps a positive guard test
 
@@ -168,8 +196,9 @@ Both cleanups converge with the parallel `dotlyx-scratch-hygiene` task toward on
 
 - `template.yaml:2` — `pathspec: _pattern`.
 - `pull.go:21-26` — the private `patternDirName` const, existing solely because a git pathspec argument must be a bare string. `pull.go:250-254` calls `patternResidueCommits(anchor.WeftSHA, weftHEADBeforeAnchor)` inside `Pull`'s rewrite-reconcile branch. `pull.go:291-341` is the git spawn plus `parsePatternResidueRecords`. Note the documented relpath-blind limitation on the pathspec, and the record-separator-at-the-start parsing subtlety — both survive the re-scope unchanged.
-- `status.go:184` — the `ls-files -- <_lyx> _pattern _raddle` pathspec. `status.go:208-223` — the tracked-prefix classification switch, including the `_raddle` report-only branch. `status.go:35` — the `ReportOnly` field. `status.go:4,29,72,144,163-178` — doc comments.
+- `status.go:184` — the `ls-files -- <_lyx> _pattern _raddle` pathspec. `status.go:208-223` — the tracked-prefix classification switch, including the `_raddle` report-only branch. `status.go:30-38` — the `PollutionEntry` type carrying `Path`, `Remedy`, and the `ReportOnly` field to delete. `status.go:149-152` — `ReportOnly`'s **second** writer, the synthetic `<scan error: %v>` entry. `status.go:4,29,72,144,163-178` — doc comments.
 - `junctionnames.go` — `HubReservedNames()` at line 123 returns `{BoardDirName, portalsDirName, launchersDirName, "_raddle"}`; doc comments at 111 and 173 enumerate the set.
+- **"Four hub-structural tokens" is stated in three places and becomes three.** `internal/fabricengine/structuraldirs_test.go:99-110` — the test is *named* `TestHubReservedNames_StillReturnsExactlyTheFourHubStructuralTokens`, so the function itself is renamed, not just its body. `internal/fabricengine/junctionnames_test.go:73-77` — a sanity loop over the four literals. `internal/fabricengine/doc.go:84` — the package godoc's parenthetical list. The same doc.go passage also says the config-sourced piece is "today just `_pattern`", which becomes "empty today".
 - `junction.go:172-175`, `unwire.go:30`, `doc.go`, `reconcile.go:348`, `weftwiring.go:12`, `cleanup.go:81,88` — comments only.
 
 `internal/fabriccli`:
@@ -208,7 +237,7 @@ These are the downstream blast radius of rewriting the three directive constants
 From `CONSTRAINTS.md`, in force for this task:
 
 - **Cwd Resolution Invariant** — `internal/lyxcwd` alone resolves cwd. Each module owns its own relative subpath. `internal/pattern` keeps owning its own path accessors; it never gains cwd-resolution logic, and `lyxcwd` never gains an `_lyx` path constructor.
-- **Lyx Directory Token Invariant** — `internal/lyxdirs` is the sole declarer of `_lyx` and `.lyx`, stays stdlib-only and zero-import, and no other production file may name either literal in path-construction context. Enforced by `TestEnforcement_GeometryLiterals`.
+- **Lyxdirs Single-Declarer Invariant** (`CONSTRAINTS.md:36`) — `internal/lyxdirs` is the sole declarer of `_lyx` (`LyxDirName`) and `.lyx` (`DotLyxDirName`), stays **stdlib-only, a zero-import leaf**, and no other production file may name either literal in path-construction context. Enforced by `TestEnforcement_GeometryLiterals`.
 - **Durable-vs-Ephemeral State Invariant** — `_lyx` holds tracked content only; `_lyx`/`.lyx` are structural and never read from `fabric.yaml`'s `pathspec`. The line at `CONSTRAINTS.md:50` cites `_pattern` as its example of an optional dir and needs a new example or a rephrasing once `_pattern` is gone. PATTERN detail docs are tracked content, so `_lyx/pattern/` is correct and needs no `.lyx` mirror.
 - **Pattern Leaf Invariant** — widens by exactly one entry (`internal/lyxdirs`), same commit, prose and test together.
 - **Fabric Git Invariant** — `CONSTRAINTS.md:185`'s `_lyx`/`_raddle` file-contract line and `:199`'s unwire-preserves line both name the removed geometry and must be corrected.
@@ -244,14 +273,25 @@ Invert it: with an empty `pathspec`, an on-disk `_pattern` junction is stale and
 `junction_pattern_integration_test.go` (38 references), `weftgit_pathspec_integration_test.go` (17), `junction_repoint_test.go` (11), `classify_test.go` (16), `config_driven_junctions_integration_test.go`, `remove_junctions_integration_test.go`, and `unwire_test.go` all wire `_pattern` as their second junction — each needs a substitute generic optional name (the existing `_extra` used by `config_driven_junctions_integration_test.go` and `junctionnames_test.go` is the natural choice) so the config-driven-junction behavior stays covered by a name that is not the one being deleted.
 Do not simply delete these cases: the generic multi-junction path must remain tested after `_pattern` stops being its exemplar.
 
-**`_raddle` un-reservation.**
-`junctionnames_test.go:233-238` asserts the six-name reserved set and drops to five.
+**Reserved-name un-reservation — both tokens, and the arithmetic is six → four.**
+`junctionnames_test.go:232-246`'s `"default pathspec union reserves exactly six names"` case asserts `{_lyx, _pattern, _board, _portals, _launchers, _raddle}`.
+**Two** names leave, not one: `_raddle` because `HubReservedNames()` drops it, and `_pattern` because an empty `pathspec` removes it from the `junctionNames` union `IsReservedHubName` folds in.
+So the set drops to **four** — `{_lyx, .lyx, _board, _portals, _launchers}` minus the hub tokens that remain, i.e. rename the sub-test and recount rather than decrementing by one.
+`internal/lyxcwd/lyxcwd_test.go:132-141`'s `TestIsReservedHubName_Pattern` asserts the exact opposite of the new truth and must be inverted (and renamed), not merely edited — it is the only test pinning `_pattern` as a reserved slug.
 `raddle_guard_test.go` inverts to a positive "not reserved" guard.
-`hostjunction_test.go`, `config_test.go`, `fabric_test.go`, `structuraldirs_test.go`, `add_test.go`, `lyxcwd_test.go`, and `cmd/lyx/tierpurity_test.go` each need their `_raddle` expectations converged.
-Add a case proving a worktree slug named `_raddle` is now **accepted** by `IsReservedHubName` — that is the observable behavior change and nothing currently pins it.
+`hostjunction_test.go`, `config_test.go`, `fabric_test.go`, `structuraldirs_test.go`, `add_test.go`, `lyxcwd_test.go`, and `cmd/lyx/tierpurity_test.go` each need their `_raddle` expectations converged, plus `structuraldirs_test.go`'s test-function rename off "TheFour".
+Add cases proving a worktree slug named `_raddle` **and** one named `_pattern` are now accepted by `IsReservedHubName` — that is the observable behavior change and nothing currently pins it.
+
+**Slug/junction collision risk from un-reserving `_pattern`.**
+A worktree slug named `_pattern` is now legal, and a repo that still has a stale on-disk `_pattern` junction would get a worktree directory colliding with it.
+This is not worth guarding in code — the un-reservation is deliberate, and per the "No migration" decision the only repo that could hold a stale junction is the re-clonable SANDBOX.
+Record it as a known consequence in the commit message;
+do not add a guard or a test for it.
 
 **Host-pollution scan.**
-Prove the `ls-files` pathspec no longer names `_pattern` or `_raddle`, that a tracked `_lyx/...` path still reports with its `git rm --cached` remedy, and that the `ReportOnly` field's removal leaves no caller behind.
+Prove the `ls-files` pathspec no longer names `_pattern` or `_raddle`, and that a tracked `_lyx/...` path still reports with its `git rm --cached` remedy.
+`ReportOnly`'s removal has **two** call sites to converge, not one — the `_raddle` branch and the scan-error entry at `status.go:149-152`.
+Pin that a scan failure still produces its synthetic `<scan error: …>` entry with an empty `Remedy`, and that `Status` still continues rather than failing the pair — the `omitempty` tag means the JSON shape changes only by losing the `report_only` key.
 
 **Config plumbing.**
 `internal/configsync/configsync_test.go:480-481` asserts the template default is `pathspec: _pattern` and must assert the empty default instead.
@@ -270,8 +310,14 @@ Note that the enforcement scan excludes `*_test.go` by design, so test-side occu
 - **Q:** What does `template.yaml`'s `pathspec` become? **A:** Empty, key retained. Not `_lyx` — that would violate the Durable-vs-Ephemeral State Invariant, and the brief's premise about the current value was wrong.
 - **Q:** What migration path ships for already-wired repos? **A:** None. No code, no CLI verb, no doc paragraph.
 - **Q:** Are there live fabric-wired repos to worry about? **A:** Only the SANDBOX repo. lyx is not in production, and loomyard itself is mill-managed rather than fabric-wired.
-- **Q:** Does `HostPollution.ReportOnly` survive `_raddle`'s removal? **A:** No — deleted along with its only branch.
+- **Q:** Does `PollutionEntry.ReportOnly` survive `_raddle`'s removal? **A:** No — deleted along with **both** its writers (the `_raddle` branch and the scan-error entry). The type is `PollutionEntry`, not `HostPollution`.
 - **Q:** Keep or delete `internal/lyxcwd/raddle_guard_test.go`? **A:** Keep, repurposed as a positive guard that `_raddle` is not reserved.
 - **Q:** Is the Pattern Leaf Invariant still justified, or just an old agent's decision? **A:** Its ban on feature packages is load-bearing — four feature packages import `internal/pattern`, so a reverse import is a real cycle. The allowlist form is stricter than needed but cheap, and `internal/lyxdirs` is cycle-safe by construction, so the allowlist stays and widens by one entry.
 - **Q:** Does `manifest/designs/pattern.md` get rewritten or deleted? **A:** Deleted — the module landed, so the Documentation Lifecycle already required it.
 - **Q:** How far does the `_raddle` documentation sweep reach? **A:** Every reference to the old hub-level/junction geometry, across docs, code comments, and all five affected design docs — not just `manifest/designs/raddle.md`.
+- **Q:** Does emptying `template.yaml`'s `pathspec` actually reach a deployed `fabric.yaml`? **A:** [auto-pick, review r1] No. `yamlengine.applyExistingOverrides` preserves existing leaf values, so a deployed repo keeps `pathspec: _pattern` and never sees the junction as stale. **Why:** the operator chose no migration and the only deployed repo is the re-clonable SANDBOX, so the correct resolution is to state the fresh-clone-only limitation explicitly rather than build an upgrade path.
+- **Q:** What becomes of the scan-error entry once `ReportOnly` is deleted? **A:** [auto-pick, review r1] It keeps its `<scan error: …>` `Path` with an empty `Remedy`. **Why:** `Remedy`'s own doc comment already defines empty as report-only and the field is `omitempty`, so `Remedy == ""` carries identical information with no new error field and no new error-propagation scope.
+- **Q:** Is it intended that PATTERN content now joins `_lyx`'s automated commit routing? **A:** [auto-pick, review r1] Yes, with no carve-out. **Why:** it is the direct consequence of collapsing `_pattern` into `_lyx` — PATTERN becomes durable weft content like `_lyx/config`, which is already auto-committed; a negative carve-out would re-create the separation this task removes, and the Fabric Git Invariant's exclusions are positive-only by design.
+- **Q:** How does `fabricengine` construct the new `_lyx/...` residue pathspec strings? **A:** [auto-pick, review r1] From `lyxdirs.LyxDirName` by string concatenation (it already imports `lyxdirs`), never as bare literals — and this is a review obligation, since `TestEnforcement_GeometryLiterals` matches whole tokens by exact equality and would not catch `"_lyx/PATTERN.md"`. **Why:** the Lyxdirs Single-Declarer Invariant applies regardless of whether the enforcement test can mechanically see the violation.
+- **Q:** How many names does `IsReservedHubName`'s default-pathspec union reserve after this task? **A:** [auto-pick, review r1] Four, not five — `_pattern` leaves alongside `_raddle`, because an empty `pathspec` removes it from the `junctionNames` union. **Why:** an earlier framing counted only `_raddle`'s departure and would have left `TestIsReservedHubName_Pattern` asserting the opposite of the new truth.
+- **Q:** Does un-reserving `_pattern` create a slug/junction collision risk? **A:** [auto-pick, review r1] Yes in principle, recorded in the commit message, guarded nowhere. **Why:** the un-reservation is deliberate and the only repo that could hold a stale `_pattern` junction is the re-clonable SANDBOX, so a guard would be scope built for a population of zero.
