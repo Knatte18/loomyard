@@ -77,17 +77,38 @@
 // does, because `WireJunctions` owns junction state outright, whereas `pathspec` is an
 // operator-editable config value that `configsync` must never silently overwrite.
 //
-// The wired junction set is itself sourced from that same `pathspec` key:
-// `WireJunctions`/`UnwireJunctions` operate over whatever name-set their caller passes them (see
-// junctionnames.go's `junctionNames`/`WiredNames`),
-// and every one of those callers builds that name-set by loading the pair's `pathspec` and
-// filtering it against `HubReservedNames()` — the four hub-structural tokens (`_board`, `_portals`,
-// `_launchers`, `_raddle`) that can never be a per-worktree junction.
-// A future weft-backed module is therefore wired with no `fabric` code change at all: append its
-// directory name to `template.yaml`'s `pathspec:` default,
+// The wired junction set is NOT sourced from `pathspec` alone: `WireJunctions`/`UnwireJunctions`
+// operate over whatever name-set their caller passes them (see junctionnames.go's
+// `junctionNames`/`WiredNames`), and every one of those callers builds that name-set as
+// `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the pair's `pathspec` filtered against
+// `HubReservedNames()` — the four hub-structural tokens (`_board`, `_portals`, `_launchers`,
+// `_raddle`) that can never be a per-worktree junction.
+// The two structural sets (`_lyx`, `.lyx`) are injected in code and never read from `pathspec` at
+// all; only the third piece — today just `_pattern` — comes from config.
+// A future weft-backed *optional* module is therefore wired with no `fabric` code change at all:
+// append its directory name to `template.yaml`'s `pathspec:` default,
 // and any worktree whose `fabric.yaml` picks up that wider default wires the new junction the next
 // time `WireJunctions` runs against it — subject to the same narrow-pathspec asymmetry above (an
 // already-initialised worktree's existing `pathspec:` key is never widened for it automatically).
+// A structural directory has no such asymmetry to worry about: it is never sourced from `pathspec`,
+// so it cannot be left behind by a worktree's stale config.
+//
+// This batch (`.lyx` joining the wired name-set) establishes three operator-facing facts worth
+// recording plainly.
+// First, downgrade is unsupported — a pre-fix binary's `applyStaleRemoval` removes on-disk junctions
+// absent from *its own* `RepoWiredNames`, so running an older `lyx fabric reconcile` after this
+// change unwires `.lyx` and strands scratch inside the weft worktree; this is a one-way upgrade,
+// never made downgrade-safe.
+// Second, upgrade is signalled through health, not a dedicated migration step: an existing worktree
+// reports the `.lyx` junction missing (`Healthy` false, `CauseJunctionMissing`) until `lyx fabric
+// reconcile` runs — which both wires the junction and, via `seedLyxJunction`'s `.lyx`-only adoption
+// branch, moves any pre-existing real `.lyx` content into the weft target rather than hard-erroring.
+// That is the documented remedy, not a bug to route around.
+// Third, the unwire output envelope changed: `UnwireVerbResult.WeftContent`'s value set is now
+// `"preserved"` | `"not_present"` (never `"cleared"`), and the `gitignore` key is gone from the CLI
+// envelope entirely — no code path removes a leftover committed `.gitignore` `.lyx/` block left by a
+// pre-fix binary; the manual remedy is deleting the `.lyx/` line from the repo's lyx-managed
+// `.gitignore` block by hand.
 //
 // The junction side of that asymmetry has a concrete blast radius worth naming rather than leaving
 // an operator to meet as a surprise: every worktree wired before `HostJunctions` gained its
@@ -340,9 +361,10 @@
 // with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives host+weft
 // clone, `_board` worktree materialization, and lyx-anchor resolution in one call;
 // the CLI layer (`internal/fabriccli`) then records the anchor and the repo-wide `fabric.yaml` onto
-// `weft:main`, creates `_lyx`, seeds the managed `.gitignore` block, and runs
+// `weft:main`, creates every host junction (`_lyx`, `.lyx`, `_pattern`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
-// every config materialized without a second command.
+// every config materialized without a second command. Every junction is excluded through the warp's
+// own `.git/info/exclude`, never a committed `.gitignore` in the user's repo.
 //
 // The lyx-anchor subpath (e.g. `backend` or `.`) is recorded once, on `weft:main`, as the plain
 // `.lyx-anchor` marker at `BoardDir(Hub)` (see `internal/lyxcwd/anchor.go`);
@@ -362,9 +384,10 @@
 //
 // `Unwire` (unwire.go) is the per-worktree full deactivation that replaced the deleted `lyx init
 // --undo`: it removes every fabric junction actually present on disk (not just the ones the current
-// pathspec names), clears the weft-side `_lyx` content, and reverts the managed `.gitignore` block,
-// but never touches the repo-wide `weft:main` records — those survive so a later `lyx fabric
-// reconcile` re-wires the worktree from the same anchor and pathspec.
+// wired name-set names) and their warp `.git/info/exclude` entries, but never deletes weft-side
+// content — `_lyx`, `.lyx`, and `_pattern` are all preserved — and never touches the repo-wide
+// `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
+// same anchor and pathspec.
 //
 // # The one-repo illusion at the public API boundary
 //
