@@ -35,7 +35,7 @@ var structuralNeverCommittedDirs = []string{lyxdirs.DotLyxDirName}
 
 // dedupUnion concatenates every slice in groups, keeping only the first occurrence of each name and
 // preserving first-occurrence order across the whole call.
-// This is load-bearing, not tidy: a deployed `pathspec: _lyx _pattern` fabric.yaml means `_lyx`
+// This is load-bearing, not tidy: a deployed `pathspec: _lyx _extra` fabric.yaml means `_lyx`
 // arrives from both structuralCommittedDirs and cfg.Dirs() in the same call, and without dedup the
 // duplicate name would reach HostJunctions, ScopedPathspec, and status output.
 func dedupUnion(groups ...[]string) []string {
