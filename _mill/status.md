@@ -66,7 +66,9 @@ batches:
     commit_sha: f82b0777b7a31ddf21451d322fabf73b11f38f6f
     verify_baseline_failures: []
   - name: pollution-scan-and-reportonly
-    state: pending
+    state: running
+    implementer_session: 57212ecd-f685-47b8-88f5-60deea6453ec
+    start_sha: 574c1e58dff4f9871bd4571177a5c3039904ae99
     verify_baseline_failures: []
   - name: geometry-token-retirement
     state: pending
