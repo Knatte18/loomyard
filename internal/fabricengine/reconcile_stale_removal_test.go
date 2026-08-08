@@ -7,7 +7,7 @@
 // removing an on-disk junction absent from the repo-wide set
 // (applyStaleRemoval, new this batch) — with a fail-closed guard when the
 // repo-wide config cannot be loaded, and hub-reserved names (_board,
-// _portals, _launchers, _raddle) permanently excluded from the sweep.
+// _portals, _launchers) permanently excluded from the sweep.
 //
 // It also proves the repo-wide-base regression: the sites card 7 migrated to
 // RepoWiredNames (Healthy, Topology.Checkout, Topology.Remove, and
@@ -31,8 +31,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // findReconcilePair returns the ReconcilePairResult for weftPath, failing the
@@ -53,8 +53,8 @@ func findReconcilePair(t *testing.T, pairs []fabricengine.ReconcilePairResult, w
 }
 
 // TestReconcile_AddsMissingRemovesStaleNoOpsCorrect exercises all three per-junction convergence
-// outcomes in a single pair: a missing desired junction (_pattern) is added, a stale on-disk
-// junction absent from the repo-wide pathspec (_extra) is removed, and an already-correct junction
+// outcomes in a single pair: a missing desired junction (_extra) is added, a stale on-disk
+// junction absent from the repo-wide pathspec (_other) is removed, and an already-correct junction
 // (_lyx) is left untouched.
 func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 	t.Parallel()
@@ -67,9 +67,10 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 
 	// Narrow the repo-wide pathspec to "_lyx" alone before Add: batch 5 card
 	// 20 makes Add eagerly wire the repo-wide pathspec it sees at call time
-	// (RepoWiredNames(l)), so leaving the fixture's default "_lyx _pattern"
-	// pathspec in place would have Add itself wire _pattern too, leaving
-	// nothing for Reconcile's own add-missing branch to genuinely add below.
+	// (RepoWiredNames(l)), so leaving the fixture's default empty pathspec in
+	// place would still leave Add wiring only the structural set — but this
+	// explicit "_lyx" write keeps the setup self-documenting and immune to a
+	// future default-pathspec change.
 	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
 		t.Fatalf("narrow repo-wide pathspec: %v", err)
 	}
@@ -84,17 +85,16 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
 
-	// Wire _extra (on disk but not in the repo-wide pathspec) alongside the
+	// Wire _other (on disk but not in the repo-wide pathspec) alongside the
 	// _lyx junction Add already wired above — this test's stale-removal case.
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_other"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
-	// Widen the repo-wide pathspec back to the default "_lyx _pattern" so
-	// _pattern is genuinely missing on disk relative to the desired set
-	// Reconcile is about to converge against — the add-missing shape this
-	// test's name promises.
-	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern\n"), 0o644); err != nil {
+	// Widen the repo-wide pathspec to "_lyx _extra" so _extra is genuinely
+	// missing on disk relative to the desired set Reconcile is about to
+	// converge against — the add-missing shape this test's name promises.
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
 		t.Fatalf("widen repo-wide pathspec: %v", err)
 	}
 
@@ -109,21 +109,21 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 		t.Errorf("Error = %q; want empty", pair.Error)
 	}
 
-	// Add-missing: _pattern was absent on disk and present in the desired
+	// Add-missing: _extra was absent on disk and present in the desired
 	// set, so it is wired.
-	patternLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, pattern.DirName)
-	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
-		t.Errorf("missing _pattern junction not added by Reconcile: isLink=%v err=%v", isLink, err)
+	extraLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, "_extra")
+	if isLink, err := fslink.IsLink(extraLink); err != nil || !isLink {
+		t.Errorf("missing _extra junction not added by Reconcile: isLink=%v err=%v", isLink, err)
 	}
 
-	// Stale-removal: _extra was on disk but absent from the desired set, so
+	// Stale-removal: _other was on disk but absent from the desired set, so
 	// it is removed.
-	extraLink := filepath.Join(hostLayout.WorktreePath(), "_extra")
-	if _, statErr := os.Lstat(extraLink); !os.IsNotExist(statErr) {
-		t.Errorf("stale _extra junction %s not removed by Reconcile; want removed", extraLink)
+	otherLink := filepath.Join(hostLayout.WorktreePath(), "_other")
+	if _, statErr := os.Lstat(otherLink); !os.IsNotExist(statErr) {
+		t.Errorf("stale _other junction %s not removed by Reconcile; want removed", otherLink)
 	}
-	if !strings.Contains(pair.Detail, "_extra") {
-		t.Errorf("Detail = %q; want it to name the removed stale junction _extra", pair.Detail)
+	if !strings.Contains(pair.Detail, "_other") {
+		t.Errorf("Detail = %q; want it to name the removed stale junction _other", pair.Detail)
 	}
 
 	// No-op: _lyx was already correct and desired, so it is left untouched by
@@ -151,8 +151,18 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
+	}
+
+	// Widen the repo-wide pathspec to match exactly what is wired on disk
+	// above: the fixture's default empty pathspec alone would make _extra
+	// stale, so this explicit widening is what keeps this a genuine no-op
+	// rather than a stale-removal case.
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	cfgPath := configengine.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
+		t.Fatalf("widen repo-wide pathspec: %v", err)
 	}
 
 	result, err := topology.Reconcile(l)
@@ -188,22 +198,20 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 	}
 
 	// First Reconcile: Add's own eager wiring (RepoWiredNames, card 20)
-	// already wired the default "_lyx _pattern" pathspec on both pairs at
-	// Add time, so this call converges to a no-op here — included for
-	// realism (a pair reconciled before ever being widened), not because it
-	// changes anything on disk. The genuine add-missing convergence this
-	// test proves is the second Reconcile call below, against the widened
-	// pathspec.
+	// already wired the fixture's default (empty) pathspec on both pairs at
+	// Add time — the structural sets alone — so this call converges to a
+	// no-op here — included for realism (a pair reconciled before ever being
+	// widened), not because it changes anything on disk. The genuine
+	// add-missing convergence this test proves is the second Reconcile call
+	// below, against the widened pathspec.
 	if _, err := topology.Reconcile(l); err != nil {
 		t.Fatalf("Reconcile (initial): %v", err)
 	}
 
-	// Widen the repo-wide pathspec with a third, non-reserved name. _raddle
-	// is reserved (fabricengine.HubReservedNames), so a custom name is used
-	// instead, per the batch's own test-plan wording.
+	// Widen the repo-wide pathspec with a non-reserved optional name.
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	cfgPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _pattern _extra\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
 		t.Fatalf("widen repo-wide pathspec: %v", err)
 	}
 
@@ -220,6 +228,53 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 		if isLink, err := fslink.IsLink(extraLink); err != nil || !isLink {
 			t.Errorf("worktree %s did not gain _extra junction after widening the repo-wide pathspec: isLink=%v err=%v", slug, isLink, err)
 		}
+	}
+}
+
+// TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural pins the actual
+// junction-teardown behaviour this task delivers: against the fixture's unmodified default (empty)
+// repo-wide pathspec, an on-disk optional junction is stale by definition and Reconcile removes it,
+// while the _lyx and .lyx structural junctions are left untouched.
+// This deliberately never touches the repo-wide config -- newFabricFixture already seeds
+// fabricengine.ConfigTemplate()'s real empty default, so this is the genuine post-change production
+// shape, not a hand-widened one like the other cases in this file.
+func TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural(t *testing.T) {
+	t.Parallel()
+
+	const slug = "stale-removal-empty-default"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(host): %v", err)
+	}
+
+	// Wire an optional junction on disk that the empty default pathspec does
+	// not name -- stale by definition against an empty desired set.
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
+		t.Fatalf("setup WireJunctions: %v", err)
+	}
+
+	if _, err := topology.Reconcile(l); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	extraLink := filepath.Join(hostLayout.WorktreePath(), "_extra")
+	if _, statErr := os.Lstat(extraLink); !os.IsNotExist(statErr) {
+		t.Errorf("optional junction %s not removed against the empty default pathspec; want removed", extraLink)
+	}
+
+	lyxLink := fabricengine.HostLyxLinkHere(hostLayout)
+	if isLink, err := fslink.IsLink(lyxLink); err != nil || !isLink {
+		t.Errorf("_lyx junction removed against the empty default pathspec; want untouched: isLink=%v err=%v", isLink, err)
+	}
+	dotLyxLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, lyxdirs.DotLyxDirName)
+	if isLink, err := fslink.IsLink(dotLyxLink); err != nil || !isLink {
+		t.Errorf(".lyx junction removed against the empty default pathspec; want untouched: isLink=%v err=%v", isLink, err)
 	}
 }
 
@@ -240,7 +295,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
@@ -268,15 +323,15 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 	if isLink, err := fslink.IsLink(lyxLink); err != nil || !isLink {
 		t.Errorf("_lyx junction removed despite fail-closed guard: isLink=%v err=%v", isLink, err)
 	}
-	patternLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, pattern.DirName)
-	if isLink, err := fslink.IsLink(patternLink); err != nil || !isLink {
-		t.Errorf("_pattern junction removed despite fail-closed guard: isLink=%v err=%v", isLink, err)
+	extraLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, "_extra")
+	if isLink, err := fslink.IsLink(extraLink); err != nil || !isLink {
+		t.Errorf("_extra junction removed despite fail-closed guard: isLink=%v err=%v", isLink, err)
 	}
 }
 
 // TestReconcile_NeverRemovesReservedHubName proves scanOnDiskJunctionNames' exclusion of
 // fabricengine.HubReservedNames() holds end-to-end through Reconcile: a hub-structural name present
-// on disk (here _raddle) is never swept even though it is absent from the repo-wide pathspec.
+// on disk (here _portals) is never swept even though it is absent from the repo-wide pathspec.
 func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	t.Parallel()
 
@@ -291,15 +346,19 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(host): %v", err)
 	}
-	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(hostLayout, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 
 	// Seed a hub-structural reserved name directly on disk, as a link, under
 	// the host worktree root — never wired via WireJunctions (which never
 	// takes a reserved name), matching how a hub-reserved passenger like
-	// _raddle would actually appear on disk.
-	reservedLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, "_raddle")
+	// _portals would actually appear on disk. _raddle is no longer reserved
+	// (card 19), so _portals stands in as the still-reserved exemplar; _board
+	// itself is unusable here because Add already wires a real per-worktree
+	// board junction at this same path (see junction.go), which would collide
+	// with a hand-seeded link of the same name.
+	reservedLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, "_portals")
 	if err := fslink.CreateDirLink(reservedLink, t.TempDir()); err != nil {
 		t.Fatalf("seed reserved link: %v", err)
 	}
@@ -309,7 +368,7 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	}
 
 	if isLink, err := fslink.IsLink(reservedLink); err != nil || !isLink {
-		t.Errorf("reserved _raddle link removed by stale-removal; want untouched: isLink=%v err=%v", isLink, err)
+		t.Errorf("reserved _portals link removed by stale-removal; want untouched: isLink=%v err=%v", isLink, err)
 	}
 }
 
@@ -333,7 +392,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	slug := filepath.Base(fixture.Hub)
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", ".lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions(primary): %v", err)
 	}
 
@@ -368,11 +427,11 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", removeSlug, err)
 	}
-	if err := fabricengine.WireJunctions(removeHostLayout, removeSlug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(removeHostLayout, removeSlug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions(%s): %v", removeSlug, err)
 	}
 	lyxLink := fabricengine.HostLyxLinkHere(removeHostLayout)
-	patternLink := filepath.Join(removeHostLayout.WorktreePath(), removeHostLayout.AnchorRel, pattern.DirName)
+	extraLink := filepath.Join(removeHostLayout.WorktreePath(), removeHostLayout.AnchorRel, "_extra")
 
 	if _, err := topology.Remove(l, removeSlug, true); err != nil {
 		t.Fatalf("Remove(%s): %v", removeSlug, err)
@@ -380,7 +439,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	if _, statErr := os.Lstat(lyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("_lyx junction %s still exists after Remove", lyxLink)
 	}
-	if _, statErr := os.Lstat(patternLink); !os.IsNotExist(statErr) {
-		t.Errorf("_pattern junction %s still exists after Remove", patternLink)
+	if _, statErr := os.Lstat(extraLink); !os.IsNotExist(statErr) {
+		t.Errorf("_extra junction %s still exists after Remove", extraLink)
 	}
 }
