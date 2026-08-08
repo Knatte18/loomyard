@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
-plan: null
+plan: _mill/plan
 parent: main
 task: Collapse _pattern into _lyx, and un-reserve _raddle as a hub-level name
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-08T15:09:28Z'
 discussed  '2026-08-08T16:05:19Z'
+planning  '2026-08-08T16:21:33Z'
 ```
