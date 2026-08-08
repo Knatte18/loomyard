@@ -103,8 +103,9 @@ It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the 
 
 ## Pattern Leaf Invariant
 
-`internal/pattern` production code imports only stdlib and `internal/lyxcwd` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
+`internal/pattern` production code imports only stdlib, `internal/lyxcwd`, and `internal/lyxdirs` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
 Reverse import never allowed.
+`internal/lyxdirs` is admissible because it is a stdlib-only zero-import leaf (its own Lyxdirs Single-Declarer Invariant), and therefore cannot participate in a cycle by construction.
 
 - **Enforced by** `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
