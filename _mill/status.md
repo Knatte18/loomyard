@@ -66,7 +66,9 @@ batches:
     commit_sha: 2c83906bab43d5fbea2ae8d128a6733d1836c527
     verify_baseline_failures: []
   - name: no-transients-under-lyx-guard
-    state: pending
+    state: running
+    implementer_session: 8ec8392c-f5cb-487a-8cb1-65789c838a4a
+    start_sha: 0f2c754939877caf1cd610f4c8b03811acf0d790
     verify_baseline_failures: []
   - name: retire-cross-module-excludes
     state: pending
