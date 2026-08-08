@@ -178,6 +178,7 @@ No value-level config migration is attempted;
   - `internal/fabricengine/hostjunction_test.go`
   - `internal/fabricengine/config_driven_junctions_integration_test.go`
   - `internal/fabricengine/weftgit_exclude_test.go`
+  - `internal/fabricengine/commit_integration_test.go`
   - `internal/fabriccli/cli_test.go`
   - `internal/configsync/configsync_test.go`
 - **Creates:**
