@@ -47,7 +47,7 @@ The real count is nine (enumerated under Technical context), one of which — `c
 - `internal/scoutengine/daemonstate.go` — re-signature `DaemonStateFile`/`DaemonLock` to take `*lyxcwd.Location`, join onto `l.WorktreePath()`.
 - `internal/scoutengine/refs.go` — replace `Options.WorktreeRoot string` with `Options.Layout *lyxcwd.Location`; update `acquireConnection`'s `ensureServer` call.
 - `internal/scoutengine/ensureserver.go` — re-signature `ensureServer` and `ensureSupervised` to carry `*lyxcwd.Location` instead of `worktreeRoot string`.
-- `internal/scoutcli/cli.go` — `resolveWorktreeRoot` → `resolveLocation`; two new helpers (`lookupContext`, `baseOptions`); `buildOptions` signature; six `buildOptions` call sites; the four per-command pre-flight blocks collapsed onto `lookupContext`; the `assert-no-callers` hand-built literal.
+- `internal/scoutcli/cli.go` — `resolveWorktreeRoot` → `resolveLocation`; one new helper (`lookupContext`); `buildOptions` signature; six `buildOptions` call sites; the four per-command pre-flight blocks collapsed onto `lookupContext`; the `assert-no-callers` hand-built literal replaced by a seventh `buildOptions` call.
 - `internal/scoutengine/doc.go` — the "Daemon state and concurrency" section's description of the accessors.
 - The nine affected test files (enumerated under Technical context), including `cmd/lyx/constructoranchoring_test.go`.
 - Two new pin tests (out-of-hub Location, `assert-no-callers` routing) — see Testing.
@@ -152,7 +152,7 @@ The real count is nine (enumerated under Technical context), one of which — `c
 
 ### fix-assert-no-callers-literal
 
-- **Decision:** two extractions, both required — the second is what makes the fix observable.
+- **Decision:** one extraction, `lookupContext` — the seam that owns the buggy derivation.
 
   1. **`lookupContext`, the resolution seam.**
 
@@ -172,26 +172,21 @@ The real count is nine (enumerated under Technical context), one of which — `c
      Callers keep the existing envelope mapping unchanged: on a non-nil error, `clihelp.SetExit(ctx, output.Err(out, err.Error()))` then `return nil` (`cli.go:162-165`, `:579-582`).
      All four commands call it, replacing the duplicated blocks at `cli.go:147-167`, `cli.go:293-313`, `cli.go:414-434`, and `cli.go:575-585`.
      `resolveLocation` becomes its private helper rather than a separately-called function.
-  2. **`baseOptions`, the construction seam.**
+  2. **`assert-no-callers`' hand-built literal is replaced by a plain `buildOptions` call** — no second helper.
+     The command parses `query` at `cli.go:587`, *before* building the literal at `:593`, and both derived values set the identical `Query`: `defOpts.Query = query` (`:613`) and `refOpts.Query = query` (`:621`).
+     One `buildOptions(registry, dir, layout, lang, query, timeout)` value is therefore byte-equivalent to today's `baseOpts`-plus-two-assignments, and `defOpts`/`refOpts` collapse to that single value.
 
-     ```go
-     func baseOptions(registry scoutengine.Registry, targetDir string, layout *lyxcwd.Location, lang string, timeout time.Duration) scoutengine.Options
-     ```
-
-     Returns every field except `Query`.
-     `buildOptions` becomes a thin wrapper that calls it and sets `Query`;
-     `assert-no-callers` calls it directly, since it resolves its query separately and reuses one `baseOpts` value across its Definition and References calls.
-
-  Both live at the bottom of `internal/scoutcli/cli.go`, where `resolveWorktreeRoot`/`buildOptions` sit today.
+  `lookupContext` lives at the bottom of `internal/scoutcli/cli.go`, next to `resolveLocation` and `buildOptions`.
 - **Rationale:** today's empty `WorktreeRoot` out-of-hub is a latent bug — `DaemonStateFile("")` yields a relative path resolved against the process working directory, so an out-of-hub `assert-no-callers` can spawn or dial a daemon in a different place than `refs`/`definition`/`symbol` would.
   It is the "one hand-built literal" the task body already names; folding the fix in is the natural close.
-  **Why two extractions and not just `baseOptions`:** the defect is not in how the `Options` value is *assembled*, it is in how `assert-no-callers` *resolves* its root — the resolution is nested inside the registry-load `if` at `cli.go:577-585`, so it silently yields `""` on the else path.
-  A test that feeds a `layout` into `baseOptions` and checks it comes back out is true by construction and proves nothing about that closure.
-  `lookupContext` is the seam that actually owns the buggy derivation, so a test against it observes the real defect;
-  `baseOptions` then only has to guarantee the resolved value reaches `Options`.
-  Both are needed: the first makes the bug testable, the second makes the construction site shared.
+  **Why `lookupContext` and not a construction-side helper:** the defect is not in how the `Options` value is *assembled*, it is in how `assert-no-callers` *resolves* its root — the resolution is nested inside the registry-load `if` at `cli.go:577-585`, so it silently yields `""` on the else path.
+  A helper that takes an already-resolved `layout` as a parameter and returns it inside an `Options` cannot observe that: asserting the value comes back out is true by construction.
+  `lookupContext` owns the buggy derivation itself, so a test against it exercises the real defect.
+  Once the resolution is fixed and shared, the existing `buildOptions` is a sufficient construction site — there is no second extraction.
 - **Rejected:** preserving the empty-`Layout` behaviour verbatim as out of scope — keeps the bug and forces nil-handling in the engine, contradicting `no-nil-layout-check`.
-  Also rejected: leaving the literal in place and merely adding a `Layout` field to it — fixes the value but keeps the construction site untestable, so the next divergence between `assert-no-callers` and the other three commands goes unnoticed the same way this one did.
+  Also rejected: leaving the literal in place and merely adding a `Layout` field to it — fixes the value but leaves `assert-no-callers` on its own resolution path, so the next divergence from the other three commands goes unnoticed the same way this one did.
+  Also rejected: a `baseOptions(…)` helper returning every field but `Query`, with `buildOptions` wrapping it.
+  Considered and dropped: the premise that `assert-no-callers` needs a `Query`-less `Options` is false — it parses `query` before building the literal and assigns the same `query` to both derived values, so a plain `buildOptions` call covers it.
 
 ### constructoranchoring-test-in-scope
 
@@ -235,7 +230,10 @@ The real count is nine (enumerated under Technical context), one of which — `c
   - `internal/scoutengine/refs.go` — a doc comment on `Options.Layout` stating it is **required** and must be non-nil, per `no-nil-layout-check`.
     `Options` has no per-field docs today (`refs.go:45-52`), so this is the first;
     document only `Layout`, not every field.
-  - `internal/scoutcli/cli.go` — doc comments on the two new helpers, `lookupContext` and `baseOptions`, per `fix-assert-no-callers-literal`.
+  - `internal/scoutcli/cli.go` — a doc comment on the new `lookupContext` helper, per `fix-assert-no-callers-literal`.
+  - `internal/scoutcli/cli.go:489-490` — `buildOptions`' own doc comment, "ensuring all construction sites thread **WorktreeRoot** consistently".
+    The function survives the change, so its comment survives too and becomes false;
+    reword to `Layout`.
   - `internal/scoutcli/cli.go` — `resolveLocation`'s doc comment must carry the "only `WorktreePath()` is a true answer" limit, per `out-of-hub-synthesized-location`.
   - `internal/scoutcli/cli.go:147-150`, `:295-296`, `:416-417` — the three comment blocks referring to `resolveWorktreeRoot`'s doc comment and to "why it never leaves `WorktreeRoot` empty outside a hub".
     All three are subsumed by the `lookupContext` extraction, which deletes the blocks they annotate;
@@ -288,10 +286,10 @@ The comment at `ensureserver.go:301-304` says the socket path is "a deterministi
   Note the existing inner error path: when `filepath.Abs(targetDir)` itself fails, today's code returns the bare `targetDir`.
   Preserve that (synthesize from `targetDir` instead of `abs`) rather than silently changing it.
   Its doc comment must carry the consumed-by-`WorktreePath()`-only limit from the `out-of-hub-synthesized-location` decision.
-- `buildOptions(registry, targetDir, worktreeRoot, lang string, query, timeout)` → split in two, per `fix-assert-no-callers-literal`:
-  `baseOptions(registry scoutengine.Registry, targetDir string, layout *lyxcwd.Location, lang string, timeout time.Duration) scoutengine.Options` sets every field except `Query`;
-  `buildOptions(…, query scoutengine.Query, …)` calls `baseOptions` and sets `Query`.
-  The six existing `buildOptions` call sites keep calling `buildOptions` with the `worktreeRoot` argument swapped for `layout`.
+- `buildOptions(registry, targetDir, worktreeRoot, lang string, query, timeout)` → `buildOptions(registry scoutengine.Registry, targetDir string, layout *lyxcwd.Location, lang string, query scoutengine.Query, timeout time.Duration)`.
+  Body and field set are otherwise unchanged.
+  The six existing call sites swap the `worktreeRoot` argument for `layout`;
+  `assert-no-callers` becomes a seventh.
 
 Three commands each resolve once and call `buildOptions` twice (single-arg path and batch path):
 
@@ -305,9 +303,9 @@ Three commands each resolve once and call `buildOptions` twice (single-arg path 
 At `cli.go:575-585` it inlines its own resolution *inside* the registry-loading `if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil` block, setting `worktreeRoot = layout.WorktreePath()` there and leaving it empty otherwise;
 then it builds `scoutengine.Options` by hand at `cli.go:593-599`.
 Note the coupling: the same `if` both loads the registry overlay and resolves the root.
-The fix must resolve the `Location` via `resolveLocation` independently of the registry-load branch — the other three commands already keep these two derivations separate (see the comment at `cli.go:147-150`) — and then build `Options` via `baseOptions`.
-A direct `buildOptions` swap is not possible: the literal carries no `Query`, because the command resolves its query separately and reuses one `baseOpts` value across both its Definition and References calls.
-That is exactly why `fix-assert-no-callers-literal` splits `baseOptions` out — `assert-no-callers` calls it directly, `buildOptions` calls it and adds `Query`.
+The fix must resolve the `Location` via `lookupContext` — which derives the registry and the `Location` independently, the way the other three commands already do (see the comment at `cli.go:147-150`) — and then build `Options` via `buildOptions`.
+The literal *looks* like it needs a `Query`-less constructor, but does not: `query` is parsed at `cli.go:587`, before the literal at `:593`, and `defOpts.Query` (`:613`) and `refOpts.Query` (`:621`) are both assigned that same `query`.
+So `baseOpts`, `defOpts` and `refOpts` all collapse into a single `buildOptions(registry, dir, layout, lang, query, timeout)` value passed to both `Definition` and `References`.
 
 The `resolveWorktreeRoot` doc comment is referenced by three comment blocks (`cli.go:147-150`, `295-296`, `416-417`) that say "why it never leaves `WorktreeRoot` empty outside a hub".
 Those need rewording for the rename, and the claim becomes true of `assert-no-callers` too.
@@ -322,7 +320,7 @@ Untagged (Tier 1, compiled by every `go test ./...`):
    No threaded call sites.
 2. `internal/scoutengine/supervised_test.go` — three `worktreeRoot := t.TempDir()` fixtures at lines **63, 127, 205**;
    accessor calls at 65-66, 129-130, 207-208;
-   **four** `ensureSupervised(…, lang, worktreeRoot, worktreeRoot, …)` calls at 96, 153, 318 (318 sits under the third fixture, which therefore has two consumers).
+   **three** `ensureSupervised(…, lang, worktreeRoot, worktreeRoot, …)` calls, at 96, 153 and 318 (318 sits under the third fixture, so that fixture has two consumers — the accessor calls at 207-208 and this one).
 3. `internal/scoutengine/ensureserver_test.go` — fixture at 352, `DaemonLock` at 353, `ensureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, …)` at 380.
 4. `internal/scoutcli/cli_test.go` — `TestResolveWorktreeRoot_OutsideHubFallsBackToAbsoluteTargetDir` (lines 508-525) and the `buildOptions` field-threading test (lines 536-551).
 5. `cmd/lyx/constructoranchoring_test.go` — lines 80-81 and 127-128.
@@ -444,9 +442,9 @@ Discovered during discussion:
    This is the test that observes the actual defect: today the equivalent derivation inside `assert-no-callers`' `RunE` closure (`cli.go:577-585`) yields `""` on exactly this path.
    Because all four commands now share `lookupContext`, one test covers all four.
 
-   **Explicitly not written:** a test asserting `baseOptions(…, layout, …).Layout == layout`.
-   `baseOptions` takes `layout` as a parameter and `buildOptions` merely wraps it, so such an assertion is true by construction and proves nothing.
-   `baseOptions`' correctness is covered by the existing field-threading test (below), which is a compile-time-plus-field-mapping check and is honest about being only that.
+   **Explicitly not written:** a test asserting `buildOptions(…, layout, …).Layout == layout`.
+   `buildOptions` takes `layout` as a parameter and copies it into a struct field, so such an assertion is true by construction and proves nothing about the resolution that was actually broken.
+   The field-mapping half is already covered by the existing field-threading test (below), which is honest about being only a field-mapping check.
 
 **Adapted existing tests** — signature changes only, expected values untouched:
 
@@ -486,16 +484,19 @@ They spawn a real gopls, are slow and environment-dependent, and this refactor c
 - **Q:** Should `CONSTRAINTS.md` record that `.lyx`-ephemeral constructors anchor on `WorktreePath()`? **A:** No. That rule is owned by the dotlyx task that will reverse it; writing it down now just creates a contradicting source that task has to clean up.
 - **Q:** How is this verified, given four test files are behind an ungated build tag? **A:** `go build ./...`, `go test ./...`, an explicit `go vet -tags scout ./internal/scoutengine/...`, and `go test ./cmd/lyx/ -run TestConstructorAnchoring`, plus the two new pin tests. Do not run the `scout`-tagged tests — slow, environment-dependent, and they catch nothing beyond compilation for this change.
 - **Q:** The byte-identical rule forbids observable behaviour changes, but the `assert-no-callers` fix *is* one. Which wins? **A:** [auto-pick, review r1] The fix wins, and the rule is restated with an explicit carve-out naming out-of-hub `assert-no-callers` as the single intended delta. **Why:** an unqualified byte-identical rule reads as grounds to back the fix out, which would preserve the bug the task set out to close; no existing test covers that path, so the delta touches no expected value.
-- **Q:** What seam does the `assert-no-callers` pin test target, given the `Options` literal is closure-local inside `RunE`? **A:** [auto-pick, review r1] Extract `baseOptions(registry, targetDir, layout, lang, timeout)` returning every field but `Query`; `buildOptions` wraps it, `assert-no-callers` calls it directly, and the test calls `baseOptions`. **Why:** leaving the seam to mill-plan left the pin test's target undefined; the literal has no `Query`, so a plain `buildOptions` swap was never possible.
+- **Q:** What seam does the `assert-no-callers` pin test target, given the `Options` literal is closure-local inside `RunE`? **A:** [auto-pick, review r1 — **superseded twice, see r2 and r5 below**] Extract `baseOptions(registry, targetDir, layout, lang, timeout)` returning every field but `Query`. **Why it was wrong:** the seam is on the construction side, which cannot observe the defect (r2), and its premise that the literal has no `Query` is false (r5). Recorded here because two later entries only make sense against it.
 - **Q:** Is the `docs-in-same-commit` list complete? **A:** [auto-pick, review r1] No — it missed four `worktreeRoot` mentions. Enumerated to six sites: `doc.go:136-142`, `doc.go:215-219`, `doc.go:236`, `ensureserver.go:1`, `ensureserver.go:301-304`, and `daemonstate.go:5-7` plus both accessor comments. **Why:** the decision said "nothing else" while Technical context separately demanded an `ensureserver.go:301-304` reword — a direct contradiction a plan writer would have had to guess at. The stale `manifest/designs/scout-redesign.md` citation at `ensureserver.go:1-2` is pre-existing rot and stays.
 - **Q:** Does a nil `Options.Layout` really fail fast? **A:** [auto-pick, review r1] Only for Go. Recorded as an accepted weakness rather than mitigated. **Why:** `Layout` is dereferenced only in `ensureSupervised`, reached only when `entry.HasNativeDaemon` (`refs.go:64-65`), so a nil on Python/C#/TypeScript/Rust is silently unused. A nil check would only make a can't-happen error louder for four languages that ignore the field.
-- **Q:** Does a pin test against `baseOptions` actually observe the `assert-no-callers` bug? **A:** [auto-pick, review r2] No — it is tautological. Added a second extraction, `lookupContext(cwd, targetDir) (Registry, *lyxcwd.Location, error)`, which owns the buggy derivation; the pin test targets that instead, and the `baseOptions` identity assertion is explicitly not written. **Why:** `baseOptions` takes `layout` as a parameter, so asserting it comes back out is true by construction. The real defect is the resolution nested inside the registry-load `if` at `cli.go:577-585`, which yields `""` on the else path — nothing in the round-1 test shape reached it.
+- **Q:** Does a construction-side pin test actually observe the `assert-no-callers` bug? **A:** [auto-pick, review r2] No — it is tautological. Introduced `lookupContext(cwd, dir) (Registry, *lyxcwd.Location, error)`, which owns the buggy derivation; the pin test targets that, and the identity assertion is explicitly not written. **Why:** any helper taking `layout` as a parameter returns it by construction. The real defect is the resolution nested inside the registry-load `if` at `cli.go:577-585`, which yields `""` on the else path — nothing in the round-1 test shape reached it.
+- **Q:** Is a second, construction-side extraction still needed alongside `lookupContext`? **A:** [auto-pick, review r5] No — dropped. `assert-no-callers` calls the existing `buildOptions` directly, as a seventh call site. **Why:** the justification for a `Query`-less helper was that the command needs an `Options` without a `Query`. False: `query` is parsed at `cli.go:587`, before the literal at `:593`, and `defOpts.Query` (`:613`) and `refOpts.Query` (`:621`) both take that same `query` — so one `buildOptions` value serves both calls, and the helper earned nothing.
 - **Q:** Does `docs-in-same-commit`'s "exactly six sites and nothing beyond them" hold? **A:** [auto-pick, review r2] No — it contradicted three other decisions that mandate doc comments in `scoutcli` and on `Options.Layout`. Rescoped the six-site list to bind `scoutengine` prose docs only, with the mandated code doc comments listed separately. **Why:** an absolute closure on one list while other decisions demand comments elsewhere forces a plan writer to guess which mandate wins.
-- **Q:** Is the affected-test enumeration complete? **A:** [auto-pick, review r2] No — it listed accessor calls only and missed twelve `ensureServer`/`ensureSupervised` call sites, seven of them in the `//go:build scout` files. Every site is now enumerated per file, and the drifted line numbers for `supervised_test.go`'s fixtures (63/127/205, not 65/129/207) are corrected. **Why:** the under-count fell precisely on the files the discussion itself calls the largest correctness risk, since no pipeline gate compiles them.
+- **Q:** Is the affected-test enumeration complete? **A:** [auto-pick, review r2] No — it listed accessor calls only and missed eleven `ensureServer`/`ensureSupervised` call sites, seven of them in the `//go:build scout` files. Every site is now enumerated per file, and the drifted line numbers for `supervised_test.go`'s fixtures (63/127/205, not 65/129/207) are corrected. **Why:** the under-count fell precisely on the files the discussion itself calls the largest correctness risk, since no pipeline gate compiles them.
 - **Q:** Does the new `Location` fixture replace the plain directory string in tests? **A:** [auto-pick, review r2] No — it must keep both. `targetDir` stays a `string` parameter, and five fixtures pass the same directory as both arguments (`ensureSupervised(…, worktreeRoot, worktreeRoot, …)`). **Why:** deleting the string when introducing `l` breaks those call sites.
 - **Q:** Does `lookupContext` take the raw `--target-dir` flag or the defaulted directory? **A:** [auto-pick, review r3] The already-defaulted directory; the parameter is named `dir` to say so, and the `dir == "" → cwd` defaulting stays in each `RunE`. **Why:** passing the raw flag would resolve `filepath.Abs("")` — the process cwd — instead of `filepath.Abs(cwd)` whenever `--target-dir` is omitted. The defaulting cannot move into the helper for free: `Options.TargetDir` and `filterWithin` need `dir` in the same closure anyway.
 - **Q:** What populates `lookupContext`'s error return? **A:** [auto-pick, review r3] `LoadRegistry` failures only. A `lyxcwd.Resolve` failure is never an error — it is the out-of-hub path. Callers keep the existing `output.Err` + `return nil` mapping. **Why:** leaving the contract unstated invites a plan writer to turn the out-of-hub degradation into a hard failure, which would break every out-of-hub lookup.
 - **Q:** Is the out-of-hub byte-identity claim unconditional? **A:** [auto-pick, review r3] No — scoped to non-root directories. The `Dir`/`Base`-then-`Join` round trip at a filesystem or volume root (`/`, `C:\`) was not verified and is deliberately not special-cased. **Why:** `--target-dir /` names no buildable project, and today's `resolveWorktreeRoot` fallback has the same shape — but an unqualified claim would read as verified when it is not.
+- **Q:** Does `buildOptions`' own doc comment need rewording? **A:** [auto-pick, review r5] Yes — `cli.go:489-490` says it ensures every construction site threads `WorktreeRoot`; the function survives, so the comment survives and becomes false. Added to the mandated-comment list. **Why:** it fell between the `scoutengine`-scoped six-site list and the mandated-new-code list, so no decision claimed it.
+- **Q:** How many `ensureSupervised` call sites does `supervised_test.go` have? **A:** [auto-pick, review r5] Three (96, 153, 318), not four. **Why:** the third fixture has two consumers, which I miscounted as a fourth call — an internal inconsistency in the very enumeration this discussion bills as its largest correctness risk.
 - **Q:** Who owns the test-file comments that name `WorktreeRoot`/`worktreeRoot` in prose? **A:** [auto-pick, review r4] This commit — eight comments across the three `//go:build scout` integration test files, now enumerated per file. **Why:** `docs-in-same-commit` covers `scoutengine` production prose only, so nothing claimed them; and since no gate compiles those files, a false comment would sit there indefinitely.
 - **Q:** How is "the registry is the built-in one" asserted, given `Registry` is a map? **A:** [auto-pick, review r4] A keyed spot-check on the `"go"` entry, not `reflect.DeepEqual` over the whole map. **Why:** maps are not `==`-comparable, and a whole-map compare would couple the test to every future built-in entry.
 - **Q:** Do the new tests really spawn no git? **A:** [auto-pick, review r4] Files 1-3 and 5, yes. File 4 (`scoutcli/cli_test.go`) does, indirectly — `lyxcwd.Resolve` shells `git rev-parse --show-toplevel` — and `internal/scoutcli` has no `TestMain`. Pre-existing, both guards still pass, do not add a `TestMain` as a drive-by. **Why:** the unqualified no-git claim would have been wrong for the one file the new pin test lives in, and the out-of-hub premise silently depends on `TMPDIR` not being inside a repo.
