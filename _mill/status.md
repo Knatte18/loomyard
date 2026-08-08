@@ -87,6 +87,8 @@ batches:
     commit_sha: 221530547fe3044ca998563adb73e1fb38046244
     verify_baseline_failures: []
   - name: dotlyx-junction-wiring-and-unwire
-    state: pending
+    state: running
+    implementer_session: bf0c090d-d1b5-4e4b-8eb4-42940f0b2b05
+    start_sha: 305675c0b00cf5a7cfcdc00339c3bb723ae2d66c
     verify_baseline_failures: []
 ```
