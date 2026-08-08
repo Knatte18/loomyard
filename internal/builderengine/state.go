@@ -20,13 +20,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// builderDirName is the relative-path segment builderengine joins onto
-// lyxdirs.LyxDirName to form the builder's durable run-state
-// directory. builderengine is this segment's sole declarer.
+// builderDirName is the relative-path segment builderengine joins onto both
+// lyxdirs.LyxDirName (Dir) and lyxdirs.DotLyxDirName (ScratchDir) to form
+// builder's durable and scratch base directories, respectively.
+// builderengine is this segment's sole declarer.
 const builderDirName = "builder"
 
-// Dir returns the path to the builder's durable run state directory (state.json, pause flag,
-// outcome.yaml).
+// Dir returns the path to the builder's durable run state directory (state.json, outcome.yaml).
 // It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
@@ -40,6 +40,14 @@ func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
 }
 
+// ScratchDir returns the path to the base directory for builder's never-tracked artifacts —
+// Dir's never-tracked sibling holding the pause flag and every *.lock — at the mirrored subpath
+// of the _lyx/builder content each relates to.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func ScratchDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, builderDirName)
+}
+
 // stateFileName is state.json's fixed filename inside a builder dir.
 const stateFileName = "state.json"
 
@@ -50,19 +58,19 @@ const stateFileName = "state.json"
 // spawn-batch landing inside poll's classify-then-persist window) each
 // load, mutate, and save their own copy, and the last save silently erases
 // the other's mutation — a live implementer with no state record, or a
-// terminal classification lost. Excluded from fabric commits like every
-// other *.lock (see buildercli's sync pathspec).
+// terminal classification lost. It lives under .lyx and is never in a weft
+// worktree at all.
 const stateMutateLockName = "mutate.lock"
 
-// AcquireStateMutation acquires builderDir's exclusive state-mutation lease, blocking until free.
+// AcquireStateMutation acquires scratchDir's exclusive state-mutation lease, blocking until free.
 // Callers hold it across the load-mutate-save sequence.
-func AcquireStateMutation(builderDir string) (*lock.FileLock, error) {
-	if err := os.MkdirAll(builderDir, 0o755); err != nil {
-		return nil, fmt.Errorf("builder: create builder dir %s: %w", builderDir, err)
+func AcquireStateMutation(scratchDir string) (*lock.FileLock, error) {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return nil, fmt.Errorf("builder: create builder scratch dir %s: %w", scratchDir, err)
 	}
-	l, err := lock.AcquireWriteLock(filepath.Join(builderDir, stateMutateLockName))
+	l, err := lock.AcquireWriteLock(filepath.Join(scratchDir, stateMutateLockName))
 	if err != nil {
-		return nil, fmt.Errorf("builder: acquire state-mutation lease in %s: %w", builderDir, err)
+		return nil, fmt.Errorf("builder: acquire state-mutation lease in %s: %w", scratchDir, err)
 	}
 	return l, nil
 }
@@ -127,12 +135,13 @@ type BatchState struct {
 	Status string `json:"status"`
 }
 
-// LoadState reads <builderDir>/state.json.
+// LoadState reads <builderDir>/state.json, locked against
+// <scratchDir>/state.json.lock.
 // A missing file returns (nil, nil).
 // An unreadable or malformed file is a wrapped error.
-func LoadState(builderDir string) (*State, error) {
+func LoadState(builderDir, scratchDir string) (*State, error) {
 	path := filepath.Join(builderDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
 	st, found, err := state.ReadJSON[State](path, lockPath)
 	if err != nil {
@@ -144,10 +153,14 @@ func LoadState(builderDir string) (*State, error) {
 	return &st, nil
 }
 
-// SaveState writes st to <builderDir>/state.json atomically.
-func SaveState(builderDir string, st *State) error {
+// SaveState writes st to <builderDir>/state.json atomically, under an exclusive lock at
+// <scratchDir>/state.json.lock.
+func SaveState(builderDir, scratchDir string, st *State) error {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return fmt.Errorf("builder: create builder scratch dir %s: %w", scratchDir, err)
+	}
 	path := filepath.Join(builderDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
 	if err := state.WriteJSON(path, lockPath, *st); err != nil {
 		return fmt.Errorf("builder: save state %s: %w", path, err)

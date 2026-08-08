@@ -22,24 +22,24 @@ import (
 // itself.
 const PauseFlagName = "pause"
 
-// PauseFlagPath returns the path to the pause flag file inside builderDir.
+// PauseFlagPath returns the path to the pause flag file inside scratchDir.
 // buildercli's pause verb writes this file,
 // and spawn-batch's batch- boundary check reads it via PauseRequested;
 // both must resolve the same path, which is why this is exported rather than duplicated at each
 // call site.
-func PauseFlagPath(builderDir string) string {
-	return filepath.Join(builderDir, PauseFlagName)
+func PauseFlagPath(scratchDir string) string {
+	return filepath.Join(scratchDir, PauseFlagName)
 }
 
-// RequestPause creates builderDir's pause flag file, creating builderDir itself first if it does
+// RequestPause creates scratchDir's pause flag file, creating scratchDir itself first if it does
 // not yet exist — a pause may be requested before any batch has ever spawned.
 // Creating an already-present flag file is not an error: RequestPause is idempotent.
-func RequestPause(builderDir string) error {
-	if err := os.MkdirAll(builderDir, 0o755); err != nil {
-		return fmt.Errorf("builder: create builder dir %s: %w", builderDir, err)
+func RequestPause(scratchDir string) error {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return fmt.Errorf("builder: create builder scratch dir %s: %w", scratchDir, err)
 	}
 
-	path := PauseFlagPath(builderDir)
+	path := PauseFlagPath(scratchDir)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("builder: create pause flag %s: %w", path, err)
@@ -47,17 +47,17 @@ func RequestPause(builderDir string) error {
 	return f.Close()
 }
 
-// PauseRequested reports whether builderDir's pause flag file is currently present.
-func PauseRequested(builderDir string) bool {
-	_, err := os.Stat(PauseFlagPath(builderDir))
+// PauseRequested reports whether scratchDir's pause flag file is currently present.
+func PauseRequested(scratchDir string) bool {
+	_, err := os.Stat(PauseFlagPath(scratchDir))
 	return err == nil
 }
 
-// ClearPause removes builderDir's pause flag, idempotently.
+// ClearPause removes scratchDir's pause flag, idempotently.
 // Callers must invoke this after passing refusal gates (to avoid re-pausing on a resumed run's own
 // flag) and at every terminal outcome.
-func ClearPause(builderDir string) error {
-	path := PauseFlagPath(builderDir)
+func ClearPause(scratchDir string) error {
+	path := PauseFlagPath(scratchDir)
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil
