@@ -2,8 +2,8 @@
 // this batch — HostLyxLink, HostLyxLinkHere, HostJunctions and HostJunctionsHere, plus the
 // HostJunction record shape — over synthetic *lyxcwd.Location literals rather than real fixtures,
 // the same table shapes lyxcwd's own tests used.
-// Every _pattern row asserts against the generic config-driven junction join
-// (filepath.Join(WorktreePath(l, slug), l.AnchorRel, pattern.DirName)) rather than a
+// Every _extra row asserts against the generic config-driven junction join
+// (filepath.Join(WorktreePath(l, slug), l.AnchorRel, "_extra")) rather than a
 // pattern-specific accessor, so this file survives card 35's deletion of those accessors unchanged.
 
 package fabricengine
@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -104,7 +103,7 @@ func TestHostLyxLinkMethods(t *testing.T) {
 // the batch's actual change is upstream, in how junctionNames/WiredNames build that slice — `_lyx`
 // now arrives structurally (structuralCommittedDirs) rather than from a config `pathspec` entry, but
 // HostJunctions itself is unaware of that distinction.
-// The _pattern row asserts against the generic join, not a pattern-specific accessor.
+// The _extra row asserts against the generic join, not a pattern-specific accessor.
 func TestHostJunctions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -118,21 +117,21 @@ func TestHostJunctions(t *testing.T) {
 			hub:     "/h",
 			slug:    "feat",
 			relPath: ".",
-			names:   []string{"_lyx", pattern.DirName},
+			names:   []string{"_lyx", "_extra"},
 		},
 		{
 			name:    "non-prime worktree layout, root case",
 			hub:     "/h",
 			slug:    "other",
 			relPath: ".",
-			names:   []string{"_lyx", pattern.DirName},
+			names:   []string{"_lyx", "_extra"},
 		},
 		{
 			name:    "subpath case",
 			hub:     "/h",
 			slug:    "feat",
 			relPath: "sub",
-			names:   []string{"_lyx", pattern.DirName},
+			names:   []string{"_lyx", "_extra"},
 		},
 		{
 			name:    "empty names yields zero records",
@@ -146,14 +145,14 @@ func TestHostJunctions(t *testing.T) {
 			hub:     "/h",
 			slug:    "feat",
 			relPath: ".",
-			names:   []string{"_lyx", pattern.DirName, "_extra"},
+			names:   []string{"_lyx", "_extra", "_other"},
 		},
 		{
 			name:    "reversed 2-name slice preserves given order, no forced sort",
 			hub:     "/h",
 			slug:    "feat",
 			relPath: ".",
-			names:   []string{pattern.DirName, "_lyx"},
+			names:   []string{"_extra", "_lyx"},
 		},
 	}
 
@@ -196,7 +195,7 @@ func TestHostJunctions(t *testing.T) {
 			AnchorRel:    ".",
 		}
 
-		junctions := HostJunctions(loc, "slug", []string{"_lyx", pattern.DirName})
+		junctions := HostJunctions(loc, "slug", []string{"_lyx", "_extra"})
 		for _, j := range junctions {
 			if j.Name == "_raddle" {
 				t.Errorf("HostJunctions found _raddle entry (forbidden by design)")
@@ -214,7 +213,7 @@ func TestHostJunctionsHere(t *testing.T) {
 	t.Run("at root", func(t *testing.T) {
 		loc := &lyxcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}
 
-		junctions := HostJunctionsHere(loc, []string{"_lyx", pattern.DirName})
+		junctions := HostJunctionsHere(loc, []string{"_lyx", "_extra"})
 		if len(junctions) != 2 {
 			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
 		}
@@ -232,24 +231,24 @@ func TestHostJunctionsHere(t *testing.T) {
 			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", lyxJunction.Target, wantLyxTarget)
 		}
 
-		patternJunction := junctions[1]
-		wantPatternLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, pattern.DirName)
-		wantPatternTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, pattern.DirName)
-		if patternJunction.Name != pattern.DirName {
-			t.Errorf("HostJunctionsHere()[1].Name = %q; want %q", patternJunction.Name, pattern.DirName)
+		extraJunction := junctions[1]
+		wantExtraLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_extra")
+		wantExtraTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, "_extra")
+		if extraJunction.Name != "_extra" {
+			t.Errorf("HostJunctionsHere()[1].Name = %q; want %q", extraJunction.Name, "_extra")
 		}
-		if patternJunction.Link != wantPatternLink {
-			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", patternJunction.Link, wantPatternLink)
+		if extraJunction.Link != wantExtraLink {
+			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", extraJunction.Link, wantExtraLink)
 		}
-		if patternJunction.Target != wantPatternTarget {
-			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", patternJunction.Target, wantPatternTarget)
+		if extraJunction.Target != wantExtraTarget {
+			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", extraJunction.Target, wantExtraTarget)
 		}
 	})
 
 	t.Run("at nested subpath", func(t *testing.T) {
 		loc := &lyxcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: filepath.Join("services", "api")}
 
-		junctions := HostJunctionsHere(loc, []string{"_lyx", pattern.DirName})
+		junctions := HostJunctionsHere(loc, []string{"_lyx", "_extra"})
 		if len(junctions) != 2 {
 			t.Fatalf("HostJunctionsHere() returned %d junctions; want 2", len(junctions))
 		}
@@ -264,14 +263,14 @@ func TestHostJunctionsHere(t *testing.T) {
 			t.Errorf("HostJunctionsHere()[0].Target = %q; want %q", lyxJunction.Target, wantLyxTarget)
 		}
 
-		patternJunction := junctions[1]
-		wantPatternLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, pattern.DirName)
-		wantPatternTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, pattern.DirName)
-		if patternJunction.Link != wantPatternLink {
-			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", patternJunction.Link, wantPatternLink)
+		extraJunction := junctions[1]
+		wantExtraLink := filepath.Join(loc.WorktreePath(), loc.AnchorRel, "_extra")
+		wantExtraTarget := filepath.Join(WeftWorktree(loc), loc.AnchorRel, "_extra")
+		if extraJunction.Link != wantExtraLink {
+			t.Errorf("HostJunctionsHere()[1].Link = %q; want %q", extraJunction.Link, wantExtraLink)
 		}
-		if patternJunction.Target != wantPatternTarget {
-			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", patternJunction.Target, wantPatternTarget)
+		if extraJunction.Target != wantExtraTarget {
+			t.Errorf("HostJunctionsHere()[1].Target = %q; want %q", extraJunction.Target, wantExtraTarget)
 		}
 	})
 
@@ -282,7 +281,7 @@ func TestHostJunctionsHere(t *testing.T) {
 		// HostJunctions(l, slug, names) resolve to the same host worktree
 		// HostJunctionsHere(l, names) is already anchored at.
 		slug := filepath.Base(loc.WorktreePath())
-		names := []string{"_lyx", pattern.DirName}
+		names := []string{"_lyx", "_extra"}
 
 		here := HostJunctionsHere(loc, names)
 		bySlug := HostJunctions(loc, slug, names)
@@ -305,8 +304,8 @@ func TestHostJunctionsHere(t *testing.T) {
 			names []string
 		}{
 			{name: "empty names yields zero records", names: []string{}},
-			{name: "3-name slice yields three records in input order", names: []string{"_lyx", pattern.DirName, "_extra"}},
-			{name: "reversed 2-name slice preserves given order, no forced sort", names: []string{pattern.DirName, "_lyx"}},
+			{name: "3-name slice yields three records in input order", names: []string{"_lyx", "_extra", "_other"}},
+			{name: "reversed 2-name slice preserves given order, no forced sort", names: []string{"_extra", "_lyx"}},
 		}
 
 		for _, rt := range regressionTests {
