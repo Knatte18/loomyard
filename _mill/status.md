@@ -27,5 +27,8 @@ implementing  '2026-08-08T06:34:42Z'
 ```yaml
 batches:
   - name: land-audit-corrections
-    state: pending
+    state: running
+    implementer_session: 886e4778-4bf7-402d-83a8-6e86927aae18
+    start_sha: 47d47071e71102884181efbc42e1aa13e3db4050
+    verify_baseline_failures: []
 ```
