@@ -190,8 +190,15 @@ Closing that gap is scope item 5.
   **Inline verdict lines per section** — violates line 5 and grows `CONSTRAINTS.md` a history section on every future audit.
   **Amending line 5 to permit verdicts** — pays for a literal reading of the brief by weakening the file's charter.
   **Zero-diff pure audit, corrections deferred to a follow-up task** — leaves two known-wrong rules in the file reviewers follow slavishly, for no gain.
-- Consequence for mill-plan: the implementation commit message must name all seven invariants and state the transitive evidence for treadle (both the `logger` and `shuttleengine` paths), so the reasoning is recoverable from `git log`.
-  A commit message rots harmlessly — nobody mistakes one for current truth.
+- Consequence for mill-plan: the implementation commit message is the **sole durable carrier** of the audit's reasoning, and must contain all three of:
+  1. All seven audited invariants named, with their verdicts.
+  2. Treadle's transitive evidence — both the `logger` and the `shuttleengine` path.
+  3. **The deferred `internal/lyxcwd` finding**, stated as a finding and not merely as an omission: that `CONSTRAINTS.md:24`'s import cap is true but enforced by no test, that `docs/shared-libs/lyxcwd.md:6` claims "Go enforces it" when Go enforces only acyclicity, and that both are left for a follow-up task.
+  Item 3 is load-bearing.
+  It is the one *unfixed* real defect this audit found, and without it in the commit message the finding exists nowhere durable — `discussion.md` dies with the worktree by design, and the "no stored audit artifact" decision means there is no other file to hold it.
+  A finding that survives only in a file scheduled for deletion has not been recorded;
+  it has been lost with extra steps.
+- A commit message rots harmlessly — nobody mistakes one for current truth — which is exactly why it can carry a dated finding that a `manifest/designs/` page could not.
 
 ### Treadle's rule text states both the non-claim and the real claim
 
@@ -307,7 +314,9 @@ Both need the isolation reading removed;
 neither needs the full two-sentence `CONSTRAINTS.md` treatment, since the surrounding prose already carries the mechanism.
 
 **`internal/modelspec/leaf_enforcement_test.go:4`** reads "Unlike lyxtest's leaf_enforcement_test.go (a banned-import denylist), this check is an ALLOWLIST".
-After the conversion both are allowlists, so **the contrast clause is deleted outright** — not reworded into a comparison with some other file, since after this task every enforcement test in the repo is an allowlist and there is nothing left to contrast against.
+After the conversion both are allowlists, so **the contrast clause is deleted outright** — not reworded into a comparison with some other file.
+The reason is that no *useful* contrast remains among the leaf/seam allowlist tests, all of which now share one shape.
+It is **not** that every enforcement test in the repo is an allowlist — that would be false: `internal/shuttleengine/seam_enforcement_test.go` is a single-import ban, and `cmd/lyx`'s guards are grep-style denylists.
 What stays is the sentence's actual payload: this check is an allowlist, so any import outside the allowed set fails and a future stray dependency is caught with no list maintenance required.
 Note the sibling files (`pattern`, `tokenvocab`, `githubclient`) open with "Like modelspec's … leaf_enforcement_test.go, this check is an ALLOWLIST" — those stay untouched and correct;
 modelspec's own file simply cannot use that construction about itself.
@@ -426,6 +435,8 @@ The reviewer's check is that no remaining comment in the tree asserts an isolati
   lyxtest *is* the idiom's origin (modelspec cites lyxtest, pattern cites modelspec), so retargeting to pattern would have named a downstream file as the head of its own citation chain.
   Keep the citation, update the function name only.
   The conflation to avoid: lyxtest originates the `ImportsOnly` **idiom** while separately adopting pattern's allowlist **shape** — the conversion touches only the latter.
+- **Q:** (discussion review r5) Where does the deferred lyxcwd finding durably live, given `discussion.md` dies with the task? **A:** The implementation commit message, now a required third item alongside the seven verdicts and treadle's evidence.
+  This was a real hole in the "no stored audit artifact" decision: that decision is sound for findings whose durable form is a *fix*, but the lyxcwd finding is deliberately unfixed, so it had no carrier at all.
 - **Q:** Is the treadle finding as the brief described it? **A:** Worse.
   The brief expected one transitive path via `logger`;
   the allowlist also permits `shuttleengine`, which imports `lyxcwd` directly.

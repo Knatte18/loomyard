@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: leaf-invariant-audit
 branch: leaf-invariant-audit
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-08T05:30:46Z'
+discussed  '2026-08-08T06:22:44Z'
 ```
