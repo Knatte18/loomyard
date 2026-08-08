@@ -39,6 +39,8 @@ batches:
     commit_sha: 3d1afe71e55d70e089323ef09a70185b45a18306
     verify_baseline_failures: []
   - name: docs-alignment
-    state: pending
+    state: running
+    implementer_session: d108eb21-0f50-40b4-bb77-baf0079fcb3e
+    start_sha: 6f2387e1c87f8704cca2dad113de12f8458a63e4
     verify_baseline_failures: []
 ```
