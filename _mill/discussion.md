@@ -338,6 +338,19 @@ Behind `//go:build scout`:
 
 Files 6, 7 and 9 are where the under-count would have bitten hardest: they carry seven threaded call sites between them, all invisible to `go build ./...` and `go test ./...`.
 
+**Comment mentions in test files — reworded in this commit, not left alone.**
+`docs-in-same-commit` is scoped to `scoutengine` *production* prose docs plus the mandated new code doc comments, so it does not reach test-file comments;
+they are assigned here instead.
+Eight comments name `WorktreeRoot`/`worktreeRoot` in prose and become false after the rename:
+
+- `refs_integration_test.go:77`, `:178`, `:193`
+- `ensureserver_integration_test.go:127`, `:136`, `:174`
+- `supervised_integration_test.go:51`, `:89`
+
+All eight are in `//go:build scout` files, so nothing compiles or reads them in CI — which is exactly why they need naming here rather than being left to be noticed.
+Reword to the new vocabulary (`layout`, or "the worktree the `Location` resolves to") in the same commit.
+Files 1-5 carry no such prose mentions beyond the code sites already listed.
+
 **The `scout` build tag is compiled by no pipeline gate.**
 `go build ./...` and `go test ./...` both skip files 6-9 entirely, so a missed call site in them fails nothing and is invisible until someone runs the scout suite by hand.
 This is the single largest correctness risk in the task.
@@ -357,7 +370,16 @@ The string is not redundant.
 Those become `ensureSupervised(…, lang, dir, l, …)`.
 Do not delete the string variable when introducing `l`.
 
-This spawns no git and copies no fixture tree, so the untagged files stay Tier 1-pure per the Test Tier Purity Invariant and need no `TestMain`/`HermeticGitEnv` addition per the Hermetic Git Test Environment Invariant.
+This spawns no git and copies no fixture tree, so files 1-3 and 5 stay Tier 1-pure per the Test Tier Purity Invariant and need no `TestMain`/`HermeticGitEnv` addition per the Hermetic Git Test Environment Invariant.
+
+**File 4 (`internal/scoutcli/cli_test.go`) is the exception, and it is pre-existing.**
+Its out-of-hub tests — the existing one and the new `lookupContext` pin — reach `lyxcwd.Resolve`, which shells out to `gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)` (`lyxcwd.go:143`).
+`internal/scoutcli` has no `TestMain` and no `HermeticGitEnv` call today.
+Both guards still pass — `tierpurity_test.go` matches direct tokens in the test file (there are none;
+the spawn is two packages down) and `hermeticenv_test.go` keys on direct spawns or lyxtest fixture helpers (likewise none) — so this task introduces no new violation and must not add a `TestMain` as a drive-by.
+What the new test *does* inherit is the existing test's unstated premise: the out-of-hub branch is only exercised if `t.TempDir()` does not itself sit inside a git repository.
+That holds for an ordinary `TMPDIR` and is how the current test already passes.
+Do not build the new test on a stronger assumption than that, and do not try to force the branch by other means.
 `cmd/lyx/constructoranchoring_test.go` already has its own `anchoringFixture` helper and an `l` in scope in both tests — reuse those, do not add a second helper.
 `internal/websterengine/audit_test.go:24` and `template_test.go:42` show the same hand-built-`Location` idiom if a shape reference is wanted.
 
@@ -417,7 +439,8 @@ Discovered during discussion:
    Worth also asserting `AnchorRel == "."`, since a synthesized non-`.` anchor would silently move the daemon state.
 2. **`lookupContext` resolves a usable `Location` out-of-hub.**
    No test exists today for this derivation, which is why the empty-root bug survived.
-   The test calls `lookupContext` — the resolution seam decided in `fix-assert-no-callers-literal` — with a `cwd` outside any lyx hub, and asserts the returned `*lyxcwd.Location` is non-nil with `WorktreePath()` equal to `filepath.Abs(targetDir)`, and that the returned registry is the built-in one.
+   The test calls `lookupContext` — the resolution seam decided in `fix-assert-no-callers-literal` — with a `cwd` outside any lyx hub, and asserts the returned `*lyxcwd.Location` is non-nil with `WorktreePath()` equal to `filepath.Abs(dir)`, and that the returned registry is the built-in one.
+   `scoutengine.Registry` is a `map[string]Entry` (`registry.go:46`) and so is not `==`-comparable: assert the registry half with a keyed spot-check (the `"go"` entry matches `BuiltinRegistry()["go"]`) rather than `reflect.DeepEqual` over the whole map, which would couple the test to every future built-in entry.
    This is the test that observes the actual defect: today the equivalent derivation inside `assert-no-callers`' `RunE` closure (`cli.go:577-585`) yields `""` on exactly this path.
    Because all four commands now share `lookupContext`, one test covers all four.
 
@@ -473,4 +496,7 @@ They spawn a real gopls, are slow and environment-dependent, and this refactor c
 - **Q:** Does `lookupContext` take the raw `--target-dir` flag or the defaulted directory? **A:** [auto-pick, review r3] The already-defaulted directory; the parameter is named `dir` to say so, and the `dir == "" → cwd` defaulting stays in each `RunE`. **Why:** passing the raw flag would resolve `filepath.Abs("")` — the process cwd — instead of `filepath.Abs(cwd)` whenever `--target-dir` is omitted. The defaulting cannot move into the helper for free: `Options.TargetDir` and `filterWithin` need `dir` in the same closure anyway.
 - **Q:** What populates `lookupContext`'s error return? **A:** [auto-pick, review r3] `LoadRegistry` failures only. A `lyxcwd.Resolve` failure is never an error — it is the out-of-hub path. Callers keep the existing `output.Err` + `return nil` mapping. **Why:** leaving the contract unstated invites a plan writer to turn the out-of-hub degradation into a hard failure, which would break every out-of-hub lookup.
 - **Q:** Is the out-of-hub byte-identity claim unconditional? **A:** [auto-pick, review r3] No — scoped to non-root directories. The `Dir`/`Base`-then-`Join` round trip at a filesystem or volume root (`/`, `C:\`) was not verified and is deliberately not special-cased. **Why:** `--target-dir /` names no buildable project, and today's `resolveWorktreeRoot` fallback has the same shape — but an unqualified claim would read as verified when it is not.
+- **Q:** Who owns the test-file comments that name `WorktreeRoot`/`worktreeRoot` in prose? **A:** [auto-pick, review r4] This commit — eight comments across the three `//go:build scout` integration test files, now enumerated per file. **Why:** `docs-in-same-commit` covers `scoutengine` production prose only, so nothing claimed them; and since no gate compiles those files, a false comment would sit there indefinitely.
+- **Q:** How is "the registry is the built-in one" asserted, given `Registry` is a map? **A:** [auto-pick, review r4] A keyed spot-check on the `"go"` entry, not `reflect.DeepEqual` over the whole map. **Why:** maps are not `==`-comparable, and a whole-map compare would couple the test to every future built-in entry.
+- **Q:** Do the new tests really spawn no git? **A:** [auto-pick, review r4] Files 1-3 and 5, yes. File 4 (`scoutcli/cli_test.go`) does, indirectly — `lyxcwd.Resolve` shells `git rev-parse --show-toplevel` — and `internal/scoutcli` has no `TestMain`. Pre-existing, both guards still pass, do not add a `TestMain` as a drive-by. **Why:** the unqualified no-git claim would have been wrong for the one file the new pin test lives in, and the out-of-hub premise silently depends on `TMPDIR` not being inside a repo.
 - **Q:** Is the synthesized out-of-hub `Location` safe to treat as a real `Location`? **A:** [auto-pick, review r1] No — only `WorktreePath()` is a true answer; `HubPath`, `RepoName`, and `AnchorPath()` are fictions. Contractually consumed by `DaemonStateFile`/`DaemonLock` alone, stated in `resolveLocation`'s doc comment. **Why:** hand-building a `Location` outside `internal/lyxcwd` has only two production precedents, both inside the geometry owner (`fabricengine/clone.go:125`, `hostlayout.go:30`); an unmarked fiction invites a later caller to read a field that means nothing.
