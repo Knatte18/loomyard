@@ -58,8 +58,8 @@ const stateFileName = "state.json"
 // spawn-batch landing inside poll's classify-then-persist window) each
 // load, mutate, and save their own copy, and the last save silently erases
 // the other's mutation — a live implementer with no state record, or a
-// terminal classification lost. It lives under .lyx and is never in a weft
-// worktree at all.
+// terminal classification lost. It lives under .lyx and is never
+// fabric-committed at all.
 const stateMutateLockName = "mutate.lock"
 
 // AcquireStateMutation acquires scratchDir's exclusive state-mutation lease, blocking until free.

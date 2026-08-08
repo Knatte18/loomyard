@@ -59,7 +59,7 @@ func ScratchDir(l *lyxcwd.Location) string {
 
 // PromptsDir returns the path to the directory holding webster's rendered fork prompts.
 // Prompts are machine-local, re-renderable artifacts, and they live under .lyx rather than being
-// held out of weft commits by an exclude pattern.
+// held out of the fabric commit by an exclude pattern.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PromptsDir(l *lyxcwd.Location) string {
 	return filepath.Join(ScratchDir(l), "prompts")
@@ -74,7 +74,7 @@ const stateFileName = "state.json"
 // concurrent verb invocations (a begin-batch racing a record-batch, or two
 // recover-batch calls landing in the same instant) each load, mutate, and
 // save their own copy, and the last save silently erases the other's
-// mutation. It lives under .lyx and is never in a weft worktree at all.
+// mutation. It lives under .lyx and is never fabric-committed at all.
 const stateMutateLockName = "mutate.lock"
 
 // AcquireStateMutation acquires scratchDir's exclusive state-mutation lease, blocking until it is

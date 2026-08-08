@@ -74,7 +74,7 @@ func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, op
 // gate/caps/tuning fields (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and
 // delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run — then maps the
 // treadleengine.Result back onto perch's own Result/RoundSummary.
-// Run stays weft-blind and geometry-blind and constructs neither path itself — runDir and
+// Run stays fabric-blind and geometry-blind and constructs neither path itself — runDir and
 // scratchDir are both caller-supplied absolutes; treadleengine.Engine.Run owns creating both
 // directories, so Run must not duplicate that here.
 func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
