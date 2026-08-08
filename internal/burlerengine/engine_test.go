@@ -452,14 +452,16 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
+	// AnchorRel is a real subpath here so the instruction dir's AnchorPath
+	// anchoring (as opposed to WorktreePath) is actually observable.
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: filepath.Join("sub", "dir")}
 	e := New(shuttle, layout, Config{})
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
 	}
 
-	burlerDir := filepath.Join(layout.WorktreePath(), lyxdirs.DotLyxDirName, "burler")
+	burlerDir := filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "burler")
 	matches, err := filepath.Glob(filepath.Join(burlerDir, "round-*", "instruction-*.md"))
 	if err != nil {
 		t.Fatalf("filepath.Glob() = %v; want nil", err)
@@ -495,10 +497,11 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 
 	// A regular file at <root>/.lyx makes os.MkdirAll(<root>/.lyx/burler)
 	// fail: ".lyx" cannot be traversed as a directory component. The burler
-	// dir join is WorktreePath()-anchored (lyxdirs.DotLyxDirName), so the
-	// file must sit directly at WorktreePath()/.lyx rather than behind an
-	// AnchorRel segment; validate() resolves target.txt/
-	// fasit.txt against the same WorktreePath() root and is unaffected.
+	// dir join is AnchorPath()-anchored (lyxdirs.DotLyxDirName); this
+	// fixture leaves AnchorRel unset (AnchorRel "."), so AnchorPath()
+	// equals WorktreePath() and the file sits directly at WorktreePath()/
+	// .lyx. validate() resolves target.txt/fasit.txt against the same
+	// WorktreePath() root and is unaffected.
 	notdir := filepath.Join(root, lyxdirs.DotLyxDirName)
 	if err := os.WriteFile(notdir, []byte("not a directory"), 0o644); err != nil {
 		t.Fatalf("WriteFile(notdir) = %v; want nil", err)

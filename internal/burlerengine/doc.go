@@ -32,7 +32,8 @@
 // three instruction files and states the sequencing rule; each
 // instruction file carries exactly one step's rules, read only when the
 // round reaches that step. Engine.Run renders the three instruction files
-// per round and writes them to a fresh directory under .lyx
+// per round and writes them to a fresh directory under .lyx, AnchorPath-anchored so it is a
+// directory sibling of the durable _lyx tree
 // (via lyxdirs.DotLyxDirName, machine-local, never committed —
 // distinct from the committed _lyx), then hands the shuttle only the orchestrator, which
 // names their absolute paths so the agent reads each step's rules when it

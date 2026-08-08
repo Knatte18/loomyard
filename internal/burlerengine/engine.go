@@ -99,7 +99,10 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	directive := pattern.Directive(e.layout, pattern.RoleReviewFix)
 
-	burlerDir := filepath.Join(e.layout.WorktreePath(), lyxdirs.DotLyxDirName, "burler")
+	// AnchorPath-anchored so this per-round instruction dir is a directory
+	// sibling of the durable, fabric-synced _lyx tree, not a second
+	// WorktreePath-rooted .lyx.
+	burlerDir := filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName, "burler")
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
 		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "round", opts.Round, "error", err)
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)
