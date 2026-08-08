@@ -12,7 +12,8 @@ import (
 )
 
 // runUnwire executes the fabric unwire subcommand, removing every on-disk
-// fabric junction for this worktree and clearing weft-side _lyx content.
+// fabric junction for this worktree. Weft-side content, including _lyx and
+// .lyx, is never touched.
 func runUnwire(out io.Writer, _ []string) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -27,6 +28,5 @@ func runUnwire(out io.Writer, _ []string) int {
 		"junctions_removed": res.JunctionsRemoved,
 		"weft_content":      res.WeftContent,
 		"git_exclude":       res.GitExclude,
-		"gitignore":         res.Gitignore,
 	})
 }
