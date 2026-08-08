@@ -5,9 +5,11 @@
 // See MustRun, CopyHostHub, CopyPaired, and CopyWeft.
 //
 // Leaf Invariant: internal/lyxtest production code imports only stdlib, internal/lyxcwd,
-// internal/weftname, and internal/configengine, with internal/configreg and every feature package
+// internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
+// feature package
 // (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli)
-// excluded by construction — feature packages' own tests import lyxtest, so a reverse import would
+// excluded by construction —
+// feature packages' own tests import lyxtest, so a reverse import would
 // close a test-build cycle.
 // This is enforced by internal/lyxtest/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly)
 // and recorded as the "lyxtest Leaf Invariant" in CONSTRAINTS.md.

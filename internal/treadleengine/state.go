@@ -7,6 +7,12 @@
 // takes ProfileHash as caller-supplied data (see Profile.ProfileHash and the treadle-owns-no-config
 // shared decision);
 // those functions stay with perchengine, in internal/perchengine/identity.go.
+//
+// The persisted artifacts split across two directories (the told-never-derived-scratch-dir shared
+// decision): state.json and every round artifact live in runDir, while state.json.lock, run.lock
+// (run.go), and the pause flag live in scratchDir — the block's never-tracked, .lyx-anchored tree.
+// A caller that has not split the two passes the same directory for both, which every function
+// below treats as an ordinary, harmless case.
 
 package treadleengine
 
@@ -81,11 +87,12 @@ type resumeInfo struct {
 	NextRound int
 }
 
-// loadOrInitState reads <runDir>/state.json and classifies it against hash
-// (the incoming profile's ProfileHash) and caps (the incoming profile's
-// resolved RoundCaps). Every error message is prefixed with name (the
-// calling engine's own name), mirroring perch's own literal "perch: "
-// prefix today (the name-parameterized-diagnostics shared decision):
+// loadOrInitState reads <runDir>/state.json (locked against
+// <scratchDir>/state.json.lock) and classifies it against hash (the
+// incoming profile's ProfileHash) and caps (the incoming profile's resolved
+// RoundCaps). Every error message is prefixed with name (the calling
+// engine's own name), mirroring perch's own literal "perch: " prefix today
+// (the name-parameterized-diagnostics shared decision):
 //   - no state.json: a fresh block. An initial runState (ProfileHash: hash,
 //     RoundCaps: caps) is written before returning, so a concurrent second
 //     invocation against the same runDir observes a non-fresh state.
@@ -96,9 +103,9 @@ type resumeInfo struct {
 //     one; the caller is told to use a fresh --run-id instead.
 //   - terminal state (Outcome != ""): fail loud — this block already ran to
 //     completion and treadle never re-opens a finished block.
-func loadOrInitState(name string, runDir string, hash string, caps []int) (runState, resumeInfo, error) {
+func loadOrInitState(name string, runDir string, scratchDir string, hash string, caps []int) (runState, resumeInfo, error) {
 	path := filepath.Join(runDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
 	existing, found, err := state.ReadJSON[runState](path, lockPath)
 	if err != nil {
@@ -134,10 +141,12 @@ func loadOrInitState(name string, runDir string, hash string, caps []int) (runSt
 // perchcli's), which must refuse to write a pause flag against a block that already finished — no
 // run loop will ever observe that flag, so reporting the pause as accepted would mislead the
 // operator.
-// Reads under the same state.json.lock discipline as loadOrInitState.
-func TerminalOutcome(runDir string) (Outcome, bool, error) {
+// Reads under the same state.json.lock discipline as loadOrInitState, locked against
+// <scratchDir>/state.json.lock — a caller's pause verb must resolve scratchDir from the same
+// scratch base the run verb passes to the engine.
+func TerminalOutcome(runDir, scratchDir string) (Outcome, bool, error) {
 	path := filepath.Join(runDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
 	existing, found, err := state.ReadJSON[runState](path, lockPath)
 	if err != nil {
@@ -150,10 +159,16 @@ func TerminalOutcome(runDir string) (Outcome, bool, error) {
 }
 
 // saveState writes s to <runDir>/state.json atomically under an exclusive
-// lock at <runDir>/state.json.lock, the same file loadOrInitState reads.
-func saveState(runDir string, s runState) error {
+// lock at <scratchDir>/state.json.lock, the same file loadOrInitState reads.
+// scratchDir is created first — internal/state's WriteJSON creates the
+// parent of the file it writes (runDir) but not the parent of a lock in a
+// sibling tree.
+func saveState(runDir, scratchDir string, s runState) error {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return fmt.Errorf("create scratch dir %q: %w", scratchDir, err)
+	}
 	path := filepath.Join(runDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 	return state.WriteJSON(path, lockPath, s)
 }
 
@@ -206,14 +221,16 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// PauseFlagPath returns the path to the pause flag file inside runDir.
+// PauseFlagPath returns the path to the pause flag file inside scratchDir —
+// the block's never-tracked scratch dir, not its durable run dir.
 // A caller's own pause verb (e.g.
 // perchcli's) writes this file,
 // and the run loop's PauseRequested seam checks for it between rounds;
-// both must resolve the same path, which is why this is exported rather than duplicated at each
-// call site.
-func PauseFlagPath(runDir string) string {
-	return filepath.Join(runDir, PauseFlagName)
+// both must resolve scratchDir from the same scratch base a caller's run
+// verb passes to the engine, which is why this is exported rather than
+// duplicated at each call site.
+func PauseFlagPath(scratchDir string) string {
+	return filepath.Join(scratchDir, PauseFlagName)
 }
 
 // clearPauseFlag removes the pause flag file if present, doing nothing if
@@ -225,8 +242,8 @@ func PauseFlagPath(runDir string) string {
 // message in this file — Run returns it verbatim rather than re-wrapping,
 // so without the prefix a removal failure would reach the caller's CLI
 // envelope as the one perch error carrying no module label at all.
-func clearPauseFlag(name string, runDir string) error {
-	path := PauseFlagPath(runDir)
+func clearPauseFlag(name string, scratchDir string) error {
+	path := PauseFlagPath(scratchDir)
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil

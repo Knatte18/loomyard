@@ -15,13 +15,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"gopkg.in/yaml.v3"
 )
 
 // discussionDirName is the relative-path segment loomengine joins onto
-// configengine.LyxDirName to form the discussion phase's output directory.
+// lyxdirs.LyxDirName to form the discussion phase's output directory.
 // loomengine is this segment's sole declarer.
 const discussionDirName = "discussion"
 
@@ -29,7 +30,7 @@ const discussionDirName = "discussion"
 // It is AnchorPath-anchored, matching DiscussionDir's rationale.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PlanDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, planparser.PlanDirName)
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, planparser.PlanDirName)
 }
 
 // PlanOverview returns the path to the plan's overview file: the Plan phase's done-sentinel and the
@@ -45,7 +46,7 @@ func PlanOverview(l *lyxcwd.Location) string {
 // It is AnchorPath-anchored.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func DiscussionDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, discussionDirName)
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, discussionDirName)
 }
 
 // DiscussionDecisionRecord returns the path to the distilled decision record that is the Plan
@@ -69,14 +70,17 @@ func DiscussionSupportLog(l *lyxcwd.Location) string {
 // It is AnchorPath-anchored so a caller invoked from anywhere else within the worktree still
 // resolves the one true status.json at the anchored subpath.
 func LoomStatusFile(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, "status.json")
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "status.json")
 }
 
 // LoomStatusLock returns the path to the advisory lock file guarding concurrent access to
 // LoomStatusFile(l).
-// It shares LoomStatusFile's AnchorPath anchoring.
+// It is AnchorPath-anchored like LoomStatusFile, but lives under lyxdirs.DotLyxDirName rather than
+// LoomStatusFile's lyxdirs.LyxDirName: the lock is a never-tracked transient, not durable orchestration
+// status, so it is stated outright at its mirrored .lyx subpath rather than derived by analogy --
+// loomengine has no Dir(l) accessor for a ScratchDir(l) to mirror.
 func LoomStatusLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, "status.json.lock")
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "status.json.lock")
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.

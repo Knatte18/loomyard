@@ -251,7 +251,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
-		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx", "_pattern":
+		case "_board", "-weft", "-HUB", "_portals", "_launchers", "_raddle", "_lyx", "_pattern", ".lyx":
 			return true
 		}
 		return false
@@ -264,11 +264,6 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// internal/lyxcwd) to this map, each token's row landing in the same
 	// batch that moved its declaration.
 	//
-	// ".lyx" (the machine-local, never-git-tracked sibling of "_lyx") is
-	// deliberately NOT a policed token here. It is not unowned by oversight:
-	// slice 9 registers it as a pathspec junction and removes
-	// crossModuleMachineLocalExcludes, and that is where it gets an owner row.
-	// Adding a row for it now would have to be undone one slice later.
 	geometryTokenOwners := map[string][]string{
 		// "_board" and "-HUB" are dual-owned: internal/lyxcwd keeps a private
 		// boardDir/boardDirName pair (readRecordedAnchor's sole remaining
@@ -286,11 +281,15 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		"_portals":   {"internal/fabricengine"},
 		"_launchers": {"internal/fabricengine"},
 		"_raddle":    {"internal/fabricengine"},
-		// "_lyx" is owned by internal/configengine.LyxDirName alone: the last
-		// internal/lyxcwd methods anchored on a private lyxDirName copy
-		// relocated in an earlier batch, so the transitional co-ownership
-		// this row once carried is retired.
-		"_lyx": {"internal/configengine"},
+		// "_lyx"'s declaration moved to internal/lyxdirs (lyxdirs.LyxDirName) in
+		// this slice, the single leaf every module now names both directory
+		// tokens through.
+		"_lyx": {"internal/lyxdirs"},
+		// ".lyx" (the machine-local, never-git-tracked sibling of "_lyx") is
+		// lyxdirs.DotLyxDirName, declared in the same leaf as "_lyx"; the five
+		// private dotLyxDirName declarers this slice retired never get a row
+		// here.
+		".lyx": {"internal/lyxdirs"},
 		// "_pattern" is dual-owned: internal/pattern declares DirName for
 		// resolution-path use, and internal/fabricengine declares its own
 		// private patternDirName copy for the one caller that needs the bare

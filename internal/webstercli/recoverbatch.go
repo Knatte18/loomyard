@@ -85,7 +85,7 @@ Example:
 			batches := c.batcher.Batch(plan.Cards)
 			batchName := fmt.Sprintf("%02d-%s", batchNumber, batchSlugFor(batches, batchNumber))
 
-			mutateLock, err := websterengine.AcquireStateMutation(c.websterDir)
+			mutateLock, err := websterengine.AcquireStateMutation(c.websterScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -97,7 +97,7 @@ Example:
 				}
 			}()
 
-			st, err := websterengine.LoadState(c.websterDir)
+			st, err := websterengine.LoadState(c.websterDir, c.websterScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -140,7 +140,7 @@ Example:
 			// before anything else so a crash mid-wait leaves it reclaimable.
 			// A pure attach mutated nothing and needs no save.
 			if spawned {
-				if err := websterengine.SaveState(c.websterDir, st); err != nil {
+				if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
 					_ = mutateLock.Release()
 					mutateHeld = false
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -165,12 +165,12 @@ Example:
 			}
 
 			if result.Digest != nil {
-				terminalLock, err := websterengine.AcquireStateMutation(c.websterDir)
+				terminalLock, err := websterengine.AcquireStateMutation(c.websterScratchDir)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
-				fresh, err := websterengine.LoadState(c.websterDir)
+				fresh, err := websterengine.LoadState(c.websterDir, c.websterScratchDir)
 				if err == nil && fresh == nil {
 					err = fmt.Errorf("webster: state.json disappeared during the recovery wait for batch %s", batchName)
 				}
@@ -178,7 +178,7 @@ Example:
 					err = websterengine.PersistRecoveryTerminal(fresh, batchNumber, result.Digest)
 				}
 				if err == nil {
-					err = websterengine.SaveState(c.websterDir, fresh)
+					err = websterengine.SaveState(c.websterDir, c.websterScratchDir, fresh)
 				}
 				_ = terminalLock.Release()
 				if err != nil {
@@ -192,7 +192,7 @@ Example:
 				}
 
 				fields := digestFields(*result.Digest)
-				fields["warnings"] = ownerlessRunWarnings(c.websterDir, result.Warnings)
+				fields["warnings"] = ownerlessRunWarnings(c.websterScratchDir, result.Warnings)
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 				return nil
 			}
@@ -201,7 +201,7 @@ Example:
 				"batch":     batchName,
 				"status":    "running",
 				"elapsed_s": result.ElapsedS,
-				"warnings":  ownerlessRunWarnings(c.websterDir, result.Warnings),
+				"warnings":  ownerlessRunWarnings(c.websterScratchDir, result.Warnings),
 			}))
 			return nil
 		},

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -18,7 +19,7 @@ import (
 // minimal on-disk shape LoadConfig needs (no git repository required).
 func seedLyxConfig(t *testing.T, tmpDir, module, content string) {
 	t.Helper()
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0o755); err != nil {
 		t.Fatalf("mkdir _lyx: %v", err)
 	}

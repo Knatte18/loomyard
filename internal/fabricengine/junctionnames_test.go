@@ -72,7 +72,8 @@ func TestFilterHubReserved(t *testing.T) {
 
 	// Sanity: HubReservedNames() itself must contain exactly the four
 	// hub-structural tokens this test's "MixedDropsReservedKeepsOrder" case
-	// relies on being dropped.
+	// relies on being dropped -- the junction-wiring block set, unchanged by
+	// this batch's structural-directory work.
 	for _, want := range []string{"_board", "_portals", "_launchers", "_raddle"} {
 		found := false
 		for _, r := range reserved {
@@ -83,6 +84,16 @@ func TestFilterHubReserved(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("HubReservedNames() = %v; want it to contain %q", reserved, want)
+		}
+	}
+
+	// .lyx must NEVER be in HubReservedNames(): adding it there would make
+	// filterHubReserved delete it from the wired names (so the per-worktree
+	// junction is never created) and would make scanOnDiskJunctionNames skip
+	// it (so Unwire's sweep and applyStaleRemoval could never see it).
+	for _, r := range reserved {
+		if r == ".lyx" {
+			t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", reserved, ".lyx")
 		}
 	}
 }

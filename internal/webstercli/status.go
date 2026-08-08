@@ -44,7 +44,7 @@ Example:
 				return nil
 			}
 
-			st, err := websterengine.LoadState(c.websterDir)
+			st, err := websterengine.LoadState(c.websterDir, c.websterScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -80,7 +80,7 @@ Example:
 				"current_batch":    st.CurrentBatch,
 				"plan_fingerprint": st.PlanFingerprint,
 				"batches":          batches,
-				"paused":           websterengine.PauseRequested(c.websterDir),
+				"paused":           websterengine.PauseRequested(c.websterScratchDir),
 			}))
 			return nil
 		},

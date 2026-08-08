@@ -1,5 +1,8 @@
 // pause_test.go covers the pause verb's envelope shape and confirms it writes the same flag file
-// builderengine.PauseRequested/spawn-batch's own gate reads.
+// builderengine.PauseRequested/spawn-batch's own gate reads -- through the CLI itself, not by
+// calling the engine accessor twice, since a CLI pause verb still passing the durable dir while the
+// engine reads the scratch dir is the exact regression the whole scratch-dir seam exists to catch
+// (a mismatch neither side alone would fail on).
 // The seam a spawn-batch test observes against a real git fixture is covered in
 // pause_spawnbatch_test.go (integration-tagged, since it needs newSpawnBatchFixture);
 // the two tests below only touch t.TempDir(), so they stay in Tier 1.
@@ -21,8 +24,9 @@ func TestPauseCmd_WritesFlagAndOkEnvelope(t *testing.T) {
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
-		layout:     layout,
-		builderDir: builderengine.Dir(layout),
+		layout:            layout,
+		builderDir:        builderengine.Dir(layout),
+		builderScratchDir: builderengine.ScratchDir(layout),
 	}
 
 	var out bytes.Buffer
@@ -34,8 +38,15 @@ func TestPauseCmd_WritesFlagAndOkEnvelope(t *testing.T) {
 	if !strings.Contains(out.String(), `"pause_requested":true`) {
 		t.Errorf("output missing pause_requested:true; got %q", out.String())
 	}
-	if !builderengine.PauseRequested(c.builderDir) {
-		t.Error("PauseRequested() = false after pause; want true")
+	// Assert through the CLI's own scratch-dir field -- the same one every
+	// other verb (spawn-batch's PauseRequested gate) reads -- proving the
+	// pause verb and the engine's own pause check resolve the exact same
+	// file, not merely two independently-correct dirs that happen to differ.
+	if !builderengine.PauseRequested(c.builderScratchDir) {
+		t.Error("PauseRequested(c.builderScratchDir) = false after pause; want true")
+	}
+	if builderengine.PauseRequested(c.builderDir) {
+		t.Error("PauseRequested(c.builderDir) = true; want the pause flag only under the scratch dir, never the durable dir")
 	}
 }
 
@@ -43,8 +54,9 @@ func TestPauseCmd_IdempotentRePause(t *testing.T) {
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
 	c := &builderCLI{
-		layout:     layout,
-		builderDir: builderengine.Dir(layout),
+		layout:            layout,
+		builderDir:        builderengine.Dir(layout),
+		builderScratchDir: builderengine.ScratchDir(layout),
 	}
 
 	var out1 bytes.Buffer

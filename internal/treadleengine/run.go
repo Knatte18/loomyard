@@ -31,14 +31,14 @@ import (
 // name-parameterized-diagnostics shared decision).
 var ErrBlockBusy = errors.New("block is already running")
 
-// runLockName is the exclusive-lease file name inside a block's run dir,
+// runLockName is the exclusive-lease file name inside a block's scratch dir,
 // held for the ENTIRE duration of one Engine.Run call — distinct from
 // state.json.lock, which internal/state only holds for the instant of one
 // read or write. Without this, two concurrent invocations against the same
-// run dir would each classify resume/fresh from state.json and then both
-// drive rounds into the same dir: colliding artifact paths, clobbered
-// state.json appends, and two round-runner agents editing the worktree at
-// once.
+// run/scratch dir pair would each classify resume/fresh from state.json and
+// then both drive rounds into the same dir: colliding artifact paths,
+// clobbered state.json appends, and two round-runner agents editing the
+// worktree at once.
 const runLockName = "run.lock"
 
 // roundOutcome captures what a round's retry loop produced when the runner
@@ -55,24 +55,37 @@ type roundOutcome struct {
 }
 
 // Run drives one treadle block's round loop for Profile p, reading and persisting state at runDir.
-// It validates p (structural checks only) via p.validate(e.name), ensures runDir exists, resolves
-// the block's resume point (loadOrInitState against p.ProfileHash, which the caller already
-// computed), then loops one round at a time: a pause check at the round boundary only, a
-// round-runner attempt with its bounded non-done retry, the pluggable convergence gate, and — on a
-// non-converged round — the milestone-laddered stuck ladder.
+// It validates p (structural checks only) via p.validate(e.name), ensures runDir and the block's
+// scratch dir exist, resolves the block's resume point (loadOrInitState against p.ProfileHash,
+// which the caller already computed), then loops one round at a time: a pause check at the round
+// boundary only, a round-runner attempt with its bounded non-done retry, the pluggable convergence
+// gate, and — on a non-converged round — the milestone-laddered stuck ladder.
 // Every returned error is prefixed via e.errf;
 // the returned Result mirrors the persisted state's rounds as RoundSummary values.
 func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
+	// Resolved first, before anything below reads it: the deferred
+	// terminal-clear closure, the runDir MkdirAll, the run-lock acquisition,
+	// and the entry-time clearPauseFlag call all need this value, and all
+	// four precede the "Seam defaulting happens here, once" block further
+	// down that defaults pause/runCommand. An empty e.scratchDir defaults to
+	// runDir, the back-compat case where the two MkdirAll calls below name
+	// the same directory (a harmless no-op on the second).
+	scratchDir := e.scratchDir
+	if scratchDir == "" {
+		scratchDir = runDir
+	}
+
 	// A pause requested while the final round was still in flight can
 	// observe a terminal, non-PAUSED outcome once that round settles on its
 	// own (the pause flag is checked only at the NEXT round boundary, which
-	// never arrives). The stale flag must not linger in the run dir (and get
-	// fabric-committed alongside a finished block) once the block is done
-	// judging — clearing it centrally here, once, covers every terminal
-	// return site without duplicating the call at each one.
+	// never arrives). The stale flag must not linger in the scratch dir (and
+	// get fabric-committed alongside a finished block, in the back-compat
+	// case where scratch and run coincide) once the block is done judging —
+	// clearing it centrally here, once, covers every terminal return site
+	// without duplicating the call at each one.
 	defer func() {
 		if err == nil && result.Outcome != OutcomePaused {
-			_ = clearPauseFlag(e.name, runDir)
+			_ = clearPauseFlag(e.name, scratchDir)
 		}
 	}()
 
@@ -89,30 +102,38 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return Result{}, e.errf("create run dir %q: %w", runDir, err)
 	}
+	// state.json and every round artifact still live in runDir; only the
+	// run lock, state.json.lock, and the pause flag move to scratchDir — see
+	// the told-never-derived-scratch-dir shared decision. The run lock below
+	// is acquired inside scratchDir, so it must exist first.
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return Result{}, e.errf("create scratch dir %q: %w", scratchDir, err)
+	}
 
 	// Held for this entire call: a second concurrent invocation (or a
-	// re-entrant caller) against the SAME run dir must fail fast rather than
-	// silently interleave rounds with this one. Released by the OS on
-	// process exit/crash even if this call never reaches Release, so a
-	// killed process never bricks the run dir for a later resume.
-	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(runDir, runLockName))
+	// re-entrant caller) against the SAME run/scratch dir pair must fail
+	// fast rather than silently interleave rounds with this one. Released
+	// by the OS on process exit/crash even if this call never reaches
+	// Release, so a killed process never bricks the run dir for a later
+	// resume.
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, runLockName))
 	if err != nil {
-		return Result{}, e.errf("acquire run lock for %q: %w", runDir, err)
+		return Result{}, e.errf("acquire run lock for %q: %w", scratchDir, err)
 	}
 	if !locked {
 		// Wrapped with %w so the caller can errors.Is-match ErrBlockBusy and
 		// skip its block-exit bookkeeping — see the sentinel's doc.
-		return Result{}, e.errf("%w: %q (run.lock held); wait for it to finish or use a different --run-id", ErrBlockBusy, runDir)
+		return Result{}, e.errf("%w: %q (run.lock held); wait for it to finish or use a different --run-id", ErrBlockBusy, scratchDir)
 	}
 	defer runLock.Release()
 
 	// A resumed block must never instantly re-pause on a flag left over
 	// from the run that requested the pause it is now resuming from.
-	if err := clearPauseFlag(e.name, runDir); err != nil {
+	if err := clearPauseFlag(e.name, scratchDir); err != nil {
 		return Result{}, err
 	}
 
-	st, resume, err := loadOrInitState(e.name, runDir, hash, p.RoundCaps)
+	st, resume, err := loadOrInitState(e.name, runDir, scratchDir, hash, p.RoundCaps)
 	if err != nil {
 		return Result{}, err
 	}
@@ -154,7 +175,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		if round > hardCap {
 			st.Outcome = string(OutcomeStuck)
 			st.StuckReason = string(StuckHardCap)
-			if err := saveState(runDir, st); err != nil {
+			if err := saveState(runDir, scratchDir, st); err != nil {
 				return Result{}, err
 			}
 			return resultFromState(st, OutcomeStuck, StuckHardCap), nil
@@ -164,7 +185,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		// mid-round — so a paused block always resumes at a clean round
 		// start rather than an in-progress one.
 		if pause() {
-			if err := saveState(runDir, st); err != nil {
+			if err := saveState(runDir, scratchDir, st); err != nil {
 				return Result{}, err
 			}
 			return resultFromState(st, OutcomePaused, ""), nil
@@ -221,7 +242,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 				// GatePassed), which the loop reads as non-converged: the
 				// safe direction.
 				st.Rounds = append(st.Rounds, record)
-				if saveErr := saveState(runDir, st); saveErr != nil {
+				if saveErr := saveState(runDir, scratchDir, st); saveErr != nil {
 					// saveErr is the value actually returned below, but err — the
 					// real reason this round failed — is what gets lost: execution
 					// never reaches the e.errf return two lines down, so without
@@ -245,7 +266,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		if converged(p.Gate.Mode, outcome.Verdict, record.GatePassed) {
 			st.Rounds = append(st.Rounds, record)
 			st.Outcome = string(OutcomeApproved)
-			if err := saveState(runDir, st); err != nil {
+			if err := saveState(runDir, scratchDir, st); err != nil {
 				return Result{}, err
 			}
 			return resultFromState(st, OutcomeApproved, ""), nil
@@ -260,7 +281,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 			st.Rounds = append(st.Rounds, record)
 			st.Outcome = string(OutcomeStuck)
 			st.StuckReason = string(StuckHardCap)
-			if err := saveState(runDir, st); err != nil {
+			if err := saveState(runDir, scratchDir, st); err != nil {
 				return Result{}, err
 			}
 			return resultFromState(st, OutcomeStuck, StuckHardCap), nil
@@ -325,7 +346,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					st.Rounds = append(st.Rounds, record)
 					st.Outcome = string(OutcomeStuck)
 					st.StuckReason = string(StuckMilestoneStop)
-					if err := saveState(runDir, st); err != nil {
+					if err := saveState(runDir, scratchDir, st); err != nil {
 						return Result{}, err
 					}
 					return resultFromState(st, OutcomeStuck, StuckMilestoneStop), nil
@@ -354,7 +375,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					st.Rounds = append(st.Rounds, record)
 					st.Outcome = string(OutcomeStuck)
 					st.StuckReason = string(StuckCircling)
-					if err := saveState(runDir, st); err != nil {
+					if err := saveState(runDir, scratchDir, st); err != nil {
 						return Result{}, err
 					}
 					return resultFromState(st, OutcomeStuck, StuckCircling), nil
@@ -369,7 +390,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 		// judge at all and simply continues to the next round.
 
 		st.Rounds = append(st.Rounds, record)
-		if err := saveState(runDir, st); err != nil {
+		if err := saveState(runDir, scratchDir, st); err != nil {
 			return Result{}, err
 		}
 	}

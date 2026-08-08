@@ -11,7 +11,6 @@ package logger
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,21 +19,19 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
-
-// dotLyxDirName is the directory name for ephemeral, machine-bound lyx state,
-// this package's own declaration of the token for WorktreeLogsDir's join.
-const dotLyxDirName = ".lyx"
 
 const sinkMaxBytes = 8 * 1024 * 1024
 
-// WorktreeLogsDir returns the path to the worktree-level directory where this package's durable
-// trace sink writes one file per process.
-// It is WorktreePath-anchored so a caller invoked from anywhere in the worktree resolves the same
-// logs directory.
+// LogsDir returns the path to the worktree-level directory where this package's durable trace sink
+// writes one file per process.
+// It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
+// the old WorktreePath-anchored name is gone because it would assert an anchor this function no
+// longer uses.
 // It lives under the ephemeral .lyx directory, never the durable, fabric-synced _lyx.
-func WorktreeLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.WorktreePath(), dotLyxDirName, "logs")
+func LogsDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "logs")
 }
 
 type sinkHeader struct {
@@ -63,15 +60,19 @@ func Arm() {
 }
 
 var sinkOnce sync.Once
-var sinkWriter io.Writer
+var sinkPath string
 var sinkOK bool
 var sinkDirOverride string
 var sinkMu sync.Mutex
 var sinkBytesWritten int64
 var sinkTruncated bool
 
-// ensureDurableSink lazily opens the durable trace-file sink, at most once per process.
-func ensureDurableSink() (io.Writer, bool) {
+// ensureDurableSink lazily resolves and arms the durable trace-file sink, at most once per process.
+// It never keeps a file handle open between calls: the trace file is opened, header-written, and
+// closed again here, and every subsequent record goes through writeDurable's own open-append-close
+// under sinkMu — this is what lets the sink survive its directory being renamed mid-process, since
+// no descriptor is ever held pinned to the old location.
+func ensureDurableSink() bool {
 	sinkOnce.Do(func() {
 		dir := sinkDirOverride
 		if dir == "" {
@@ -94,7 +95,10 @@ func ensureDurableSink() (io.Writer, bool) {
 				sinkOK = false
 				return
 			}
-			dir = WorktreeLogsDir(layout)
+			dir = LogsDir(layout)
+			// header.WorktreeRoot records the worktree root as trace metadata, a
+			// separate concern from where the trace file itself lands (LogsDir is
+			// AnchorPath-anchored), so the two lines below disagree by design.
 			header.WorktreeRoot = layout.WorktreePath()
 		}
 
@@ -110,8 +114,9 @@ func ensureDurableSink() (io.Writer, bool) {
 			header.TraceID,
 			header.PID,
 		)
+		path := filepath.Join(dir, filename)
 
-		f, err := os.OpenFile(filepath.Join(dir, filename), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			sinkOK = false
 			return
@@ -123,12 +128,13 @@ func ensureDurableSink() (io.Writer, bool) {
 			sinkOK = false
 			return
 		}
+		_ = f.Close()
 
-		sinkWriter = f
+		sinkPath = path
 		sinkBytesWritten = int64(len(line))
 		sinkOK = true
 	})
-	return sinkWriter, sinkOK
+	return sinkOK
 }
 
 // headerLine renders the durable sink's first-line header record as a
@@ -150,6 +156,10 @@ func headerLine() string {
 }
 
 // writeDurable writes p to the durable sink, enforcing the size cap and truncation marker.
+// It opens sinkPath with the same open-append-close flags ensureDurableSink used for the header,
+// appends, and closes again, all under sinkMu — so the extra open/close pair sits under a lock this
+// function already takes, and no descriptor survives the call to be invalidated by a directory
+// rename.
 func writeDurable(p []byte) (int, error) {
 	sinkMu.Lock()
 	defer sinkMu.Unlock()
@@ -160,14 +170,26 @@ func writeDurable(p []byte) (int, error) {
 
 	if sinkBytesWritten+int64(len(p)) > sinkMaxBytes {
 		marker := "trace sink truncated: size cap reached\n"
-		_, _ = sinkWriter.Write([]byte(marker))
+		_, _ = appendToSink([]byte(marker))
 		sinkTruncated = true
 		return len(p), nil
 	}
 
-	n, err := sinkWriter.Write(p)
+	n, err := appendToSink(p)
 	sinkBytesWritten += int64(n)
 	return n, err
+}
+
+// appendToSink opens sinkPath, appends p, and closes the file again.
+// Callers hold sinkMu; this is the sole place a durable-sink file descriptor is created after
+// ensureDurableSink's initial header write.
+func appendToSink(p []byte) (int, error) {
+	f, err := os.OpenFile(sinkPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	return f.Write(p)
 }
 
 // SetDurableSinkDir sets the durable sink directory for testing, resetting all sink state.
@@ -177,7 +199,7 @@ func SetDurableSinkDir(dir string) {
 
 	sinkDirOverride = dir
 	sinkOnce = sync.Once{}
-	sinkWriter = nil
+	sinkPath = ""
 	sinkOK = false
 	header = sinkHeader{}
 	headerOnce = sync.Once{}

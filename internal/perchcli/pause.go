@@ -69,13 +69,29 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: stat run dir %q: %v", runDir, err)))
 				return nil
 			}
+			// scratchDir mirrors resolveRunTarget's own derivation (same
+			// id, joined onto c.scratchDirBase instead of c.runDirBase) so
+			// the pause verb writes the flag at the exact path the run
+			// verb's PauseRequested seam checks. Created up front — a block
+			// whose run dir exists may have no scratch dir yet if it was
+			// created by a pre-fix binary that wrote its locks and pause
+			// flag inside runDir, and TerminalOutcome below needs the
+			// directory to exist before it can even acquire its read lock.
+			scratchDir := filepath.Join(c.scratchDirBase, runID)
+			if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: create scratch dir %q: %v", scratchDir, err)))
+				return nil
+			}
 
 			// A finished block has no run loop left to observe a pause flag —
 			// accepting the pause would tell the operator a pause is pending
 			// that can never be honored. Refuse loud instead, naming the
 			// recorded outcome, mirroring the run verb's own
-			// "already finished" resume refusal.
-			outcome, terminal, err := perchengine.TerminalOutcome(runDir)
+			// "already finished" resume refusal. The precondition above
+			// (the block must have started at least once) is checked
+			// against runDir, which a pre-fix binary could have created
+			// without ever creating scratchDir.
+			outcome, terminal, err := perchengine.TerminalOutcome(runDir, scratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -85,7 +101,7 @@ Example:
 				return nil
 			}
 
-			pauseFile := perchengine.PauseFlagPath(runDir)
+			pauseFile := perchengine.PauseFlagPath(scratchDir)
 			if err := os.WriteFile(pauseFile, nil, 0o644); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("perch: write pause flag %q: %v", pauseFile, err)))
 				return nil

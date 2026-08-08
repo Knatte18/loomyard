@@ -99,7 +99,7 @@ Example:
 			// SaveState erases the winner's just-recorded BatchState — a
 			// live implementer with no state record. Every holder's section
 			// is bounded, so the blocking acquire is always short.
-			mutateLock, err := builderengine.AcquireStateMutation(c.builderDir)
+			mutateLock, err := builderengine.AcquireStateMutation(c.builderScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -111,7 +111,7 @@ Example:
 				}
 			}()
 
-			st, err := builderengine.LoadState(c.builderDir)
+			st, err := builderengine.LoadState(c.builderDir, c.builderScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -129,6 +129,7 @@ Example:
 				Config:       c.cfg,
 				WorktreeRoot: c.layout.AnchorPath(),
 				BuilderDir:   c.builderDir,
+				ScratchDir:   c.builderScratchDir,
 				ReportsDir:   c.reportsDir,
 				ShuttleCfg:   c.shuttleCfg,
 				Layout:       c.layout,

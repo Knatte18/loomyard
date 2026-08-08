@@ -18,8 +18,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
@@ -140,13 +140,18 @@ func deriveBlockRunID(profilePath string, fileProfile perchengine.Profile, expli
 	return perchengine.DeriveRunID(profilePath, hash), nil
 }
 
-// resolveRunTarget maps a file-decoded profile and tuning flags onto the concrete block's identity, run dir, and overlaid profile.
-func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfile perchengine.Profile, model, effort string, timeout time.Duration) (id, runDir string, profile perchengine.Profile, err error) {
+// resolveRunTarget maps a file-decoded profile and tuning flags onto the concrete block's identity,
+// run dir, scratch dir, and overlaid profile.
+// runDir and scratchDir are both derived from the SAME id, joined onto c.runDirBase and
+// c.scratchDirBase respectively, so the two directories can never disagree about which block they
+// belong to.
+func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfile perchengine.Profile, model, effort string, timeout time.Duration) (id, runDir, scratchDir string, profile perchengine.Profile, err error) {
 	id, err = deriveBlockRunID(profilePath, fileProfile, explicitRunID)
 	if err != nil {
-		return "", "", perchengine.Profile{}, err
+		return "", "", "", perchengine.Profile{}, err
 	}
 	runDir = filepath.Join(c.runDirBase, id)
+	scratchDir = filepath.Join(c.scratchDirBase, id)
 
 	// Overlay the tuning flags AFTER deriving the id above: they are part of
 	// what the block actually ran (and of its persisted identity hash) but must
@@ -162,7 +167,7 @@ func (c *perchCLI) resolveRunTarget(profilePath, explicitRunID string, fileProfi
 	if timeout != 0 {
 		profile.Timeout = timeout
 	}
-	return id, runDir, profile, nil
+	return id, runDir, scratchDir, profile, nil
 }
 
 // runCmd builds the `run` subcommand: validates --profile, reads and decodes it, derives the block identity, overlays tuning flags, and runs the block through Engine.
@@ -276,7 +281,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// flags — a load-bearing ordering it keeps in one tested place
 			// (see its doc) rather than inlined here, where a later reorder
 			// could silently fold the flags into the derived id.
-			id, runDir, profile, err := c.resolveRunTarget(profilePath, runID, fileProfile, model, effort, timeout)
+			id, runDir, scratchDir, profile, err := c.resolveRunTarget(profilePath, runID, fileProfile, model, effort, timeout)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -284,16 +289,16 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 
 			// The engine is constructed per-invocation, never in
 			// PersistentPreRunE: its pause seam closes over this call's
-			// concrete runDir, which is only known once --profile/--run-id
+			// concrete scratchDir, which is only known once --profile/--run-id
 			// have been resolved above.
 			engine := perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.layout, perchengine.Options{
 				PauseRequested: func() bool {
-					_, err := os.Stat(perchengine.PauseFlagPath(runDir))
+					_, err := os.Stat(perchengine.PauseFlagPath(scratchDir))
 					return err == nil
 				},
 			})
 
-			result, runErr := engine.Run(profile, runDir)
+			result, runErr := engine.Run(profile, runDir, scratchDir)
 
 			// A busy fail-fast means ANOTHER invocation owns this block and
 			// is mid-round right now; this invocation changed nothing on
@@ -320,17 +325,13 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				outcomeLabel = string(result.Outcome)
 			}
 			opts := fabricengine.EnvSyncOptions()
-			// Lock files (run.lock, state.json.lock) are machine-local
-			// advisory-lock artifacts, not block state: committing them
-			// would leak runtime noise into durable fabric history and
-			// materialize stale lock files on every other machine's fabric
-			// pull. reed and shuttle keep this class of file in the
-			// non-synced .lyx for exactly that reason; perch's locks must
-			// live beside state.json inside the run dir (the engine is
-			// geometry-blind), so they are excluded solely by the fabric
-			// repo's .git/info/exclude (deepened to reach perch's
-			// two-deep locks) rather than a per-call pathspec.
-			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{configengine.LyxDirName})
+			// Lock files (run.lock, state.json.lock) and the pause flag now
+			// live in the block's .lyx scratch dir, not inside _lyx — see
+			// perchengine.ScratchDir and treadleengine.Options.ScratchDir.
+			// No exclusion layer is involved at all: the pathspec below
+			// names _lyx only, so those never-tracked artifacts are simply
+			// outside the tree fabric ever looks at.
+			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{lyxdirs.LyxDirName})
 			// SkipGit is checked here, before fabricengine.Open's stat-based
 			// path validation, mirroring Commit's own top-level
 			// short-circuit: the CI/test bypass must never require a real
@@ -374,6 +375,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				"roundsRun":       result.RoundsRun,
 				"runId":           id,
 				"runDir":          runDir,
+				"scratchDir":      scratchDir,
 				"fabricCommitted": committed,
 			}))
 			return nil

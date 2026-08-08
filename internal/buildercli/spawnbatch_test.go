@@ -147,10 +147,11 @@ func newSpawnBatchFixture(t *testing.T) *spawnBatchFixture {
 			BatchContextCapTokens: 100000,
 			BatchCardCap:          10,
 		},
-		roles:      roles,
-		planDir:    loomengine.PlanDir(layout),
-		builderDir: builderengine.Dir(layout),
-		reportsDir: builderengine.ReportsDir(layout),
+		roles:             roles,
+		planDir:           loomengine.PlanDir(layout),
+		builderDir:        builderengine.Dir(layout),
+		builderScratchDir: builderengine.ScratchDir(layout),
+		reportsDir:        builderengine.ReportsDir(layout),
 	}
 
 	return &spawnBatchFixture{CLI: c, Engine: engine, Hub: hub}
@@ -168,7 +169,7 @@ func (fx *spawnBatchFixture) initState(t *testing.T) {
 		t.Fatalf("Fingerprint(%q) error = %v", fx.CLI.planDir, err)
 	}
 	st := &builderengine.State{RunGUID: "guid-1", PlanFingerprint: fingerprint, Batches: map[int]*builderengine.BatchState{}}
-	if err := builderengine.SaveState(fx.CLI.builderDir, st); err != nil {
+	if err := builderengine.SaveState(fx.CLI.builderDir, fx.CLI.builderScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 }
@@ -234,7 +235,7 @@ func TestSpawnBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newSpawnBatchFixture(t)
 	fx.initState(t)
-	if err := builderengine.RequestPause(fx.CLI.builderDir); err != nil {
+	if err := builderengine.RequestPause(fx.CLI.builderScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -276,7 +277,7 @@ func TestSpawnBatchCmd_SuccessEnvelopeAndFabricCommit(t *testing.T) {
 		t.Errorf("Engine.PrepareCalls = %d; want exactly 1", fx.Engine.PrepareCalls)
 	}
 
-	loaded, err := builderengine.LoadState(fx.CLI.builderDir)
+	loaded, err := builderengine.LoadState(fx.CLI.builderDir, fx.CLI.builderScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after spawn = %v, %v; want a state, nil", loaded, err)
 	}

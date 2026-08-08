@@ -81,7 +81,7 @@ Example:
 				"batch":     result.BatchName,
 				"report":    result.ReportPresent,
 				"elapsed_s": result.ElapsedS,
-				"warnings":  ownerlessRunWarnings(c.websterDir, nil),
+				"warnings":  ownerlessRunWarnings(c.websterScratchDir, nil),
 			}))
 			return nil
 		},

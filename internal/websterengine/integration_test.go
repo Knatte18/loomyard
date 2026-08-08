@@ -169,7 +169,7 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
 	}
 
-	st, err := websterengine.LoadState(fx.Deps.WebsterDir)
+	st, err := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -246,7 +246,7 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 		t.Fatalf("Run() error = %v; want nil (a FAILED integration report is escalated, not a Run() error)", err)
 	}
 
-	st, err := websterengine.LoadState(fx.Deps.WebsterDir)
+	st, err := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -471,7 +471,7 @@ func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
 
 	// The escalation must persist despite the loud return: the reserved -1
 	// record and summary.md's localized card are written before the error.
-	st, err := websterengine.LoadState(fx.Deps.WebsterDir)
+	st, err := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}

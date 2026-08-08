@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -36,9 +37,14 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	seedRepoWideFabricConfig(t, f.Layout.HubPath)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
-	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
+
+	// LoomStatusLock lives under the host worktree's own .lyx tree, wired above
+	// as a real junction (dotlyx-junction-wiring-and-unwire) -- WireJunctions'
+	// own seedGitExclude call already keeps the .lyx junction entry itself out
+	// of `git status`, so no test-local exclude is needed here.
 
 	seedValidStatus(t, f.Layout)
 
@@ -78,6 +84,14 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 		Phase:     "preflight",
 		Stage:     "produce",
 		Narration: "now: awaiting preflight / last: — / wait: —",
+	}
+	// LoomStatusLock now lives under .lyx, a sibling tree WireJunctions never
+	// creates (it only wires _lyx/_pattern) -- state.WriteJSON MkdirAlls the
+	// status.json's own parent but not the lock's, so this fixture must
+	// create the lock's parent itself, mirroring Preflight's own MkdirAll
+	// fix in preflight.go.
+	if err := os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755); err != nil {
+		t.Fatalf("mkdir status lock parent: %v", err)
 	}
 	if err := state.WriteJSON(LoomStatusFile(l), LoomStatusLock(l), s); err != nil {
 		t.Fatalf("seed status.json: %v", err)

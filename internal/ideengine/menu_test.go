@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 func mustRunMenu(t *testing.T, dir string, args ...string) {
@@ -51,7 +52,7 @@ func newTestGitRepoWithWorktrees(t *testing.T) (string, string) {
 	mustRunMenu(t, mainWorktreePath, "git", "add", ".")
 	mustRunMenu(t, mainWorktreePath, "git", "commit", "-m", "initial")
 
-	if err := os.MkdirAll(filepath.Join(mainWorktreePath, configengine.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(mainWorktreePath, lyxdirs.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create main _lyx: %v", err)
 	}
 
@@ -90,7 +91,7 @@ func TestMenuExcludesMain(t *testing.T) {
 		mustRunMenu(t, mainWorktreePath, "git", "branch", "-D", "child-branch")
 	}()
 
-	if err := os.MkdirAll(filepath.Join(childPath, configengine.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(childPath, lyxdirs.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create child _lyx: %v", err)
 	}
 
@@ -196,7 +197,7 @@ func TestMenuNumericSelection(t *testing.T) {
 	for _, child := range []string{"child1", "child2"} {
 		childPath := filepath.Join(container, child)
 		mustRunMenu(t, mainWorktreePath, "git", "worktree", "add", "-b", child+"-branch", childPath)
-		if err := os.MkdirAll(filepath.Join(childPath, configengine.LyxDirName), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(childPath, lyxdirs.LyxDirName), 0o755); err != nil {
 			t.Fatalf("failed to create %s _lyx: %v", child, err)
 		}
 	}

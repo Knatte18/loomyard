@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -23,7 +24,7 @@ import (
 func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -52,7 +53,7 @@ func TestSet_ScaffoldWhenMissingThenSet(t *testing.T) {
 func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestSet_UnknownKeyRemovesScaffoldedFile(t *testing.T) {
 func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestSet_UnknownKeyLeavesExistingFileUnchanged(t *testing.T) {
 func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestSet_PreservesOtherKeysOnExistingFile(t *testing.T) {
 func TestSet_PreservesUnrecognizedExistingKeyEndToEnd(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lyxDir := filepath.Join(tmpDir, configengine.LyxDirName)
+	lyxDir := filepath.Join(tmpDir, lyxdirs.LyxDirName)
 	if err := os.Mkdir(lyxDir, 0755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}

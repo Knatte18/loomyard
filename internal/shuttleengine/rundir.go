@@ -16,16 +16,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // runStateFileName is the run.json file name inside a per-run directory.
 const runStateFileName = "run.json"
-
-// dotLyxDirName is the directory name for the ephemeral, machine-bound .lyx
-// directory, this package's own declaration of the token for the joins
-// below. It stays unpoliced this slice; slice 9 registers a single owner.
-const dotLyxDirName = ".lyx"
 
 // newRunID returns a 128-bit random identifier, hex-encoded, generated from
 // crypto/rand — the same recipe as reedengine's newGUID. This is the
@@ -41,19 +37,23 @@ func newRunID() (string, error) {
 
 // runDirRoot resolves the directory under which every run's subdirectory is
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
-// against layout.WorktreePath(), an already-absolute value is used verbatim.
+// against layout.AnchorPath(), an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
-// filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle"): the
-// ephemeral, machine-local .lyx tree, built from this package's own
-// dotLyxDirName const, never a literal ".lyx" inline.
+// filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle"): the
+// ephemeral, machine-local .lyx tree, built from lyxdirs.DotLyxDirName, never
+// a literal ".lyx" inline.
+// Both branches share layout.AnchorPath() as their base deliberately: one
+// function must never resolve against two different bases when
+// AnchorRel != ".", or a subpath-anchored repo would end up with two
+// distinct run-dir roots depending on which branch a given cfg took.
 func runDirRoot(cfg Config, layout *lyxcwd.Location) string {
 	if cfg.RunDir == "" {
-		return filepath.Join(layout.WorktreePath(), dotLyxDirName, "shuttle")
+		return filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir
 	}
-	return filepath.Join(layout.WorktreePath(), cfg.RunDir)
+	return filepath.Join(layout.AnchorPath(), cfg.RunDir)
 }
 
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.

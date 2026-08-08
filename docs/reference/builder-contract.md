@@ -157,13 +157,14 @@ and the post-start orchestrator-strand record — released before the orchestrat
 Without the lease, two concurrent verb invocations each save their own stale copy and the last write silently erases the other's mutation — a live implementer with no state record,
 or a lost terminal classification.
 Acquisition blocks (never fail-fast): every holder's section is bounded, unlike `run.lock`'s whole-run tenure.
-Like every `*.lock`, it is excluded from fabric commits.
+Like every `*.lock`, it lives under `.lyx` and so never reaches a weft-commit pathspec.
 
 ## The three fabric-commit points
 
 `internal/builderengine` is fabric-blind: every fabric commit of a builder artifact happens in `internal/buildercli`, mirroring `perchcli`'s block-exit `fabricengine.Fabric.Commit` + `Push`.
 The commit passes a **positive-only** file list (via `fabricengine.ScopedPathspec` — no `:(exclude)` pathspec magic);
-machine-local runtime artifacts — `*.lock` (advisory OS locks) and the `*/builder/pause` flag (present on disk during `poll`'s terminal commit whenever a pause raced the last in-flight batch) — are kept out solely at the git-exclude layer (`fabricengine.seedWeftArtifactExcludes`), so neither leaks into durable fabric history nor materializes on another machine's fabric pull (a committed pause flag could read as a spurious pause request elsewhere).
+machine-local runtime artifacts — `*.lock` (advisory OS locks) and the `*/builder/pause` flag (present on disk during `poll`'s terminal commit whenever a pause raced the last in-flight batch) — live under `.lyx` rather than `_lyx`,
+so they never fall inside a weft-commit pathspec in the first place: neither leaks into durable fabric history nor materializes on another machine's fabric pull (a committed pause flag could read as a spurious pause request elsewhere).
 "When it makes sense" (the discussion's own phrasing) resolved to exactly three batch-boundary points across the loop, never a single end-of-run commit (which would lose every fabric-synced batch on a crash mid-run):
 
 1. **`spawn-batch`** commits `state.json` immediately after a successful spawn — the just-recorded start-SHA and `BatchState` entry.

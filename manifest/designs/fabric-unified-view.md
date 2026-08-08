@@ -56,10 +56,10 @@ Per point 6/point 5 of the 2026-08-05 discussion, most modules (the `WebsterDir`
 This is not pedantry: `internal/hubgeometry` exists in the first place because cwd/root confusion was a recurring, real defect source in this codebase (including in LLM-generated code) — shrinking hubgeometry removes the module that used to absorb that confusion in one place, so the naming discipline that prevented it has to move into every call site it used to be centralized in.
 Get this wrong here and the failure mode is the same one hubgeometry was built to prevent, just spread across the ~20 places it now happens instead of one.
 
-**Shipped correction (slice 7): "joins onto `cwd`" above is not what landed.**
-The as-built anchoring table — recorded in the plan's Shared Decisions and mirrored verbatim in `CONSTRAINTS.md`'s Cwd Resolution Invariant — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `LoomStatusFile`, `WebsterDir`, `PatternDir`,
+**Shipped correction (slice 7, updated slice 9): "joins onto `cwd`" above is not what landed.**
+The as-built anchoring table — recorded in the plan's Shared Decisions — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `LoomStatusFile`, `WebsterDir`, `PatternDir`,
 and the rest) joins onto `Location.AnchorPath()`, not `cwd` directly;
-the ephemeral, machine-bound, never-git-tracked `.lyx` group (`WorktreeLogsDir`, `ScoutDaemonStateFile`, `ScoutDaemonLock`) joins onto `Location.WorktreePath()`;
+the ephemeral, machine-bound, never-git-tracked `.lyx` group (`logger.LogsDir`, renamed from `WorktreeLogsDir`; `ScoutDaemonStateFile`, `ScoutDaemonLock`) also joins onto `Location.AnchorPath()` as of slice 9, no longer `Location.WorktreePath()` — the two groups now share one anchoring rule, so a subpath-anchored repo has exactly one `.lyx` root instead of two;
 and `HubLogsDir` alone joins onto `Location.HubPath`, deliberately hub-anchored so one reed server per hub resolves to one deterministic place.
 A blanket "join onto `cwd`" would have silently relocated the last three.
 The two docs must not be allowed to disagree — re-read both after editing either.
@@ -118,22 +118,26 @@ Made fabric's public surface incapable of telling anyone that warp and weft exis
 Every non-owner identifier, string literal, comment, and agent prompt template mentioning `weft`/`warp`/a fabric-sense `host` was reworded or renamed, and `TestEnforcement_FabricVocabulary` now machine-checks the boundary going forward — see CONSTRAINTS.md's Fabric Vocabulary Invariant and `internal/fabricengine`'s package doc for the durable contract.
 The CLI-wording question below was resolved: consumer-emitted prose says "fabric," never "weft," while the wrapped error detail — which fabric itself produces — keeps naming the weft repo and path freely.
 
-### Slice 9 — `.lyx` hygiene (relocate transients, fix `.lyx`'s own junction geometry)
+### Slice 9 — `.lyx` hygiene (relocate transients, fix `.lyx`'s own junction geometry) (shipped)
 
-Carries forward the parked `dotlyx-scratch-hygiene` task, narrowed by slice 7 landing first:
+Carried forward the parked `dotlyx-scratch-hygiene` task, narrowed by slice 7 landing first.
+What actually landed:
 
-- **Relocate misplaced never-tracked transients** `_lyx` → `.lyx`: perch's run/mutate locks, webster's pause flag + rendered fork prompts, builder's pause flag.
-  Unchanged by slice 7 — purely "which directory does this file belong in," independent of the path-authority rework.
-- **Fix `.lyx`'s own geometry.**
-  Today a committed `.gitignore` `.lyx/` block keeps it out of the host repo (wrong — a tracked artifact for a host→weft junction in the *user's own* repo).
-  Once slice 7 lands, this shrinks to: register `.lyx` through the same config-driven junction mechanism (slice 1, unchanged by slice 7) every other weft-backed directory already uses, replacing the committed `.gitignore` block with the warp `.git/info/exclude` seeding pattern `fabric-collapse-external-surface` already established as the interim guard.
-  No bespoke fix needed — `.lyx` becomes one more entry in the existing pathspec, not a special case.
-- Remove `crossModuleMachineLocalExcludes` / the `_lyx`-transient portion of `seedWeftArtifactExcludes` (`weftgit.go:64-101,103-116`) once the transients move out;
-  retire the corresponding CONSTRAINTS "Cross-module exclusions" mechanism.
+- **Relocated every misplaced never-tracked transient** `_lyx` → `.lyx`: perch's run/mutate locks, webster's pause flag + rendered fork prompts, builder's pause flag — the mirrored-subpath rule, mechanical and reviewable.
+- **Fixed `.lyx`'s own geometry — but not as one more `pathspec` entry.**
+  The slice's own prediction ("no bespoke fix needed — `.lyx` becomes one more entry in the existing pathspec, not a special case") turned out to be wrong, deliberately: `.lyx` shipped as a **structural, code-injected junction** (`structuralNeverCommittedDirs`, alongside `_lyx`'s `structuralCommittedDirs`), never read from `fabric.yaml`'s `pathspec`.
+  Geometry is structural, never config/env-overridable — an operator-editable `pathspec` value is not where obligatory geometry may live, and folding `.lyx` into `pathspec` would have let a config edit silently strand machine-local scratch unwired.
+  The committed `.gitignore` `.lyx/` block is gone, in both `clone.go` (no more `gitignore.Ensure` call) and `unwire.go` (no more `gitignore.Remove` call, no `Gitignore` field, no `gitignore` output-envelope key); `.lyx` is excluded through the warp's own `.git/info/exclude` alone, seeded by `WireJunctions` the same way every other junction is.
+  A pre-existing real `.lyx` — every worktree in existence before this change, since the logger, reed, shuttle, scout, and burler all write it unconditionally — is adopted into the weft target on first `reconcile` after upgrade, rather than hard-erroring; `_lyx` and `_pattern` keep their hard refusal, since `.lyx` alone is guaranteed to be lyx's own disposable scratch.
+  Upgrade is signalled through health (`CauseJunctionMissing` on an un-adopted worktree) rather than a dedicated migration step; downgrade against a pre-fix binary is unsupported (its `applyStaleRemoval` unwires `.lyx` and strands scratch), a one-way upgrade by design.
+- **Unwire stopped deleting weft-side content.** `Unwire` used to `os.RemoveAll` the weft-side `_lyx` and commit `"lyx fabric unwire: clear _lyx"` to weft — an asymmetry with `_pattern`, which was always preserved.
+  `Unwire` now reverses wiring only (junctions + warp exclude entries); every weft-side directory, `_lyx`/`.lyx`/`_pattern` alike, survives untouched. `UnwireVerbResult.WeftContent`'s value set is now `"preserved"` | `"not_present"`, never `"cleared"`.
+- Removed `crossModuleMachineLocalExcludes` / the `_lyx`-transient portion of `seedWeftArtifactExcludes` once the transients moved out; retired the corresponding CONSTRAINTS "Cross-module exclusions" mechanism, replaced by the Durable-vs-Ephemeral State Invariant and the Fabric Git Invariant's junction-exclusion clause.
+- `<hub>/.lyx` shipped as a new hub-level geometry element alongside `<hub>/_board`: a real directory (the hub is not a git repo), created by `CloneHub`, reserved so no worktree slug can claim the name.
 
-Depends on slice 7.
-**Sequenced before slice 10** (not parallel) — both touch `internal/fabriccli/clone.go`'s `runCloneWithReset` in the same ~45-line span (arg parsing and the `gitignore.Ensure(".lyx/")` call sit a few lines apart in that one function);
-geometry-fix-before-feature avoids building slice 10 on a clone.go structure this slice is about to change underneath it.
+Depended on slice 7.
+**Sequenced before slice 10** (not parallel) — both touch `internal/fabriccli/clone.go`'s `runCloneWithReset` in the same ~45-line span;
+slice 10 is still pending and still collides on `runCloneWithReset`.
 
 ### Slice 10 — store the warp-URL binding in `weft:main`; fold bootstrap into `fabric clone`
 

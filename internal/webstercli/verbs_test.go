@@ -237,12 +237,13 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 			RecoveryTimeoutMin: 60,
 			PollWaitS:          1,
 		},
-		roles:      roles,
-		batcher:    activeBatcher,
-		planDir:    loomengine.PlanDir(layout),
-		websterDir: websterengine.Dir(layout),
-		reportsDir: websterengine.ReportsDir(layout),
-		promptsDir: websterengine.PromptsDir(layout),
+		roles:             roles,
+		batcher:           activeBatcher,
+		planDir:           loomengine.PlanDir(layout),
+		websterDir:        websterengine.Dir(layout),
+		websterScratchDir: websterengine.ScratchDir(layout),
+		reportsDir:        websterengine.ReportsDir(layout),
+		promptsDir:        websterengine.PromptsDir(layout),
 	}
 
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}
@@ -298,7 +299,7 @@ func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websteren
 		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
 	}
-	if err := websterengine.SaveState(fx.CLI.websterDir, st); err != nil {
+	if err := websterengine.SaveState(fx.CLI.websterDir, fx.CLI.websterScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 	return st
@@ -349,7 +350,7 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 		}
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after begin-batch = %v, %v; want a state, nil", loaded, err)
 	}
@@ -368,7 +369,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t, "master-model")
-	if err := websterengine.RequestPause(fx.CLI.websterDir); err != nil {
+	if err := websterengine.RequestPause(fx.CLI.websterScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -382,12 +383,47 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 		t.Errorf("output missing paused:true; got %q", out.String())
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after paused begin-batch = %v, %v; want a state, nil", loaded, err)
 	}
 	if _, ok := loaded.Batches[1]; ok {
 		t.Error("loaded.Batches[1] present after a paused refusal; want state untouched")
+	}
+}
+
+// TestPauseCmd_ResolvesSameFileAsBeginBatchGate proves the CLI pause verb and begin-batch's own
+// pause gate resolve the exact same file -- through the CLI itself, never by calling the engine
+// accessor twice, since a pause verb that still writes the durable dir while begin-batch reads the
+// scratch dir would leave pause silently non-functional with no test on either side alone failing.
+func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
+	t.Setenv("WEFT_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	fx.initState(t, "master-model")
+
+	var pauseOut strings.Builder
+	exitCode := clihelp.Execute(fx.CLI.pauseCmd(), &pauseOut, nil)
+	if exitCode != 0 {
+		t.Fatalf("pause() = %d; want 0, output: %s", exitCode, pauseOut.String())
+	}
+	if !strings.Contains(pauseOut.String(), `"paused":true`) {
+		t.Errorf("pause() output missing paused:true; got %q", pauseOut.String())
+	}
+
+	if !websterengine.PauseRequested(fx.CLI.websterScratchDir) {
+		t.Error("PauseRequested(fx.CLI.websterScratchDir) = false after pause(); want true")
+	}
+	if websterengine.PauseRequested(fx.CLI.websterDir) {
+		t.Error("PauseRequested(fx.CLI.websterDir) = true; want the pause flag only under the scratch dir, never the durable dir")
+	}
+
+	var beginOut strings.Builder
+	exitCode = clihelp.Execute(fx.CLI.beginBatchCmd(), &beginOut, []string{"1"})
+	if exitCode != 0 {
+		t.Fatalf("begin-batch 1 after pause() = %d; want 0, output: %s", exitCode, beginOut.String())
+	}
+	if !strings.Contains(beginOut.String(), `"paused":true`) {
+		t.Errorf("begin-batch's own gate did not see pause() written by the CLI verb; output missing paused:true, got %q", beginOut.String())
 	}
 }
 
@@ -427,7 +463,7 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	})
 
 	// Statelessness: neither call may have created a state.json.
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -472,7 +508,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			startSHA := commitFile(t, fx.Worktree, "internal/only/impl.go", "package only\n", "01.1: add impl")
 			st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 			st.CurrentBatch = 1
-			if err := websterengine.SaveState(fx.CLI.websterDir, st); err != nil {
+			if err := websterengine.SaveState(fx.CLI.websterDir, fx.CLI.websterScratchDir, st); err != nil {
 				t.Fatalf("SaveState() error = %v", err)
 			}
 			fx.Engine.auditForks = shuttleengine.ForkAudit{
@@ -505,7 +541,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 				}
 			}
 
-			loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+			loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
 			if err != nil || loaded == nil {
 				t.Fatalf("LoadState() after record-batch = %v, %v; want a state, nil", loaded, err)
 			}
@@ -550,7 +586,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Fatalf("Engine.prepareCalls after first call = %d; want exactly 1 (the spawn)", fx.Engine.prepareCalls)
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir)
+	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after spawn = %v, %v; want a state, nil", loaded, err)
 	}
@@ -583,7 +619,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 1 (no re-spawn)", fx.Engine.prepareCalls)
 	}
 
-	loaded, err = websterengine.LoadState(fx.CLI.websterDir)
+	loaded, err = websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after terminal attach = %v, %v; want a state, nil", loaded, err)
 	}
@@ -604,10 +640,10 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	starter := &verbsFakeMasterStarter{}
 	fx.CLI.masterStarter = starter
 
-	if err := os.MkdirAll(fx.CLI.websterDir, 0o755); err != nil {
-		t.Fatalf("mkdir webster dir: %v", err)
+	if err := os.MkdirAll(fx.CLI.websterScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir webster scratch dir: %v", err)
 	}
-	held, err := lock.AcquireWriteLock(filepath.Join(fx.CLI.websterDir, "run.lock"))
+	held, err := lock.AcquireWriteLock(filepath.Join(fx.CLI.websterScratchDir, "run.lock"))
 	if err != nil {
 		t.Fatalf("acquire run.lock: %v", err)
 	}

@@ -23,23 +23,23 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// websterDirName is the relative-path segment websterengine joins onto
-// configengine.LyxDirName to form the webster's durable run-state
-// directory. websterengine is this segment's sole declarer.
+// websterDirName is the relative-path segment websterengine joins onto both
+// lyxdirs.LyxDirName (Dir) and lyxdirs.DotLyxDirName (ScratchDir) to form
+// webster's durable and scratch base directories, respectively. websterengine
+// is this segment's sole declarer.
 const websterDirName = "webster"
 
-// Dir returns the path to the webster's durable run state directory (state.json, pause flag,
-// outcome.yaml).
+// Dir returns the path to the webster's durable run state directory (state.json, outcome.yaml).
 // It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func Dir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), configengine.LyxDirName, websterDirName)
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, websterDirName)
 }
 
 // ReportsDir returns the path to the directory holding webster's per-batch report files.
@@ -49,11 +49,20 @@ func ReportsDir(l *lyxcwd.Location) string {
 	return filepath.Join(Dir(l), "reports")
 }
 
+// ScratchDir returns the path to the base directory for webster's never-tracked artifacts —
+// Dir's never-tracked sibling holding the pause flag, the rendered fork prompts, and every
+// *.lock — at the mirrored subpath of the _lyx/webster content each relates to.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func ScratchDir(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, websterDirName)
+}
+
 // PromptsDir returns the path to the directory holding webster's rendered fork prompts.
-// Prompts are machine-local, re-renderable artifacts excluded from fabric commits.
+// Prompts are machine-local, re-renderable artifacts, and they live under .lyx rather than being
+// held out of the fabric commit by an exclude pattern.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func PromptsDir(l *lyxcwd.Location) string {
-	return filepath.Join(Dir(l), "prompts")
+	return filepath.Join(ScratchDir(l), "prompts")
 }
 
 // stateFileName is state.json's fixed filename inside a webster dir.
@@ -65,22 +74,21 @@ const stateFileName = "state.json"
 // concurrent verb invocations (a begin-batch racing a record-batch, or two
 // recover-batch calls landing in the same instant) each load, mutate, and
 // save their own copy, and the last save silently erases the other's
-// mutation. Excluded from fabric commits like every other *.lock (see
-// webstercli's sync pathspec).
+// mutation. It lives under .lyx and is never fabric-committed at all.
 const stateMutateLockName = "mutate.lock"
 
-// AcquireStateMutation acquires websterDir's exclusive state-mutation lease, blocking until it is
+// AcquireStateMutation acquires scratchDir's exclusive state-mutation lease, blocking until it is
 // free — every holder's critical section is bounded (a begin-batch, a record-batch persist, a
 // recover-batch spawn or terminal persist), so blocking is always short and never a deadlock risk.
 // Callers hold it across their WHOLE load-mutate-save sequence and Release it as soon as the save
 // lands, never across a long block (recover-batch's bounded poll wait).
-func AcquireStateMutation(websterDir string) (*lock.FileLock, error) {
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		return nil, fmt.Errorf("webster: create webster dir %s: %w", websterDir, err)
+func AcquireStateMutation(scratchDir string) (*lock.FileLock, error) {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create webster scratch dir %s: %w", scratchDir, err)
 	}
-	l, err := lock.AcquireWriteLock(filepath.Join(websterDir, stateMutateLockName))
+	l, err := lock.AcquireWriteLock(filepath.Join(scratchDir, stateMutateLockName))
 	if err != nil {
-		return nil, fmt.Errorf("webster: acquire state-mutation lease in %s: %w", websterDir, err)
+		return nil, fmt.Errorf("webster: acquire state-mutation lease in %s: %w", scratchDir, err)
 	}
 	return l, nil
 }
@@ -186,13 +194,24 @@ type BatchState struct {
 	EventsPath string `json:"eventsPath,omitempty"`
 }
 
-// LoadState reads <websterDir>/state.json.
+// LoadState reads <websterDir>/state.json, locked against
+// <scratchDir>/state.json.lock.
 // A missing file returns (nil, nil) — no run has started yet, not an error.
 // An unreadable or malformed file is a wrapped error: fail loud, never guess at a corrupted run's
 // state.
-func LoadState(websterDir string) (*State, error) {
+func LoadState(websterDir, scratchDir string) (*State, error) {
+	// Unlike websterDir (created by SaveState's own MkdirAll the first time a
+	// run ever saves anything), scratchDir can legitimately not exist yet on
+	// a fresh worktree that has never run: without this MkdirAll,
+	// state.ReadJSON's AcquireReadLock would hard-error resolving the lock's
+	// missing parent instead of reaching its own not-found path and
+	// returning the documented (nil, nil).
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create webster scratch dir %s: %w", scratchDir, err)
+	}
+
 	path := filepath.Join(websterDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
 	st, found, err := state.ReadJSON[State](path, lockPath)
 	if err != nil {
@@ -204,11 +223,15 @@ func LoadState(websterDir string) (*State, error) {
 	return &st, nil
 }
 
-// SaveState writes st to <websterDir>/state.json: MkdirAll followed by an atomic write (temp file +
+// SaveState writes st to <websterDir>/state.json under an exclusive lock at
+// <scratchDir>/state.json.lock: MkdirAll on both dirs followed by an atomic write (temp file +
 // rename), so a crash mid-write never leaves a reader observing a half-written file.
-func SaveState(websterDir string, st *State) error {
+func SaveState(websterDir, scratchDir string, st *State) error {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return fmt.Errorf("webster: create webster scratch dir %s: %w", scratchDir, err)
+	}
 	path := filepath.Join(websterDir, stateFileName)
-	lockPath := path + ".lock"
+	lockPath := filepath.Join(scratchDir, stateFileName+".lock")
 
 	if err := state.WriteJSON(path, lockPath, *st); err != nil {
 		return fmt.Errorf("webster: save state %s: %w", path, err)

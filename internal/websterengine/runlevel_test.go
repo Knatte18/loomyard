@@ -279,6 +279,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		},
 		PlanDir:      planDir,
 		WebsterDir:   t.TempDir(),
+		ScratchDir:   t.TempDir(),
 		ReportsDir:   t.TempDir(),
 		PromptsDir:   t.TempDir(),
 		WorktreeRoot: worktree,
@@ -298,21 +299,21 @@ func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	if st.Batches == nil {
 		st.Batches = map[int]*websterengine.BatchState{}
 	}
-	if err := websterengine.SaveState(fx.Deps.WebsterDir, st); err != nil {
+	if err := websterengine.SaveState(fx.Deps.WebsterDir, fx.Deps.ScratchDir, st); err != nil {
 		t.Fatalf("seed matching state: %v", err)
 	}
 }
 
 // TestRun_ErrRunBusy proves Run's fail-fast refusal when another invocation already holds
-// websterDir's run.lock: the loser touches nothing (the Starter is never reached) and the error
+// scratchDir's run.lock: the loser touches nothing (the Starter is never reached) and the error
 // satisfies errors.Is(err, ErrRunBusy).
 func TestRun_ErrRunBusy(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
-	if err := os.MkdirAll(fx.Deps.WebsterDir, 0o755); err != nil {
-		t.Fatalf("mkdir webster dir: %v", err)
+	if err := os.MkdirAll(fx.Deps.ScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir webster scratch dir: %v", err)
 	}
-	held, err := lock.AcquireWriteLock(filepath.Join(fx.Deps.WebsterDir, "run.lock"))
+	held, err := lock.AcquireWriteLock(filepath.Join(fx.Deps.ScratchDir, "run.lock"))
 	if err != nil {
 		t.Fatalf("acquire run.lock: %v", err)
 	}
@@ -350,10 +351,10 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
 	st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
-	if err := websterengine.SaveState(fx.Deps.WebsterDir, st); err != nil {
+	if err := websterengine.SaveState(fx.Deps.WebsterDir, fx.Deps.ScratchDir, st); err != nil {
 		t.Fatalf("seed stale state: %v", err)
 	}
-	if err := websterengine.RequestPause(fx.Deps.WebsterDir); err != nil {
+	if err := websterengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -361,7 +362,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
-	if !websterengine.PauseRequested(fx.Deps.WebsterDir) {
+	if !websterengine.PauseRequested(fx.Deps.ScratchDir) {
 		t.Error("pause flag cleared on a refused run; want it left intact")
 	}
 	if fx.Starter.callCount() != 0 {
@@ -376,7 +377,7 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
 	staleState := &websterengine.State{PlanFingerprint: "stale", Batches: map[int]*websterengine.BatchState{}}
-	if err := websterengine.SaveState(fx.Deps.WebsterDir, staleState); err != nil {
+	if err := websterengine.SaveState(fx.Deps.WebsterDir, fx.Deps.ScratchDir, staleState); err != nil {
 		t.Fatalf("seed stale state: %v", err)
 	}
 
@@ -542,7 +543,7 @@ func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 		t.Fatalf("Run() error = nil; want the scripted wait error")
 	}
 
-	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir)
+	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
 	if loadErr != nil {
 		t.Fatalf("LoadState() error = %v", loadErr)
 	}
@@ -573,7 +574,7 @@ func TestRun_MasterStrandPersistedBeforeFindRun(t *testing.T) {
 		t.Fatal("Run() = nil error; want the FindRun resolve failure")
 	}
 
-	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir)
+	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
 	if loadErr != nil || st == nil {
 		t.Fatalf("LoadState() = %v, %v; want the pre-resolve state persisted", st, loadErr)
 	}
@@ -632,7 +633,7 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 	if result.SummaryTitle != "Shipped batch1" {
 		t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Shipped batch1")
 	}
-	if websterengine.PauseRequested(fx.Deps.WebsterDir) {
+	if websterengine.PauseRequested(fx.Deps.ScratchDir) {
 		t.Error("pause flag present after a done outcome; want it cleared")
 	}
 }
@@ -945,7 +946,7 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 			// pre-spawn ClearPause already ran before Master started, so
 			// this is a genuinely new request Master's own paused final
 			// action is responding to.
-			if err := websterengine.RequestPause(fx.Deps.WebsterDir); err != nil {
+			if err := websterengine.RequestPause(fx.Deps.ScratchDir); err != nil {
 				t.Fatalf("RequestPause() error = %v", err)
 			}
 			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: paused\nstuck_reason: null\nbatches_done: 0\n"), 0o644); err != nil {
@@ -966,7 +967,7 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 	if result.Outcome != "paused" {
 		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "paused")
 	}
-	if !websterengine.PauseRequested(fx.Deps.WebsterDir) {
+	if !websterengine.PauseRequested(fx.Deps.ScratchDir) {
 		t.Error("pause flag cleared on a paused outcome; want it left intact as the operator's own record")
 	}
 }

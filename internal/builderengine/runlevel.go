@@ -25,12 +25,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 )
 
-// runLockName is the exclusive-lease file name inside the builder dir, held
-// for the ENTIRE duration of one Run call — perchengine's ErrBlockBusy
-// pattern applied to builder's own run-level mutex (see the discussion's
-// crash/resume decision): without it, two concurrent `lyx builder run`
-// invocations would each cold-start from the same state.json and reports,
-// then both drive the batch loop at once.
+// runLockName is the exclusive-lease file name inside the builder scratch
+// dir, held for the ENTIRE duration of one Run call — perchengine's
+// ErrBlockBusy pattern applied to builder's own run-level mutex (see the
+// discussion's crash/resume decision): without it, two concurrent
+// `lyx builder run` invocations would each cold-start from the same
+// state.json and reports, then both drive the batch loop at once.
 const runLockName = "run.lock"
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds the run.lock.
@@ -120,11 +120,16 @@ type OrchestratorStarter interface {
 
 // RunDeps carries every seam Run needs for its operation.
 type RunDeps struct {
-	Runner       OrchestratorStarter
-	Reed         shuttleengine.ReedOps
-	PlanDir      string
-	BuilderDir   string
-	ReportsDir   string
+	Runner     OrchestratorStarter
+	Reed       shuttleengine.ReedOps
+	PlanDir    string
+	BuilderDir string
+	ReportsDir string
+	// ScratchDir is the .lyx/builder tree — the never-tracked base
+	// directory holding the pause flag, the state-mutation lease, and
+	// run.lock, at the mirrored subpath of BuilderDir's _lyx/builder
+	// content.
+	ScratchDir   string
 	WorktreeRoot string
 	Config       Config
 	Roles        map[Role]modelspec.Resolved
@@ -300,13 +305,16 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	if err := os.MkdirAll(deps.BuilderDir, 0o755); err != nil {
 		return RunResult{}, fmt.Errorf("builder: create builder dir %s: %w", deps.BuilderDir, err)
 	}
+	if err := os.MkdirAll(deps.ScratchDir, 0o755); err != nil {
+		return RunResult{}, fmt.Errorf("builder: create builder scratch dir %s: %w", deps.ScratchDir, err)
+	}
 
-	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(deps.BuilderDir, runLockName))
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(deps.ScratchDir, runLockName))
 	if err != nil {
-		return RunResult{}, fmt.Errorf("builder: acquire run lock in %s: %w", deps.BuilderDir, err)
+		return RunResult{}, fmt.Errorf("builder: acquire run lock in %s: %w", deps.ScratchDir, err)
 	}
 	if !locked {
-		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx builder status`", ErrRunBusy, deps.BuilderDir)
+		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx builder status`", ErrRunBusy, deps.ScratchDir)
 	}
 	defer runLock.Release()
 
@@ -337,7 +345,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// own state read-modify-write (AcquireStateMutation's doc names the lost
 	// updates this prevents). Released explicitly right after the strand
 	// record lands, never held across the orchestrator wait.
-	mutateLock, err := AcquireStateMutation(deps.BuilderDir)
+	mutateLock, err := AcquireStateMutation(deps.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -348,7 +356,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}()
 
-	st, err := LoadState(deps.BuilderDir)
+	st, err := LoadState(deps.BuilderDir, deps.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -383,7 +391,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			Batches:         map[int]*BatchState{},
 			ChainStartSHAs:  map[int]string{},
 		}
-		if err := SaveState(deps.BuilderDir, st); err != nil {
+		if err := SaveState(deps.BuilderDir, deps.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 
@@ -426,7 +434,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			Batches:         map[int]*BatchState{},
 			ChainStartSHAs:  map[int]string{},
 		}
-		if err := SaveState(deps.BuilderDir, st); err != nil {
+		if err := SaveState(deps.BuilderDir, deps.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -442,7 +450,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// request it never acted on. The never-instantly-re-pause property still
 	// holds: the orchestrator's first spawn-batch runs during handle.Wait()
 	// below, far after this clear.
-	if err := ClearPause(deps.BuilderDir); err != nil {
+	if err := ClearPause(deps.ScratchDir); err != nil {
 		return RunResult{}, err
 	}
 
@@ -500,7 +508,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// reclaim is liveness-gated, so a strand shuttle already removed (a clean
 	// done) is simply reported not-live next time.
 	st.OrchestratorStrand = handle.StrandGUID()
-	if err := SaveState(deps.BuilderDir, st); err != nil {
+	if err := SaveState(deps.BuilderDir, deps.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}
 
@@ -522,7 +530,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 
 		if outcome.Outcome != OutcomePaused {
-			if err := ClearPause(deps.BuilderDir); err != nil {
+			if err := ClearPause(deps.ScratchDir); err != nil {
 				return RunResult{}, err
 			}
 		}

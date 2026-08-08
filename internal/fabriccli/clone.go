@@ -14,7 +14,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitignore"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
@@ -22,8 +21,8 @@ import (
 // runCloneWithReset executes the clone subcommand. When reset is true, it tears
 // down any existing hub before cloning (idempotent re-clone). After CloneHub
 // succeeds, it drives the wiring sequence: repo-wide fabric.yaml, weft:main
-// commits, host junctions, .gitignore, and per-worktree config. On error, the
-// clone is left intact; the operator completes wiring with reconcile.
+// commits, host junctions, and per-worktree config. On error, the clone is
+// left intact; the operator completes wiring with reconcile.
 func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -78,9 +77,10 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		return output.Err(out, err.Error())
 	}
 
-	if _, err := gitignore.Ensure(l.AnchorPath(), ".lyx/"); err != nil {
-		return output.Err(out, err.Error())
-	}
+	// .lyx is excluded through the warp's .git/info/exclude by WireJunctions above,
+	// not through a tracked .gitignore entry in the user's own repo: a committed
+	// entry would advertise that LYX is in use, and a host→weft junction must never
+	// leave a tracked artifact behind in the user's repo.
 	if _, err := configsync.ReconcileAll(res.WeftBase, true); err != nil {
 		return output.Err(out, err.Error())
 	}

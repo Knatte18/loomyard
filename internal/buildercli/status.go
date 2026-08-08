@@ -45,7 +45,7 @@ Example:
 				return nil
 			}
 
-			st, err := builderengine.LoadState(c.builderDir)
+			st, err := builderengine.LoadState(c.builderDir, c.builderScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -108,7 +108,7 @@ Example:
 				"current_batch":    st.CurrentBatch,
 				"plan_fingerprint": st.PlanFingerprint,
 				"batches":          batches,
-				"paused":           builderengine.PauseRequested(c.builderDir),
+				"paused":           builderengine.PauseRequested(c.builderScratchDir),
 			}))
 			return nil
 		},

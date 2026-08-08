@@ -56,12 +56,12 @@ func TestEnsureDurableSink_CreatesExactlyOneFileWithHeaderFirstLine(t *testing.T
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 
-	w, ok := ensureDurableSink()
+	ok := ensureDurableSink()
 	if !ok {
 		t.Fatalf("ensureDurableSink() ok = false; want true")
 	}
-	if w == nil {
-		t.Fatalf("ensureDurableSink() writer = nil; want non-nil")
+	if _, err := os.Stat(sinkPath); err != nil {
+		t.Fatalf("os.Stat(sinkPath=%q) = %v; want the sink file to exist", sinkPath, err)
 	}
 
 	files := listSinkDirFiles(t, dir)
@@ -210,5 +210,63 @@ func TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker(t *testing.T
 	}
 	if strings.Contains(string(data), "after cap #1") || strings.Contains(string(data), "after cap #2") {
 		t.Errorf("file contains post-cap payload; want writes past the cap to be dropped, not appended")
+	}
+}
+
+// TestWriteDurable_SurvivesLogsDirRenameMidProcess is the load-bearing regression guard for this
+// batch.
+// Against the pre-batch code, sinkWriter is an *os.File opened once and held for the process
+// lifetime: a POSIX rename of that file's directory leaves the held descriptor still valid and
+// still pointed at the (now differently-named) underlying file, so a second write through that
+// stale descriptor never becomes visible under a directory freshly recreated at the original path
+// -- exactly what a fabric content-adoption step recreating .lyx/logs after moving the old tree away
+// would do.
+// Against the handle-free sink (writeDurable opens, appends, and closes sinkPath per record), the
+// second write re-opens by path and lands in the freshly recreated directory, because no descriptor
+// survives from the first write to intercept it.
+// The rename succeeding plus the second record landing under the recreated original directory are
+// the only observables available on Linux; enumerating open file descriptors is deliberately out of
+// scope.
+func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "logs")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatalf("os.Mkdir(%q) error = %v; want nil", dir, err)
+	}
+	SetDurableSinkDir(dir)
+	if ok := ensureDurableSink(); !ok {
+		t.Fatalf("ensureDurableSink() ok = false; want true")
+	}
+
+	if _, err := writeDurable([]byte("first record\n")); err != nil {
+		t.Fatalf("writeDurable(first record) error = %v; want nil", err)
+	}
+
+	renamedDir := filepath.Join(parent, "logs-renamed")
+	if err := os.Rename(dir, renamedDir); err != nil {
+		t.Fatalf("os.Rename(%q, %q) error = %v; want nil", dir, renamedDir, err)
+	}
+	// Recreate an empty directory at the original path, as fabric's content adoption would once it
+	// has moved the old tree elsewhere -- this is what makes a stale descriptor observable: a write
+	// through one never shows up here.
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatalf("os.Mkdir(%q) (recreate) error = %v; want nil", dir, err)
+	}
+
+	if _, err := writeDurable([]byte("second record\n")); err != nil {
+		t.Fatalf("writeDurable(second record) error = %v; want nil", err)
+	}
+
+	files := listSinkDirFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("listSinkDirFiles(dir) (recreated original) = %v; want exactly one file holding the second record -- a stale descriptor from before the rename would leave this directory empty", files)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, files[0]))
+	if err != nil {
+		t.Fatalf("os.ReadFile error = %v; want nil", err)
+	}
+	if !strings.Contains(string(data), "second record") {
+		t.Errorf("sink file contents = %q; want the second record present under the recreated original directory", string(data))
 	}
 }

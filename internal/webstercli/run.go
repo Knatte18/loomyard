@@ -67,6 +67,7 @@ Example:
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,
 				PromptsDir:   c.promptsDir,
+				ScratchDir:   c.websterScratchDir,
 				WorktreeRoot: c.layout.AnchorPath(),
 			}
 

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // portalsDirName is the directory name for the hub-level portals container
@@ -34,7 +34,7 @@ func PortalLink(l *lyxcwd.Location, slug string) string {
 
 // portalTarget returns the path to the _lyx directory within a portal for the given slug.
 func portalTarget(l *lyxcwd.Location, slug string) string {
-	return filepath.Join(l.HubPath, slug, l.AnchorRel, configengine.LyxDirName)
+	return filepath.Join(l.HubPath, slug, l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // createPortal creates a portal junction from <container>/_portals/<RelPath>/<slug> to <container>/<slug>/<relpath>/_lyx.

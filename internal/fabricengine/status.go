@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // PollutionEntry describes a single tracked path in the host index that should never be committed
@@ -169,16 +170,18 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 // matches are report-only: no junction is wired for _raddle in this release so no
 // automated restore step is offered.
 //
-// The two new "_pattern" uses below (the ls-files pathspec entry and the
-// strings.HasPrefix comparison) are legal under the Cwd Resolution Invariant despite
+// _lyx now routes through lyxdirs.LyxDirName rather than a bare literal here. The two
+// "_pattern" uses below (the ls-files pathspec entry and the strings.HasPrefix
+// comparison) stay literal and are legal under the Cwd Resolution Invariant despite
 // "_pattern" being an enforced token: the invariant's own carve-out excludes
 // comparisons and git-pathspec slice literals from "path construction," which is
-// what a filepath.Join argument, a "+" operand, or a string const value are.
+// what a filepath.Join argument, a "+" operand, or a string const value are. "_raddle"
+// likewise stays literal for the same reason.
 func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
 	out, _, exitCode, err := gitexec.RunGit(
-		[]string{"ls-files", "--", "_lyx", "_pattern", "_raddle"},
+		[]string{"ls-files", "--", lyxdirs.LyxDirName, "_pattern", "_raddle"},
 		hostPath,
 	)
 	if err != nil {
@@ -204,7 +207,7 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 
 		// Determine whether the path is under _lyx, _pattern, or _raddle.
 		switch {
-		case strings.HasPrefix(tracked, "_lyx") || tracked == "_lyx",
+		case strings.HasPrefix(tracked, lyxdirs.LyxDirName) || tracked == lyxdirs.LyxDirName,
 			strings.HasPrefix(tracked, "_pattern") || tracked == "_pattern":
 			// Offer git rm --cached as the remedy, plus a reminder to restore the
 			// junction and exclude entry so lyx topology is intact afterwards.

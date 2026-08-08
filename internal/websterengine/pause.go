@@ -26,19 +26,19 @@ import (
 // itself.
 const PauseFlagName = "pause"
 
-// pauseFlagPath returns the path to the pause flag file inside websterDir.
-func pauseFlagPath(websterDir string) string {
-	return filepath.Join(websterDir, PauseFlagName)
+// pauseFlagPath returns the path to the pause flag file inside scratchDir.
+func pauseFlagPath(scratchDir string) string {
+	return filepath.Join(scratchDir, PauseFlagName)
 }
 
-// RequestPause creates websterDir's pause flag file, creating websterDir if needed.
+// RequestPause creates scratchDir's pause flag file, creating scratchDir if needed.
 // Creating an already-present flag is idempotent.
-func RequestPause(websterDir string) error {
-	if err := os.MkdirAll(websterDir, 0o755); err != nil {
-		return fmt.Errorf("websterengine: create webster dir %s: %w", websterDir, err)
+func RequestPause(scratchDir string) error {
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return fmt.Errorf("websterengine: create webster scratch dir %s: %w", scratchDir, err)
 	}
 
-	path := pauseFlagPath(websterDir)
+	path := pauseFlagPath(scratchDir)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("websterengine: create pause flag %s: %w", path, err)
@@ -46,18 +46,18 @@ func RequestPause(websterDir string) error {
 	return f.Close()
 }
 
-// PauseRequested reports whether websterDir's pause flag file is currently present.
-func PauseRequested(websterDir string) bool {
-	_, err := os.Stat(pauseFlagPath(websterDir))
+// PauseRequested reports whether scratchDir's pause flag file is currently present.
+func PauseRequested(scratchDir string) bool {
+	_, err := os.Stat(pauseFlagPath(scratchDir))
 	return err == nil
 }
 
-// ClearPause removes websterDir's pause flag file.
+// ClearPause removes scratchDir's pause flag file.
 // Clearing an already-clear flag is not an error.
 // Callers must invoke this once committed to spawning Master and again at terminal outcome (per
 // double-clear pattern).
-func ClearPause(websterDir string) error {
-	path := pauseFlagPath(websterDir)
+func ClearPause(scratchDir string) error {
+	path := pauseFlagPath(scratchDir)
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			return nil

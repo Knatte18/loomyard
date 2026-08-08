@@ -913,3 +913,34 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 		t.Errorf("commit message = %q; want it to contain the Snapshot trailer", msg)
 	}
 }
+
+// TestCommit_DotLyxPath_HardErrorsAndCommitsNothing asserts that a Fabric.Commit call naming a path
+// under the never-committed structural directory (.lyx) fails with an error naming that path, and
+// that nothing landed on either side: the never-committed check runs before any lock is taken or
+// any commit attempted, so a rejected call must leave both warp and weft HEAD unmoved.
+func TestCommit_DotLyxPath_HardErrorsAndCommitsNothing(t *testing.T) {
+	f, warpPath, weftPath := newCommitFixture(t)
+	swapPushRecorder(t)
+
+	warpSHABefore := currentSHA(t, warpPath)
+	weftSHABefore := currentSHA(t, weftPath)
+
+	offendingPath := ".lyx/webster/state.json.lock"
+	result, err := f.Commit([]string{offendingPath}, "should never land", nil, SyncOptions{})
+	if err == nil {
+		t.Fatalf("Commit(%q) error = nil; want a hard error naming the offending path", offendingPath)
+	}
+	if !strings.Contains(err.Error(), offendingPath) {
+		t.Errorf("Commit(%q) error = %q; want it to name the offending path", offendingPath, err.Error())
+	}
+	if result.WarpCommitted || result.WeftCommitted {
+		t.Errorf("Commit(%q) = %+v; want nothing committed on either side", offendingPath, result)
+	}
+
+	if got := currentSHA(t, warpPath); got != warpSHABefore {
+		t.Errorf("warp HEAD moved from %s to %s; want it unchanged by a rejected call", warpSHABefore, got)
+	}
+	if got := currentSHA(t, weftPath); got != weftSHABefore {
+		t.Errorf("weft HEAD moved from %s to %s; want it unchanged by a rejected call", weftSHABefore, got)
+	}
+}

@@ -33,7 +33,7 @@ Example:
 				return nil
 			}
 
-			if err := websterengine.RequestPause(c.websterDir); err != nil {
+			if err := websterengine.RequestPause(c.websterScratchDir); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}

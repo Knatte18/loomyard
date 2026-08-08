@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -147,6 +148,20 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			report.addFailure(CheckSeedUnreadable, err.Error())
 		}
 	} else {
+		// LoomStatusLock now lives under .lyx rather than beside LoomStatusFile
+		// under _lyx, so its parent directory is no longer guaranteed to exist
+		// by the time the guarding os.Stat(LoomStatusFile(l)) above succeeds.
+		// state.ReadJSONStrict does not create missing parent directories (see
+		// its own doc comment), and neither does internal/lock's
+		// AcquireReadLock/AcquireWriteLock -- gofrs/flock opens the lock file
+		// with O_CREATE but never creates parents, the same gap
+		// internal/reedengine/lock.go already works around with its own
+		// MkdirAll-before-lock. Without this MkdirAll, Preflight would
+		// escalate a missing-.lyx worktree to a hard infra error instead of
+		// honouring its report-not-error contract.
+		if err := os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755); err != nil {
+			return Report{}, err
+		}
 		s, found, rerr := state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))
 		switch {
 		case rerr != nil:

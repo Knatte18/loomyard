@@ -56,11 +56,13 @@ type websterCLI struct {
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
 
-	// planDir, websterDir, reportsDir, and promptsDir are the lyxcwd-resolved _lyx dirs.
-	planDir    string
-	websterDir string
-	reportsDir string
-	promptsDir string
+	// planDir, websterDir, and reportsDir are the lyxcwd-resolved _lyx dirs;
+	// promptsDir and websterScratchDir are the lyxcwd-resolved .lyx dirs.
+	planDir           string
+	websterDir        string
+	reportsDir        string
+	promptsDir        string
+	websterScratchDir string
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
@@ -194,6 +196,7 @@ Verbs:
 			c.planDir = loomengine.PlanDir(layout)
 			c.websterDir = websterengine.Dir(layout)
 			c.reportsDir = websterengine.ReportsDir(layout)
+			c.websterScratchDir = websterengine.ScratchDir(layout)
 			c.promptsDir = websterengine.PromptsDir(layout)
 			return nil
 		},

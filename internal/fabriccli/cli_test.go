@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -256,7 +257,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	t.Chdir(fixture.Hub)
 
 	// Modify a file in the weft config that would be committed.
-	weftConfigFile := filepath.Join(fixture.WeftPrime, configengine.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -275,6 +276,54 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	result := decodeResult(t, &out)
 	if ok, _ := result["ok"].(bool); !ok {
 		t.Errorf("ok should be true; got false. Error: %v", result["error"])
+	}
+}
+
+// TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern is the card-40 regression
+// guard: with the repo-wide fabric.yaml's pathspec naming only "_pattern" (template.yaml's new
+// default, card 42), "lyx fabric sync" must still commit _lyx content, because weft_verbs.go now
+// builds its sync pathspec from fabricengine.PathspecNames — the routing set, which always contains
+// "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
+// This is the single most breakage-prone edit in the whole task: a miss here is silent, not loud.
+func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	// Repo-wide fabric.yaml names only "_pattern" -- the narrowed template
+	// default -- proving _lyx arrives from the routing set structurally, not
+	// from this config.
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _pattern\n"), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	weftConfigFile := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "placeholder")
+	if err := os.WriteFile(weftConfigFile, []byte("modified for sync regression"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Prevent the detached push child from doing any real network work;
+	// SpawnDetachedPush itself checks this env var before spawning.
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"sync"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("RunCLI(sync) ok = %v; want true; output: %s", result["ok"], out.String())
+	}
+
+	tracked := strings.TrimSpace(gitOutputCLI(t, fixture.WeftPrime, "log", "-1", "--name-only", "--pretty=format:"))
+	if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
+		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _pattern\nfiles: %s", fixture.WeftPrime, lyxdirs.LyxDirName, tracked)
 	}
 }
 
@@ -412,7 +461,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// The prime host worktree's _lyx/_pattern junctions must be wired.
 	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
-	for _, name := range []string{configengine.LyxDirName, pattern.DirName} {
+	for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
 		if err != nil {
@@ -437,7 +486,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
 		lyxcwd.AnchorFileName,
-		filepath.Join(configengine.LyxDirName, "config", "fabric.yaml"),
+		filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"),
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
 		if tracked == "" {

@@ -27,6 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // seedCwd creates a temp directory with _lyx/config/board.yaml seeded with all
@@ -44,7 +45,7 @@ func seedCwd(t *testing.T) string {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 
-	if err := os.MkdirAll(filepath.Join(cwd, configengine.LyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cwd, lyxdirs.LyxDirName), 0o755); err != nil {
 		t.Fatalf("failed to create _lyx: %v", err)
 	}
 	if err := os.MkdirAll(configengine.ConfigDir(cwd), 0o755); err != nil {

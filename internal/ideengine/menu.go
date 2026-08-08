@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // Menu presents an interactive picker of active worktrees, allowing the user to open one via Spawn.
@@ -53,7 +53,7 @@ func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
 
 		slug := filepath.Base(entry.Path)
 
-		lyxPath := filepath.Join(entry.Path, l.AnchorRel, configengine.LyxDirName)
+		lyxPath := filepath.Join(entry.Path, l.AnchorRel, lyxdirs.LyxDirName)
 		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
 			continue

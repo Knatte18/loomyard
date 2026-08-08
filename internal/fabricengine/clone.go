@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -101,6 +102,19 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 
 	// Step 4: Create Hub directory
 	if err := os.MkdirAll(hubPath, 0o755); err != nil {
+		return CloneResult{}, err
+	}
+
+	// <hub>/.lyx is a fabric-recognised hub-level geometry element the way <hub>/_board
+	// already is. It stays a real directory and never a junction — the hub itself is not
+	// a git repo, so there is nothing to exclude and no weft to point at — and it is
+	// reserved (hubSlugReservedNames, junctionnames.go) so no worktree slug can claim
+	// the name. Created here, right beside the hub directory itself, so it exists for
+	// the lifetime of every hub this function successfully produces; a creation failure
+	// here returns directly rather than through teardownHub, matching the surrounding
+	// step-4 posture — the hub directory it would need to tear down was itself just
+	// created and holds nothing yet worth cleaning up specially.
+	if err := os.MkdirAll(filepath.Join(hubPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
 		return CloneResult{}, err
 	}
 

@@ -5,9 +5,9 @@
 // scenarios: Fabric.Commit's error-branch contract (a commit that lands but
 // fails its correspondence record must still be reported as committed=true
 // alongside the error, never swallowed into a false "no commit was made"),
-// and the weft repo's .git/info/exclude actually keeping the right files out
-// of every commit at every layout.AnchorRel depth, which only real git can
-// decide.
+// and machine-local artifacts under ".lyx" actually staying out of every
+// commit at every layout.AnchorRel depth simply by living outside the
+// committed "_lyx" pathspec, which only real git can decide.
 
 package webstercli
 
@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -68,11 +69,11 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the host's own
 // repo-subpath geometry, and the returned layout's AnchorPath() points at the
 // matching host subdirectory. Alongside state.json it seeds the three machine-local
-// artifacts the weft repo's .git/info/exclude must keep out (an advisory
-// *.lock file, the pause flag, and a rendered fork prompt) so a caller can
+// artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the
+// mirrored subpath under ".lyx", outside the committed "_lyx" pathspec, so a caller can
 // assert on what the commit did and did not pick up. It also seeds a builder
-// tree in the same _lyx -- the two round-loop modules share one -- carrying builder's own
-// durable state.json plus its pause flag, so a caller can assert that a
+// tree in the same shared geometry -- the two round-loop modules share one -- carrying builder's own
+// durable state.json under "_lyx" plus its pause flag under ".lyx", so a caller can assert that a
 // WEBSTER commit keeps builder's runtime state out while still carrying
 // builder's durable state.
 func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
@@ -93,36 +94,46 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 	commitFile(t, weft, "base.txt", "base", "weft base commit")
 
 	// Uncommitted changes under the webster pathspec, so CommitWeft has
-	// something real to commit -- plus the three artifacts the exclusion set
-	// must keep out of that commit.
-	websterDir := filepath.Join(weft, relPath, configengine.LyxDirName, "webster")
-	if err := os.MkdirAll(filepath.Join(websterDir, "prompts"), 0o755); err != nil {
+	// something real to commit.
+	websterDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "webster")
+	if err := os.MkdirAll(websterDir, 0o755); err != nil {
 		t.Fatalf("mkdir weft _lyx: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(websterDir, "state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write weft state.json: %v", err)
+	}
+
+	// The three machine-local artifacts, mirrored under ".lyx" -- outside the committed pathspec.
+	websterScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "webster")
+	if err := os.MkdirAll(filepath.Join(websterScratchDir, "prompts"), 0o755); err != nil {
+		t.Fatalf("mkdir weft .lyx: %v", err)
+	}
 	for name, content := range map[string]string{
-		"state.json":                     "{}",
 		"mutate.lock":                    "lock",
 		websterengine.PauseFlagName:      "paused",
 		filepath.Join("prompts", "1.md"): "rendered fork prompt",
 	} {
-		if err := os.WriteFile(filepath.Join(websterDir, name), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(websterScratchDir, name), []byte(content), 0o644); err != nil {
 			t.Fatalf("write weft %s: %v", name, err)
 		}
 	}
 
-	// Builder's own tree, in the same shared _lyx: its durable state must
+	// Builder's own tree, in the same shared geometry: its durable state must
 	// still ride a webster commit, its pause flag must not.
-	builderDir := filepath.Join(weft, relPath, configengine.LyxDirName, "builder")
+	builderDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "builder")
 	if err := os.MkdirAll(builderDir, 0o755); err != nil {
 		t.Fatalf("mkdir weft builder dir: %v", err)
 	}
-	for name, content := range map[string]string{
-		"state.json":                "{}",
-		builderengine.PauseFlagName: "paused",
-	} {
-		if err := os.WriteFile(filepath.Join(builderDir, name), []byte(content), 0o644); err != nil {
-			t.Fatalf("write weft builder %s: %v", name, err)
-		}
+	if err := os.WriteFile(filepath.Join(builderDir, "state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write weft builder state.json: %v", err)
+	}
+
+	builderScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "builder")
+	if err := os.MkdirAll(builderScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir weft builder scratch dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(builderScratchDir, builderengine.PauseFlagName), []byte("paused"), 0o644); err != nil {
+		t.Fatalf("write weft builder pause flag: %v", err)
 	}
 
 	seedRepoWideFabricConfig(t, hub)
@@ -171,21 +182,15 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, both
 // round-loop modules' pause flags, webster's rendered fork prompts) stays uncommitted by REAL git
 // at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
-// Exclusion is now enforced solely by the weft repo's .git/info/exclude (seeded by
-// fabricengine.seedWeftArtifactExcludes, reached through Fabric.Commit's ensureWeftLockDir), not by
-// any ":(exclude)" pathspec websterCLI builds itself -- fabricSync passes only the positive scoped
-// _lyx pathspec.
-// The nested case is the regression guard for the pre-fix, unanchored ":(exclude)*.lock" spelling
-// this migration retired: that spelling's one-star pathspec false-positive-matched the intermediate
-// directories leading to a multi-segment positive pathspec and pruned the entire subtree, so `git
-// add` staged nothing and fabricSync returned (false, nil) -- a completely silent no-op.
+// Exclusion is now structural: every machine-local artifact lives under ".lyx" at the mirrored
+// subpath, entirely outside the committed "_lyx" pathspec fabricSync passes -- no exclude-pattern
+// machinery is involved.
 // It is also the cross-module regression guard: a webster commit must hold back BUILDER's pause
-// flag too, since both round-loop modules share one _lyx -- committing it pins it in weft HEAD,
-// where builder can never stage its deletion (its own exclusion hides it from `git add`), so every
-// other machine's weft pull materializes a pause request nobody made.
+// flag too, since both round-loop modules share one ".lyx" scratch tree the same way they share one
+// "_lyx" durable tree.
 // Each excluded artifact is asserted both absent from the commit AND still untracked via `git
-// ls-files` -- proving the exclude file, not merely an already-tracked file happening to be omitted
-// from this one commit.
+// ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
+// happening to be omitted from this one commit.
 // WEFT_SKIP_PUSH is set because the scratch weft repo has no remote;
 // the commit half is what is under test.
 func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
@@ -215,9 +220,12 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 
 			// git always reports commit contents with forward slashes,
 			// regardless of the OS-native separators the layout carries.
-			base := configengine.LyxDirName
+			base := lyxdirs.LyxDirName
+			scratchBase := lyxdirs.DotLyxDirName
 			if tt.relPath != "." {
-				base = filepath.ToSlash(tt.relPath) + "/" + configengine.LyxDirName
+				prefix := filepath.ToSlash(tt.relPath) + "/"
+				base = prefix + lyxdirs.LyxDirName
+				scratchBase = prefix + lyxdirs.DotLyxDirName
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 
@@ -229,10 +237,10 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 				base + "/builder/state.json",
 			}
 			wantAbsent := []string{
-				base + "/webster/mutate.lock",
-				base + "/webster/" + websterengine.PauseFlagName,
-				base + "/webster/prompts/1.md",
-				base + "/builder/" + builderengine.PauseFlagName,
+				scratchBase + "/webster/mutate.lock",
+				scratchBase + "/webster/" + websterengine.PauseFlagName,
+				scratchBase + "/webster/prompts/1.md",
+				scratchBase + "/builder/" + builderengine.PauseFlagName,
 			}
 			for _, present := range wantPresent {
 				if !containsString(committedFiles, present) {

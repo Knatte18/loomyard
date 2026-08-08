@@ -2,6 +2,10 @@
 // through disk (including a persisted digest and per-card SHA trail, fields builderengine never
 // needed to persist), an absent state.json returning (nil, nil), a corrupt state.json returning a
 // wrapped error rather than a guessed value, and the state-mutation lease's cross-holder exclusion.
+// It also covers the webster/builder-loom scratch-dir split: SaveState writes state.json into the
+// durable dir and state.json.lock into a DISTINCT scratch dir, the durable dir ends up with no
+// .lock file at all, LoadState round-trips across the two dirs, and AcquireStateMutation's lease
+// file lands in the scratch dir.
 // All plain t.TempDir() files — no git, no subprocess spawns — Test Tier Purity Invariant.
 
 package websterengine_test
@@ -15,10 +19,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+// scratchSibling builds a durable dir and a DISTINCT scratch dir under one
+// shared temp base, mirroring the .lyx/_lyx mirrored-subpath split in
+// production, rather than reusing one temp dir for both — the split this
+// test file exists to pin would otherwise go untested.
+func scratchSibling(t *testing.T) (websterDir, scratchDir string) {
+	t.Helper()
+	base := t.TempDir()
+	return filepath.Join(base, "_lyx", "webster"), filepath.Join(base, ".lyx", "webster")
+}
+
 func TestState_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	websterDir := t.TempDir()
+	websterDir, scratchDir := scratchSibling(t)
 	want := &websterengine.State{
 		RunGUID:         "run-1",
 		PlanFingerprint: "abc123",
@@ -51,11 +65,27 @@ func TestState_RoundTrip(t *testing.T) {
 		SeenForkTranscripts: []string{"subagents/abc.jsonl"},
 	}
 
-	if err := websterengine.SaveState(websterDir, want); err != nil {
+	if err := websterengine.SaveState(websterDir, scratchDir, want); err != nil {
 		t.Fatalf("SaveState error = %v; want nil", err)
 	}
 
-	got, err := websterengine.LoadState(websterDir)
+	if _, err := os.Stat(filepath.Join(websterDir, "state.json")); err != nil {
+		t.Errorf("state.json missing from durable dir %s: %v", websterDir, err)
+	}
+	if _, err := os.Stat(filepath.Join(scratchDir, "state.json.lock")); err != nil {
+		t.Errorf("state.json.lock missing from scratch dir %s: %v", scratchDir, err)
+	}
+	entries, err := os.ReadDir(websterDir)
+	if err != nil {
+		t.Fatalf("ReadDir(websterDir) error = %v", err)
+	}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".lock" {
+			t.Errorf("durable dir %s contains a .lock file %q; want every lock relocated to the scratch dir", websterDir, e.Name())
+		}
+	}
+
+	got, err := websterengine.LoadState(websterDir, scratchDir)
 	if err != nil {
 		t.Fatalf("LoadState error = %v; want nil", err)
 	}
@@ -122,7 +152,7 @@ func TestState_RoundTrip(t *testing.T) {
 func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 	t.Parallel()
 
-	websterDir := t.TempDir()
+	websterDir, scratchDir := scratchSibling(t)
 	digest := &websterengine.Digest{
 		Batch:      "01-seam-extensions",
 		Status:     websterengine.DigestStatusDone,
@@ -142,11 +172,11 @@ func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 		},
 	}
 
-	if err := websterengine.SaveState(websterDir, want); err != nil {
+	if err := websterengine.SaveState(websterDir, scratchDir, want); err != nil {
 		t.Fatalf("SaveState error = %v; want nil", err)
 	}
 
-	got, err := websterengine.LoadState(websterDir)
+	got, err := websterengine.LoadState(websterDir, scratchDir)
 	if err != nil {
 		t.Fatalf("LoadState error = %v; want nil", err)
 	}
@@ -176,9 +206,9 @@ func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 func TestState_AbsentFileReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	websterDir := t.TempDir()
+	websterDir, scratchDir := scratchSibling(t)
 
-	got, err := websterengine.LoadState(websterDir)
+	got, err := websterengine.LoadState(websterDir, scratchDir)
 	if err != nil {
 		t.Fatalf("LoadState(absent) error = %v; want nil", err)
 	}
@@ -190,7 +220,7 @@ func TestState_AbsentFileReturnsNil(t *testing.T) {
 func TestState_CorruptFileErrors(t *testing.T) {
 	t.Parallel()
 
-	websterDir := t.TempDir()
+	websterDir, scratchDir := scratchSibling(t)
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
 		t.Fatalf("mkdir websterDir: %v", err)
 	}
@@ -198,7 +228,7 @@ func TestState_CorruptFileErrors(t *testing.T) {
 		t.Fatalf("write corrupt state.json: %v", err)
 	}
 
-	got, err := websterengine.LoadState(websterDir)
+	got, err := websterengine.LoadState(websterDir, scratchDir)
 	if err == nil {
 		t.Fatal("LoadState(corrupt) error = nil; want error")
 	}
@@ -212,14 +242,14 @@ func TestState_CorruptFileErrors(t *testing.T) {
 // fails, and after Release it succeeds — the property every verb's load-mutate-save section relies
 // on.
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
-	websterDir := t.TempDir()
+	scratchDir := t.TempDir()
 
-	held, err := websterengine.AcquireStateMutation(websterDir)
+	held, err := websterengine.AcquireStateMutation(scratchDir)
 	if err != nil {
 		t.Fatalf("AcquireStateMutation() error = %v; want nil", err)
 	}
 
-	_, locked, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, "mutate.lock"))
+	_, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "mutate.lock"))
 	if err != nil {
 		t.Fatalf("TryAcquireWriteLock() error = %v; want nil", err)
 	}
@@ -230,7 +260,7 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 	if err := held.Release(); err != nil {
 		t.Fatalf("Release() error = %v; want nil", err)
 	}
-	second, locked, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, "mutate.lock"))
+	second, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "mutate.lock"))
 	if err != nil || !locked {
 		t.Fatalf("TryAcquireWriteLock() after Release = locked=%v err=%v; want locked=true, err=nil", locked, err)
 	}
@@ -242,9 +272,9 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 // blocked), while a held run.lock reads as a live run owning the state — the signal the bracket
 // verbs' zombie-Master warning keys off (round fable-r1's F17).
 func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
-	websterDir := t.TempDir()
+	scratchDir := t.TempDir()
 
-	active, err := websterengine.RunActive(websterDir)
+	active, err := websterengine.RunActive(scratchDir)
 	if err != nil {
 		t.Fatalf("RunActive() on a free lock error = %v; want nil", err)
 	}
@@ -254,12 +284,12 @@ func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
 
 	// The probe must have released the lock it briefly took, so it is
 	// acquirable now.
-	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(websterDir, "run.lock"))
+	held, locked, err := lock.TryAcquireWriteLock(filepath.Join(scratchDir, "run.lock"))
 	if err != nil || !locked {
 		t.Fatalf("run.lock acquire after probe = locked=%v err=%v; want the probe to have released it", locked, err)
 	}
 
-	active, err = websterengine.RunActive(websterDir)
+	active, err = websterengine.RunActive(scratchDir)
 	if err != nil {
 		t.Fatalf("RunActive() on a held lock error = %v; want nil", err)
 	}

@@ -21,9 +21,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -117,7 +117,7 @@ func WeftWorktree(l *lyxcwd.Location) string {
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.
 // It is the junction target for lyx weft and the pathspec base for weft operations.
 func WeftLyxDir(l *lyxcwd.Location) string {
-	return filepath.Join(WeftWorktree(l), l.AnchorRel, configengine.LyxDirName)
+	return filepath.Join(WeftWorktree(l), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
 // ScopedPathspec returns a slice of pathspec entries, each being the join of relPath with each

@@ -333,7 +333,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	slug := filepath.Base(fixture.Hub)
 
-	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_pattern"}); err != nil {
+	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", ".lyx", "_pattern"}); err != nil {
 		t.Fatalf("WireJunctions(primary): %v", err)
 	}
 

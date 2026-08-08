@@ -61,8 +61,9 @@ Example:
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<host-name>-HUB)
 and wire everything: the host prime, weft prime, _board worktree, lyx-anchor
-subpath, repo-wide config, host junctions, .gitignore, and per-worktree module
-configs — a single command, no follow-up activation step required.
+subpath, repo-wide config, host junctions, and per-worktree module configs —
+a single command, no follow-up activation step required. Host junctions are
+excluded through the warp's .git/info/exclude, never a committed .gitignore.
 
   <host-name>            — host prime (the main working repo)
   <host-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
@@ -258,8 +259,9 @@ reported but never deleted here, since they are not fabric-managed.`,
 		Use:   "unwire",
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-host-worktree deactivation: it removes every host
-junction (_lyx and _pattern), clears the weft-side _lyx content, and reverts
-the managed .gitignore ".lyx/" entry.
+junction present (_lyx, .lyx, and _pattern) and their warp .git/info/exclude
+entries. It leaves every weft-side directory intact — weft-side content is
+never deleted by unwire.
 
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire

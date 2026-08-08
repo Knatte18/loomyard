@@ -1,7 +1,7 @@
 // leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: production code in internal/lyxtest
-// imports ONLY the standard library and internal/configengine, internal/lyxcwd, internal/weftname —
-// never internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli,
-// selfreportengine/selfreportcli, fabricengine/fabriccli).
+// imports ONLY the standard library and internal/configengine, internal/lyxcwd, internal/weftname,
+// internal/lyxdirs — never internal/configreg or any feature package (boardengine/boardcli,
+// ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli).
 // Tests that need real config seed it via SeedConfig with a configreg-free map[string]string (never
 // configreg types).
 
@@ -22,6 +22,7 @@ import (
 var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/configengine": true,
 	"github.com/Knatte18/loomyard/internal/lyxcwd":       true,
+	"github.com/Knatte18/loomyard/internal/lyxdirs":      true,
 	"github.com/Knatte18/loomyard/internal/weftname":     true,
 }
 
@@ -88,6 +89,6 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("lyxtest Leaf Invariant violated; imports outside the allowlist (stdlib + configengine, lyxcwd, weftname) found: %v", failures)
+		t.Errorf("lyxtest Leaf Invariant violated; imports outside the allowlist (stdlib + configengine, lyxcwd, weftname, lyxdirs) found: %v", failures)
 	}
 }

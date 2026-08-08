@@ -28,6 +28,15 @@ type CommandRunner func(argv []string, dir string, timeout time.Duration) (outpu
 type Options struct {
 	PauseRequested func() bool
 	RunCommand     CommandRunner
+	// ScratchDir is the directory this block's never-tracked artifacts —
+	// run.lock, state.json.lock, and the pause flag — are written to. An
+	// empty value defaults to runDir, for back-compat with a caller that has
+	// not yet split its scratch tree from its durable one. The engine never
+	// derives this path itself; the caller is told, never the engine (Cwd
+	// Resolution Invariant) — treadleengine stays off internal/lyxcwd and
+	// internal/lyxdirs so a caller such as perchengine, which knows its own
+	// .lyx-anchored geometry, is the one deriving it.
+	ScratchDir string
 }
 
 // Engine drives one treadle block's generalized round loop.
@@ -37,6 +46,7 @@ type Engine struct {
 	shuttle        Shuttle
 	pauseRequested func() bool
 	runCommand     CommandRunner
+	scratchDir     string
 }
 
 // New returns an Engine ready to run one treadle block's round loop.
@@ -47,6 +57,7 @@ func New(name string, runner RoundRunner, shuttle Shuttle, opts Options) *Engine
 		shuttle:        shuttle,
 		pauseRequested: opts.PauseRequested,
 		runCommand:     opts.RunCommand,
+		scratchDir:     opts.ScratchDir,
 	}
 }
 

@@ -78,7 +78,7 @@ Example:
 				return nil
 			}
 
-			st, err := builderengine.LoadState(c.builderDir)
+			st, err := builderengine.LoadState(c.builderDir, c.builderScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -286,12 +286,12 @@ Example:
 			// prevent. CurrentBatch clears to 0 only if it still points at
 			// the batch this poll classified; a concurrently-spawned batch's
 			// cursor is not this poll's to reset.
-			mutateLock, err := builderengine.AcquireStateMutation(c.builderDir)
+			mutateLock, err := builderengine.AcquireStateMutation(c.builderScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			freshState, err := builderengine.LoadState(c.builderDir)
+			freshState, err := builderengine.LoadState(c.builderDir, c.builderScratchDir)
 			if err != nil || freshState == nil {
 				_ = mutateLock.Release()
 				if err == nil {
@@ -307,7 +307,7 @@ Example:
 			if freshState.CurrentBatch == batchNumber {
 				freshState.CurrentBatch = 0
 			}
-			if err := builderengine.SaveState(c.builderDir, freshState); err != nil {
+			if err := builderengine.SaveState(c.builderDir, c.builderScratchDir, freshState); err != nil {
 				_ = mutateLock.Release()
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
