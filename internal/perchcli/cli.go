@@ -35,9 +35,10 @@ type perchCLI struct {
 	// invocation in PersistentPreRunE and reused for both perchCfg's
 	// judge_model resolution and decodeProfile's judge-model/model
 	// resolution — no second models.yaml read anywhere in the same run.
-	modelReg   modelspec.Registry
-	layout     *lyxcwd.Location
-	runDirBase string
+	modelReg       modelspec.Registry
+	layout         *lyxcwd.Location
+	runDirBase     string
+	scratchDirBase string
 }
 
 // Command returns the cobra command tree for the perch module.
@@ -154,6 +155,12 @@ Example:
 			// commit's RelPath-scoped pathspec never includes, silently
 			// stranding every artifact outside fabric.
 			c.runDirBase = perchengine.RunsDir(layout)
+			// Anchored at the same layout.AnchorPath() as runDirBase — the
+			// never-tracked half of the pair: run.lock, state.json.lock, and
+			// the pause flag live here instead of inside _lyx, so a block's
+			// two directories can never disagree about which anchor they
+			// belong to.
+			c.scratchDirBase = perchengine.ScratchDir(layout)
 			return nil
 		},
 	}
