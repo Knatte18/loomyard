@@ -116,6 +116,9 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 // real block state (state.json, round artifacts) but never its machine-local advisory-lock files
 // (run.lock, state.json.lock): committing those would leak runtime noise into durable fabric history
 // and materialize stale lock files on every other machine's fabric pull.
+// Per the mirrored-subpath decision, run.lock/state.json.lock live under the block's ".lyx" scratch
+// dir rather than its "_lyx" run dir, so the two lock files are planted there — outside the commit
+// pathspec entirely, with no exclude-pattern machinery needed to keep them out.
 // Uses the same deterministic engine-error skeleton as TestRunCLI_Run_FabricSyncRunsOnEngineError —
 // the sync path is identical for every outcome, so the cheapest deterministic exit exercises the
 // pathspec.
@@ -136,8 +139,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 		t.Fatalf("write profile fixture: %v", err)
 	}
 
-	// Stand in for a real block's run dir: state alongside the two lock
-	// files a real Engine.Run leaves behind (see the FabricSyncRunsOnEngineError
+	// Stand in for a real block's run dir (see the FabricSyncRunsOnEngineError
 	// test above for why this is planted straight into WeftPrime).
 	runDir := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
@@ -146,10 +148,23 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	for name, content := range map[string]string{
 		"state.json":        "{}",
 		"round-1-review.md": "placeholder",
-		"run.lock":          "",
-		"state.json.lock":   "",
 	} {
 		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write placeholder %s: %v", name, err)
+		}
+	}
+
+	// Stand in for the same block's ".lyx" scratch dir, where the two lock
+	// files a real Engine.Run leaves behind actually live.
+	scratchDir := filepath.Join(fixture.WeftPrime, lyxdirs.DotLyxDirName, "perch", "lock-exclusion")
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir placeholder scratch dir: %v", err)
+	}
+	for name, content := range map[string]string{
+		"run.lock":        "",
+		"state.json.lock": "",
+	} {
+		if err := os.WriteFile(filepath.Join(scratchDir, name), []byte(content), 0o644); err != nil {
 			t.Fatalf("write placeholder %s: %v", name, err)
 		}
 	}
@@ -170,14 +185,10 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 }
 
 // TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath is the regression guard perch lacked:
-// TestRunCLI_Run_FabricCommitExcludesLockFiles above only exercises RelPath ".", where the retired
-// ":(exclude)*.lock" pathspec entry happened to still work (a single leading "*" catches the whole
-// subtree at the root).
-// At a nested RelPath the retired pathspec's leading-wildcard bug would silently drop the ENTIRE
-// commit (see CONSTRAINTS.md's Cross-module exclusions bullet);
-// this test proves the deepened "**/_lyx/*/**/*.lock" git-exclude pattern (card 7) keeps perch's
-// two-deep run.lock/state.json.lock out while still landing the rest of the block state, with the
-// worktree geometry itself anchored two segments deep.
+// TestRunCLI_Run_FabricCommitExcludesLockFiles above only exercises RelPath ".".
+// This test proves the same "run.lock/state.json.lock live under .lyx, never under the committed
+// _lyx pathspec" split still keeps the two lock files out of the commit while still landing the
+// rest of the block state, with the worktree geometry itself anchored two segments deep.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	fixture := lyxtest.CopyPairedLocal(t)
@@ -215,10 +226,23 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	for name, content := range map[string]string{
 		"state.json":        "{}",
 		"round-1-review.md": "placeholder",
-		"run.lock":          "",
-		"state.json.lock":   "",
 	} {
 		if err := os.WriteFile(filepath.Join(runDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write placeholder %s: %v", name, err)
+		}
+	}
+
+	// Stand in for the same block's ".lyx" scratch dir, nested the same way,
+	// where the two lock files a real Engine.Run leaves behind actually live.
+	scratchDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), lyxdirs.DotLyxDirName, "perch", "nested-lock-exclusion")
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir placeholder scratch dir: %v", err)
+	}
+	for name, content := range map[string]string{
+		"run.lock":        "",
+		"state.json.lock": "",
+	} {
+		if err := os.WriteFile(filepath.Join(scratchDir, name), []byte(content), 0o644); err != nil {
 			t.Fatalf("write placeholder %s: %v", name, err)
 		}
 	}
