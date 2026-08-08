@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: scout-seam-conversion
 branch: scout-seam-conversion
 plan: _mill/plan
@@ -24,4 +24,15 @@ plan-review-r2  '2026-08-08T06:29:34Z'
 plan-fix-r2  '2026-08-08T06:30:30Z'
 plan-fix-r3  '2026-08-08T06:35:53Z'
 planned  '2026-08-08T06:36:18Z'
+implementing  '2026-08-08T06:36:50Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: seam-tests
+    state: pending
+  - name: docs-alignment
+    state: pending
 ```
