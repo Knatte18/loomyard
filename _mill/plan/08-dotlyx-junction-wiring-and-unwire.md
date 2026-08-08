@@ -45,6 +45,7 @@ Every card here is an edit or a create._
   - `internal/lyxdirs/dirs.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/drift.go`
 - **Edits:**
   - `internal/fabricengine/junctionnames.go`
 - **Creates:** none
@@ -54,6 +55,9 @@ Every card here is an edit or a create._
   Update the godocs on `junctionNames`, `WiredNames` and `RepoWiredNames` to record the full composition and to remove batch 7's stated deferral.
   State in `WiredNames`'s godoc that this set is what gets junctions and warp `.git/info/exclude` entries, and that it is deliberately **wider** than the pathspec/commit-routing set `pathspecNames` returns — the difference is exactly `structuralNeverCommittedDirs`, and that difference is what makes `.lyx` junctioned-and-excluded but never named in a git invocation.
   Also note that `filterHubReserved` is applied only to the config names: a structural name is never filtered, and `.lyx` is deliberately absent from `HubReservedNames()` for exactly that reason.
+  Record one more consumer in `WiredNames`'s godoc: `Healthy` (`internal/fabricengine/drift.go`) iterates `RepoWiredNames` and requires every wired junction to exist and point at its weft target, so widening the set makes fabric health require the `.lyx` junction from this commit range on — an already-wired worktree reports `CauseJunctionMissing` ("`.lyx` junction missing") until `lyx fabric reconcile` runs and card 46's adoption converts its real `.lyx` into the junction.
+  That is the intended upgrade signal, not a bug;
+  card 52 records the operator-facing half.
 - **Commit:** `feat(fabricengine): wire .lyx as a weft-backed junction`
 
 ### Card 46: add the .lyx-only content-adoption branch
@@ -196,6 +200,8 @@ Every card here is an edit or a create._
   add an assertion to one surviving unwire test that the CLI envelope no longer carries a `gitignore` key.
   Update `TestUnwire_NeverWiredHostIsIdempotentNoOp`'s expectations, which already expect `"not_present"` and must keep passing.
   In `junction_pattern_integration_test.go`, update any expectation of the wired name-set's size or contents now that `.lyx` is a member.
+  Check `healthreason_integration_test.go` and `cleanreason_integration_test.go` the same way: both drive `Healthy`/drift against wired fixtures, and `Healthy` now also requires the `.lyx` junction — fixtures wired through `WireJunctions` get it automatically, so expect updates only where a test enumerates junction names or counts rather than wiring through the real path;
+  if none is needed, say so in the commit message rather than silently skipping the check.
   In `structuraldirs_test.go`, extend batch 7's trio: the wired set now contains `.lyx` while the routing set still does not — this is the one assertion that pins the deliberate asymmetry between the two sets.
   In `clone_test.go`, assert `CloneHub` creates `<hub>/.lyx`, and assert reed's own `MkdirAll` remains idempotent against an already-created directory (both halves, since the second is what covers pre-fix hubs) — if `clone_test.go` cannot reach `reedengine` without an import cycle or a tier violation, put that second half in the new integration file instead and say so in the commit message.
 - **Commit:** `test(fabricengine): cover the .lyx junction lifecycle, adoption and unwire preservation`
@@ -232,7 +238,9 @@ Every card here is an edit or a create._
   the sentence "A future weft-backed module is wired by appending its directory name to `pathspec`'s template default" survives but must now say that this applies to *optional* directories only;
   and the `.lyx/` bullet in the **Durable vs ephemeral state** section, which says `.lyx` is "Untracked (listed in `.git/info/exclude`, never `.gitignore`)", is now true of both repos and should name both.
   Also correct the claim that the default pathspec is `_lyx _pattern`.
-  In `internal/fabricengine/doc.go`, update the passage describing the name-set as the config pathspec filtered against `HubReservedNames()`, and record the two operator-facing facts this batch establishes: downgrade is unsupported (a pre-fix `applyStaleRemoval` unwires `.lyx` and strands scratch inside the weft worktree), and the unwire output envelope changed (`weft_content` value set is now `"preserved"`|`"not_present"`, and the `gitignore` key is gone).
+  In `internal/fabricengine/doc.go`, update the passage describing the name-set as the config pathspec filtered against `HubReservedNames()`, and record the three operator-facing facts this batch establishes: downgrade is unsupported (a pre-fix `applyStaleRemoval` unwires `.lyx` and strands scratch inside the weft worktree);
+  upgrade is signalled through health — an existing worktree reports the `.lyx` junction missing (`Healthy` false, `CauseJunctionMissing`) until `lyx fabric reconcile` runs adoption, which is the documented remedy;
+  and the unwire output envelope changed (`weft_content` value set is now `"preserved"`|`"not_present"`, and the `gitignore` key is gone).
   Record there too that no code path removes a leftover committed `.gitignore` `.lyx/` block from a repo cloned by a pre-fix binary, with the manual remedy stated.
   In `manifest/designs/fabric-unified-view.md`, mark **Slice 9** shipped: rewrite its three bullets to describe what actually landed rather than what was planned — in particular that `.lyx` did **not** become "one more entry in the existing pathspec" but a structural, code-injected junction, since the shipped design deliberately contradicts the slice's own prediction — and keep the "Sequenced before slice 10" note, since slice 10 is still pending and still collides on `runCloneWithReset`.
   In `manifest/roadmap.md`, update the fabric item's slice status line so slice 9 reads as shipped and only slices 8 and 10 remain.
@@ -248,8 +256,8 @@ Every card here is an edit or a create._
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/classify.go`
   - `internal/perchcli/run.go`
-  - `internal/webstercli/weft.go`
-  - `internal/buildercli/weft.go`
+  - `internal/webstercli/sync.go`
+  - `internal/buildercli/sync.go`
   - `internal/fabriccli/weft_verbs.go`
   - `internal/lyxcwd/enforcement_test.go`
 - **Edits:** none
@@ -258,7 +266,7 @@ Every card here is an edit or a create._
 - **Moves:** none
 - **Requirements:** verification-only gate, no edits.
   Confirm by grep across the whole repo that, in production code: no call to `gitignore.Ensure`/`gitignore.Remove` names `.lyx` (only `internal/vscode`'s `.vscode/` call remains);
-  no `ScopedPathspec` call site anywhere passes `structuralNeverCommittedDirs` or `lyxdirs.DotLyxDirName` (check `internal/fabriccli/weft_verbs.go`, `internal/perchcli/run.go`, `internal/webstercli/weft.go`, `internal/buildercli/weft.go`, and `internal/fabricengine/unwire.go` if any pathspec construction survived card 49);
+  no `ScopedPathspec` call site anywhere passes `structuralNeverCommittedDirs` or `lyxdirs.DotLyxDirName` (check `internal/fabriccli/weft_verbs.go`, `internal/perchcli/run.go`, `internal/webstercli/sync.go`, `internal/buildercli/sync.go`, and `internal/fabricengine/unwire.go` if any pathspec construction survived card 49);
   no production file outside `internal/lyxdirs` contains the literals `"_lyx"` or `".lyx"` in path-construction context (this duplicates the machine check in `internal/lyxcwd/enforcement_test.go` and should already pass — a hit means a card reintroduced one);
   and `crossModuleMachineLocalExcludes` no longer appears anywhere, including in comments.
   If any check fails, fix it under the card that owns the file rather than here, then re-run this gate.
@@ -269,7 +277,7 @@ Every card here is an edit or a create._
 
 `verify: go test ./internal/fabricengine/... ./internal/fabriccli/... && go test -tags integration ./internal/fabricengine/... ./internal/fabriccli/...` — both edited Go packages, with the tagged run mandatory here rather than merely useful: every one of this batch's behavioural claims (junction creation, exclude seeding on both sides, adoption, collision refusal, unwire preservation, hub-`.lyx` creation) requires a real paired git fixture and lives behind `//go:build integration`.
 
-Covered files: `internal/fabricengine/dotlyxjunction_integration_test.go` (new), `unwire_test.go`, `junction_pattern_integration_test.go`, `structuraldirs_test.go`, `clone_test.go`, plus the package's reconcile/drift/health suites (`reconcile_stale_removal_test.go`, `reconcile_stale_registration_test.go`, `boardjunction_integration_test.go`, `remove_junctions_integration_test.go`, `config_driven_junctions_integration_test.go`) re-run as the regression net for "reconcile/drift/health still converge with `.lyx` in the wired name-set" — that claim is asserted by those existing suites continuing to pass with the widened set, not by a new test.
+Covered files: `internal/fabricengine/dotlyxjunction_integration_test.go` (new), `unwire_test.go`, `junction_pattern_integration_test.go`, `structuraldirs_test.go`, `clone_test.go`, plus the package's reconcile/drift/health suites (`reconcile_stale_removal_test.go`, `reconcile_stale_registration_test.go`, `boardjunction_integration_test.go`, `remove_junctions_integration_test.go`, `config_driven_junctions_integration_test.go`, `healthreason_integration_test.go`, `cleanreason_integration_test.go`, `open_integration_test.go`, `ready_integration_test.go`) re-run as the regression net for "reconcile/drift/health still converge with `.lyx` in the wired name-set" — that claim is asserted by those existing suites continuing to pass with the widened set, not by a new test.
 
 Cross-platform: junction creation goes through `internal/fslink`, already covered by `fslink_test.go`, so no new platform-specific assertion is added beyond keeping every new path assertion off hard-coded separators.
 Adoption's busy-directory behaviour is the one genuinely platform-divergent case and is asserted through its **error contract** — the wrapped message names the entry and the stop-the-daemons remedy — rather than by simulating an open handle, which is not portably reproducible under `go test`.

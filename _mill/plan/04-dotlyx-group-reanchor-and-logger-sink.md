@@ -5,7 +5,7 @@ task: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometr
 batch: dotlyx-group-reanchor-and-logger-sink
 number: 4
 cards: 8
-verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go vet -tags scout ./internal/scoutengine/... && go test -tags integration ./internal/reedengine/...
+verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go test -tags integration ./internal/reedengine/...
 depends-on: [3]
 ```
 
@@ -16,22 +16,24 @@ It also removes `internal/logger`'s persistent durable-sink file handle (open-ap
 
 It is one batch because the two halves land in the same files and the same test table: `internal/logger/sink.go` both re-anchors and loses its handle, and `cmd/lyx/constructoranchoring_test.go` is the single place the whole anchoring table is pinned, so splitting would put two batches on the same file.
 
-**External interface batch 5 and 8 consume:** `logger.LogsDir(l)` (renamed from `WorktreeLogsDir`, now `AnchorPath`-anchored), `scoutengine.DaemonStateFile`/`DaemonLock` fed an anchor path, and a durable sink that holds no open handle between records.
+**External interface batch 5 and 8 consume:** `logger.LogsDir(l)` (renamed from `WorktreeLogsDir`, now `AnchorPath`-anchored), `scoutengine.DaemonStateFile(l, lang)`/`DaemonLock(l, lang)` now `AnchorPath`-anchored, and a durable sink that holds no open handle between records.
+
+**Batch-local note — the stray `internal/shuttlecli/.lyx` needs no card.**
+The `.lyx` directory observed under `internal/shuttlecli/` during the discuss phase (holding `mux.json.lock`/`reed.json.lock`) is mux-era test debris: `mux.json` is `reed.json`'s pre-rename name (the `mux → reed` rename, commits `755f833d`/`93ad5b01`), and no code in the current tree writes either filename into a package directory.
+The complete set of `.lyx` writers is logger, scoutengine, shuttleengine, reedengine and burlerengine — all re-anchored by this batch — so the stray directory is deletable garbage, not a sixth writer.
 
 **Batch-local decision — `reedengine.HubLogsDir` keeps its `l.HubPath` anchor.**
 One shared reed server per hub needs one deterministic hub-anchored location;
 moving it into a worktree would destroy that.
 Only reed's *worktree-level* state sites (`reed.json`, `reed.lock`) re-anchor.
 
-**Batch-local decision — scout threads a new anchor value rather than re-purposing `Options.WorktreeRoot`.**
-`internal/scoutcli` computes the anchor alongside `resolveWorktreeRoot` and passes it in a new `Options.AnchorRoot` field;
-`scoutengine` cannot derive it itself, since its leaf allowlist excludes `internal/lyxcwd`.
-Two corrections to the framing the discussion used for this decision, both verified against the code and recorded here so a later reader is not misled:
-the LSP root is `rootURIFor(opts.TargetDir)`, **not** `WorktreeRoot`, so nothing about the language-server session moves with this change;
-and the supervised daemon's identity *is* its state-file path, so relocating that path to the anchor necessarily re-keys the daemon.
-That re-keying is the intended consequence of having one `.lyx` root per worktree — the point of the separate field is that the change is explicit and named, not that it can be avoided.
-Inside `ensureServer`/`ensureSupervised` the anchor **replaces** the `worktreeRoot` parameter rather than joining it, because those two path constructors are its only in-function uses;
-`Options.WorktreeRoot` survives as the field `scoutcli` populates and as the out-of-hub fallback `acquireConnection` substitutes when `AnchorRoot` is empty.
+**Batch-local decision — scout's re-anchor is a two-line base swap, because the threading already landed upstream.**
+The `scout-lyxcwd-accessors` task (commit `670cded7`, on `main`) already gave scout `Options.Layout *lyxcwd.Location`, the `DaemonStateFile(l *lyxcwd.Location, lang)` / `DaemonLock(l, lang)` signatures, the `Layout`-threading through `ensureServer`/`ensureSupervised`, and `scoutcli.resolveLocation`'s out-of-hub fallback — deliberately leaving the accessors on `l.WorktreePath()` and marking both with `// TODO(dotlyx)` so this task performs the base swap for the whole `.lyx` group at once.
+What remains here is exactly that swap: `l.WorktreePath()` → `l.AnchorPath()` inside the two accessor bodies, nothing else.
+Two facts recorded so a later reader is not misled:
+the LSP root is `rootURIFor(opts.TargetDir)`, so nothing about the language-server session moves with this change;
+and the supervised daemon's identity *is* its state-file path, so relocating that path to the anchor necessarily re-keys the daemon — the intended consequence of having one `.lyx` root per worktree.
+The out-of-hub path is unaffected by construction: `resolveLocation`'s synthesized `Location` carries `AnchorRel: "."`, so its `AnchorPath()` equals its `WorktreePath()` byte for byte.
 
 ## Cards
 
@@ -169,45 +171,29 @@ Inside `ensureServer`/`ensureSupervised` the anchor **replaces** the `worktreeRo
   make at least one case use a subpath-anchored fixture so the move is observable.
 - **Commit:** `refactor(reedengine): anchor worktree state on AnchorPath behind one helper`
 
-### Card 29: thread an anchor root into scout's daemon-state paths
+### Card 29: re-anchor scout's daemon-state accessors onto AnchorPath
 
 - **Context:**
   - `internal/lyxdirs/dirs.go`
-  - `internal/scoutengine/leaf_enforcement_test.go`
   - `internal/scoutengine/ensureserver.go`
+  - `internal/scoutengine/refs.go`
 - **Edits:**
   - `internal/scoutengine/daemonstate.go`
-  - `internal/scoutengine/refs.go`
-  - `internal/scoutengine/ensureserver.go`
-  - `internal/scoutengine/ensureserver_test.go`
-  - `internal/scoutengine/supervised_test.go`
-  - `internal/scoutengine/ensureserver_integration_test.go`
-  - `internal/scoutengine/supervised_integration_test.go`
-  - `internal/scoutengine/supervised_scout_test.go`
   - `internal/scoutcli/cli.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** add `AnchorRoot string` to `scoutengine.Options` (`refs.go`), documented as the anchor-relative root the daemon's ephemeral state tree hangs off, supplied by `internal/scoutcli` because `scoutengine`'s leaf allowlist excludes `internal/lyxcwd`.
-  It is a **new field, not a re-purposing** of `WorktreeRoot`: `WorktreeRoot` keeps its own name, value and meaning, and continues to be populated by `scoutcli`.
-  Document at the field that this deliberately does change the daemon's identity — the supervised daemon is keyed by its state-file path, so relocating that path to the anchor re-keys it — and that this is the intended, explicit consequence of having exactly one `.lyx` root per worktree, not a side effect of overloading an existing field.
-  Note also, in the field's godoc, that `WorktreeRoot` does **not** determine the LSP root: `rootURIFor(opts.TargetDir)` does, so nothing about the language-server session moves with this change.
-  Rename `DaemonStateFile`/`DaemonLock`'s first parameter from `worktreePath` to `anchorPath` and update their godocs to say the daemon is still a per-worktree, per-language singleton but its state tree is now a sibling of `_lyx` at the anchor.
-  Thread the value by **replacing** the `worktreeRoot` parameter of `ensureServer` and `ensureSupervised` with `anchorRoot` rather than adding a second one: inside those two functions, `worktreeRoot`'s only uses are `DaemonStateFile(worktreeRoot, lang)` and `DaemonLock(worktreeRoot, lang)` in `ensureSupervised` (plus one comment naming the `(worktreeRoot, lang)` key) and `ensureServer`'s forwarding of it, so once path construction moves to the anchor **no in-function use of `worktreeRoot` remains** and keeping it would leave a dead parameter.
-  Update that `(worktreeRoot, lang)`-key comment to `(anchorRoot, lang)`.
-  Resolve the out-of-hub fallback **once**, in `acquireConnection`: when `opts.AnchorRoot` is empty (a caller outside a lyx hub, where `resolveAnchorRoot` returns `""` while `resolveWorktreeRoot` still yields an absolute target dir), pass `opts.WorktreeRoot` in its place, so the out-of-hub path behaves exactly as it does today.
-  That fallback is the live use `Options.WorktreeRoot` retains inside `scoutengine` — document it at both fields.
-  Update the five test files that call `ensureServer`/`ensureSupervised` positionally to the new parameter list, or they fail to compile: `ensureserver_test.go` and `supervised_test.go` (untagged, so they break batch 4's own untagged `verify:` run), and `ensureserver_integration_test.go`, `supervised_integration_test.go` and `supervised_scout_test.go` (all three `//go:build scout`, so neither a plain `go test` nor `go vet -tags integration` compiles them — the batch's `verify:` carries a `-tags scout` vet specifically for these).
-  In the untagged pair, the existing calls pass the same value for both `targetDir`/`worktreeRoot` or a `t.TempDir()`;
-  keep each call's intent, just drop to the single anchor-root argument.
-  Give at least one untagged case an anchor root that differs from the worktree root, so the re-keying is observable rather than accidentally identical.
-  In `internal/scoutcli/cli.go`, add `resolveAnchorRoot(cwd, targetDir string) string` beside `resolveWorktreeRoot`, returning `layout.AnchorPath()` on a successful `lyxcwd.Resolve` and `""` otherwise, and add an `anchorRoot` parameter to `buildOptions` so **every** `buildOptions` call site threads it — six in total, two per verb (the single-arg path and the batch-mode path) across the `references`, `definition` and `symbol` verbs — plus the one hand-built `scoutengine.Options` literal.
-  The three `buildOptions`-driven verbs each need `anchorRoot := resolveAnchorRoot(cwd, dir)` alongside their existing `worktreeRoot := resolveWorktreeRoot(cwd, dir)` line.
-  `assertNoCallersCommand` is the fourth, and it does **not** follow that shape: it resolves its root inline — `var worktreeRoot string; if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil { registry = loaded; worktreeRoot = layout.WorktreePath() }` — never calling the shared `resolveWorktreeRoot` helper, and leaving `worktreeRoot` empty outside a hub rather than falling back to `filepath.Abs(dir)`.
-  Thread the anchor there by adding `var anchorRoot string` beside it and setting `anchorRoot = layout.AnchorPath()` inside that same `if` block, reusing the `layout` already in scope rather than calling `resolveAnchorRoot` a second time, then pass `AnchorRoot: anchorRoot` in the hand-built `baseOpts` literal.
-  Do not "fix" this verb's divergent inline resolution or its missing out-of-hub fallback — that is pre-existing behaviour outside this task's scope;
-  just make sure the anchor is threaded, or `assert-no-callers` would keep resolving a pre-slice-9 daemon identity in a subpath-anchored repo while the other three verbs resolve the new one.
-- **Commit:** `refactor(scout): resolve daemon state from an explicit anchor root`
+- **Requirements:** the heavy lifting for this card landed upstream in the `scout-lyxcwd-accessors` task: `Options.Layout *lyxcwd.Location` exists, `DaemonStateFile(l *lyxcwd.Location, lang)` and `DaemonLock(l, lang)` exist, and the value is already threaded through `ensureServer`/`ensureSupervised` — verify this by reading the current `daemonstate.go` rather than assuming.
+  What remains is the base swap that task deliberately deferred to this one:
+  in `DaemonStateFile` and `DaemonLock`, change the join base from `l.WorktreePath()` to `l.AnchorPath()` (the `lyxdirs.DotLyxDirName` token is already in place from card 5).
+  Delete the two `// TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.` comment lines — this is that migration.
+  Rewrite both godocs: the daemon state tree is `AnchorPath`-anchored so it is a directory sibling of the durable `_lyx` tree; the daemon remains a per-worktree, per-language singleton (an anchored repo has exactly one anchor); and note that relocating the state-file path deliberately **re-keys** the supervised daemon in subpath-anchored repos, because the daemon's identity is its state-file path — the intended consequence of having exactly one `.lyx` root per worktree.
+  Do not touch `Options`, `ensureServer`, `ensureSupervised`, or any signature — no caller changes, no test-file re-signaturing.
+  In `internal/scoutcli/cli.go`, update `resolveLocation`'s doc comment: its synthesized out-of-hub `Location` currently warns that "AnchorPath() is meaningless because AnchorRel was assumed rather than read from a .fabric-anchor marker" and that consumers "must never … read AnchorPath()".
+  With this card the accessors *do* read `AnchorPath()`, and the synthesized value remains safe by construction: `AnchorRel: "."` makes `AnchorPath()` equal `WorktreePath()` byte for byte.
+  Reword the warning to say exactly that — the synthesized value is valid for `WorktreePath()` and (equivalently, at `AnchorRel "."`) `AnchorPath()`, and must still never feed a caller reading `HubPath` or `RepoName`.
+  No code change in `scoutcli` — the fallback behaviour is unchanged.
+- **Commit:** `refactor(scoutengine): anchor daemon state on AnchorPath`
 
 ### Card 30: collapse the anchoring table and correct the anchoring docs
 
@@ -226,7 +212,7 @@ Inside `ensureServer`/`ensureSupervised` the anchor **replaces** the `worktreeRo
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** in `cmd/lyx/constructoranchoring_test.go`, collapse batch 3's two `.lyx` bases back into one: delete `dotLyxBase`'s `worktree`-based definition and the temporary `dotLyxAnchorBase` local, keeping a single `dotLyxBase := filepath.Join(anchor, ".lyx")`.
-  Retarget `logger.WorktreeLogsDir` to `logger.LogsDir` and move `scoutengine.DaemonStateFile`/`DaemonLock` onto an anchor-path argument, so in `TestConstructorAnchoring_SubpathAnchored` every worktree-level `.lyx` entry now moves down by `AnchorRel` exactly like the `_lyx` group, while `reedengine.HubLogsDir` alone stays byte-identical.
+  Retarget `logger.WorktreeLogsDir` to `logger.LogsDir`, and move the `scoutengine.DaemonStateFile(l, "go")`/`DaemonLock(l, "go")` assertions (signatures unchanged — the accessors already take `*lyxcwd.Location`) into the anchor-based group, so in `TestConstructorAnchoring_SubpathAnchored` every worktree-level `.lyx` entry now moves down by `AnchorRel` exactly like the `_lyx` group, while `reedengine.HubLogsDir` alone stays byte-identical.
   Rewrite the file-header comment accordingly — its current text says the `.lyx` group "stays byte-identical", which this batch inverts — and rename the sub-test comment "`.lyx` ephemeral group: stays WorktreePath-anchored, ignoring AnchorRel entirely" to state the new rule.
   Add an explicit assertion that there is exactly **one** `.lyx` root in the subpath-anchored fixture: every worktree-level `.lyx` constructor's result must have `filepath.Join(anchor, ".lyx")` as a prefix, and none may have `filepath.Join(worktree, ".lyx")` as its prefix.
   This is the regression guard for the two-roots bug the whole re-anchoring exists to remove.
@@ -239,9 +225,8 @@ Inside `ensureServer`/`ensureSupervised` the anchor **replaces** the `worktreeRo
 
 ## Batch Tests
 
-`verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go vet -tags scout ./internal/scoutengine/... && go test -tags integration ./internal/reedengine/...` — the six edited packages plus `cmd/lyx` for the anchoring table, a `-tags scout` **vet** because card 29 re-signatures `ensureServer`/`ensureSupervised` and three of their callers live behind `//go:build scout` (a tag neither the plain `go test` run nor the overview's module-wide `go vet -tags integration ./...` compiles), and a tagged reed run because reed's state-path change is the one whose real-substrate behaviour is covered by `internal/reedengine/contract_integration_test.go`.
-The scout gate is a `vet` (compile + analysis) rather than a `test` run on purpose: those three files spawn a real `gopls` daemon, which is a substrate dependency a per-batch gate must not require.
-Their behavioural run stays with the operator-driven `scout`-tagged suite, and this batch's stake in them is only that they still compile against the new signature.
+`verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go test -tags integration ./internal/reedengine/...` — the six edited packages plus `cmd/lyx` for the anchoring table, and a tagged reed run because reed's state-path change is the one whose real-substrate behaviour is covered by `internal/reedengine/contract_integration_test.go`.
+No `-tags scout` gate is needed: card 29 changes no signature (the `scout-lyxcwd-accessors` task already re-signatured every scout caller, tagged files included), so the `//go:build scout` test files compile exactly as they did before this batch.
 
 Covered files: `internal/logger/logsdir_test.go` (new), `internal/logger/sink_test.go`, `internal/logger/retention_test.go`, `internal/shuttleengine/rundir_test.go`, `internal/burlerengine/engine_test.go`, `internal/reedengine/contract_integration_test.go`, `cmd/lyx/constructoranchoring_test.go`.
 
@@ -249,7 +234,6 @@ Two assertions carry this batch.
 The first is card 25's rename-the-logs-directory-between-two-records test: it is the only observable proof that no handle survives a `writeDurable` call, it fails against today's code, and batch 8's content adoption is unsafe without it.
 The second is card 30's one-`.lyx`-root assertion on a subpath-anchored fixture: asserting each constructor's new value individually would pass an implementation that re-anchored some sites and missed others, whereas the prefix-exclusion form fails the moment any worktree-level consumer is left behind.
 
-Scout's anchoring is asserted through `cmd/lyx/constructoranchoring_test.go` for the path arithmetic, plus card 29's requirement that at least one untagged `ensureSupervised` case use an anchor root differing from the worktree root — without that, every existing call passes the same value twice and the re-keying would be untestable by construction.
-The end-to-end claim that a lookup in a subpath-anchored worktree resolves `daemon.json`/`daemon.lock` under the anchor is asserted in `internal/scoutcli`'s own tests if a suitable harness already exists there, and is otherwise left to the `scout`-tagged suite — state which applies in the implementer's commit message rather than silently skipping it.
-Note that the daemon's identity **does** change with this batch (it is keyed by its state-file path), which is intended;
-there is therefore no "singleton key unchanged" assertion to write, and card 29 documents that consequence at the `AnchorRoot` field instead.
+Scout's anchoring is asserted through `cmd/lyx/constructoranchoring_test.go` for the path arithmetic — card 30's subpath-anchored fixture is what makes the `WorktreePath` → `AnchorPath` swap observable, since at `AnchorRel "."` the two bases coincide.
+Note that the daemon's identity **does** change with this batch in subpath-anchored repos (it is keyed by its state-file path), which is intended;
+there is therefore no "singleton key unchanged" assertion to write, and card 29 documents that consequence in the accessors' godocs instead.

@@ -31,12 +31,12 @@ batches:
     name: webster-builder-loom-scratch-seam
     file: 03-webster-builder-loom-scratch-seam.md
     depends-on: [1]
-    verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/...
+    verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/... && go vet -tags smoke ./internal/buildercli/...
   - number: 4
     name: dotlyx-group-reanchor-and-logger-sink
     file: 04-dotlyx-group-reanchor-and-logger-sink.md
     depends-on: [3]
-    verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go vet -tags scout ./internal/scoutengine/... && go test -tags integration ./internal/reedengine/...
+    verify: go test ./internal/logger/... ./internal/shuttleengine/... ./internal/burlerengine/... ./internal/reedengine/... ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/... && go test -tags integration ./internal/reedengine/...
   - number: 5
     name: no-transients-under-lyx-guard
     file: 05-no-transients-under-lyx-guard.md
@@ -162,8 +162,8 @@ _Cross-cutting decisions every batch inherits._
 - `internal/buildercli/spawnbatch_test.go`
 - `internal/buildercli/status.go`
 - `internal/buildercli/status_test.go`
-- `internal/buildercli/weft.go`
-- `internal/buildercli/weft_integration_test.go`
+- `internal/buildercli/sync.go`
+- `internal/buildercli/sync_integration_test.go`
 - `internal/builderengine/pause.go`
 - `internal/builderengine/pause_test.go`
 - `internal/builderengine/runlevel.go`
@@ -228,6 +228,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/lyxdirs/dirs.go`
 - `internal/lyxdirs/doc.go`
 - `internal/lyxtest/doc.go`
+- `internal/lyxtest/leaf_enforcement_test.go`
 - `internal/lyxtest/lyxtest.go`
 - `internal/perchcli/cli.go`
 - `internal/perchcli/cli_integration_test.go`
@@ -252,14 +253,6 @@ _Cross-cutting decisions every batch inherits._
 - `internal/reedengine/strand_test.go`
 - `internal/scoutcli/cli.go`
 - `internal/scoutengine/daemonstate.go`
-- `internal/scoutengine/ensureserver.go`
-- `internal/scoutengine/ensureserver_integration_test.go`
-- `internal/scoutengine/ensureserver_test.go`
-- `internal/scoutengine/leaf_enforcement_test.go`
-- `internal/scoutengine/refs.go`
-- `internal/scoutengine/supervised_integration_test.go`
-- `internal/scoutengine/supervised_scout_test.go`
-- `internal/scoutengine/supervised_test.go`
 - `internal/shuttleengine/config_test.go`
 - `internal/shuttleengine/run.go`
 - `internal/shuttleengine/run_test.go`
@@ -280,9 +273,9 @@ _Cross-cutting decisions every batch inherits._
 - `internal/webstercli/recoverbatch.go`
 - `internal/webstercli/run.go`
 - `internal/webstercli/status.go`
+- `internal/webstercli/sync.go`
+- `internal/webstercli/sync_integration_test.go`
 - `internal/webstercli/verbs_test.go`
-- `internal/webstercli/weft.go`
-- `internal/webstercli/weft_integration_test.go`
 - `internal/websterengine/beginbatch.go`
 - `internal/websterengine/beginbatch_test.go`
 - `internal/websterengine/integration_test.go`

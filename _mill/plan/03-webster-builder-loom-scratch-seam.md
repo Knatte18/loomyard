@@ -5,7 +5,7 @@ task: .lyx hygiene -- relocate transients out of _lyx, fix .lyx junction geometr
 batch: webster-builder-loom-scratch-seam
 number: 3
 cards: 8
-verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/...
+verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/... && go vet -tags smoke ./internal/buildercli/...
 depends-on: [1]
 ```
 
@@ -65,7 +65,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
 - **Requirements:** this card re-signatures webster's transient accessors and re-keys every in-engine caller.
   In `state.go` (also edited by card 15, same batch): `AcquireStateMutation(scratchDir string)` MkdirAlls and locks `filepath.Join(scratchDir, stateMutateLockName)`;
   `LoadState(websterDir, scratchDir string)` and `SaveState(websterDir, scratchDir string, st *State)` keep `path = filepath.Join(websterDir, stateFileName)` but resolve `lockPath = filepath.Join(scratchDir, stateFileName+".lock")` and `os.MkdirAll(scratchDir, 0o755)` before writing.
-  Update `stateMutateLockName`'s godoc, which today says "Excluded from weft commits like every other `*.lock` (see webstercli's websterWeftPathspec)" — that mechanism is gone;
+  Update `stateMutateLockName`'s godoc, which today says "Excluded from fabric commits like every other *.lock (see webstercli's sync pathspec)" — that mechanism is gone;
   it now lives under `.lyx` and is never in a weft worktree at all.
   In `pause.go`, rename the parameter of `pauseFlagPath`, `RequestPause`, `PauseRequested` and `ClearPause` from `websterDir` to `scratchDir` and update their godocs and error strings accordingly ("create webster scratch dir %s").
   In `runlevel.go`: add `ScratchDir string` to `RunDeps` with a godoc naming it the `.lyx/webster` tree, update the struct's summary comment that enumerates `PlanDir, WebsterDir, ReportsDir, PromptsDir, WorktreeRoot`;
@@ -102,7 +102,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   `RunDeps`/`BeginDeps` literals gain `ScratchDir: c.websterScratchDir`;
   `ownerlessRunWarnings`'s parameter is renamed to `scratchDir` and its `websterengine.RunActive` call is fed the scratch dir, so every caller in `beginbatch.go`, `awaitbatch.go`, `recordbatch.go` and `recoverbatch.go` passes `c.websterScratchDir`.
   `OutcomePath(c.websterDir)`/`SummaryPath(c.websterDir)` in `recordbatch.go` keep the durable dir.
-  In `weft.go` no change is needed beyond what batch 1 already did — its pathspec still names `_lyx` only, which is now correct by construction rather than by exclusion.
+  In `sync.go` no change is needed beyond what batch 1 already did — its pathspec still names `_lyx` only, which is now correct by construction rather than by exclusion.
 - **Commit:** `refactor(webstercli): pass websterengine.ScratchDir to every transient accessor`
 
 ### Card 18: add builderengine.ScratchDir and re-key builder's transients
@@ -124,7 +124,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   In `state.go`: add `func ScratchDir(l *lyxcwd.Location) string` returning `filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, builderDirName)`;
   `AcquireStateMutation(scratchDir string)` locks `filepath.Join(scratchDir, stateMutateLockName)`;
   `LoadState(builderDir, scratchDir string)` / `SaveState(builderDir, scratchDir string, st *State)` keep `state.json` in `builderDir` and resolve the lock from `scratchDir`, MkdirAlling it first;
-  update `builderDirName`'s godoc to name both tokens, and `stateMutateLockName`'s godoc, which today says "Excluded from weft commits like every other `*.lock` (see buildercli's builderWeftPathspec)".
+  update `builderDirName`'s godoc to name both tokens, and `stateMutateLockName`'s godoc, which today says "Excluded from fabric commits like every other *.lock (see buildercli's sync pathspec)".
   In `pause.go`: rename the parameter of `PauseFlagPath`, `RequestPause`, `PauseRequested` and `ClearPause` from `builderDir` to `scratchDir`, updating godocs and error strings.
   In `runlevel.go`: add `ScratchDir string` to `RunDeps`;
   `os.MkdirAll(deps.ScratchDir, 0o755)` beside the existing builder-dir MkdirAll;
@@ -156,7 +156,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   `AcquireStateMutation` takes `c.builderScratchDir`;
   every `LoadState`/`SaveState` in `poll.go`, `spawnbatch.go` and `status.go` takes `(c.builderDir, c.builderScratchDir)`;
   the `RunDeps` literal in `run.go` and the `SpawnDeps`-style literal in `spawnbatch.go` gain `ScratchDir: c.builderScratchDir`.
-  Leave `weft.go`'s pathspec naming `_lyx` only.
+  Leave `sync.go`'s pathspec naming `_lyx` only.
 - **Commit:** `refactor(buildercli): pass builderengine.ScratchDir to every transient accessor`
 
 ### Card 20: move loom's status.json.lock under .lyx
@@ -221,7 +221,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/websterengine/webstergeom_test.go`
   - `internal/webstercli/cli_test.go`
   - `internal/webstercli/verbs_test.go`
-  - `internal/webstercli/weft_integration_test.go`
+  - `internal/webstercli/sync_integration_test.go`
   - `internal/builderengine/state_test.go`
   - `internal/builderengine/pause_test.go`
   - `internal/builderengine/runlevel_test.go`
@@ -231,7 +231,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/buildercli/spawnbatch_test.go`
   - `internal/buildercli/status_test.go`
   - `internal/buildercli/smoke_test.go`
-  - `internal/buildercli/weft_integration_test.go`
+  - `internal/buildercli/sync_integration_test.go`
   - `internal/loomengine/loomstatus_test.go`
   - `internal/loomengine/preflight_integration_test.go`
 - **Creates:** none
@@ -245,15 +245,14 @@ Adding the field is what makes those internal calls re-keyable without the engin
   (e) in `runlevel_test.go` for both engines, assert `run.lock` is taken in the scratch dir and that `ErrRunBusy` still fires for a second concurrent `Run`;
   (f) in `buildercli/pause_test.go` and `webstercli/verbs_test.go`, assert the CLI pause verb and the engine's own pause check resolve the same file — this is the regression the whole seam exists for, so assert it through the CLI, not by calling the engine accessor twice.
   Where a test fixture builds a webster/builder dir by hand, give it a sibling scratch dir under a `.lyx` path rather than reusing the same temp dir, or the split is untested.
-  `internal/buildercli/smoke_test.go` carries `//go:build smoke` and `internal/websterengine/runlevel_test.go`, `internal/websterengine/integration_test.go`, `internal/webstercli/weft_integration_test.go`, `internal/buildercli/weft_integration_test.go` and `internal/loomengine/preflight_integration_test.go` carry `//go:build integration` — keep each tag line first in its file.
+  `internal/buildercli/smoke_test.go` carries `//go:build smoke` and `internal/websterengine/runlevel_test.go`, `internal/websterengine/integration_test.go`, `internal/webstercli/sync_integration_test.go`, `internal/buildercli/sync_integration_test.go` and `internal/loomengine/preflight_integration_test.go` carry `//go:build integration` — keep each tag line first in its file.
 - **Commit:** `test: cover the webster, builder and loom scratch-dir split`
 
 ## Batch Tests
 
-`verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/...` — the five edited packages plus `cmd/lyx` for card 21's table, and a tagged run for the five `//go:build integration` files card 22 edits.
-`internal/buildercli/smoke_test.go` (`//go:build smoke`) is deliberately **not** run: it drives a real substrate spawn and is out of scope for a per-batch gate;
-card 22 only re-signatures its calls, and the overview's module-wide `go vet -tags integration ./...` does not compile it either, so its compile is confirmed by the repo-wide done gate rather than here.
-This is the batch's one acknowledged coverage gap and is stated deliberately rather than left silent.
+`verify: go test ./internal/websterengine/... ./internal/webstercli/... ./internal/builderengine/... ./internal/buildercli/... ./internal/loomengine/... ./cmd/lyx/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/... ./internal/buildercli/... ./internal/loomengine/... && go vet -tags smoke ./internal/buildercli/...` — the five edited packages plus `cmd/lyx` for card 21's table, a tagged run for the five `//go:build integration` files card 22 edits, and a `-tags smoke` **vet** because card 22 also re-signatures calls in `internal/buildercli/smoke_test.go` (`//go:build smoke`), a tag that nothing else in the pipeline compiles: the overview's module-wide `go vet -tags integration ./...` does not see it, and the repo-wide done gate (`go test ./... && go test -tags integration ./...`) carries no `-tags smoke` run either.
+The vet is compile-only on purpose — the smoke test drives a real substrate spawn, which a per-batch gate must not require;
+its behavioural run stays with the operator-driven smoke suite.
 
 Covered files: the twenty-one test files in card 22 plus `cmd/lyx/constructoranchoring_test.go`.
 

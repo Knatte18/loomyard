@@ -93,8 +93,8 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
   - `internal/loomengine/config.go`
   - `internal/planparser/parse.go`
   - `internal/ideengine/menu.go`
-  - `internal/buildercli/weft.go`
-  - `internal/webstercli/weft.go`
+  - `internal/buildercli/sync.go`
+  - `internal/webstercli/sync.go`
   - `internal/perchcli/run.go`
 - **Creates:** none
 - **Deletes:** none
@@ -122,12 +122,12 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
   - `internal/configengine/edit_test.go`
   - `internal/configengine/config_test.go`
   - `internal/shuttleengine/config_test.go`
-  - `internal/buildercli/weft_integration_test.go`
+  - `internal/buildercli/sync_integration_test.go`
   - `internal/boardcli/cli_test.go`
   - `internal/perchcli/run_integration_test.go`
   - `internal/reedengine/config_test.go`
   - `internal/reedengine/contract_integration_test.go`
-  - `internal/webstercli/weft_integration_test.go`
+  - `internal/webstercli/sync_integration_test.go`
   - `internal/loomengine/discussionpath_test.go`
   - `internal/loomengine/planpath_test.go`
   - `internal/loomengine/loomstatus_test.go`
@@ -200,15 +200,16 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
   Update the function's preamble comment, which currently explains the invariant carve-out for `"_pattern"` only, to note that `_lyx` now routes through `lyxdirs.LyxDirName` while `_pattern`/`_raddle` keep their literal form here.
 - **Commit:** `refactor(fabricengine): source _lyx from lyxdirs in the pollution scan`
 
-### Card 7: police both tokens and amend the leaf allowlists
+### Card 7: police both tokens and amend the lyxtest leaf allowlist
 
 - **Context:**
   - `internal/lyxdirs/dirs.go`
   - `internal/scoutengine/daemonstate.go`
   - `internal/lyxtest/lyxtest.go`
+  - `internal/scoutengine/seam_enforcement_test.go`
 - **Edits:**
   - `internal/lyxcwd/enforcement_test.go`
-  - `internal/scoutengine/leaf_enforcement_test.go`
+  - `internal/lyxtest/leaf_enforcement_test.go`
   - `internal/lyxtest/doc.go`
 - **Creates:** none
 - **Deletes:** none
@@ -218,9 +219,11 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
   add a `".lyx": {"internal/lyxdirs"}` row with a comment stating it is the never-git-tracked half of the pair and that the five private declarers were retired in this slice;
   delete the whole paragraph above `geometryTokenOwners` that explains `".lyx"` is deliberately unpoliced pending slice 9.
   The only `configengine` mentions in this file are inside those two comment lines and disappear with the rewrite — no import change is needed, and this test file must not gain a `lyxdirs` import (it compares directory strings, never the const).
-  In `internal/scoutengine/leaf_enforcement_test.go`, add `"github.com/Knatte18/loomyard/internal/lyxdirs": true` to `allowedImports` and name it in the file-header comment's allowed-import list.
-  In `internal/lyxtest/doc.go`, extend the sentence "its import set is stdlib plus internal/lyxcwd, internal/weftname, and internal/configengine" to include `internal/lyxdirs`.
-  Do not add `internal/lyxdirs` to any other package's allowlist — `internal/treadleengine`, `internal/githubclient`, `internal/modelspec`, `internal/tokenvocab` and `internal/pattern` do not import it, and an unused allowlist entry is exactly the drift this check exists to prevent.
+  In `internal/lyxtest/leaf_enforcement_test.go`, add `"github.com/Knatte18/loomyard/internal/lyxdirs": true` to its `allowedImports` map and extend the failure message's "(stdlib + configengine, lyxcwd, weftname)" list to name `lyxdirs` — card 3 gives `internal/lyxtest/lyxtest.go` a `lyxdirs` import, and this package's leaf check is an allowlist that would otherwise fail.
+  In `internal/lyxtest/doc.go`, extend the Leaf Invariant sentence naming "stdlib, internal/lyxcwd, internal/weftname, and internal/configengine" (and the matching file-header prose in `leaf_enforcement_test.go`) to include `internal/lyxdirs`.
+  `internal/scoutengine` needs **no** allowlist amendment: its old import allowlist was retired by the scout-full-module task, and the surviving `seam_enforcement_test.go` is a banned-list (`cobra`, `internal/output`, `internal/*cli`) that card 5's `lyxdirs` import never trips;
+  `lspclient_guard_test.go` guards only `lspclient.go`, which this task does not touch.
+  Do not add `internal/lyxdirs` to any other package's allowlist — `internal/treadleengine`, `internal/githubclient`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern` and `internal/lyxcwd` (whose own `leaf_enforcement_test.go` caps it at stdlib + `internal/gitexec`) do not import it, and an unused allowlist entry is exactly the drift these checks exist to prevent.
 - **Commit:** `test: police .lyx and re-own _lyx to internal/lyxdirs`
 
 ### Card 8: record the single-declarer invariant in the docs
@@ -228,7 +231,7 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
 - **Context:**
   - `internal/lyxdirs/dirs.go`
   - `internal/lyxcwd/enforcement_test.go`
-  - `internal/scoutengine/leaf_enforcement_test.go`
+  - `internal/lyxtest/leaf_enforcement_test.go`
 - **Edits:**
   - `CONSTRAINTS.md`
   - `docs/overview.md`
@@ -237,8 +240,8 @@ Its import set stays capped at stdlib plus `internal/gitexec` (Cwd Resolution In
 - **Moves:** none
 - **Requirements:** in `CONSTRAINTS.md`, add a new top-level section `## Lyxdirs Single-Declarer Invariant` stating that `internal/lyxdirs` is the sole declarer of `_lyx` and `.lyx`, that it stays stdlib-only (a zero-import leaf), that no other production file may name either literal in path-construction context, and that this is **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`).
   Place it immediately after `## Cwd Resolution Invariant` so the geometry clauses stay adjacent.
-  In the existing `## Scoutengine Leaf Invariant`, add `internal/lyxdirs` to the allowed-import prose list.
-  In the existing `## lyxtest Leaf Invariant`, add `internal/lyxdirs` to its stated import set.
+  In the existing `## lyxtest Leaf Invariant`, add `internal/lyxdirs` to its stated import set ("imports only stdlib, `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`").
+  The `## Scout Engine-Seam Invariant` needs no amendment — it is a banned-list and enumerates no allowed imports.
   In `docs/overview.md`, add a `├── internal/lyxdirs/` line to the source-tree block with the one-line description "the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf", placed next to `internal/lyxcwd/`, and add `internal/lyxdirs` to the shared-infrastructure package list in the paragraph that enumerates `internal/configengine`, `internal/gitexec`, … `internal/pattern`.
   Follow the repo's semantic-line-break markdown rule: one sentence per line, break long sentences at internal independent-clause boundaries, never hard-wrap at a fixed column.
 - **Commit:** `docs: record the lyxdirs single-declarer invariant`
@@ -250,8 +253,9 @@ The overview's module-wide `go build ./... && go vet -tags integration ./...` ad
 
 The behavioural assertions that matter here already exist and must keep passing unchanged, since no resolved path changes:
 `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals` (now covering `".lyx"` — this is the batch's own new coverage, and it fails if card 5 misses a declarer),
-`internal/scoutengine/leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`,
-`internal/lyxtest/leaf_enforcement_test.go`'s `TestLeafInvariant`,
+`internal/lyxcwd/leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly` (lyxcwd itself must not gain a `lyxdirs` import),
+`internal/scoutengine/seam_enforcement_test.go`'s `TestEngineSeamInvariant_BannedImports`,
+`internal/lyxtest/leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly` (with card 7's `lyxdirs` allowlist entry),
 `internal/treadleengine/seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly` (must still pass with **no** new allowlist entry),
 `cmd/lyx/constructoranchoring_test.go`'s two anchoring tests,
 and `internal/loomengine/loomstatus_test.go`, `internal/websterengine/webstergeom_test.go`, `internal/fabricengine/config_test.go`.
