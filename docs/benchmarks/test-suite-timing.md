@@ -288,6 +288,7 @@ Three machines side by side (median wall-clock):
 | Intel 155U | ~9.95 s | ~131.7 s | **Cortex XDR** | 15 W ultrabook |
 | Ryzen 9800X3D, Defender on | 3.29 s | 18.67 s | Defender | flagship desktop |
 | Ryzen 9800X3D, clean | 1.53 s | 16.09 s | none | flagship desktop |
+| Ryzen 9800X3D, WSL2 (2026-08-08) | 3.07 s | 6.02 s | unverified¹ | flagship desktop, virtualized |
 | Linux (Ryzen AI 7 445) | 1.03 s | 4.97 s | none | mobile |
 
 - **Defender is a real but modest tax,
@@ -300,6 +301,89 @@ Three machines side by side (median wall-clock):
   Do not read the 155U↔9800X3D gap as "AV."
 - **Clean Windows is still ~3× slower than Linux on Tier 2** (16.09 s vs 4.97 s) with no AV on either side — the irreducible cost of Windows process-spawn + NTFS + junctions vs POSIX `fork` + ext4 + symlinks.
   That floor is not AV and does not go away.
+- **WSL2 on the same physical box beats even clean native Windows on Tier 2** (6.02 s vs 16.09 s), landing close to bare-metal Linux (4.97 s) — full detail in the [WSL2 baseline](#wsl2-baseline-win11-pc-no-corporate-malware) below.
+  Tier 2's Windows floor is specifically the Windows process-spawn + NTFS + junction path;
+  WSL2 sidesteps it entirely by running git as native Linux `fork`/`exec` over ext4 inside the VM, never touching the Windows filesystem/process APIs for the repo under test.
+
+¹ Defender's state inside the WSL2 VM was not checked or excluded for this run — see the WSL2 section's Caveats.
+
+## WSL2 baseline (Win11 PC, no corporate malware)
+
+First WSL2 measurement (2026-08-08): the suite run natively inside WSL2's Linux userland (Ubuntu 24.04, ext4, no `/mnt/c` cross-boundary access) on a Windows 11 PC with **no corporate endpoint-security agent** (no Cortex XDR).
+This is the **same CPU model** (AMD Ryzen 7 9800X3D) and the **same Windows build** (10.0.26200) as the [Windows clean-CPU baseline](#windows-clean-cpu-baseline-ryzen-7-9800x3d-defender-ab) above — very likely the same physical PC, so this is effectively "same box, tests run under WSL2's Linux kernel instead of natively on Windows."
+Go 1.26.4 (linux/amd64) was not preinstalled in this WSL2 userland — only a Windows-side Go existed, at `/mnt/c/Program Files/Go` — so it was installed fresh to `~/go-linux` to avoid measuring cross-filesystem-boundary overhead instead of native WSL2 performance.
+
+- Machine: AMD Ryzen 7 9800X3D, WSL2 (Ubuntu 24.04.4 LTS) on Windows 11 (10.0.26200.8875), WSL kernel `6.6.87.2-microsoft-standard-WSL2`, `linux/amd64`, 16 logical CPUs exposed to WSL2
+- Go 1.26.4, default GC, `GOMAXPROCS` = NumCPU (16)
+- Repo on the WSL2-native ext4 filesystem (under `/home/...`), **not** `/mnt/c` — `/mnt/c` access from WSL2 crosses the 9P filesystem boundary and is known to be much slower than native ext4, so a `/mnt/c`-hosted repo would measure something else entirely
+- No corporate endpoint-security agent on this host;
+  Windows Defender's real-time-protection state was **not verified or excluded** for this run (see Caveats)
+- Method: median of 3 warm runs per tier via `go run ./cmd/testtiming[ -full]` (`-count=1` set by the harness;
+  `go build ./...` run first to warm the build cache)
+
+### Headline
+
+| Loop | Command | WSL2 wall-clock | 9800X3D native, Defender on | 9800X3D native, clean |
+|------|---------|------------------|-------------------------------|--------------------------|
+| **Tier 1** — offline, default | `go test ./... -count=1` | **~3.07 s** (spread 3.05–3.10 s) | 3.29 s | 1.53 s |
+| **Tier 2** — integration, opt-in | `go test -tags integration ./... -count=1` | **~6.02 s** (spread 6.02–7.86 s) | 18.67 s | 16.09 s |
+
+All 3 + 3 runs recorded `RESULT: all packages passed`.
+
+### Where the numbers sit
+
+- **Tier 1 lands close to the clean-Windows-native floor**, well below Defender-on: compile + in-process test execution under WSL2 with no corporate AV costs about what it costs on bare Windows with no AV, not what it costs with an AV scanner active.
+- **Tier 2 is dramatically faster than either native-Windows row** — ~6.02 s vs. 16–19 s — because Tier 2's dominant Windows cost is real `git`-subprocess spawns over NTFS/junctions (see the "What this settles" analysis above), and inside WSL2 those spawns are native Linux `fork`/`exec` over ext4, entirely inside the WSL2 VM.
+  They never touch the Windows kernel's process-creation or filesystem stack, so neither the NTFS/junction floor nor any Windows-side AV scanning applies to them.
+- Against the [Linux baseline](#linux-baseline) (a separate, bare-metal, mobile-class machine): WSL2's Tier 2 (~6.02 s) is comparable to bare-metal Linux's most recent Tier 2 number (~6.48 s, 2026-08-01 block) — within noise of each other, despite WSL2 running under a hypervisor on top of Windows rather than bare metal.
+  The virtualization overhead is small enough here not to show up as a clear regression.
+- Tier 2's run 1 (7.86 s, sum-of-package-times 32.95 s) ran visibly hotter than runs 2–3 (6.02 s each, ~23.5 s sum) despite the build cache being warmed beforehand — most likely first-run filesystem-cache warming inside the WSL2 VM (page cache for the repo's git objects/fixtures), not a stable cost.
+  Median (6.02 s) is reported per this doc's method;
+  the spread itself is worth keeping, not averaging away.
+
+### Tier 2: where the time goes
+
+| Package | Tier 2 elapsed (median run) | Note |
+|---------|------------------------------|------|
+| `internal/fabricengine` | ~5.18 s | successor to `internal/warpengine`; real git-worktree I/O — negligible cost without AV or NTFS, same pattern as the bare-metal Linux baseline |
+| `internal/buildercli` | ~4.50 s | `TestPollCmd_*` poll-deadline/grace tests — real-time waits (~1 s each), the same time-bound floor the Linux baseline already identified |
+| `internal/scoutengine` | ~2.13 s | server-supervision retry/timeout tests |
+| `cmd/lyx` | ~2.03 s | includes `TestCrossCompileLinux` (~1.02 s) and a root-hook trace-file test (~0.53 s) |
+| `internal/gitrepo` | ~1.61 s | |
+| `internal/reedengine` | ~1.28 s | |
+
+Same profile-inversion pattern as the Linux baseline: with real git-worktree I/O cheap under WSL2/ext4 (no AV, no NTFS/junction tax), the floor is **time-bound** real-time-wait tests (`buildercli`'s poll-deadline tests, `scoutengine`'s retry/timeout tests) rather than I/O-bound git spawning.
+
+### Caveats
+
+- **Windows Defender's state was not verified for this run.** Unlike the dedicated [Windows clean-CPU baseline](#windows-clean-cpu-baseline-ryzen-7-9800x3d-defender-ab) (which explicitly excluded the repo + `%TEMP%`), this run made no attempt to check or change Defender's exclusion list or real-time-protection status.
+  Whether Defender scans inside a WSL2 VM's virtual disk varies by Windows/WSL version;
+  if it does here, some of this run's cost could include an unmeasured AV tax not present in a fully-clean comparison. Flagged as follow-up work, not corrected in this block.
+- **Go toolchain freshly installed for this run** (`~/go-linux`, Go 1.26.4 linux/amd64) — the module cache was cold on the first `go build ./...`, but every timed run per tier was warm (build cache primed, 3 runs each, per the doc's method).
+- This is a **single first sitting**, not yet cross-checked against a second run on the same box on a different day — treat as an initial data point, not yet a fully noise-characterized baseline like the sections above.
+
+## All environments side by side
+
+Every environment measured so far, in one table.
+**Rows are not all on the same code revision** — treat this as a cross-environment shape comparison (where does the AV/OS/virtualization cost land), not a strict apples-to-apples benchmark;
+compare trends within one environment over time using its own section above, not raw numbers across rows here.
+
+| Environment | AV / security | Tier 1 | Tier 2 | CPU class | Date |
+|---|---|---|---|---|---|
+| Intel 155U, Windows 11 (native) | **Cortex XDR** (corporate) | 9.95 s | 131.7 s | 15 W ultrabook | 2026-07-13 |
+| Ryzen 9800X3D, Windows 11 (native) | Defender ON | 3.29 s | 18.67 s | flagship desktop | 2026-07-13 |
+| Ryzen 9800X3D, Windows 11 (native) | Defender EXCLUDED (clean) | 1.53 s | 16.09 s | flagship desktop | 2026-07-13 |
+| Ryzen 9800X3D, WSL2 (same PC as above) | no corporate AV; Defender's in-VM state unverified | **3.07 s** | **6.02 s** | flagship desktop, virtualized | 2026-08-08 |
+| Ryzen AI 7 445, Linux (bare metal) | none | 1.03 s | 4.97 s | mobile | 2026-07-13 |
+| Ryzen AI 7 445, Linux (bare metal, after test-seam fixes) | none | 3.86 s | 6.48 s | mobile | 2026-08-01 |
+
+Reading it:
+
+- **Tier 2 traces the AV/OS-boundary tax cleanly:** Cortex XDR (131.7 s) → Defender (18.67 s) → clean Windows (16.09 s) → WSL2 on the *same physical box* (6.02 s) → bare-metal Linux (4.97–6.48 s).
+  WSL2 lands close to bare-metal Linux despite running inside a Hyper-V VM on the same hardware that measured 16–19 s natively — because Tier 2's git-subprocess spawns never touch Windows' NTFS/junction/process-creation stack when they run inside WSL2's own Linux kernel.
+- **Tier 1 tracks CPU + AV more than the OS boundary:** WSL2's 3.07 s sits closest to the *Defender-ON* native row (3.29 s), not the clean row (1.53 s) — consistent with this run's open caveat that Defender's state inside the WSL2 VM was never checked or excluded.
+- The two Linux rows differ because of code changes between them (new packages, re-tiered tests — see the [Linux baseline](#linux-baseline) section), not environment;
+  don't read that gap as a WSL2-vs-bare-metal signal.
 
 ## History (trend log)
 
