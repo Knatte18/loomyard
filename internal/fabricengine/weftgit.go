@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 const (
@@ -53,20 +54,23 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 }
 
 // seedWeftArtifactExcludes appends fabric's own operational artifacts — the
-// .weft/ lock directory and gitrepo's push lock file — to the weft repo's
-// .git/info/exclude, line-exact idempotent (the same discipline as
-// seedGitExclude). It no longer carries any module's machine-local patterns:
-// every module transient now lives under .lyx (see the Durable-vs-Ephemeral
-// State Invariant in CONSTRAINTS.md) and never enters a weft worktree, so
-// there is nothing cross-module left to exclude here. Without this seeding,
+// .weft/ lock directory, gitrepo's push lock file, and lyxdirs.DotLyxDirName
+// — to the weft repo's .git/info/exclude, line-exact idempotent (the same
+// discipline as seedGitExclude). It is the sole owner of that file's
+// content: one `.lyx/` pattern now keeps every module's machine-local
+// scratch untracked in the weft repo, replacing the three deep wildcard
+// patterns batch 6 deleted, and no .gitignore is ever committed in weft
+// either — .git/info/exclude wins there because it needs no commit, no
+// pathspec change, and no new file in the weft root. Without this seeding,
 // every weft worktree that has ever run a weft-git verb reports fabric's own
-// artifacts as untracked dirt forever: Remove's no-force dirty gate then
-// refuses with a "run lyx fabric sync" hint that a pathspec-scoped sync can
-// never satisfy. The exclude file lives in the repo's common gitdir, so one
-// seeding covers every linked weft worktree, and — because excludes are
-// evaluated at status time — it also heals worktrees that already carry the
-// artifacts as untracked (though not ones where a prior sync already
-// committed them; see commitWeft's doc comment for that limit).
+// artifacts (and, now, .lyx scratch) as untracked dirt forever: Remove's
+// no-force dirty gate then refuses with a "run lyx fabric sync" hint that a
+// pathspec-scoped sync can never satisfy. The exclude file lives in the
+// repo's common gitdir, so one seeding covers every linked weft worktree,
+// and — because excludes are evaluated at status time — it also heals
+// worktrees that already carry the artifacts as untracked (though not ones
+// where a prior sync already committed them; see commitWeft's doc comment
+// for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
 	stdout, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--git-path", "info/exclude"},
@@ -93,7 +97,7 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	}
 	contentStr := string(content)
 
-	entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName}
+	entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/"}
 	for _, entry := range entries {
 		present := false
 		for _, line := range strings.Split(contentStr, "\n") {

@@ -94,6 +94,22 @@ func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
 		return err
 	}
 
+	// Seed the weft-side .lyx exclude here, not only from ensureWeftLockDir: wiring
+	// already materialises the weft-side target (seedLyxJunction's os.MkdirAll(target,
+	// ...) above), so the exclude entry is guaranteed to exist before anything writes
+	// into .lyx. Seeding only from ensureWeftLockDir would leave the window between
+	// wiring and the first weft-git verb open, during which scratch shows as untracked
+	// dirt and trips Remove's no-force dirty gate. ensureWeftLockDir keeps calling the
+	// same single owner as the self-healing path for machines that never re-wire — that
+	// call is not removed.
+	// Resolved via WeftWorktreePath(l, slug), the same base HostJunctions computes its
+	// targets from — never derived from a junction record's Target parent, since Target
+	// is filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, name), whose parent is the
+	// worktree root only when AnchorRel == "." and a subdirectory otherwise.
+	if err := seedWeftArtifactExcludes(WeftWorktreePath(l, slug)); err != nil {
+		return err
+	}
+
 	// Append junction names to git-exclude
 	if err := seedGitExclude(l, slug, names); err != nil {
 		return err
