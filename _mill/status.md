@@ -59,7 +59,9 @@ batches:
     commit_sha: d5d69f67424097e14b9d7a3198bf1d814382b073
     verify_baseline_failures: []
   - name: dotlyx-group-reanchor-and-logger-sink
-    state: pending
+    state: running
+    implementer_session: 4b400b4a-972d-4968-bccf-6a57abaea3e0
+    start_sha: 7e8da8e3a073b44cb2acbca8fe63a99eca2749b6
     verify_baseline_failures: []
   - name: no-transients-under-lyx-guard
     state: pending
