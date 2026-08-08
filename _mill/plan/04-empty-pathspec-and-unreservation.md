@@ -44,7 +44,8 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   The trailing comment is retained verbatim, still on the same line, with the same two-space gap before `#`.
   Do not remove the `pathspec` key: `configengine.Load` reports a missing-key error and tells the operator to run `lyx config reconcile`, so removing it would break every deployed `fabric.yaml`.
   The empty-string-versus-null distinction matters because `yamlengine.applyExistingOverrides` copies an existing leaf's value, tag **and** style, so a tag difference would propagate into every deployed config's round-trip.
-  `strings.Fields("")` returns nil either way, so runtime behaviour is identical — the choice is about keeping the YAML type stable as a string.
+  `strings.Fields("")` returns an **empty, non-nil** `[]string` (it allocates via `make([]string, 0)`), not nil — and it does so for a null scalar too, so runtime behaviour is identical either way and the choice is purely about keeping the YAML type stable as a string.
+  Do not restate this as "yields nil" anywhere: card 18 depends on the distinction.
   Do not set the value to `_lyx`: the Durable-vs-Ephemeral State Invariant makes `_lyx`/`.lyx` structural and injected in code via `structuralCommittedDirs`/`structuralNeverCommittedDirs` precisely so no operator-editable config value can tear the durable tree away.
 - **Commit:** `refactor(fabricengine): empty template.yaml's pathspec default`
 
@@ -66,8 +67,11 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   Apply card 17 first, run this test, read the real bytes out of the failure message, and copy those into the assertion — do not assume `pathspec: ""` survives verbatim.
   Update the failure message on line 481 so it names the empty default rather than `_pattern`.
   In `internal/configcli/configcli_integration_test.go` line 67 and `internal/fabricengine/template_test.go`, the `{"_lyx", "_pattern"}` expectations become whatever the empty default now yields — for the wired-name set that is `{_lyx, .lyx}`, and for the routing set `{_lyx}`.
-  Add a case to `internal/fabricengine/template_test.go` proving an empty `pathspec` yields `Config.Dirs() == nil` and that `pathspecNames`/`junctionNames` degrade to the structural sets alone without panicking on the nil slice — that nil-slice path is new behaviour this batch creates and nothing currently pins it.
-- **Commit:** `test(config): assert the empty pathspec default and its nil Dirs() degradation`
+  Add a case to `internal/fabricengine/template_test.go` proving an empty `pathspec` yields an empty `Config.Dirs()` and that `pathspecNames`/`junctionNames` degrade to the structural sets alone over it.
+  Assert `len(cfg.Dirs()) == 0`, **never** `cfg.Dirs() == nil`: `Config.Dirs()` is `strings.Fields(c.Pathspec)`, and Go's `strings.Fields("")` returns a non-nil zero-length slice, so a `== nil` assertion fails on every run regardless of anything this batch changes.
+  `reflect.DeepEqual(cfg.Dirs(), []string{})` is an acceptable alternative spelling; a `== nil` comparison is not.
+  No production behaviour turns on the distinction — `dedupUnion` and `filterHubReserved` range over nil and empty slices identically — but the test assertion does.
+- **Commit:** `test(config): assert the empty pathspec default and its empty Dirs() degradation`
 
 ### Card 19: Drop `"_raddle"` from `HubReservedNames()` and correct its doc comments
 
@@ -100,7 +104,7 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** The shared `junctionNames` fixture at line 172 is currently `[]string{"_lyx", "_pattern"}` and becomes empty — `[]string{}` — modelling the post-change production call site, where `pathspec: ""` makes `Config.Dirs()` nil and `Topology.Add` passes nil through.
+- **Requirements:** The shared `junctionNames` fixture at line 172 is currently `[]string{"_lyx", "_pattern"}` and becomes empty — `[]string{}` — modelling the post-change production call site, where `pathspec: ""` makes `Config.Dirs()` an empty slice that `Topology.Add` passes straight through.
   This is safe for the injected-junction-name arm because the "junction-only name is reserved" sub-test at lines 213-220 supplies its own local `[]string{"_custom"}` fixture and does not read the shared one — verify that before editing.
   The sub-test at lines 232-246, "default pathspec union reserves exactly six names", must be renamed and recounted, not decremented: `wantReserved` at line 238 becomes exactly `[]string{"_lyx", "_board", "_portals", "_launchers"}` — **four** names.
   Two names leave, not one: `_raddle` because `HubReservedNames()` drops it, and `_pattern` because an empty `pathspec` removes it from the `junctionNames` union.
@@ -144,7 +148,8 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   In `internal/fabricengine/hostjunction_test.go`, finish the half of the `no_raddle_names` sub-test batch 3 deliberately left alone: batch 3 already retargeted its junction-name input at line 199, so what remains is the assertion body at lines 200-204 and the sub-test's own title.
   Its stated premise — that `HostJunctions` never yields a `_raddle` entry, "forbidden by design" — **inverts**: once `_raddle` is un-reserved, a `pathspec` entry naming it would legitimately wire a junction.
   Re-point the sub-test at a still-reserved name (`_board`, `_portals`, or `_launchers`), rename it accordingly, and update the scope-guard comment at line 191, rather than leaving a guard whose stated rationale is no longer true.
-  Do not delete it: it is the only assertion that `HostJunctions` respects the hub-reserved block set at all.
+  Do not delete it, but do not justify it as a reservation check either: `HostJunctions` takes `names` as a plain slice and returns one record per entry in that slice's own order, doing no `HubReservedNames`/`filterHubReserved` filtering of its own, so there is nothing here that pins `HostJunctions` enforcing reservation — `TestFilterHubReserved` and `TestIsReservedHubName` in `junctionnames_test.go` own that property.
+  State the accurate rationale in the reworded sub-test comment instead: it is a scope guard that `HostJunctions` returns exactly the caller-supplied names and never augments them with a hub-structural entry of its own.
   Converge this file's remaining `_raddle` expectations in the same pass.
 - **Commit:** `test(fabricengine): converge structural, add, and config expectations on the un-reserved names`
 
@@ -204,7 +209,8 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
 - **Moves:** none
 - **Requirements:** `TestIsReservedHubName_Pattern` at lines 132-141 asserts the exact opposite of the new truth and must be **inverted and renamed**, not merely edited — it is the only test pinning `_pattern` as a reserved slug.
   Rename it to `TestIsReservedHubName_PatternNoLongerReserved` (or equivalent) and assert `fabricengine.IsReservedHubName("_pattern", nil) == false`.
-  Pass `nil` rather than the old `[]string{"_lyx", "_pattern"}` fixture: with `pathspec` empty, nil is what the production call site now supplies, and injecting `_pattern` through `junctionNames` would make the assertion trivially reserved again and prove nothing.
+  Pass `nil` rather than the old `[]string{"_lyx", "_pattern"}` fixture: with `pathspec` empty the production call site supplies no junction names at all, and injecting `_pattern` through `junctionNames` would make the assertion trivially reserved again and prove nothing.
+  `IsReservedHubName` only ranges over that parameter, so nil and an empty slice are interchangeable here; nil is the simpler literal.
   Rewrite the doc comment at lines 132-135, which currently claims `_pattern` sits in the reserved set alongside `_raddle`.
   Add a second test in the same file asserting `fabricengine.IsReservedHubName("_raddle", nil) == false`, with a doc comment stating that raddle has converged on an anchor-level `_lyx/raddle/` design with no hub-level presence, so the name is no longer reserved.
   This guard belongs here, in `package lyxcwd_test`, because this file already imports `internal/fabricengine` for exactly this kind of assertion.
