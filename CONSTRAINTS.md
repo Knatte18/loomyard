@@ -47,7 +47,7 @@ Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_ly
 
 - `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception `reedengine.HubLogsDir` (hub-anchored).
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
-- `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key (optional dirs only, e.g. `_pattern`).
+- `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key, which is reserved for optional, explicitly-named dirs only.
 - `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
 - `<hub>/.lyx` is hub-level geometry alongside `<hub>/_board`, created by `fabricengine.CloneHub` — a real directory, never a junction, reserved so no worktree slug can claim the name.
 - **Enforced by** `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `internal/fabricengine/structuraldirs_test.go`, `template_test.go`, `dotlyxjunction_integration_test.go`.
@@ -183,7 +183,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   see `fabric-unified-view.md`'s "Scope boundary" section for the current warp-mutation call sites.
 - **Orchestration, not agent.**
   The weft commit is Go calling the engine in-process at a round/phase boundary the loop owner (loom, or perch's CLI standalone) controls — never an LLM agent, not raw git, not by shelling `lyx fabric`.
-  Agents ride the file contract: they **write** overlay files into `_lyx`/`_raddle` via the junction;
+  Agents ride the file contract: they **write** overlay files into `_lyx` via the junction — raddle content lives at `_lyx/raddle/` and therefore arrives through this same junction;
   Go **reads and commits** them.
   An agent does commit its own code to the **host** repo (commit-per-fix) — the weft, never.
   **Board carve-out:** `internal/boardengine`'s writes to `weft:main` are the one exception to timing control — any LLM session, in any worktree, may trigger a board write at any time — but module ownership still holds (board's git flows through `Bolt`, never raw git);
@@ -197,7 +197,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
   `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
 - **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
-- **Unwire** removes host junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx`/`_pattern` content is always preserved.
+- **Unwire** removes host junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
   Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
   Never-committed routing: `internal/fabricengine/classify_test.go`, `structuraldirs_test.go`, `internal/fabriccli/cli_test.go`.
