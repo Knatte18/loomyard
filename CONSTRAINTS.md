@@ -43,20 +43,15 @@ Fuller design/how-to lives in godoc and `docs/`.
 
 ## Durable-vs-Ephemeral State Invariant
 
-Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to, and `_lyx` holds tracked content only.
+Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to. `_lyx` holds tracked content only.
 
-- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — the sole exception is `reedengine.HubLogsDir`, which is hub-anchored.
-- No engine derives its own `.lyx` path.
-  Each module exposes a scratch accessor beside its durable one, and every consumer is handed the value, so a caller passing the wrong tree is a compile error rather than a silently-broken pause flag.
-- **Enforced by** `cmd/lyx/notransients_test.go` (`TestNoTransientsUnderLyx`) and `cmd/lyx/constructoranchoring_test.go`.
-  The mirrored-subpath rule for a *newly added* transient is a review obligation on top of the machine check.
-- **Structural directories.** `_lyx` and `.lyx` are **structural** — injected by `internal/fabricengine` as `structuralCommittedDirs` and `structuralNeverCommittedDirs` — and are never read from `fabric.yaml`, whose `pathspec` key now names genuinely optional directories only (`_pattern` today).
-  Geometry is structural, never config/env-overridable, so a list an operator can edit is not where obligatory geometry may live: every lyx module fails without both directories existing, and a `fabric.yaml` dropping `_lyx` from `pathspec` would tear away the durable tree, while one omitting `.lyx` would leave machine-local scratch unwired.
-- **Wired name-set is wider than the routing set.** `.lyx` is a member of the wired name-set (`WiredNames`/`RepoWiredNames` — what gets a junction and a warp `.git/info/exclude` entry) but never a member of the pathspec/commit-routing set (`PathspecNames` — what a git invocation ever names).
-  The difference between the two sets is exactly `structuralNeverCommittedDirs`.
-- **`<hub>/.lyx` is hub-level geometry.** Alongside `<hub>/_board`, `<hub>/.lyx` is a fabric-recognised hub-level element created by `fabricengine.CloneHub`.
-  It stays a real directory, never a junction — the hub itself is not a git repo, so there is nothing to exclude and no weft to point at — and it is reserved so no worktree slug can claim the name.
-- **Enforced by** `internal/fabricengine/structuraldirs_test.go`, `internal/fabricengine/template_test.go`, and `internal/fabricengine/dotlyxjunction_integration_test.go`.
+- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception `reedengine.HubLogsDir` (hub-anchored).
+- No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
+- `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key (optional dirs only, e.g. `_pattern`).
+- `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
+- `<hub>/.lyx` is hub-level geometry alongside `<hub>/_board`, created by `fabricengine.CloneHub` — a real directory, never a junction, reserved so no worktree slug can claim the name.
+- **Enforced by** `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `internal/fabricengine/structuraldirs_test.go`, `template_test.go`, `dotlyxjunction_integration_test.go`.
+  A newly added transient's mirrored-subpath placement is a review obligation.
 
 ## lyxtest Leaf Invariant
 
@@ -194,22 +189,18 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   only the *timing*-control half is scoped away.
 - **Cross-module exclusions.**
   The `_lyx` tree is shared by every round-loop module, so every weft-commit caller passes a **positive-only** file list — no `:(exclude)` pathspec magic — built via `fabricengine.ScopedPathspec`.
-  Machine-local artifacts (pause flags, rendered fork prompts, every module's `*.lock` files) are not in the weft tree at all — they live under `.lyx` (see the Durable-vs-Ephemeral State Invariant above), never reaching a weft-commit pathspec in the first place.
-  `fabricengine.seedWeftArtifactExcludes` now covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file, both weft-internal operational artifacts unrelated to any round-loop module.
-  **Known limitation:** this stops new pollution but does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
-- **Never-committed routing.** Membership in `structuralNeverCommittedDirs` is what makes `.lyx` uncommittable;
-  the filtering lives where the pathspec is **constructed** (`ScopedPathspec`'s callers, via `pathspecNames`) and never inside `Config.Dirs()`, `WiredNames`, or the slug-reservation union, all three of which must keep seeing every name.
-  `classifyPaths` routes a never-committed path to a third bucket rather than letting it fall through to warp, and `Commit` turns a non-empty third bucket into a hard error naming the offending path — silent dropping is forbidden, because a caller passing a `.lyx` path is a bug and must be told.
-  The two halves both exist for the same underlying reason: `git add` on an ignored path fails the entire invocation with exit 1 and stages nothing, not even the legitimate `_lyx` files named in the same call, and `--exclude-standard` on `weftPathspecFilter`'s `git ls-files` probe closes the separate latent bug where an entry matching only ignored files was forwarded and toppled a whole commit.
-- **Junction exclusion goes through `.git/info/exclude`, never a committed `.gitignore`.** Every host→weft junction — `_lyx`, `.lyx`, `_pattern` — is excluded from the warp repo through `WireJunctions`' warp-side `.git/info/exclude` seeding, never through a tracked `.gitignore` entry in the user's own repo.
-  A committed entry would advertise that LYX is in use in the user's own history, and a host→weft junction must never leave a tracked artifact behind in the user's repo.
-  The weft side mirrors this: `.lyx/` is excluded through the weft repo's own `.git/info/exclude` (`seedWeftArtifactExcludes`), never a weft-side `.gitignore` either.
-- **Unwire reverses wiring only, never deletes weft content.** `fabricengine.Unwire` removes every host junction present on disk and its warp `.git/info/exclude` entries — nothing more.
-  It never deletes weft-side content: weft-side `_lyx`, `.lyx`, and `_pattern` are all preserved.
-  A pre-fix binary's `applyStaleRemoval` unwires `.lyx` on an older `lyx fabric reconcile` run against this change's output — downgrade is unsupported, one-way upgrade only.
+  Machine-local artifacts (pause flags, fork prompts, module `*.lock` files) live under `.lyx` (see Durable-vs-Ephemeral State Invariant), never reaching a weft-commit pathspec.
+  `fabricengine.seedWeftArtifactExcludes` covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file.
+  **Known limitation:** does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
+- **Never-committed routing.** `structuralNeverCommittedDirs` membership makes a path uncommittable, filtered only where the pathspec is constructed (`ScopedPathspec` callers, via `pathspecNames`) — never in `Config.Dirs()`, `WiredNames`, or the slug-reservation union.
+  `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
+  `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
+- **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
+- **Unwire** removes host junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx`/`_pattern` content is always preserved.
+  Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
-  The never-committed routing clause above is machine-checked by `internal/fabricengine/classify_test.go`, `internal/fabricengine/structuraldirs_test.go`, and `internal/fabriccli/cli_test.go`.
-  The junction-exclusion and unwire-preservation clauses above are machine-checked by `internal/fabricengine/dotlyxjunction_integration_test.go` and `internal/fabricengine/unwire_test.go`.
+  Never-committed routing: `internal/fabricengine/classify_test.go`, `structuraldirs_test.go`, `internal/fabriccli/cli_test.go`.
+  Junction exclusion / unwire: `internal/fabricengine/dotlyxjunction_integration_test.go`, `unwire_test.go`.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine`/`internal/builderengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterBuilderProductionSource`);
   every other `fabricengine` caller remains a review obligation.
   The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
