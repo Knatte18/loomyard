@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: scout-seam-conversion
 branch: scout-seam-conversion
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-08T05:30:19Z'
+discussion-fix-r3  '2026-08-08T06:10:03Z'
+discussed  '2026-08-08T06:10:03Z'
 ```

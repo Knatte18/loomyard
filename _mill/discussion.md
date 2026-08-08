@@ -137,6 +137,13 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
   Matching it removes a discrepancy that would otherwise sit between this discussion's two sections.
   The two are behaviourally identical **today** — `internal/scoutengine` has no subdirectories — so this is a decision about the future, not a bug fix: under `WalkDir`, a hypothetical `internal/scoutengine/<sub>` package would silently inherit scout's seam rule without anyone having decided that.
 - Rejected: keeping `filepath.WalkDir` (smaller diff, but it silently extends the rule's scope to future subpackages, and it contradicts the named model).
+- **Failure-message path form:** with the switch to `os.ReadDir`, all four predicates report `entry.Name()` (e.g. `lspclient.go`), matching the named model.
+  This is a behaviour change worth stating: the three inherited predicates currently append `path`, the absolute path `WalkDir` hands them, and only the now-deleted catch-all used `filepath.Rel`.
+  Keeping them "verbatim" would otherwise mean every violation printing a full absolute path.
+  The package is implied by the test's own location, so the bare filename is the useful part.
+- **Vacuity:** the test asserts it scanned at least one non-test `.go` file and `t.Fatal`s otherwise.
+  This deliberately does **not** inherit the `shuttleengine` model's behaviour, which passes silently on an empty scan.
+  The same requirement is placed on `lspclient_guard_test.go` (see below), and a guard that goes green because it found nothing to check is the failure mode both tests exist to prevent.
 
 ### The `lspclient.go` guard allows `internal/logger`, and is never called "stdlib-only"
 
@@ -182,7 +189,10 @@ A parallel active task, `leaf-invariant-audit`, audits the seven **other** leaf/
 ### `doc.go` and `docs/overview.md` land in the same commit
 
 - Decision: `doc.go`'s "The engine/CLI split" paragraph is rewritten to state the seam without enumerating imports — roughly "scoutengine returns typed Go results and typed errors and never imports `internal/output`, cobra, or any `internal/*cli` package; `internal/scoutcli` is the sole consumer that maps engine results/errors onto the JSON envelope".
-  The words "leaf package" go with it. `docs/overview.md:252`'s "a cycle-free leaf" becomes "a cycle-free engine".
+  The words "leaf package" go with it.
+  **The `internal/modelspec` cross-reference at lines 30–34 goes with the paragraph too** — it calls modelspec "the shape this package mirrors most directly" and says scout is cycle-free "the same way `internal/modelspec` already is". `modelspec` remains an allowlisted leaf (its own `CONSTRAINTS.md` section is untouched, and `leaf-invariant-audit` expects to KEEP it), so leaving those two sentences would re-import through the back door exactly the framing the rest of the edit removes.
+  Scout's shape is now the engine/cli seam that every feature module follows, not modelspec's leaf shape.
+  `docs/overview.md:252`'s "a cycle-free leaf" becomes "a cycle-free engine".
 - Rationale: `doc.go` lines 22–34 currently enumerate the allowlist (at 24–26) and are **already wrong** — they omit `internal/logger`, which two production files import.
   Leaving them ships a knowingly false module doc, and `docs/overview.md:362` designates this package doc as scout's module doc, so the repo's "docs land in the same commit" rule applies directly.
   `docs/overview.md` is not touched by `leaf-invariant-audit`, so the one-word edit carries no collision risk.
@@ -280,6 +290,8 @@ The deliverable *is* two guard tests, and the testing work is proving they are n
 - Must go red on a third-party import (e.g. `gopkg.in/yaml.v3`).
 - Must `t.Fatal`, not silently pass, if `lspclient.go` is absent from the package directory.
   Worth a deliberate check during implementation (temporarily rename the file) — a guard keyed to a filename must fail loudly when the filename moves.
+- The seam test carries the matching vacuity assertion: it must `t.Fatal` if `os.ReadDir` yielded zero non-test `.go` files.
+  Verify the same way — temporarily point it at an empty directory, or assert the scanned-file count directly.
 
 **Suite-level**
 
