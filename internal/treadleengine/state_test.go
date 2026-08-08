@@ -19,7 +19,7 @@ func TestLoadOrInitState(t *testing.T) {
 	t.Run("fresh dir writes an initial state and starts at round 1", func(t *testing.T) {
 		runDir := t.TempDir()
 
-		got, info, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -53,11 +53,11 @@ func TestLoadOrInitState(t *testing.T) {
 				{Round: 2, Attempts: 1, Verdict: "BLOCKING"},
 			},
 		}
-		if err := saveState(runDir, seed); err != nil {
+		if err := saveState(runDir, runDir, seed); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		got, info, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -75,11 +75,11 @@ func TestLoadOrInitState(t *testing.T) {
 	t.Run("unfinished state with a different hash fails loud", func(t *testing.T) {
 		runDir := t.TempDir()
 		seed := runState{ProfileHash: "old-hash", RoundCaps: []int{5, 8, 10}}
-		if err := saveState(runDir, seed); err != nil {
+		if err := saveState(runDir, runDir, seed); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState("perch", runDir, "new-hash", []int{5, 8, 10})
+		_, _, err := loadOrInitState("perch", runDir, runDir, "new-hash", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -92,11 +92,11 @@ func TestLoadOrInitState(t *testing.T) {
 	t.Run("terminal state fails loud regardless of hash", func(t *testing.T) {
 		runDir := t.TempDir()
 		seed := runState{ProfileHash: "hash-1", RoundCaps: []int{5, 8, 10}, Outcome: "APPROVED"}
-		if err := saveState(runDir, seed); err != nil {
+		if err := saveState(runDir, runDir, seed); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
+		_, _, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -109,11 +109,11 @@ func TestLoadOrInitState(t *testing.T) {
 	t.Run("terminal state fails loud even with a mismatched hash", func(t *testing.T) {
 		runDir := t.TempDir()
 		seed := runState{ProfileHash: "old-hash", RoundCaps: []int{5, 8, 10}, Outcome: "STUCK", StuckReason: "hard-cap"}
-		if err := saveState(runDir, seed); err != nil {
+		if err := saveState(runDir, runDir, seed); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
 
-		_, _, err := loadOrInitState("perch", runDir, "new-hash", []int{5, 8, 10})
+		_, _, err := loadOrInitState("perch", runDir, runDir, "new-hash", []int{5, 8, 10})
 		if err == nil {
 			t.Fatal("loadOrInitState() = nil; want an error")
 		}
@@ -156,7 +156,7 @@ func TestLoadOrInitState(t *testing.T) {
 			t.Fatalf("WriteFile() = %v; want nil", err)
 		}
 
-		got, info, err := loadOrInitState("perch", runDir, "hash-1", []int{5, 8, 10})
+		got, info, err := loadOrInitState("perch", runDir, runDir, "hash-1", []int{5, 8, 10})
 		if err != nil {
 			t.Fatalf("loadOrInitState() = %v; want nil", err)
 		}
@@ -203,7 +203,7 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 		StuckReason: "",
 	}
 
-	if err := saveState(runDir, want); err != nil {
+	if err := saveState(runDir, runDir, want); err != nil {
 		t.Fatalf("saveState() = %v; want nil", err)
 	}
 
@@ -249,7 +249,8 @@ func TestSaveState_ReadJSONRoundTrip(t *testing.T) {
 // Outcome is reported with ok true.
 func TestTerminalOutcome(t *testing.T) {
 	t.Run("no state file reports not terminal", func(t *testing.T) {
-		outcome, ok, err := TerminalOutcome(t.TempDir())
+		runDir := t.TempDir()
+		outcome, ok, err := TerminalOutcome(runDir, runDir)
 		if err != nil {
 			t.Fatalf("TerminalOutcome() error = %v; want nil", err)
 		}
@@ -260,10 +261,10 @@ func TestTerminalOutcome(t *testing.T) {
 
 	t.Run("in-flight block reports not terminal", func(t *testing.T) {
 		runDir := t.TempDir()
-		if err := saveState(runDir, runState{ProfileHash: "h", RoundCaps: []int{3}}); err != nil {
+		if err := saveState(runDir, runDir, runState{ProfileHash: "h", RoundCaps: []int{3}}); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
-		outcome, ok, err := TerminalOutcome(runDir)
+		outcome, ok, err := TerminalOutcome(runDir, runDir)
 		if err != nil {
 			t.Fatalf("TerminalOutcome() error = %v; want nil", err)
 		}
@@ -274,10 +275,10 @@ func TestTerminalOutcome(t *testing.T) {
 
 	t.Run("finished block reports its recorded outcome", func(t *testing.T) {
 		runDir := t.TempDir()
-		if err := saveState(runDir, runState{ProfileHash: "h", RoundCaps: []int{3}, Outcome: string(OutcomeStuck), StuckReason: string(StuckHardCap)}); err != nil {
+		if err := saveState(runDir, runDir, runState{ProfileHash: "h", RoundCaps: []int{3}, Outcome: string(OutcomeStuck), StuckReason: string(StuckHardCap)}); err != nil {
 			t.Fatalf("saveState() = %v; want nil", err)
 		}
-		outcome, ok, err := TerminalOutcome(runDir)
+		outcome, ok, err := TerminalOutcome(runDir, runDir)
 		if err != nil {
 			t.Fatalf("TerminalOutcome() error = %v; want nil", err)
 		}
