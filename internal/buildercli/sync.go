@@ -3,9 +3,9 @@
 // (state.json, a batch report, outcome.yaml) through the fabric repo via
 // fabricengine.Fabric.Commit.
 // Machine-local runtime artifacts (run.lock, state.json.lock, both round-loop modules' pause flags,
-// webster's rendered fork prompts) are never staged in the first place: they are excluded solely by
-// the fabric repo's .git/info/exclude, seeded by fabricengine's own artifact-exclude bootstrapping --
-// this helper passes only a positive pathspec, with no ":(exclude)" magic of its own.
+// webster's rendered fork prompts) are never staged in the first place: they live under .lyx and so
+// never reach the pathspec this helper stages against -- this helper passes only a positive pathspec,
+// with no ":(exclude)" magic of its own.
 
 package buildercli
 
