@@ -73,7 +73,9 @@ batches:
     commit_sha: ecad655f34ab4487a03124009db5e290b810f488
     verify_baseline_failures: []
   - name: retire-cross-module-excludes
-    state: pending
+    state: running
+    implementer_session: bf0f763d-98eb-425f-b38e-e40e9ac890f7
+    start_sha: 7ceaaa4499a8bed4e0f1c5f22df567a9f0b00d78
     verify_baseline_failures: []
   - name: structural-dirs-and-never-committed-routing
     state: pending
