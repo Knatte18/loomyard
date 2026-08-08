@@ -213,6 +213,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/loomengine/config.go`
   - `internal/lyxdirs/dirs.go`
 - **Edits:**
+  - `internal/websterengine/state.go`
   - `internal/websterengine/state_test.go`
   - `internal/websterengine/pause_test.go`
   - `internal/websterengine/runlevel_test.go`
@@ -222,6 +223,7 @@ Adding the field is what makes those internal calls re-keyable without the engin
   - `internal/webstercli/cli_test.go`
   - `internal/webstercli/verbs_test.go`
   - `internal/webstercli/sync_integration_test.go`
+  - `internal/builderengine/state.go`
   - `internal/builderengine/state_test.go`
   - `internal/builderengine/pause_test.go`
   - `internal/builderengine/runlevel_test.go`
@@ -245,6 +247,8 @@ Adding the field is what makes those internal calls re-keyable without the engin
   (e) in `runlevel_test.go` for both engines, assert `run.lock` is taken in the scratch dir and that `ErrRunBusy` still fires for a second concurrent `Run`;
   (f) in `buildercli/pause_test.go` and `webstercli/verbs_test.go`, assert the CLI pause verb and the engine's own pause check resolve the same file — this is the regression the whole seam exists for, so assert it through the CLI, not by calling the engine accessor twice.
   Where a test fixture builds a webster/builder dir by hand, give it a sibling scratch dir under a `.lyx` path rather than reusing the same temp dir, or the split is untested.
+  Writing that fixture surfaced a real gap `LoadState`'s two-tree signature introduced: unlike `SaveState`, `LoadState` never `MkdirAll`s `scratchDir` before resolving the lock, so on a fresh worktree where `scratchDir` does not yet exist (no run has started), `AcquireReadLock` now hard-errors on the missing parent directory instead of returning `LoadState`'s documented `(nil, nil)` — a regression the pre-split code never had, since `scratchDir` and the durable dir used to be the same (already-created) directory.
+  `internal/websterengine/state.go` and `internal/builderengine/state.go` each need one `os.MkdirAll(scratchDir, 0o755)` added to the top of `LoadState`, mirroring `SaveState`'s own, so the fresh-worktree `(nil, nil)` case still works once the two trees can differ.
   `internal/buildercli/smoke_test.go` carries `//go:build smoke` and `internal/websterengine/runlevel_test.go`, `internal/websterengine/integration_test.go`, `internal/webstercli/sync_integration_test.go`, `internal/buildercli/sync_integration_test.go` and `internal/loomengine/preflight_integration_test.go` carry `//go:build integration` — keep each tag line first in its file.
 - **Commit:** `test: cover the webster, builder and loom scratch-dir split`
 
