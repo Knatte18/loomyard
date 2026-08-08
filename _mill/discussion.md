@@ -223,10 +223,14 @@ Closing that gap is scope item 5.
 - Rationale: the rename was originally deferred as a judgement call, which was wrong — leaving it open made the sweep's "verified untouched" list conditional on an undecided question, so the list could not be trusted.
   Deciding it here makes the dependent set closed and knowable before planning starts.
   On the merits: the `_AllowlistOnly` suffix is what every sibling uses, and after the conversion the bare `TestLeafInvariant` name would be the only one not saying which mechanism it applies.
-- Consequence for `internal/shuttleengine/seam_enforcement_test.go:22`: the citation **retargets to `internal/pattern/leaf_enforcement_test.go`**, it does not merely swap in the new function name.
-  The comment cites lyxtest as the *style origin* of the `go/parser` `ImportsOnly` idiom — but after this task lyxtest is itself a copy of `internal/pattern`'s shape, so citing it as the origin would be circular.
-  Point at the actual origin instead.
+- Consequence for `internal/shuttleengine/seam_enforcement_test.go:22`: **keep citing lyxtest, update the function name only** — `TestLeafInvariant` becomes `TestLeafInvariant_AllowlistOnly`.
+  Do not retarget the citation.
+  The comment cites lyxtest as the style origin of the `go/parser` `ImportsOnly` idiom, and the tree confirms lyxtest *is* that origin: `internal/modelspec/leaf_enforcement_test.go:4` cites lyxtest, and `internal/pattern/leaf_enforcement_test.go:4` in turn cites modelspec.
+  Retargeting to pattern would name a file that is downstream of the very citation chain it would be claiming to head.
+  Two distinct things are in play and must not be conflated: lyxtest is the origin of the **idiom** (`go/parser` with `ImportsOnly`, so doc-comment string literals cannot produce false positives), and it is separately becoming a copy of pattern's **allowlist shape**.
+  The conversion changes the second and leaves the first untouched, so the idiom citation stays accurate.
 - Consequence for `CONSTRAINTS.md`: the lyxtest section's "**Enforced by** `internal/lyxtest/leaf_enforcement_test.go`." gains `(`TestLeafInvariant_AllowlistOnly`)`, matching the six siblings that already name their test function.
+  **The rename and this enforced-by edit must land in the same commit** — commit-per-fix would otherwise split them and leave `CONSTRAINTS.md` naming a function that does not yet exist, which is the same class of forward reference this bullet exists to avoid.
   This is a **third** `CONSTRAINTS.md` edit and it belongs to mill-go, not to the mill-start commit — the mill-start commit deliberately covered only the two rule-*text* corrections that reviewers act on, and an enforced-by line naming a function that does not exist yet would be a forward reference.
 - Rejected: **skip the rename** — keeps `shuttleengine:22` and the enforced-by line untouched, at the cost of the one inconsistently-named enforcement test in the repo, in the file this task exists to correct.
   **Rename but leave the enforced-by line alone** — the line is already the only one of seven omitting its test name;
@@ -369,7 +373,11 @@ This is the TDD candidate, in the narrow sense available for a guard test: the c
 - It must still reject every path the old denylist rejected — `internal/configreg`, `boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli` — which the allowlist gives by construction, since none is in the allowed set.
 - It must additionally reject a path the denylist silently permitted (any other `internal/*` package, or a new third-party module).
   Confirming this is the *point* of the conversion.
-  **How to confirm it is decided, not left to mill-plan:** add a throwaway import to a production file locally, watch the test fail, revert, and record in the commit message that this was done.
+  **How to confirm it is decided, not left to mill-plan:** add a **blank** import of a non-cycle package to a production file locally — `_ "github.com/Knatte18/loomyard/internal/logger"` — watch the test fail, revert, and record in the commit message that this was done.
+  The form matters.
+  A named import would be an unused-import *compile* error, so `go test ./internal/lyxtest` would report a build failure and never reach the guard test;
+  a blank import compiles, and `parser.ImportsOnly` still records it in `astFile.Imports`, so the guard sees it exactly as it would see a real stray dependency.
+  It must also be a package that closes no cycle — `internal/logger` qualifies (it does not import lyxtest), whereas any feature package would produce a genuine test-build cycle and again fail at build time rather than at the guard.
   Do **not** extract a table-driven matcher helper to test the check directly — no sibling enforcement test does that, and introducing the pattern in the one file this task exists to bring *into* line with its siblings would be self-defeating.
 
 **Regression bar for the whole task** (agreed during discussion):
@@ -414,6 +422,10 @@ The reviewer's check is that no remaining comment in the tree asserts an isolati
   Deferred to a follow-up task, not fixed here: it fails the criterion, and it sits in the `CONSTRAINTS.md` region `scout-seam-conversion` is actively working.
 - **Q:** (discussion review r3) Does the test-build-cycle rationale survive the conversion? **A:** Yes, locally, in one clause in both `doc.go` and the test header.
   The conversion would otherwise delete both existing statements of it at once, leaving only `CONSTRAINTS.md` — wrong direction, since an allowlist is *easier* to widen than a denylist, so the reason to resist belongs at the edit site.
+- **Q:** (discussion review r4) Should `shuttleengine:22`'s style citation retarget away from lyxtest? **A:** No — that was a round-3 error, corrected here.
+  lyxtest *is* the idiom's origin (modelspec cites lyxtest, pattern cites modelspec), so retargeting to pattern would have named a downstream file as the head of its own citation chain.
+  Keep the citation, update the function name only.
+  The conflation to avoid: lyxtest originates the `ImportsOnly` **idiom** while separately adopting pattern's allowlist **shape** — the conversion touches only the latter.
 - **Q:** Is the treadle finding as the brief described it? **A:** Worse.
   The brief expected one transitive path via `logger`;
   the allowlist also permits `shuttleengine`, which imports `lyxcwd` directly.
