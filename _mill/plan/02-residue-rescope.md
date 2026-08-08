@@ -59,7 +59,9 @@ Widening it to `_lyx` would make every config and loom-status commit residue, dr
 - **Requirements:** In `TestPull_IdentifiesPatternResidue`, move the seeded PATTERN-touching weft commit's fixture from `<weft>/_pattern/PATTERN.md` to `<weft>/_lyx/PATTERN.md`, creating the intermediate `_lyx` directory.
   Replace `wantPath := pattern.DirName + "/PATTERN.md"` with `wantPath := pattern.PathspecFile`.
   Update the test's doc comment at line 246 to name the new path.
-  Retarget the other two `pattern.DirName` uses in this file to the appropriate new spelling — a junction-name use retargets to `"_extra"` per the overview's `_extra` Shared Decision, a PATTERN-path use retargets to `pattern.PathspecFile`; read each call site to decide which it is rather than substituting blindly.
+  There is exactly one other `pattern.DirName` use in this file, at line 254 — `patternDir := filepath.Join(weftFixture.WeftPath, pattern.DirName)`, the fixture directory the seeded commit writes into.
+  That is a PATTERN-path use, not a junction name, so it becomes a join onto `lyxdirs.LyxDirName` and the local is renamed off `patternDir`.
+  After this card the file must contain no `pattern.DirName` reference at all.
   Add two new sub-tests to the same function:
   first, a commit touching only `_lyx/config/fabric.yaml` must **not** appear in `PatternResidue` — this negative case is the entire justification for keeping the pathspec narrow instead of widening it to `_lyx`, so it is not optional;
   second, a commit touching `_lyx/pattern/<detail>.md` **must** appear in `PatternResidue`, proving `PathspecDir` is wired and not just `PathspecFile`.

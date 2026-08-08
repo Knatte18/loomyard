@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: _mill/plan
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-08-08T15:09:28Z'
 discussed  '2026-08-08T16:05:19Z'
 planning  '2026-08-08T16:21:33Z'
+plan-review-r1  '2026-08-08T16:32:14Z'
+plan-fix-r1  '2026-08-08T16:32:14Z'
 ```

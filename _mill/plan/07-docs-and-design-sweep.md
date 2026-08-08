@@ -233,7 +233,9 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** This is user-visible help text, so help accuracy is a review obligation under the CLI/Cobra Invariant — every affected `Short`/`Long` must be re-read, not just the lines that mention the removed names.
-  In `fabric.go`, line 145's "(`_lyx` and `_pattern`)" junction pair becomes `_lyx` and `.lyx`; lines 189-193 describe the pollution scan as covering `_lyx`, `_pattern`, and `_raddle` with `_raddle` matches being report-only — rewrite for `_lyx` alone, with every match carrying the automated `git rm --cached` remedy, and drop the report-only sentence entirely since no report-only class remains.
+  In `fabric.go`, line 145's "(`_lyx` and `_pattern`)" junction pair becomes `_lyx` and `.lyx`.
+  Lines 188-190 are the `junction_healthy`/`junction_reason` sentence naming the junction pair `(_lyx and _pattern)` — retarget that pair to `_lyx` and `.lyx`.
+  The pollution-scan sentence is a separate statement beginning at line 191 and running to line 194; it covers `_lyx`, `_pattern`, and `_raddle` with `_raddle` matches being report-only — rewrite it for `_lyx` alone, with every match carrying the automated `git rm --cached` remedy, and drop the report-only clause entirely since no report-only class remains.
   Lines 207 and 211 describe junction repair covering both host junctions and a worktree "wired before the `_pattern` junction existed" — retarget the first to the actual junction pair and delete the pre-`_pattern` upgrade narrative rather than rewording it.
   Line 262's "(`_lyx`, `.lyx`, and `_pattern`)" drops `_pattern`.
   In `weft_verbs.go`, line 93's comment about a repo's pathspec naming only `_pattern` becomes a generic optional-name statement; line 148's help text "(default: `_pattern`)" becomes "(default: none)"; line 213's "post-anchor weft commits touch `_pattern/`" retargets to the `_lyx` PATTERN paths.

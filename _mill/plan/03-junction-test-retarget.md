@@ -30,6 +30,7 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
 - **Context:**
   - `internal/fabricengine/junctionnames.go`
   - `internal/lyxdirs/dirs.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabricengine/hostjunction_test.go`
 - **Creates:** none
@@ -40,7 +41,9 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
   Rename the local variables and helper identifiers that encode the old name — `wantPatternLink`, `wantPatternTarget`, `patternJunction` — to `_extra`-neutral spellings such as `wantExtraLink`, `wantExtraTarget`, `extraJunction`.
   Update the file header comment at lines 5-6 and the comment at line 107, which both describe "every `_pattern` row" asserting against the generic config-driven junction join; the property they state is still exactly right, only the exemplar name changes.
   Remove the `internal/pattern` import if `pattern` becomes unused in the file.
-  Leave the `no_raddle_names` sub-test at lines 191-202 untouched in this batch — it is batch 4's subject.
+  Line 199 sits inside the `no_raddle_names` sub-test (lines 192-205) and is retargeted here like every other junction-name input: the sub-test's *input* slice is an ordinary two-name junction set and carries no `_raddle` claim.
+  What is deferred to batch 4 is only that sub-test's `_raddle` **assertion** and its name — the loop body at lines 200-204 asserting `HostJunctions` never yields a `_raddle` entry "forbidden by design", and the sub-test's own title.
+  Leave those alone in this batch; retarget line 199 now.
 - **Commit:** `test(fabricengine): retarget hostjunction junction-name rows to _extra`
 
 ### Card 10: Retarget the junction repoint, removal, and rollback integration tests
@@ -48,6 +51,7 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
 - **Context:**
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/junctionnames.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabricengine/junction_repoint_test.go`
   - `internal/fabricengine/remove_junctions_integration_test.go`
@@ -109,13 +113,17 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
   - `internal/fabriccli/weft_verbs.go`
   - `internal/fabricengine/junctionnames.go`
   - `internal/lyxdirs/dirs.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabriccli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** At line 464, the loop `for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName}` becomes `[]string{lyxdirs.LyxDirName, "_extra"}`, and the comment at line 462 naming "the prime host worktree's `_lyx`/`_pattern` junctions" is reworded.
-  Confirm the fixture actually wires an `_extra` junction before this loop asserts on it — if the fixture derives its junction set from the repo-wide config, seed that config with `pathspec: _extra` so the assertion has a subject; do not weaken the assertion to `_lyx` alone, since proving the non-`_lyx` junction is wired is the whole content of this check.
+  Do **not** substitute `"_extra"` here and do not seed a config: this test clones from a genuinely empty bare weft (zero commits, via `makeCLICloneWeftBare`), so there is no pre-existing `weft:main` `fabric.yaml` to seed before `clone` runs, and after batch 4's empty default a bare clone wires no optional junction at all.
+  Use `[]string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}` instead.
+  That keeps the check's real content — the prime worktree's junctions are wired, more than one of them — and it is true both before and after batch 4, because `.lyx` is structural (`structuralNeverCommittedDirs`) and is wired by every clone regardless of `pathspec`.
+  Do not weaken the loop to `_lyx` alone.
   The narrow-pathspec guard at lines 283-326 writes a repo-wide `fabric.yaml` containing `pathspec: _pattern` and asserts the sync-built pathspec still covers `_lyx` — retarget that literal to `_extra` and update the two comments at lines 283 and 291 plus the failure message at line 326.
   That guard's subject is the routing set never falling back to a raw unfiltered `Config.Dirs()`, which is unrelated to which optional name the config happens to hold.
   Remove the `internal/pattern` import if it becomes unused.
@@ -127,6 +135,7 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
   - `internal/loomengine/preflight.go`
   - `internal/fabricengine/drift.go`
   - `internal/lyxdirs/dirs.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/loomengine/preflight_integration_test.go`
 - **Creates:** none
@@ -149,6 +158,7 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/drift.go`
   - `internal/fabricengine/reconcile.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabricengine/junction_pattern_integration_test.go`
 - **Creates:** none
@@ -168,6 +178,7 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
 - **Context:**
   - `internal/fabricengine/unwire.go`
   - `internal/lyxdirs/dirs.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabricengine/unwire_test.go`
 - **Creates:** none

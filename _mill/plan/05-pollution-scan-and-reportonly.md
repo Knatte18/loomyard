@@ -49,6 +49,7 @@ The observable JSON change is exactly one lost key, `report_only`.
 - **Context:**
   - `internal/fabricengine/status.go`
   - `internal/lyxdirs/dirs.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabricengine/junction_pattern_integration_test.go`
 - **Creates:** none

@@ -114,7 +114,7 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   Add a positive case proving a worktree slug named `_raddle` is now accepted by `IsReservedHubName` — that is the observable behaviour change and nothing else pins it.
 - **Commit:** `test(fabricengine): recount the reserved-name union to four and un-reserve _raddle`
 
-### Card 21: Converge `structuraldirs_test.go`, `add_test.go`, `config_test.go`, `fabric_test.go`, and the tier-purity map
+### Card 21: Converge the remaining reserved-name expectations across five test files
 
 - **Context:**
   - `internal/fabricengine/junctionnames.go`
@@ -126,6 +126,7 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   - `internal/fabricengine/config_test.go`
   - `internal/fabricengine/fabric_test.go`
   - `cmd/lyx/tierpurity_test.go`
+  - `internal/fabricengine/hostjunction_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -140,6 +141,11 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   Rewrite the comment at lines 137-141: its claim that "`_lyx`/`_pattern` are rejected only via this injected pathspec" is no longer true for `_pattern`, and it must also drop `_raddle` from its list of names rejected by `HubReservedNames()`.
   In `config_test.go` lines 36-52 and `fabric_test.go` line 147, `_raddle` is used as an ordinary optional pathspec name; those cases stay valid (an un-reserved name is exactly what a pathspec may hold), but retarget them to `_extra` so no test implies `_raddle` has a special role.
   In `cmd/lyx/tierpurity_test.go`, remove the `"_raddle": true` entry at line 68 only if that map is a geometry-token set that must stay in sync with the reserved names — read the map's declaration and its doc comment first, and leave it untouched if it serves an unrelated purpose.
+  In `internal/fabricengine/hostjunction_test.go`, finish the half of the `no_raddle_names` sub-test batch 3 deliberately left alone: batch 3 already retargeted its junction-name input at line 199, so what remains is the assertion body at lines 200-204 and the sub-test's own title.
+  Its stated premise — that `HostJunctions` never yields a `_raddle` entry, "forbidden by design" — **inverts**: once `_raddle` is un-reserved, a `pathspec` entry naming it would legitimately wire a junction.
+  Re-point the sub-test at a still-reserved name (`_board`, `_portals`, or `_launchers`), rename it accordingly, and update the scope-guard comment at line 191, rather than leaving a guard whose stated rationale is no longer true.
+  Do not delete it: it is the only assertion that `HostJunctions` respects the hub-reserved block set at all.
+  Converge this file's remaining `_raddle` expectations in the same pass.
 - **Commit:** `test(fabricengine): converge structural, add, and config expectations on the un-reserved names`
 
 ### Card 22: Invert `reconcile_stale_removal_test.go` onto the empty pathspec
@@ -147,6 +153,7 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
 - **Context:**
   - `internal/fabricengine/reconcile.go`
   - `internal/fabricengine/junctionnames.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/fabricengine/reconcile_stale_removal_test.go`
 - **Creates:** none

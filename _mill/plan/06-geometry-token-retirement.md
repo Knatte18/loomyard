@@ -55,8 +55,10 @@ Card 30's grep sweep is what covers them, and its expected-residue list is what 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In the `geometryToken` closure at lines 252-258, remove `"_raddle"` and `"_pattern"` from the `case` list, leaving `"_board", "-weft", "-HUB", "_portals", "_launchers", "_lyx", ".lyx"`.
-  In the `geometryTokenOwners` map at lines 267-300, delete the `"_raddle": {"internal/fabricengine"}` row and the `"_pattern": {"internal/pattern", "internal/fabricengine"}` row outright, together with the comment block at lines 277-280 that explains `_raddle`'s ownership and the comment block at lines 293-298 that explains `_pattern`'s dual ownership.
-  Rewrite the surviving `_portals`/`_launchers` comment so it no longer mentions `_raddle`.
+  In the `geometryTokenOwners` map at lines 267-300, delete the `"_raddle": {"internal/fabricengine"}` row (line 283) and the `"_pattern": {"internal/pattern", "internal/fabricengine"}` row (line 299) outright.
+  The two comment blocks are **not** treated the same way, because they do not have the same scope.
+  Lines 293-298 are `_pattern`-exclusive and are deleted outright along with their row.
+  Lines 277-280 are one shared block covering `_portals`, `_launchers`, **and** `_raddle` together, feeding all three rows at 281-283 — so it is **rewritten, not deleted**: drop only its `_raddle` clause and keep the `_portals`/`_launchers` rationale intact.
   Both edits must land in the same card: dropping a token from the switch but leaving its map row, or the reverse, leaves the two disagreeing.
   Add a short comment recording why the two tokens left — `_pattern` because the PATTERN surface now lives inside `_lyx`, `_raddle` because raddle converged on an anchor-level `_lyx/raddle/` design with no hub-level presence — so a future reader does not re-add them on the assumption they were dropped by accident.
   Do not change the `TestEnforcement_FabricVocabulary` owner set or any other test in this file.
