@@ -193,6 +193,11 @@ Both cleanups converge with the parallel `dotlyx-scratch-hygiene` task toward on
   `internal/lyxcwd/lyxcwd_test.go` is `package lyxcwd_test` and already imports `fabricengine` for exactly this kind of assertion, so the new guard belongs there at zero cost.
 - **Rejected:** repurposing `raddle_guard_test.go` (cycle-illegal, and destroys an unrelated live invariant).
   Deleting it outright, or adding no positive guard at all — the removal would then be pinned by nothing.
+- **The exemption covers the file's prose, not just its code.** Its header (`:1-4`) frames the guard as protecting against "a future nested/ignored `_raddle`" directory — a directory that will not exist under the settled `_lyx/raddle/` design, and therefore in tension with the sweep-every-`_raddle`-reference decision.
+  Leave it anyway.
+  What the guard mechanically asserts is that `internal/lyxcwd` never scans the worktree to enumerate or mirror directories, and that property is **independent of where raddle content lands** — it holds whether raddle lives at `_raddle/`, at `_lyx/raddle/`, or nowhere.
+  Rewriting the prose would mean editing a file this task otherwise has no reason to touch, in a package whose guard is unaffected, purely for wording.
+  Record the tension here rather than resolving it: if the wording is ever updated, that belongs to the raddle implementation task that actually creates `_lyx/raddle/`.
 - **Correction to an earlier framing:** an earlier round of this discussion proposed repurposing `raddle_guard_test.go`. That was wrong on both counts above and is superseded by this decision.
 
 ### `manifest/designs/pattern.md` is deleted
@@ -339,12 +344,18 @@ Invert it: with an empty `pathspec`, an on-disk `_pattern` junction is stale and
 `junction_pattern_integration_test.go` (38 references), `junction_repoint_test.go` (11), `classify_test.go` (16), `config_driven_junctions_integration_test.go`, `remove_junctions_integration_test.go`, and `unwire_test.go` all wire `_pattern` as their second junction — each needs a substitute generic optional name (the existing `_extra` used by `config_driven_junctions_integration_test.go` and `junctionnames_test.go` is the natural choice) so the config-driven-junction behavior stays covered by a name that is not the one being deleted.
 Do not simply delete these cases: the generic multi-junction path must remain tested after `_pattern` stops being its exemplar.
 
-**Six files hardcode `_pattern` as a bare string literal** — they carry no `pattern.DirName` reference, so the compile-break list above deliberately excludes them and nothing else would catch them. All re-target to `_extra` on the same substitution as the rest:
+**Bare-literal `_pattern` sites — indicative, not closed.**
+These carry no `pattern.DirName` reference, so the compile-break list above deliberately excludes them and nothing else would catch them.
+**The authoritative closing step is a `grep -n '"_pattern"' internal/fabricengine/*_test.go internal/loomengine/*_test.go` sweep**, not this list — treat what follows as the known set, not proof of completeness.
+All re-target to `_extra` unless noted:
 
 - `checkout_index_refresh_test.go:40`, `checkout_rollback_test.go:44,100`, `reconcile_stale_registration_test.go:468` — each calls `WireJunctions(l, slug, []string{"_lyx", "_pattern"})`.
 - `commit_integration_test.go:61` — writes a literal `pathspec: _lyx _pattern` config file.
 - `internal/fabricengine/add_test.go:142,166` — hand-supplied `Config{Pathspec: "_lyx _pattern"}` and `Config{Pathspec: "_lyx _pattern _extra"}`. These stay **mechanically valid** post-change (they test that *any* pathspec-named junction is a reserved slug, independent of the template default), but `_pattern` becomes an arbitrary and misleading exemplar, so re-target it. The comment at `:138-141` also states that "card 1 removed `_lyx`/`_pattern` from `HubReservedNames()`, so those two are rejected only via this injected pathspec" — that sentence needs updating once `_pattern` is not a pathspec name anywhere.
 - `internal/loomengine/plan_test.go:127` — `filepath.Join(worktreeRoot, "_pattern")`, a fixture that creates a real directory to make PATTERN active. This is a **fixture-path change**, not a junction re-target: it becomes the `_lyx/PATTERN.md` shape, like `websterengine/template_test.go`'s fixture.
+- `internal/fabricengine/junctionnames_test.go:44-45,54-55` — the `filterHubReserved` table's `MixedDropsReservedKeepsOrder` and `NoneReservedReturnedUnchanged` cases use `"_pattern"` purely as a stand-in for "an ordinary non-reserved name". Straight `_extra` substitution — but note `:44-45` already carries `"_extra"` alongside it, so pick a second distinct name rather than producing a duplicate entry.
+- `internal/fabricengine/junctionnames_test.go:172` — the shared `junctionNames` fixture. See the dedicated decision below; this one does **not** take the `_extra` substitution.
+- `internal/fabricengine/structuraldirs_test.go:32,37` — `TestDeployedLyxPathspec_YieldsNoDuplicateLyx`. See the dedicated decision below; this one **keeps** `_pattern` deliberately.
 
 **`weftgit_pathspec_integration_test.go` cannot take the `_extra` substitution — split it instead.**
 `resolvedDefaultRoutingNames` (`:231-243`) deliberately resolves `template.yaml`'s **real** default rather than a literal, and `TestCommitWeft_WidenedDefaultPathspec_LyxChangeStillCommitsWithNoPattern` (`:261-265`) hard-fails unless that yields exactly `[_lyx _pattern]`.
@@ -368,6 +379,22 @@ Deleting either would silently drop the only coverage that `Healthy`/`Preflight`
 **Two** names leave, not one: `_raddle` because `HubReservedNames()` drops it, and `_pattern` because an empty `pathspec` removes it from the `junctionNames` union `IsReservedHubName` folds in.
 So the set drops to exactly **four: `{_lyx, _board, _portals, _launchers}`** — rename the sub-test and recount rather than decrementing by one.
 `.lyx` is **not** part of this arithmetic: it was never in the six, and it stays reserved independently via `hubSlugReservedNames()` and `structuralNeverCommittedDirs` regardless of `pathspec`. That fact is unchanged by this task and must not be folded into the count.
+**The shared `junctionNames` fixture at `junctionnames_test.go:172` becomes empty (`[]string{}`).**
+The whole `TestIsReservedHubName` table — including the `:180` rows and the `:232-246` sub-test the recount applies to — reads that one fixture, currently `{"_lyx", "_pattern"}`.
+Model the post-change default: with `pathspec: ""`, `Config.Dirs()` is nil and `Topology.Add` passes nil through, so an empty fixture is what the production call site now looks like.
+This is safe for the injected-junction-name arm because that sub-test (`:213-220`, `"junction-only name is reserved"`) already supplies its own local `[]string{"_custom"}` fixture and does not read the shared one.
+State in the test's comment which source proves each surviving name, since with an empty `junctionNames` they no longer share one:
+
+- `_lyx` — `structuralCommittedDirs`, never the config arm.
+- `_board`, `_portals`, `_launchers` — `hubSlugReservedNames()` via `HubReservedNames()`.
+- `.lyx` — `structuralNeverCommittedDirs` and `hubSlugReservedNames()`. It is reserved but was never in the six-name list and still is not; the list is a positive "these are reserved" set, not an exhaustiveness assertion, despite its name.
+
+**`TestDeployedLyxPathspec_YieldsNoDuplicateLyx` (`structuraldirs_test.go:31-37`) keeps `_pattern` — do not re-target it.**
+It asserts dedup for `Config{Pathspec: "_lyx _pattern"}`, where `_lyx` arrives from both `structuralCommittedDirs` and `cfg.Dirs()` in the same call.
+Per the "No migration" decision, a `pathspec` naming `_pattern` is exactly what deployed repos keep indefinitely, so this is the only test exercising a **real deployed config value** rather than a synthetic one.
+Re-targeting it to `_extra` would silently convert the repo's one piece of deployed-reality coverage into another synthetic case.
+Add a comment saying the value deliberately models a stale deployed config this task no longer *produces* but does not migrate away, and cross-reference the fresh-clone-only limitation.
+
 Two further `_raddle` assertions live in the same file and are easy to miss: `junctionnames_test.go:180`'s `{"raddle dir", "_raddle", true}` table row, and the r1-regression subtest at `:201-209` (`"hub-structural tokens reserved for empty junctionNames"`), which loops over `{_board, _portals, _launchers, _raddle}`.
 The table row is deleted or flipped to `false`;
 the regression subtest is **narrowed to `{_board, _portals, _launchers}`, not deleted** — its point is that hub-structural tokens stay reserved even for an empty `junctionNames`, which is exactly the configuration this task creates and therefore more load-bearing than before, not less.
@@ -403,6 +430,14 @@ Add a case proving an empty `pathspec` yields `Dirs() == nil` and that `pathspec
 `internal/lyxcwd/enforcement_test.go` is the gate: after the `geometryToken` switch and `geometryTokenOwners` map drop both rows, any surviving `_pattern` or `_raddle` path-construction literal in production code fails the build.
 Note that the enforcement scan excludes `*_test.go` by design, so test-side occurrences are a review obligation, not machine-caught — a final `grep -rn '_pattern\|_raddle'` across `internal/`, `cmd/`, `docs/`, `manifest/`, `tools/`, `README.md`, and `CLAUDE.md` is the closing check.
 
+**Expected residue that closing grep will report — not misses:**
+
+- `internal/lyxcwd/raddle_guard_test.go` — **nine** `_raddle` occurrences, all deliberate. The file is exempt from every edit in this task (see its decision above).
+- `internal/fabricengine/structuraldirs_test.go:32,37` — `_pattern` retained deliberately as the deployed-config fixture (see its decision above).
+- `internal/loomengine/coherence.go` — the `"raddle"` phase-name enum value, explicitly out of scope. Note this is bare `raddle`, not `_raddle`, so it will not match the grep above; it is listed here only so nobody "fixes" it on sight.
+
+Anything else the grep reports is a genuine miss.
+
 ## Q&A log
 
 - **Q:** Where do the PATTERN detail docs land — flat under `_lyx/`, or under `_lyx/pattern/`? **A:** `_lyx/pattern/`, with `PATTERN.md` itself flat at `_lyx/PATTERN.md`. The brief's fully-flat wording was rejected because it makes the agent directives point at machine-owned config.
@@ -432,6 +467,9 @@ Note that the enforcement scan excludes `*_test.go` by design, so test-side occu
 - **Q:** What about tests that use `_raddle` as an exemplar rather than as the subject? **A:** [auto-pick, review r3] Re-target `TestReconcile_NeverRemovesReservedHubName` and `hostjunction_test.go`'s `no_raddle_names` to a still-reserved name; delete neither. **Why:** the first is the only coverage of the stale-sweep reserved-name exclusion — which an empty `pathspec` makes *more* load-bearing — and the second's stated rationale ("forbidden by design") simply stops being true.
 - **Q:** Can `raddle_guard_test.go` be repurposed as a "not reserved" guard? **A:** [auto-pick, review r4] No — leave it untouched; the positive guard goes in `lyxcwd_test.go` (`package lyxcwd_test`). **Why:** the file is `package lyxcwd` and is a *tree-scan* guard on an unrelated, still-valid invariant; calling `fabricengine.IsReservedHubName` from it would close a `fabricengine → lyxcwd` import cycle in the test binary. This reverses the round-1 auto-pick.
 - **Q:** Can `weftgit_pathspec_integration_test.go` take the `_extra` substitution? **A:** [auto-pick, review r4] No — split it: one test keeps the real-default assertion (now `[_lyx]`), the other hand-supplies `{_lyx, _extra}` for the tolerance regression. **Why:** `resolvedDefaultRoutingNames` deliberately resolves the real template rather than a literal, so `_extra` cannot be injected through it; splitting keeps both the real-default guard and the `weftPathspecFilter` coverage instead of losing one.
+- **Q:** Is the bare-literal `_pattern` list exhaustive? **A:** [auto-pick, review r6, cap round] No — it is indicative; a `grep -n '"_pattern"'` sweep over `internal/fabricengine/*_test.go` and `internal/loomengine/*_test.go` is the authoritative closing step. `junctionnames_test.go:44-45,54-55,172` and `structuraldirs_test.go:32,37` were missing and are now named. **Why:** presenting an enumeration as closed when it is not is worse than labelling it indicative, because the plan then skips the sweep.
+- **Q:** What does `junctionnames_test.go:172`'s shared `junctionNames` fixture become? **A:** [auto-pick, review r6, cap round] Empty (`[]string{}`), modelling the post-change nil `Config.Dirs()`. **Why:** the injected-junction-name sub-test supplies its own local `{"_custom"}` fixture, so nothing loses coverage — and the surviving names must then be attributed to their real reservation sources, which the table previously blurred.
+- **Q:** Does `TestDeployedLyxPathspec_YieldsNoDuplicateLyx` re-target to `_extra`? **A:** [auto-pick, review r6, cap round] No — it keeps `_pattern`, with a comment saying it models a stale deployed config this task no longer produces but does not migrate. **Why:** per "No migration" that value persists in deployed repos indefinitely, making this the only test exercising a real deployed pathspec rather than a synthetic one.
 - **Q:** Which callers actually gain the ability to auto-commit PATTERN content? **A:** [auto-pick, review r5] The three round-loop module syncs — `webstercli/sync.go:22`, `buildercli/sync.go:25`, `perchcli/run.go:334` — not `lyx fabric sync`, which already swept `_pattern` via `PathspecNames`. **Why:** an earlier framing misread `weft_verbs.go:102` as `["_lyx"]`-only when it passes the config-derived routing set; the widening is real but narrower than first stated.
 - **Q:** How much of `fabricengine/doc.go` changes? **A:** [auto-pick, review r5] Lines 53-92 are a rewrite, not a token substitution — and the "narrow-pathspec asymmetry" passage *inverts* (deployed worktrees are now wider than the template, not narrower) rather than disappearing. **Why:** it is the package's authoritative `pathspec` narrative and the natural doc home for the fresh-clone-only fact; leaving it stale would contradict the "No migration" decision in code comments.
 - **Q:** Is the bare-literal `_pattern` inventory complete? **A:** [auto-pick, review r4] It is six files, not four — `add_test.go:142,166` was missing entirely, and `plan_test.go:127` was misfiled as a `pattern.DirName` compile break when it is a bare-literal fixture path. **Why:** the compile-break list is authoritative only for `DirName` consumers; bare literals need their own enumeration or nothing catches them.

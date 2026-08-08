@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: pattern-into-lyx-consolidation
 branch: pattern-into-lyx-consolidation
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-08T15:09:28Z'
+discussed  '2026-08-08T16:05:19Z'
 ```
