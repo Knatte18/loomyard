@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-structural-dirs-and-never-committed-routing
+phase: approved-dotlyx-junction-wiring-and-unwire
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-dotlyx-group-reanchor-and-logger-sink  '2026-08-08T13:05:36Z'
 approved-no-transients-under-lyx-guard  '2026-08-08T13:09:59Z'
 approved-retire-cross-module-excludes  '2026-08-08T13:20:07Z'
 approved-structural-dirs-and-never-committed-routing  '2026-08-08T13:42:02Z'
+approved-dotlyx-junction-wiring-and-unwire  '2026-08-08T14:06:16Z'
 ```
 
 ## Batches
@@ -87,8 +88,9 @@ batches:
     commit_sha: 221530547fe3044ca998563adb73e1fb38046244
     verify_baseline_failures: []
   - name: dotlyx-junction-wiring-and-unwire
-    state: running
+    state: approved
     implementer_session: bf0c090d-d1b5-4e4b-8eb4-42940f0b2b05
     start_sha: 305675c0b00cf5a7cfcdc00339c3bb723ae2d66c
+    commit_sha: bbe858ca6f568bc60acf2f254b985cd12fcf8358
     verify_baseline_failures: []
 ```
