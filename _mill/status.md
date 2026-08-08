@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-dotlyx-junction-wiring-and-unwire
+phase: holistic-reviewing
 slug: dotlyx-scratch-hygiene
 branch: dotlyx-scratch-hygiene
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-no-transients-under-lyx-guard  '2026-08-08T13:09:59Z'
 approved-retire-cross-module-excludes  '2026-08-08T13:20:07Z'
 approved-structural-dirs-and-never-committed-routing  '2026-08-08T13:42:02Z'
 approved-dotlyx-junction-wiring-and-unwire  '2026-08-08T14:06:16Z'
+holistic-reviewing  '2026-08-08T14:06:51Z'
 ```
 
 ## Batches
