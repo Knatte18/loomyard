@@ -30,20 +30,24 @@ const supervisedProtocolVersion = "1"
 const scoutDirName = "scout"
 
 // DaemonStateFile returns the path to the scout daemon's runtime state file for the given language,
-// rooted at l.WorktreePath().
-// It is worktree-anchored so the daemon is a worktree-wide singleton per language.
+// rooted at l.AnchorPath().
+// It is AnchorPath-anchored so the state tree is a directory sibling of the durable _lyx tree, and
+// the daemon remains a per-worktree, per-language singleton — an anchored repo has exactly one
+// anchor.
 // It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
-// TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.
+// Relocating this path to the anchor deliberately re-keys the supervised daemon in subpath-anchored
+// repos, since the daemon's identity is its state-file path — the intended consequence of having
+// exactly one .lyx root per worktree.
 func DaemonStateFile(l *lyxcwd.Location, lang string) string {
-	return filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.json")
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.json")
 }
 
 // DaemonLock returns the path to the advisory lock file guarding concurrent access to
 // DaemonStateFile(l, lang).
-// It shares that function's anchoring and per-lang scoping.
-// TODO(dotlyx): candidate for the WorktreePath → AnchorPath migration when .lyx gets a single owner.
+// It shares that function's anchoring, per-lang scoping, and daemon-re-keying consequence in
+// subpath-anchored repos.
 func DaemonLock(l *lyxcwd.Location, lang string) string {
-	return filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.lock")
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.lock")
 }
 
 // daemonState is the JSON shape written to the supervised daemon's state file.

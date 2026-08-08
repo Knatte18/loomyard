@@ -429,12 +429,15 @@ matches into an ambiguity failure. Example:
 // otherwise.
 //
 // The synthesized value is a fiction outside WorktreePath(): HubPath names no
-// real hub (it is merely the parent of the target directory), RepoName is left
-// zero, and AnchorPath() is meaningless because AnchorRel was assumed rather
-// than read from a .fabric-anchor marker.
+// real hub (it is merely the parent of the target directory), and RepoName is
+// left zero.
+// AnchorRel is always synthesized as "." here (never read from a
+// .fabric-anchor marker), so AnchorPath() coincides with WorktreePath() byte
+// for byte on this path — DaemonStateFile/DaemonLock's read of AnchorPath()
+// is therefore safe by construction for this synthesized value, exactly as
+// safe as their pre-migration read of WorktreePath() was.
 // It is therefore contractually consumed by DaemonStateFile/DaemonLock alone
-// and must never be widened to feed a caller reading AnchorPath(), HubPath, or
-// RepoName.
+// and must never be widened to feed a caller reading HubPath or RepoName.
 func resolveLocation(cwd, targetDir string) *lyxcwd.Location {
 	if layout, err := lyxcwd.Resolve(cwd); err == nil {
 		return layout
