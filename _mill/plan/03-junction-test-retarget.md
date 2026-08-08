@@ -119,9 +119,9 @@ Other files' comments that merely cite `junction_pattern_integration_test.go` as
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** At line 464, the loop `for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName}` becomes `[]string{lyxdirs.LyxDirName, "_extra"}`, and the comment at line 462 naming "the prime host worktree's `_lyx`/`_pattern` junctions" is reworded.
+- **Requirements:** At line 464, the loop `for _, name := range []string{lyxdirs.LyxDirName, pattern.DirName}` becomes `[]string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}`, and the comment at line 462 naming "the prime host worktree's `_lyx`/`_pattern` junctions" is reworded.
   Do **not** substitute `"_extra"` here and do not seed a config: this test clones from a genuinely empty bare weft (zero commits, via `makeCLICloneWeftBare`), so there is no pre-existing `weft:main` `fabric.yaml` to seed before `clone` runs, and after batch 4's empty default a bare clone wires no optional junction at all.
-  Use `[]string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}` instead.
+  An `_extra` assertion here would name a junction nothing ever wires.
   That keeps the check's real content — the prime worktree's junctions are wired, more than one of them — and it is true both before and after batch 4, because `.lyx` is structural (`structuralNeverCommittedDirs`) and is wired by every clone regardless of `pathspec`.
   Do not weaken the loop to `_lyx` alone.
   The narrow-pathspec guard at lines 283-326 writes a repo-wide `fabric.yaml` containing `pathspec: _pattern` and asserts the sync-built pathspec still covers `_lyx` — retarget that literal to `_extra` and update the two comments at lines 283 and 291 plus the failure message at line 326.

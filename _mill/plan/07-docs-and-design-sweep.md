@@ -144,7 +144,8 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
 - **Moves:** none
 - **Requirements:** In `finalize.md`, lines 16, 21, and 29 build the whole two-conflict-mechanics argument on `_raddle`/`_pattern` content being reached through a filesystem junction that `git diff` cannot see across.
   The mechanic is still correct — it is a junction boundary — but the junction is now `_lyx`, so retarget the paths: `_lyx/raddle/` in place of `_raddle`, and drop `_pattern` entirely rather than replacing it.
-  Line 29's `ScopedPathspec` example `["_raddle"]` (and its parenthetical "eventually `["_pattern"]` for `PATTERN.md`") becomes `["_lyx"]` with a note that raddle and PATTERN content are both inside it now, which is precisely why the earlier per-directory scoping is obsolete.
+  Line 29's `fabric.CommitWeft` pathspec example `["_raddle"]` (and its parenthetical "eventually `["_pattern"]` for `PATTERN.md`") becomes `["_lyx"]` with a note that raddle and PATTERN content are both inside it now, which is precisely why the earlier per-directory scoping is obsolete.
+  The sentence introducing that call begins on line 28 and attributes it to `fabric.CommitWeft`'s pathspec parameter, not to `ScopedPathspec` — do not rename the mechanism while editing the literal.
   In `shed.md` line 17, the reference to "the weft-side document-driven (non-git) conflict path for `_raddle`/`_pattern` content" retargets the same way.
   In `loom.md`, line 66's diff-exclusion set `_lyx`/`_raddle` collapses to `_lyx` alone, and line 67's "`_raddle` merge-back at Finalize" becomes the `_lyx/raddle/` merge-back.
   In `fabric-unified-view.md`, line 21 states that hub-structural entries `_board`, `_portals`, `_launchers`, `_raddle` stay hardcoded via `HubReservedNames()` — that claim is now false and must be corrected to the three surviving tokens.
@@ -190,7 +191,7 @@ Every `.md` file edited here uses semantic line breaks: one sentence per line, e
   State that this is accepted rather than a defect, because the sole deployed repo is the throwaway SANDBOX which is re-cloned rather than migrated.
   Do not describe an upgrade path — none exists.
   Lines 75-79's deliberate-asymmetry framing survives; only its example changes.
-  Line 84's "four hub-structural tokens (`_board`, `_portals`, `_launchers`, `_raddle`)" becomes three, and line 87's "today just `_pattern`" becomes "empty today".
+  The "four hub-structural tokens (`_board`, `_portals`, `_launchers`, `_raddle`)" phrase spans lines 84-85 — `_raddle` closes on line 85 — and becomes three; line 87's "today just `_pattern`" becomes "empty today".
   Lines 86-92's worked example — append a name to `template.yaml`'s `pathspec:` default to wire a future optional module — stays, because the mechanism is still true and worth documenting; it simply no longer has `_pattern` as its live instance and becomes a purely hypothetical example.
   Also correct line 28's PATTERN-residue description, and lines 115, 118, 364, and 388, which name `_pattern` as a wired junction.
   The `_pattern` references at 364 and 388 enumerate what `clone` creates and what `unwire` preserves — drop `_pattern` from both lists rather than retargeting it.

@@ -110,7 +110,7 @@ pathspec: _pattern  # OPTIONAL per-repo directory path(s) relative to worktree r
   The r1-regression sub-test at lines 200-209, which loops over `{_board, _portals, _launchers, _raddle}`, is **narrowed to `{_board, _portals, _launchers}`, not deleted** — its point is that hub-structural tokens stay reserved even for an empty `junctionNames`, which is exactly the configuration this batch creates, making it more load-bearing than before.
   The loop at line 77 over `{"_board", "_portals", "_launchers", "_raddle"}` drops `_raddle`.
   The `filterHubReserved` table rows at lines 44-45 and 54-55 use `"_pattern"` purely as a stand-in for an ordinary non-reserved name; both already carry `"_extra"` alongside it, so substitute a **second distinct** name (`"_other"`) rather than producing a duplicate entry.
-  Update the file header comment at line 19.
+  Update line 19, which is part of `TestJunctionNames_NoFallbackOnLoadFailure`'s own doc comment ("never silently defaulted to `_lyx`/`_pattern`") rather than the file header at lines 1-8.
   Add a positive case proving a worktree slug named `_raddle` is now accepted by `IsReservedHubName` — that is the observable behaviour change and nothing else pins it.
 - **Commit:** `test(fabricengine): recount the reserved-name union to four and un-reserve _raddle`
 
