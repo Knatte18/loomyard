@@ -29,12 +29,15 @@ Keeping this task to one batch and merging it quickly is the point.
 
 **In:**
 
-- `CONSTRAINTS.md` — Treadle Runner-Seam Invariant bullet, and the lyxtest Leaf Invariant section (**both already edited during mill-start**, see "Work already landed").
+- `CONSTRAINTS.md` — **two edits already landed during mill-start** (Treadle Runner-Seam bullet, lyxtest Leaf section — see "Work already landed"), plus **one edit still to make in mill-go**: the lyxtest section's "**Enforced by**" line gains the test-function name, per the "lyxtest's test is renamed" decision.
 - `internal/treadleengine/doc.go` (~line 147) — the "never imports internal/lyxcwd" clause.
 - `internal/treadleengine/engine.go` (~line 6) — the same clause on the `Engine` type doc.
-- `internal/lyxtest/doc.go` (~lines 7-9) — restates the denylist framing that the conversion inverts.
-- `internal/lyxtest/leaf_enforcement_test.go` — convert the banned-imports denylist to an allowlist, and rewrite the file header + test doc comments, which are stale today independent of the conversion.
+- `internal/lyxtest/doc.go` (~lines 7-13) — the whole Leaf Invariant block, not just its opening sentence;
+  the denylist framing continues through the "It must not import internal/configreg or any feature package … would close a test-build cycle" sentences.
+- `internal/lyxtest/leaf_enforcement_test.go` — convert the banned-imports denylist to an allowlist, rename `TestLeafInvariant` to `TestLeafInvariant_AllowlistOnly`, and rewrite the file header + test doc comments, which are stale today independent of the conversion.
 - `internal/modelspec/leaf_enforcement_test.go` (~line 4) — its "Unlike lyxtest's leaf_enforcement_test.go (a banned-import denylist)" cross-reference dies with the conversion.
+- `internal/shuttleengine/seam_enforcement_test.go` (~line 22) — names `TestLeafInvariant` by function name;
+  pulled into scope by the rename, and **only** by the rename.
 
 **Out:**
 
@@ -102,11 +105,27 @@ Two families that look like the same disease but are **not**, verified rather th
 - `internal/perchengine/engine.go:9`, `internal/perchengine/doc.go:243`, `internal/burlerengine/doc.go:105` and `:196` all claim "never imports fabricengine and never constructs a `_lyx` path".
   `go list -deps` confirms `fabricengine` is absent from both packages' transitive closures.
   The claims hold. Not touched.
-- `internal/shuttleengine/seam_enforcement_test.go:22` cites lyxtest's test as a *style* reference (the `go/parser` `ImportsOnly` idiom, to avoid false positives from doc-comment string literals).
-  That idiom survives the denylist→allowlist conversion unchanged, so the reference stays accurate.
+- `internal/treadleengine/seam_enforcement_test.go:4` and `:8` restate the treadle rule ("never `internal/lyxcwd` as a direct import";
+  "a convenience lyxcwd import").
+  Accurate as written — "as a direct import" already carries exactly the reading the `CONSTRAINTS.md` correction makes explicit, with no isolation claim to remove.
   Not touched.
 - `internal/tokenvocab/doc.go:10` restates tokenvocab's rule accurately.
   `pattern`, `githubclient`, and `shuttleengine` package docs likewise. Not touched.
+
+`internal/shuttleengine/seam_enforcement_test.go:22` was originally on this untouched list — it cites lyxtest's test as a *style* reference (the `go/parser` `ImportsOnly` idiom, to avoid false positives from doc-comment string literals), and that idiom survives the conversion unchanged.
+It cites the test by **function name** ("`TestLeafInvariant`"), so the rename decision moves it into scope.
+It is listed under **Scope → In** above, not here.
+
+**Sweep method, so it can be re-derived and extended.**
+The sweep was three `grep -rn` passes over `docs/`, `manifest/`, `internal/`, `cmd/`, `tools/`:
+
+1. `grep -rn "treadle" --include=*.md --include=*.go … | grep -i "lyxcwd\|geometry\|leaf\|seam"` — treadle claims outside the package.
+2. `grep -rn "lyxtest" --include=*.md --include=*.go … | grep -i "leaf\|banned\|allowlist\|denylist\|import set"` — lyxtest rule restatements.
+3. `grep -rn "never imports\|does not import\|imports only" --include=*.go --include=*.md .` — the overstatement pattern repo-wide;
+   this is the one that surfaced the `perchengine`/`burlerengine` false positives and is the pass to re-run when extending.
+
+Transitive-closure evidence for every verdict came from `go list -deps ./internal/<pkg> | grep loomyard/internal/`, and direct imports from `go list -f '{{range .Imports}}{{.}}{{"\n"}}{{end}}' ./internal/<pkg>`.
+Note that `go list` reports only build-tag-satisfied files, so a package with `//go:build` production files needs a raw import scan too — that is why `internal/lyxtest`'s four production files were checked directly for build constraints (there are none) before the allowlist was declared feasible.
 
 ## Work already landed
 
@@ -119,6 +138,10 @@ the plan must not redo them.
 1. **Treadle Runner-Seam Invariant** — the import-allowlist bullet gained two sentences after "Policed on direct imports only, not the transitive closure":
    that `lyxcwd` is reachable through both `logger` and `shuttleengine` so the exclusion buys no isolation, and that what it enforces is the told-never-derived posture with `runDir`/`GateDir` named.
 2. **lyxtest Leaf Invariant** — the opening sentence was rewritten from denylist framing ("policed by a banned-imports list …, not an allowlist") to an allowlist statement: "production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, and `internal/configengine`", with `configreg` and the feature packages excluded by construction and the test-build-cycle reason stated in one clause.
+
+**A third `CONSTRAINTS.md` edit is still outstanding and belongs to mill-go**, not to this list: the lyxtest section's "**Enforced by**" line gains the test-function name once the rename lands.
+See the "lyxtest's test is renamed" decision.
+So "do not redo the `CONSTRAINTS.md` work" means the two rule-text corrections above — it does not mean `CONSTRAINTS.md` is closed to further edits.
 
 **Known transient inconsistency, do not "fix" it by reverting:** `CONSTRAINTS.md` now describes lyxtest's check as an allowlist, but `internal/lyxtest/leaf_enforcement_test.go` is still a denylist until this task's batch converts it.
 The file is ahead of the test by design, for the window between the mill-start commit and the implementation commit on the same branch.
@@ -157,7 +180,7 @@ Closing that gap is scope item 5.
 
 ### lyxtest converts to an allowlist rather than having its prose weakened
 
-- Decision: `internal/lyxtest/leaf_enforcement_test.go` becomes an allowlist of `internal/configengine`, `internal/lyxcwd`, `internal/weftname` (plus stdlib), matching the other six enforcement tests.
+- Decision: `internal/lyxtest/leaf_enforcement_test.go` becomes an allowlist of `internal/configengine`, `internal/lyxcwd`, `internal/weftname` (plus stdlib), following the shape of `internal/pattern/leaf_enforcement_test.go`.
   The `CONSTRAINTS.md` sentence stays a strong claim and becomes true, rather than being watered down to describe what the denylist happened to check.
 - Rationale: there were two ways to remove the drift — enforce the stated set, or weaken the text to match the check.
   Enforcing is strictly better and verified feasible: `internal/lyxtest` has four production files (`doc.go`, `hermetic.go`, `lyxtest.go`, `reexecguard.go`), **no build constraints on any of them**, and exactly those three internal imports, so the allowlist holds today with zero source changes.
@@ -166,6 +189,20 @@ Closing that gap is scope item 5.
   `lyxtest` is the package every test suite depends on, so a stray import there has the widest blast radius in the repo and is exactly the event that should require a human to notice.
 - Rejected: **keep the denylist and weaken the `CONSTRAINTS.md` sentence** — preserves a weaker property for no benefit.
   **Record the gap without fixing it** — the original recommendation, rejected on the grounds that "this is an audit, not a refactor" is a procedural objection, not a technical one, and the fix is three lines.
+
+### lyxtest's test is renamed, and that pulls two dependents into scope
+
+- Decision: `TestLeafInvariant` is renamed to `TestLeafInvariant_AllowlistOnly`, matching every other allowlist enforcement test in the repo.
+  This is settled here, not left to mill-plan.
+  Two sites follow from it and are both in scope: `internal/shuttleengine/seam_enforcement_test.go:22`, which names the function in a style cross-reference, and `CONSTRAINTS.md`'s lyxtest "**Enforced by**" line, which names only the file today.
+- Rationale: the rename was originally deferred as a judgement call, which was wrong — leaving it open made the sweep's "verified untouched" list conditional on an undecided question, so the list could not be trusted.
+  Deciding it here makes the dependent set closed and knowable before planning starts.
+  On the merits: the `_AllowlistOnly` suffix is what every sibling uses, and after the conversion the bare `TestLeafInvariant` name would be the only one not saying which mechanism it applies.
+- Consequence for `CONSTRAINTS.md`: the lyxtest section's "**Enforced by** `internal/lyxtest/leaf_enforcement_test.go`." gains `(`TestLeafInvariant_AllowlistOnly`)`, matching the six siblings that already name their test function.
+  This is a **third** `CONSTRAINTS.md` edit and it belongs to mill-go, not to the mill-start commit — the mill-start commit deliberately covered only the two rule-*text* corrections that reviewers act on, and an enforced-by line naming a function that does not exist yet would be a forward reference.
+- Rejected: **skip the rename** — keeps `shuttleengine:22` and the enforced-by line untouched, at the cost of the one inconsistently-named enforcement test in the repo, in the file this task exists to correct.
+  **Rename but leave the enforced-by line alone** — the line is already the only one of seven omitting its test name;
+  renaming while leaving it is the worst of both.
 
 ### CONSTRAINTS.md correction lands before the reviewers
 
@@ -198,8 +235,9 @@ Closing that gap is scope item 5.
 
 ## Technical context
 
-**The seven enforcement tests.** Six are near-identical allowlists (`internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/githubclient`, `internal/treadleengine`, plus scoutengine which is out of scope);
-`internal/lyxtest` is the odd one out with a denylist.
+**The enforcement tests.** All are near-identical allowlists — `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/githubclient`, `internal/treadleengine` — except `internal/lyxtest`, which is the odd one out with a denylist.
+`internal/scoutengine`'s is deliberately excluded from this comparison: `scout-seam-conversion` is changing it concurrently, so its shape is not stable at merge time and must not be used as the model to copy.
+Use **`internal/pattern/leaf_enforcement_test.go` as the single shape reference.**
 The shared allowlist shape is worth copying verbatim for the lyxtest conversion:
 
 - `runtime.Caller(0)` + `filepath.Dir` to resolve the package directory independent of `go test`'s working directory.
@@ -209,13 +247,12 @@ The shared allowlist shape is worth copying verbatim for the lyxtest conversion:
   anything needing a registered TLD contains one).
 - Accumulate `failures` as `relPath + ": " + importPath`, then one `t.Errorf` naming the allowed set in the message.
 
-`internal/pattern/leaf_enforcement_test.go` is the smallest instance (single-entry allowlist) and the cleanest model to copy.
-`internal/treadleengine/seam_enforcement_test.go` is the closest in allowlist size.
+`internal/pattern/leaf_enforcement_test.go` is the smallest instance (single-entry allowlist) and the model to copy.
+`internal/treadleengine/seam_enforcement_test.go` is the closest in allowlist size, if a three-entry example is more useful.
 
-**The existing lyxtest test.** `TestLeafInvariant` (note: no `_AllowlistOnly` suffix, unlike the other six) walks the same way but matches each import against a nine-entry `bannedImports` slice with a nested loop.
+**The existing lyxtest test.** `TestLeafInvariant` (note: no `_AllowlistOnly` suffix, unlike its siblings) walks the same way but matches each import against a nine-entry `bannedImports` slice with a nested loop.
 The conversion replaces that slice with an `allowedImports map[string]bool` and inverts the check.
-Whether the test function is renamed to `TestLeafInvariant_AllowlistOnly` for consistency with the other six is a judgement call left to mill-plan;
-consistency argues for renaming.
+The rename to `TestLeafInvariant_AllowlistOnly` is **decided**, not a judgement call — see the "lyxtest's test is renamed" decision, and note it drags `internal/shuttleengine/seam_enforcement_test.go:22` and the `CONSTRAINTS.md` enforced-by line along with it.
 
 **`internal/lyxtest` production files** — `doc.go`, `hermetic.go`, `lyxtest.go`, `reexecguard.go`.
 No `//go:build` constraints on any of them (the only constrained files are `bench_test.go` and `lyxtest_test.go`, which the walk skips).
@@ -319,6 +356,11 @@ The reviewer's check is that no remaining comment in the tree asserts an isolati
   Go doc comments and the test conversion stay in mill-go so the task retains a real implementation batch.
 - **Q:** Beyond the two approved comment sites, are there other files whose claims are no longer valid? **A:** Three more — `internal/lyxtest/doc.go`, `internal/treadleengine/engine.go`, `internal/modelspec/leaf_enforcement_test.go`.
   Four further sites (`perchengine` ×2, `burlerengine` ×2) pattern-match but were verified true (`fabricengine` absent from both closures) and are recorded as deliberately untouched.
+- **Q:** (discussion review r1) Is `TestLeafInvariant` renamed, and if so what does that pull into scope? **A:** Renamed to `TestLeafInvariant_AllowlistOnly`, decided here rather than deferred to mill-plan.
+  It pulls in `internal/shuttleengine/seam_enforcement_test.go:22` (names the function) and a third `CONSTRAINTS.md` edit (the lyxtest "Enforced by" line, the only one of seven omitting its test name).
+  Deferring it had made the sweep's verified-untouched list conditional on an open question, which is why it could not stay deferred.
+- **Q:** (discussion review r1) Is `CONSTRAINTS.md` closed to further edits, given mill-start already landed two? **A:** No — closed only to redoing those two.
+  The enforced-by line is a mill-go edit, deliberately not made during mill-start because it would forward-reference a function that does not exist yet.
 - **Q:** Is the treadle finding as the brief described it? **A:** Worse.
   The brief expected one transitive path via `logger`;
   the allowlist also permits `shuttleengine`, which imports `lyxcwd` directly.
