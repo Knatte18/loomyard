@@ -3,7 +3,7 @@
 ```yaml
 task: "Rename the fabric host vocabulary to warp, and name the composite repo Fabric"
 slug: "fabric-host-to-warp-rename"
-approved: false
+approved: true
 started: "20260809-055729"
 parent: "main"
 root: ""
