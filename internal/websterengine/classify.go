@@ -1,8 +1,7 @@
 // classify.go implements webster's own recovery-classification decision logic, deciding a batch's
 // outcome from webster's Report/Digest types.
-// The v2 Scope field is dropped entirely — the flat plan format carries no `## Scope`, so there is
-// nothing for a changed file to be judged against beyond the fork's own informational deviation
-// list.
+// The flat plan format carries no `## Scope`, so there is nothing for a changed file to be judged
+// against beyond the fork's own informational deviation list.
 // The pinned decision order (report present wins outright; otherwise turn-ended, then timeout, then
 // dead-pane, then running) is a frozen, cross-checked invariant that Classify preserves exactly,
 // not a webster-specific choice.

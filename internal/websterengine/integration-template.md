@@ -1,5 +1,5 @@
 <!-- This is the integration-suite fork prompt for webster's own single,
-     dedicated, final plan-level verification fork (plan-format v3).
+     dedicated, final plan-level verification fork (plan-format).
      It is filled by RenderIntegrationPrompt (render.go) via internal/stencil and written to a prompt file under _lyx/webster/prompts/;
      Master's own Agent-tool fork call is exactly the same "Read this file and follow it exactly: <this file's own path>" idiom used for a batch's own fork prompt.
      Three markers below are top-level {{.X}} substitutions;

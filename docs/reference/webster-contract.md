@@ -10,7 +10,7 @@ Everything about *how* webster reaches those shapes — the fork mechanism, the 
 
 ## Plan input
 
-Webster consumes the pinned flat card-list [plan-format v3](plan-format-v3.md) via `internal/planparser`, the sole parser of `_lyx/plan/`.
+Webster consumes the pinned flat card-list [plan-format](plan-format.md) via `internal/planparser`, the sole parser of `_lyx/plan/`.
 webster groups a plan's cards into execution batches via a config-selected batcher.
 
 ## `_lyx/webster/` as an ownership boundary
@@ -45,7 +45,7 @@ The bisect mechanism that produces it stays webster-internal and is not describe
 
 ## See also
 
-- [plan-format-v3.md](plan-format-v3.md) — the flat-card format webster consumes via `internal/planparser`.
+- [plan-format.md](plan-format.md) — the flat-card format webster consumes via `internal/planparser`.
 - [docs/reference/model-spec.md](model-spec.md) — the model-spec notation webster's roles resolve against.
 - [status-schema.md](status-schema.md) — loom's own status file, the analogous contract for loom's orchestration state.
 - `internal/websterengine` package documentation — the as-built code this doc summarizes.

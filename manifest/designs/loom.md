@@ -26,7 +26,7 @@ Each agent collapses to one job over a file contract:
 
 - Plan producer: "read `discussion.md`, write the `plan/` directory."
   Nothing else.
-  **The target format is changing:** today's pinned [plan-format.md v2](../../docs/reference/plan-format.md) (batch-based) is being replaced by [plan-format v3](../../docs/reference/plan-format-v3.md) (a flat card list) — see that doc for the schema the Plan producer will write against, and `internal/websterengine`'s package documentation for the consumer that now implements it.
+  The pinned plan format is [plan-format.md](../../docs/reference/plan-format.md), a flat card list — see that doc for the schema the Plan producer writes against, and `internal/websterengine`'s package documentation for the consumer that implements it.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize,
@@ -50,12 +50,12 @@ It is a generic engine that walks one ordered, flat list of **producers**, each 
 | 2 | `Discussion-Write` | LLM | — (starting point) | `discussion.md`, shape: `discussion-format.md` |
 | 3 | `Discussion-Review` | LLM/`perch` | `discussion.md` → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
 | 4 | `Plan-Sweep` | mechanical | `discussion.md` (approved) | scout inventory (internal artifact, not gated) |
-| 5 | `Plan-Write` | LLM | `discussion.md` + `Plan-Sweep`'s inventory | `plan.md`, shape: `plan-format-v3.md` |
-| 6 | `Plan-Review-Gate` | mechanical | `plan.md` → `plan-format-v3.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
-| 7 | `Plan-Review` | LLM/`perch` | `plan.md` → `plan-format-v3.md` | verdict + review file |
+| 5 | `Plan-Write` | LLM | `discussion.md` + `Plan-Sweep`'s inventory | `plan.md`, shape: `plan-format.md` |
+| 6 | `Plan-Review-Gate` | mechanical | `plan.md` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 7 | `Plan-Review` | LLM/`perch` | `plan.md` → `plan-format.md` | verdict + review file |
 | 8 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 9 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
-| 10 | `Webster-Review` | LLM/`perch` | full diff → plan-v3's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 10 | `Webster-Review` | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
 | 11 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
@@ -72,7 +72,7 @@ Review is never a property attached to the producer it reviews — it is always 
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
 
-Open questions, not yet resolved: `Discussion` has no mechanical pre-gate the way `Plan-Review-Gate` mirrors `plan-format-v3.md`'s `depends-on-order` check — asymmetric, possibly by nature (no structural check exists for `Discussion` the way order-validation exists for a card list) rather than an oversight, but worth deciding rather than assuming; and whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
+Open questions, not yet resolved: `Discussion` has no mechanical pre-gate the way `Plan-Review-Gate` mirrors `plan-format.md`'s `depends-on-order` check — asymmetric, possibly by nature (no structural check exists for `Discussion` the way order-validation exists for a card list) rather than an oversight, but worth deciding rather than assuming; and whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
 Wiki task `shed-producer-model-scoping` is the dedicated survey pass that reconciles this table against `discussion-format.md`/`plan-format*.md` and `raddle.md`/`finalize.md`, and produces the actual buildable follow-up tasks — this table is settled on the model, not yet on every file-level detail.
 
 ## The gate
@@ -89,7 +89,7 @@ or its escalation mechanics, the same way it doesn't see perch's rounds.
 Webster's own internal design lives in the `internal/websterengine` package documentation, not here.
 
 **Naming note.** `webster` (`internal/websterengine`/`internal/webstercli`, `lyx webster`) is the stack's implementer module; its cross-module contract is [webster-contract.md](../../docs/reference/webster-contract.md).
-This doc's producer list above targets `internal/websterengine` (plan-format-v3, in-session forks) as `loom`'s own Webster producer.
+This doc's producer list above targets `internal/websterengine` (plan-format, in-session forks) as `loom`'s own Webster producer.
 
 Pause stays uniform across loom/perch/Webster (see [pause](#graceful-pause)) because every loop checks the same `pause_requested` flag at its own step boundary, regardless of which module holds the loop.
 
@@ -183,7 +183,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
 | webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-contract.md](../../docs/reference/webster-contract.md), webster's own cross-module contract |
-| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `plan-template.md` prompt (carrying a compact plan-format-v3 spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`plan-template.md`, `plantemplate.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
+| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `plan-template.md` prompt (carrying a compact plan-format spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`plan-template.md`, `plantemplate.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/lyxcwd`, `internal/fabricengine`, `internal/state` |

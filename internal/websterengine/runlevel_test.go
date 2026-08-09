@@ -166,7 +166,7 @@ func (s *runFakeStarter) callCount() int {
 var _ websterengine.MasterStarter = (*runFakeStarter)(nil)
 
 // seedRunPlanDir writes a syntactically complete, validation-clean
-// plan-format v3 plan with numCards cards into a fresh temp plan directory:
+// plan-format plan with numCards cards into a fresh temp plan directory:
 // each card's sole file-op field is a Creates: entry (so path-missing never
 // fires — a Creates: target need not exist on disk), and Depends-on: none.
 // The overview carries NO plan-level "## verify:" section — deliberately,

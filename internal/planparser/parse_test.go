@@ -1,7 +1,7 @@
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
 // parsing, framing extraction), its per-card file-parsing behavior (the title heading, the typed
 // per-card model, Depends-on, Commit, and verify:), the none-vs-nil field distinction, and a full
-// round-trip over the docs/reference/plan-format-v3.md worked-example golden fixture
+// round-trip over the docs/reference/plan-format.md worked-example golden fixture
 // (testdata/goodplan).
 
 package planparser_test
@@ -33,7 +33,7 @@ func writePlanFiles(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// minimalOverview is a syntactically complete v3 overview with a single Card Index
+// minimalOverview is a syntactically complete overview with a single Card Index
 // entry, used as the base fixture for tests that don't care about framing or
 // plan-level sections.
 const minimalOverview = `---
@@ -50,7 +50,7 @@ Framing paragraph.
 1 — only — the only card
 `
 
-// minimalCardFile is a syntactically complete v3 card file body: all five typed
+// minimalCardFile is a syntactically complete card file body: all five typed
 // file-op fields plus Depends-on carry "none" except a single Edits: bullet.
 func minimalCardFile(number int, name, editsPath string) string {
 	return fmt.Sprintf("# Card %d — %s\n\n", number, name) +
@@ -212,9 +212,9 @@ func TestParsePlan_Overview_Errors(t *testing.T) {
 func TestParsePlan_Overview_MissingFormatOrApprovedIsNotFailLoud(t *testing.T) {
 	t.Parallel()
 
-	// Unlike the frozen v2 parser, a missing format:/approved: key is not a
-	// ParsePlan failure — format-unrecognized/plan-unapproved are Validate's
-	// checks, not the parser's; a plan simply parses with the zero value.
+	// A missing format:/approved: key is not a ParsePlan failure —
+	// format-unrecognized/plan-unapproved are Validate's checks, not the parser's; a plan
+	// simply parses with the zero value.
 	dir := writePlanFiles(t, map[string]string{
 		"00-overview.md": "---\n{}\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
 		"01-only.md":     minimalCardFile(1, "only", "a.go"),
@@ -297,7 +297,7 @@ func TestParsePlan_CardHeading(t *testing.T) {
 	})
 }
 
-// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way distinction plan-format-v3 pins
+// TestParsePlan_Card_FiveFieldsNoneSentinel covers the three-way distinction plan-format pins
 // for each of the five typed file-op fields (and Depends-on): absent entirely (nil slice, HasX ==
 // false), present with the literal "none" (empty non-nil slice, HasX == true), and present with
 // entries (populated non-nil slice, HasX == true).
@@ -609,7 +609,7 @@ func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	}
 }
 
-// goodPlanDir is the docs/reference/plan-format-v3.md worked example, materialized
+// goodPlanDir is the docs/reference/plan-format.md worked example, materialized
 // verbatim as this package's golden happy-path fixture.
 func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")

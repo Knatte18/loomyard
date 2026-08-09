@@ -392,15 +392,8 @@ func docsLinkScan(t *testing.T, repoRoot string, roots []string, allow map[docsL
 // tasks to fix, per _mill/discussion.md's allowlist-is-keyed-and-self-expiring decision. It is keyed
 // by (file, target) and never by line number; every entry names its owning task; and an entry whose
 // key is not matched by any break in a scan is reported by docsLinkScan as deletable.
-// 7 entries covering 8 link instances: docs/reference/plan-format-v3.md carries the
-// scout-redesign.md target twice, and the (file, target) key collapses both into one entry, which
-// is intended.
+// 2 entries from earlier tasks in the chain, not yet resolved.
 var docsLinkAllowlist = map[docsLinkKey]string{
-	{File: "docs/reference/discussion-format.md", Target: "plan-format.md"}:                        "task B -- resolves when plan-format-v3.md is renamed to plan-format.md",
-	{File: "docs/reference/plan-format-v3.md", Target: "plan-format.md"}:                           "task B -- same",
-	{File: "docs/reference/status-schema.md", Target: "plan-format.md"}:                            "task B -- same",
-	{File: "manifest/designs/loom.md", Target: "../../docs/reference/plan-format.md"}:              "task B -- same",
-	{File: "docs/reference/plan-format-v3.md", Target: "../../manifest/designs/scout-redesign.md"}: "task B owns this file; the target fix is the one this task applies elsewhere",
 	{File: "docs/overview.md", Target: "../CONSTRAINTS.md#package-naming"}:                         "chain A -> B -> E; E is last owner",
 	{File: "manifest/designs/loom.md", Target: "../../docs/overview.md#hub-geometry-invariants"}:   "chain B -> C -> E; E is last owner",
 }

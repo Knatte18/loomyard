@@ -72,7 +72,7 @@ func requireContains(t *testing.T, text, needle string) {
 
 // requireNotContains fails the test, naming the forbidden needle, if text
 // contains it — the negative half of requireContains, used to pin the
-// absence of every dropped v2 concept (oversized, chain, ## Scope) and every
+// absence of every dropped batch-era concept (oversized, chain, ## Scope) and every
 // concept the fork-context-hygiene Shared Decision moved out of the thin
 // fork prompt (## Shared Decisions, ## Rename mechanic).
 func requireNotContains(t *testing.T, text, needle string) {
@@ -394,10 +394,10 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 }
 
 // TestForkTemplate_PinsReportSchemaKeys asserts the embedded, composed fork template's bytes carry
-// the minimal fork-return contract's field names verbatim (status, head_sha, deviations — never the
-// v2 report's tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule statement and the
-// commit-per-card statement, so a silent edit to any of these fails here rather than only a
-// human review.
+// the minimal fork-return contract's field names verbatim (status, head_sha, deviations — never
+// the superseded report's tests/stuck_reason/out_of_scope grammar) plus the fresh-read rule
+// statement and the commit-per-card statement, so a silent edit to any of these fails here rather
+// than only a human review.
 func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	text := string(websterengine.ForkTemplate())
 
@@ -414,7 +414,7 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 	requireContains(t, text, "NEVER run any `lyx webster` command")
 	requireContains(t, text, "YOU are the one who WRITES that report")
 
-	// The v2 report grammar (done/stuck/tests/out_of_scope) must be gone —
+	// The superseded report grammar (done/stuck/tests/out_of_scope) must be gone —
 	// the report is deliberately minimal under the flat card-list model.
 	requireNotContains(t, text, "out_of_scope:")
 	requireNotContains(t, text, "tests: green")
@@ -507,10 +507,10 @@ func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
 	}
 }
 
-// TestTemplates_NoV2TokensRemain asserts neither embedded template carries any of the three dropped
-// v2 concepts — oversized batches, deferred-verify chains, and the per-batch "## Scope" section —
-// anywhere in its bytes.
-func TestTemplates_NoV2TokensRemain(t *testing.T) {
+// TestTemplates_NoDroppedBatchConceptsRemain asserts neither embedded template carries any of the
+// three dropped batch-era concepts — oversized batches, deferred-verify chains, and the per-batch
+// "## Scope" section — anywhere in its bytes.
+func TestTemplates_NoDroppedBatchConceptsRemain(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		text string

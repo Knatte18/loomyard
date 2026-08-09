@@ -1,5 +1,5 @@
-// validate.go implements Validate, plan-format v3's complete machine check set
-// (docs/reference/plan-format-v3.md, "Validation checks"), run in this fixed order: format/approval
+// validate.go implements Validate, plan-format's complete machine check set
+// (docs/reference/plan-format.md, "Validation checks"), run in this fixed order: format/approval
 // (format-unrecognized, plan-unapproved), Card Index <-> card-file consistency
 // (index-file-mismatch), card path well-formedness and the Moves: grammar/redundancy/mechanic
 // checks (card-path-malformed, move-format, move-redundant, move-source-missing,
@@ -7,11 +7,10 @@
 // (card-missing-field, card-field-overlap), the card-numbering heading cross-check, the
 // existence-dependent cross-referencing checks (path-missing, commit-subject-mismatch), and the
 // depends-on-order gate.
-// Findings are keyed by card
-// (flat `N-<slug>`), not batch — v3 has no batch concept — and there is no ValidateCaps: the
-// oversized-batch cap dies with batch itself.
+// Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
+// and there is no ValidateCaps because there is no oversized-batch cap to configure.
 //
-// This file is added across three cards (see docs/reference/plan-format-v3.md's worked spec):
+// This file is added across three cards (see docs/reference/plan-format.md's worked spec):
 // format/structure checks land first, then the card-path/Moves grammar checks, then the
 // existence-dependent and depends-on checks — each addition also extends Validate's call sequence
 // in place, in the spec's fixed numbering, so every intermediate commit still compiles and runs a
@@ -52,7 +51,7 @@ func cardID(c Card) string {
 	return fmt.Sprintf("%d-%s", c.Number, c.Slug)
 }
 
-// Validate runs every plan-format v3 machine check against plan and returns every finding in fixed
+// Validate runs every plan-format machine check against plan and returns every finding in fixed
 // order.
 func Validate(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
@@ -141,7 +140,7 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	return findings
 }
 
-// cardPathMalformedReason reports why p is not a well-formed plan-format-v3 card path, or "" when well-formed.
+// cardPathMalformedReason reports why p is not a well-formed plan-format card path, or "" when well-formed.
 func cardPathMalformedReason(p string) string {
 	if p == "" {
 		return "empty entry"

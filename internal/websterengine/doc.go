@@ -11,7 +11,7 @@
 // # Plan consumption: one parser, one batcher registry
 //
 // webster consumes the pinned flat card-list plan format (see
-// docs/reference/plan-format-v3.md) through internal/planparser, the SOLE
+// docs/reference/plan-format.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
 // anywhere else re-derives that grammar; the one remaining plan-level-section
 // consumer here, RenderIntegrationPrompt (the integration-suite fork's own
@@ -48,7 +48,7 @@
 //	    // v0: declared order
 //	}
 //
-// HasSymbolFields() is unreachable in v0 — plan-format-v3 cards carry no
+// HasSymbolFields() is unreachable in v0 — plan-format cards carry no
 // symbol fields yet — so this costs nothing today and turns the eventual
 // scout-driven rollout into "the planner starts populating fields,"
 // never a webster code change.
@@ -68,7 +68,7 @@
 // trail — one element under the identity batcher, more once a grouping
 // batchifier ships) and each card's own optional `verify:` runs and must
 // pass before that card's commit; there is no batch-wide verify distinct
-// from its cards' own gates, mirroring the plan-format-v3 card model
+// from its cards' own gates, mirroring the plan-format card model
 // directly.
 //
 // # bracket verbs, not spawn/poll
