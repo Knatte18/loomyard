@@ -27,7 +27,7 @@ It cannot notice a systemic problem that only shows up across several phases —
 ## Aggregation and the reflection step
 
 Go collects every Tier 2 note emitted during a run (it reads every phase's output file regardless) and, at a natural end point — Finalize, or a `stuck` escalation — spawns **one** dedicated reflection agent over the aggregated dossier.
-This mirrors the `Raddle` pattern (see [loom.md](loom.md#the-phase-machine)): a fresh-context agent reading only the accumulated notes, not carrying the baggage of having "been there" for the whole run.
+This mirrors the `Raddle` pattern (see [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots)): a fresh-context agent reading only the accumulated notes, not carrying the baggage of having "been there" for the whole run.
 That agent makes the actual self-report judgment call (worth filing? one issue or several? title/body?) and invokes the shipped `lyx selfreport create` primitive to do the actual filing.
 
 ## Relationship to the shipped `selfreport` module
