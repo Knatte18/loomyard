@@ -18,7 +18,7 @@ It depends on batches 2 and 3 together because the notes assert what both of the
 Batch-local decisions beyond `## Shared Decisions`:
 
 - `shed-followups-override-notes` — the notes are **hand-written, outside the scripted sweep**. The file is excluded from the sweep in full, so the sweeper never sees it, and the notes must be typed rather than generated.
-- The file keeps its stale citations of `docs/reference/plan-format-v3.md` at four places. This is accepted, not overlooked: the file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment. Rewriting them would make the record claim the scoping task knew the post-rename name. The override notes are where a reader learns the file moved. Do not "fix" them.
+- The file keeps its stale citations of the doc's pre-rename path. This is accepted, not overlooked: the file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment. Rewriting them would make the record claim the scoping task knew the post-rename name. The override notes are where a reader learns the file moved. Do not "fix" them.
 
 ## Cards
 
@@ -45,7 +45,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   2. The **unqualified "repo grep"** became a grep with exactly one file-level exclusion — **this file** — because its `### Acceptance` sentence naming the pattern set is itself a pattern-bearing line, and a blind sweep destroys the criterion it defines.
      Record both halves of what that means, since they are easy to conflate:
      - The **sweeper** additionally skipped line 18 of `manifest/roadmap.md`, whose "`plan-format-v3.md` → `plan-format.md`" would have collapsed to a self-referential no-op. That skip was temporary: task B rewrote the line by hand so it names no version, and the **final** acceptance grep carries no roadmap exclusion at all.
-     - **This file is the sole permanent exemption.** Name the accepted consequence plainly: its four citations of the doc's pre-rename path, and its other references to the format by the old name, survive on purpose. The file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment; rewriting them would make the record claim the scoping task knew the post-rename name. A reader who follows one of them will not find the file — this note is where they learn it moved to `docs/reference/plan-format.md`.
+     - **This file is the sole permanent exemption.** Name the accepted consequence plainly: its citations of the doc's pre-rename path, and its other references to the format by the old name, survive on purpose.
+       **State a verified count, not a remembered one.** Run `grep -c 'plan-format-v3\.md' manifest/designs/shed-followups.md` while writing this note and use that number. Do not carry forward the "four" that appears in this task's discussion — a plain grep returns five, because the discussion's tally silently omitted one occurrence, and this note is a durable record tasks C and E will read. The file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment; rewriting them would make the record claim the scoping task knew the post-rename name. A reader who follows one of them will not find the file — this note is where they learn it moved to `docs/reference/plan-format.md`.
   3. **"This task changes paths and names only, never prose"** is superseded. The repo-wide v2 erasure rewrote prose in `docs/reference/plan-format.md`, `manifest/designs/loom.md`, `manifest/roadmap.md`, and Go comments across three packages.
   4. The `### Why` subsection's **rejected alternative** — "renaming the file but keeping in-text `v3` as a historical label" — was honoured rather than overridden, and extended: the four bare-`v3` labels in `internal/planparser` comments were rewritten too. Record it explicitly, because it is a *rejection* rather than an instruction and a reader could otherwise conclude task B left the class alone.
   5. The `### Sequencing` claim that this task "deliberately leaves `loom.md:29` self-contradicting" no longer holds — task B rewrote that line in full.
@@ -63,7 +64,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - In `#### Part four`'s `manifest/roadmap.md` list: record both roadmap edits task B made, so E does not go looking for either. B deleted the "v3 is the live plan format now that its predecessor is retired." sentence from the Done item, since B's own sweep of the item's heading is what made it incoherent;
     and B rewrote line 18's six-task breakdown parenthetical, which the sweeper had deliberately skipped, so it describes the rename instead of spelling both filenames. The task slug on that line is untouched. E's remaining roadmap obligation is unchanged by either edit.
 
-  Do **not** edit anything else in this file, and do not repair its four stale citations of the old path.
+  Do **not** edit anything else in this file, and do not repair its stale citations of the old path.
 - **Commit:** `docs(shed-followups): record task B's overrides for tasks C and E`
 
 ### Card 14: Run the full acceptance gate
@@ -106,12 +107,12 @@ Batch-local decisions beyond `## Shared Decisions`:
   6. `grep -rl 'gopkg.in/yaml.v3' --include='*.go' . | wc -l` returns **32**.
   7. `go build ./...` clean and `go test ./...` green (the batch `verify:` covers both).
   8. `git status --porcelain` lists nothing under `.scratch/` — no sweeper file staged or committed.
-  9. Every relative markdown link and anchor **touched by the sweep** resolves. `docs/reference/plan-format.md` now exists, closing the links that dangled from `manifest/designs/loom.md` and from the deleted blockquote. This gate explicitly exempts `manifest/designs/shed-followups.md`: its four citations of the old path are excluded by design and are not a regression.
+  9. Every relative markdown link and anchor **touched by the sweep** resolves. `docs/reference/plan-format.md` now exists, closing the links that dangled from `manifest/designs/loom.md` and from the deleted blockquote. This gate explicitly exempts `manifest/designs/shed-followups.md`: its citations of the old path are excluded by design and are not a regression.
 
   10. `manifest/designs/shed-followups.md` is the **sole** surviving plan-format-v3 site in the repo. Confirm that deliberately, rather than discovering it: `grep -rniE 'plan-format-v3|plan_format_v3|plan-format v3|plan format v3|plan-v3' . --exclude-dir=.git --exclude-dir=_mill --exclude-dir=.scratch` returns hits in that file and **no other**. Card 13's block 1 is what tells a future reader why it is exempt.
   11. The task slug `plan-format-drop-v3-suffix` still appears wherever it did before — `manifest/roadmap.md:18`, `manifest/designs/shed-followups.md`, the branch name. It is a task name, not a format reference, and matches none of the six patterns. Its disappearance would mean an over-broad edit, not a cleaner tree.
 
-  One thing no gate can check: whether the seven hand-written prose edits and the three override notes read correctly.
+  One thing no gate can check: whether the hand-written prose edits and the three override notes read correctly.
   That is review's job.
   Flag it at handoff.
 

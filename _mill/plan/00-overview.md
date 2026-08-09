@@ -3,7 +3,7 @@
 ```yaml
 task: 'plan-format: drop the v3 suffix and sweep every reference by script'
 slug: plan-format-drop-v3-suffix
-approved: false
+approved: true
 started: '20260809-123134'
 parent: main
 root: ""

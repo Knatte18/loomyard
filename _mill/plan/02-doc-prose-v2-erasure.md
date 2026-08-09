@@ -67,7 +67,9 @@ Both of the last two are deliberate departures from the manifest, and both are r
      delete both.
   5. "This check **absorbs** v2's `card-count-mismatch` — v3 has no `(C cards)` segment to cross-check separately" → restate as a property of the check itself: the check covers the card count because there is no separate `(C cards)` segment to cross-check.
   6. The `move-mechanic-missing` bullet's "(now plan-level, was per-batch in v2)" → "(plan-level)".
-  7. The whole "**Dropped from v2, and why:**" block — its lead-in plus all five entries (`verify-missing`, `chain-end-dangling`, `batch-oversized`, `card-outside-scope`, `card-count-mismatch`) — is **deleted**. It exists solely to describe a delta against a format that no longer exists. Delete the surrounding blank line left behind so the numbered check list flows straight into the `## Worked example` heading.
+  7. The document's H1, which the sweep leaves as "# Plan format — flat card list" (the sixth pattern's replacement is `plan format`, unhyphenated, because the source title had a space where every other reference has a hyphen) → rewrite the compound to the hyphenated `Plan-format` form the rest of the file and the rest of the repo use, so the title and the pinned-status blockquote two lines below it name the format the same way.
+     Nothing links to this heading by anchor and no test asserts it — verified — so the only consequence is that the doc stops calling itself two different things.
+  8. The whole "**Dropped from v2, and why:**" block — its lead-in plus all five entries (`verify-missing`, `chain-end-dangling`, `batch-oversized`, `card-outside-scope`, `card-count-mismatch`) — is **deleted**. It exists solely to describe a delta against a format that no longer exists. Delete the surrounding blank line left behind so the numbered check list flows straight into the `## Worked example` heading.
 
   Do **not** touch the `format: 3` frontmatter key anywhere in the file, including inside the worked example — that is the schema's own version field, not the document's name (`schema-version-field-is-not-the-doc-name`).
   Do **not** rewrite the doc's framing beyond removing the v2 claims, do not add producer-model vocabulary, and do not touch the "Batch is gone / the card is the unit" section — those belong to downstream tasks C and F.
@@ -151,7 +153,7 @@ Both of the last two are deliberate departures from the manifest, and both are r
   5. Card 7's line-18 rewrite specifically — run the same grep **without** the `^\./manifest/roadmap\.md:18:` filter and confirm `manifest/roadmap.md` produces no line at all. This is the gate batch 4 runs repo-wide; proving it here localizes a failure to this batch rather than to the terminal one.
   6. `grep -n 'plan-format-drop-v3-suffix' manifest/roadmap.md` still finds the task slug on line 18. The slug is deliberately preserved (`roadmap-18-is-rewritten-not-swept`) — if it is gone, card 7 over-edited.
 
-  Explicitly **not** a regression, and not to be filed as one: `manifest/designs/shed-followups.md` still cites the doc's pre-rename path in four places.
+  Explicitly **not** a regression, and not to be filed as one: `manifest/designs/shed-followups.md` still cites the doc's pre-rename path in several places.
   That file is excluded by design;
   it is a historical record of what each task was told at scoping time, and those citations are accurate as of that moment.
   Batch 4's override notes are where a reader learns the file moved.
@@ -164,5 +166,5 @@ This batch edits three markdown files and no Go source, so there is no runnable 
 Nothing in the repo reads any of these three files at test time — the plan-format worked example that `internal/planparser`'s golden fixture mirrors is materialized from hardcoded test source, not loaded from `docs/reference/`, so a doc edit cannot turn a test red.
 The overview's module-wide `verify: go build ./...` still runs at the batch boundary as a cheap backstop.
 
-Verification for this batch is card 8's grep gates, which check the property that actually matters here — zero surviving version labels and zero surviving v2 references in the three files — plus review, which is the only thing that can judge whether the seven rewritten sentences read correctly.
+Verification for this batch is card 8's grep gates, which check the property that actually matters here — zero surviving version labels and zero surviving v2 references in the three files — plus review, which is the only thing that can judge whether the rewritten sentences read correctly.
 That last point is the task's known blind spot: `shed-followups.md:232-233` is explicit that the meaningful failure mode is incompleteness, checked by grep rather than by an assertion.
