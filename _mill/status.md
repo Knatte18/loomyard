@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-code-retirement
 slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-fix-r5  '2026-08-09T09:53:07Z'
 plan-review-r6  '2026-08-09T10:06:37Z'
 planned  '2026-08-09T10:06:46Z'
 implementing  '2026-08-09T10:07:17Z'
+approved-code-retirement  '2026-08-09T10:18:55Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ implementing  '2026-08-09T10:07:17Z'
 ```yaml
 batches:
   - name: code-retirement
-    state: running
+    state: approved
     implementer_session: c9e8d9cc-6675-442c-8033-2ab9af34ce3d
     start_sha: a803b2c77dfcca95e6da0f948cc63fcda4429ac0
+    commit_sha: 12a9f7d692b1824d1d3e37e00822a6ec8a898509
     verify_baseline_failures: []
   - name: comment-sweep
     state: pending
