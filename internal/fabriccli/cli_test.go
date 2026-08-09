@@ -664,3 +664,115 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 	}
 	return string(out)
 }
+
+// TestRunCLI_ReconcileBacksFillsWarpBinding drives both the two-positional clone and reconcile
+// through fabriccli.RunCLI so the commit-and-push half of the backfill is actually exercised — the
+// record_failed value is set only by the handler and cannot be observed from an engine-only test. It
+// builds the hub, deletes the recorded binding with plain git and commits that deletion (the board is
+// already clean beforehand: the CLI clone commits the anchor and repo-wide config through Bolt as part
+// of its normal run), then asserts reconcile exits 0, reports "recorded", and leaves the record
+// tracked on the board worktree, with "pairs" still present and unchanged in shape.
+func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
+	fixtures := t.TempDir()
+	warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-warp")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-weft")
+
+	cloneParent := t.TempDir()
+	t.Chdir(cloneParent)
+
+	var cloneOut bytes.Buffer
+	// No --force-bootstrap: makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
+	// the unborn-HEAD case the weft-candidate guard admits on its own.
+	exitCode := fabriccli.RunCLI(&cloneOut, []string{
+		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
+	}
+	cloneResult := decodeResult(t, &cloneOut)
+	hubPath, _ := cloneResult["hub"].(string)
+	if hubPath == "" {
+		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
+	}
+
+	boardDir := fabricengine.BoardDir(hubPath)
+	lyxtest.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
+	lyxtest.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
+
+	t.Chdir(filepath.Join(hubPath, "reconcilecli-warp"))
+
+	var reconcileOut bytes.Buffer
+	exitCode = fabriccli.RunCLI(&reconcileOut, []string{"reconcile"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(reconcile) = %d; want 0\noutput: %s", exitCode, reconcileOut.String())
+	}
+
+	result := decodeResult(t, &reconcileOut)
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("RunCLI(reconcile) ok = %v; want true; output: %s", result["ok"], reconcileOut.String())
+	}
+	if binding, _ := result["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecorded) {
+		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecorded)
+	}
+	if _, present := result["pairs"]; !present {
+		t.Errorf("RunCLI(reconcile) output missing 'pairs' key; want it present and unchanged in shape")
+	}
+
+	tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", fabricengine.WarpBindingFileName))
+	if tracked == "" {
+		t.Errorf("%s is not tracked on weft:main at %s after the reconcile backfill", fabricengine.WarpBindingFileName, boardDir)
+	}
+}
+
+// TestRunCLI_ReconcileBackfillFailureIsNonFatal points the weft remote at an unreachable path so the
+// backfill's push fails after its commit succeeds, then asserts the envelope reports "record_failed"
+// with a non-empty detail while the exit code stays 0 — a failed backfill commit or push is non-fatal,
+// mirroring the board-junction precedent that a convenience repair may never downgrade a reconcile
+// verdict. The exit-code assertion is the point of this test.
+func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
+	fixtures := t.TempDir()
+	warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-fail-warp")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-fail-weft")
+
+	cloneParent := t.TempDir()
+	t.Chdir(cloneParent)
+
+	var cloneOut bytes.Buffer
+	exitCode := fabriccli.RunCLI(&cloneOut, []string{
+		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
+	}
+	cloneResult := decodeResult(t, &cloneOut)
+	hubPath, _ := cloneResult["hub"].(string)
+	if hubPath == "" {
+		t.Fatalf("RunCLI(clone) output missing non-empty 'hub' key; got %v", cloneResult)
+	}
+
+	boardDir := fabricengine.BoardDir(hubPath)
+	lyxtest.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
+	lyxtest.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
+
+	unreachable := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
+	lyxtest.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
+
+	t.Chdir(filepath.Join(hubPath, "reconcilecli-fail-warp"))
+
+	var reconcileOut bytes.Buffer
+	exitCode = fabriccli.RunCLI(&reconcileOut, []string{"reconcile"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed backfill push must be non-fatal)\noutput: %s", exitCode, reconcileOut.String())
+	}
+
+	result := decodeResult(t, &reconcileOut)
+	if ok, _ := result["ok"].(bool); !ok {
+		t.Fatalf("RunCLI(reconcile) ok = %v; want true; output: %s", result["ok"], reconcileOut.String())
+	}
+	if binding, _ := result["warp_binding"].(string); binding != string(fabricengine.WarpBindingOutcomeRecordFailed) {
+		t.Errorf("RunCLI(reconcile) warp_binding = %q; want %q", binding, fabricengine.WarpBindingOutcomeRecordFailed)
+	}
+	if detail, _ := result["warp_binding_detail"].(string); detail == "" {
+		t.Errorf("RunCLI(reconcile) warp_binding_detail is empty; want a non-empty push-failure message")
+	}
+}
