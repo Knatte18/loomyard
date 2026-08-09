@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: planned
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -20,4 +20,5 @@ planning  '2026-08-09T06:12:15Z'
 plan-review-r1  '2026-08-09T06:20:03Z'
 plan-fix-r1  '2026-08-09T06:21:12Z'
 plan-review-r2  '2026-08-09T06:29:02Z'
+planned  '2026-08-09T06:29:34Z'
 ```
