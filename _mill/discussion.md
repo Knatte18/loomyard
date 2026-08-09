@@ -206,9 +206,14 @@ Compile-affecting:
   Narrow the test to webster alone and rename it accordingly.
 - `internal/loomengine/coherence.go:18` — `"builder": true` in `validPhases` (phase rename).
 - `internal/loomengine/preflight_integration_test.go:611`, `:624` — `Phase: "builder"` fixtures (phase rename).
-- `internal/fabricengine/weftgit_exclude_test.go:279`, `:280`, `:285` — fixture dirs `.lyx/builder/run.lock`, `.lyx/builder/pause`, `_lyx/builder/state.json`.
-  **Delete these three lines rather than renaming them**: the test proves `.lyx` exclusion holds at every depth, and the `webster` fixtures on the adjacent lines already prove it.
-  A second module's dirs add nothing.
+- `internal/fabricengine/weftgit_exclude_test.go` — **two different dispositions, do not treat the three lines alike**:
+  - `:279`, `:280` (`.lyx/builder/run.lock`, `.lyx/builder/pause`) — **delete**.
+    These are the *negative* control (machine-local artifacts that must stay untracked), and the `webster` fixtures at `:281–282` already prove it at every depth.
+  - `:285` (`_lyx/<rel>/builder/state.json`) — **rename to `webster`, do not delete**.
+    This is the test's only **durable positive control**, and it is asserted at **`:302–305`** (`durable := lyxRel + "/builder/state.json"`) — a line the task spec's inventory does not list.
+    There is no webster durable twin; `:281–282` are `.lyx`-only.
+    Deleting `:285` alone leaves the test asserting on a file it no longer writes, and deleting both loses the "committed alongside the `.lyx` artifacts … proving the property is exact and does not over-match real state" property documented at `:268–272`.
+    Rename the fixture **and** its assertion together, in the same edit.
 
 Comment-only (the "sweep everything" set — ~50 sites):
 
@@ -222,12 +227,18 @@ Comment-only (the "sweep everything" set — ~50 sites):
 - `internal/pattern/leaf_enforcement_test.go:3` — the feature-package list.
 - `internal/loomengine/configtemplate.go:4`, `internal/loomengine/config_test.go:5`.
 - `internal/perchengine/doc.go:13` — `builder-review` (phase/gate rename).
+- `internal/fabricengine/trailer_test.go:42–43`, `:54–56` — pins the `"builder: <label>"` weft commit-subject form as the `builder_style_subject` fixture, with a comment reading "the `builder: <label>`/`webster: <label>` form every builder/webster weft commit uses".
+  **Not in the task spec's inventory.**
+  The builder subject form dies with the module: rename the fixture to a webster-only case and narrow the comment.
+- `internal/fabricengine/refscanner_test.go:20`, `:37` — `master-builder` / `master-builder-weft` **worktree-name** fixtures, unrelated to the builder module.
+  **Leave these**; they are the acceptance grep's one named false positive.
 - `internal/modelspec/modelspec.go:7`, `:35` — "builder's roles", "builder, perch/burler/loom configs".
 - `CONSTRAINTS.md:97` and `:106` — feature-package lists naming `builderengine`.
   `:106` mirrors `internal/pattern/leaf_enforcement_test.go:3`; keep the two consistent.
 - `CONSTRAINTS.md:219` — the Fabric Git Invariant's Enforced-by block machine-checks `internal/websterengine`/`internal/builderengine` via `TestNoRawGitMutation_WebsterBuilderProductionSource`.
   Narrow to webster.
-  `:219` sits inside the Fabric Git Invariant (begins `:173`), **not** the Review Round Invariant (begins `:224` region) — do not edit the wrong invariant.
+  `:219` sits inside the **Fabric Git Invariant (warp + weft)**, **not** the Review Round Invariant that follows it — do not edit the wrong invariant.
+  Confirm by heading text, not line number.
 
 ### Markdown sites
 
@@ -247,7 +258,12 @@ Comment-only (the "sweep everything" set — ~50 sites):
   Re-point to `webster-contract.md`'s summary-artifact section.
   **These must be re-pointed by this task before task D runs.**
 - **`docs/reference/plan-format-v3.md:343`** — the fourth deep link.
-- **`manifest/designs/loom.md:91`, `:94`, `:187`** — links only (see the deferral decision).
+- **`manifest/designs/loom.md:91`, `:94`, `:187`** — the `builder-contract.md` links only (see the deferral decision).
+- **`manifest/designs/loom.md:29`** — `[plan-format.md v2](../../docs/reference/plan-format.md)`, a link to the v2 doc this task deletes.
+  **Not in the task spec's inventory**, and `shed-followups.md:101` assigns `loom.md:29` to task E.
+  Same split as `:91`/`:94`/`:187`: repair the link here under the general link-repair rule, leave the "target format is changing" prose to E.
+- **`docs/reference/status-schema.md:3`** — links **both** `builder-contract.md` *and* `plan-format.md`; the task spec names only the first.
+  Both targets are deleted by this task.
 - **`manifest/designs/review-finding-classification.md:7`, `:47`** — a `plan-format.md` / `plan-format-v3.md` pair that task B's rename would otherwise collapse into "plan-format.md / plan-format.md".
 - **`manifest/designs/self-report.md:20`** — "builder/webster implementer fork".
 - **`manifest/designs/hardener.md:63`** — "Discussion/Plan/Builder" (phase rename).
@@ -295,7 +311,7 @@ From `CONSTRAINTS.md` (authoritative, read every session):
   Satisfying it requires deleting both `SANDBOX-BUILDER-SUITE.md` and `SANDBOX-CORE-SUITE.md`'s S9 `**Covers:** builder` tag.
 - **Fabric Git Invariant (warp + weft)** — its Enforced-by block at `CONSTRAINTS.md:219` machine-checks module ownership for `internal/websterengine`/`internal/builderengine` via `cmd/lyx/rawgitmutation_test.go`'s `TestNoRawGitMutation_WebsterBuilderProductionSource`.
   Narrow that clause to webster alone.
-  `:219` is inside the Fabric Git Invariant, which begins at `:173`.
+  `:219` is inside the **Fabric Git Invariant (warp + weft)** — locate it by that heading, not by a line number.
 - **Documentation Lifecycle** — `CONSTRAINTS.md:339` defers to `docs/overview.md#documentation-lifecycle`, which lists `builder-contract.md` among the durable, kept `docs/reference/` docs.
   Deleting it and adding `webster-contract.md` means `docs/overview.md:93`'s list must be updated in the same commit, or the lifecycle convention documents a file that no longer exists.
 - **Cwd Resolution Invariant** — verified non-issue: `internal/lyxcwd` has no builder helpers, so deleting the packages touches no cwd resolution.
@@ -338,6 +354,14 @@ Run all four; all must be clean:
    - **Phase/gate token:** zero hits for `builder` as a phase or gate value — `"builder"`, `phase: builder`, `builder-review`, and the `→ Builder →` phase-list form.
    - **Module word:** zero hits for the builder *module* — `lyx builder`, `builder.yaml`, `builder-suite`, `builder suite`, `SANDBOX-BUILDER-SUITE`, and `_lyx/builder` / `.lyx/builder`.
      This is the pattern that catches `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, `docs/sandbox-howto.md`, `README.md:25`, and `model-spec.md`'s `builder.yaml` example — none of which the first two patterns see.
+   - **Deleted filenames:** zero hits for `builder-contract` and for `plan-format.md` **as a link target** (`](plan-format.md)`, `](../docs/reference/plan-format.md)`, `](../../docs/reference/plan-format.md)`, and the bare-path form).
+     Without this the gate is blind to exactly the failure class this task exists to prevent — a link to a file that no longer exists, which breaks nothing and which task B's own `plan-format-v3` grep explicitly cannot see either.
+     **Verified live misses that the first three patterns all pass:** `manifest/designs/loom.md:29` (`[plan-format.md v2](../../docs/reference/plan-format.md)`, in no inventory — repaired under the link-repair rule, prose left to E) and `docs/reference/status-schema.md:3` (links `plan-format.md` alongside the `builder-contract.md` link already inventoried).
+   - **Commit-subject and path fragment:** zero hits for the `builder:` commit-subject prefix and the `/builder/` path fragment.
+     This catches `internal/fabricengine/trailer_test.go:42–43`, `:54–56`, which pin the `"builder: <label>"` weft commit-subject form as the `builder_style_subject` fixture — the subject form dies with the module, and no other pattern sees it.
+
+   **`master-builder` is a deliberate exception.** `internal/fabricengine/refscanner_test.go:20` and `:37` use `master-builder` / `master-builder-weft` as arbitrary *worktree-name* fixtures, unrelated to the builder module.
+   Leave them; exclude the token by pattern so the gate stays mechanical.
 
    **Ordinary-English false positives must be excluded by pattern, never by judgment**, so the grep stays a mechanical gate: `strings.Builder`, "fixture builders" (`docs/benchmarks/test-suite-timing.md:739`), "fluent builder method" (`docs/research/scout-multilang.md:29`), and similar.
    This is why the module-word pattern is a list of specific builder-module forms rather than a bare `-i builder`.
