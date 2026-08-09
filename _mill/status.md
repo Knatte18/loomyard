@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: raddle-finalize-fold-and-link-repair
 branch: raddle-finalize-fold-and-link-repair
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-raddle-fold-and-link-guard  '2026-08-09T13:31:59Z'
 holistic-reviewing  '2026-08-09T13:32:28Z'
 holistic-approved  '2026-08-09T13:38:01Z'
 done  '2026-08-09T13:38:43Z'
+pr-pending  '2026-08-09T13:39:34Z'
 ```
 
 ## Batches
