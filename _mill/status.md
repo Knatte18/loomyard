@@ -58,7 +58,9 @@ batches:
     commit_sha: 8f26e61bf504b5ab53887b4d3d8d931b41dcaa1d
     verify_baseline_failures: []
   - name: clone integration tests
-    state: pending
+    state: running
+    implementer_session: 02f66ea3-0251-473b-aee3-e3662221ad5d
+    start_sha: 4b38fb17bd4158bdd38b534046710a3a3a5254e8
     verify_baseline_failures: []
   - name: reconcile backfill
     state: pending
