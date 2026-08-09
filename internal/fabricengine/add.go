@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // AddOptions controls optional behaviour for Add.
@@ -36,28 +35,9 @@ type AddResult struct {
 // It validates the slug, creates both worktrees, wires junctions, and pushes branches, rolling back
 // all changes on any failure.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
-	// (0) Slug validation. A slug is by contract a single path component:
-	// every consumer re-derives it from the warp worktree path via
-	// filepath.Base (status, reconcile, prune) and the hub scan only looks at
-	// the hub's top level, so a separator-containing slug would create a pair
-	// the rest of the module cannot re-identify. Reject both separators on
-	// every platform — a slash-free contract must not depend on GOOS.
-	if strings.TrimSpace(slug) == "" {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not be empty", slug)
-	}
-
-	if strings.ContainsAny(slug, `/\`) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
-	}
-
-	// Reject slugs ending with weft suffix to prevent collision with weft worktree directory naming.
-	if strings.HasSuffix(slug, weftname.Suffix) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
-	}
-
-	// Reject reserved hub-level geometry names that would collide with hub structure.
-	if IsReservedHubName(slug, t.cfg.Dirs()) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
+	// (0) Slug validation, shared with Remove via slug.go's single validator.
+	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
+		return AddResult{}, err
 	}
 
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreePath())

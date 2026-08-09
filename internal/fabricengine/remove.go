@@ -29,14 +29,21 @@ type RemoveResult struct {
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
 // If force is false, both worktrees must be clean;
 // if force is true, uncommitted changes are forcefully removed.
-// It refuses the hub's prime worktree outright: the prime is the warp repository itself, not a pair
-// this verb can tear down, and git's own refusal to remove a main working tree is not a licence to
-// delete the clone.
+// It validates slug through the same validator Add uses (slug.go), so hub geometry — `_board`,
+// `_portals`, `_launchers`, `_lyx`, `.lyx`, and every weft sibling — can never be handed to a
+// teardown verb as if it were a pair.
+// It refuses the hub's prime worktree outright too: the prime is the warp repository itself, not a
+// pair this verb can tear down, and git's own refusal to remove a main working tree is not a
+// licence to delete the clone.
 // Portal and launcher cleanup run after those checks but before the git removal, so they still run
 // when the worktree directory is already gone.
 func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveResult, error) {
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(warpBranch)
+
+	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
+		return RemoveResult{}, err
+	}
 
 	if err := refusePrimeSlug(l, slug); err != nil {
 		return RemoveResult{}, err

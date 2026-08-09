@@ -172,10 +172,12 @@ launchers.
 By default the command refuses to remove a worktree with uncommitted changes
 on either the warp or weft side. Use --force to remove anyway.
 
-<slug> must name a worktree pair, never the hub's prime worktree — the prime
-is the warp repository itself and is refused. When git itself declines to
-remove the worktree, fabric reports git's own reason and deletes nothing
-unless the target is a registered linked worktree of this repo.
+<slug> must name a worktree pair, never hub geometry. The hub's prime
+worktree (the warp repository itself), the reserved hub entries (_board,
+_portals, _launchers, _lyx, .lyx), and any name ending in the weft suffix
+are all refused — the same set "lyx fabric add" refuses. When git itself
+declines to remove the worktree, fabric reports git's own reason and deletes
+nothing unless the target is a registered linked worktree of this repo.
 
 Example:
   lyx fabric remove my-task
