@@ -12,10 +12,13 @@
 // advances warp.
 // A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an
 // ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so: when local warp
-// carries no unpushed commits of its own, weft's correspondence is re-anchored to the nearest
-// surviving `Warp-SHA` — via the same empty-commit-with-trailer mechanism `commitWeftLocked`'s
-// snapshot rule already uses (see below) — warp is reset to the new tip, and the fresh
-// correspondence is recorded.
+// carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft
+// trailer history (the sole source of truth — a re-cloned hub's per-pair index cache starts empty
+// while its adopted weft history carries every recorded anchor, and a verdict as final as
+// `ErrNoSurvivingAnchor` must never rest on a stale cache), then weft's correspondence is
+// re-anchored to the nearest surviving `Warp-SHA` — via the same empty-commit-with-trailer
+// mechanism `commitWeftLocked`'s snapshot rule already uses (see below) — warp is reset to the new
+// tip, and the fresh correspondence is recorded.
 // Two cases abort loudly and make no change to either repo: local warp already has unpushed commits
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence

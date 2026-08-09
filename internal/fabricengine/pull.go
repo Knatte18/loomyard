@@ -219,6 +219,15 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, ErrWarpDivergedUnpushed
 	}
 
+	// The index is a rebuildable cache, never authoritative on its own — and here it decides whether
+	// the pair can recover at all, so it must be rebuilt from the weft trailer history (the sole
+	// source of truth, already fast-forwarded above) before the anchor walk.
+	// A re-cloned hub starts with an empty per-pair index while its adopted weft history carries
+	// every recorded anchor; without the rebuild, the walk missed those surviving anchors and
+	// returned a false ErrNoSurvivingAnchor that no later call could ever clear.
+	if err := f.RebuildIndex(); err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+	}
 	path, err := f.corrIndexPath()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}

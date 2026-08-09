@@ -435,6 +435,42 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	}
 }
 
+// TestPull_StaleIndexRebuiltBeforeAnchorWalk guards the false ErrNoSurvivingAnchor a stale
+// correspondence index produced: a re-cloned hub's per-pair index can be empty (or missing older
+// entries) while the adopted weft trailer history — the sole source of truth — still carries a
+// surviving anchor.
+// Pull must rebuild the index from trailers before the anchor walk and reconcile, never abort.
+func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
+
+	// Simulate the re-cloned hub: the trailer history stays, the local index cache does not.
+	indexPath, err := f.corrIndexPath()
+	if err != nil {
+		t.Fatalf("corrIndexPath: %v", err)
+	}
+	if err := os.Remove(indexPath); err != nil {
+		t.Fatalf("remove correspondence index: %v", err)
+	}
+
+	// Rewrite upstream so warpSHAs[1] dies but warpSHAs[0] survives as the nearest anchor.
+	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
+
+	result, err := f.Pull(SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v; want a reconcile via the rebuilt index, not an abort", err)
+	}
+	if !result.Reconciled {
+		t.Fatalf("Pull() Reconciled = false; want true — the surviving trailer anchor was not found")
+	}
+	if result.AnchorWarpSHA != warpSHAs[0] {
+		t.Errorf("Pull() AnchorWarpSHA = %q; want the surviving %q", result.AnchorWarpSHA, warpSHAs[0])
+	}
+	if result.AnchorWeftSHA != weftSHAs[0] {
+		t.Errorf("Pull() AnchorWeftSHA = %q; want %q", result.AnchorWeftSHA, weftSHAs[0])
+	}
+}
+
 // TestPull_DirtyWarpRefusesBeforeMovingWarp guards the data-loss hole where Pull's ResetHard
 // discarded uncommitted tracked warp changes on a routine fast-forward: with a modified tracked file
 // in the warp worktree and an advanced remote, Pull must return ErrWarpDirty, leave warp HEAD
