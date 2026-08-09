@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -268,4 +269,62 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	if _, statErr := os.Lstat(warpLyxLink); !os.IsNotExist(statErr) {
 		t.Errorf("warp _lyx junction %s still exists after Unwire (stat err: %v)", warpLyxLink, statErr)
 	}
+}
+
+// TestUnwire_LeavesSiblingWorktreeUndirtied is the cross-worktree scope regression: .git/info/exclude
+// resolves to the repo's COMMON gitdir, so unwiring one worktree used to strip the exclusion its
+// siblings' still-live junctions depend on, making every one of them report untracked dirt in git
+// status and trip Remove's no-force dirty gate.
+func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
+	t.Parallel()
+
+	const keptSlug = "unwire-sibling-kept"
+	const unwiredSlug = "unwire-sibling-torn-down"
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	for _, slug := range []string{keptSlug, unwiredSlug} {
+		if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+			t.Fatalf("setup Add(%s): %v", slug, err)
+		}
+	}
+
+	keptLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, keptSlug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%s): %v", keptSlug, err)
+	}
+	unwiredLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, unwiredSlug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%s): %v", unwiredSlug, err)
+	}
+
+	if status := worktreeStatusPorcelain(t, keptLayout.WorktreePath()); status != "" {
+		t.Fatalf("setup: kept worktree already dirty: %q", status)
+	}
+
+	if _, err := fabricengine.Unwire(unwiredLayout.AnchorPath()); err != nil {
+		t.Fatalf("Unwire(%s): %v", unwiredSlug, err)
+	}
+
+	if status := worktreeStatusPorcelain(t, keptLayout.WorktreePath()); status != "" {
+		t.Errorf("git status in the untouched worktree = %q; want clean — unwiring a sibling stripped its exclude entries", status)
+	}
+	if isLink, err := fslink.IsLink(fabricengine.WarpLyxLinkHere(keptLayout)); err != nil || !isLink {
+		t.Errorf("kept worktree's _lyx junction: isLink=%v err=%v; want it still wired", isLink, err)
+	}
+}
+
+// worktreeStatusPorcelain returns the trimmed `git status --porcelain` output for the worktree at
+// path, failing the test if git itself cannot run.
+func worktreeStatusPorcelain(t *testing.T, path string) string {
+	t.Helper()
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, path)
+	if err != nil {
+		t.Fatalf("git status in %s: %v", path, err)
+	}
+	if exitCode != 0 {
+		t.Fatalf("git status in %s exited %d: %s", path, exitCode, stderr)
+	}
+	return strings.TrimSpace(stdout)
 }

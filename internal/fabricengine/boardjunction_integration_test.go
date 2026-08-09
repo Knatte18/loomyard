@@ -126,9 +126,21 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
 		t.Errorf("board link %s still exists after Unwire (stat err: %v)", boardLink, statErr)
 	}
+	// .git/info/exclude lives in the repo's COMMON gitdir, so the entry is repo-wide: the prime
+	// worktree still has its own _board link wired, and stripping the entry here would make that
+	// live junction show up as untracked dirt in a worktree this call never touched.
+	lines = readExcludeLines(t, l, slug)
+	if !slices.Contains(lines, fabricengine.BoardDirName) {
+		t.Errorf(".git/info/exclude = %v; want %q kept while the prime worktree still wires it", lines, fabricengine.BoardDirName)
+	}
+
+	// Once the last worktree wiring it is unwired too, the now-dead entry does go.
+	if _, err := fabricengine.Unwire(l.AnchorPath()); err != nil {
+		t.Fatalf("Unwire(prime): %v", err)
+	}
 	lines = readExcludeLines(t, l, slug)
 	if slices.Contains(lines, fabricengine.BoardDirName) {
-		t.Errorf(".git/info/exclude = %v; want it to no longer contain %q after Unwire", lines, fabricengine.BoardDirName)
+		t.Errorf(".git/info/exclude = %v; want it to no longer contain %q once no worktree wires it", lines, fabricengine.BoardDirName)
 	}
 }
 

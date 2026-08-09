@@ -478,6 +478,13 @@ func unseedJunctionRecords(junctions []WarpJunction) (removed []string, err erro
 // uses to detect presence). The remaining lines are rewritten in their original
 // order.
 //
+// A name another warp worktree in the same hub still has wired is deliberately KEPT, even though
+// this call was made against a worktree that no longer wires it.
+// git resolves info/exclude to the repo's COMMON gitdir, so there is exactly one exclude file per
+// repo, not one per worktree: removing an entry here used to make every sibling worktree's
+// still-live junctions show up as untracked dirt in git status, which in turn tripped Remove's
+// no-force dirty gate on worktrees the caller never touched.
+//
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
 func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
@@ -509,10 +516,18 @@ func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed 
 	}
 
 	// Build the set of junction names to strip from the caller-supplied names,
-	// iterating WarpJunctions(l, slug, names) for parity with seedGitExclude.
+	// iterating WarpJunctions(l, slug, names) for parity with seedGitExclude,
+	// minus every name a sibling worktree still has wired.
+	keep := namesWiredInSiblingWorktrees(l, slug, names)
 	stripSet := make(map[string]bool)
 	for _, j := range WarpJunctions(l, slug, names) {
+		if keep[j.Name] {
+			continue
+		}
 		stripSet[j.Name] = true
+	}
+	if len(stripSet) == 0 {
+		return false, nil
 	}
 
 	lines := strings.Split(string(content), "\n")
@@ -533,6 +548,48 @@ func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed 
 		return false, fmt.Errorf("write exclude file: %w", err)
 	}
 	return true, nil
+}
+
+// namesWiredInSiblingWorktrees reports, per name, whether some OTHER warp worktree registered in
+// this repo still has a link of that name at its own anchored directory.
+// It is what keeps one worktree's unwire from dirtying every sibling: the exclude file it would
+// edit is repo-wide, so an entry is only genuinely dead once no worktree wires it any more.
+//
+// A failure to enumerate worktrees is answered conservatively — every name is reported as still
+// wired — because the cost of keeping a dead exclude line is a stale line in a file only lyx
+// writes, while the cost of removing a live one is untracked-junction noise in a working tree the
+// caller never asked to touch.
+func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []string) map[string]bool {
+	wired := make(map[string]bool, len(names))
+
+	entries, err := List(WorktreePath(l, slug))
+	if err != nil {
+		entries, err = List(l.WorktreePath())
+	}
+	if err != nil {
+		for _, name := range names {
+			wired[name] = true
+		}
+		return wired
+	}
+
+	ownPath := filepath.Clean(WorktreePath(l, slug))
+	for _, entry := range entries {
+		entryPath := filepath.Clean(filepath.FromSlash(entry.Path))
+		if entryPath == ownPath {
+			continue
+		}
+		for _, name := range names {
+			if wired[name] {
+				continue
+			}
+			isLink, linkErr := fslink.IsLink(filepath.Join(entryPath, l.AnchorRel, name))
+			if linkErr == nil && isLink {
+				wired[name] = true
+			}
+		}
+	}
+	return wired
 }
 
 // seedGitExclude adds junction names to the warp worktree's .git/info/exclude file if not already present.

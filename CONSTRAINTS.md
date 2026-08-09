@@ -214,6 +214,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
   `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
 - **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
+  That file lives in the repo's COMMON gitdir, so it is one repo-wide file, never per-worktree: an exclude entry is removed only once NO warp worktree in the hub still wires a junction of that name (`namesWiredInSiblingWorktrees`).
 - **Unwire** removes warp junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
   Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
