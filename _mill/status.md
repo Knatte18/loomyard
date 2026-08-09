@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-module-phase-docs
+phase: approved-spec-repair-acceptance
 slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-code-retirement  '2026-08-09T10:18:55Z'
 approved-comment-sweep  '2026-08-09T10:29:52Z'
 approved-reference-contracts  '2026-08-09T10:34:17Z'
 approved-module-phase-docs  '2026-08-09T10:41:55Z'
+approved-spec-repair-acceptance  '2026-08-09T10:49:23Z'
 ```
 
 ## Batches
@@ -66,8 +67,9 @@ batches:
     start_sha: f07f4ef8a1cbcc064b7571b43684e5a01cf38b91
     commit_sha: 7edb5396beb7c519d83e814f3d28e54246927fb9
   - name: spec-repair-acceptance
-    state: running
+    state: approved
     implementer_session: 1ae6f85e-b8d2-4164-afed-3b299b89b8fa
     start_sha: 52f9f622d685382be5bb999ee26365e624feb594
+    commit_sha: eaef43c75077d3e6b3350f07967d4d5f9a0bc9fb
     verify_baseline_failures: []
 ```
