@@ -26,12 +26,13 @@ import (
 // fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
 
-// staleFabricAnchorName is the pre-rename lyx-anchor marker filename. It has
-// no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
-// it exists here only so CloneHub can detect an old clone's leftover marker
-// and hard-error with re-clone as the remedy, rather than silently
-// re-anchoring at the wrong subpath.
-const staleFabricAnchorName = ".fabric-anchor"
+// staleFabricAnchorName is the pre-rename lyx-anchor marker filename, aliased from its single
+// declarer in internal/lyxcwd so clone's guard and lyxcwd's own read-time guard can never drift
+// apart.
+// It has no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
+// it is named here only so CloneHub can detect an old clone's leftover marker and hard-error rather
+// than silently re-anchoring at the wrong subpath.
+const staleFabricAnchorName = lyxcwd.StaleAnchorFileName
 
 // CloneOptions carries CloneHub's parameters as named fields rather than positionals.
 // This is a struct and not five positionals because two adjacent optional URL strings are exactly the

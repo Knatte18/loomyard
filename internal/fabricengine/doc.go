@@ -369,6 +369,12 @@
 // `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory
 // exactly — and falls back to `AnchorRel` `"."` only when no marker is recorded yet (mid-clone, a
 // lyxtest synthetic hub, or a non-fabric git repo).
+// A hub still carrying the pre-rename marker spelling (`lyxcwd.StaleAnchorFileName`) with no
+// renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old
+// name, so every resolver returns `lyxcwd.ErrStaleAnchorMarker` rather than answering `"."` — which
+// would re-anchor the repo at its root and let `lyx fabric reconcile` wire a second junction set
+// there. `CloneHub` refuses the same state at clone time, naming the same literal from the same
+// single declarer.
 //
 // The warp binding is a fourth repo-wide record beside the anchor and the repo-wide `fabric.yaml`
 // config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,

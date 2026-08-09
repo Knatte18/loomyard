@@ -40,6 +40,21 @@ func boardDir(hub string) string {
 // merely renamed — see clone.go's stale-marker guard.
 const AnchorFileName = ".lyx-anchor"
 
+// StaleAnchorFileName is the pre-rename spelling of the recorded lyx-anchor marker.
+// It is never read as an anchor value — the marker anchors the whole repo, not the fabric module,
+// so the old name is simply wrong now rather than merely renamed — but its presence must be
+// DETECTED, because falling back to "." for a hub that recorded a real subpath under the old name
+// silently re-anchors the whole repo at its root.
+// It is exported so fabric's clone-time guard names the same literal this package's read-time guard
+// does, rather than each declaring its own copy.
+const StaleAnchorFileName = ".fabric-anchor"
+
+// ErrStaleAnchorMarker is the hard-error sentinel returned when a hub's board directory carries the
+// pre-rename StaleAnchorFileName marker with no AnchorFileName beside it.
+// Resolving such a hub at all would mean re-anchoring it at ".", so every resolver refuses instead
+// of guessing.
+var ErrStaleAnchorMarker = errors.New("stale pre-rename fabric anchor marker with no renamed marker beside it")
+
 // ErrCwdOutsideAnchor is the hard-error sentinel Resolve returns when cwd does not equal the
 // anchored directory exactly.
 // It exists so a lyx invocation from anywhere else in the worktree — a subdirectory, a parent, or a
@@ -90,22 +105,34 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 
 // readRecordedAnchor reads the recorded lyx-anchor subpath marker from
 // <BoardDir(hub)>/.lyx-anchor and reports whether a usable anchor was
-// found. It returns ("", false) on any error — an absent board directory, an
+// found. It returns ("", false, nil) on any error — an absent board directory, an
 // absent marker file, or an unreadable file — because every one of those
 // cases means the caller must fall back to today's cwd-derived RelPath
 // (mid-clone, a lyxtest synthetic hub, or a non-fabric git repo). An
 // empty or whitespace-only marker after trimming is also treated as absent:
 // an anchor must never resolve to an empty subpath. This helper spawns no
 // git and stays stdlib-only.
-func readRecordedAnchor(hub string) (anchor string, found bool) {
-	data, err := os.ReadFile(filepath.Join(boardDir(hub), AnchorFileName))
-	if err != nil {
-		return "", false
+//
+// The one absence that is NOT a fallback is a hub whose board still carries the pre-rename
+// StaleAnchorFileName marker and no renamed one: that hub did record a subpath, under the old name,
+// and answering "." for it re-anchors the whole repo at its root — after which `lyx fabric
+// reconcile` wires a second junction set there. That case returns ErrStaleAnchorMarker so every
+// resolver refuses rather than guessing.
+func readRecordedAnchor(hub string) (anchor string, found bool, err error) {
+	board := boardDir(hub)
+
+	data, readErr := os.ReadFile(filepath.Join(board, AnchorFileName))
+	if readErr != nil {
+		if _, staleErr := os.Stat(filepath.Join(board, StaleAnchorFileName)); staleErr == nil {
+			return "", false, fmt.Errorf("%w: rename %s to %s in the hub's %s worktree and commit it (at %s)",
+				ErrStaleAnchorMarker, StaleAnchorFileName, AnchorFileName, boardDirName, board)
+		}
+		return "", false, nil
 	}
 
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" {
-		return "", false
+		return "", false, nil
 	}
-	return trimmed, true
+	return trimmed, true, nil
 }

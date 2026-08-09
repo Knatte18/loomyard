@@ -29,7 +29,10 @@ Fuller design/how-to lives in godoc and `docs/`.
 - Geometry is structural, never config/env-overridable.
 - The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `lyxcwd`'s.
 - `AnchorRel` resolves from the recorded `.lyx-anchor` marker, not positionally from cwd;
-  cwd is a validated at-or-below gate (`ErrCwdOutsideAnchor` if violated), falling back to `"."` only when the marker is absent. `ResolveWorktree`/`ResolveWithAnchor` read the same anchor with no cwd gate.
+  cwd is a validated exact-equality gate (`ErrCwdOutsideAnchor` if violated), falling back to `"."` only when the marker is absent. `ResolveWorktree`/`ResolveWithAnchor` read the same anchor with no cwd gate.
+- The `"."` fallback applies to an ABSENT anchor only, never a stale one: a board carrying the pre-rename `.lyx-anchor` spelling (`lyxcwd.StaleAnchorFileName`) with no renamed marker beside it returns `ErrStaleAnchorMarker` from every resolver.
+  `lyxcwd` is the single declarer of both marker names;
+  fabric's clone-time guard aliases them rather than re-declaring the literals.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
 
