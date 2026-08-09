@@ -94,7 +94,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`F0`-`F5`).
+- `ref` is the scenario id (`F0`-`F13`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -296,6 +296,46 @@ Do the whole matrix on a `--subpath`-anchored hub, since that is where the ancho
 
 ---
 
+### F12 -- The hub is not fabric's to sweep (`prune`, `clone --reset`)
+
+**Covers:** fabric
+
+**Goal:** "Park things in the hub that fabric did not create and must never delete, then run the two verbs that delete by derived name and confirm both refuse."
+
+**Watch:** First `prune`. Create `<hub>/notes-weft/` holding a file, as an operator keeping scratch notes beside their worktrees, and separately `git init` a wholly unrelated project at `<hub>/proj-weft/` with one committed file and a clean working tree.
+Neither is a fabric worktree; both merely end in the weft suffix, which is all prune's orphan pass enumerates on.
+Run `lyx fabric prune`, then `lyx fabric prune --apply`, then `lyx fabric prune --apply --force`.
+All three must report each entry `"unowned": true` with `"removed": false` and an error naming the weft repo it is not a worktree of, and **both directories must survive every run byte-for-byte, `.git` included**.
+`--force` must NOT get through: force answers "discard this uncommitted work", never "this directory is mine". (Historical: `prune --apply` deleted both, reporting `removed: true`, `ok: true`, exit 0, with no `--force` and no warning -- `git worktree remove` refusing the path was read as licence to `os.RemoveAll` it.)
+Also confirm the gate refuses only what is not fabric's: make a genuine stale pair (delete a `<slug>/` warp worktree directory by hand, leaving its registration) and check `prune --apply` still removes its weft side.
+
+Then `clone --reset`. In an empty directory create `<name>-HUB/important/data.txt`, where `<name>` is the basename your warp URL derives to, and run `lyx fabric clone --reset <weft-url> <warp-url>` there.
+It must be **refused**, naming the path and saying it is not a fabric hub, and `data.txt` must survive.
+The hub name is derived rather than typed -- in the one-argument form it comes from the binding recorded on the weft, so the operator never even sees the name being deleted.
+Then re-run `--reset` against a real hub and confirm the idempotent re-clone still works.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F13 -- Bootstrap against a genuinely empty weft remote
+
+**Covers:** fabric
+
+**Goal:** "Clone the documented first-ever-setup shape -- a brand-new, zero-commit weft remote -- and confirm the hub it produces is actually usable."
+
+**Watch:** Create a bare weft remote with no commits at all (`git init --bare`, `HEAD` on `main`) and a warp remote with real content, then `lyx fabric clone <empty-weft-url> <warp-url>`.
+The clone reports `ok: true` -- it always did -- so the check is what comes after.
+Confirm `git -C <hub>/<prime>-weft rev-parse --verify refs/heads/main-weft` RESOLVES.
+A branch can be checked out and reported as current while its ref does not exist: `git checkout -b` on an unborn HEAD writes nothing.
+Then run the documented example, `lyx fabric add my-task`, and `lyx fabric remove my-task`.
+(Historical: the weft primary was left on an unborn `main-weft`, so every pair-creating verb died on `fatal: invalid reference: main-weft` -- `add` included, which is the example both `lyx fabric --help` and `lyx fabric add --help` print.)
+Repeat the whole scenario with `--subpath backend`, since the anchor and the branch are resolved in separate steps.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -316,6 +356,8 @@ F8: <OK|WARN|FAIL> -- <one-line note if not OK>
 F9: <OK|WARN|FAIL> -- <one-line note if not OK>
 F10: <OK|WARN|FAIL> -- <one-line note if not OK>
 F11: <OK|WARN|FAIL> -- <one-line note if not OK>
+F12: <OK|WARN|FAIL> -- <one-line note if not OK>
+F13: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
