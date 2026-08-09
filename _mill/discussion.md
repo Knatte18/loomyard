@@ -35,12 +35,12 @@ Several of its instructions are overridden by this discussion; every override is
 - Every resulting content edit across 30 files (see **Technical context** for the per-file inventory).
 - Removal of every **plan-format-v2** mention repo-wide, including the nine by-contrast lines inside the renamed doc and the "**Dropped from v2, and why:**" subsection.
 - Renaming the two v2-named test guards to name the concepts they actually assert, and dropping the now-meaningless `"v2"` token from `internal/webstercli/cli_test.go:100`'s `forbidden` list.
+- The four surviving bare-`v3` format labels in `internal/planparser` comments (see `bare-v3-label-in-scope`).
 - Hand-written override notes appended to `manifest/designs/shed-followups.md`, outside the scripted sweep.
 - `go build ./...` and `go test ./...` green.
 
 **Out:**
 
-- **Bare `v3` used as a format-generation label in prose or comments.** Five sites survive deliberately: `internal/planparser/validate.go:11`, `internal/planparser/validate_test.go:240`, `internal/planparser/parse_test.go:36`, `internal/planparser/parse_test.go:53`, and the `v3` occurrences inside the renamed doc's own body. This task changes paths and names, not prose. Note `manifest/roadmap.md:203` is the one exception and is **in** scope — see `roadmap-203-in-scope`.
 - **Every `v1`/`V1` in the tree.** All of them belong to unrelated vocabularies — scout V1, reed v1, the shuttle v1 engine, crucible V1, `hn.algolia.com/api/v1`. There is no `plan-format v1` reference anywhere; the class is empty. Do not touch them.
 - **`gopkg.in/yaml.v3`** — 32 Go files import it, including `internal/planparser/parse.go:21`, the file this task is most certain to edit. Hard exclusion. Also present at `CONSTRAINTS.md:66` and `:77`.
 - **The `format: 3` frontmatter key** in `00-overview.md` and everything that validates it (`internal/planparser`'s `format-unsupported` check, the worked example, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md:44`). This is the plan schema's own version field, not the document's filename. Renaming the doc does not renumber the schema.
@@ -85,6 +85,8 @@ Replacement mapping (case-preserving on the leading letter):
   - `_mill/` holds this very file, which quotes the patterns literally, plus `status.md`. It is task-state, torn down on merge, and never part of the repo's prose.
 - Rejected: sweeping everything and hand-repairing afterwards — violates the "never a hand-edit pass" discipline the task exists to honour. Excluding only `_mill/` — nobody owns `shed-followups.md` downstream, so the corruption would be permanent.
 
+**Accepted consequence: `shed-followups.md` keeps stale references.** Excluding it leaves `:53`, `:74`, `:192` and `:214` citing `docs/reference/plan-format-v3.md`, a path that will not exist after this task. This is accepted, not overlooked. The file is a historical record of what each task was told to do at scoping time, and those four citations are accurate *as of that moment* — rewriting them would make the record claim the scoping task knew the post-rename name. The override notes (`shed-followups-override-notes`) are where a reader learns the file moved. Acceptance gate 8's link-check therefore covers links **touched by the sweep** only, and explicitly exempts this file; do not file its stale citations as a regression.
+
 ### v2-is-erased-repo-wide
 
 - Decision: every reference to plan-format **v2** is removed from the repo, not merely the ones this rename would break.
@@ -92,6 +94,23 @@ Replacement mapping (case-preserving on the leading letter):
 - Rejected: fixing only `plan-format-v3.md:5`'s self-link and leaving the by-contrast prose — leaves nine sentences describing a format the reader cannot find. Leaving `loom.md:29` self-contradicting for task E as the manifest directs — the operator overrode this; see `loom-29-in-scope`.
 
 The complete v2 site list is in **Technical context** under *v2 erasure inventory*.
+
+### bare-v3-label-in-scope
+
+- Decision: the four surviving bare-`v3` format labels in `internal/planparser` comments are rewritten too — `validate.go:11`, `validate_test.go:240`, `parse_test.go:36`, `parse_test.go:53`. Each drops the version word and names the format directly.
+- Rationale: `shed-followups.md:169` explicitly rejects "renaming the file but keeping in-text `v3` as a historical label — the suffix is exactly what is being retired". Declaring that class out of scope contradicts the task's own spec. The original out-of-scope call rested on "this task changes paths and names, not prose", a premise `v2-is-erased-repo-wide` has already discarded — that decision rewrites nine prose lines in the renamed doc. With only one plan format left, "v3" as a label denotes nothing.
+- Rejected: overriding `:169` and keeping the labels — would leave `parse_test.go:36`'s "a syntactically complete v3 overview" describing a format whose doc no longer names a version. Sweeping every bare `v3` mechanically — the four sites need their sentences rewritten, not a token replaced.
+
+The exact sites and their problem:
+
+| site | current text | issue |
+| --- | --- | --- |
+| `internal/planparser/validate.go:11` | "not batch — v3 has no batch concept —" | also a v2-era contrast; fold into `v2-is-erased-repo-wide` |
+| `internal/planparser/validate_test.go:240` | "the plan-wide scope v3 uses since batch is gone" | version label with no referent |
+| `internal/planparser/parse_test.go:36` | "a syntactically complete v3 overview" | version label with no referent |
+| `internal/planparser/parse_test.go:53` | "a syntactically complete v3 card file body" | version label with no referent |
+
+**The renamed doc needs no separate bare-`v3` pass.** Every `v3` in its body is already reached by another decision: `:1`, `:3`, `:221` are pattern hits swept by `six-pattern-set`; `:5` is deleted by `plan-format-5-in-scope`; `:28`, `:69`, `:196`, `:212–213` are rewritten by `v2-is-erased-repo-wide`. After both passes the file contains no `v3` at all — verify this rather than assuming it.
 
 ### loom-29-in-scope
 
@@ -103,7 +122,8 @@ Target wording: state that the pinned plan format is `plan-format.md`, a flat ca
 
 ### plan-format-5-in-scope
 
-- Decision: `docs/reference/plan-format-v3.md:5` — the blockquote `> **v3 is the live plan format.** [plan-format.md v2](plan-format.md) is retired now that builder, its sole consumer, is gone. v3 — consumed by webster — is the sole plan format.` — is deleted outright by this task.
+- Decision: `docs/reference/plan-format-v3.md:5` — the blockquote `> **v3 is the live plan format.** [plan-format.md v2](plan-format.md) is retired now that builder, its sole consumer, is gone. v3 — consumed by webster — is the sole plan format.` — is deleted outright by this task, **together with `:4`**.
+- `:4` is a bare `>` separating the two blockquote paragraphs. Deleting only `:5` leaves it as a trailing empty quote line. Delete `:4` and `:5` as a pair, leaving `:3`'s Status paragraph as the sole blockquote.
 - Rationale: the line contains no pattern hit, so the sweep leaves it untouched; after the rename its link points at the file itself. This task creates that defect, so this task fixes it. The manifest assigned `:5` to task C as the "Coexistence, not replacement" section, but task A already rewrote that section away — what remains is the self-link, which is ours.
 - Rejected: leaving it as a recorded knowingly-broken site — a doc linking to itself as its own retired predecessor is not a defensible interim state.
 
@@ -137,7 +157,15 @@ Note: a probe file from exploration may already exist at `.scratch/sweep/main.go
 
 Required notes:
 
-1. **In section B** (after `:216`, the "paths and names only, never prose" sentence) — an "**Override recorded 2026-08-09 (task B, as landed)**" block recording: the six-pattern set (the five-pattern set missed the doc's own space-variant title); the exclusion set and why the criterion is scoped rather than absolute; the repo-wide v2 erasure and that it expands B past "paths and names only"; and that `shed-followups.md:209–210`'s "deliberately leaves `loom.md:29` self-contradicting" no longer holds.
+1. **In section B** (after `:216`, the "paths and names only, never prose" sentence) — an "**Override recorded 2026-08-09 (task B, as landed)**" block recording every one of B's own instructions this task departed from:
+   - **`:228`'s five-pattern set** → six patterns. The five missed `:1`'s space-variant title `# Plan format v3`, so the stated criterion passed with the renamed doc still titled v3.
+   - **`:227`'s unqualified "repo grep"** → scoped to an exclusion set (`shed-followups.md`, `roadmap.md:18`, `_mill/`), because `:228` is itself a pattern-bearing line and a blind sweep destroys the criterion it defines. Names the accepted consequence that `:53`, `:74`, `:192`, `:214` keep citing the old path.
+   - **`:216`'s "paths and names only, never prose"** → superseded. The repo-wide v2 erasure rewrites prose.
+   - **`:169`'s rejected alternative** → honoured rather than overridden, and extended: the four bare-`v3` labels in `internal/planparser` comments are rewritten too. Recorded because `:169` is a *rejection*, not an instruction, and a reader could otherwise think B left the class alone.
+   - **`:209–210`'s "deliberately leaves `loom.md:29` self-contradicting"** → no longer holds; B rewrote `:29` in full.
+   - **`:188`'s claim that `CONSTRAINTS.md`'s Planparser Sole-Parser Invariant needs rewording** → stale. That invariant (`CONSTRAINTS.md:293–300`) carries no version reference and no link to the doc. B edited nothing there.
+   - **`:197`'s "It appears in ten Go files"** → the verified count is **32**. Correct the figure so the next reader is not misled about the blast radius of a broad `v3` replace.
+   - **`:199`'s "This task's script names the exclusion explicitly"** → the script names no exclusion. All six patterns require a `plan` prefix, so `gopkg.in/yaml.v3` is unmatchable by construction; the exclusion is verified by a post-sweep count rather than implemented.
 2. **In section C** (at `:265–266`, the "Rewrite `plan-format.md:5`'s Coexistence, not replacement section" item) — a note that task A already rewrote that section and task B then deleted the surviving v2 blockquote, so C's obligation there is discharged; C's remaining work on the file is the producer-model rewrite only.
 3. **In section E** (at `:406`, the `loom.md:29` bullet) — a note that task B rewrote `:29` in full rather than leaving it self-contradicting, so E should verify rather than repair it; and at Part four's `roadmap.md` list, that task B deleted `:203`.
 
@@ -154,6 +182,8 @@ Required notes:
 - Rejected: adding a skip-list of the 32 importing files — redundant complexity guarding against a replacement the script does not do.
 
 Verification: `grep -rl 'gopkg.in/yaml.v3' --include='*.go' . | wc -l` must return **32** after the sweep, unchanged.
+
+**The manifest's count is wrong.** `shed-followups.md:197` says the import "appears in ten Go files". The verified figure is 32 — more than three times the stated blast radius. The correction goes into the override notes so the next reader of `:197` is not misled about how much a broad `v3` replace would have destroyed.
 
 ## Technical context
 
@@ -203,14 +233,15 @@ Excluded from both sweep and grep: `manifest/designs/shed-followups.md` (8 hits)
 
 ### Sites needing more than replacement
 
-Six sites the script cannot finish on its own. Each is a separate, hand-written edit after the sweep:
+Seven sites the script cannot finish on its own. Each is a separate, hand-written edit after the sweep:
 
 1. `docs/reference/plan-format.md:1` — swept to `# Plan format — flat card list`. Verify it reads well; no further edit expected.
-2. `docs/reference/plan-format.md:5` — delete the blockquote entirely (`plan-format-5-in-scope`).
+2. `docs/reference/plan-format.md:4–5` — delete both lines (`plan-format-5-in-scope`).
 3. `manifest/designs/loom.md:29` — rewrite (`loom-29-in-scope`).
 4. `manifest/roadmap.md:203` — delete the sentence (`roadmap-203-in-scope`).
-5. The v2 erasure inventory below.
-6. `manifest/designs/shed-followups.md` — the three override-note blocks (`shed-followups-override-notes`).
+5. The four bare-`v3` labels in `internal/planparser` (`bare-v3-label-in-scope`).
+6. The v2 erasure inventory below.
+7. `manifest/designs/shed-followups.md` — the three override-note blocks (`shed-followups-override-notes`).
 
 ### v2 erasure inventory
 
@@ -218,7 +249,7 @@ Every surviving plan-format-v2 reference. All are prose or comments; none carry 
 
 **Inside `docs/reference/plan-format-v3.md`** (becomes `plan-format.md`):
 
-- `:5` — the retired-v2 blockquote. **Delete.**
+- `:4–5` — the bare `>` separator and the retired-v2 blockquote. **Delete both.**
 - `:28` — "v2's per-batch `## Scope` concept is **removed entirely** — there is no batch-level 'declared ownership' list in v3." → state the property directly: there is no batch-level declared-ownership list and no `## Scope` section.
 - `:69` — "v3 keeps lyx's own established `What:` name, playing the same role it played in v2." → drop the trailing clause.
 - `:120` — "(unlike v2, where `root:` was per-batch)" → drop the parenthetical.
@@ -237,6 +268,7 @@ Every surviving plan-format-v2 reference. All are prose or comments; none carry 
 - `internal/websterengine/template_test.go:510–511` — `TestTemplates_NoV2TokensRemain`'s name and comment.
 - `internal/planparser/parse_test.go:215` — "Unlike the frozen v2 parser, a missing format:/approved: key is not a…".
 - `internal/webstercli/cli_test.go:99` — test name; `:100` — the `"v2"` token in `forbidden`; `:106` — the error message's "stale v2/chain/oversized language".
+- `internal/planparser/validate.go:11–12` — "not batch — v3 has no batch concept — … the oversized-batch cap dies with batch itself". Carries both a bare `v3` label and a v2-era contrast, so it is reached by `bare-v3-label-in-scope` and this decision at once; rewrite it once, covering both.
 
 **Docs:**
 
@@ -298,9 +330,13 @@ No new tests. The existing suite plus the grep gate is the acceptance criterion;
    ```
    grep -rniE 'plan-format-v3|plan_format_v3|plan-format v3|plan format v3|plan-v3' . \
      --exclude-dir=.git --exclude-dir=_mill --exclude-dir=.scratch \
-     | grep -v 'shed-followups.md' | grep -v 'roadmap.md:18:'
+     --exclude=shed-followups.md \
+     | grep -v '^\./manifest/roadmap\.md:18:'
    ```
+   **The exclusions must anchor on the path field, never on line content.** A bare `grep -v 'shed-followups.md'` drops every output line whose *text* mentions that filename — so a genuine, unfixed pattern hit in some other file that happens to cite `shed-followups.md` would be silently exempted, and the gate would pass on an incomplete sweep. `--exclude=` filters by filename before matching; the `roadmap.md:18` filter is anchored with `^\./…:18:` so it can only ever match that one file's line 18.
 3. Zero plan-format-v2 references remain (`grep -rni 'v2' --include='*.md' --include='*.go'` reviewed against the deliberately-untouched list above).
+4. `grep -ni 'v3' docs/reference/plan-format.md` returns **nothing** — the renamed doc names no version anywhere, per `bare-v3-label-in-scope`.
+5. `grep -rni 'v3' internal/planparser/` returns only `gopkg.in/yaml.v3` import lines — the four bare labels are gone.
 4. `grep -rl 'gopkg.in/yaml.v3' --include='*.go' . | wc -l` returns 32.
 5. `go build ./...` clean.
 6. `go test ./...` green.
@@ -313,7 +349,7 @@ No new tests. The existing suite plus the grep gate is the acceptance criterion;
 
 - **Q:** How do we stop the spec doc from destroying its own acceptance criterion when swept? **A:** Exclude `manifest/designs/shed-followups.md`, `manifest/roadmap.md:18`, and `_mill/` from both the sweep and the grep; the exclusion set becomes part of the criterion.
 - **Q:** The pattern set misses `# Plan format v3` (space, not hyphen) — extend it? **A:** Yes, add `plan format v3` as a sixth pattern. Otherwise the zero-hit grep passes with the renamed doc still titled v3.
-- **Q:** Bare-`v3` prose residue in Go comments and `roadmap.md:203` — in scope? **A:** Out of scope, recorded explicitly; this task changes paths and names, not prose. (`roadmap.md:203` later became the one exception, because this task's own edit to `:201` breaks it.)
+- **Q:** Bare-`v3` prose residue in Go comments and `roadmap.md:203` — in scope? **A:** Answered "out of scope; this task changes paths and names, not prose." **Superseded twice since:** `roadmap.md:203` came into scope because this task's own edit to `:201` breaks it, and round-1 review then showed the whole out-of-scope call rests on a premise the v2-erasure decision had already discarded — plus `shed-followups.md:169` explicitly rejects keeping in-text `v3` as a historical label. All four remaining sites are now in scope (`bare-v3-label-in-scope`). **Operator has not re-confirmed this reversal; flag it at handoff.**
 - **Q:** The rename turns `plan-format-v3.md:5` into a link to itself — leave it for task C? **A:** No. v2 (and v1) are out of use; mentioning them anywhere is confusing and wasted tokens. Erase every plan-format-v2 reference repo-wide.
 - **Q:** How far does that reach — just the self-link, the whole file, or the Go comments and `loom.md:29` too? **A:** All of it. v3 supersedes v2 the way v2 superseded v1; nothing should name the dead formats. The deliverable stays the rename.
 - **Q:** Script form and location? **A:** A Go program, temporary, not committed — `.scratch/sweep/main.go`.
