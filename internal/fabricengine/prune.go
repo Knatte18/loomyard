@@ -4,6 +4,12 @@
 // a pair is orphaned when a weft worktree has no corresponding warp worktree sibling.
 // Prune operates purely on directory names (<slug>-weft, a weftname-level invariant);
 // fabric's branch-naming scheme does not affect this file.
+//
+// The weft removal is a `git worktree remove --force`, so a weft worktree carrying uncommitted
+// TRACKED changes is protected unless the caller passes force — the same refuse-then-offer-force
+// posture Remove takes, rather than discarding the work silently.
+// The verdict is computed identically in both modes, so a dry run's Protected flags match exactly
+// what the same flags plus --apply would do.
 
 package fabricengine
 
@@ -11,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -27,7 +34,12 @@ type PruneEntry struct {
 	// Removed reports whether the weft worktree was actually deleted.
 	// It is false on a dry run and true only when apply is true and removal succeeded.
 	Removed bool `json:"removed"`
-	// Error is non-empty when apply is true and removal of this entry failed.
+	// Protected reports whether this entry's weft worktree carries uncommitted tracked changes
+	// that force was not given to discard.
+	// It is computed in both modes, so a dry run answers the question --apply would act on.
+	Protected bool `json:"protected,omitempty"`
+	// Error is non-empty when this entry was not removed and the operator needs to know why:
+	// a removal that failed, or a protected entry force would have removed.
 	Error string `json:"error,omitempty"`
 }
 
@@ -40,8 +52,10 @@ type PruneResult struct {
 
 // Prune identifies stale or orphaned warp↔weft pairs and removes their stale weft worktrees and
 // associated portal/launcher directories when apply is true.
-// Per-entry removal errors are recorded in PruneEntry.Error.
-func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
+// A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
+// removal is a forced one that would discard them without a trace.
+// Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
+func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (PruneResult, error) {
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
@@ -70,7 +84,8 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 				Reason:       "warp worktree directory missing",
 			}
 
-			if apply {
+			applyStalePairProtection(weftPath, force, &pe)
+			if apply && !pe.Protected {
 				pe.Removed = removeStalePair(l, slug, weftPath, &pe)
 			}
 
@@ -111,7 +126,8 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 			Reason:       "weft worktree has no warp sibling",
 		}
 
-		if apply {
+		applyStalePairProtection(weftPath, force, &pe)
+		if apply && !pe.Protected {
 			pe.Removed = removeStalePair(l, warpSlug, weftPath, &pe)
 		}
 
@@ -119,6 +135,38 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 	}
 
 	return result, nil
+}
+
+// applyStalePairProtection marks pe protected when its weft worktree carries uncommitted TRACKED
+// changes and force was not given.
+//
+// The probe is tracked-only on purpose. `git worktree remove --force` discards tracked
+// modifications with no trace, which is the data loss this gate exists to stop;
+// untracked files are the ordinary residue of an abandoned pair, and refusing on them would protect
+// nothing while making prune useless on exactly the debris it exists to clear.
+// A probe that cannot run at all leaves the entry unprotected: the weft worktree is then not a
+// readable git checkout, so there is no tracked work in it to lose.
+func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
+	if force {
+		return
+	}
+	if _, statErr := os.Stat(weftPath); statErr != nil {
+		return
+	}
+
+	stdout, _, exitCode, err := gitexec.RunGit(
+		[]string{"status", "--porcelain", "--untracked-files=no"},
+		weftPath,
+	)
+	if err != nil || exitCode != 0 {
+		return
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return
+	}
+
+	pe.Protected = true
+	pe.Error = "weft worktree has uncommitted changes; commit them or re-run with --force to discard them"
 }
 
 // removeStalePair removes the stale weft worktree at weftPath (when it exists),

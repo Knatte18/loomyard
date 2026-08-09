@@ -267,7 +267,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("remove warp dir: %v", err)
 	}
 
-	res, err := topology.Prune(l, true)
+	res, err := topology.Prune(l, true, false)
 	if err != nil {
 		t.Fatalf("Prune(apply=true): %v", err)
 	}
@@ -312,7 +312,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Fatalf("bare-remove warp worktree: %v", err)
 		}
 
-		dry, err := topology.Prune(l, false)
+		dry, err := topology.Prune(l, false, false)
 		if err != nil {
 			t.Fatalf("Prune(dry-run): %v", err)
 		}
@@ -320,7 +320,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Errorf("dry-run reported weft %s %d times; want exactly 1", weftPath, got)
 		}
 
-		apply, err := topology.Prune(l, true)
+		apply, err := topology.Prune(l, true, false)
 		if err != nil {
 			t.Fatalf("Prune(apply): %v", err)
 		}
@@ -358,7 +358,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Fatalf("bare-remove weft worktree: %v", err)
 		}
 
-		apply, err := topology.Prune(l, true)
+		apply, err := topology.Prune(l, true, false)
 		if err != nil {
 			t.Fatalf("Prune(apply): %v", err)
 		}

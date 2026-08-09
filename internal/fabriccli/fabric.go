@@ -245,7 +245,7 @@ not reported already-healthy.`,
 	// prune [--apply]
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
-		Use:   "prune [--apply]",
+		Use:   "prune [--apply] [--force]",
 		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
 		Long: `Prune scans for on-disk pair debris in two passes: a registered pair whose
 warp worktree directory is gone (stale), and a weft worktree with no warp
@@ -257,15 +257,27 @@ dead slug's portal junction and launcher directory are torn down, and stale
 worktree registrations are pruned on both repos. Branches are never deleted
 here — orphaned weft branches are "lyx fabric cleanup"'s job.
 
+The weft worktree is removed forcefully, so an entry whose weft worktree
+still carries uncommitted tracked changes is reported "protected": true and
+skipped. Use --force to remove it anyway, discarding those changes. Untracked
+files are not a reason to protect an entry — they are the ordinary residue of
+an abandoned pair — and they go with the worktree when it is removed.
+
+A dry run computes the same protected verdict the matching --apply run would
+act on, so "protected: false" in a dry run means "--apply would remove this".
+
 Example:
   lyx fabric prune
-  lyx fabric prune --apply`,
+  lyx fabric prune --apply
+  lyx fabric prune --apply --force`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := pruneCmd.Flags().GetBool("apply")
-			return runPruneWithFlag(out, apply)
+			force, _ := pruneCmd.Flags().GetBool("force")
+			return runPruneWithFlags(out, apply, force)
 		}),
 	}
 	pruneCmd.Flags().Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
+	pruneCmd.Flags().Bool("force", false, "also remove a weft worktree with uncommitted tracked changes")
 	cmd.AddCommand(pruneCmd)
 
 	var cleanupCmd *cobra.Command
@@ -590,8 +602,8 @@ func runReconcile(out io.Writer, _ []string) int {
 	return output.Ok(out, envelope)
 }
 
-// runPruneWithFlag executes the prune logic with the resolved apply flag.
-func runPruneWithFlag(out io.Writer, apply bool) int {
+// runPruneWithFlags executes the prune logic with the resolved apply and force flags.
+func runPruneWithFlags(out io.Writer, apply, force bool) int {
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -604,7 +616,7 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 
 	top := fabricengine.NewTopology(cfg)
 
-	r, err := top.Prune(l, apply)
+	r, err := top.Prune(l, apply, force)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
