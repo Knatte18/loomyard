@@ -6,7 +6,7 @@
 
 **Vital, not deferred** (unlike Raddle).
 Go-first: the happy path (no conflicts) is pure Go — squash, push, done, zero LLM cost.
-An LLM is spawned only on merge conflict (during merge-in from parent, or the merge to parent itself), escalating **the same way Builder escalates a stuck batch to a fresh higher-capability model** (see `internal/websterengine`'s package documentation) — not a `/model` switch inside a polluted session.
+An LLM is spawned only on merge conflict (during merge-in from parent, or the merge to parent itself), escalating to a **fresh, higher-capability model in a clean session** (see `internal/websterengine`'s package documentation) — not a `/model` switch inside a polluted one.
 
 Mostly wiring on top of the already-built `warp` mechanics (absorbed into `fabric` once that lands — see [fabric.md](fabric.md));
 worktree/branch/junction/portal teardown is explicitly **out of scope** — that's `warp cleanup`'s (future: `fabric`'s) existing, separate job, which cannot run from inside the worktree being removed, the same reason `mill-cleanup` runs from the hub, never a task worktree.
@@ -33,7 +33,7 @@ Note: since Raddle and (eventually) `scout`'s own index are both pure functions 
 
 ## PR creation, when configured
 
-If `require_pr_to_base` is set, the PR title/body is dumped **verbatim** from the prose summary artifact webster adds to its final action (see [builder-contract.md](../../docs/reference/builder-contract.md#webster-the-fork-based-sibling)) — no dedicated LLM call needed in Finalize itself, since that summary is the only artifact with full oversight of what was actually built, including deviations from the original plan.
+If `require_pr_to_base` is set, the PR title/body is dumped **verbatim** from the prose summary artifact webster adds to its final action (see [webster-contract.md](../../docs/reference/webster-contract.md#the-summary-artifact--_lyxwebstersummarymd)) — no dedicated LLM call needed in Finalize itself, since that summary is the only artifact with full oversight of what was actually built, including deviations from the original plan.
 
 ## Config
 
@@ -47,6 +47,6 @@ If `require_pr_to_base` is set, the PR title/body is dumped **verbatim** from th
 - [loom.md](loom.md) — the mature, already-detailed phase machine this doc was originally split out of;
   `Shed` hasn't been extracted from it yet (see that doc's own naming note).
 - [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope Finalize's Raddle-regeneration step must honor.
-- [builder-contract.md](../../docs/reference/builder-contract.md#webster-the-fork-based-sibling) — the summary artifact Finalize consumes verbatim for PR bodies;
+- [webster-contract.md](../../docs/reference/webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) — the summary artifact Finalize consumes verbatim for PR bodies;
   `internal/websterengine`'s package documentation covers the escalation pattern Finalize mirrors.
 - [fabric.md](fabric.md) — the mechanics Finalize wires on top of, incl. `CommitWeft`'s pathspec parameter and `Warp-SHA` correspondence tracking.

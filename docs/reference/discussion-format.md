@@ -11,7 +11,7 @@
 - **`support-log.md`** — the raw support log.
   Read by the **Discussion-review gate**, **never** by the Plan producer.
 
-Two files, not two sections of one file, on purpose: this mirrors Builder's "distilled digest, never raw prose" rule (see [builder-contract.md](builder-contract.md)'s digest contract).
+Two files, not two sections of one file, on purpose: a distilled digest, never raw prose, is what the Plan producer should ever see.
 A hard filesystem boundary is stronger than a convention about which section an agent may read — the Plan producer cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file isn't in its input set.
 Filenames are self-describing rather than terse, matching the existing naming.
 
@@ -27,7 +27,7 @@ Two fields plan-format needs are deliberately absent here:
 - **No `format:`** — see [status-schema.md](status-schema.md)'s `no-schema-version`: at this scale a version stamp is a rarely-exercised guard that goes stale;
   reintroduce only if a real incompatibility ever forces it.
 - **No `approved:`** — approval is recorded in `_lyx/status.json`'s `history` (`{"phase": "discussion", "outcome": "approved", ...}`) — the status file is loom's single total-status locus, so a lone `approved:` flag here would duplicate it.
-  This differs from `plan-format.md`, whose `approved:` exists because `lyx builder run` can be invoked standalone, outside loom;
+  This differs from `plan-format.md`, whose `approved:` exists because `lyx webster run` can be invoked standalone, outside loom;
   loom always drives the Plan producer *after* approval, so the record needs no standalone gate of its own.
 
 Sections, in this order:

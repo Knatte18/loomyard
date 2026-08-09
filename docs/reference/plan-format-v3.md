@@ -340,6 +340,6 @@ the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay wo
 
 ## Related
 
-- [builder-contract.md](builder-contract.md#webster-the-fork-based-sibling) and `internal/websterengine`'s package documentation — the module that consumes this format.
+- [webster-contract.md](webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
 - [scout-redesign.md](../../manifest/designs/scout-redesign.md) — the module the symbol fields depend on.

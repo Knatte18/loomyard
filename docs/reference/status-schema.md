@@ -1,6 +1,6 @@
 # Status schema — loom's spawn/handover status file
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [builder-contract.md](builder-contract.md) and [plan-format.md](plan-format.md).
+> **Status: Contract — pinned.** This doc pins the `_lyx/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-contract.md](webster-contract.md) and [plan-format.md](plan-format.md).
 
 ## What it is
 
