@@ -1,7 +1,7 @@
 // prune.go implements the Prune verb: it identifies and optionally removes orphaned or stale
-// host↔weft pairs.
-// A pair is stale when the host worktree directory no longer exists;
-// a pair is orphaned when a weft worktree has no corresponding host worktree sibling.
+// warp↔weft pairs.
+// A pair is stale when the warp worktree directory no longer exists;
+// a pair is orphaned when a weft worktree has no corresponding warp worktree sibling.
 // Prune operates purely on directory names (<slug>-weft, a weftname-level invariant);
 // fabric's branch-naming scheme does not affect this file.
 
@@ -18,8 +18,8 @@ import (
 
 // PruneEntry describes one stale or orphaned pair that Prune has identified.
 type PruneEntry struct {
-	// HostWorktree is the absolute path to the (missing or absent) host worktree.
-	HostWorktree string `json:"host_worktree"`
+	// WarpWorktree is the absolute path to the (missing or absent) warp worktree.
+	WarpWorktree string `json:"warp_worktree"`
 	// WeftWorktree is the absolute path to the weft worktree sibling.
 	WeftWorktree string `json:"weft_worktree"`
 	// Reason describes why this pair was flagged for pruning.
@@ -38,7 +38,7 @@ type PruneResult struct {
 	Entries []PruneEntry `json:"entries"`
 }
 
-// Prune identifies stale or orphaned host↔weft pairs and removes their stale weft worktrees and
+// Prune identifies stale or orphaned warp↔weft pairs and removes their stale weft worktrees and
 // associated portal/launcher directories when apply is true.
 // Per-entry removal errors are recorded in PruneEntry.Error.
 func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
@@ -47,27 +47,27 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
 	}
 
-	liveHostSlugs := make(map[string]bool)
+	liveWarpSlugs := make(map[string]bool)
 
 	// Track slugs emitted by Pass 1 to avoid re-reporting the same orphaned weft in Pass 2.
 	pass1Slugs := make(map[string]bool)
 
 	var result PruneResult
 	for _, entry := range entries {
-		hostPath := filepath.FromSlash(entry.Path)
-		hostPath = filepath.Clean(hostPath)
-		slug := filepath.Base(hostPath)
+		warpPath := filepath.FromSlash(entry.Path)
+		warpPath = filepath.Clean(warpPath)
+		slug := filepath.Base(warpPath)
 
 		weftPath := WeftWorktreePath(l, slug)
 
-		_, hostStatErr := os.Stat(hostPath)
-		hostMissing := hostStatErr != nil
+		_, warpStatErr := os.Stat(warpPath)
+		warpMissing := warpStatErr != nil
 
-		if hostMissing {
+		if warpMissing {
 			pe := PruneEntry{
-				HostWorktree: filepath.ToSlash(hostPath),
+				WarpWorktree: filepath.ToSlash(warpPath),
 				WeftWorktree: filepath.ToSlash(weftPath),
-				Reason:       "host worktree directory missing",
+				Reason:       "warp worktree directory missing",
 			}
 
 			if apply {
@@ -77,7 +77,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 			pass1Slugs[slug] = true
 			result.Entries = append(result.Entries, pe)
 		} else {
-			liveHostSlugs[slug] = true
+			liveWarpSlugs[slug] = true
 		}
 	}
 	hubEntries, err := os.ReadDir(l.HubPath)
@@ -93,26 +93,26 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply bool) (PruneResult, error) {
 
 		name := dirEntry.Name()
 
-		hostSlug, ok := WeftHostSlug(name)
+		warpSlug, ok := WeftWarpSlug(name)
 		if !ok {
 			continue
 		}
 
-		if liveHostSlugs[hostSlug] || pass1Slugs[hostSlug] {
+		if liveWarpSlugs[warpSlug] || pass1Slugs[warpSlug] {
 			continue
 		}
 
 		weftPath := filepath.Join(l.HubPath, name)
-		hostPath := filepath.Join(l.HubPath, hostSlug)
+		warpPath := filepath.Join(l.HubPath, warpSlug)
 
 		pe := PruneEntry{
-			HostWorktree: filepath.ToSlash(hostPath),
+			WarpWorktree: filepath.ToSlash(warpPath),
 			WeftWorktree: filepath.ToSlash(weftPath),
-			Reason:       "weft worktree has no host sibling",
+			Reason:       "weft worktree has no warp sibling",
 		}
 
 		if apply {
-			pe.Removed = removeStalePair(l, hostSlug, weftPath, &pe)
+			pe.Removed = removeStalePair(l, warpSlug, weftPath, &pe)
 		}
 
 		result.Entries = append(result.Entries, pe)

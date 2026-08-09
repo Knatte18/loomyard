@@ -53,7 +53,7 @@ var ErrStaleSHA = errors.New("fabricengine: stale SHA in correspondence index")
 // reports a relative one (the common case for a standard checkout). In a
 // linked worktree this names the per-worktree gitdir, not the shared common
 // dir — deliberately, since the correspondence index is scoped per
-// host<->weft pair, not shared across every worktree of the same weft clone.
+// warp<->weft pair, not shared across every worktree of the same weft clone.
 func (f *Fabric) weftGitDir() (string, error) {
 	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--git-dir"}, f.weftPath)
 	if err != nil {

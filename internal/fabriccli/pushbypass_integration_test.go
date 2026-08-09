@@ -41,7 +41,7 @@ func headSHA(t *testing.T, dir string) string {
 // their local checkout's HEAD.
 func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 	weftFixture := lyxtest.CopyWeft(t)
-	warpFixture := lyxtest.CopyHostHub(t)
+	warpFixture := lyxtest.CopyWarpHub(t)
 
 	// Add one more commit on top of the weft fixture's already-pushed "init"
 	// commit, so the weft side has something genuinely unpushed to push.

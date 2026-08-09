@@ -38,7 +38,7 @@ func TestClassifyPaths(t *testing.T) {
 			wantWeft:     []string{"_extra/notes.md"},
 		},
 		{
-			name:         "host_source_path_is_warp",
+			name:         "warp_source_path_is_warp",
 			relPath:      ".",
 			routingNames: []string{"_lyx", "_extra"},
 			files:        []string{"cmd/lyx/main.go"},
@@ -141,9 +141,9 @@ func TestClassifyPaths(t *testing.T) {
 			files: []string{
 				"sub/_lyx/module/state.json",
 				"sub/.lyx/module/state.json.lock",
-				"host/main.go",
+				"warp/main.go",
 			},
-			wantWarp:           []string{"host/main.go"},
+			wantWarp:           []string{"warp/main.go"},
 			wantWeft:           []string{"sub/_lyx/module/state.json"},
 			wantNeverCommitted: []string{"sub/.lyx/module/state.json.lock"},
 		},

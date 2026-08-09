@@ -114,18 +114,18 @@ func mustGit(dir string, args ...string) {
 	}
 }
 
-// hostHubTemplate caches the host-hub template (git repo with bare origin, left empty).
+// warpHubTemplate caches the warp-hub template (git repo with bare origin, left empty).
 var (
-	hostHubOnce     sync.Once
-	hostHubPath     string
-	hostHubBarePath string
+	warpHubOnce     sync.Once
+	warpHubPath     string
+	warpHubBarePath string
 )
 
-// buildHostHub constructs the host-hub template: a git repo with origin bare remote,
+// buildWarpHub constructs the warp-hub template: a git repo with origin bare remote,
 // populated with a README and initial commit (called once per test binary; panics on failure).
-func buildHostHub() (hub, bare string) {
-	hostHubOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "lyxtest-hosthub-*")
+func buildWarpHub() (hub, bare string) {
+	warpHubOnce.Do(func() {
+		tmpDir, err := os.MkdirTemp("", "lyxtest-warphub-*")
 		if err != nil {
 			panic(err)
 		}
@@ -147,11 +147,11 @@ func buildHostHub() (hub, bare string) {
 		bare := filepath.Join(tmpDir, "bare")
 		initBareRemote(bare, hub)
 
-		hostHubPath = hub
-		hostHubBarePath = bare
+		warpHubPath = hub
+		warpHubBarePath = bare
 	})
 
-	return hostHubPath, hostHubBarePath
+	return warpHubPath, warpHubBarePath
 }
 
 // weftPrimeTemplate caches the weft-prime template.
@@ -165,9 +165,9 @@ var (
 // at <hub>-weft with _lyx/config/placeholder and a bare remote (panics on failure).
 func buildWeftPrime() (weftPrime, weftBare string) {
 	weftPrimeOnce.Do(func() {
-		// Derive the base name from the already-cached host hub path so the naming
+		// Derive the base name from the already-cached warp hub path so the naming
 		// is stable across repeated calls (sync.Once skips the body on reuse).
-		base := filepath.Base(hostHubPath)
+		base := filepath.Base(warpHubPath)
 		tmpDir, err := os.MkdirTemp("", "lyxtest-weftprime-*")
 		if err != nil {
 			panic(err)
@@ -254,13 +254,13 @@ func buildWeftOnly() (weftPath, bare string) {
 
 // Fixture structs for public API.
 
-// HostFixture represents an isolated copy of the host-hub template (hub + bare).
-type HostFixture struct {
+// WarpFixture represents an isolated copy of the warp-hub template (hub + bare).
+type WarpFixture struct {
 	Hub  string
 	Bare string
 }
 
-// PairedFixture represents an isolated copy of the paired-Add fixture (host hub + bare + weft-prime
+// PairedFixture represents an isolated copy of the paired-Add fixture (warp hub + bare + weft-prime
 // + weft-bare).
 type PairedFixture struct {
 	Container string
@@ -393,13 +393,13 @@ func copyDirRecursive(src string, dest string) error {
 	})
 }
 
-// CopyHostHub returns an isolated copy of the host-hub template.
+// CopyWarpHub returns an isolated copy of the warp-hub template.
 // The copy is placed in tb.TempDir();
 // its origin URL is rewritten to point to the copied bare repository.
-func CopyHostHub(tb testing.TB) HostFixture {
+func CopyWarpHub(tb testing.TB) WarpFixture {
 	tb.Helper()
 
-	templateHub, templateBare := buildHostHub()
+	templateHub, templateBare := buildWarpHub()
 
 	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
 	tempContainer := tb.TempDir()
@@ -421,7 +421,7 @@ func CopyHostHub(tb testing.TB) HostFixture {
 		tb.Fatalf("rewriteOriginURLInConfig: %v", err)
 	}
 
-	return HostFixture{
+	return WarpFixture{
 		Hub:  copiedHub,
 		Bare: copiedBare,
 	}
@@ -433,7 +433,7 @@ func CopyHostHub(tb testing.TB) HostFixture {
 func CopyPaired(tb testing.TB) PairedFixture {
 	tb.Helper()
 
-	templateHub, templateBare := buildHostHub()
+	templateHub, templateBare := buildWarpHub()
 	templateWeftPrime, templateWeftBare := buildWeftPrime()
 
 	// Create a temp container
@@ -491,7 +491,7 @@ func CopyPaired(tb testing.TB) PairedFixture {
 
 // CopyPairedLocal returns an isolated copy of the paired-Add fixture optimized for SkipPush:true
 // tests.
-// It copies only the host hub, host bare, and weft-prime, omitting the weft-bare (unused when the
+// It copies only the warp hub, warp bare, and weft-prime, omitting the weft-bare (unused when the
 // weft push is suppressed).
 // This reduces per-test filesystem-copy + Defender cost by ~25%.
 // The returned fixture has Container, Hub, Bare, WeftPrime, and Layout populated, but WeftBare is
@@ -501,7 +501,7 @@ func CopyPaired(tb testing.TB) PairedFixture {
 func CopyPairedLocal(tb testing.TB) PairedFixture {
 	tb.Helper()
 
-	templateHub, templateBare := buildHostHub()
+	templateHub, templateBare := buildWarpHub()
 	templateWeftPrime, _ := buildWeftPrime()
 
 	// Create a temp container
@@ -526,7 +526,7 @@ func CopyPairedLocal(tb testing.TB) PairedFixture {
 		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
 	}
 
-	// Rewrite host origin URL; do not rewrite weft-prime's origin URL
+	// Rewrite warp origin URL; do not rewrite weft-prime's origin URL
 	// (it points at the shared template weft-bare and is never reached under SkipPush:true)
 	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
 		tb.Fatalf("rewriteOriginURLInConfig hub: %v", err)

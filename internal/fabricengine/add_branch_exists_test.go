@@ -1,7 +1,7 @@
 //go:build integration
 
 // add_branch_exists_test.go proves Add's branch-already-exists rejection names
-// a way forward. Remove deliberately leaves the host branch behind (it may
+// a way forward. Remove deliberately leaves the warp branch behind (it may
 // carry unmerged work), so the everyday remove-then-re-add cycle hits this
 // rejection — a bare "already exists" left the operator stuck without
 // out-of-band git knowledge.
@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestAdd_ExistingBranchErrorNamesRemedy creates the host branch a slug would claim, calls Add with
+// TestAdd_ExistingBranchErrorNamesRemedy creates the warp branch a slug would claim, calls Add with
 // that slug, and asserts the rejection names both remedies (checkout onto it, or delete the
 // leftover).
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {

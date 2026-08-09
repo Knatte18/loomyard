@@ -25,12 +25,12 @@ func fakeBinaryInfo() binaryInfo {
 	}
 }
 
-// writeHostReport writes body to <hostRepoDir>/sandbox-report.json.
-func writeHostReport(t *testing.T, hostRepoDir, body string) {
+// writeWarpReport writes body to <warpRepoDir>/sandbox-report.json.
+func writeWarpReport(t *testing.T, warpRepoDir, body string) {
 	t.Helper()
-	path := filepath.Join(hostRepoDir, reportFileName)
+	path := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatalf("write host report: %v", err)
+		t.Fatalf("write warp report: %v", err)
 	}
 }
 
@@ -49,17 +49,17 @@ func scratchIsEmpty(t *testing.T, loomyardRoot string) bool {
 
 // TestFetchReport_HappyPath verifies a valid report is fetched and meta is stamped.
 func TestFetchReport_HappyPath(t *testing.T) {
-	hostRepoDir := t.TempDir()
+	warpRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	writeHostReport(t, hostRepoDir, `{
+	writeWarpReport(t, warpRepoDir, `{
 		"source": "sandbox-report",
 		"meta": {"fingerprint": {"path": "stale", "sha256": "stale", "size": 0, "modtime": "stale"}},
 		"items": [{"ref": "S6", "title": "bad error", "body": "verdict: WARN\n\nrepro steps"}]
 	}`)
 
-	if _, _, err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+	if _, _, err := fetchReport(warpRepoDir, loomyardRoot, info); err != nil {
 		t.Fatalf("fetchReport() error: %v", err)
 	}
 
@@ -101,13 +101,13 @@ func TestFetchReport_HappyPath(t *testing.T) {
 // TestFetchReport_EmptyItemsPresent verifies that a report with a present but empty items array is
 // accepted and written, not rejected as malformed.
 func TestFetchReport_EmptyItemsPresent(t *testing.T) {
-	hostRepoDir := t.TempDir()
+	warpRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
+	writeWarpReport(t, warpRepoDir, `{"source": "sandbox-report", "items": []}`)
 
-	if _, _, err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+	if _, _, err := fetchReport(warpRepoDir, loomyardRoot, info); err != nil {
 		t.Fatalf("fetchReport() error: %v", err)
 	}
 
@@ -119,13 +119,13 @@ func TestFetchReport_EmptyItemsPresent(t *testing.T) {
 
 // TestFetchReport_ItemsKeyAbsent verifies reports missing items are rejected.
 func TestFetchReport_ItemsKeyAbsent(t *testing.T) {
-	hostRepoDir := t.TempDir()
+	warpRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report"}`)
+	writeWarpReport(t, warpRepoDir, `{"source": "sandbox-report"}`)
 
-	_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
+	_, _, err := fetchReport(warpRepoDir, loomyardRoot, info)
 	if err == nil {
 		t.Fatal("fetchReport() error = nil; want error for missing items key")
 	}
@@ -141,17 +141,17 @@ func TestFetchReport_ItemsKeyAbsent(t *testing.T) {
 // mentioning the source path,
 // and writes nothing.
 func TestFetchReport_MalformedJSON(t *testing.T) {
-	hostRepoDir := t.TempDir()
+	warpRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": [`)
+	writeWarpReport(t, warpRepoDir, `{"source": "sandbox-report", "items": [`)
 
-	_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
+	_, _, err := fetchReport(warpRepoDir, loomyardRoot, info)
 	if err == nil {
 		t.Fatal("fetchReport() error = nil; want parse error for malformed JSON")
 	}
-	wantPath := filepath.Join(hostRepoDir, reportFileName)
+	wantPath := filepath.Join(warpRepoDir, reportFileName)
 	if !strings.Contains(err.Error(), wantPath) {
 		t.Errorf("error = %q; want it to mention path %q", err.Error(), wantPath)
 	}
@@ -172,13 +172,13 @@ func TestFetchReport_WrongSource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hostRepoDir := t.TempDir()
+			warpRepoDir := t.TempDir()
 			loomyardRoot := t.TempDir()
 			info := fakeBinaryInfo()
 
-			writeHostReport(t, hostRepoDir, tt.body)
+			writeWarpReport(t, warpRepoDir, tt.body)
 
-			_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
+			_, _, err := fetchReport(warpRepoDir, loomyardRoot, info)
 			if err == nil {
 				t.Fatal("fetchReport() error = nil; want validation error for wrong source")
 			}
@@ -193,11 +193,11 @@ func TestFetchReport_WrongSource(t *testing.T) {
 // error distinct from the JSON parse error, so an operator can tell "the agent wrote nothing" from
 // "the agent wrote garbage".
 func TestFetchReport_MissingReport(t *testing.T) {
-	hostRepoDir := t.TempDir()
+	warpRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
-	_, _, err := fetchReport(hostRepoDir, loomyardRoot, info)
+	_, _, err := fetchReport(warpRepoDir, loomyardRoot, info)
 	if err == nil {
 		t.Fatal("fetchReport() error = nil; want error for missing report file")
 	}
@@ -212,7 +212,7 @@ func TestFetchReport_MissingReport(t *testing.T) {
 // TestFetchReport_ScratchDirCreated verifies that fetchReport creates loomyardRoot/.scratch when it
 // does not already exist.
 func TestFetchReport_ScratchDirCreated(t *testing.T) {
-	hostRepoDir := t.TempDir()
+	warpRepoDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 	info := fakeBinaryInfo()
 
@@ -221,9 +221,9 @@ func TestFetchReport_ScratchDirCreated(t *testing.T) {
 		t.Fatalf(".scratch unexpectedly pre-exists: %v", err)
 	}
 
-	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
+	writeWarpReport(t, warpRepoDir, `{"source": "sandbox-report", "items": []}`)
 
-	if _, _, err := fetchReport(hostRepoDir, loomyardRoot, info); err != nil {
+	if _, _, err := fetchReport(warpRepoDir, loomyardRoot, info); err != nil {
 		t.Fatalf("fetchReport() error: %v", err)
 	}
 	if _, err := os.Stat(scratchDir); err != nil {
@@ -231,15 +231,15 @@ func TestFetchReport_ScratchDirCreated(t *testing.T) {
 	}
 }
 
-// makeFetchHostRepo builds the Hub host-repo layout and returns parentDir and hostRepoDir.
-func makeFetchHostRepo(t *testing.T) (parentDir, hostRepoDir string) {
+// makeFetchWarpRepo builds the Hub warp-repo layout and returns parentDir and warpRepoDir.
+func makeFetchWarpRepo(t *testing.T) (parentDir, warpRepoDir string) {
 	t.Helper()
 	parentDir = t.TempDir()
-	hostRepoDir = filepath.Join(parentDir, hubName, hostDirName)
-	if err := os.MkdirAll(hostRepoDir, 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	warpRepoDir = filepath.Join(parentDir, hubName, warpDirName)
+	if err := os.MkdirAll(warpRepoDir, 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
-	return parentDir, hostRepoDir
+	return parentDir, warpRepoDir
 }
 
 // stubLyxLookPath stubs resolveLyx to return sourceProd.
@@ -260,9 +260,9 @@ func stubLyxLookPath(t *testing.T, fakeLyx string) func() {
 	}
 }
 
-// TestRunFetch_HappyPath verifies runFetch fetches a valid host report.
+// TestRunFetch_HappyPath verifies runFetch fetches a valid warp report.
 func TestRunFetch_HappyPath(t *testing.T) {
-	parentDir, hostRepoDir := makeFetchHostRepo(t)
+	parentDir, warpRepoDir := makeFetchWarpRepo(t)
 	loomyardRoot := t.TempDir()
 
 	fakeLyx := filepath.Join(parentDir, "lyx.exe")
@@ -272,7 +272,7 @@ func TestRunFetch_HappyPath(t *testing.T) {
 	restore := stubLyxLookPath(t, fakeLyx)
 	defer restore()
 
-	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
+	writeWarpReport(t, warpRepoDir, `{"source": "sandbox-report", "items": []}`)
 
 	if err := runFetch(parentDir, loomyardRoot); err != nil {
 		t.Fatalf("runFetch() error: %v", err)
@@ -299,7 +299,7 @@ func TestRunFetch_HappyPath(t *testing.T) {
 
 // TestRunFetch_DevBinary verifies runFetch resolves a dev binary and stamps it.
 func TestRunFetch_DevBinary(t *testing.T) {
-	parentDir, hostRepoDir := makeFetchHostRepo(t)
+	parentDir, warpRepoDir := makeFetchWarpRepo(t)
 	loomyardRoot := t.TempDir()
 
 	devBinDir := filepath.Join(parentDir, ".dev-bin")
@@ -322,7 +322,7 @@ func TestRunFetch_DevBinary(t *testing.T) {
 		return "", fmt.Errorf("not found on PATH: %s", name)
 	}
 
-	writeHostReport(t, hostRepoDir, `{"source": "sandbox-report", "items": []}`)
+	writeWarpReport(t, warpRepoDir, `{"source": "sandbox-report", "items": []}`)
 
 	if err := runFetch(parentDir, loomyardRoot); err != nil {
 		t.Fatalf("runFetch() error: %v", err)
@@ -360,16 +360,16 @@ func TestRunFetch_HubAbsent(t *testing.T) {
 
 	err := runFetch(parentDir, loomyardRoot)
 	if err == nil {
-		t.Fatal("runFetch should return error when the Hub host subdir is absent")
+		t.Fatal("runFetch should return error when the Hub warp subdir is absent")
 	}
 	if !strings.Contains(err.Error(), "sandbox/build.cmd") {
 		t.Errorf("error should mention 'sandbox/build.cmd'; got %q", err.Error())
 	}
 }
 
-// TestRunFetch_MissingHostReport verifies runFetch errors when no report exists.
-func TestRunFetch_MissingHostReport(t *testing.T) {
-	parentDir, _ := makeFetchHostRepo(t)
+// TestRunFetch_MissingWarpReport verifies runFetch errors when no report exists.
+func TestRunFetch_MissingWarpReport(t *testing.T) {
+	parentDir, _ := makeFetchWarpRepo(t)
 	loomyardRoot := t.TempDir()
 
 	fakeLyx := filepath.Join(parentDir, "lyx.exe")
@@ -381,7 +381,7 @@ func TestRunFetch_MissingHostReport(t *testing.T) {
 
 	err := runFetch(parentDir, loomyardRoot)
 	if err == nil {
-		t.Fatal("runFetch should return error when the host report is missing")
+		t.Fatal("runFetch should return error when the warp report is missing")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error should mention the report was not found; got %q", err.Error())

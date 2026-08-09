@@ -12,18 +12,18 @@
 // under board's own board.lock/board.push.lock write and push locks.
 //
 // Storage: board lives at weft:main, never a separate repo.
-// fabricengine enforces one uniform branch-naming scheme with no exceptions: a host branch <branch>
+// fabricengine enforces one uniform branch-naming scheme with no exceptions: a warp branch <branch>
 // is always paired with weft branch <branch>-weft.
-// That means no task's weft branch can ever be named exactly the host's own default branch (every
+// That means no task's weft branch can ever be named exactly the warp's own default branch (every
 // paired weft branch carries the -weft suffix) — which is what makes the unsuffixed name
 // permanently unclaimed by the pairing convention and reserved exclusively for board.
 // This repo's earlier design considered and rejected two alternatives before landing here: a
 // separate third repo for board is extra git-identity overhead for something that doesn't need its
 // own identity;
-// and GitHub wiki rendering (an intermediate idea) requires whichever repo hosts the wiki to be
+// and GitHub wiki rendering (an intermediate idea) requires whichever repo holds the wiki to be
 // public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never
-// the host/warp repo — disqualifying for private consulting work, where the host repo's
-// wiki-hosting repo would have had to go public just to render board's front page.
+// the warp/warp repo — disqualifying for private consulting work, where the warp repo's
+// wiki-serving repo would have had to go public just to render board's front page.
 //
 // The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches
 // simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged),

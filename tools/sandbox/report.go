@@ -1,6 +1,6 @@
 // report.go defines the sandbox-report.json contract shared with the launcher's caller (the
 // loomyard tooling described in millhouse#586) and implements fetchReport, which reads the
-// agent-written report out of the Hub host repo, validates and stamps it, then writes a normalized,
+// agent-written report out of the Hub warp repo, validates and stamps it, then writes a normalized,
 // fingerprint-stamped copy into the loomyard root's .scratch directory.
 
 package main
@@ -51,12 +51,12 @@ type reportItem struct {
 // runFetch executes "sandbox fetch" after a suite session. Re-resolves lyx,
 // re-fingerprints it, and fetches agent-written sandbox-report.json.
 func runFetch(parentDir, loomyardRoot string) error {
-	hostRepoDir := filepath.Join(parentDir, hubName, hostDirName)
+	warpRepoDir := filepath.Join(parentDir, hubName, warpDirName)
 
-	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("hub host repo not found at %s -- run sandbox/build.cmd first", hostRepoDir)
+	if _, err := os.Stat(warpRepoDir); os.IsNotExist(err) {
+		return fmt.Errorf("hub warp repo not found at %s -- run sandbox/build.cmd first", warpRepoDir)
 	} else if err != nil {
-		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
+		return fmt.Errorf("stat warp repo %s: %w", warpRepoDir, err)
 	}
 
 	lyxPath, source, err := resolveLyx()
@@ -69,7 +69,7 @@ func runFetch(parentDir, loomyardRoot string) error {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
 
-	destPath, count, err := fetchReport(hostRepoDir, loomyardRoot, info)
+	destPath, count, err := fetchReport(warpRepoDir, loomyardRoot, info)
 	if err != nil {
 		return err
 	}
@@ -90,8 +90,8 @@ func runFetch(parentDir, loomyardRoot string) error {
 // fetchReport reads sandbox-report.json, validates it, stamps meta.fingerprint,
 // and writes the normalized result to .scratch. Returns the written path and
 // finding count.
-func fetchReport(hostRepoDir, loomyardRoot string, info binaryInfo) (string, int, error) {
-	reportPath := filepath.Join(hostRepoDir, reportFileName)
+func fetchReport(warpRepoDir, loomyardRoot string, info binaryInfo) (string, int, error) {
+	reportPath := filepath.Join(warpRepoDir, reportFileName)
 
 	raw, err := os.ReadFile(reportPath)
 	if err != nil {

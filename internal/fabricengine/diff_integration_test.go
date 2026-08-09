@@ -223,7 +223,7 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 
 	// Neither the lock dir nor the push lock file (both git-excluded) may
 	// appear on the weft side. Scoped to weft only, per this batch's
-	// documented known limitation: the warp/host side deliberately does not
+	// documented known limitation: the warp/warp side deliberately does not
 	// seed these excludes.
 	for _, p := range weftPaths {
 		if strings.HasPrefix(p, weftLockDirName+"/") || p == gitrepo.PushLockFileName {

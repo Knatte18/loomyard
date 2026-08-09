@@ -1,12 +1,12 @@
 //go:build integration
 
 // remove_junctions_integration_test.go proves card 9's fix: Remove tears down
-// every host junction — not just the worktree-root case
+// every warp junction — not just the worktree-root case
 // fslink.RemoveLinksIn's safety net already covers — including one nested
 // under a non-"." RelPath, where that safety net (which scans only the
 // worktree root's immediate children) cannot see it. At RelPath == "." the
 // safety net masks the bug entirely, which is why this file drives the
-// nested case specifically. From card 15 onward HostJunctions returns two
+// nested case specifically. From card 15 onward WarpJunctions returns two
 // entries (_lyx and a second, non-_lyx junction), so this is now a true
 // discriminator against the old _lyx-hardcoded form: the second junction's
 // nested removal has no _lyx-shaped shortcut to fall back on.
@@ -43,7 +43,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 
 	// Resolve a nested layout: same worktree (l.WorktreePath()), but anchored
 	// one level deeper — AnchorRel becomes "sub", matching the hub-wide
-	// nesting convention HostLyxLink/WeftLyxDirFor assume (every sibling
+	// nesting convention WarpLyxLink/WeftLyxDirFor assume (every sibling
 	// worktree nests at the same AnchorRel offset as the caller's own). The
 	// strict cwd gate requires the anchor to actually be recorded before
 	// Resolve(subDir) can succeed at that subpath.
@@ -70,7 +70,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 		t.Fatalf("WireJunctions(nested): %v", err)
 	}
 
-	nestedLyxLink := fabricengine.HostLyxLink(nestedLayout, slug)
+	nestedLyxLink := fabricengine.WarpLyxLink(nestedLayout, slug)
 	if isLink, err := fslink.IsLink(nestedLyxLink); err != nil || !isLink {
 		t.Fatalf("setup: nested _lyx junction %s not wired: isLink=%v err=%v", nestedLyxLink, isLink, err)
 	}

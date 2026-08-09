@@ -23,7 +23,7 @@ Fuller design/how-to lives in godoc and `docs/`.
   Adding a module's own subdirectory is never a `lyxcwd` change.
   Its ephemeral twin is the Durable-vs-Ephemeral State Invariant below.
 - `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — this is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic.
-- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths,
+- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`WarpLyxLink`/`WarpJunctions`/portal and launcher paths,
   and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `lyxcwd` never mentions weft.
   See the Fabric Vocabulary Invariant below for the vocabulary rule this bullet is one instance of.
 - Geometry is structural, never config/env-overridable.
@@ -156,28 +156,42 @@ Pane-shell command strings — argument quoting, the call operator, and the prom
 
 ## Fabric Vocabulary Invariant
 
-In production code, the tokens `weft` and `warp` may appear only in the owner set below, policed as bare tokens — they have no meaning in this repo other than fabric's.
-`host` is policed only via a fabric-sense phrase predicate, never as a bare word: `host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD` (any case, hyphenated or spaced), plus a component of a policed identifier in fabric-geometry naming (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`).
-The bare word `host` — the verb sense, the machine/OS sense, and the PowerShell cmdlet `Write-Host` — passes untouched;
-a whole-word ban would rewrite ordinary English in modules with no connection to fabric.
+**Fabric** (capital F) names the fully wired-up composite — the warp repo with junctions into weft inside it.
+Any reader meaning *the repo as a whole* says Fabric.
+**warp** and **weft** name the two sides and are used — including in CLI help text and user-visible messages — at exactly those points where the two sides genuinely must be told apart, e.g. `lyx fabric clone <warp-url> <weft-url>` and `fabric: warp/weft out of sync`.
+"repo" alone is too vague to denote warp and is never a substitute for it.
+**`host` is retired** and is never used in any of these senses, anywhere — including inside the owner set below.
 
-- **Owner set** (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers), `tools/`, `sandbox/`.
+The phrase predicate is the sense-discriminator, retained unchanged: `host` is policed via the fabric-sense phrase list (`host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD`, any case, hyphenated or spaced) plus the policed geometry identifiers (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`), never as a bare word.
+The bare word — the verb sense, the machine/OS sense, and the PowerShell `Write-Host` cmdlet — still passes untouched, because a whole-word ban would rewrite ordinary English in modules with no connection to fabric.
+Keep these lists verbatim: they are the ban list, and renaming them would delete the rule.
+
+- **Owner set carves out the bare weft/warp rule only, never the host rule.**
+  Owner set: `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers).
+  `tools/` and `sandbox/` are not in the owner set — they lie outside the enforcement walk entirely, since the Go walk covers `internal/` and `cmd/` only, so an owner-map row for them would be dead code that never matches.
+  Vocabulary in `tools/` and `sandbox/` is a review obligation, not machine-checked.
 - **Prose-doc split — review obligation, not machine-checked:** a doc explaining fabric's own mechanism keeps the vocabulary;
-  a doc describing a consumer module's behaviour rewords, because that module does not know weft exists.
+  a doc describing a consumer module's behaviour rewords to Fabric or drops the qualifier, because that module does not know weft exists.
   A token scan cannot express this distinction, so it is not covered by the enforcement test.
 - This invariant binds every module, template, and doc that talks about fabric — `internal/lyxcwd` is merely one of the packages it binds, not its owner.
   The enforcement test's placement in `internal/lyxcwd/enforcement_test.go` is a file-layout convenience — it reuses that file's `filepath.WalkDir` helper — not an ownership claim.
-- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus the embedded agent prompt templates.
-  The prose-doc split above is a review obligation the machine check does not cover.
+- **What the machine check does and does not reach — stated honestly, not implying full coverage.**
+  Production Go under `internal/` and `cmd/` is machine-guarded, plus an `internal/**/*.md` walk and the embedded agent prompt templates.
+  `*_test.go` files are excluded from all three rules.
+  `hostGeometryIdentifiers` is five exact lowercased names, so `HostJunctions`, `hostPath`, `hostBare`, `CopyHostHub`, and `HostFixture` are matched only by the phrase half, and only where they occur inside a policed phrase.
+  Test files, documentation outside `internal/`, shell, and `tools/` remain a **review obligation**, not a machine check.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus an `internal/**/*.md` walk and the embedded agent prompt templates.
+  The host rule is machine-checked everywhere this test reaches, including the owner dirs;
+  the prose-doc split above is a review obligation the machine check does not cover.
 
 ## Fabric Git Invariant (warp + weft)
 
-Every git operation that LYX/LoomYard's own code performs — on **either** the weft repo or the warp/host repo — goes through `internal/fabricengine` in Go, in-process, never raw git and never an LLM agent.
+Every git operation that LYX/LoomYard's own code performs — on **either** the weft repo or the warp repo — goes through `internal/fabricengine` in Go, in-process, never raw git and never an LLM agent.
 This binds LYX's own code only;
 a human or any tool outside LYX keeps ordinary git in their warp worktree, untouched.
 
 - **Module ownership.**
-  Weft-internal git (`commit`/`push`/`pull`/`sync`) and coordinated host↔weft topology (checkout, dual-worktree add/remove/clone) both go through `internal/fabricengine`.
+  Weft-internal git (`commit`/`push`/`pull`/`sync`) and coordinated warp↔weft topology (checkout, dual-worktree add/remove/clone) both go through `internal/fabricengine`.
   The same holds for warp: no LYX package other than `internal/fabricengine` runs raw git against warp.
   Read-only verbs (current SHA, `git status --porcelain`) are exempt — only *mutating* warp git must dispatch through fabric;
   see `fabric-unified-view.md`'s "Scope boundary" section for the current warp-mutation call sites.
@@ -185,7 +199,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   The weft commit is Go calling the engine in-process at a round/phase boundary the loop owner (loom, or perch's CLI standalone) controls — never an LLM agent, not raw git, not by shelling `lyx fabric`.
   Agents ride the file contract: they **write** overlay files into `_lyx` via the junction — raddle content lives at `_lyx/raddle/` and therefore arrives through this same junction;
   Go **reads and commits** them.
-  An agent does commit its own code to the **host** repo (commit-per-fix) — the weft, never.
+  An agent does commit its own code to the **warp** repo (commit-per-fix) — the weft, never.
   **Board carve-out:** `internal/boardengine`'s writes to `weft:main` are the one exception to timing control — any LLM session, in any worktree, may trigger a board write at any time — but module ownership still holds (board's git flows through `Bolt`, never raw git);
   only the *timing*-control half is scoped away.
 - **Cross-module exclusions.**
@@ -197,7 +211,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
   `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
 - **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
-- **Unwire** removes host junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
+- **Unwire** removes warp junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
   Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
   Never-committed routing: `internal/fabricengine/classify_test.go`, `structuraldirs_test.go`, `internal/fabriccli/cli_test.go`.
@@ -211,7 +225,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 One review+fix round (burler now, hardener later) follows: A-before-B (review fully written to disk before any target file is touched);
 every recorded finding is fixed in B, all severities including LOW/NIT;
 no self-grading (round N's fix is judged by round N+1's fresh review, never its own);
-commit-per-fix on host source, never push.
+commit-per-fix on warp source, never push.
 In a cluster round, fork reports, the handler's own holistic review, and the consolidation into one review file are ALL part of A;
 fork reviewers are read-only (no writes, no git), mechanically enforced by the fork audit.
 

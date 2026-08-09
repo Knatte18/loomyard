@@ -1,4 +1,4 @@
-// coalesce.go hosts the generic loop-until-clean coalescing primitive coalescePush and fabric's own
+// coalesce.go holds the generic loop-until-clean coalescing primitive coalescePush and fabric's own
 // two-sided rebase-free push entry CoalescePushBothAt built on top of it.
 // The generic primitive stays caller-agnostic — it owns only the absorbing lock and the loop, never
 // any commit/stage/push policy — while fabric's push step (and the small helpers it needs) sit
@@ -72,9 +72,9 @@ func pushRebaseFreeLogged(path string) error {
 // CoalescePushBothAt pushes both warp and weft under fabric's absorbing push lock, looping until
 // neither side advances — a rebase-free entry point honoring SkipGit/SkipPush.
 // weftPath must be non-empty: the absorbing push lock's only sanctioned home.
-// is under weftPath's .weft/ (a host-root lock is forbidden by the lock-artifact-under-weft /
-// no-host-root-gitrepo-push-lock Shared Decisions), so an empty weftPath returns an error rather
-// than falling back to warpPath (which would put a lock at the pristine host root) or defaulting to
+// is under weftPath's .weft/ (a warp-root lock is forbidden by the lock-artifact-under-weft /
+// no-warp-root-gitrepo-push-lock Shared Decisions), so an empty weftPath returns an error rather
+// than falling back to warpPath (which would put a lock at the pristine warp root) or defaulting to
 // the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
 // to cwd).
 // This is a latent edge only: the detached push child always supplies both paths (see

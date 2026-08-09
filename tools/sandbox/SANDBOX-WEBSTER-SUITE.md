@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx webster` against a **live tmux server and a logged-in claude** in the sandbox Hub host repo, mirroring `SANDBOX-BUILDER-SUITE.md`'s own operating model. `webster` is builder's fork-based sibling with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the whole flat card-list plan (plan-format v3, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- identity by default, one card per batch) once, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here;
+A structured test-loop for exercising `lyx webster` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo, mirroring `SANDBOX-BUILDER-SUITE.md`'s own operating model. `webster` is builder's fork-based sibling with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the whole flat card-list plan (plan-format v3, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- identity by default, one card per batch) once, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here;
 Master itself brackets each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED agents on current Claude Code -- the Agent call returns immediately, so Master long-polls `await-batch` for the batch report instead of relying on a synchronous fork return, and never ends its turn while a batch is open).
 This suite is deliberately narrow: two scenarios, not builder's nine, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation) are webster-local code already covered by the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the fork loop itself (W1) and the one dormant-by-default, timing-sensitive mechanism unique to webster: the idempotent per-batch Master model assertion's `/model` pane injection (W2).
 
@@ -21,7 +21,7 @@ Before starting a session:
    Before trusting any W1/W2 verdict, make the pane-resolved `lyx` the same build as `.dev-bin` (deploy the branch build to the production location for the session and restore it at teardown, or verify `lyx webster status` from inside a pane names no config error a dev-binary call does not).
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
-   the session cwd is the Hub host repo root, the same operating model as the main suite.
+   the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a webster defect** -- the `**Covers:** webster` tag on W1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
@@ -35,7 +35,7 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-HUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
@@ -57,7 +57,7 @@ Two sanctioned deviations from the pure black-box rule, mirroring the reed/shutt
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub host repo.
+The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
 The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
@@ -82,7 +82,7 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the Fabric-repo cwd) on this exact schema.
 **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
@@ -184,13 +184,13 @@ sandbox-report.json written: <count of WARN/FAIL items>
 ## Teardown
 
 After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted.
-An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox/build.cmd -reset`.
+An orphaned tmux server holds open handles inside the Hub's Fabric repo and blocks the next `sandbox/build.cmd -reset`.
 The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
 and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`, builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`, builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`;
   this suite holds only webster's fork-loop and model-assertion scenarios -- add `W` scenarios here, not in any other suite.
 - This suite is a FLOOR, not a ceiling, and deliberately narrower than builder's own: the run-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke tests -- duplicating those here would re-test covered Go paths through a slower medium.
   What is genuinely live-only is the fork loop itself (W1) and the tamper-armed `/model` pane-injection timing (W2).

@@ -89,7 +89,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		link := fabricengine.HostLyxLinkHere(l)
+		link := fabricengine.WarpLyxLinkHere(l)
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}
@@ -117,7 +117,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		link := fabricengine.HostLyxLinkHere(l)
+		link := fabricengine.WarpLyxLinkHere(l)
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}
@@ -148,7 +148,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		link := fabricengine.HostLyxLinkHere(l)
+		link := fabricengine.WarpLyxLinkHere(l)
 		if err := fslink.Remove(link); err != nil {
 			t.Fatalf("remove junction: %v", err)
 		}

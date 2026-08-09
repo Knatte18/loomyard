@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx builder` against a **live tmux server and a logged-in claude** in the sandbox Hub host repo.
+A structured test-loop for exercising `lyx builder` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-SHUTTLE-SUITE.md` and `SANDBOX-BURLER-SUITE.md`, the value here is partly **visual**: a batch's implementer doing real work in a pane, a digest coming back, a pause landing cleanly at a batch boundary.
 Not an automated suite -- an agent drives it, an operator watches.
 
@@ -20,7 +20,7 @@ Before starting a session:
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
-   the session cwd is the Hub host repo root, the same operating model as the main suite.
+   the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a builder defect** -- the `**Covers:** builder` tag on B1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
@@ -34,7 +34,7 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-HUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
@@ -53,7 +53,7 @@ One sanctioned deviation from the pure black-box rule, mirroring the reed/shuttl
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub host repo.
+The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
 The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
@@ -78,7 +78,7 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the Fabric-repo cwd) on this exact schema.
 **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
@@ -235,7 +235,7 @@ Also confirm the B1 happy path's cleanup half: after every `done`/`stuck` classi
 
 **Goal:** "Pin a small deferred-verify chain (e.g. batch 01 `verify: deferred` `chain-end: 02`, batch 02 the chain end that runs the real `verify:`).
 Drive batch 01 to `done` so the chain-start SHA is recorded and batch 01's card commit lands, then invoke `lyx builder spawn-batch 02 --restart-chain` -- naming the chain END, not the lowest member.
-Confirm the reset rolls the host repo back to the recorded chain-start SHA AND that the batch actually spawned is the chain's LOWEST member (01), never the named end (02) on a tree missing batch 01's just-discarded work."
+Confirm the reset rolls the Fabric repo back to the recorded chain-start SHA AND that the batch actually spawned is the chain's LOWEST member (01), never the named end (02) on a tree missing batch 01's just-discarded work."
 
 **Watch:** `lyx builder spawn-batch 01` then `lyx builder poll --wait <duration>` until it returns `status: "done"` `tests: "skipped"` (a deferred-verify intermediate reports skipped);
 confirm batch 01's card commit is on `HEAD` and `state.json`'s `chainStartShas` records the pre-01 SHA.
@@ -311,13 +311,13 @@ sandbox-report.json written: <count of WARN/FAIL items>
 ## Teardown
 
 After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted.
-An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox/build.cmd -reset`.
+An orphaned tmux server holds open handles inside the Hub's Fabric repo and blocks the next `sandbox/build.cmd -reset`.
 The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
 and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
   this suite holds only builder's batch-loop scenarios -- add `B` scenarios here, not in any other suite.
 - This suite is a FLOOR, not a ceiling.
   It proves the mechanics (state machine, locking, timing classification, archiving discipline), never implementer quality or plan-format content richness -- those are a normal code review's and `perch`'s job respectively.
