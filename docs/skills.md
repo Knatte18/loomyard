@@ -11,7 +11,7 @@ In lyx, orchestration is Go (`loom`), so the `mill-*` lifecycle family becomes `
 |---|---|
 | One `lyx` verb / deterministic | **`lyx` verb** (no skill) |
 | Low value even in mill | **Discard** |
-| Git mechanics at commit time | **loom commit path** — Go-deterministic (fabric state) + builder/fixer prompt template (worktree code). *Not* CLAUDE.md: always-on text gets forgotten |
+| Git mechanics at commit time | **loom commit path** — Go-deterministic (fabric state) + webster's fork prompt template (worktree code). *Not* CLAUDE.md: always-on text gets forgotten |
 | Session-coloring fact, unenforceable at a point-of-use | **CLAUDE.md** (loads every session; no mill skill lands here) |
 | Judgment, operator-invoked | **skill** |
 | Judgment, lyx-spawned / autonomous | **prompt template** (stencil + shuttle) — Go can't call a skill |
@@ -157,7 +157,7 @@ shares the burler round discipline).
 | mill:mill-claim | `lyx fabric add` / loom |
 | mill:mill-start | loom Discussion phase (a producer prompt) |
 | mill:mill-plan | loom Plan phase |
-| mill:mill-go | loom Builder phase |
+| mill:mill-go | loom Webster phase |
 | mill:mill-finalize | loom Finalize |
 | mill:mill-merge | loom Finalize + `lyx fabric cleanup` (conflict → `ly-git-resolve`) |
 | mill:mill-merge-in | loom / fabric merge (conflict → `ly-git-resolve`) |
@@ -181,8 +181,8 @@ The rules live where commits actually happen.
 
 | mill skill | Why |
 |---|---|
-| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lyx commits fabric state; message format + commit-per-fix ride the **builder/fixer prompt template** for worktree code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
-| mill:git-workflow | Branch / PR / rebase / main-gate are **loom-enforced** (breaking them is clumsiness, not a rule to restate); message + staging discipline ride the builder/fixer prompt template |
+| mill:git-commit | Mechanics (stage-by-name, no `-A`, no force-push, no `--no-verify`, set upstream) enforced **in Go** where lyx commits fabric state; message format + commit-per-fix ride **webster's fork prompt template** for worktree code. Lint / raddle-sync / main-gate are loom's job, not per-commit |
+| mill:git-workflow | Branch / PR / rebase / main-gate are **loom-enforced** (breaking them is clumsiness, not a rule to restate); message + staging discipline ride webster's fork prompt template |
 
 ### → burler's prompt template (lyx-spawned judgment)
 
