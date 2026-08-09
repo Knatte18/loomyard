@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: blocked
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-doc-prose-v2-erasure  '2026-08-09T13:40:38Z'
 approved-go-comments-and-guards  '2026-08-09T13:45:05Z'
 approved-override-notes-and-acceptance  '2026-08-09T13:52:13Z'
 holistic-reviewing  '2026-08-09T13:52:34Z'
+blocked  '2026-08-09T13:53:53Z'
 ```
 
 ## Batches
