@@ -74,7 +74,7 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 
 	// Unborn-HEAD check: a nonzero exit here means the weft candidate has no commits at all, the
 	// genuinely empty weft remote that ensureBoardWorktree's orphan-create path already supports.
-	_, stderr, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, probeDir)
+	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, probeDir)
 	if err != nil {
 		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", "", err)
 	}
