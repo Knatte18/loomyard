@@ -52,7 +52,6 @@ Letting the sweeper perform the rename inline was rejected — it would write a 
   - `.gitignore`
   - `manifest/designs/shed-followups.md`
 - **Edits:**
-  - `.scratch/sweep/main.go`
   - `README.md`
   - `docs/overview.md`
   - `docs/reference/model-spec.md`
@@ -88,6 +87,7 @@ Letting the sweeper perform the rename inline was rejected — it would write a 
 - **Moves:** none
 - **Requirements:** Overwrite `.scratch/sweep/main.go` — it currently holds a `package main` probe stub whose `main` prints `sweep-probe-ok`;
   replace the whole file.
+  `.scratch/sweep/main.go` is deliberately absent from this card's `Edits:` list even though it is written here: it is gitignored, never staged, never committed (per the `scratch-is-never-staged` Decision), and expected to be deleted by whichever later batch's acceptance gate needs the tree clean of it — tracking it as a plan-reference path would make the code-review tooling's `resolve_ref_paths` hard-fail once it is gone.
   Write a `package main` program run as `go run .scratch/sweep/main.go` from the git root.
   **Before writing it, re-derive the hit inventory** as this batch's first action and print it, so the work is bounded by observed reality rather than by the list above:
 

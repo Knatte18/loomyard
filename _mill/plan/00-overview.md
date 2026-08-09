@@ -10,6 +10,12 @@ root: ""
 verify: go build ./...
 ```
 
+## Prior failure
+
+- **Holistic round 1** (self-resolved, no reviewer dispatch reached): `millpy-review-code.py --stage prepare` failed both attempts with `verdict: ERROR`, reason: `[resolve_ref_paths] referenced path not found: '.scratch/sweep/main.go'; not in plan creates_union, not on disk`.
+  Batch 1 card 2 listed `.scratch/sweep/main.go` under `Edits:`, but the file is a gitignored, never-committed scratch artifact (per the `scratch-is-never-staged` Decision) that batch 4 card 14 correctly deleted as a self-fix for `internal/lyxcwd`'s tree-scan gate — leaving it neither on disk, in `creates_union`, nor in `deletes_union`.
+  Fix: dropped the bullet from card 2's `Edits:` list and from this file's `All Files Touched` section, and noted the exclusion inline in card 2's `Requirements:`.
+
 ## Batch Index
 
 _The fenced yaml block below is the authoritative DAG mill-go reads to schedule batches.
@@ -115,7 +121,6 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 Cards are the source of truth;
 this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` check cross-references against the derived union of every card's `Edits:`/`Creates:`/Move-target paths, to catch drift between the hand/agent-maintained list here and that derived union._
 
-- `.scratch/sweep/main.go`
 - `README.md`
 - `docs/overview.md`
 - `docs/reference/model-spec.md`
