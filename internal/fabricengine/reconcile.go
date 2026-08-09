@@ -178,41 +178,21 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		}
 
 		if !weftWorktreeExists {
-			pairedAction := t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
-			pr.Action = pairedAction
-		} else {
-			junctionHealthy, _ := checkJunctionHealth(warpLayout)
+			pr.Action = t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
+		}
 
-			if !junctionHealthy {
-				names, namesErr := RepoWiredNames(warpLayout)
-				if namesErr != nil {
-					pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
-					pr.Action = ReconcileActionJunctionRepointed
-				} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
-					pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
-					pr.Action = ReconcileActionJunctionRepointed
-				} else {
-					pr.Action = ReconcileActionJunctionRepointed
-					pr.Detail = junctionRepointedDetail(warpLayout)
-				}
-			} else {
-				pr.Action = ReconcileActionAlreadyHealthy
-			}
-
-			// Re-wire the operator-convenience _board junction unconditionally,
-			// regardless of junctionHealthy above: checkJunctionHealth only
-			// ever inspects the pathspec name-set, which _board is
-			// deliberately outside, so a pair whose *only* broken link is
-			// _board would report junctionHealthy == true and never reach
-			// here if this call sat inside the `!junctionHealthy` branch. A
-			// wiring failure is surfaced as a Detail note, never as an Error
-			// or a changed Action — this convenience link must never be able
-			// to downgrade a reconcile verdict.
-			if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
-				appendPrDetail(&pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
-			}
-
-			applyStaleRemoval(warpLayout, slug, &pr)
+		// A pair whose weft worktree was just recreated has its junctions still pointing at
+		// directories that vanished with it, so it falls through to the same wiring repair a pair
+		// with an existing weft gets — without it, reconcile reported success while leaving the
+		// pair unhealthy until a SECOND reconcile run, and the interim `pairs` reason was a raw
+		// EvalSymlinks error rather than a fabric verdict.
+		// The freshly-recreated pair keeps its own weft_recreated Action rather than being
+		// relabelled junction_repointed, so the report still names what actually happened;
+		// ReconcileActionRawAdopted deliberately does NOT fall through, since a raw-adopted pair is
+		// dormant by design and wired by the next pass.
+		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
+		if repairWiring {
+			t.repairPairWiring(warpLayout, slug, &pr, weftWorktreeExists)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -284,6 +264,46 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 		return WarpBindingOutcomeDeferred, fmt.Sprintf("write warp binding: %v", err)
 	}
 	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
+}
+
+// repairPairWiring converges one pair's junctions: it re-wires whatever checkJunctionHealth reports
+// broken, always re-wires the operator-convenience _board link, and applies declarative
+// stale-removal.
+//
+// setAction distinguishes the two callers. A pair whose weft worktree already existed has no Action
+// yet, so this call assigns the verdict (already_healthy / junction_repointed). A pair whose weft
+// worktree this same pass recreated already carries weft_recreated, which names what actually
+// happened and must survive the repair, so that caller passes false and gets Detail notes only.
+//
+// The _board re-wire is unconditional with respect to junction health: checkJunctionHealth only ever
+// inspects the pathspec name-set, which _board is deliberately outside, so a pair whose only broken
+// link is _board reports healthy and would never be repaired if this call sat inside the
+// unhealthy branch. A wiring failure there is surfaced as a Detail note, never as an Error or a
+// changed Action — this convenience link must never be able to downgrade a reconcile verdict.
+func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
+	junctionHealthy, _ := checkJunctionHealth(warpLayout)
+
+	if !junctionHealthy {
+		if setAction {
+			pr.Action = ReconcileActionJunctionRepointed
+		}
+		names, namesErr := RepoWiredNames(warpLayout)
+		if namesErr != nil {
+			pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
+		} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
+			pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
+		} else {
+			appendPrDetail(pr, junctionRepointedDetail(warpLayout))
+		}
+	} else if setAction {
+		pr.Action = ReconcileActionAlreadyHealthy
+	}
+
+	if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
+		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
+	}
+
+	applyStaleRemoval(warpLayout, slug, pr)
 }
 
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree

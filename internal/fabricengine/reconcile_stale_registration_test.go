@@ -495,3 +495,52 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, "_lyx is not a junction")
 	}
 }
+
+// TestReconcile_RecreatedWeftIsWiredInTheSamePass proves a single reconcile pass fully repairs a
+// pair whose weft worktree was deleted out from under it. Recreating the worktree alone leaves the
+// warp junctions pointing at directories that vanished with it, so the pair stayed unhealthy — with
+// a raw EvalSymlinks error as its reported reason — until a SECOND reconcile ran.
+func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "reconcile-recreated-pair"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+	}
+
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	if err != nil {
+		t.Fatalf("WeftRepoRoot: %v", err)
+	}
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	lyxtest.MustRun(t, weftRepoRoot, "git", "worktree", "remove", "--force", weftPath)
+
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	pair := findReconcilePair(t, result.Pairs, weftPath)
+	if pair.Error != "" {
+		t.Fatalf("Error = %q; want empty", pair.Error)
+	}
+	if pair.Action != fabricengine.ReconcileActionWeftRecreated {
+		t.Errorf("Action = %q; want %q — the repair must not relabel what happened",
+			pair.Action, fabricengine.ReconcileActionWeftRecreated)
+	}
+
+	ok, reason, err := fabricengine.Healthy(warpLayout)
+	if err != nil {
+		t.Fatalf("Healthy: %v", err)
+	}
+	if !ok {
+		t.Errorf("Healthy = false (reason %+v) after ONE reconcile pass; want the pair fully repaired", reason)
+	}
+}
