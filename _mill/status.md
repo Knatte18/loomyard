@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -23,4 +23,19 @@ planned  '2026-08-09T12:49:24Z'
 planning  '2026-08-09T13:15:42Z'
 plan-fix-r2  '2026-08-09T13:27:22Z'
 planned  '2026-08-09T13:27:31Z'
+implementing  '2026-08-09T13:28:00Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: rename-and-sweep
+    state: pending
+  - name: doc-prose-v2-erasure
+    state: pending
+  - name: go-comments-and-guards
+    state: pending
+  - name: override-notes-and-acceptance
+    state: pending
 ```
