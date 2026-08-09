@@ -3,7 +3,7 @@
 ```yaml
 task: 'finalize: fold Raddle into its own contract and repair the dead links in raddle.md, finalize.md and self-report.md'
 slug: raddle-finalize-fold-and-link-repair
-approved: false
+approved: true
 started: '20260809-123122'
 parent: main
 root: ""

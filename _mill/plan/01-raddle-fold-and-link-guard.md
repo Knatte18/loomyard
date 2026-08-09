@@ -245,6 +245,7 @@ There is no external interface for a next batch to consume — this is the only 
   - `manifest/designs/finalize.md`
   - `README.md`
   - `CLAUDE.md`
+  - `manifest/roadmap.md`
 - **Edits:**
   - `CONSTRAINTS.md`
 - **Creates:** none
@@ -256,9 +257,10 @@ There is no external interface for a next batch to consume — this is the only 
   Two: the enforcing test — `internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks`.
   Three: a placement caveat in the same words the Fabric Vocabulary Invariant already uses at `CONSTRAINTS.md:177` — the test living in `internal/lyxcwd` is a **file-layout convenience** reusing that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers, and is **not an ownership claim**, because the Cwd Resolution Invariant scopes `internal/lyxcwd` to cwd resolution and nothing else.
   Four: what the check does and does not reach, stated honestly, mirroring the "What the machine check does and does not reach — stated honestly, not implying full coverage" framing at `CONSTRAINTS.md:178`.
-  Not reached: external `http`/`https`/`mailto` URLs, never fetched; reference-style links and `<...>` autolinks, out of grammar by decision rather than oversight; link-shaped text inside fenced code blocks, deliberately skipped; prose mentions of a filename that are not markdown links, with `manifest/roadmap.md:98`'s `scout-redesign.md` reference named as a live example this task leaves standing; and `.md` files outside `manifest/` and `docs/` as **scan sources**, so `README.md`, `CLAUDE.md`, and `internal/**/*.md` have their own outgoing links checked by nobody.
+  Not reached: external `http`/`https`/`mailto` URLs, never fetched; reference-style links and `<...>` autolinks, out of grammar by decision rather than oversight; link-shaped text inside fenced code blocks, deliberately skipped; prose mentions of a filename that are not markdown links, with `manifest/roadmap.md:98`'s `scout-redesign.md` reference named as a live example this task leaves standing — open `manifest/roadmap.md` and confirm line 98 still carries that reference before writing the citation, and cite it by what it says rather than by line number if it has moved, since this task already found one stale line-number citation in the "Weft Git Invariant" case; and `.md` files outside `manifest/` and `docs/` as **scan sources**, so `README.md`, `CLAUDE.md`, and `internal/**/*.md` have their own outgoing links checked by nobody.
   State explicitly, in the same paragraph, that the root restriction is **source-side only**: `manifest/` and `docs/` name which files are scanned for outgoing links and do not restrict where those links may point — every target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, inside those roots or not.
   Without that sentence an implementer could read the root restriction as licence to skip anchor resolution for out-of-root targets, which would silently un-guard `finalize.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
+  `manifest/roadmap.md` is read-only here — it is in `Context:`, never `Edits:`, and stays out of scope per the overview's untouchable-files Shared Decision.
   Five: the allowlist's self-expiring contract — keyed by `(file, target)` and never by line number, each entry naming its owning task, and an entry whose key goes unmatched by a scan reported as deletable.
   Apply semantic line breaks throughout.
 - **Commit:** `docs(constraints): record the Markdown Link Integrity invariant`
