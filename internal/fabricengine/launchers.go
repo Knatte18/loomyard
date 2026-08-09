@@ -130,6 +130,9 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 // directory does not exist.
 func removeLaunchers(l *lyxcwd.Location, slug string) error {
 	launcherDir := LauncherDir(l, slug)
+	if err := refuseUncontainedPath(launchersDir(l), launcherDir, "launcher dir"); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(launcherDir); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}

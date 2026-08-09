@@ -166,3 +166,38 @@ func TestPruneEmptyAncestors(t *testing.T) {
 		})
 	}
 }
+
+// TestRefuseUncontainedPath pins the containment assertion the portal and launcher teardown helpers
+// share, including the ".."-derived paths that made `lyx fabric remove ..` delete an entire hub.
+func TestRefuseUncontainedPath(t *testing.T) {
+	t.Parallel()
+
+	const container = "/hub/_launchers"
+
+	tests := []struct {
+		name    string
+		target  string
+		wantErr bool
+	}{
+		{"direct child", "/hub/_launchers/my-task", false},
+		{"nested child", "/hub/_launchers/backend/my-task", false},
+		{"the container itself", "/hub/_launchers", true},
+		{"the container's parent", "/hub", true},
+		{"escaping sibling", "/hub/_portals/my-task", true},
+		{"unrelated absolute path", "/etc", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := refuseUncontainedPath(container, filepath.Clean(tt.target), "launcher dir")
+			if tt.wantErr && err == nil {
+				t.Errorf("refuseUncontainedPath(%q, %q) = nil; want an error", container, tt.target)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("refuseUncontainedPath(%q, %q) = %v; want nil", container, tt.target, err)
+			}
+		})
+	}
+}
