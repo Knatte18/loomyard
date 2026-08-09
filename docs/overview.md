@@ -77,7 +77,8 @@ Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, lau
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
-A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync` string-literal-only, `tools/`, `sandbox/`), the tokens `weft`/`warp` and the fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
+A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync` string-literal-only), the tokens `weft`/`warp` may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
+The fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) is banned everywhere this test reaches, including inside the owner set — `host` is retired, not merely scoped.
 It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lyxcwd`'s to own — see CONSTRAINTS.md's Fabric Vocabulary Invariant.
 
 See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.

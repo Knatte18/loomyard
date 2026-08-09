@@ -156,19 +156,33 @@ Pane-shell command strings — argument quoting, the call operator, and the prom
 
 ## Fabric Vocabulary Invariant
 
-In production code, the tokens `weft` and `warp` may appear only in the owner set below, policed as bare tokens — they have no meaning in this repo other than fabric's.
-`host` is policed only via a fabric-sense phrase predicate, never as a bare word: `host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD` (any case, hyphenated or spaced), plus a component of a policed identifier in fabric-geometry naming (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`).
-The bare word `host` — the verb sense, the machine/OS sense, and the PowerShell cmdlet `Write-Host` — passes untouched;
-a whole-word ban would rewrite ordinary English in modules with no connection to fabric.
+**Fabric** (capital F) names the fully wired-up composite — the warp repo with junctions into weft inside it.
+Any reader meaning *the repo as a whole* says Fabric.
+**warp** and **weft** name the two sides and are used — including in CLI help text and user-visible messages — at exactly those points where the two sides genuinely must be told apart, e.g. `lyx fabric clone <warp-url> <weft-url>` and `fabric: warp/weft out of sync`.
+"repo" alone is too vague to denote warp and is never a substitute for it.
+**`host` is retired** and is never used in any of these senses, anywhere — including inside the owner set below.
 
-- **Owner set** (vocabulary stays): `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers), `tools/`, `sandbox/`.
+The phrase predicate is the sense-discriminator, retained unchanged: `host` is policed via the fabric-sense phrase list (`host repo`, `host repository`, `host worktree`, `host working tree`, `host checkout`, `host branch`, `host junction`, `host path`, `host side`, `host HEAD`, any case, hyphenated or spaced) plus the policed geometry identifiers (`hostBranch`, `hostLayoutFor`, `hostReason`, `HostJunction`, `hostClean`), never as a bare word.
+The bare word — the verb sense, the machine/OS sense, and the PowerShell `Write-Host` cmdlet — still passes untouched, because a whole-word ban would rewrite ordinary English in modules with no connection to fabric.
+Keep these lists verbatim: they are the ban list, and renaming them would delete the rule.
+
+- **Owner set carves out the bare weft/warp rule only, never the host rule.**
+  Owner set: `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers).
+  `tools/` and `sandbox/` are not in the owner set — they lie outside the enforcement walk entirely, since the Go walk covers `internal/` and `cmd/` only, so an owner-map row for them would be dead code that never matches.
+  Vocabulary in `tools/` and `sandbox/` is a review obligation, not machine-checked.
 - **Prose-doc split — review obligation, not machine-checked:** a doc explaining fabric's own mechanism keeps the vocabulary;
-  a doc describing a consumer module's behaviour rewords, because that module does not know weft exists.
+  a doc describing a consumer module's behaviour rewords to Fabric or drops the qualifier, because that module does not know weft exists.
   A token scan cannot express this distinction, so it is not covered by the enforcement test.
 - This invariant binds every module, template, and doc that talks about fabric — `internal/lyxcwd` is merely one of the packages it binds, not its owner.
   The enforcement test's placement in `internal/lyxcwd/enforcement_test.go` is a file-layout convenience — it reuses that file's `filepath.WalkDir` helper — not an ownership claim.
-- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus the embedded agent prompt templates.
-  The prose-doc split above is a review obligation the machine check does not cover.
+- **What the machine check does and does not reach — stated honestly, not implying full coverage.**
+  Production Go under `internal/` and `cmd/` is machine-guarded, plus an `internal/**/*.md` walk and the embedded agent prompt templates.
+  `*_test.go` files are excluded from all three rules.
+  `hostGeometryIdentifiers` is five exact lowercased names, so `HostJunctions`, `hostPath`, `hostBare`, `CopyHostHub`, and `HostFixture` are matched only by the phrase half, and only where they occur inside a policed phrase.
+  Test files, documentation outside `internal/`, shell, and `tools/` remain a **review obligation**, not a machine check.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus an `internal/**/*.md` walk and the embedded agent prompt templates.
+  The host rule is machine-checked everywhere this test reaches, including the owner dirs;
+  the prose-doc split above is a review obligation the machine check does not cover.
 
 ## Fabric Git Invariant (warp + weft)
 
