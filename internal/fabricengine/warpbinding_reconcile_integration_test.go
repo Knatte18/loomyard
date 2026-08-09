@@ -395,3 +395,37 @@ func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 		t.Errorf("warp binding record changed after Unwire: before %q, after %q", before, after)
 	}
 }
+
+// TestReconcile_BoardLockArtifactDoesNotDeferBackfill is the counterpart to
+// TestReconcile_DirtyBoardDefersWrite: a module's own lock file at the board root is machine-local
+// scratch, not unrelated content a stage-all commit would sweep up, so it must not defer the
+// once-per-hub binding backfill.
+// Before the *.lock/*.swaplock excludes, a single ordinary board read left tasks.json.swaplock at
+// the board root permanently, and every subsequent reconcile on a hub predating the binding reported
+// "deferred" forever.
+func TestReconcile_BoardLockArtifactDoesNotDeferBackfill(t *testing.T) {
+	t.Parallel()
+
+	fixture := newClonedHubFixture(t)
+	unbindHub(t, fixture.Result.BoardDir)
+
+	for _, name := range []string{"tasks.json.swaplock", "board.write.lock"} {
+		if err := os.WriteFile(filepath.Join(fixture.Result.BoardDir, name), nil, 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result, err := fixture.Topology.Reconcile(fixture.Layout)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if result.WarpBinding != fabricengine.WarpBindingOutcomeRecorded {
+		t.Fatalf("WarpBinding = %q (detail %q); want %q — a lock artifact must not defer the backfill",
+			result.WarpBinding, result.WarpBindingDetail, fabricengine.WarpBindingOutcomeRecorded)
+	}
+
+	bindingPath := filepath.Join(fixture.Result.BoardDir, fabricengine.WarpBindingFileName)
+	if _, statErr := os.Stat(bindingPath); statErr != nil {
+		t.Errorf("binding file %s not written: %v", bindingPath, statErr)
+	}
+}

@@ -32,6 +32,14 @@ const (
 	// weftLockDirName + "/" entry, so no separate exclude entry is needed for
 	// it (Shared Decision lock-artifact-under-weft).
 	weftPushLockFile = "fabric.push.lock"
+	// lockFilePattern and swapLockFilePattern cover every module's write- and swap-lock artifact
+	// anywhere in the weft repo, not only fabric's own. They are load-bearing rather than tidy: a
+	// lock file left at the board root by an ordinary board read makes `git status --porcelain`
+	// non-empty there forever, and the once-per-hub warp-binding backfill refuses to run against a
+	// dirty board (Bolt.Commit is stage-all), so a hub predating the binding would report
+	// WarpBindingOutcomeDeferred on every reconcile and never record one.
+	lockFilePattern     = "*.lock"
+	swapLockFilePattern = "*.swaplock"
 )
 
 // ensureWeftLockDir creates the .weft lock directory and seeds git-exclude
@@ -53,8 +61,9 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 	return dir, nil
 }
 
-// seedWeftArtifactExcludes appends fabric's own operational artifacts — the
-// .weft/ lock directory, gitrepo's push lock file, and lyxdirs.DotLyxDirName
+// seedWeftArtifactExcludes appends the weft repo's never-tracked operational artifacts — the
+// .weft/ lock directory, gitrepo's push lock file, lyxdirs.DotLyxDirName, and every module's
+// *.lock / *.swaplock write- and swap-lock file
 // — to the weft repo's .git/info/exclude, line-exact idempotent (the same
 // discipline as seedGitExclude). It is the sole owner of that file's
 // content: one `.lyx/` pattern now keeps every module's machine-local
@@ -97,7 +106,7 @@ func seedWeftArtifactExcludes(weftPath string) error {
 	}
 	contentStr := string(content)
 
-	entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/"}
+	entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", lockFilePattern, swapLockFilePattern}
 	for _, entry := range entries {
 		present := false
 		for _, line := range strings.Split(contentStr, "\n") {

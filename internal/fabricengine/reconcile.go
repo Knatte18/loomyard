@@ -232,6 +232,14 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome, string) {
 	boardDir := BoardDir(l.HubPath)
 
+	// Re-seed the weft repo's operational excludes on every reconcile pass. The seeding is
+	// idempotent and otherwise only runs from a weft-git verb or a wiring call, so a hub wired by an
+	// earlier binary would never pick up a newly added artifact pattern — and the dirty-board gate
+	// below reads exactly the status those patterns govern, so a hub that never runs a weft-git verb
+	// would defer its backfill forever on an artifact the current binary excludes.
+	// A seeding failure is not fatal: the gate simply sees whatever git reports.
+	_ = seedWeftArtifactExcludes(boardDir)
+
 	// git remote get-url is read-only, so it falls outside the Fabric Git Invariant's
 	// mutating-warp-git rule even though it targets the warp worktree.
 	originOut, _, exitCode, err := gitexec.RunGit([]string{"remote", "get-url", "origin"}, l.WorktreePath())

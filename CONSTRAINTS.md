@@ -208,7 +208,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 - **Cross-module exclusions.**
   The `_lyx` tree is shared by every round-loop module, so every weft-commit caller passes a **positive-only** file list — no `:(exclude)` pathspec magic — built via `fabricengine.ScopedPathspec`.
   Machine-local artifacts (pause flags, fork prompts, module `*.lock` files) live under `.lyx` (see Durable-vs-Ephemeral State Invariant), never reaching a weft-commit pathspec.
-  `fabricengine.seedWeftArtifactExcludes` covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file.
+  `fabricengine.seedWeftArtifactExcludes` covers the weft repo's never-tracked operational artifacts: fabric's own `.weft/` lock directory, gitrepo's push-lock file, `.lyx/`, and every module's `*.lock`/`*.swaplock` write- and swap-lock files.
   **Known limitation:** does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
 - **Never-committed routing.** `structuralNeverCommittedDirs` membership makes a path uncommittable, filtered only where the pathspec is constructed (`ScopedPathspec` callers, via `pathspecNames`) — never in `Config.Dirs()`, `WiredNames`, or the slug-reservation union.
   `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
