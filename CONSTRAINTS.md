@@ -94,7 +94,7 @@ It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the 
 
 - `scoutcli` → `scoutengine` is the only allowed direction.
 - No import allowlist.
-  Scout draws on the shared-infrastructure layer as freely as `websterengine`, `builderengine`, `perchengine`, and `loomengine` do.
+  Scout draws on the shared-infrastructure layer as freely as `websterengine`, `perchengine`, and `loomengine` do.
   Policed as a banned list on direct imports only, never the transitive closure — a banned package reached through a permitted one is not caught, by design. `internal/clihelp` is named explicitly because it carries cobra without matching the `*cli` suffix.
 - **Narrower file-scoped guard.** `internal/scoutengine/lspclient.go` imports stdlib plus `internal/logger` and nothing else, keeping the ported stdio LSP client liftable back out of lyx.
   The rule is that allowed set exactly. `internal/logger` itself imports `internal/lyxcwd` and `internal/proc`, so the file must never be described as stdlib-only or hermetic — it is neither.
@@ -103,7 +103,7 @@ It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the 
 
 ## Pattern Leaf Invariant
 
-`internal/pattern` production code imports only stdlib, `internal/lyxcwd`, and `internal/lyxdirs` — never `builderengine`, `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
+`internal/pattern` production code imports only stdlib, `internal/lyxcwd`, and `internal/lyxdirs` — never `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
 Reverse import never allowed.
 `internal/lyxdirs` is admissible because it is a stdlib-only zero-import leaf (its own Lyxdirs Single-Declarer Invariant), and therefore cannot participate in a cycle by construction.
 
@@ -216,7 +216,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
   Never-committed routing: `internal/fabricengine/classify_test.go`, `structuraldirs_test.go`, `internal/fabriccli/cli_test.go`.
   Junction exclusion / unwire: `internal/fabricengine/dotlyxjunction_integration_test.go`, `unwire_test.go`.
-  Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine`/`internal/builderengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterBuilderProductionSource`);
+  Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterProductionSource`);
   every other `fabricengine` caller remains a review obligation.
   The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
 

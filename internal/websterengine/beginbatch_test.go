@@ -4,7 +4,7 @@
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
 // WorktreeRoot for the genuine HeadSHA capture, while the model-injection
 // seam (Injector) and the provider seam (shuttleengine.Engine) are local
-// fakes, mirroring builderengine/spawn_test.go's fixture pattern. The plan
+// fakes, webster's own package-local injection and provider fixture pattern. The plan
 // itself is a minimal *planparser.Plan (Dir only — begin-batch never reads
 // Plan.Cards, only deps.Batches, the already-derived execution batches),
 // backed by a t.TempDir() seeded with a throwaway markdown file so the
@@ -39,9 +39,9 @@ import (
 )
 
 // newScratchRepo initializes a fresh git repo in a t.TempDir() and
-// configures a throwaway committer identity, returning its path — mirrors
-// builderengine/gitquery_test.go's helper of the same name (package-local;
-// the two packages deliberately do not share a test-helper package).
+// configures a throwaway committer identity, returning its path — kept
+// package-local rather than shared, since test-helper packages are
+// deliberately not shared across modules.
 func newScratchRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -511,8 +511,8 @@ func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
 	}
 }
 
-// TestBeginBatch_PreExistingReportRefused proves builder's pre-existing-report guard applies to the
-// fork path: a batch whose report file already exists is refused loud (naming the recovery escape)
+// TestBeginBatch_PreExistingReportRefused proves webster's own pre-existing-report guard applies to
+// the fork path: a batch whose report file already exists is refused loud (naming the recovery escape)
 // with its BatchState left untouched — finished work is never silently overwritten by an accidental
 // re-begin.
 // There is no --restart-chain escape under the flat card-list model.

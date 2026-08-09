@@ -1,6 +1,6 @@
 # Model-spec — provider/model/parameter notation
 
-> **Status: Contract — pinned.** The notation every agent-spawning config in the stack uses to say *which* LLM runs a role: builder's roles, perch/burler reviewers and judges, loom's producers. Pinned alongside [plan-format v2](plan-format.md) and the emerging [v3](plan-format-v3.md): the plan itself is model-agnostic, so the config side needs a precise notation. The registry loader and spec parser land with the first consumer (`builder`); this doc is the spec they implement against.
+> **Status: Contract — pinned.** The notation every agent-spawning config in the stack uses to say *which* LLM runs a role: webster's roles, perch/burler reviewers and judges, loom's producers. Pinned alongside [plan-format-v3.md](plan-format-v3.md): the plan itself is model-agnostic, so the config side needs a precise notation. The registry loader and spec parser land with the first consumer (`webster`); this doc is the spec they implement against.
 
 ## Grammar
 
@@ -74,23 +74,23 @@ Mitigation: engines record the **resolved model id** in the run artifacts (RunDi
 The most specific config layer that sets a role wins **as a unit**:
 
 ```
-loom's config section  >  the module's own config (e.g. builder.yaml)  >  (unset)
+loom's config section  >  the module's own config (e.g. webster.yaml)  >  (unset)
 ```
 
 There is **no per-parameter merging across layers** — a losing spec contributes nothing.
 Within the winning spec: **bracket param > registry default**.
 
-Example — which effort does builder's implementer run at?
+Example — which effort does webster's `master` role run at?
 
 ```yaml
 # models.yaml:    sonnet defaults effort=medium
-# builder.yaml:   implementer: sonnet[effort=high]
-# loom config:    builder: { implementer: sonnet }
+# webster.yaml:   master: sonnet[effort=high]
+# loom config:    webster: { master: sonnet }
 ```
 
-Loom set the role, so loom's spec wins whole: `sonnet`, empty bracket → effort comes from the registry default → **medium**. builder.yaml's `effort=high` is irrelevant because its entire spec lost. (Per-param merge was rejected: you'd read three files to know one param's value, and a stale bracket in an old layer leaks in invisibly.)
+Loom set the role, so loom's spec wins whole: `sonnet`, empty bracket → effort comes from the registry default → **medium**. webster.yaml's `effort=high` is irrelevant because its entire spec lost. (Per-param merge was rejected: you'd read three files to know one param's value, and a stale bracket in an old layer leaks in invisibly.)
 
-Sharp edge, deliberate: overriding a role in a higher layer **silently discards** the lower layer's bracket params — as above, where builder.yaml's `effort=high` vanished.
+Sharp edge, deliberate: overriding a role in a higher layer **silently discards** the lower layer's bracket params — as above, where webster.yaml's `effort=high` vanished.
 If a param must survive your override, restate it in the winning spec.
 
 ## Fail loud
@@ -102,7 +102,7 @@ claudeengine already hard-errors on an invalid `--effort` for exactly this reaso
 ## What is *not* a parameter
 
 - **`context`** — context-window size is not tunable for Claude models.
-  A role that needs a large window (builder's `implementer_oversized`) points at a model/variant that *has* one;
+  A role that needs a large window points at a model/variant that *has* one;
   how that variant is realized is the provider engine's business.
   Ollama-style `num_ctx` tuning is out of scope until a non-Claude engine exists.
 
@@ -113,8 +113,7 @@ Everything provider-*specific* — CLI flags, `version=` id translation, large-w
 
 ## Roles that use this notation
 
-builder.yaml holds four roles, each a model-spec: `orchestrator`, `implementer` (Sonnet default), `implementer_oversized`, `recovery`.
-There is no builder `evaluator` — the LLM orchestrator judges digests itself. webster.yaml holds two roles, each a model-spec: `master` (the long-lived Master session;
+webster.yaml holds two roles, each a model-spec: `master` (the long-lived Master session;
 its in-session forks always inherit Master's current model, so there are no per-fork roles) and `recovery` (the cold recovery strand `recover-batch` spawns).
 Stack-wide roles elsewhere (perch/burler reviewers and judges, loom producers) use the same notation in their own config sections;
 loom's config section overrides per role when loom drives the module.

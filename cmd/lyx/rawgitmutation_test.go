@@ -1,9 +1,9 @@
 // rawgitmutation_test.go closes the Fabric Git Invariant's tracked gap by machine-checking that
-// internal/websterengine's and internal/builderengine's production source never construct a raw
-// gitrepo handle or call gitexec.RunGit directly, beyond the two grandfathered read-only exemptions
+// internal/websterengine's production source never constructs a raw
+// gitrepo handle or calls gitexec.RunGit directly, beyond the one grandfathered read-only exemption
 // this file names.
-// See CONSTRAINTS.md's Fabric Git Invariant (warp + weft) — the "Known gap, tracked" clause both
-// packages' migration onto internal/fabricengine's warp-only methods closes.
+// See CONSTRAINTS.md's Fabric Git Invariant (warp + weft) — the "Known gap, tracked" clause
+// internal/websterengine's migration onto internal/fabricengine's warp-only methods closes.
 //
 // The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.RunGit() — not per-verb
 // method names: a verb-name ban would both flag the correctly-migrated consumer code (which
@@ -23,11 +23,10 @@ import (
 )
 
 // rawGitMutationScanPackages are the module-relative package subtrees this
-// guard walks: exactly the two packages the discussion's regression-guard
-// decision names, internal/websterengine and internal/builderengine.
+// guard walks: exactly the one package the discussion's regression-guard
+// decision names, internal/websterengine.
 var rawGitMutationScanPackages = []string{
 	filepath.Join("internal", "websterengine"),
-	filepath.Join("internal", "builderengine"),
 }
 
 // rawGitMutationBannedTokens are the raw substrings a non-test .go file in
@@ -39,26 +38,25 @@ var rawGitMutationBannedTokens = []string{
 }
 
 // rawGitMutationAllowlist is this guard's per-file allowlist (path module-
-// relative, slash-separated → reason): the two grandfathered read-only
-// exemptions the Fabric Git Invariant's "Known gap, tracked" clause carved
-// out when the mutating paths in each package migrated onto
+// relative, slash-separated → reason): the one grandfathered read-only
+// exemption the Fabric Git Invariant's "Known gap, tracked" clause carved
+// out when the mutating paths in this package migrated onto
 // internal/fabricengine's warp-only methods.
 var rawGitMutationAllowlist = map[string]string{
-	"internal/websterengine/gitwrap.go":  "grandfathered read-only exemptions — CurrentSHA via gitrepo.New and `status --porcelain` via gitexec.RunGit",
-	"internal/builderengine/gitquery.go": "grandfathered read-only exemptions — HeadSHA/ChangedFiles/Dirty via gitexec.RunGit",
+	"internal/websterengine/gitwrap.go": "grandfathered read-only exemptions — CurrentSHA via gitrepo.New and `status --porcelain` via gitexec.RunGit",
 }
 
 // rawGitMutationMinScannedFiles is the vacuous-scan floor for this guard's
-// two-package walk: fewer than 4 production .go files found across both
-// packages combined means the walk is misconfigured rather than either
-// package having genuinely shrunk.
+// one-package walk: fewer than 4 production .go files found in the package
+// means the walk is misconfigured rather than the package having genuinely
+// shrunk.
 const rawGitMutationMinScannedFiles = 4
 
-// TestNoRawGitMutation_WebsterBuilderProductionSource walks internal/websterengine's and
-// internal/builderengine's non-test .go files and fails if any of them (other than a
-// rawGitMutationAllowlist entry) contains the raw substring "gitrepo.New(" or "gitexec.RunGit(" —
-// the two construction/call tokens a raw, fabric-bypassing git mutation would carry.
-func TestNoRawGitMutation_WebsterBuilderProductionSource(t *testing.T) {
+// TestNoRawGitMutation_WebsterProductionSource walks internal/websterengine's non-test .go files
+// and fails if any of them (other than a rawGitMutationAllowlist entry) contains the raw substring
+// "gitrepo.New(" or "gitexec.RunGit(" — the two construction/call tokens a raw, fabric-bypassing
+// git mutation would carry.
+func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH,
 	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate
 	// never blocks a minimal environment.

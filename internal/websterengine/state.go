@@ -10,11 +10,11 @@
 // Dir/ReportsDir/PromptsDir themselves, the module's own _lyx/webster constructors (Cwd Resolution
 // Invariant).
 //
-// webster's State is its own schema, independent of builderengine.State: the two modules' state
-// files never share a Go type or a sentinel error, so errors.Is can never conflate a builder run
-// with a webster run (see the discussion's "webster-owns-its-own-domain-types" decision).
+// webster's State is its own schema: no sentinel error or Go type here is shared with any other
+// module's state files, so errors.Is can never conflate a run in one module with a run in another
+// (see the discussion's "webster-owns-its-own-domain-types" decision).
 // BatchState.Digest is the webster-local *Digest (digest.go) — webster's own fork-return-derived
-// batch-outcome snapshot, not builderengine's.
+// batch-outcome snapshot.
 
 package websterengine
 
@@ -166,8 +166,8 @@ type BatchState struct {
 	// classification — the carry-forward home that lets begin-batch(N+1)
 	// render this batch's digest into the next fork's prompt, and lets a
 	// crash-resumed Master reconstruct its progress context, without ever
-	// re-distilling a report against a HEAD that has since moved. Builder
-	// never persisted its Digest; webster must.
+	// re-distilling a report against a HEAD that has since moved. webster
+	// persists its Digest for exactly this reason.
 	Digest *Digest `json:"digest,omitempty"`
 	// CardSHAs is the ordered per-card commit SHA trail for this batch — the
 	// resume trail and SHA-bisect anchor set. In v0 (identity batcher, batch

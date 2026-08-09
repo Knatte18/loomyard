@@ -1,6 +1,6 @@
 // leaf_enforcement_test.go enforces the Pattern Leaf Invariant: production code in internal/pattern
 // imports ONLY the standard library, internal/lyxcwd, and internal/lyxdirs — never a feature
-// package (builderengine, websterengine, burlerengine, loomengine, or any other).
+// package (websterengine, burlerengine, loomengine, or any other).
 // Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
 // import outside the allowed set fails the test, so a future stray dependency is caught with no
 // list maintenance required.

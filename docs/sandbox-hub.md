@@ -172,7 +172,7 @@ The sandbox Hub serves as a **testbed for lyx's core agent-driven workflows**.
 Point lyx's agent-driven orchestrator at the `lyx-test` warp repo and exercise the full pipeline:
 
 - Init, board, weft, warp, and config operations.
-- Phased runs (Setup → Discussion → Plan → Builder → Finalize).
+- Phased runs (Setup → Discussion → Plan → Webster → Finalize).
 - Review gates and agent dispatch.
 
 **If the orchestrator breaks on this known-good Hub, it is a LoomYard bug to be fixed.**

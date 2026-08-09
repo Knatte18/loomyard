@@ -1,8 +1,8 @@
 // template.go — webster.yaml template accessor.
 //
 // ConfigTemplate provides the default YAML template for webster configuration, embedded directly
-// from template.yaml at build time, mirroring builderengine's (and perchengine's/reedengine's)
-// embed-and- accessor pattern.
+// from template.yaml at build time, matching perchengine's and reedengine's own
+// embed-and-accessor pattern.
 
 package websterengine
 

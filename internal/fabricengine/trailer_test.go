@@ -39,8 +39,8 @@ func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 }
 
 // TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock asserts that a single-line message -- even
-// one shaped exactly like a trailer line, the "builder: <label>"/"webster: <label>" form every
-// builder/webster weft commit uses -- gets its Warp-SHA trailer in a NEW blank-line-separated
+// one shaped exactly like a trailer line, the "webster: <label>" form every
+// webster weft commit uses -- gets its Warp-SHA trailer in a NEW blank-line-separated
 // paragraph, keeping the git subject clean.
 // Joining instead would fold the trailer into the subject paragraph and pollute `git log --oneline`
 // for every such commit (the round fable-r1 regression).
@@ -51,9 +51,9 @@ func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
 		want    string
 	}{
 		{
-			"builder_style_subject",
-			"builder: poll 01-json-flag done",
-			"builder: poll 01-json-flag done\n\nWarp-SHA: abc123",
+			"webster_style_subject",
+			"webster: record-batch 01 done",
+			"webster: record-batch 01 done\n\nWarp-SHA: abc123",
 		},
 		{
 			"plain_subject",

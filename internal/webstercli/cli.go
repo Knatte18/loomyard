@@ -3,13 +3,11 @@
 // The parent "webster" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
 // config -> reed config -> webster config -> model registry -> resolved roles -> reed engine ->
 // claude engine -> shuttleengine.Runner exactly once per invocation, storing the resolved
-// ingredients on websterCLI -- buildercli's own cli.go (internal/buildercli/cli.go) is the proven
-// shape this file mirrors file for file, per the discussion's cli-shape decision: every _lyx/plan
+// ingredients on websterCLI, per the discussion's cli-shape decision: every _lyx/plan
 // and _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the directory lyx
 // init ran in, never WorktreeRoot or a fabric sibling.
 //
-// Unlike buildercli (which stores only a builderengine.Starter and a
-// builderengine.OrchestratorStarter adapter over the same Runner), websterCLI stores THREE adapted
+// websterCLI stores THREE adapted
 // views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of
 // the spawn seam, consumed by recover-batch's cold-strand spawn), injector (websterengine.Injector,
 // consumed by begin-batch's model-switch choreography), and masterStarter

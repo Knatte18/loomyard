@@ -12,7 +12,7 @@ import (
 )
 
 // Role names one of webster.yaml's two model-spec roles.
-// Unlike builder, only the cold recovery strand carries its own role;
+// Only the cold recovery strand carries its own role;
 // in-session forks always inherit Master's current model.
 type Role string
 

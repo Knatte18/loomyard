@@ -1,8 +1,7 @@
 // run.go implements the `run` webster verb: it maps websterengine.Run's outcome onto the run-level
 // backstop fabric commit (the fourth and last of webster's four fabric-commit points, see the
-// discussion's fabric-ownership decision) and the CLI envelope, mirroring buildercli's own run.go
-// byte-for-byte in shape.
-// ErrRunBusy skips the fabric sync entirely -- buildercli's ErrRunBusy exemption applies verbatim:
+// discussion's fabric-ownership decision) and the CLI envelope.
+// ErrRunBusy skips the fabric sync entirely:
 // the losing call touched nothing, so syncing would commit the winner's in-flight partial state
 // under a misleading label;
 // every other exit -- success OR error, including ErrFingerprintMismatch and the distinct

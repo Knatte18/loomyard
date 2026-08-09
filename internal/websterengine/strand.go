@@ -1,9 +1,8 @@
-// strand.go implements webster's own strand/spawn seam helpers: webster-local copies of
-// builderengine's StrandLive and TurnEnded (poll.go), the Starter seam (spawn.go), the
-// OrchestratorStarter/ OrchestratorHandle spawn seam (runlevel.go), and RemoveStrandIfLive
-// (spawn.go), inlining direct shuttleengine calls with no builder import.
-// Every borrowed symbol has an in-tree builder caller (frozen, per the Shared Decision
-// builder-is-frozen-copy-not-move), so these are webster-local copies, not moves.
+// strand.go implements webster's own strand/spawn seam helpers: StrandLive and TurnEnded, the
+// Starter seam, the OrchestratorStarter/OrchestratorHandle spawn seam, and RemoveStrandIfLive,
+// inlining direct shuttleengine calls.
+// These are deliberately module-local rather than shared, since the spawn seam is part of
+// webster's own contract shape.
 // StrandLive and TurnEnded are EXPORTED because internal/webstercli calls them directly;
 // the spawn-seam interfaces are exported so webstercli can assign a real *shuttleengine.Runner into
 // them (Go's structural typing means *shuttleengine.Runner satisfies Starter with no adapter glue);

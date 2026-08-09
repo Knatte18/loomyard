@@ -2,7 +2,7 @@
 
 > **Status: Contract — pinned.** This doc pins **plan-format v3**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
 >
-> **Coexistence, not replacement.** v3 does not retire v2 today. [plan-format.md v2](plan-format.md) stays live and valid — the frozen `builder` still parses it — and retires only when `builder` is deleted (v3 wins at that point). Until then the two formats coexist: v2 is what the frozen `builder` consumes; v3 is what the shipped webster consumes.
+> **v3 is the live plan format.** [plan-format.md v2](plan-format.md) is retired now that builder, its sole consumer, is gone. v3 — consumed by `webster` — is the sole plan format.
 
 ## What a card is
 
@@ -340,6 +340,6 @@ the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay wo
 
 ## Related
 
-- [builder-contract.md](builder-contract.md#webster-the-fork-based-sibling) and `internal/websterengine`'s package documentation — the module that consumes this format.
+- [webster-contract.md](webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
 - [scout-redesign.md](../../manifest/designs/scout-redesign.md) — the module the symbol fields depend on.

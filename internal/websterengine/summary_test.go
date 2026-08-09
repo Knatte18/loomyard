@@ -1,6 +1,6 @@
 // summary_test.go exercises ParseSummary's accept/reject table and ArchiveStaleSummary's
-// rename/preserve/no-op/collision behavior, mirroring builderengine's own outcome_test.go coverage
-// shape for the same act applied to summary.md instead of outcome.yaml.
+// rename/preserve/no-op/collision behavior, the same archive-never-refuse coverage shape
+// outcome.go's own tests apply, here applied to summary.md instead of outcome.yaml.
 
 package websterengine_test
 
