@@ -248,8 +248,14 @@ Comment-only (the "sweep everything" set — ~50 sites):
 - `internal/fabricengine/trailer_test.go:42–43`, `:54–56` — pins the `"builder: <label>"` weft commit-subject form as the `builder_style_subject` fixture, with a comment reading "the `builder: <label>`/`webster: <label>` form every builder/webster weft commit uses".
   **Not in the task spec's inventory.**
   The builder subject form dies with the module: rename the fixture to a webster-only case and narrow the comment.
-- `internal/fabricengine/refscanner_test.go:20`, `:37` — `master-builder` / `master-builder-weft` **worktree-name** fixtures, unrelated to the builder module.
-  **Leave these**; they are the acceptance grep's one named false positive.
+- `internal/fabricengine/refscanner_test.go:20`, `:37` and `internal/websterengine/audit_test.go:25`, `:149`, `:165`, `:171–176`, `:202–203`, `:257–286` — `master-builder` / `master-builder-weft` **worktree-name** fixtures, unrelated to the builder module.
+  **Leave both files**; they are named exclusions in the acceptance grep, not sweep targets.
+
+**Bare-word `builder` provenance comments** — the class the qualified patterns cannot see, and the largest single group in the sweep.
+All are `websterengine`/`webstercli` doc-comments explaining webster's mechanisms by reference to builder's, and all are rewritten to stand alone per `provenance-comments-rewritten-to-stand-alone`:
+`archive.go:3–4`, `digest.go:5`, `pause.go:2–3`, `:7`, `roles.go:15`, `beginbatch.go:9`, `:35`, `:39`, `:225`, `poll.go:5`, `state_test.go:5`, `fingerprint.go:1`, `:3–4`, `recordbatch.go:9`, `recoverbatch.go:20`, `recoverbatch_test.go:368`, `outcome.go:4–7`, `runlevel.go:68`, `:70`, `:214`, `:246`, `:249`, `state.go:14`, `strand.go:4`.
+Several cite the Shared Decision name `builder-is-frozen-copy-not-move` — a decision this task falsifies outright, so those sentences need their premise replaced, not just the word swapped.
+This list is a starting inventory, not a bound; the bare-word acceptance scan is the actual completion criterion.
 - `internal/modelspec/modelspec.go:7`, `:35` — "builder's roles", "builder, perch/burler/loom configs".
 - `CONSTRAINTS.md:97` and `:106` — feature-package lists naming `builderengine`.
   `:106` mirrors `internal/pattern/leaf_enforcement_test.go:3`; keep the two consistent.
@@ -268,8 +274,11 @@ Comment-only (the "sweep everything" set — ~50 sites):
   Note task C also touches `:14`; C rewrites its *attribution* in producer-model terms.
   This task's job is only to stop it pointing at a deleted file — keep the edit minimal so C's rewrite is not pre-empted.
 - **`docs/reference/model-spec.md`** — `:3` (the banner: "builder's roles" + "Pinned alongside [plan-format v2] and the emerging [v3]" + "land with the first consumer (`builder`)"), and the **worked example built entirely on `builder.yaml`**: `:77`, `:83`, `:87`, `:88`, `:91`, `:93`, `:105`, `:116`, `:117`.
-  Rebuild the example on `webster.yaml` (`master`, `recovery`) — note webster has only two roles where builder had four, so the example's shape changes, not just its names.
+  Rebuild the example on `webster.yaml` (`master`, `recovery`, per `internal/websterengine/template.yaml`) — note webster has only two roles where builder had four, so the example's shape changes, not just its names.
   **The task spec names only `:3`; this is the largest single doc rewrite in the task.**
+  **`:105` is the exception in that list** — it sits outside the worked example, under "What is *not* a parameter", and reads "a role that needs a large window (builder's `implementer_oversized`) points at a model/variant that *has* one".
+  Webster has no `implementer_oversized` analogue: forks inherit Master's model, so there is no oversized-implementer role to name.
+  **Reword generically** ("a role that needs a large window points at a model/variant that has one") rather than substituting a webster role — inventing one would misdescribe webster's two-role shape to preserve a parenthetical.
 - **`manifest/roadmap.md`** — `:20` (`buildercli` in the open CLI-wording question), `:30` (the follow-up-chain summary, which describes this task itself — update to match the new decisions), `:42`/`:46` ("builder implementer" template mention), `:72` ("deferred phase slot between Builder and Finalize"), `:200`, `:206`, `:211` ("Coexists with the still-live plan-format v2 — still used by the frozen `builder`").
   `roadmap.md` has two owners in chain order: this task, then E.
 - **`manifest/designs/finalize.md:36`, `:50`** — deep links into `builder-contract.md#webster-the-fork-based-sibling`.
@@ -301,6 +310,9 @@ Comment-only (the "sweep everything" set — ~50 sites):
   It spans **`:224` (the `### S9 -- Builder plan validate/status` heading) through its `**Verdict:**` line at `:284`, up to but not including the closing `---` at `:287`** — including the `**Covers:** builder` tag at `:229`, the plan fixture, and the `lyx builder status` / `lyx builder validate` steps at `:234–:283`.
   The task spec's `:224–232` range covers only the heading and preamble; deleting that alone orphans the scenario body.
   Delete the whole block plus one of its bracketing `---` rules so the remaining separators stay balanced.
+  **Two further S9 references sit outside that span and must also go** — neither contains the word "builder", so no acceptance pattern and no test would ever catch them:
+  `:99` (`- \`ref\` is the scenario id (\`S0\`-\`S6\`, \`S9\`).`) and `:306` (`S9: <OK|WARN|FAIL> -- <one-line note if not OK>` in the session-log template).
+  Leaving them makes the suite instruct operators to report a scenario that no longer exists.
 - **`tools/sandbox/SANDBOX-WEBSTER-SUITE.md`** — `:5` (defines webster by "mirroring `SANDBOX-BUILDER-SUITE.md`'s own operating model" and "webster is builder's fork-based sibling"), `:7` ("two scenarios, not builder's nine"), `:28` (`lyx builder` in the wired-worktree list), `:49` ("mirroring the reed/shuttle/burler/builder suites'"), `:123` ("the way builder's separate implementer strands do"), `:193` ("builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`"), `:195` ("deliberately narrower than builder's own").
   **Not in the task spec's inventory.**
   `:193` in particular points at a file this task deletes.
@@ -380,12 +392,21 @@ Run all four; all must be clean:
    - **Commit-subject and path fragment:** zero hits for the `builder:` commit-subject prefix and the `/builder/` path fragment.
      This catches `internal/fabricengine/trailer_test.go:42–43`, `:54–56`, which pin the `"builder: <label>"` weft commit-subject form as the `builder_style_subject` fixture — the subject form dies with the module, and no other pattern sees it.
 
-   **Two deliberate exceptions, excluded by pattern so the gate stays mechanical:**
-   - `internal/fabricengine/refscanner_test.go:20`, `:37` — `master-builder` / `master-builder-weft` are arbitrary *worktree-name* fixtures, unrelated to the builder module.
-   - `sandbox/build.cmd:2` — "Launcher for the lyx sandbox Hub builder: clones …" is ordinary English that happens to match the `builder:` commit-subject pattern.
+   The `master-builder` exclusion covers **two** files, not one: `internal/fabricengine/refscanner_test.go:20`, `:37` and `internal/websterengine/audit_test.go` (11 occurrences — `:25`, `:149`, `:165`, `:171–176`, `:202–203`, `:257–286`).
+   Both use it as an arbitrary *worktree name*, unrelated to the builder module.
+   Leave both untouched.
 
-   **Ordinary-English false positives must be excluded by pattern, never by judgment**, so the grep stays a mechanical gate: `strings.Builder`, "fixture builders" (`docs/benchmarks/test-suite-timing.md:739`), "fluent builder method" (`docs/research/scout-multilang.md:29`), and similar.
-   This is why the module-word pattern is a list of specific builder-module forms rather than a bare `-i builder`.
+   - **Bare word:** zero hits for a case-insensitive, word-boundary `builder` scan, minus the enumerated exclusions below.
+     **This pattern is load-bearing, not belt-and-braces.** The five patterns above all key on a qualified form, but the single largest swept class — the ~30 provenance doc-comments in `websterengine` — writes plain "builder" ("mirroring builder's own fabric-commit-boundary discipline", "Unlike builder, only the cold recovery strand carries its own role", "webster-local copies of a builder mechanism with an in-tree builder caller").
+     Without this pattern the `sweep-everything` decision's "opinion → test" claim fails for exactly the class it was written for.
+
+   **Ordinary-English and unrelated-fixture false positives are excluded by an enumerated token list, never by judgment**, so the bare-word scan stays a mechanical gate:
+   - `strings.Builder`
+   - "fixture builders" (`docs/benchmarks/test-suite-timing.md:739`), "fluent builder method" (`docs/research/scout-multilang.md:29`), "content builder"
+   - `master-builder` / `master-builder-weft` — unrelated worktree-name fixtures in `internal/fabricengine/refscanner_test.go` and `internal/websterengine/audit_test.go`
+   - "Hub builder:" (`sandbox/build.cmd:2`)
+
+   Enumerating the exclusions is what makes a bare-word scan usable: the list is auditable and finite, whereas "skip the ones that are obviously fine" is the judgment call this gate exists to remove.
 
    **Excluding** `manifest/designs/shed-followups.md`, the historical records listed under Scope → Out, and this task's own `_mill/` directory.
    The exclusion list must be written into the grep invocation explicitly, so a reviewer sees exactly what was deliberately left behind rather than inferring it.
