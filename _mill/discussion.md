@@ -47,9 +47,10 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
   These are timestamped records of what was measured or what happened on a given date; editing them falsifies the record rather than cleaning it.
 - **`manifest/designs/loom.md`'s prose claims** at `:91–94` and `:187` — task E is the named owner (`shed-followups.md:379–380`), and `loom.md` has a strict chain-order owner list (B → C → E).
   This task fixes **only the dangling links** in those lines, because their target file ceases to exist; the prose stays E's.
-- **`docs/reference/plan-format-v3.md:5`'s "Coexistence, not replacement" *prose*** — task C's, per `shed-followups.md:101` and `:239–240`.
-  **But its dangling link is this task's**, symmetrically with the `loom.md` rule below: `:5` reads `[plan-format.md v2](plan-format.md)`, and this task deletes that file.
-  Repair the link; leave the surrounding "v3 does not retire v2 today … retires only when `builder` is deleted" prose for C to rewrite.
+- **`docs/reference/plan-format-v3.md:5`'s "Coexistence, not replacement" section** — entirely task C's, per `shed-followups.md:101` and `:239–240`.
+  Its `[plan-format.md v2](plan-format.md)` link is **left dangling on purpose** — see the `plan-format.md` exclusion in `loom-md-links-fixed-prose-deferred`.
+- **Every other inbound `plan-format.md` link** — left dangling for the same reason, for the A→B window only.
+  `shed-followups.md:183–184` records this as designed behaviour, not oversight.
 - **The `plan-format-v3.md` → `plan-format.md` rename itself** — task B's whole job.
   This task only *frees* the filename.
 - **Existing `builder.yaml` files in already-created worktrees.**
@@ -153,14 +154,27 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
 - Rationale: `shed-followups.md:379–380` names those exact lines as E's, and `loom.md` has a declared strict chain-order owner list precisely so two tasks never fight over one file.
   But the link fix is not a matter of ownership: `builder-contract.md` ceases to exist in this commit, so leaving the links would ship three dangling references that no downstream grep would catch.
   Fixing a link is mechanical and does not collide with E rewriting the sentence around it.
-- **This rule is general, not `loom.md`-specific: wherever this task deletes a file, it repairs every inbound link to it, even in another task's territory, and touches nothing else on those lines.**
-  Its other application is `docs/reference/plan-format-v3.md:5`, whose `[plan-format.md v2](plan-format.md)` link dies with the v2 doc while its surrounding prose stays task C's.
+- **The rule is scoped to permanently-deleted files, and `builder-contract.md` is the only one.**
+  Wherever this task deletes a file **that does not come back**, it repairs every inbound link to it, even in another task's territory, and touches nothing else on those lines.
+- **`plan-format.md` is explicitly excluded — its links are left to dangle.**
+  `manifest/designs/shed-followups.md:183–184` records the window as deliberate: "task A deletes v2 to free the name, this task re-creates it from v3.
+  Links to `plan-format.md` dangle in between, by design and briefly."
+  The file returns under the same name two tasks later, so repairing those links would retarget them at `plan-format-v3.md` — which task B then renames back to `plan-format.md`, churning every link twice to land where it started.
+  Worse, several of those sentences assert v2 exists **as distinct from** v3 (`model-spec.md:3`'s "Pinned alongside [plan-format v2] and the emerging [v3]"), so retargeting makes them self-duplicating rather than merely stale.
+- Consequence: this task does **not** touch `manifest/designs/loom.md:29` at all.
+  Its only builder-era link is a `plan-format.md` one, and `shed-followups.md:190` makes task B the mechanical owner of that line anyway ("its zero-hit criterion necessarily rewrites `loom.md:29`").
+  Nor does it touch `docs/reference/plan-format-v3.md:5`'s link.
+- The **prose** that asserts v2 still exists is a separate matter and remains this task's, under the v2-coexistence prose class below — the link mechanics change, the prose ownership does not.
 - Rejected: fixing the prose too (violates the chain-order rule and guarantees a conflict with E);
   leaving the links (ships dangling references).
 
 ### shed-followups-inventory-repair
 
 - Decision: alongside recording the two overrides, fix `shed-followups.md:165` (task B's file inventory lists `docs/reference/builder-contract.md`, which will not exist) and `:235` (task C's step 5 grounds itself in "`builder-contract.md`'s digest contract").
+- Also record a **third override**: `shed-followups.md:388` and `:393` assign `manifest/roadmap.md:68`/`:72`'s "deferred phase slot between Builder and Finalize" to task E as "its remaining roadmap obligation".
+  This task's phase rename necessarily touches the word `Builder` on that line.
+  Record that A renames the phase **word** there and E's remaining obligation on the line is the slot **semantics**, so E does not find the line already gone and conclude its obligation lapsed.
+- **No override is recorded for the `plan-format.md` dangling window** — this task adopts `shed-followups.md:183–184` as written rather than diverging from it (see `loom-md-links-fixed-prose-deferred`).
 - Rationale: this task is already editing the file for the override note, and both sites are specs *downstream tasks will execute against*.
   A stale file inventory or a reference to a deleted grounding doc is a live defect in B's and C's instructions, not documentation drift.
 
@@ -184,11 +198,15 @@ Confirmed drift: `docs/overview.md:264`/`:268` are actually **`:265`/`:269`**;
 `builder-contract.md`'s Webster section starts at **`:222`** (as stated).
 Every site must be located by its quoted content, never by the spec's line number.
 
-### The only compile blocker outside the two deleted packages
+### The only compile blocker invisible to an untagged `go test ./...`
+
+Several files import the deleted packages and break the build directly — `cmd/lyx/main.go:23`, `internal/configreg/configreg.go:10`, `cmd/lyx/notransients_test.go:21`, `cmd/lyx/constructoranchoring_test.go:34` — and are listed under Go sites below.
+Those fail loudly on the first build.
+The one that does not:
 
 `internal/webstercli/sync_integration_test.go` — imports `github.com/Knatte18/loomyard/internal/builderengine` at `:20` and uses `builderengine.PauseFlagName` at `:135` and `:243`, plus `"builder"` path literals at `:123` and `:131`.
 This file is **integration-tagged**, so an untagged `go test ./...` will not catch a botched edit here.
-Every other cross-package reference is a comment.
+Beyond the direct importers listed above, every remaining cross-package reference is a comment.
 
 ### Go sites (non-deleted packages)
 
@@ -259,11 +277,13 @@ Comment-only (the "sweep everything" set — ~50 sites):
   **These must be re-pointed by this task before task D runs.**
 - **`docs/reference/plan-format-v3.md:343`** — the fourth deep link.
 - **`manifest/designs/loom.md:91`, `:94`, `:187`** — the `builder-contract.md` links only (see the deferral decision).
-- **`manifest/designs/loom.md:29`** — `[plan-format.md v2](../../docs/reference/plan-format.md)`, a link to the v2 doc this task deletes.
-  **Not in the task spec's inventory**, and `shed-followups.md:101` assigns `loom.md:29` to task E.
-  Same split as `:91`/`:94`/`:187`: repair the link here under the general link-repair rule, leave the "target format is changing" prose to E.
+- **`manifest/designs/loom.md:29`** — **not this task's, in any respect.**
+  Its only builder-era link targets `plan-format.md`, which is covered by the deliberate dangling window, and `shed-followups.md:190` makes task B the mechanical owner of the line.
+  Listed here only so a plan writer does not "helpfully" repair it.
 - **`docs/reference/status-schema.md:3`** — links **both** `builder-contract.md` *and* `plan-format.md`; the task spec names only the first.
-  Both targets are deleted by this task.
+  **Repair the `builder-contract.md` link** (permanent deletion, retarget to `webster-contract.md`);
+  **leave the `plan-format.md` link dangling** (returns under task B).
+  The surrounding "the loom analogue of …" prose is this task's under the v2-coexistence class.
 - **`manifest/designs/review-finding-classification.md:7`, `:47`** — a `plan-format.md` / `plan-format-v3.md` pair that task B's rename would otherwise collapse into "plan-format.md / plan-format.md".
 - **`manifest/designs/self-report.md:20`** — "builder/webster implementer fork".
 - **`manifest/designs/hardener.md:63`** — "Discussion/Plan/Builder" (phase rename).
@@ -354,14 +374,15 @@ Run all four; all must be clean:
    - **Phase/gate token:** zero hits for `builder` as a phase or gate value — `"builder"`, `phase: builder`, `builder-review`, and the `→ Builder →` phase-list form.
    - **Module word:** zero hits for the builder *module* — `lyx builder`, `builder.yaml`, `builder-suite`, `builder suite`, `SANDBOX-BUILDER-SUITE`, and `_lyx/builder` / `.lyx/builder`.
      This is the pattern that catches `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, `docs/sandbox-howto.md`, `README.md:25`, and `model-spec.md`'s `builder.yaml` example — none of which the first two patterns see.
-   - **Deleted filenames:** zero hits for `builder-contract` and for `plan-format.md` **as a link target** (`](plan-format.md)`, `](../docs/reference/plan-format.md)`, `](../../docs/reference/plan-format.md)`, and the bare-path form).
+   - **Deleted filename:** zero hits for `builder-contract` in any form.
      Without this the gate is blind to exactly the failure class this task exists to prevent — a link to a file that no longer exists, which breaks nothing and which task B's own `plan-format-v3` grep explicitly cannot see either.
-     **Verified live misses that the first three patterns all pass:** `manifest/designs/loom.md:29` (`[plan-format.md v2](../../docs/reference/plan-format.md)`, in no inventory — repaired under the link-repair rule, prose left to E) and `docs/reference/status-schema.md:3` (links `plan-format.md` alongside the `builder-contract.md` link already inventoried).
+     **`plan-format.md` is deliberately NOT in this pattern.** Its links dangle by design for the A→B window (`shed-followups.md:183–184`), so a zero-hit criterion on it would fail on a state this task intends to produce.
    - **Commit-subject and path fragment:** zero hits for the `builder:` commit-subject prefix and the `/builder/` path fragment.
      This catches `internal/fabricengine/trailer_test.go:42–43`, `:54–56`, which pin the `"builder: <label>"` weft commit-subject form as the `builder_style_subject` fixture — the subject form dies with the module, and no other pattern sees it.
 
-   **`master-builder` is a deliberate exception.** `internal/fabricengine/refscanner_test.go:20` and `:37` use `master-builder` / `master-builder-weft` as arbitrary *worktree-name* fixtures, unrelated to the builder module.
-   Leave them; exclude the token by pattern so the gate stays mechanical.
+   **Two deliberate exceptions, excluded by pattern so the gate stays mechanical:**
+   - `internal/fabricengine/refscanner_test.go:20`, `:37` — `master-builder` / `master-builder-weft` are arbitrary *worktree-name* fixtures, unrelated to the builder module.
+   - `sandbox/build.cmd:2` — "Launcher for the lyx sandbox Hub builder: clones …" is ordinary English that happens to match the `builder:` commit-subject pattern.
 
    **Ordinary-English false positives must be excluded by pattern, never by judgment**, so the grep stays a mechanical gate: `strings.Builder`, "fixture builders" (`docs/benchmarks/test-suite-timing.md:739`), "fluent builder method" (`docs/research/scout-multilang.md:29`), and similar.
    This is why the module-word pattern is a list of specific builder-module forms rather than a bare `-i builder`.
@@ -379,7 +400,9 @@ Run all four; all must be clean:
 - **Q:** Should the historical benchmark/research/crucible records be swept too? **A:** No — they are dated records of what was measured, falsified by editing rather than cleaned. Their exclusion is recorded explicitly so a reviewer does not file them as misses.
 - **Q:** What about references to "Builder" as a loom *phase*? **A:** Rename them to Webster. Builder is the implementer module being parked; Webster is the implementer module taking over the whole implementer role, and the phase is named after the module that runs it. This includes the `builder-review` gate name.
 - **Q:** The phase rename includes `validPhases` and the `status-schema.md` enum, which `shed-followups.md:88–94` explicitly defers to the `Shed` build task. Override it? **A:** Yes — and update `shed-followups.md` in the same commit so E and the `Shed` build task are not working from a stale ownership claim. Renaming the prose while leaving the validator would ship docs that contradict live code.
-- **Q:** `weftgit_exclude_test.go` writes `_lyx/builder/` fixture dirs, and `perchengine/doc.go` names a `builder-review` gate. Rename or delete? **A:** Rename the gate to `webster-review`; delete the `builder` fixture dirs rather than renaming them, since the adjacent `webster` fixtures already prove the exclusion property.
+- **Q:** `weftgit_exclude_test.go` writes `_lyx/builder/` fixture dirs, and `perchengine/doc.go` names a `builder-review` gate. Rename or delete? **A:** Rename the gate to `webster-review`. The fixture dirs split two ways, **not** all-delete as first answered: delete `:279`/`:280` (the `.lyx` negative controls, already proven by the adjacent `webster` fixtures), but **rename** `:285` to webster together with its assertion at `:302` — it is the test's only durable positive control, and deleting it leaves the test asserting a file it never writes.
 - **Q:** Should the sweep be scripted? **A:** Split by kind — script the phase rename (a true rename, grep-verifiable), hand-rewrite the ~40 comments (a rewrite no regex can produce), and gate both halves with the same repo-wide zero-hit grep.
 - **Q:** What is the verification bar? **A:** `go build ./...`, untagged `go test ./...`, `go test -tags integration ./...` (required — the one real compile blocker is integration-tagged), plus the zero-hit completeness grep with its exclusions written out explicitly.
 - **Q:** `loom.md:91`/`:94`/`:187` are task E's per the spec, but deleting `builder-contract.md` leaves their links dangling rather than merely stale. **A:** This task fixes the links only; the prose stays E's. The chain-order ownership rule protects against two tasks rewriting the same sentence, not against one task repairing a reference to a file it deleted.
+- **Q:** Does that link-repair rule extend to `plan-format.md`, which this task also deletes? **A:** No — and an earlier round of this discussion had it wrong. `shed-followups.md:183–184` records the A→B window where `plan-format.md` does not exist as **deliberate**: task B re-creates the file under the same name, so repairing the links would retarget them at `plan-format-v3.md` only for B to rename that back to `plan-format.md`. The rule is therefore scoped to permanently-deleted files, of which `builder-contract.md` is the only one.
+- **Q:** Then what happens to the sentences asserting v2 exists alongside v3? **A:** Unchanged ownership — they are the v2-coexistence prose class, already this task's. Only the link mechanics differ: the prose is rewritten, the link is left to dangle briefly.
