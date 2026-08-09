@@ -51,7 +51,9 @@ batches:
     commit_sha: d62efbd204a2d8f8270a4ea4f824307552446750
     verify_baseline_failures: []
   - name: cli surface
-    state: pending
+    state: running
+    implementer_session: a6c66ff5-3d5b-4229-8d62-c8fd075e4dc3
+    start_sha: 243f4eaeca7615dd8f23b51809b1f3b778cbded1
     verify_baseline_failures: []
   - name: clone integration tests
     state: pending
