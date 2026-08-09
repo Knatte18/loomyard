@@ -66,6 +66,8 @@ batches:
     start_sha: f07f4ef8a1cbcc064b7571b43684e5a01cf38b91
     commit_sha: 7edb5396beb7c519d83e814f3d28e54246927fb9
   - name: spec-repair-acceptance
-    state: pending
+    state: running
+    implementer_session: 1ae6f85e-b8d2-4164-afed-3b299b89b8fa
+    start_sha: 52f9f622d685382be5bb999ee26365e624feb594
     verify_baseline_failures: []
 ```
