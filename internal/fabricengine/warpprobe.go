@@ -66,17 +66,17 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	}, cwd)
 	_ = stdout
 	if err != nil {
-		return warpProbeResult{}, wrapProbeError(weftURL, "", err)
+		return warpProbeResult{}, wrapProbeError(weftURL, "clone", "", err)
 	}
 	if exitCode != 0 {
-		return warpProbeResult{}, wrapProbeError(weftURL, stderr, nil)
+		return warpProbeResult{}, wrapProbeError(weftURL, "clone", stderr, nil)
 	}
 
 	// Unborn-HEAD check: a nonzero exit here means the weft candidate has no commits at all, the
 	// genuinely empty weft remote that ensureBoardWorktree's orphan-create path already supports.
 	_, stderr, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, probeDir)
 	if err != nil {
-		return warpProbeResult{}, wrapProbeError(weftURL, "", err)
+		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", "", err)
 	}
 	if exitCode != 0 {
 		return warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil
@@ -90,10 +90,10 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	if bindingPresent {
 		stdout, stderr, exitCode, err = gitexec.RunGit([]string{"show", "HEAD:" + WarpBindingFileName}, probeDir)
 		if err != nil {
-			return warpProbeResult{}, wrapProbeError(weftURL, "", err)
+			return warpProbeResult{}, wrapProbeError(weftURL, "show", "", err)
 		}
 		if exitCode != 0 {
-			return warpProbeResult{}, wrapProbeError(weftURL, stderr, nil)
+			return warpProbeResult{}, wrapProbeError(weftURL, "show", stderr, nil)
 		}
 		recorded := strings.TrimSpace(stdout)
 		if recorded != "" {
@@ -131,23 +131,25 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"ls-tree", "HEAD", "--name-only", "--", path}, probeDir)
 	if err != nil {
-		return false, wrapProbeError(weftURL, "", err)
+		return false, wrapProbeError(weftURL, "ls-tree", "", err)
 	}
 	if exitCode != 0 {
-		return false, wrapProbeError(weftURL, stderr, nil)
+		return false, wrapProbeError(weftURL, "ls-tree", stderr, nil)
 	}
 	return strings.TrimSpace(stdout) != "", nil
 }
 
 // wrapProbeError formats a probe-phase failure as "probe weft <url>: <detail>", using git's trimmed
-// stderr as the detail when available and falling back to cause's own message otherwise.
-func wrapProbeError(weftURL, stderr string, cause error) error {
+// stderr as the detail when available and falling back to a message naming the failing git
+// subcommand (op, e.g. "clone", "ls-tree", "show") otherwise, so an empty-stderr failure still tells
+// the operator which git invocation produced it.
+func wrapProbeError(weftURL, op, stderr string, cause error) error {
 	detail := strings.TrimSpace(stderr)
 	if detail == "" {
 		if cause != nil {
 			detail = cause.Error()
 		} else {
-			detail = "git command failed"
+			detail = fmt.Sprintf("git %s failed", op)
 		}
 	}
 	return fmt.Errorf("probe weft %s: %s", weftURL, detail)
