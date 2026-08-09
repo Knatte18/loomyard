@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-reference-contracts  '2026-08-09T10:34:17Z'
 approved-module-phase-docs  '2026-08-09T10:41:55Z'
 approved-spec-repair-acceptance  '2026-08-09T10:49:23Z'
 holistic-reviewing  '2026-08-09T10:49:45Z'
+holistic-fixing  '2026-08-09T10:56:34Z'
 ```
 
 ## Batches
