@@ -7,9 +7,8 @@
 // ShouldRunIntegration reports true), plus the two batch-list/progress renderers those prompts
 // embed (RenderBatchIndex, RenderProgress).
 // The go:embed directives and their accessors live here rather than in template.go, which stays
-// config-only — mirroring builderengine's own split between template.go's
-// ConfigTemplate/ImplementerTemplate/OrchestratorTemplate accessors and this package's own
-// render-time logic.
+// config-only, keeping template.go's ConfigTemplate/ImplementerTemplate/OrchestratorTemplate
+// accessors separate from this package's own render-time logic.
 //
 // Per the fork-context-hygiene Shared Decision, RenderForkPrompt's output feeds two callers with
 // opposite context situations — beginbatch.go's in-session fork (which already inherits Master's

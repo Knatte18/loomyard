@@ -5,8 +5,8 @@
 // file write itself.
 // BeginBatch never touches fabric (webster is fabric-blind throughout) and never persists deps.State
 // itself — the caller holds the state-mutation lease (AcquireStateMutation) across its whole
-// begin-batch call and saves state via SaveState once BeginBatch returns successfully, mirroring
-// builder's own fabric-commit-boundary discipline.
+// begin-batch call and saves state via SaveState once BeginBatch returns successfully, webster's
+// own fabric-commit-boundary discipline.
 // Under the flat card-list model there is no deferred-verify chain and no oversized-batch
 // escalation: BeginBatch always asserts the single RoleMaster model,
 // and there is no --restart-chain surface.
@@ -31,14 +31,13 @@ import (
 // ErrPaused is the sentinel BeginBatch returns when deps.ScratchDir's pause flag is present at the
 // batch boundary (PauseRequested).
 // Exported so a caller can distinguish the operational "paused" refusal from every other
-// begin-batch failure via errors.Is(err, ErrPaused) — webster's own sentinel, independent of
-// builder's ErrPaused, per the webster-owns-its-own-domain-types decision.
+// begin-batch failure via errors.Is(err, ErrPaused) — webster's own sentinel, per the
+// webster-owns-its-own-domain-types decision.
 var ErrPaused = errors.New("webster: paused")
 
 // ErrFingerprintMismatch is the sentinel BeginBatch returns when the on-disk plan's recomputed
-// fingerprint disagrees with State.PlanFingerprint — the same crash/resume guard builder's own
-// spawn-batch applies,
-// but webster's own sentinel identity (webster-owns-its-own-domain-types).
+// fingerprint disagrees with State.PlanFingerprint — webster's own crash/resume guard, with its own
+// sentinel identity (webster-owns-its-own-domain-types).
 var ErrFingerprintMismatch = errors.New("webster: on-disk plan fingerprint does not match this run's recorded state")
 
 // Injector is the seam BeginBatch uses to switch Master's live pane to a different model: exactly
@@ -154,7 +153,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
 	}
 
-	// Builder's pre-existing-report refusal, applied to the fork path: a
+	// webster's own pre-existing-report refusal, applied to the fork path: a
 	// batch whose report already landed is finished work — silently
 	// overwriting its BatchState (and letting a fresh fork overwrite the
 	// report) must never happen by accident. A no_report re-fork never
@@ -222,8 +221,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// dead classification keeps its substrate alive by design, and it may
 	// still be genuinely working), stop it before the record below erases
 	// its StrandGUID: an unreclaimed recovery strand would race this batch's
-	// fresh fork on the repo — the same kept-strand reclaim builder's
-	// respawn path performs. A plain fork batch's record has an empty
+	// fresh fork on the repo, so this respawn path reclaims the kept strand
+	// first. A plain fork batch's record has an empty
 	// StrandGUID and removeStrandIfLive no-ops on it.
 	if prior, ok := deps.State.Batches[number]; ok && prior != nil && prior.StrandGUID != "" {
 		if err := removeStrandIfLive(deps.Reed, prior.StrandGUID); err != nil {

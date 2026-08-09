@@ -1,7 +1,7 @@
 //go:build integration
 
 // sync_integration_test.go covers fabricSync's composed behavior against real
-// git repositories, mirroring buildercli's own sync_integration_test.go. Two
+// git repositories. Two
 // scenarios: Fabric.Commit's error-branch contract (a commit that lands but
 // fails its correspondence record must still be reported as committed=true
 // alongside the error, never swallowed into a false "no commit was made"),
@@ -17,11 +17,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -71,11 +71,11 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // matching warp subdirectory. Alongside state.json it seeds the three machine-local
 // artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the
 // mirrored subpath under ".lyx", outside the committed "_lyx" pathspec, so a caller can
-// assert on what the commit did and did not pick up. It also seeds a builder
-// tree in the same shared geometry -- the two round-loop modules share one -- carrying builder's own
-// durable state.json under "_lyx" plus its pause flag under ".lyx", so a caller can assert that a
-// WEBSTER commit keeps builder's runtime state out while still carrying
-// builder's durable state.
+// assert on what the commit did and did not pick up. It also seeds a sibling module's
+// tree in the same shared geometry -- every module sharing one "_lyx"/".lyx" pair --
+// carrying that module's own durable state.json under "_lyx" plus its pause flag under
+// ".lyx", so a caller can assert that a webster commit keeps the sibling module's runtime
+// state out while still carrying its durable state.
 func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 	t.Helper()
 
@@ -118,22 +118,22 @@ func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 		}
 	}
 
-	// Builder's own tree, in the same shared geometry: its durable state must
-	// still ride a webster commit, its pause flag must not.
-	builderDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "builder")
-	if err := os.MkdirAll(builderDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft builder dir: %v", err)
+	// The sibling perch module's own tree, in the same shared geometry: its
+	// durable state must still ride a webster commit, its pause flag must not.
+	perchDir := filepath.Join(weft, relPath, lyxdirs.LyxDirName, "perch")
+	if err := os.MkdirAll(perchDir, 0o755); err != nil {
+		t.Fatalf("mkdir weft perch dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(builderDir, "state.json"), []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write weft builder state.json: %v", err)
+	if err := os.WriteFile(filepath.Join(perchDir, "state.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write weft perch state.json: %v", err)
 	}
 
-	builderScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "builder")
-	if err := os.MkdirAll(builderScratchDir, 0o755); err != nil {
-		t.Fatalf("mkdir weft builder scratch dir: %v", err)
+	perchScratchDir := filepath.Join(weft, relPath, lyxdirs.DotLyxDirName, "perch")
+	if err := os.MkdirAll(perchScratchDir, 0o755); err != nil {
+		t.Fatalf("mkdir weft perch scratch dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(builderScratchDir, builderengine.PauseFlagName), []byte("paused"), 0o644); err != nil {
-		t.Fatalf("write weft builder pause flag: %v", err)
+	if err := os.WriteFile(filepath.Join(perchScratchDir, perchengine.PauseFlagName), []byte("paused"), 0o644); err != nil {
+		t.Fatalf("write weft perch pause flag: %v", err)
 	}
 
 	seedRepoWideFabricConfig(t, hub)
@@ -179,15 +179,15 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 	}
 }
 
-// TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, both
-// round-loop modules' pause flags, webster's rendered fork prompts) stays uncommitted by REAL git
+// TestFabricSync_CommitsAtEveryRelPathDepth proves every machine-local transient (locks, the
+// sibling perch module's pause flag, webster's rendered fork prompts) stays uncommitted by REAL git
 // at every layout.AnchorRel depth, not merely absent from some in-memory pathspec shape.
 // Exclusion is now structural: every machine-local artifact lives under ".lyx" at the mirrored
 // subpath, entirely outside the committed "_lyx" pathspec fabricSync passes -- no exclude-pattern
 // machinery is involved.
-// It is also the cross-module regression guard: a webster commit must hold back BUILDER's pause
-// flag too, since both round-loop modules share one ".lyx" scratch tree the same way they share one
-// "_lyx" durable tree.
+// It is also the cross-module regression guard: a webster commit must hold back the sibling perch
+// module's pause flag too, since every module sharing one geometry shares one ".lyx" scratch tree
+// the same way it shares one "_lyx" durable tree.
 // Each excluded artifact is asserted both absent from the commit AND still untracked via `git
 // ls-files` -- proving it never reached the pathspec at all, not merely an already-tracked file
 // happening to be omitted from this one commit.
@@ -229,18 +229,18 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			}
 			committedFiles := strings.Fields(mustGit(t, weft, "show", "--name-only", "--format=", "HEAD"))
 
-			// Builder's durable state.json rides a webster commit (the two
+			// Perch's durable state.json rides a webster commit (the two
 			// modules share one _lyx); only the machine-local artifacts of
 			// EITHER module are held back.
 			wantPresent := []string{
 				base + "/webster/state.json",
-				base + "/builder/state.json",
+				base + "/perch/state.json",
 			}
 			wantAbsent := []string{
 				scratchBase + "/webster/mutate.lock",
 				scratchBase + "/webster/" + websterengine.PauseFlagName,
 				scratchBase + "/webster/prompts/1.md",
-				scratchBase + "/builder/" + builderengine.PauseFlagName,
+				scratchBase + "/perch/" + perchengine.PauseFlagName,
 			}
 			for _, present := range wantPresent {
 				if !containsString(committedFiles, present) {

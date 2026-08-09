@@ -59,7 +59,7 @@ func LoadConfig(baseDir, module string) (Config, error) {
 	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
 		// Wrap the generic "not initialized" error with the webster-specific
-		// hint, matching builderengine/perchengine/reedengine/shuttleengine's
+		// hint, matching perchengine/reedengine/shuttleengine's
 		// shape so every module surfaces the same recovery instruction.
 		if strings.Contains(err.Error(), "not initialized") {
 			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")

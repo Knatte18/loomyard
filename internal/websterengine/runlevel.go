@@ -6,8 +6,7 @@
 // never-instantly-re-pause clear, the stale-outcome/summary archive, the always-fresh Master spawn
 // (fork-authorized, both output files), the shuttle-outcome-to-RunResult mapping, and the run-exit
 // whole-session audit cross-check that backstops record-batch's own per-batch incremental audit.
-// Named runlevel.go, not run.go, mirroring builderengine's own runlevel.go naming note (avoiding a
-// clash with any future poll/spawn-style file name).
+// Named runlevel.go, not run.go, to avoid a clash with any future poll/spawn-style file name.
 
 package websterengine
 
@@ -31,8 +30,7 @@ import (
 )
 
 // runLockName is the exclusive-lease file name inside the webster scratch
-// dir, held for the ENTIRE duration of one Run call — builderengine's own
-// run.lock discipline (runlevel.go) applied to webster's own scratch dir:
+// dir, held for the ENTIRE duration of one Run call:
 // without it, two concurrent `lyx webster run` invocations would each
 // cold-start from the same state.json and reports, then both drive the
 // Master spawn at once.
@@ -40,7 +38,7 @@ const runLockName = "run.lock"
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
 // run.lock.
-// It is webster's own sentinel (independent of builderengine.ErrRunBusy, per the
+// It is webster's own sentinel (per the
 // webster-owns-its-own-domain-types decision) because the caller must treat this refusal
 // differently from every other hard error: the losing call touched NOTHING on disk — the winner is
 // mid-run and owns the state — so webstercli must not run its own exit-time fabric backstop for it.
@@ -65,9 +63,8 @@ func RunActive(scratchDir string) (bool, error) {
 }
 
 // OutcomeFileName is outcome.yaml's fixed filename inside a webster dir.
-// The name matches builder's own outcome-file convention by heritage,
-// but the file's schema is webster's alone (outcome.go) — webster is not contract-compatible with
-// builder.
+// The file's schema is webster's own (outcome.go), owned outright rather than shared with any
+// sibling module.
 const OutcomeFileName = "outcome.yaml"
 
 // OutcomePath returns the path to outcome.yaml inside websterDir.
@@ -85,8 +82,7 @@ type MasterHandle interface {
 	Wait() (shuttleengine.Result, error)
 }
 
-// MasterStarter is the seam Run spawns Master through: builderengine's own OrchestratorStarter
-// shape (runlevel.go), webster-named.
+// MasterStarter is the seam Run spawns Master through, webster's own OrchestratorStarter shape.
 // Production code passes an adapter over *shuttleengine.Runner (webstercli's own starter);
 // tests pass a local fake.
 type MasterStarter interface {
@@ -159,8 +155,7 @@ type RunResult struct {
 }
 
 // newRunGUID returns a 128-bit random identifier, hex-encoded, generated
-// from crypto/rand — webster's own copy of builderengine's own unexported
-// newRunGUID (runlevel.go): minted once at first init, never regenerated
+// from crypto/rand: minted once at first init, never regenerated
 // across a resume.
 func newRunGUID() (string, error) {
 	b := make([]byte, 16)
@@ -211,8 +206,8 @@ func (e *MasterDiedError) Unwrap() error { return ErrMasterDied }
 var ErrMasterDied = errors.New("webster: master died")
 
 // MasterTimeoutError marks Run's mapping of a shuttle OutcomeTimeout result for Master's own spawn:
-// its wall-clock Timeout (MasterTimeoutMin, the whole-run analog of builder's
-// orchestrator_timeout_min) elapsed before it ever reached its own outcome-file final action.
+// its wall-clock Timeout (MasterTimeoutMin, webster's own whole-run timeout config key)
+// elapsed before it ever reached its own outcome-file final action.
 type MasterTimeoutError struct {
 	SessionID string
 	RunDir    string
@@ -243,10 +238,10 @@ func clearRenderedPrompts(promptsDir string) error {
 
 // reclaimEntryTimeStrands stops the only two substrates a crashed or killed
 // `run` process can ever leave live behind it: Master's own recorded strand
-// and any recorded, non-terminal recovery-batch strand. Unlike builder,
-// forks die WITH Master (same process) — there is never an orphaned
-// in-flight fork implementer to reclaim, which is what makes webster's own
-// entry-time reclaim strictly simpler than builder's own, per
+// and any recorded, non-terminal recovery-batch strand.
+// Forks die WITH Master (same process) — there is never an orphaned
+// in-flight fork implementer to reclaim, which is what keeps webster's own
+// entry-time reclaim simple, per
 // discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
 // (no run has ever started) is a no-op.
 func reclaimEntryTimeStrands(reed shuttleengine.ReedOps, st *State) error {
@@ -349,8 +344,8 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 
 	// Serialize the whole state phase — load, entry-time reclaim, fresh
 	// archive/re-init, and the post-start strand record — against every
-	// other verb's own state read-modify-write, mirroring builderengine's
-	// own AcquireStateMutation discipline. Released explicitly right after
+	// other verb's own state read-modify-write, webster's own
+	// AcquireStateMutation discipline. Released explicitly right after
 	// the strand record lands, never held across Master's own wait.
 	mutateLock, err := AcquireStateMutation(deps.ScratchDir)
 	if err != nil {

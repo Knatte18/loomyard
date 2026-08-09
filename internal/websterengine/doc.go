@@ -1,6 +1,5 @@
 // Package websterengine is the domain kernel behind webster, a fork-based
-// implementer loop: a sibling of builderengine's batch-implementation loop, but
-// instead of spawning a fresh reed/tmux strand per batch, one long-lived Master
+// implementer loop: instead of spawning a fresh reed/tmux strand per batch, one long-lived Master
 // session reads the codebase and the whole plan once, then forks one implementer
 // per execution batch in-session (Claude Code's Agent tool, subagent_type "fork"),
 // sequentially,

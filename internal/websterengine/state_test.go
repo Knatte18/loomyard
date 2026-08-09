@@ -1,8 +1,8 @@
 // state_test.go covers LoadState/SaveState's documented cases: round-tripping a populated State
-// through disk (including a persisted digest and per-card SHA trail, fields builderengine never
-// needed to persist), an absent state.json returning (nil, nil), a corrupt state.json returning a
+// through disk (including a persisted digest and per-card SHA trail), an absent state.json
+// returning (nil, nil), a corrupt state.json returning a
 // wrapped error rather than a guessed value, and the state-mutation lease's cross-holder exclusion.
-// It also covers the webster/builder-loom scratch-dir split: SaveState writes state.json into the
+// It also covers webster's own durable-vs-scratch dir split: SaveState writes state.json into the
 // durable dir and state.json.lock into a DISTINCT scratch dir, the durable dir ends up with no
 // .lock file at all, LoadState round-trips across the two dirs, and AcquireStateMutation's lease
 // file lands in the scratch dir.
@@ -146,8 +146,8 @@ func TestState_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestState_DigestPersistsAcrossSaveLoad proves BatchState.Digest — the field builderengine never
-// persisted — survives a save/load round-trip intact, since begin-batch(N+1) depends on reading it
+// TestState_DigestPersistsAcrossSaveLoad proves BatchState.Digest
+// survives a save/load round-trip intact, since begin-batch(N+1) depends on reading it
 // back rather than re-distilling a report.
 func TestState_DigestPersistsAcrossSaveLoad(t *testing.T) {
 	t.Parallel()

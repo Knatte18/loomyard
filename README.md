@@ -22,7 +22,7 @@ Through Millhouse, LoomYard builds on ideas from three projects:
 
 Three names for three layers, deliberately non-overlapping:
 
-- **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx builder`, …).
+- **`lyx`** — the binary/CLI (**L**oom**Y**ard e**X**ecutable): one binary with a namespaced subcommand tree (`lyx board`, `lyx fabric`, `lyx webster`, …).
 - **`loom`** — the orchestrator *module* (`lyx loom run`), a domain like `board` or `fabric` that drives a phased run.
 - **`ly`** — the skill / orchestration plugin;
   skills are `/ly-*`.
@@ -83,15 +83,14 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).
-- **builder** — an LLM orchestrator over Go verbs: drives a pinned implementation plan batch by batch, spawning each batch's implementer as its own tmux strand.
-- **webster** — a fork-based sibling of `builder` with its own plan format and report contract: one long-lived Master session reads the flat card-list plan (plan-format v3, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch. `builder` stays frozen in-tree as the plan-format-v2 consumer.
+- **webster** — the implementer module: one long-lived Master session reads the flat card-list plan (plan-format v3, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch.
 - **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
 - **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract;
   composed by `perch`.
 
 **In progress (design):**
 
-- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Builder → Raddle → Finalize), each producing phase gated by a `perch` review.
+- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Webster → Raddle → Finalize), each producing phase gated by a `perch` review.
   Preflight is built;
   Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
 
@@ -112,7 +111,7 @@ perch             run burler rounds on one artifact → APPROVED/STUCK [builds o
 loom              phase machine: drive each phase through a gate     [builds on perch]
 ```
 
-`builder` and `webster` branch off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `perch`/`burler` gate loop).
+`webster` branches off `shuttle` directly (an LLM orchestrator driving fat Go verbs, not a `perch`/`burler` gate loop).
 The whole stack runs headless (auto mode): strands exist, agents run, output files are read, nobody need watch.
 
 ## Building

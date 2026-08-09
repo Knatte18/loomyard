@@ -308,7 +308,6 @@ func TestMenuStatus(t *testing.T) {
 	if err := os.WriteFile(configengine.ConfigFile(baseDir, "fabric"), []byte("# fabric\n"), 0o644); err != nil {
 		t.Fatalf("failed to write fabric.yaml: %v", err)
 	}
-	// builder.yaml not created, so it should show (default)
 
 	l := &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
 
@@ -323,9 +322,6 @@ func TestMenuStatus(t *testing.T) {
 	}
 	if !strings.Contains(output, "fabric (configured)") {
 		t.Errorf("menu output missing 'fabric (configured)'; got %q", output)
-	}
-	if !strings.Contains(output, "builder (default)") {
-		t.Errorf("menu output missing 'builder (default)'; got %q", output)
 	}
 }
 
@@ -452,7 +448,7 @@ func TestPrintAggregate_PartialSeed(t *testing.T) {
 	baseDir := t.TempDir()
 	const boardYAML = "path: board\nreadme: Home.md\n"
 	seedModuleConfig(t, baseDir, "board", boardYAML)
-	// fabric and builder are intentionally not seeded.
+	// fabric is intentionally not seeded.
 
 	l := makeLayoutAt(baseDir)
 	var out bytes.Buffer

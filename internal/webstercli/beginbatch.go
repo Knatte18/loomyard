@@ -7,8 +7,8 @@
 // excludes prompts/* as machine-local re-renderable artifacts (BeginBatch rewrites a batch's own
 // prompt on every begin).
 // ErrPaused is an operational refusal, not a hard error: Master reads the {"paused": true} envelope
-// and writes its own outcome.yaml with outcome: paused, mirroring buildercli's own pausedEnvelope
-// pattern but with an exit-0 success code, since begin-batch's own pause refusal is a steady-state
+// and writes its own outcome.yaml with outcome: paused, webster's own pausedEnvelope
+// pattern with an exit-0 success code, since begin-batch's own pause refusal is a steady-state
 // signal Master's prompt is written to expect on every call, not a failure.
 package webstercli
 

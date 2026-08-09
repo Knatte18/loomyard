@@ -60,7 +60,7 @@ each round is three fresh, one-shot spawns, not a living session accumulating st
 
 The handoff file is the sole accumulation vehicle;
 there is no live memory anywhere in the loop.
-The one cost this pays versus perch today: a `progress-judge` spawn on **both** sides of the reviewer, not just post-round — perch's `progress-judge` doesn't do this pre-round targeting for Discussion/Plan/Builder today;
+The one cost this pays versus perch today: a `progress-judge` spawn on **both** sides of the reviewer, not just post-round — perch's `progress-judge` doesn't do this pre-round targeting for Discussion/Plan/Webster today;
 those rounds reuse a fixed rubric, not a dynamically retargeted prompt.
 
 ### Pre-round targeting

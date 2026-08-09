@@ -10,7 +10,7 @@
 //
 // perch is what loom (unbuilt) puts between every phase, and it also runs
 // standalone (`lyx perch run`). One engine serves ALL text-based review —
-// discussion-review, plan-review, builder-review, and ad-hoc "review this
+// discussion-review, plan-review, webster-review, and ad-hoc "review this
 // file / this PR" are just different call-sites with different profiles;
 // forking a copy per phase would lose the point (Profile — rubric, fasit,
 // gate, caps — is data, never code). The heavier, behavior-based hardening

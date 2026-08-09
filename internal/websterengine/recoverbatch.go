@@ -17,7 +17,7 @@
 // but NEVER across the bounded wait between them (see AcquireStateMutation's
 // never-across-a-long-block contract).
 // Nothing here touches fabric: the caller fabric-commits state.json after the spawn record and again at
-// terminal persistence, mirroring builder's own fabric-commit-boundary discipline.
+// terminal persistence, webster's own fabric-commit-boundary discipline.
 
 package websterengine
 

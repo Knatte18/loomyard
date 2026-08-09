@@ -5,7 +5,7 @@ This is the **ordered procedure**;
 for the topology, repo layout, and design rationale see [sandbox-hub.md](sandbox-hub.md).
 
 All commands run from the lyx repo root (`C:\Code\loomyard\wts\loomyard`) unless stated otherwise.
-The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/build.cmd`, `sandbox/core-suite.cmd`, `sandbox/reed-suite.cmd`, `sandbox/shuttle-suite.cmd`, `sandbox/burler-suite.cmd`, `sandbox/perch-suite.cmd`, `sandbox/builder-suite.cmd`, `sandbox/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
+The launchers (`deploy.cmd`, `deploy-dev.cmd`, `sandbox/build.cmd`, `sandbox/core-suite.cmd`, `sandbox/reed-suite.cmd`, `sandbox/shuttle-suite.cmd`, `sandbox/burler-suite.cmd`, `sandbox/perch-suite.cmd`, `sandbox/fetch.cmd`) hardcode this machine's paths: `deploy.cmd`'s deploy target `C:\Code\tools\bin`, Hub parent `C:\Code`. `deploy-dev.cmd` is the exception — it installs into a derived, per-worktree `.dev-bin` directory, never a hardcoded path.
 Each sandbox launcher does exactly one thing (build / one suite / fetch).
 
 **Run every suite launcher in a real, attached interactive terminal** — never backgrounded, detached, or with stdout/stderr redirected.
@@ -138,15 +138,6 @@ sandbox/perch-suite.cmd
 Same operating model as 4c, for `lyx perch`'s gate-loop scenarios (convergence, pause/resume, the command gate) — perch wires the real burler substrate (which in turn wires shuttle) on every invocation, so the same prerequisites apply.
 Same `-claude`/`-prompt` overrides.
 
-### 4e. Run the builder suite (optional, needs live tmux + logged-in claude)
-
-```cmd
-sandbox/builder-suite.cmd
-```
-
-Same operating model as 4c/4d, for `lyx builder`'s batch-loop scenarios (the autonomous `run` happy path, `poll`'s dead/timeout classification, pause as a batch-boundary check, `run.lock` contention, and fingerprint/outcome archiving) — builder branches off shuttle directly (real tmux + real `claude`), so the same prerequisites apply.
-Same `-claude`/`-prompt` overrides.
-
 ### 5. Fetch the report
 
 ```cmd
@@ -187,4 +178,3 @@ Then groom/spawn as usual.
 - [sandbox-hub.md](sandbox-hub.md) — Hub topology, repo layout, design rationale.
 - [tools/sandbox/SANDBOX-CORE-SUITE.md](../tools/sandbox/SANDBOX-CORE-SUITE.md) — the embedded test scheme the agent follows.
 - [tools/sandbox/SANDBOX-REED-SUITE.md](../tools/sandbox/SANDBOX-REED-SUITE.md) — the embedded reed-specific test scheme `sandbox/reed-suite.cmd` follows.
-- [tools/sandbox/SANDBOX-BUILDER-SUITE.md](../tools/sandbox/SANDBOX-BUILDER-SUITE.md) — the embedded builder-specific test scheme `sandbox/builder-suite.cmd` follows.

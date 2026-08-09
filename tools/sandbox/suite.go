@@ -1,9 +1,9 @@
 // suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox shuttle-suite", "sandbox
-// burler-suite", "sandbox perch-suite", "sandbox builder-suite", and "sandbox webster-suite"
+// burler-suite", "sandbox perch-suite", and "sandbox webster-suite"
 // subcommands: copies one of the embedded suite templates (main, reed, shuttle, burler, perch,
-// builder, or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file
+// or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file
 // as a git exclude entry, and launches an interactive Claude session to execute it.
-// The seven suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent
+// The six suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent
 // launch, post-session reed teardown) via the suiteSpec parameterization of runSuite;
 // only the file name, embedded doc body, default instruction, and reed-teardown flag differ.
 
@@ -44,14 +44,11 @@ var burlerSandboxSuiteMD string
 //go:embed SANDBOX-PERCH-SUITE.md
 var perchSandboxSuiteMD string
 
-//go:embed SANDBOX-BUILDER-SUITE.md
-var builderSandboxSuiteMD string
-
 //go:embed SANDBOX-WEBSTER-SUITE.md
 var websterSandboxSuiteMD string
 
-// suiteSpec parameterizes runSuite over the seven supported suites (main,
-// reed, shuttle, burler, perch, builder, and webster): the file written into
+// suiteSpec parameterizes runSuite over the six supported suites (main,
+// reed, shuttle, burler, perch, and webster): the file written into
 // the Hub warp repo, the embedded doc body rendered into it, the default
 // prompt handed to claude when the operator supplies no -prompt override, and
 // whether the suite boots a live reed substrate that must be torn down after
@@ -117,15 +114,6 @@ var perchSuite = suiteSpec{
 	fileName:     "SANDBOX-PERCH-SUITE.md",
 	doc:          perchSandboxSuiteMD,
 	instruction:  "Read ./SANDBOX-PERCH-SUITE.md and follow the instructions in it exactly.",
-	reedTeardown: true,
-}
-
-// builderSuite is the SANDBOX-BUILDER-SUITE spec: the dedicated scheme
-// exercising the lyx builder batch-loop black-box agent scenarios.
-var builderSuite = suiteSpec{
-	fileName:     "SANDBOX-BUILDER-SUITE.md",
-	doc:          builderSandboxSuiteMD,
-	instruction:  "Read ./SANDBOX-BUILDER-SUITE.md and follow the instructions in it exactly.",
 	reedTeardown: true,
 }
 

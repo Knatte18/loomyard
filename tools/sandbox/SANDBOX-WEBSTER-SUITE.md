@@ -2,9 +2,9 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx webster` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo, mirroring `SANDBOX-BUILDER-SUITE.md`'s own operating model. `webster` is builder's fork-based sibling with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the whole flat card-list plan (plan-format v3, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- identity by default, one card per batch) once, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here;
+A structured test-loop for exercising `lyx webster` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo. `webster` is the implementer module, with its own plan format and report contract: instead of spawning a fresh reed/tmux strand per batch, one long-lived **Master** session reads the codebase and the whole flat card-list plan (plan-format v3, parsed by `internal/planparser`, grouped into execution batches by `internal/batcher`'s config-selected batchifier -- identity by default, one card per batch) once, then forks one implementer per batch in-session (Claude Code's Agent tool, `subagent_type: "fork"`) -- no `spawn-batch`/`poll` verbs exist here;
 Master itself brackets each fork with `begin-batch`/`await-batch`/`record-batch` calls (forks are BACKGROUNDED agents on current Claude Code -- the Agent call returns immediately, so Master long-polls `await-batch` for the batch report instead of relying on a synchronous fork return, and never ends its turn while a batch is open).
-This suite is deliberately narrow: two scenarios, not builder's nine, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation) are webster-local code already covered by the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the fork loop itself (W1) and the one dormant-by-default, timing-sensitive mechanism unique to webster: the idempotent per-batch Master model assertion's `/model` pane injection (W2).
+This suite is deliberately narrow: two scenarios, because webster's pure Go-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation) are webster-local code already covered by the hermetic and `-tags integration` test tiers -- what is genuinely live-only here is the fork loop itself (W1) and the one dormant-by-default, timing-sensitive mechanism unique to webster: the idempotent per-batch Master model assertion's `/model` pane injection (W2).
 
 ## Pre-conditions
 
@@ -25,7 +25,7 @@ Before starting a session:
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a webster defect** -- the `**Covers:** webster` tag on W1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/webster.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lyx shuttle`/`lyx burler`/`lyx builder` do.
+4. **Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/webster.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lyx shuttle`/`lyx burler` do.
 5. **`lyx reed up` before any spawn.** `webster run` spawns the Master session through shuttle into an existing reed session and does not boot one itself;
    without it the spawn fails loud with `no reed session; run "lyx reed up"`.
 6. **Attached interactive terminal.**
@@ -46,7 +46,7 @@ Keep every scenario's plan cards trivial -- e.g. "create `resultN.md` containing
 
 ### Controlled exceptions
 
-Two sanctioned deviations from the pure black-box rule, mirroring the reed/shuttle/burler/ builder suites' own controlled-exception notes:
+Two sanctioned deviations from the pure black-box rule, mirroring the reed/shuttle/burler suites' own controlled-exception notes:
 
 - **Direct `tmux -L <socket> list-panes`/`ls`** is allowed only to confirm Master's own strand exists (or was cleaned up), where `<socket>` is read from `lyx reed status` output -- this is also how W1 confirms no EXTRA strand appears per batch (a fork is not a new strand;
   there is exactly one implementer-bearing strand, Master's own, for the whole run).
@@ -120,7 +120,7 @@ the printed JSON envelope reports `"outcome":"done"` with `batches_done: 2`.
 Confirm **Master grounds itself instead of refusing**: attach early (`lyx reed attach <guid>`) and confirm the freshly spawned Master's FIRST actions are the two read-only orientation checks the master template opens with (`lyx webster status` and `ls _lyx/plan/`), after which it proceeds into the loop -- it must NOT end its turn asking whether the harness/prompt is real (which the shuttle classifies asking and surfaces as a `master asked a question` run error).
 This is the injection-refusal failure mode the grounding block is tuned against (rounds fable-r1 and opus-r2, crucible);
 an occasional refusal here is a real, highest-priority finding, not a transient.
-Confirm **one fork per batch, no extra reed strands during batches**: `lyx reed status` shows exactly one implementer-bearing strand for the entire run (Master's own) -- never a second strand appearing and disappearing per batch the way builder's separate implementer strands do.
+Confirm **one fork per batch, no extra reed strands during batches**: `lyx reed status` shows exactly one implementer-bearing strand for the entire run (Master's own) -- never a second strand appearing and disappearing per batch.
 Confirm **per-batch weft commits landing**: `state.json` committed at each batch's `begin-batch` (start-SHA + batch entry durable before the fork),
 and the batch report plus `state.json` committed at each batch's `record-batch` (the main per-batch sync) -- inspect the weft's own commit log for both.
 Confirm **digest envelopes from `record-batch`**: each batch's fork-return is followed by a `record-batch` call whose JSON response carries webster's pinned digest fields (`batch`, `status`, `head_sha`, `deviations`, `dead_reason`, `elapsed_s` -- webster's own minimal fork-return digest, never raw report prose;
@@ -190,8 +190,8 @@ and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`, builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, burler's own review+fix round scenarios stay in `SANDBOX-BURLER-SUITE.md`, perch's gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
   this suite holds only webster's fork-loop and model-assertion scenarios -- add `W` scenarios here, not in any other suite.
-- This suite is a FLOOR, not a ceiling, and deliberately narrower than builder's own: the run-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke tests -- duplicating those here would re-test covered Go paths through a slower medium.
+- This suite is a FLOOR, not a ceiling: the run-level mechanics (fingerprinting, `--fresh` archiving, pause, `run.lock` contention, plan validation, crash reclaim) are webster-local Go code exercised by the hermetic and `-tags integration` test tiers plus `internal/webstercli/smoke_test.go`'s live smoke tests -- duplicating those here would re-test covered Go paths through a slower medium.
   What is genuinely live-only is the fork loop itself (W1) and the tamper-armed `/model` pane-injection timing (W2).
   Neither scenario proves implementer quality or plan-format content richness -- those are a normal code review's and `perch`'s job respectively.

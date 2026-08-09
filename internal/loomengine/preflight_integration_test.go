@@ -608,7 +608,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			name: "NonEmptyHistory",
 			seed: func() Status {
 				return Status{
-					Slug: "loom-preflight-fixture", Parent: "main", Phase: "builder", Stage: "gate",
+					Slug: "loom-preflight-fixture", Parent: "main", Phase: "webster", Stage: "gate",
 					Narration: "now: mid-run",
 					History: []HistoryEntry{
 						{Phase: "discussion", Outcome: "approved", Ts: "2026-07-17T10:01:30Z"},
@@ -621,7 +621,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			seed: func() Status {
 				sha := "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"
 				return Status{
-					Slug: "loom-preflight-fixture", Parent: "main", Phase: "builder", Stage: "produce",
+					Slug: "loom-preflight-fixture", Parent: "main", Phase: "webster", Stage: "produce",
 					Narration: "now: mid-run", StartSha: &sha,
 				}
 			},

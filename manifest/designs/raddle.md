@@ -1,10 +1,10 @@
 # raddle — codeguide's woven-in successor (Someday, deprioritized)
 
-> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Already has a reserved-but-unbuilt phase slot between Builder and Finalize (see [loom.md](loom.md#the-phase-machine)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
+> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Already has a reserved-but-unbuilt phase slot between Webster and Finalize (see [loom.md](loom.md#the-phase-machine)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
 
 ## What it is
 
-Raddle is codeguide's weaving-vocabulary successor, living in `weft`: an always-run step after Builder (deliberately not the implementer's job — implementers, busy with code, forget the docs) that generates docs over the diff a plan produced, building heavily on Millhouse's `codeguide-update`.
+Raddle is codeguide's weaving-vocabulary successor, living in `weft`: an always-run step after Webster (deliberately not the implementer's job — implementers, busy with code, forget the docs) that generates docs over the diff a plan produced, building heavily on Millhouse's `codeguide-update`.
 
 ## Geometry — where raddle content lives
 
@@ -42,7 +42,7 @@ No additional lock needed there.
 ## When it runs: deferred to merge-time, not mid-task
 
 Regenerating raddle is token-heavy and takes real wall-clock time, so it should run **once**, not twice.
-Running it right after Builder (against the task's own fork-point) and then again at actual merge (against parent's real, possibly-since-moved HEAD) would do exactly that: two regenerations, the first thrown away the moment parent has advanced.
+Running it right after Webster (against the task's own fork-point) and then again at actual merge (against parent's real, possibly-since-moved HEAD) would do exactly that: two regenerations, the first thrown away the moment parent has advanced.
 
 **Decision: raddle regenerates once, at merge-time, against parent's actual current HEAD** — not mid-task.
 This collapses the two potential runs into one and guarantees the output describes the real merge result, not a stale fork-point.
@@ -51,7 +51,7 @@ This collapses the two potential runs into one and guarantees the output describ
 If another task's merge landed in parent partway through regeneration, the docs would be stale against the HEAD they're about to be committed onto.
 Same "advance only on confirmed success" discipline the `Warp-SHA` trailer mechanism uses elsewhere in `fabric` for recording a baseline, extended to cover the compute step, not just the write step.
 
-**Open, not yet decided:** whether this removes raddle's reserved phase slot between Builder and Finalize in [loom.md](loom.md#the-phase-machine) entirely (folding regeneration into the Finalize/Merge step instead), or whether an earlier, non-authoritative mid-task run stays for human visibility before PR.
+**Open, not yet decided:** whether this removes raddle's reserved phase slot between Webster and Finalize in [loom.md](loom.md#the-phase-machine) entirely (folding regeneration into the Finalize/Merge step instead), or whether an earlier, non-authoritative mid-task run stays for human visibility before PR.
 Not resolved here.
 
 ## Staleness tracking, via `fabric`

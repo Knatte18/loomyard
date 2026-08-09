@@ -88,10 +88,8 @@ From loom's view, **Webster is a black box loom calls, exactly like perch**: `lo
 or its escalation mechanics, the same way it doesn't see perch's rounds.
 Webster's own internal design lives in the `internal/websterengine` package documentation, not here.
 
-**Naming note.** `internal/builderengine`/`internal/buildercli` and [builder-contract.md](../../docs/reference/builder-contract.md) are a real, separate, already-shipped sibling implementer loop — the older plan-format-v2, own-tmux-strand-per-batch design — not an old name for Webster.
-`websterengine`'s own package doc calls itself "a sibling of builderengine's batch-implementation loop."
-This doc's producer list above targets `internal/websterengine` (plan-format-v3, in-session forks) as `loom`'s own Webster producer;
-`builder-contract.md` documents the older Builder/plan-v2 pairing and does not yet have a Webster/plan-v3 equivalent — reconciling that gap is in scope for wiki task `shed-producer-model-scoping`, not resolved here.
+**Naming note.** `webster` (`internal/websterengine`/`internal/webstercli`, `lyx webster`) is the stack's implementer module; its cross-module contract is [webster-contract.md](../../docs/reference/webster-contract.md).
+This doc's producer list above targets `internal/websterengine` (plan-format-v3, in-session forks) as `loom`'s own Webster producer.
 
 Pause stays uniform across loom/perch/Webster (see [pause](#graceful-pause)) because every loop checks the same `pause_requested` flag at its own step boundary, regardless of which module holds the loop.
 
@@ -184,7 +182,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation; not `internal/builderengine`/[builder-contract.md](../../docs/reference/builder-contract.md), the older, separate plan-v2 sibling loop (see the [naming note above](#webster--a-black-box-loom-drives-the-sibling-of-perch)) |
+| webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-contract.md](../../docs/reference/webster-contract.md), webster's own cross-module contract |
 | producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`discussion-template.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `plan-template.md` prompt (carrying a compact plan-format-v3 spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`plan-template.md`, `plantemplate.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |

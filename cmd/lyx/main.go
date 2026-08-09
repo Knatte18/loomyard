@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
-	"github.com/Knatte18/loomyard/internal/buildercli"
 	"github.com/Knatte18/loomyard/internal/burlercli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configcli"
@@ -72,7 +71,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, builder, scout, webster.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, scout, webster.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -104,7 +103,6 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		shuttlecli.Command(),
 		burlercli.Command(),
 		perchcli.Command(),
-		buildercli.Command(),
 		scoutcli.Command(),
 		webstercli.Command(),
 	)

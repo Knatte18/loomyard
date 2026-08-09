@@ -15,7 +15,7 @@ var validPhases = map[string]bool{
 	"preflight":  true,
 	"discussion": true,
 	"plan":       true,
-	"builder":    true,
+	"webster":    true,
 	"raddle":     true,
 	"finalize":   true,
 	"done":       true,

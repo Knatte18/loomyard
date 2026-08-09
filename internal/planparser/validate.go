@@ -7,7 +7,7 @@
 // (card-missing-field, card-field-overlap), the card-numbering heading cross-check, the
 // existence-dependent cross-referencing checks (path-missing, commit-subject-mismatch), and the
 // depends-on-order gate.
-// Unlike the frozen v2 validator (internal/builderengine/validate.go), findings are keyed by card
+// Findings are keyed by card
 // (flat `N-<slug>`), not batch — v3 has no batch concept — and there is no ValidateCaps: the
 // oversized-batch cap dies with batch itself.
 //

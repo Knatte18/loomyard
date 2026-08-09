@@ -664,15 +664,15 @@ func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 func TestFilterWithin(t *testing.T) {
 	t.Parallel()
 
-	inScope1 := scoutengine.Reference{File: "/repo/internal/builderengine/poll.go", Line: 203}
-	inScope2 := scoutengine.Reference{File: "/repo/internal/builderengine/spawn.go", Line: 10}
-	crossPackage := scoutengine.Reference{File: "/repo/internal/websterengine/poll.go", Line: 44}
+	inScope1 := scoutengine.Reference{File: "/repo/internal/websterengine/poll.go", Line: 203}
+	inScope2 := scoutengine.Reference{File: "/repo/internal/websterengine/state.go", Line: 10}
+	crossPackage := scoutengine.Reference{File: "/repo/internal/perchengine/identity.go", Line: 44}
 	// A sibling directory whose name merely starts with the same prefix —
 	// proves filterWithin does not fall back to a naive string-prefix
-	// check, which would wrongly treat "internal/builder" as containing
-	// anything under "internal/builderengine" (they share no path
+	// check, which would wrongly treat "internal/webster" as containing
+	// anything under "internal/websterengine" (they share no path
 	// component boundary in common beyond the literal substring).
-	prefixCollision := scoutengine.Reference{File: "/repo/internal/buildercli/cli.go", Line: 5}
+	prefixCollision := scoutengine.Reference{File: "/repo/internal/webstercli/cli.go", Line: 5}
 
 	tests := []struct {
 		name     string
@@ -683,21 +683,21 @@ func TestFilterWithin(t *testing.T) {
 	}{
 		{
 			name:     "absolute_within_keeps_only_in_scope",
-			within:   "/repo/internal/builderengine",
+			within:   "/repo/internal/websterengine",
 			baseDir:  "/anything", // unused: within is already absolute
 			refs:     []scoutengine.Reference{inScope1, inScope2, crossPackage, prefixCollision},
 			wantRefs: []scoutengine.Reference{inScope1, inScope2},
 		},
 		{
 			name:     "relative_within_resolves_against_baseDir",
-			within:   "internal/builderengine",
+			within:   "internal/websterengine",
 			baseDir:  "/repo",
 			refs:     []scoutengine.Reference{inScope1, crossPackage},
 			wantRefs: []scoutengine.Reference{inScope1},
 		},
 		{
 			name:     "prefix_collision_directory_excluded",
-			within:   "/repo/internal/builder",
+			within:   "/repo/internal/webster",
 			baseDir:  "/anything",
 			refs:     []scoutengine.Reference{prefixCollision},
 			wantRefs: nil,
