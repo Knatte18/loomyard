@@ -39,7 +39,9 @@ batches:
     commit_sha: e2a8b4b2c03797a28d29fcc186c600456444e87b
     verify_baseline_failures: []
   - name: doc-prose-v2-erasure
-    state: pending
+    state: running
+    implementer_session: c037f54e-d272-4ba7-8fd6-765078fc6b2c
+    start_sha: 2642b648b202b4ec8bd485446583209a2f4ffc65
   - name: go-comments-and-guards
     state: pending
     verify_baseline_failures: []
