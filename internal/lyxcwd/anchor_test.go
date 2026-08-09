@@ -227,3 +227,59 @@ func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 		t.Errorf("ResolveWorktree(%q).AnchorRel = %q; want %q", root, layout.AnchorRel, "backend")
 	}
 }
+
+// TestResolve_StaleAnchorMarkerHardErrors proves the read side refuses a hub that recorded its
+// subpath under the pre-rename marker name and never migrated. Falling back to "." there
+// re-anchors the whole repo at its root, after which fabric's own repair verb wires a second
+// junction set at that root — so both the gated and the gate-free resolver must refuse instead.
+func TestResolve_StaleAnchorMarkerHardErrors(t *testing.T) {
+	t.Parallel()
+
+	fix := lyxtest.CopyWarpHub(t)
+	root := fix.Hub
+
+	base, err := lyxcwd.Resolve(root)
+	if err != nil {
+		t.Fatalf("Resolve(root) error = %v; want nil", err)
+	}
+
+	boardDir := fabricengine.BoardDir(base.HubPath)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	stalePath := filepath.Join(boardDir, lyxcwd.StaleAnchorFileName)
+	if err := os.WriteFile(stalePath, []byte("backend\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", stalePath, err)
+	}
+
+	t.Run("Resolve refuses", func(t *testing.T) {
+		layout, err := lyxcwd.Resolve(root)
+		if layout != nil {
+			t.Errorf("Resolve(%q) returned non-nil layout; want nil", root)
+		}
+		if !errors.Is(err, lyxcwd.ErrStaleAnchorMarker) {
+			t.Errorf("Resolve(%q) error = %v; want wrapped ErrStaleAnchorMarker", root, err)
+		}
+	})
+
+	t.Run("ResolveWorktree refuses", func(t *testing.T) {
+		layout, err := lyxcwd.ResolveWorktree(root)
+		if layout != nil {
+			t.Errorf("ResolveWorktree(%q) returned non-nil layout; want nil", root)
+		}
+		if !errors.Is(err, lyxcwd.ErrStaleAnchorMarker) {
+			t.Errorf("ResolveWorktree(%q) error = %v; want wrapped ErrStaleAnchorMarker", root, err)
+		}
+	})
+
+	t.Run("renamed marker beside it resolves normally", func(t *testing.T) {
+		writeAnchor(t, base.HubPath, ".")
+		layout, err := lyxcwd.Resolve(root)
+		if err != nil {
+			t.Fatalf("Resolve(%q) error = %v; want nil once the renamed marker exists", root, err)
+		}
+		if layout.AnchorRel != "." {
+			t.Errorf("Resolve(%q).AnchorRel = %q; want %q", root, layout.AnchorRel, ".")
+		}
+	})
+}

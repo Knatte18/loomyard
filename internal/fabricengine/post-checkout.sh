@@ -53,7 +53,7 @@ fi
 
 # Under fabric's uniform branch scheme, the weft branch paired with WARP_BRANCH
 # is always WARP_BRANCH plus the "-weft" suffix — this literal is shell-side
-# data mirroring hubgeometry.WeftSuffix, not Go path construction, so it does
+# data mirroring internal/weftname.Suffix, not Go path construction, so it does
 # not trip the Go-source geometry-literal ban.
 EXPECTED_WEFT_BRANCH="${WARP_BRANCH}-weft"
 

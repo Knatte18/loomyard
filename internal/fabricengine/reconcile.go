@@ -58,6 +58,13 @@ const (
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
 
+	// ReconcileActionPortalRestored means the pair's junctions were healthy but its hub-level portal
+	// junction or launcher directory was missing and has been recreated.
+	// It is reported instead of ReconcileActionAlreadyHealthy for the same reason
+	// ReconcileActionStaleRemoved is: a consumer keying off Action must see that convergence altered
+	// the pair.
+	ReconcileActionPortalRestored ReconcileAction = "portal_restored"
+
 	// ReconcileActionStaleRemoved means the pair's junction/repoint check found nothing to add or
 	// re-point,
 	// but declarative stale-removal deleted at least one on-disk junction absent from the repo-wide
@@ -139,6 +146,10 @@ type ReconcileResult struct {
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
+	if err := refuseEmptyAnchorMarker(l); err != nil {
+		return ReconcileResult{}, err
+	}
+
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("list worktrees: %w", err)
@@ -178,41 +189,21 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		}
 
 		if !weftWorktreeExists {
-			pairedAction := t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
-			pr.Action = pairedAction
-		} else {
-			junctionHealthy, _ := checkJunctionHealth(warpLayout)
+			pr.Action = t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
+		}
 
-			if !junctionHealthy {
-				names, namesErr := RepoWiredNames(warpLayout)
-				if namesErr != nil {
-					pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
-					pr.Action = ReconcileActionJunctionRepointed
-				} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
-					pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
-					pr.Action = ReconcileActionJunctionRepointed
-				} else {
-					pr.Action = ReconcileActionJunctionRepointed
-					pr.Detail = junctionRepointedDetail(warpLayout)
-				}
-			} else {
-				pr.Action = ReconcileActionAlreadyHealthy
-			}
-
-			// Re-wire the operator-convenience _board junction unconditionally,
-			// regardless of junctionHealthy above: checkJunctionHealth only
-			// ever inspects the pathspec name-set, which _board is
-			// deliberately outside, so a pair whose *only* broken link is
-			// _board would report junctionHealthy == true and never reach
-			// here if this call sat inside the `!junctionHealthy` branch. A
-			// wiring failure is surfaced as a Detail note, never as an Error
-			// or a changed Action — this convenience link must never be able
-			// to downgrade a reconcile verdict.
-			if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
-				appendPrDetail(&pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
-			}
-
-			applyStaleRemoval(warpLayout, slug, &pr)
+		// A pair whose weft worktree was just recreated has its junctions still pointing at
+		// directories that vanished with it, so it falls through to the same wiring repair a pair
+		// with an existing weft gets — without it, reconcile reported success while leaving the
+		// pair unhealthy until a SECOND reconcile run, and the interim `pairs` reason was a raw
+		// EvalSymlinks error rather than a fabric verdict.
+		// The freshly-recreated pair keeps its own weft_recreated Action rather than being
+		// relabelled junction_repointed, so the report still names what actually happened;
+		// ReconcileActionRawAdopted deliberately does NOT fall through, since a raw-adopted pair is
+		// dormant by design and wired by the next pass.
+		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
+		if repairWiring {
+			t.repairPairWiring(warpLayout, slug, &pr, weftWorktreeExists)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -223,6 +214,37 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 	return result, nil
 }
 
+// refuseEmptyAnchorMarker aborts a reconcile pass when the hub's recorded lyx-anchor marker exists
+// but is empty after trimming.
+//
+// lyxcwd deliberately treats an empty marker as ABSENT, so `Resolve` falls back to the `"."` anchor
+// and succeeds at the warp worktree root — correct for a hub that never recorded one, and a trap
+// for a hub that did.
+// Reconcile is the only verb that wires junctions, so on a subpath-anchored hub whose marker was
+// truncated it is the verb that materialises a SECOND junction set at the repo root beside the
+// still-live set at the real anchor — exactly the damage lyxcwd.ErrStaleAnchorMarker exists to
+// prevent for the pre-rename spelling.
+// A present-but-empty marker is a corrupt record rather than an absent one, so the repair verb
+// refuses it here instead, leaving lyxcwd's own documented fallback untouched.
+//
+// A marker that cannot be read at all (including a genuinely absent one) is the legitimate
+// root-anchored case and passes.
+func refuseEmptyAnchorMarker(l *lyxcwd.Location) error {
+	markerPath := filepath.Join(BoardDir(l.HubPath), lyxcwd.AnchorFileName)
+
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"recorded anchor marker at %s is empty; write the repo's subpath into it (or %q for the repo root) in the hub's %s worktree and commit, then re-run — reconciling against an empty marker would wire a second junction set at the warp repo root",
+		markerPath, ".", BoardDirName)
+}
+
 // reconcileWarpBinding backfills the once-per-hub .lyx-warp record from the warp side's origin
 // remote, for every hub that predates the binding.
 // It runs exactly once per Reconcile call, after the pair loop, never per-pair, and it never
@@ -231,6 +253,16 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 // outcome instead.
 func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome, string) {
 	boardDir := BoardDir(l.HubPath)
+
+	// Re-seed the weft repo's operational excludes on every reconcile pass. The seeding is
+	// idempotent and otherwise only runs from a weft-git verb or a wiring call, so a hub wired by an
+	// earlier binary would never pick up a newly added artifact pattern — and the dirty-board gate
+	// below reads exactly the status those patterns govern, so a hub that never runs a weft-git verb
+	// would defer its backfill forever on an artifact the current binary excludes.
+	// A seeding failure is not fatal: the gate simply sees whatever git reports.
+	// Best-effort: the board worktree's artifact excludes are self-healing (every weft-git verb
+	// re-seeds them), so a failure here must not stop the binding backfill this function exists for.
+	_ = seedWeftArtifactExcludes(boardDir)
 
 	// git remote get-url is read-only, so it falls outside the Fabric Git Invariant's
 	// mutating-warp-git rule even though it targets the warp worktree.
@@ -278,9 +310,98 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
 }
 
+// repairPairWiring converges one pair's junctions: it re-wires whatever checkJunctionHealth reports
+// broken, always re-wires the operator-convenience _board link, and applies declarative
+// stale-removal.
+//
+// setAction distinguishes the two callers. A pair whose weft worktree already existed has no Action
+// yet, so this call assigns the verdict (already_healthy / junction_repointed). A pair whose weft
+// worktree this same pass recreated already carries weft_recreated, which names what actually
+// happened and must survive the repair, so that caller passes false and gets Detail notes only.
+//
+// The _board re-wire is unconditional with respect to junction health: checkJunctionHealth only ever
+// inspects the pathspec name-set, which _board is deliberately outside, so a pair whose only broken
+// link is _board reports healthy and would never be repaired if this call sat inside the
+// unhealthy branch. A wiring failure there is surfaced as a Detail note, never as an Error or a
+// changed Action — this convenience link must never be able to downgrade a reconcile verdict.
+func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
+	junctionHealthy, unhealthyReason := checkJunctionHealth(warpLayout)
+
+	if !junctionHealthy {
+		if setAction {
+			pr.Action = ReconcileActionJunctionRepointed
+		}
+		// Record WHAT was broken, not just that something was: "missing", "not a junction" and
+		// "points at the wrong weft" are different operator problems with the same repair.
+		appendPrDetail(pr, unhealthyReason)
+		names, namesErr := RepoWiredNames(warpLayout)
+		if namesErr != nil {
+			pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
+		} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
+			pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
+		} else {
+			appendPrDetail(pr, junctionRepointedDetail(warpLayout))
+		}
+	} else if setAction {
+		pr.Action = ReconcileActionAlreadyHealthy
+	}
+
+	if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
+		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
+	}
+
+	if restorePortalAndLaunchers(warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
+		pr.Action = ReconcileActionPortalRestored
+	}
+
+	applyStaleRemoval(warpLayout, slug, pr)
+}
+
+// restorePortalAndLaunchers recreates the pair's hub-level portal junction and launcher directory
+// when either is missing, and reports whether it restored anything.
+//
+// Both are part of the managed topology — Add creates them, Remove and Prune tear them down — but
+// nothing repaired them, so a pair whose portal had been deleted was reported already_healthy
+// forever and could only be recovered by removing and re-adding the pair.
+// The hub's prime worktree is skipped: it never had a portal or a launcher directory in the first
+// place, and Reconcile is a repair verb, not the place to start creating artefacts Clone does not.
+// A restore failure is a Detail note, never an Error or a changed Action: the portal is convenience
+// plumbing, and failing to rebuild it must not downgrade a verdict about the pair's git topology.
+func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
+	primeName, primeErr := PrimeName(warpLayout)
+	if primeErr != nil || slug == primeName {
+		return false
+	}
+
+	restored := false
+
+	if _, err := os.Lstat(PortalLink(warpLayout, slug)); os.IsNotExist(err) {
+		if portalErr := createPortal(warpLayout, slug); portalErr != nil {
+			appendPrDetail(pr, fmt.Sprintf("portal restore failed: %v", portalErr))
+		} else {
+			appendPrDetail(pr, "portal junction restored")
+			restored = true
+		}
+	}
+
+	if _, err := os.Stat(LauncherDir(warpLayout, slug)); os.IsNotExist(err) {
+		if launcherErr := writeLaunchers(warpLayout, slug); launcherErr != nil {
+			appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
+		} else {
+			appendPrDetail(pr, "launcher scripts restored")
+			restored = true
+		}
+	}
+
+	return restored
+}
+
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree
 // does not exist for the given warp worktree: recreate from the existing branch,
 // adopt a raw worktree, or report unmanaged.
+// A missing weft REPO (the prime weft checkout that holds the weft gitdir) is diagnosed first and
+// reported by name — every corrective branch below needs the weft repo, and without this check each
+// of them failed with a raw chdir error that named a path instead of the actual problem.
 func (t *Topology) reconcileMissingWeft(
 	warpLayout *lyxcwd.Location,
 	warpPath, weftPath, slug, warpBranch string,
@@ -288,8 +409,20 @@ func (t *Topology) reconcileMissingWeft(
 ) ReconcileAction {
 	weftBranch := WeftBranchName(warpBranch)
 
+	if !weftRepoExists(warpLayout) {
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
+		if weftRepoRootErr != nil {
+			pr.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
+		} else {
+			pr.Error = fmt.Sprintf("weft repo missing at %s; restore it or re-clone the hub", weftRepoRoot)
+		}
+		return ReconcileActionUnmanagedReported
+	}
+
 	if weftBranchExists(warpLayout, weftBranch) {
 		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout); weftRepoRootErr == nil {
+			// Bookkeeping only: a failed prune leaves the stale registration the adopt below
+			// re-reports, and must not abort the repair.
 			_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)
 		}
 
@@ -301,7 +434,7 @@ func (t *Topology) reconcileMissingWeft(
 		return ReconcileActionWeftRecreated
 	}
 
-	isRaw := isRawWarpWorktree(warpPath)
+	isRaw := isRawWarpWorktree(warpLayout)
 	if isRaw {
 		if err := createDormantWeftForRawWarp(warpLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw warp worktree: %v", err)
@@ -325,7 +458,7 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
-	_, _, exitCode, err := gitexec.RunGit(
+	_, adoptStderr, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", weftPath, branch},
 		weftRepoRoot,
 	)
@@ -333,15 +466,20 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 		return fmt.Errorf("git worktree add: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("adopt weft worktree %q for branch %q failed (git exit %d)", weftPath, branch, exitCode)
+		return fmt.Errorf("adopt weft worktree %q for branch %q failed (git exit %d): %s",
+			weftPath, branch, exitCode, strings.TrimSpace(adoptStderr))
 	}
 	return nil
 }
 
-// isRawWarpWorktree reports whether the worktree at warpPath lacks any lyx management
-// markers. A worktree is raw when it has no _lyx junction or directory.
-func isRawWarpWorktree(warpPath string) bool {
-	lyxPath := filepath.Join(warpPath, lyxdirs.LyxDirName)
+// isRawWarpWorktree reports whether warpLayout's worktree lacks any lyx management markers.
+// A worktree is raw when it has no _lyx junction or directory at its ANCHORED directory — the only
+// place fabric ever wires one.
+// Probing the worktree root instead misclassified every subpath-anchored, fully lyx-managed
+// worktree as raw the moment its weft side went missing, driving reconcile into raw-adoption where
+// a root-anchored hub in the identical state was reported unmanaged.
+func isRawWarpWorktree(warpLayout *lyxcwd.Location) bool {
+	lyxPath := filepath.Join(warpLayout.AnchorPath(), lyxdirs.LyxDirName)
 	_, err := os.Lstat(lyxPath)
 	return os.IsNotExist(err)
 }
@@ -355,7 +493,7 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
 
-	parentWeftOut, _, exitCode, err := gitexec.RunGit(
+	parentWeftOut, parentWeftStderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftRoot,
 	)
@@ -363,7 +501,8 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 		return fmt.Errorf("capture parent weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("capture parent weft branch failed with exit code %d", exitCode)
+		return fmt.Errorf("capture parent weft branch failed (git exit %d): %s",
+			exitCode, strings.TrimSpace(parentWeftStderr))
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 
@@ -374,7 +513,16 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 	return nil
 }
 
-// readBranch returns the current branch name for the worktree at dir via rev-parse.
+// readBranch returns the current branch name for the worktree at dir, reporting "HEAD" for a
+// detached HEAD exactly as `git rev-parse --abbrev-ref HEAD` does.
+//
+// The rev-parse spelling alone is not enough: it exits 128 on an UNBORN branch (a branch with zero
+// commits), which is the ordinary state of the weft primary immediately after a clone against an
+// empty remote — the documented first-ever-setup path. Reporting that as an error made a
+// just-cloned hub describe itself as out of sync and made Healthy fail loudly at loom preflight
+// until the first sync landed a commit. `git branch --show-current` answers correctly on an unborn
+// branch, so it is consulted as the fallback, and only a genuinely branch-less HEAD falls through
+// to an error.
 func readBranch(dir string) (string, error) {
 	out, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
@@ -383,10 +531,25 @@ func readBranch(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("rev-parse: %w", err)
 	}
-	if exitCode != 0 {
-		return "", fmt.Errorf("rev-parse exited %d", exitCode)
+	if exitCode == 0 {
+		return strings.TrimSpace(out), nil
 	}
-	return strings.TrimSpace(out), nil
+
+	unbornOut, _, unbornExit, unbornErr := gitexec.RunGit(
+		[]string{"branch", "--show-current"},
+		dir,
+	)
+	if unbornErr != nil {
+		return "", fmt.Errorf("branch --show-current: %w", unbornErr)
+	}
+	if unbornExit != 0 {
+		return "", fmt.Errorf("rev-parse exited %d and branch --show-current exited %d", exitCode, unbornExit)
+	}
+	branch := strings.TrimSpace(unbornOut)
+	if branch == "" {
+		return "", fmt.Errorf("rev-parse exited %d and no current branch is set", exitCode)
+	}
+	return branch, nil
 }
 
 // checkJunctionHealth verifies that every junction in WarpJunctionsHere(warpLayout, names)
@@ -446,13 +609,24 @@ func junctionRepointedDetail(warpLayout *lyxcwd.Location) string {
 	return "junction re-pointed: " + strings.Join(parts, "; ")
 }
 
-// scanOnDiskJunctionNames lists the names of link entries directly under
-// filepath.Join(worktreeRoot, relPath), excluding hub-reserved names
-// (_board/_portals/_launchers). Returns (nil, err) if the directory
-// cannot be read; callers must treat a scan error as "skip removal", not
-// as "the on-disk set is empty".
-func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
-	dir := filepath.Join(worktreeRoot, relPath)
+// scanOnDiskJunctionNames lists the names of the fabric-owned link entries directly under the slug
+// worktree's anchored directory, excluding hub-reserved names (_board/_portals/_launchers).
+// Returns (nil, err) if the directory cannot be read;
+// callers must treat a scan error as "skip removal", not as "the on-disk set is empty".
+//
+// Ownership, not merely link-ness, is the membership test, and it is load-bearing rather than
+// defensive: the anchored directory is ordinary warp-repo content, so a hand-authored symlink
+// checked into the user's repo (`latest -> v2`, `README.md -> docs/README.md`) sits right beside
+// fabric's junctions.
+// Treating every link as fabric's made `applyStaleRemoval` delete such a symlink out of the user's
+// working tree, which is exactly the "fabric never deletes what might be user content" rule
+// seedLyxJunction and unseedJunctionRecords already enforce everywhere else.
+// A link is fabric-owned only when it resolves inside the paired weft worktree or onto the hub's
+// board directory — the only two targets any fabric junction is ever created with.
+// A link that cannot be resolved at all is deliberately NOT claimed: an unresolvable link cannot be
+// proven fabric's, and unseedJunctionRecords already refuses to remove one for the same reason.
+func scanOnDiskJunctionNames(l *lyxcwd.Location, slug string) ([]string, error) {
+	dir := filepath.Join(WorktreePath(l, slug), l.AnchorRel)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -468,15 +642,48 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 		if reserved[entry.Name()] {
 			continue
 		}
-		isLink, err := fslink.IsLink(filepath.Join(dir, entry.Name()))
+		link := filepath.Join(dir, entry.Name())
+		isLink, err := fslink.IsLink(link)
 		if err != nil {
 			return nil, err
 		}
-		if isLink {
+		if !isLink {
+			continue
+		}
+		owned, err := linkIsFabricOwned(l, slug, link)
+		if err != nil {
+			return nil, err
+		}
+		if owned {
 			names = append(names, entry.Name())
 		}
 	}
 	return names, nil
+}
+
+// linkIsFabricOwned reports whether the link at linkPath resolves to a location fabric itself
+// would have pointed a junction at: somewhere inside the slug's paired weft worktree, or the hub's
+// board directory.
+// It returns (false, nil) — never an error — for a link whose target does not resolve, so an
+// unreadable or dangling link is left alone rather than swept.
+func linkIsFabricOwned(l *lyxcwd.Location, slug, linkPath string) (bool, error) {
+	resolved, err := fslink.PointsTo(linkPath)
+	if err != nil {
+		return false, nil
+	}
+	resolved = filepath.Clean(resolved)
+
+	for _, root := range []string{WeftWorktreePath(l, slug), BoardDir(l.HubPath)} {
+		normalizedRoot, rootErr := filepath.EvalSymlinks(root)
+		if rootErr != nil {
+			continue
+		}
+		normalizedRoot = filepath.Clean(normalizedRoot)
+		if resolved == normalizedRoot || strings.HasPrefix(resolved, normalizedRoot+string(filepath.Separator)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // appendPrDetail appends text to pr.Detail, joining on "; " when a prior
@@ -501,7 +708,7 @@ func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 		return
 	}
 
-	onDisk, err := scanOnDiskJunctionNames(warpLayout.WorktreePath(), warpLayout.AnchorRel)
+	onDisk, err := scanOnDiskJunctionNames(warpLayout, slug)
 	if err != nil {
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return

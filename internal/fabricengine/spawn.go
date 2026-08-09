@@ -4,8 +4,13 @@
 // internal/fabriccli.spawnPush: it launches a detached `lyx fabric --warp-path <abs> --weft-path
 // <abs> push` child (either flag omitted when its path is empty) that re-enters the fabric CLI's
 // bypass mode and pushes whichever side(s) were supplied.
-// PushWarpAt is the warp-side sibling of weftgit.go's PushWeftAt — the synchronous, no-Fabric-
-// instance push primitive the detached child's bypass handler calls for the warp side.
+// PushWarpAt is the warp-side sibling of weftgit.go's pushWeftAt — the synchronous, no-Fabric-
+// instance push primitive for the warp side.
+// It has no production caller today: the detached child's bypass handler (internal/fabriccli's
+// `push` RunE) drives CoalescePushBothAt instead, which pushes both sides through PushRebaseFree
+// under one absorbing lock rather than calling either per-side primitive.
+// It is retained as pushWeftAt's symmetric counterpart, and the distinction matters — see PushWarpAt's
+// own doc comment for the operational consequence.
 
 package fabricengine
 
@@ -70,9 +75,17 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 }
 
 // PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric instance and no weft path
-// involved — the warp-side analog of weftgit.go's PushWeftAt, and the detached push child's
-// bypass-push entry point for the warp side (see fabriccli's --warp-path bypass flag).
-// Gating matches PushWeftAt exactly.
+// involved — the warp-side analog of weftgit.go's pushWeftAt.
+// Gating matches pushWeftAt exactly.
+//
+// It has NO production caller. The detached push child's bypass handler drives CoalescePushBothAt,
+// not this function, so nothing in shipped fabric ever runs gitrepo.PushCoalesced against a warp
+// worktree.
+// That is worth stating rather than leaving to a reader to rediscover: PushCoalesced writes its
+// single-pusher lock file at the repo root, and while the weft repo excludes that artifact through
+// seedWeftArtifactExcludes, the warp repo has no such entry — so wiring this function into a live
+// path would start leaving untracked residue in the user's own repo, which fabric's whole junction
+// design exists to avoid. Any future caller must seed the warp-side exclude first.
 func PushWarpAt(warpPath string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil

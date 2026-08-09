@@ -135,3 +135,48 @@ This enumeration is the single place an operator learns what is pickable — if 
   When something noteworthy happens — a method gap found and fixed, an operator norm worth remembering, a caveat like "the round-agent's model may not be what the UI appears to show" — fold it into this same file rather than starting a second one;
   a single up-to-date file beats two that can silently drift out of sync.
   The operator can ask for it to be refreshed or expanded at any point, not just after a round.
+
+## Verification rules the fabric campaign added (apply these every round)
+
+These are not optional refinements — each one exists because its absence produced a wrong conclusion.
+See `README.md`, "the fabric campaign", for the incidents behind them.
+
+**Prove the scenario reached the code before believing a clean result.**
+When a live re-drive comes back green, establish that it executed the mechanism it claims to exercise — sabotage the mechanism and confirm the scenario now fails, or instrument the write and confirm it happened.
+A green run that never entered the code path is indistinguishable from a fix, and reporting one as the other is the worst error a verifier can make.
+This has caught out both an orchestrator and a round in the same campaign;
+assume it will catch you.
+
+**Pre-count any ground truth BEFORE spawning the round, into a file the round never sees.**
+A total below the pre-count is the truncation signal;
+above it is the correct direction.
+Record what the counting pattern CANNOT see — seam-routed calls, comment lines carrying the same identifier — so a later exact match is not mistaken for agreement when it should have been a correction.
+Expect to be corrected by the round; that is the round working.
+
+**Never accept a green claim that does not name its test-tier tag.**
+Re-run every gate yourself and name the tag in your own record.
+
+**Sabotage-prove every new regression test yourself.**
+Revert the production hunk, watch the test fail *at the intended assertion*, restore, confirm an empty diff.
+A test you did not watch fail is not yet proven.
+Read the neighbouring code while you prepare each sabotage — that habit found a BLOCKING data-loss bug three dedicated review rounds had missed.
+
+**Re-drive every BLOCKING fix live, in its strongest mode.**
+For a destructive verb that means with `--force`.
+The property worth confirming is that force discards work the operator might want, and never deletes something that was never the tool's.
+
+**Require a sequential control and a second-hub reproduction for every concurrency claim.**
+The control is what proves concurrency caused the corruption;
+the reproduction is what separates a finding from an anecdote.
+
+**Never trust the round's self-verdict, and never characterise its work without reading its "what was tested" section.**
+Across two campaigns, every round that self-reported "ready" before the final one was wrong.
+
+**Derive the next round's assignment from what your verification leaves standing.**
+"Review it again" is the assignment that makes a campaign circle.
+When findings start repeating a shape, switch the round from reviewing to *enumerating that shape*;
+when the countable classes are closed, switch it to regions nothing has ever driven.
+
+**State the limits in the convergence verdict.**
+Name what the converged round did not cover, and what its method failed to demonstrate about itself.
+A campaign that ends by claiming more than it proved teaches the next one to do the same.

@@ -20,9 +20,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -433,6 +435,129 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	}
 }
 
+// TestPull_NoWeftUpstreamIsACleanNoOp guards the freshly-bootstrapped-hub case: the suffixed weft
+// primary is created locally at clone time and gains an upstream only when the first push lands, so
+// until then Pull's weft step must skip as a vacuous success — not surface git's "no tracking
+// information" exit — and the warp side must still be processed.
+func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
+	fixturesDir := t.TempDir()
+	warpPath := newPlainWarpRepo(t)
+	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
+	lyxtest.MustRun(t, warpPath, "git", "push", "origin", "main")
+
+	// A weft repo whose branch has no upstream at all — the post-bootstrap state before any push.
+	weftPath := t.TempDir()
+	lyxtest.MustRun(t, weftPath, "git", "init", "-q", "-b", "main-weft")
+	lyxtest.MustRun(t, weftPath, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, weftPath, "git", "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(weftPath, "seed.txt"), []byte("weft"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftPath, "git", "add", ".")
+	lyxtest.MustRun(t, weftPath, "git", "commit", "-q", "-m", "init")
+
+	f := newFabric(t, warpPath, weftPath)
+
+	// Advance the warp remote so the warp half has real work to do.
+	clone := filepath.Join(fixturesDir, "warp-clone-noupstream")
+	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
+	lyxtest.MustRun(t, clone, "git", "push")
+
+	result, err := f.Pull(SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v; want a clean no-op weft skip", err)
+	}
+	if !result.WeftPulled {
+		t.Errorf("Pull() WeftPulled = false; want true (vacuous no-op success)")
+	}
+	if !result.WarpAdvanced || result.NewWarpHEAD != ffSHA {
+		t.Errorf("Pull() WarpAdvanced=%v NewWarpHEAD=%q; want warp advanced to %q", result.WarpAdvanced, result.NewWarpHEAD, ffSHA)
+	}
+}
+
+// TestPull_StaleIndexRebuiltBeforeAnchorWalk guards the false ErrNoSurvivingAnchor a stale
+// correspondence index produced: a re-cloned hub's per-pair index can be empty (or missing older
+// entries) while the adopted weft trailer history — the sole source of truth — still carries a
+// surviving anchor.
+// Pull must rebuild the index from trailers before the anchor walk and reconcile, never abort.
+func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
+
+	// Simulate the re-cloned hub: the trailer history stays, the local index cache does not.
+	indexPath, err := f.corrIndexPath()
+	if err != nil {
+		t.Fatalf("corrIndexPath: %v", err)
+	}
+	if err := os.Remove(indexPath); err != nil {
+		t.Fatalf("remove correspondence index: %v", err)
+	}
+
+	// Rewrite upstream so warpSHAs[1] dies but warpSHAs[0] survives as the nearest anchor.
+	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
+
+	result, err := f.Pull(SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v; want a reconcile via the rebuilt index, not an abort", err)
+	}
+	if !result.Reconciled {
+		t.Fatalf("Pull() Reconciled = false; want true — the surviving trailer anchor was not found")
+	}
+	if result.AnchorWarpSHA != warpSHAs[0] {
+		t.Errorf("Pull() AnchorWarpSHA = %q; want the surviving %q", result.AnchorWarpSHA, warpSHAs[0])
+	}
+	if result.AnchorWeftSHA != weftSHAs[0] {
+		t.Errorf("Pull() AnchorWeftSHA = %q; want %q", result.AnchorWeftSHA, weftSHAs[0])
+	}
+}
+
+// TestPull_DirtyWarpRefusesBeforeMovingWarp guards the data-loss hole where Pull's ResetHard
+// discarded uncommitted tracked warp changes on a routine fast-forward: with a modified tracked file
+// in the warp worktree and an advanced remote, Pull must return ErrWarpDirty, leave warp HEAD
+// unmoved, and leave the modification intact on disk.
+func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, warpPath, bareDir, _, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
+
+	preWarpHEAD := currentSHA(t, warpPath)
+
+	clone := filepath.Join(fixturesDir, "warp-clone-dirty-ff")
+	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	commitPlain(t, clone, "ff-file.txt", "ff change")
+	lyxtest.MustRun(t, clone, "git", "push")
+
+	// Dirty a TRACKED warp file — the exact state ResetHard would destroy.
+	dirtyFile := filepath.Join(warpPath, "README")
+	const dirtyContent = "uncommitted local edit that must survive pull"
+	if err := os.WriteFile(dirtyFile, []byte(dirtyContent), 0o644); err != nil {
+		t.Fatalf("dirty tracked file: %v", err)
+	}
+
+	result, err := f.Pull(SyncOptions{})
+	if !errors.Is(err, ErrWarpDirty) {
+		t.Fatalf("Pull() error = %v; want ErrWarpDirty", err)
+	}
+	if result.WarpAdvanced {
+		t.Errorf("Pull() WarpAdvanced = true; want false (refused before moving warp)")
+	}
+
+	if got := currentSHA(t, warpPath); got != preWarpHEAD {
+		t.Errorf("warp HEAD after refused Pull() = %q; want unchanged %q", got, preWarpHEAD)
+	}
+	data, readErr := os.ReadFile(dirtyFile)
+	if readErr != nil {
+		t.Fatalf("read dirtied file after Pull(): %v", readErr)
+	}
+	if string(data) != dirtyContent {
+		t.Errorf("uncommitted warp edit was destroyed by Pull(): got %q; want %q", data, dirtyContent)
+	}
+}
+
 // TestPull_EmptyIndexNoDrift covers a non-fast-forward remote with an empty correspondence index
 // (warp commits that were never synced to weft at all): warp must still advance, with no reconcile
 // commit written.
@@ -501,5 +626,62 @@ func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 
 	if got := currentSHA(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after failed Pull() = %q; want unchanged %q (warp must never be touched)", got, preWarpHEAD)
+	}
+}
+
+// TestPull_IdentifiesPatternResidueUnderSubpathAnchor is the subpath-anchored counterpart to
+// TestPull_IdentifiesPatternResidue: on a hub anchored at "backend", PATTERN content lives at
+// backend/_lyx/PATTERN.md and never at the weft worktree root, so a root-relative residue pathspec
+// reported an empty residue — telling a caller "nothing needs review" about exactly the commit that
+// does.
+func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, warpPath, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
+
+	// Record a subpath anchor for this pair the same way a real hub does: the marker at the hub's
+	// board root, which lyxcwd.ResolveWorktree reads back for AnchorRel.
+	const anchor = "backend"
+	boardDir := BoardDir(filepath.Dir(warpPath))
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", boardDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
+		t.Fatalf("write anchor marker: %v", err)
+	}
+
+	anchoredLyxDir := filepath.Join(weftFixture.WeftPath, anchor, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(anchoredLyxDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", anchoredLyxDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(anchoredLyxDir, "PATTERN.md"), []byte("anchored pattern content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "anchored pattern residue commit")
+	anchoredPatternSHA := currentSHA(t, weftFixture.WeftPath)
+
+	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
+
+	result, err := f.Pull(SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	if !result.Reconciled {
+		t.Fatalf("Pull() Reconciled = false; want true")
+	}
+
+	var found *PatternResidueEntry
+	for i := range result.PatternResidue {
+		if result.PatternResidue[i].WeftSHA == anchoredPatternSHA {
+			found = &result.PatternResidue[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("Pull() PatternResidue = %+v; want an entry for the anchored PATTERN.md commit %q",
+			result.PatternResidue, anchoredPatternSHA)
+	}
+	wantPath := anchor + "/" + pattern.PathspecFile
+	if !slices.Contains(found.Paths, wantPath) {
+		t.Errorf("PatternResidue entry Paths = %v; want it to contain %q", found.Paths, wantPath)
 	}
 }

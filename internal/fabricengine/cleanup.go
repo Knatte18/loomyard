@@ -2,7 +2,9 @@
 // corresponding warp worktree sibling and deletes them according to a flag matrix.
 //
 // Flag matrix:
-//   - apply == false                → dry-run/report only; nothing is deleted.
+//   - apply == false                → dry-run/report only; nothing is deleted. The gate verdict is
+//     still computed, so a dry run's Protected flags match exactly what the same flags plus --apply
+//     would do.
 //   - apply == true && !force       → delete non-gate-protected orphan branches;
 //     task branches where raddleFoldedBack returns false are skipped (protected).
 //   - apply == true && force == true → also delete gate-protected task branches.
@@ -32,8 +34,8 @@
 // accepts — so a directory-name comparison would misclassify it as a deletable orphan
 // and delete the very branch board's reserved weft:main branch requires to stay
 // permanent, distinct from it. Comparing
-// against live warp *branches* protects "main-weft" (the primary warp worktree is on
-// "main") and every task pair, with no BranchPrefix juggling.
+// against live warp *branches* protects every task pair with no BranchPrefix juggling — but NOT the
+// primary weft branch, which needs the explicit carve-out described below.
 //
 // Board needs no explicit exclusion: its weft:main branch is the warp's own
 // unsuffixed default branch (e.g. "main"), which never matches the
@@ -41,6 +43,12 @@
 // as a Cleanup candidate in the first place — not because of any
 // repo-level carve-out, but because Cleanup only ever walks weft branches
 // and compares them against the set of known warp worktree slugs.
+//
+// The PRIMARY WEFT branch ("main-weft") does need an explicit carve-out, and gets one via
+// primaryWeftBranch. Branch-space liveness protects it only while the prime warp worktree happens to
+// sit on the repo's default branch, which `lyx fabric checkout` exists to change; one checkout onto
+// any other branch promoted the durable weft line to a deletable orphan, and
+// `cleanup --apply --force` then deleted it along with any unpushed weft commit it alone carried.
 
 package fabricengine
 
@@ -87,11 +95,18 @@ func raddleFoldedBack(_ string) bool {
 // Cleanup finds weft branches with no corresponding warp worktree sibling and reports or deletes
 // them per the flag matrix: apply gates whether any deletion happens, force bypasses the
 // _lyx/raddle/ merge-back gate, checked-out branches are always protected.
+// The repo's primary weft branch is protected unconditionally, in every mode — see
+// primaryWeftBranch for why branch-space liveness alone cannot protect it.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
 	// Enumerate warp worktrees using git-registered entries only.
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list warp worktrees: %w", err)
+	}
+
+	primaryWeft, err := primaryWeftBranch(l)
+	if err != nil {
+		return CleanupResult{}, err
 	}
 
 	// Build the set of live warp branches; unreadable branches (stale registrations) skip.
@@ -136,8 +151,28 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 			Branch: branch,
 		}
 
+		if branch == primaryWeft {
+			// The repo's primary weft line, never an orphan however the prime worktree is
+			// currently checked out.
+			entry.Protected = true
+			result.Entries = append(result.Entries, entry)
+			continue
+		}
+
 		if weftBranch.WorktreePath != "" {
 			// Checked-out branch: always protected, never deletable.
+			entry.Protected = true
+			result.Entries = append(result.Entries, entry)
+			continue
+		}
+
+		// The gate is evaluated in BOTH modes, before the apply check rather than after it. A dry
+		// run exists to answer "what would --apply do with these same flags", and evaluating the
+		// gate only under --apply made it answer a different question: every orphan branch is
+		// gate-protected while raddleFoldedBack is conservative, so a dry run reported branches as
+		// deletable that --apply then protected.
+		folded := raddleFoldedBack(branch)
+		if !folded && !force {
 			entry.Protected = true
 			result.Entries = append(result.Entries, entry)
 			continue
@@ -148,19 +183,41 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 			continue
 		}
 
-		// Check gate unless --force is set.
-		folded := raddleFoldedBack(branch)
-		if !folded && !force {
-			entry.Protected = true
-			result.Entries = append(result.Entries, entry)
-			continue
-		}
-
 		entry.Deleted = deleteWeftBranch(l, branch, &entry)
 		result.Entries = append(result.Entries, entry)
 	}
 
 	return result, nil
+}
+
+// primaryWeftBranch returns the weft branch paired with the repo's primary warp branch — the one
+// weft line Cleanup must never enumerate as an orphan.
+//
+// The source is the branch `<Hub>/_board` is checked out on: ensureBoardWorktree materialises that
+// worktree on the warp's own unsuffixed default branch and nothing moves it afterwards, so it is the
+// hub's durable record of which warp branch is primary.
+// Branch-space liveness cannot answer this on its own, and the difference is a data-loss bug rather
+// than a nicety: liveness asks whether some warp worktree is CURRENTLY checked out on the paired
+// warp branch, so a single `lyx fabric checkout <other>` on the prime pair makes `main` not-live and
+// promotes `main-weft` — the durable `_lyx` line, unpushed commits included — to a deletable orphan.
+//
+// A hub whose board branch cannot be read is refused rather than swept: Cleanup's deletions are
+// irreversible, so an unreadable primary is the one direction that must fail closed.
+func primaryWeftBranch(l *lyxcwd.Location) (string, error) {
+	boardDir := BoardDir(l.HubPath)
+	boardBranch, err := readBranch(boardDir)
+	if err != nil {
+		return "", fmt.Errorf(
+			"cannot determine the repo's primary weft branch from the %s worktree at %s (%w); refusing to enumerate orphan weft branches",
+			BoardDirName, boardDir, err)
+	}
+	boardBranch = strings.TrimSpace(boardBranch)
+	if boardBranch == "" || boardBranch == "HEAD" {
+		return "", fmt.Errorf(
+			"the %s worktree at %s is not on a named branch; refusing to enumerate orphan weft branches",
+			BoardDirName, boardDir)
+	}
+	return WeftBranchName(boardBranch), nil
 }
 
 // weftBranchCheckout pairs a weft branch name with its checked-out worktree path if any.
@@ -175,7 +232,7 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	out, _, exitCode, err := gitexec.RunGit(
+	out, listStderr, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "--format=%(refname:short)\x1f%(worktreepath)"},
 		weftRepoRoot,
 	)
@@ -183,7 +240,7 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 		return nil, fmt.Errorf("git branch: %w", err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("list weft branches failed (git exit %d)", exitCode)
+		return nil, fmt.Errorf("list weft branches failed (git exit %d): %s", exitCode, strings.TrimSpace(listStderr))
 	}
 
 	raw := strings.TrimSpace(out)
@@ -212,7 +269,7 @@ func deleteWeftBranch(l *lyxcwd.Location, branch string, entry *CleanupBranchEnt
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
 		return false
 	}
-	_, _, exitCode, err := gitexec.RunGit(
+	_, deleteStderr, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "-D", branch},
 		weftRepoRoot,
 	)
@@ -221,7 +278,8 @@ func deleteWeftBranch(l *lyxcwd.Location, branch string, entry *CleanupBranchEnt
 		return false
 	}
 	if exitCode != 0 {
-		entry.Error = fmt.Sprintf("delete weft branch %q failed (git exit %d)", branch, exitCode)
+		entry.Error = fmt.Sprintf("delete weft branch %q failed (git exit %d): %s",
+			branch, exitCode, strings.TrimSpace(deleteStderr))
 		return false
 	}
 	return true

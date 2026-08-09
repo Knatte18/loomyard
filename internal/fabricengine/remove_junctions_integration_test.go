@@ -20,11 +20,14 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
@@ -94,5 +97,99 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	}
 	if _, statErr := os.Lstat(nestedPatternLink); !os.IsNotExist(statErr) {
 		t.Errorf("nested _extra junction %s still exists after Remove", nestedPatternLink)
+	}
+}
+
+// TestRemove_SweepsAnchoredLinksOnSubpathHub proves Remove's link sweep reads the pair's ANCHORED
+// directory rather than the worktree root.
+// On a subpath-anchored hub the root holds no junction at all — every one of them sits at
+// <worktree>/<anchorRel> — so a root sweep saw nothing, left the links behind, and reported
+// LinksRemoved: 0 while three junctions existed one directory down.
+func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "remove-anchored-sweep"
+	const anchor = "backend"
+
+	fixture := newFabricFixture(t)
+	// PrimeName resolves the hub from the anchored directory, so it must exist in the prime
+	// worktree before the anchor is recorded — the same precondition CloneHub's own subpath guard
+	// enforces against the freshly cloned warp.
+	if err := os.MkdirAll(filepath.Join(fixture.Layout.WorktreePath(), anchor), 0o755); err != nil {
+		t.Fatalf("create anchored directory in prime: %v", err)
+	}
+	seedAnchorMarker(t, fixture.Layout.HubPath, anchor)
+
+	l, err := lyxcwd.ResolveWorktree(fixture.Layout.WorktreePath())
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree: %v", err)
+	}
+	if l.AnchorRel != anchor {
+		t.Fatalf("fixture AnchorRel = %q; want %q — the anchored geometry this test needs is not in place", l.AnchorRel, anchor)
+	}
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	anchorDir := filepath.Join(fabricengine.WorktreePath(l, slug), anchor)
+	lyxLink := filepath.Join(anchorDir, lyxdirs.LyxDirName)
+	if isLink, linkErr := fslink.IsLink(lyxLink); linkErr != nil || !isLink {
+		t.Fatalf("setup: %s is not a junction (isLink=%v err=%v)", lyxLink, isLink, linkErr)
+	}
+
+	result, err := topology.Remove(l, slug, true)
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	// Exactly the two wired junctions (_lyx, .lyx) plus the _board convenience link — an exact
+	// count, not merely non-zero: the _board link is removed on a separate path and contributes 1
+	// on its own, so a non-zero assertion stayed green with the anchored sweep entirely disabled.
+	if result.LinksRemoved != 3 {
+		t.Errorf("LinksRemoved = %d; want 3 (_lyx, .lyx, _board at the anchored directory)", result.LinksRemoved)
+	}
+}
+
+// TestRemove_FailedWeftTeardownIsReported locks the weft worktree so `git worktree remove --force`
+// refuses it, and asserts Remove reports the surviving weft worktree instead of returning success —
+// the silent `_ =` swallow used to leave a half-torn pair behind with an ok verdict.
+func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "remove-locked-pair"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	weftTarget := fabricengine.WeftWorktreePath(l, slug)
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "lock", weftTarget)
+
+	_, err := topology.Remove(l, slug, true)
+	if err == nil {
+		t.Fatal("Remove() with a locked weft worktree error = nil; want the surviving weft worktree reported")
+	}
+	if !strings.Contains(err.Error(), "weft teardown failed") {
+		t.Errorf("Remove() error = %q; want it to report the failed weft teardown", err)
+	}
+	if _, statErr := os.Stat(weftTarget); statErr != nil {
+		t.Fatalf("test premise broken: locked weft worktree %s was removed anyway: %v", weftTarget, statErr)
+	}
+}
+
+// seedAnchorMarker records anchor as the hub-wide subpath the same way a real clone does, by writing
+// the marker into the hub's board directory.
+func seedAnchorMarker(t *testing.T, hubPath, anchor string) {
+	t.Helper()
+	boardDir := fabricengine.BoardDir(hubPath)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
+		t.Fatalf("write anchor marker: %v", err)
 	}
 }

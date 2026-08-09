@@ -118,8 +118,15 @@ func TestList(t *testing.T) {
 }
 
 // TestList_NotAGitRepo asserts that calling List against a directory that is not inside any git
-// repository fails with an error composed from local context (the source directory and git's exit
-// code), not git's raw stderr text.
+// repository fails with an error that carries BOTH local context (the source directory and git's
+// exit code) AND git's own explanation.
+//
+// The earlier rule here was that git's stderr must never appear. That rule left the operator with a
+// bare exit number as the sole account of a git failure — a live round watched two simultaneous
+// `lyx fabric add` calls report "failed (git exit 255)" with git's actual reason discarded — while
+// nineteen other RunGit sites in this same package already printed stderr. Local context alone is
+// not a diagnosis;
+// the context is what tells the operator WHERE, and git's stderr is what tells them WHY.
 func TestList_NotAGitRepo(t *testing.T) {
 	t.Parallel()
 
@@ -133,8 +140,9 @@ func TestList_NotAGitRepo(t *testing.T) {
 	if !strings.Contains(err.Error(), wantSubstr) {
 		t.Errorf("List(%q) error = %q; want substring %q (source dir)", notARepo, err.Error(), wantSubstr)
 	}
-	if strings.Contains(err.Error(), "fatal:") {
-		t.Errorf("List(%q) error = %q; want no %q substring (raw git stderr leak)", notARepo, err.Error(), "fatal:")
+	if !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("List(%q) error = %q; want git's own explanation included, not just an exit code",
+			notARepo, err.Error())
 	}
 	if entries != nil {
 		t.Errorf("List(%q) entries = %v; want nil", notARepo, entries)

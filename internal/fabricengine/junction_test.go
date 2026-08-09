@@ -144,3 +144,31 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 		}
 	}
 }
+
+// TestExcludePatternFor_AnchorsToRepoRoot pins the anchored git-exclude pattern in Tier 1: a bare
+// name matches at every depth in gitignore semantics, so the pattern must be slash-anchored at the
+// repo root and carry the anchor subpath — the integration-tagged exclude tests prove the on-disk
+// file, but an untagged run never compiles them.
+func TestExcludePatternFor_AnchorsToRepoRoot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		anchorRel string
+		junction  string
+		want      string
+	}{
+		{"RootAnchor", ".", "_lyx", "/_lyx"},
+		{"SubpathAnchor", "backend", "_lyx", "/backend/_lyx"},
+		{"SubpathAnchorDotLyx", "backend", ".lyx", "/backend/.lyx"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := excludePatternFor(tt.anchorRel, tt.junction); got != tt.want {
+				t.Errorf("excludePatternFor(%q, %q) = %q; want %q", tt.anchorRel, tt.junction, got, tt.want)
+			}
+		})
+	}
+}

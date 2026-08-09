@@ -16,9 +16,11 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -132,5 +134,35 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	forked := fabricengine.WeftBranchName(targetBranch)
 	if branchExistsAt(t, mustWeftRepoRoot(t, l), forked) {
 		t.Errorf("forked weft branch %q survived the rollback; want it deleted (orphan branch stranded by fabric's own failed operation)", forked)
+	}
+}
+
+// TestCheckout_WarpSwitchFailureCarriesGitStderr proves a failing warp switch surfaces git's own
+// explanation rather than only an exit code. The everyday cause is a branch already checked out in
+// another worktree, and "git exit 128" alone leaves the operator nothing to act on.
+func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "checkout-stderr"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+	}
+
+	// The prime worktree holds primeBranch, so switching the task worktree onto it must fail.
+	primeBranch := currentBranchOf(t, l.WorktreePath())
+	_, err = topology.Checkout(warpLayout, primeBranch)
+	if err == nil {
+		t.Fatalf("Checkout(%q) = nil error; want a refusal (the branch is checked out elsewhere)", primeBranch)
+	}
+	if !strings.Contains(err.Error(), primeBranch) || !strings.Contains(err.Error(), "worktree") {
+		t.Errorf("Checkout error = %q; want it to carry git's own explanation naming the branch and the other worktree", err.Error())
 	}
 }

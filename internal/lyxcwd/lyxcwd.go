@@ -117,7 +117,11 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	// otherwise resolve to a different place depending on where the user
 	// happened to stand.
 	anchorRel := "."
-	if anchor, found := readRecordedAnchor(hubPath); found {
+	anchor, found, err := readRecordedAnchor(hubPath)
+	if err != nil {
+		return nil, err
+	}
+	if found {
 		anchorRel = anchor
 	}
 

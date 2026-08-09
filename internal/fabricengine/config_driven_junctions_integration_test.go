@@ -61,8 +61,9 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 
 	lines := readExcludeLines(t, l, slug)
 	for _, name := range names {
-		if !containsLine(lines, name) {
-			t.Errorf(".git/info/exclude does not contain %q after WireJunctions: %v", name, lines)
+		pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, name)
+		if !containsLine(lines, pattern) {
+			t.Errorf(".git/info/exclude does not contain %q after WireJunctions: %v", pattern, lines)
 		}
 	}
 

@@ -7,13 +7,12 @@ package fabricengine
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // AddOptions controls optional behaviour for Add.
@@ -36,36 +35,18 @@ type AddResult struct {
 // It validates the slug, creates both worktrees, wires junctions, and pushes branches, rolling back
 // all changes on any failure.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
-	// (0) Slug validation. A slug is by contract a single path component:
-	// every consumer re-derives it from the warp worktree path via
-	// filepath.Base (status, reconcile, prune) and the hub scan only looks at
-	// the hub's top level, so a separator-containing slug would create a pair
-	// the rest of the module cannot re-identify. Reject both separators on
-	// every platform — a slash-free contract must not depend on GOOS.
-	if strings.TrimSpace(slug) == "" {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not be empty", slug)
+	// (0) Slug validation, shared with Remove via slug.go's single validator.
+	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
+		return AddResult{}, err
 	}
 
-	if strings.ContainsAny(slug, `/\`) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must be a single path component (no '/' or '\\')", slug)
-	}
-
-	// Reject slugs ending with weft suffix to prevent collision with weft worktree directory naming.
-	if strings.HasSuffix(slug, weftname.Suffix) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: a slug must not end in %q (that suffix is reserved for weft worktrees)", slug, weftname.Suffix)
-	}
-
-	// Reject reserved hub-level geometry names that would collide with hub structure.
-	if IsReservedHubName(slug, t.cfg.Dirs()) {
-		return AddResult{}, fmt.Errorf("invalid slug %q: that name is reserved for lyx hub geometry", slug)
-	}
-
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreePath())
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreePath())
 	if err != nil {
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("read warp worktree status at %s: %w", l.WorktreePath(), err)
 	}
 	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("read warp worktree status at %s (git exit %d): %s",
+			l.WorktreePath(), exitCode, strings.TrimSpace(stderr))
 	}
 	if strings.TrimSpace(stdout) != "" {
 		return AddResult{}, fmt.Errorf("source worktree has uncommitted changes")
@@ -76,7 +57,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 
 	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
 	if err != nil {
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, err)
 	}
 	if exitCode == 0 {
 		// Name the way forward: Remove deliberately leaves the warp branch
@@ -94,12 +75,12 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
 	}
 
-	stdout, _, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreePath())
+	stdout, stderr, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreePath())
 	if err != nil {
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("list warp remotes: %w", err)
 	}
 	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("list warp remotes (git exit %d): %s", exitCode, strings.TrimSpace(stderr))
 	}
 	if strings.TrimSpace(stdout) == "" {
 		return AddResult{}, fmt.Errorf("no remote configured")
@@ -110,7 +91,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		if weftRepoRootErr != nil {
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
-		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", weftRepoRoot)
+		return AddResult{}, fmt.Errorf("no weft repo at %s; create the hub with \"lyx fabric clone\" first", weftRepoRoot)
 	}
 
 	weftTarget := WeftWorktreePath(l, slug)
@@ -121,7 +102,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
 	// Resolve parent warp branch before worktree creation to avoid partial state on failure.
-	stdout, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
+	stdout, stderr, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
 	}
@@ -131,19 +112,20 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 	parentBranch := strings.TrimSpace(stdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", warpBranch, target}, l.WorktreePath())
+	_, stderr, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", warpBranch, target}, l.WorktreePath())
 	if err != nil {
-		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
+		return AddResult{}, fmt.Errorf("create warp worktree %q for branch %q: %w", target, warpBranch, err)
 	}
 	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d)", target, warpBranch, exitCode)
+		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d): %s",
+			target, warpBranch, exitCode, strings.TrimSpace(stderr))
 	}
 
 	// Install the post-checkout hook now that the warp worktree exists.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// Add or trigger the all-or-nothing rollback (the hook is belt-and-suspenders).
 	if hookErr := InstallPostCheckoutHook(l); hookErr != nil {
-		log.Printf("fabric add: post-checkout hook install (non-fatal): %v", hookErr)
+		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "add", "slug", slug, "error", hookErr)
 	}
 
 	weftPath := WeftWorktreePath(l, slug)
@@ -153,7 +135,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
-		_, _, exitCode, err := gitexec.RunGit(
+		_, adoptStderr, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "add", weftPath, weftBranch},
 			weftRepoRoot,
 		)
@@ -163,7 +145,8 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		}
 		if exitCode != 0 {
 			_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
-			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d)", weftBranch, exitCode)
+			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d): %s",
+				weftBranch, exitCode, strings.TrimSpace(adoptStderr))
 		}
 	} else {
 		// Create: git worktree add -b <weftBranch> <path> <parentWeftBranch> (fork from parent's weft branch)
@@ -209,14 +192,15 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 	}
 
 	// (11) Push warp branch (LAST step for warp)
-	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath())
+	_, pushStderr, exitCode, err := gitexec.RunGit([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath())
 	if err != nil {
 		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
 		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
-		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d)", warpBranch, exitCode)
+		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d): %s",
+			warpBranch, exitCode, strings.TrimSpace(pushStderr))
 	}
 
 	// (12) Push weft branch

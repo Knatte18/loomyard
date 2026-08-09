@@ -94,7 +94,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`F0`-`F5`).
+- `ref` is the scenario id (`F0`-`F13`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -184,7 +184,8 @@ To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx 
 or a pair added in F2).
 Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) — `ls`/`git -C <warp> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
 Confirm it preserves the weft-side `_lyx` content, explicitly including `_lyx/PATTERN.md` — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
-Confirm it reverts the managed `.gitignore` block's `.lyx/` entry.
+Confirm it reverts the junction's own `.git/info/exclude` entry — there is no committed `.gitignore` block to revert, since junctions are excluded through `.git/info/exclude` alone.
+If a SECOND worktree in the same hub is still wired, confirm the exclude entry is KEPT (that file lives in the repo's shared gitdir, so removing it would make the other worktree's live junctions show up as untracked dirt) — check with `git -C <other-warp-worktree> status --porcelain`, which must stay clean.
 Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
 Finally, confirm the repo-wide records survive unwire — `.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`, and `.lyx-warp` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
 
@@ -203,6 +204,7 @@ Discover the surface via `lyx fabric pull --help`.
 A clean local warp (no unpushed commits of its own) should auto-reconcile: warp resets to the new remote history, and weft's own correspondence re-anchors to it, with no operator intervention needed.
 A local warp carrying unpushed commits of its own, run against the same rewritten remote, should instead abort loudly and make no changes to either repo -- confirm neither warp nor weft moved after the abort.
 In the auto-reconciled case, inspect the JSON output: it should report which `_lyx/PATTERN.md`/`_lyx/pattern/`-touching weft commits need review, since they were written against a warp baseline that no longer exists on the rewritten remote.
+Before any of that, dirty the warp worktree with an uncommitted edit to a tracked file and run `lyx fabric pull` against an advanced remote: it must REFUSE to move warp and the edit must survive byte-for-byte -- advancing warp goes through a hard reset, so a pull that proceeded here would silently destroy the edit.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -225,6 +227,179 @@ the record's filename is the one the fabric module documents (`.lyx-warp`), so c
 
 ---
 
+### F8 -- Subpath-anchored hub, end to end
+
+**Covers:** fabric
+
+**Goal:** "Clone a hub anchored at a subdirectory of the warp repo rather than its root, and confirm the whole verb surface works from the anchored directory and nowhere else."
+
+**Watch:** Clone with `lyx fabric clone --subpath <dir> <weft-url> <warp-url>`, where `<dir>` is a directory that really exists in the warp repo.
+Confirm `_lyx`, `.lyx` and `_board` land as links inside `<warp>/<dir>/`, and that the warp repo ROOT has none of them — `ls -la` both.
+Confirm every verb runs from `<warp>/<dir>` (`status`, `pairs`, `list`, `reconcile`, `prune`, `cleanup`, `sync`), and that running any of them from the warp repo root, from a subdirectory of `<dir>`, or from a sibling directory is REFUSED with an error naming both cwd and the anchored directory — not a confusing downstream failure.
+Confirm `lyx fabric add <slug>` produces a second pair anchored identically (`<hub>/<slug>/<dir>/_lyx`), and that `lyx fabric commit` after editing `<dir>/_lyx/...` commits to the weft at `<dir>/_lyx/...` while leaving the warp side untouched (`git -C <warp> status`).
+Confirm a bad `--subpath` is refused before anything is created and leaves no hub behind: an absolute path (`--subpath /<dir>`), one escaping the repo (`--subpath ../..`), one naming a file, and one naming a directory that does not exist.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F9 -- Reconcile never eats warp content
+
+**Covers:** fabric
+
+**Goal:** "Confirm `lyx fabric reconcile`, the repair verb, converges wiring without deleting anything the operator put in the warp repo themselves."
+
+**Watch:** In a wired worktree, commit a real symlink of your own beside the junctions at the anchored directory — e.g. `ln -s <existing-dir> latest && git add latest && git commit`.
+Run `lyx fabric reconcile`.
+The symlink must still be there afterwards, and `git status` must be clean: fabric owns only the links it created (those pointing into the paired weft worktree or the hub's `_board`), and a link pointing anywhere else is the operator's, never a "stale junction" to sweep.
+Then check the anchor-marker migration guard: rename `<hub>/_board/.lyx-anchor` to `.fabric-anchor` and run any verb.
+Every verb must hard-error naming both marker names and the rename remedy — it must NOT fall back to treating the repo as root-anchored, which on a subpath hub would wire a second junction set at the warp repo root.
+Rename it back and confirm normal operation resumes.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F10 -- Destructive-verb guardrails (`remove`, `cleanup`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm the two verbs that delete things refuse the targets that are not theirs to delete, instead of deleting them and reporting success."
+
+**Watch:** Run `lyx fabric remove <prime-slug>` -- the hub's own warp worktree directory name, the one every operator can reach by tab-completion.
+It must be **refused**, naming the prime worktree, and `<hub>/<prime>` must still be there afterwards WITH its `.git` directory: git declines to remove a main working tree, and fabric must report that rather than deleting the clone. (Historical: this deleted the entire warp repository, gitdir included, on a clean hub with no `--force`, while the JSON envelope claimed "warp worktree removed".)
+Then run `lyx fabric remove _board` and `lyx fabric remove <prime>-weft`.
+Both must be refused with an `invalid slug` error and both directories must survive intact -- `_board` holds `.lyx-anchor`, `.lyx-warp` and the repo-wide `fabric.yaml`, and `<prime>-weft` is the entire durable `_lyx` store. `lyx fabric add` already refuses exactly this name set;
+`remove` must refuse the same one.
+Then the cleanup half: with the prime pair on the default branch, `lyx fabric checkout <other-branch>` to move it off, then run `lyx fabric cleanup --apply --force` and confirm `main-weft` is reported `protected: true` and still exists (`git -C <hub>/<prime>-weft branch`).
+The primary weft branch is the durable weft line whatever the prime happens to be checked out on;
+promoting it to a deletable orphan destroys any weft commit it alone carries.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F11 -- Dirty-worktree matrix across the mutating verbs
+
+**Covers:** fabric
+
+**Goal:** "Cross every mutating verb with uncommitted work actually on disk, and confirm no verb silently discards it."
+
+**Watch:** Make an uncommitted edit to a TRACKED file on one side, then run one mutating verb, then check the edit is still there byte-for-byte.
+Repeat across the verbs -- `pull`, `sync`, `checkout`, `reconcile`, `remove`, `cleanup`, `unwire`, `prune`, `add`, `commit` -- and across the states: dirty warp only, dirty weft only, both dirty, untracked-only on each side.
+A verb that REFUSES is fine. A verb that proceeds and leaves the work intact is fine. A verb that proceeds and discards it is a FAIL, whatever it reported.
+Expected refusals worth confirming by name: `pull` refuses a dirty warp (`ErrWarpDirty`, before warp moves at all), `checkout` refuses a dirty weft, `add` refuses a dirty source worktree, `remove` refuses either side without `--force`, and `prune --apply` reports `protected: true` for a stale pair whose weft worktree is dirty until `--force` is given.
+Untracked files are deliberately NOT a reason to refuse -- but confirm they genuinely survive every verb that proceeds, rather than being swept along with something else.
+Do the whole matrix on a `--subpath`-anchored hub, since that is where the anchored pathspecs decide which side an edit lands on.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F12 -- The hub is not fabric's to sweep (`prune`, `clone --reset`)
+
+**Covers:** fabric
+
+**Goal:** "Park things in the hub that fabric did not create and must never delete, then run the two verbs that delete by derived name and confirm both refuse."
+
+**Watch:** First `prune`. Create `<hub>/notes-weft/` holding a file, as an operator keeping scratch notes beside their worktrees, and separately `git init` a wholly unrelated project at `<hub>/proj-weft/` with one committed file and a clean working tree.
+Neither is a fabric worktree; both merely end in the weft suffix, which is all prune's orphan pass enumerates on.
+Run `lyx fabric prune`, then `lyx fabric prune --apply`, then `lyx fabric prune --apply --force`.
+All three must report each entry `"unowned": true` with `"removed": false` and an error naming the weft repo it is not a worktree of, and **both directories must survive every run byte-for-byte, `.git` included**.
+`--force` must NOT get through: force answers "discard this uncommitted work", never "this directory is mine". (Historical: `prune --apply` deleted both, reporting `removed: true`, `ok: true`, exit 0, with no `--force` and no warning -- `git worktree remove` refusing the path was read as licence to `os.RemoveAll` it.)
+Also confirm the gate refuses only what is not fabric's: make a genuine stale pair (delete a `<slug>/` warp worktree directory by hand, leaving its registration) and check `prune --apply` still removes its weft side.
+
+Then `clone --reset`. In an empty directory create `<name>-HUB/important/data.txt`, where `<name>` is the basename your warp URL derives to, and run `lyx fabric clone --reset <weft-url> <warp-url>` there.
+It must be **refused**, naming the path and saying it is not a fabric hub, and `data.txt` must survive.
+The hub name is derived rather than typed -- in the one-argument form it comes from the binding recorded on the weft, so the operator never even sees the name being deleted.
+Then re-run `--reset` against a real hub and confirm the idempotent re-clone still works.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F13 -- Bootstrap against a genuinely empty weft remote
+
+**Covers:** fabric
+
+**Goal:** "Clone the documented first-ever-setup shape -- a brand-new, zero-commit weft remote -- and confirm the hub it produces is actually usable."
+
+**Watch:** Create a bare weft remote with no commits at all (`git init --bare`, `HEAD` on `main`) and a warp remote with real content, then `lyx fabric clone <empty-weft-url> <warp-url>`.
+The clone reports `ok: true` -- it always did -- so the check is what comes after.
+Confirm `git -C <hub>/<prime>-weft rev-parse --verify refs/heads/main-weft` RESOLVES.
+A branch can be checked out and reported as current while its ref does not exist: `git checkout -b` on an unborn HEAD writes nothing.
+Then run the documented example, `lyx fabric add my-task`, and `lyx fabric remove my-task`.
+(Historical: the weft primary was left on an unborn `main-weft`, so every pair-creating verb died on `fatal: invalid reference: main-weft` -- `add` included, which is the example both `lyx fabric --help` and `lyx fabric add --help` print.)
+Repeat the whole scenario with `--subpath backend`, since the anchor and the branch are resolved in separate steps.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F14 -- A slug is a directory name, not a path (`remove`, `add`)
+
+**Covers:** fabric
+
+**Goal:** "Hand every teardown verb a slug that is a relative path element rather than a name, and confirm nothing outside the named pair is touched."
+
+**Watch:** On a hub with one added pair, run `lyx fabric remove ..`, then `lyx fabric remove .`, then `lyx fabric remove ../evil`, `lyx fabric remove a/b`, and `lyx fabric remove ""`.
+Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_board _launchers _portals <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
+Then confirm an ordinary `lyx fabric remove <slug>` still works.
+(Historical: `.` and `..` passed every rule in the shared slug validator -- not empty, no separator, no weft suffix, no reserved hub name -- and `<hub>/_launchers/<anchor>/<slug>` then resolved to `<hub>` itself, whose `os.RemoveAll` deleted the warp clone, the weft clone, `_board`, every pair and all uncommitted work, after which the verb returned `"failed to check worktree status"` -- an error claiming nothing had happened.)
+Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` and the damage lands one level lower.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F15 -- Two verbs at once on one hub (`unwire`, `reconcile`, `add`, `remove`)
+
+**Covers:** fabric
+
+**Goal:** "Run fabric verbs simultaneously in different worktrees of one hub and confirm the shared state they all write survives the interleaving."
+
+**Watch:** On a hub with six added pairs, append a pattern of your own -- say `/my-secret-build-dir` -- to `<warp>/.git/info/exclude`, and note that the file also carries git's default six-line comment block.
+That file lives in the repo's COMMON gitdir, so it is ONE file for the whole hub, not one per worktree.
+Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lyx fabric unwire` and `lyx fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
+The count must never drop and your own pattern must be present after every round, alongside `/_board`, `/_lyx` and `/.lyx` exactly once each.
+(Historical: the count collapsed from 10 lines to 3 at round 6 and to 1 at round 9 on two independent hubs -- the operator's pattern and git's comment block destroyed, and fabric's own junction exclusions transiently lost, which makes every worktree's junctions show as untracked and a plain `git add -A` commit symlinks into the warp repo. The identical sequence run sequentially never lost a line.)
+Also run the destructive verbs against each other -- `prune --apply` alongside `checkout`, `cleanup --apply` alongside `commit`, `add` alongside `remove` -- and confirm every verb either succeeds or refuses with git's real message, and `lyx fabric pairs` afterwards reports every surviving pair `in_sync` and `junction_healthy`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F16 -- The post-checkout hook actually fires (`clone`, `add`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm the drift-warning hook is installed where git looks for it, runs, and neither clobbers nor re-enables an operator's own hook."
+
+**Watch:** After `clone`, `git checkout -b feature` in the warp worktree must print `fabric: warp/weft out of sync` naming both branches, and `lyx fabric checkout feature` must NOT leak that text into its JSON output.
+Then three variations, each on its own hub.
+(a) Put an EXECUTABLE `post-checkout` of your own in `<warp>/.git/hooks/`, run `lyx fabric add <slug>`, and confirm it was moved to `post-checkout.user`, that a real `git checkout` runs your hook first and then prints fabric's warning.
+(b) Repeat with your hook at mode 0644 -- a hook you had DISABLED. The wrapper git ends up with must be executable (fabric's warning still fires), the backup must still be 0644, and your disabled hook must not run. (Historical: `os.WriteFile` applies its perm argument only when it CREATES the file, so the wrapper inherited 0644 and git printed `hint: the hook was ignored because it's not set as executable` -- silently retiring both hooks.)
+(c) Set `core.hooksPath` to a directory outside `.git`, run `lyx fabric add <slug>`, and confirm the hook lands in THAT directory and that `git checkout` onto a diverged branch still warns. (Historical: fabric composed `<git-common-dir>/hooks`, which ignores `core.hooksPath`, wrote into a directory git no longer consults, and reported success.)
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F17 -- The portal and launcher surface is repairable (`add`, `reconcile`, `remove`)
+
+**Covers:** fabric
+
+**Goal:** "Break the hub-level `_portals`/`_launchers` artefacts and confirm the repair verb repairs them and the teardown verb owns only what it created."
+
+**Watch:** After `lyx fabric add <slug>`, confirm `<hub>/_portals/<slug>` is a link resolving through to `<hub>/<slug>-weft/_lyx` and `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
+Delete both, then run `lyx fabric reconcile`: it must report `portal_restored` for that pair -- not `already_healthy` -- and both artefacts must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose portal and launchers were gone, and restored neither, leaving remove-and-re-add as the only recovery.)
+Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down. Do the same with `<hub>/_portals/<slug>` replaced by a real directory holding a file -- it too must survive.
+Finally confirm the hub's prime worktree is left alone throughout: it never had a portal or a launcher directory, and `reconcile` must not start creating them.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -241,6 +416,12 @@ F4: <OK|WARN|FAIL> -- <one-line note if not OK>
 F5: <OK|WARN|FAIL> -- <one-line note if not OK>
 F6: <OK|WARN|FAIL> -- <one-line note if not OK>
 F7: <OK|WARN|FAIL> -- <one-line note if not OK>
+F8: <OK|WARN|FAIL> -- <one-line note if not OK>
+F9: <OK|WARN|FAIL> -- <one-line note if not OK>
+F10: <OK|WARN|FAIL> -- <one-line note if not OK>
+F11: <OK|WARN|FAIL> -- <one-line note if not OK>
+F12: <OK|WARN|FAIL> -- <one-line note if not OK>
+F13: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

@@ -12,11 +12,13 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -172,4 +174,61 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 			t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseJunctionPointsElsewhere, wantDetail)
 		}
 	})
+}
+
+// TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort covers the state a hub is in immediately after
+// cloning against an empty remote: the weft primary sits on a branch with zero commits.
+// `git rev-parse --abbrev-ref HEAD` exits 128 there, which used to make Healthy return a hard Go
+// error — an ABORTED preflight rather than a classified verdict — even though the pair is correctly
+// wired and correctly paired.
+func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	weftWorktree := fabricengine.WeftWorktree(l)
+	warpBranch, err := readBranchForTest(t, l.WorktreePath())
+	if err != nil {
+		t.Fatalf("read warp branch: %v", err)
+	}
+	weftBranch := fabricengine.WeftBranchName(warpBranch)
+
+	// Re-create the pair's weft branch as an orphan so it carries no commits at all — exactly the
+	// shape suffixWeftPrimaryBranch leaves behind on a clone against an empty remote.
+	lyxtest.MustRun(t, weftWorktree, "git", "checkout", "--orphan", "unborn-scratch")
+	lyxtest.MustRun(t, weftWorktree, "git", "branch", "-D", weftBranch)
+	lyxtest.MustRun(t, weftWorktree, "git", "checkout", "--orphan", weftBranch)
+
+	// The orphan checkouts emptied the weft working tree, taking the junction targets with them;
+	// re-wiring restores exactly the wiring a real post-clone hub has, leaving the unborn branch as
+	// the only difference from a healthy pair.
+	names, err := fabricengine.RepoWiredNames(l)
+	if err != nil {
+		t.Fatalf("RepoWiredNames: %v", err)
+	}
+	if err := fabricengine.WireJunctions(l, filepath.Base(l.WorktreePath()), names); err != nil {
+		t.Fatalf("re-wire junctions: %v", err)
+	}
+
+	ok, reason, err := fabricengine.Healthy(l)
+	if err != nil {
+		t.Fatalf("Healthy on an unborn weft branch = error %v; want a verdict, not an abort", err)
+	}
+	if !ok {
+		t.Errorf("Healthy = false (reason %+v); want true — the pair is correctly wired and paired", reason)
+	}
+}
+
+// readBranchForTest reads the current branch of the worktree at path for test setup.
+func readBranchForTest(t *testing.T, path string) (string, error) {
+	t.Helper()
+	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, path)
+	if err != nil {
+		return "", err
+	}
+	if exitCode != 0 {
+		return "", os.ErrInvalid
+	}
+	return strings.TrimSpace(stdout), nil
 }

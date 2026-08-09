@@ -108,8 +108,14 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional warp worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
-  └── _board/                       (weft:main worktree; the task store)
+  ├── _board/                       (weft:main worktree; the task store)
+  ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
+  ├── _launchers/<anchor>/<slug>    (per-worktree launcher scripts; anchor-mirrored)
+  └── .lyx/                         (hub-level machine-local scratch; a real dir, never a junction)
 ```
+
+`_board`, `_portals`, `_launchers`, and `.lyx` are hub geometry, so none of them can be claimed as a worktree slug
+(`fabricengine.IsReservedHubName`).
 
 ### Git ownership
 
@@ -156,9 +162,13 @@ only the third piece comes from the **repo-wide** `pathspec` list recorded once 
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
-This produces the two concrete junctions this repo ships with today:
-- `<warp>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction, structural)
-- `<warp>/.lyx` → `<hub>/<slug>-weft/.lyx` (machine-local scratch junction, structural)
+This produces the three concrete junctions this repo ships with today, all placed at the repo's lyx-anchor (`<warp>/<anchor>/…`, which is `<warp>/` itself at the default `.` anchor):
+- `<anchor>/_lyx` → `<hub>/<slug>-weft/<anchor>/_lyx` (config junction, structural)
+- `<anchor>/.lyx` → `<hub>/<slug>-weft/<anchor>/.lyx` (machine-local scratch junction, structural)
+- `<anchor>/_board` → `<hub>/_board` (operator-convenience link into the shared board worktree)
+
+The `_board` link is wire-only and unmonitored: no health check inspects it, so it is re-wired unconditionally on clone, add, and every reconcile, and no lyx code path reads through it — every `BoardDir` consumer resolves `<hub>/_board` directly.
+It is deliberately not a `pathspec` entry, since `pathspec` also feeds the weft commit routing and `_board` is a weft worktree rather than committable content.
 
 The optional `pathspec` default is empty today.
 A future weft-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lyxcwd` code change needed — but that mechanism now applies to *optional* directories only;
@@ -168,6 +178,7 @@ Raddle content is anchor-level by design — it lives at `_lyx/raddle/`, reached
 see `manifest/designs/raddle.md`.
 
 Every junction is listed in the warp worktree's own `.git/info/exclude` and is never committed to a `.gitignore` in the user's repo — a tracked entry would advertise that LYX is in use.
+The entry is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor), never a bare name: a slash-free gitignore pattern matches at any depth, which on a subpath-anchored monorepo would silently untrack same-named directories lyx never wired.
 `.lyx` additionally seeds `.lyx/` into the **weft** repo's own `.git/info/exclude` at wiring time, so weft-side scratch never shows as untracked dirt either.
 From the CLI's perspective, reads and writes happen transparently — code that writes to `_lyx/config/board.yaml` writes through the junction into the weft repo without awareness of the indirection.
 
@@ -191,7 +202,7 @@ Weft paths are computed on demand from geometry and do not require a registry.
 
 ### Status
 
-- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view. Paired `lyx fabric add` hard-requires a weft repo built by the downstream hub-creator.
+- **Go implementation** (paths geometry, paired spawn, `lyx fabric` command): ✅ Implemented. `fabric` (paths geometry, paired `lyx fabric add` spawn, and `lyx fabric status|commit|push|pull|sync|diff`) is the sole git-coordination module now. `status` is the unified both-sides uncommitted-change view. Paired `lyx fabric add` hard-requires a weft repo, which `lyx fabric clone` builds — there is no separate hub-creator tool.
 - **`lyx config` command**: ✅ task 008 complete.
   The interactive menu (`lyx config`, `lyx config <module>`) and `lyx config reconcile` shipped. (A raddle config schema is **raddle** nav-doc work, not part of this task — it was only historically mis-bundled here; there is no `_raddle` junction to activate.)
 - **Portals**: unimplemented;
@@ -251,7 +262,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **config** — interactive menu for viewing and editing module configs;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
-- **fabric** — the sole warp↔weft git-coordination module, unified over two `internal/gitrepo.Repo` instances: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches warp+weft together + re-points junctions), reconcile, status, prune, cleanup, and weft content-sync (commit/push/pull/sync/diff), all in one command tree (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|status|commit|push|pull|sync|diff`. `clone` takes the weft URL first with the warp URL optional, derived from the warp binding recorded on the weft's main branch when omitted; `reconcile` backfills that binding for hubs whose weft predates it. `status` is the unified both-sides uncommitted-change view (`Fabric.Status`); `diff` reports the side-labelled changes since a given warp SHA (`Fabric.Diff`). `pull` is now unified across warp+weft, not weft-only: it fast-forwards weft first, then fetches and inspects warp, detecting a rebased/force-pushed warp remote via ancestry and safely re-anchoring weft's correspondence to it when it is safe to do so. ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
+- **fabric** — the sole warp↔weft git-coordination module, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches warp+weft together + re-points junctions), reconcile, status, prune, cleanup, and weft content-sync (commit/push/pull/sync/diff), all in one command tree (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|status|commit|push|pull|sync|diff`. `clone` takes the weft URL first with the warp URL optional, derived from the warp binding recorded on the weft's main branch when omitted; `reconcile` backfills that binding for hubs whose weft predates it. `status` is the unified both-sides uncommitted-change view (`Fabric.Status`); `diff` reports the side-labelled changes since a given warp SHA (`Fabric.Diff`). `pull` is now unified across warp+weft, not weft-only: it fast-forwards weft first, then fetches and inspects warp, detecting a rebased/force-pushed warp remote via ancestry and safely re-anchoring weft's correspondence to it when it is safe to do so. ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient` (`lyx selfreport create <title>`).
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.

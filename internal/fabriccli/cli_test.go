@@ -776,3 +776,97 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 		t.Errorf("RunCLI(reconcile) warp_binding_detail is empty; want a non-empty push-failure message")
 	}
 }
+
+// TestRunCLI_Unwire_ReportsBoardJunctionRemoval pins the unwire envelope's
+// board_junction_removed key at the CLI boundary: the _board link is a named special case outside
+// the pathspec-derived sweep, so its removal can never appear in junctions_removed — a CLI envelope
+// without its own key silently hid that the link was torn down.
+func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
+
+	// Wire the operator-convenience _board link the way clone/add/reconcile do.
+	boardLink := filepath.Join(fixture.Hub, fabricengine.BoardDirName)
+	if err := fslink.CreateDirLink(boardLink, boardDir); err != nil {
+		t.Fatalf("create board link: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(unwire) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	removed, present := result["board_junction_removed"].(bool)
+	if !present {
+		t.Fatalf("RunCLI(unwire) output missing 'board_junction_removed' key; got %v", result)
+	}
+	if !removed {
+		t.Errorf("RunCLI(unwire) board_junction_removed = false; want true (the link was present and must be reported removed)")
+	}
+	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
+		t.Errorf("board link %s still exists after unwire", boardLink)
+	}
+}
+
+// TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal pins the refusal an operator sees from a
+// weft sibling's NON-anchored directory on a subpath-anchored hub: the specific
+// weft-sibling message, never the generic cwd-gate error — which names the weft's own anchored
+// directory as the place to stand and thereby directs the operator deeper INTO the weft.
+func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	// Record a subpath anchor so the weft ROOT is not the anchored directory.
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte("sub\n"), 0o644); err != nil {
+		t.Fatalf("write anchor marker: %v", err)
+	}
+
+	t.Chdir(fixture.WeftPrime)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", out.String())
+	}
+	result := decodeResult(t, &out)
+	errMsg, _ := result["error"].(string)
+	if !strings.Contains(errMsg, "weft sibling of a pair") {
+		t.Errorf("RunCLI(pairs) error = %q; want the specific weft-sibling refusal, not the generic gate error", errMsg)
+	}
+}
+
+// TestRunCLI_Reconcile_HealsMissingRepoWideConfig pins reconcile's self-healing of the repo-wide
+// fabric.yaml: on a hub that has none, reconcile used to fail with "not initialized here; run
+// \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead
+// materialize the config and proceed.
+func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+	// Deliberately NO repo-wide fabric.yaml seeding — the state that used to produce the circular
+	// error.
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"reconcile"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", exitCode, out.String())
+	}
+
+	cfgPath := configengine.ConfigFile(fabricengine.BoardDir(fixture.Container), "fabric")
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Errorf("repo-wide fabric config not materialized at %s: %v", cfgPath, err)
+	}
+}

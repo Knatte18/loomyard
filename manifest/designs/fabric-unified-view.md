@@ -1,6 +1,6 @@
 # fabric: unified-repo view — the single entry-portal that makes warp+weft look like one repo
 
-> **Status: mostly shipped; four new slices identified 2026-08-05, not built.** The original 6-slice campaign (clone/commit/snapshot/rebase mechanics) landed in full except one open half of slice 6 (see Open questions). A 2026-08-05 discussion, prompted by GitHub issue #127, found that `internal/hubgeometry` still carries far more than the illusion needs — this doc now also covers slices 7-10, the next campaign. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), durable parts fold into `internal/fabricengine`'s and `internal/hubgeometry`'s package docs as each slice lands; this file is deleted once slice 10 and the still-open half of slice 6 are both done.
+> **Status: slices 1-5 and 7-10 shipped; slice 6's orchestration half is the one open item.** The original 6-slice campaign (clone/commit/snapshot/rebase mechanics) landed in full except that half (see Open questions). A 2026-08-05 discussion, prompted by GitHub issue #127, found that the then-`internal/hubgeometry` module carried far more than the illusion needs; slices 7-10 addressed that and have all landed — the shrunk resolver is now `internal/lyxcwd`. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), durable parts fold into `internal/fabricengine`'s and `internal/lyxcwd`'s package docs as each slice lands; this file is deleted once the still-open half of slice 6 is done.
 
 ## The redefined scope: fabric is the one-repo illusion portal, nothing more
 
@@ -20,9 +20,9 @@ The original campaign restructured `fabricengine` in place (never a parallel `Fa
 > its `HubReservedNames()` token set has since narrowed.
 
 1. **Config-driven junction list.**
-   The weft-backed junction name-set (`_lyx`/`_pattern`) moved from a hardcoded list into `fabric.yaml`'s `pathspec` key. `hubgeometry` stayed config-blind and the sole owner of path *construction*;
+   The weft-backed junction name-set (`_lyx`/`_pattern`) moved from a hardcoded list into `fabric.yaml`'s `pathspec` key. The then-`hubgeometry` resolver stayed config-blind and the sole owner of path *construction*;
    `fabricengine` injects the name-set as an explicit `[]string`.
-   Hub-structural entries (`_board`, `_portals`, `_launchers`) stay hardcoded via `hubgeometry.HubReservedNames()` — they are composed at the hub level, not per-worktree weft junctions.
+   Hub-structural entries (`_board`, `_portals`, `_launchers`) stay hardcoded via `fabricengine.HubReservedNames()` — they are composed at the hub level, not per-worktree weft junctions.
    See `internal/fabricengine/junctionnames.go`.
 2. **`Fabric.Commit` (classify+dispatch) + unified `Fabric.Diff`/`Status`.**
    The single entry point every file-writing caller now uses;
@@ -34,24 +34,28 @@ The original campaign restructured `fabricengine` in place (never a parallel `Fa
    Retired `gitrepo`'s separate `refs/loomyard/snapshot/<key>` mechanism;
    `Fabric.Commit`'s `snapshotTags` writes a `Snapshot:` trailer alongside `Warp-SHA`, including the empty-commit rule for a tags-only call with nothing else to commit.
 5. **Clone-does-everything + subpath-in-weft + `init` dissolution.** `lyx init` is gone.
-   The lyx-anchor subpath is recorded once on `weft:main` as a plain `.fabric-anchor` marker at `hubgeometry.BoardDir(Hub)`;
-   `hubgeometry.Resolve` reads it (record wins over cwd), validates cwd is at or below the anchored subtree, and falls back to cwd-derived `RelPath` only when the marker is absent. `CloneHub`/`worktree add` wire junctions, create `_lyx`, and reconcile config in one call.
-   See `internal/hubgeometry/anchor.go`, `internal/fabricengine/clone.go`.
+   The lyx-anchor subpath is recorded once on `weft:main` as a plain marker at `fabricengine.BoardDir(Hub)` — spelled `.fabric-anchor` when this slice landed, renamed to `.lyx-anchor` since, because the marker anchors the whole repo rather than the fabric module.
+   `lyxcwd.Resolve` reads it (record wins over cwd), requires cwd to equal the anchored directory exactly (`ErrCwdOutsideAnchor` otherwise), and falls back to `"."` only when the marker is genuinely absent — a board still carrying only the pre-rename spelling is a hard error (`lyxcwd.ErrStaleAnchorMarker`), never a silent re-anchor at the repo root. `CloneHub`/`worktree add` wire junctions, create `_lyx`, and reconcile config in one call.
+   See `internal/lyxcwd/anchor.go`, `internal/fabricengine/clone.go`.
 6. **Warp-rebase / remote-reconcile — fabric-layer half.**
    Detection via ancestry (`gitrepo.IsAncestor`, never `SHAExists`) + correspondence re-anchor + a `PullResult` PATTERN-residue document, via `Fabric.Pull`/`lyx fabric pull`.
    **The orchestration-layer half stays open** — see Open questions.
 
 Full shipped-behavior detail for all six lives in `internal/fabricengine/doc.go`'s package comment, not repeated here.
 
-## Slices 7-10 (2026-08-05 discussion; slice 7 mostly shipped, 8-10 not built) — hubgeometry stops being a path authority
+## Slices 7-10 (2026-08-05 discussion; all four shipped) — the shared resolver stops being a path authority
 
-GitHub issue #127 asked whether `internal/hubgeometry` as a standalone path-authority module still earns its keep, now that fabric already sets the anchor (slice 5) and already owns the junction name-set (slice 1).
-Investigation during discussion confirmed: no — most of `internal/hubgeometry` (591 lines) is either (a) genuinely Fabric's illusion-plumbing that leaked into a shared package, or (b) ~20 per-module path constructors (`PlanDir`, `BuilderDir`, `WebsterDir`, `DiscussionDir`, `PatternDir`, etc.) that make hubgeometry a bottleneck every module extension must go through, exactly issue #127's original complaint.
+GitHub issue #127 asked whether the shared path-authority module (then `internal/hubgeometry`, now the far narrower `internal/lyxcwd`) still earned its keep, now that fabric already sets the anchor (slice 5) and already owns the junction name-set (slice 1).
+Investigation during discussion confirmed: no — most of that 591-line module was either (a) genuinely Fabric's illusion-plumbing that leaked into a shared package, or (b) ~20 per-module path constructors (`PlanDir`, `BuilderDir`, `WebsterDir`, `DiscussionDir`, `PatternDir`, etc.) that make hubgeometry a bottleneck every module extension must go through, exactly issue #127's original complaint.
 
-### Slice 7 — shrink `hubgeometry` to the minimal illusion primitive; Fabric absorbs the rest
+### Slice 7 — shrink the shared resolver to the minimal illusion primitive; Fabric absorbs the rest (shipped)
+
+> **Reading note:** the design prose in this section is the 2026-08-05 discussion as written, so it names `internal/hubgeometry` throughout.
+> That package no longer exists;
+> what shipped is `internal/lyxcwd`, and the "Shipped correction" notes below record where the as-built result differs from the plan.
 
 **What every consumer actually needs, and no more:** `Cwd` and one opaque root path (working name in discussion: `worktreePath` — final Go identifier is an implementation decision, not pinned by this doc).
-No consumer needs to know weft exists. `hubgeometry.Resolve` supplies `Cwd` + root + (when an anchor is recorded) `RelPath`;
+No consumer needs to know weft exists. The resolver supplies `Cwd` + root + (when an anchor is recorded) `RelPath`;
 a caller needing an absolute path joins root+RelPath+its own registered relative subpath itself.
 
 **Naming discipline for whoever implements this (and every reviewer of it):** "root" means the worktree/repo root, always — `WorktreeRoot`/`Hub`/`WeftRepoRoot`, the handful of genuine root concepts above.
@@ -68,10 +72,10 @@ and `HubLogsDir` alone joins onto `Location.HubPath`, deliberately hub-anchored 
 A blanket "join onto `cwd`" would have silently relocated the last three.
 The two docs must not be allowed to disagree — re-read both after editing either.
 
-**What stays in `internal/hubgeometry`** (shrinks from ~591 lines to roughly the size of `anchor.go`+the `Resolve`/`Layout` core): `git rev-parse --show-toplevel` (`WorktreeRoot`), `Hub` (`filepath.Dir(WorktreeRoot)`, pure string math), and anchor-reading (`os.ReadFile` against `<Hub>/_board/.fabric-anchor`;
+**What stays in the shrunk resolver, shipped as `internal/lyxcwd`** (down from ~591 lines to roughly the size of `anchor.go`+the `Resolve`/`Location` core): `git rev-parse --show-toplevel`, the hub (`filepath.Dir(worktree root)`, pure string math), and anchor-reading (`os.ReadFile` against `<Hub>/_board/.lyx-anchor`;
 a plain file read, no git subprocess, because that directory is always a materialized weft:main worktree, never something requiring `git show`).
-This keeps the package dependency-free (stdlib + `gitexec` only) — **load-bearing, not cosmetic**: `internal/fabricengine` imports `internal/logger` (for its own tracing), and `internal/logger/sink.go` calls `hubgeometry.Resolve` directly to anchor its log directory regardless of invocation-time cwd depth.
-If the core resolver moved bodily into `fabricengine`, `fabricengine → logger → fabricengine` would be an import cycle. `logger` keeps calling the shrunk `hubgeometry` directly — a documented infrastructure exception to "every module asks Fabric," not a violation of it (below `fabricengine` in the dependency graph, not a peer of ordinary consumer modules).
+This keeps the package dependency-free (stdlib + `gitexec` only) — **load-bearing, not cosmetic**: `internal/fabricengine` imports `internal/logger` (for its own tracing), and `internal/logger/sink.go` calls the resolver directly to anchor its log directory regardless of invocation-time cwd depth.
+If the core resolver moved bodily into `fabricengine`, `fabricengine → logger → fabricengine` would be an import cycle. `logger` keeps calling the shrunk resolver directly — a documented infrastructure exception to "every module asks Fabric," not a violation of it (below `fabricengine` in the dependency graph, not a peer of ordinary consumer modules).
 
 **`Prime`/`List`-based sibling-worktree resolution moves into `fabricengine`**, private.
 It is not per-worktree data at all — `List(cwd)` (a `git worktree list` subprocess) runs on every single `Resolve()` call today just to find the entry flagged `Main`, even though the result is identical for every worktree under one hub.
@@ -85,7 +89,7 @@ what changes is only that a module no longer needs a `hubgeometry` code change t
 
 **`Weft*`/`Warp*Link`/junction-construction methods** (`WeftWorktree`, `WeftRepoRoot`, `WarpLyxLink`, `WarpJunctions`, `PortalLink`, `LauncherDir`, etc.) move into `fabricengine`, private — they are Fabric's own illusion-maintenance plumbing, never part of the public "ask Fabric for cwd" contract.
 
-**Keep the name `_board` — renaming was considered (2026-08-05) and dropped as unnecessary churn.** `hubgeometry.BoardDir` (`<Hub>/_board`, a real `git worktree add` of weft on branch `main` — not a junction) hosts more than board's own data: `.fabric-anchor` lives there,
+**Keep the name `_board` — renaming was considered (2026-08-05) and dropped as unnecessary churn.** `fabricengine.BoardDir` (`<Hub>/_board`, a real `git worktree add` of weft on branch `main` — not a junction) hosts more than board's own data: the recorded lyx-anchor marker `.lyx-anchor` lives there (spelled `.fabric-anchor` when this decision was taken — see item 5 above for the rename), the `.lyx-warp` warp-URL binding lives beside it,
 and the repo-wide `fabric.yaml` lives there (`<BoardDir>/_lyx/config/fabric.yaml`, via the same generic `configengine.Load(baseDir, module, …)`/`<baseDir>/_lyx/config/<module>.yaml` convention every module's config uses — `fabricengine.LoadConfig` is just the one caller that fixes `baseDir = BoardDir(hub)` instead of the usual per-worktree cwd, because fabric's junction pathspec must be one repo-wide fact, not a per-worktree copy;
 today it is the only module config anchored at `_board` rather than the ordinary per-worktree `_lyx/config/`). `_lyxharness`/`_system`/`_registry` were all considered as renames and rejected — `_lyxharness` read as more confusing than the status quo on reflection, `_system`/`_registry` as too OS-generic. `_board` stays `_board`;
 nothing here forces `internal/boardengine`'s own feature data to move.
@@ -100,10 +104,10 @@ it is **unconditionally re-wired** on every reconcile pass, since nothing diagno
 and it is **read by no lyx code path** — every `BoardDir` consumer keeps resolving `<HubPath>/_board` directly, and all board mutation continues through `internal/boardengine`.
 It is deliberately **not** added to `fabric.yaml`'s `pathspec`: `pathspec` is dual-purpose (it also feeds the raw, unfiltered weft *commit* pathspec), and `_board` is itself a weft worktree, not committable content from the warp side, so folding it into that list would be wrong, not merely awkward.
 
-**CONSTRAINTS.md**: retire the Hub Geometry Invariant in its current ("hubgeometry owns all geometry/paths") form;
-record the narrower replacement (hubgeometry owns only cwd/root/anchor resolution;
+**CONSTRAINTS.md**: retire the Hub Geometry Invariant in its current ("the shared resolver owns all geometry/paths") form;
+record the narrower replacement (it owns only cwd/root/anchor resolution;
 Fabric owns weft-sibling and junction plumbing;
-each module owns its own relative subpath). **`docs/overview.md`**: the "Hub Geometry Invariants" section and the `enforcement_test.go`-described ban on raw `os.Getwd`/`git rev-parse --show-toplevel` outside `hubgeometry`+`cmd/lyx/main.go` stays in spirit (still true, still enforced) but the surrounding prose describing hubgeometry's scope needs rewriting to the narrower contract;
+each module owns its own relative subpath). **`docs/overview.md`**: the "Hub Geometry Invariants" section and the `enforcement_test.go`-described ban on raw `os.Getwd`/`git rev-parse --show-toplevel` outside the resolver+`cmd/lyx/main.go` stays in spirit (still true, still enforced) but the surrounding prose describing the resolver's scope needs rewriting to the narrower contract;
 the "Junction model" section's description of the config-driven pathspec is already accurate and does not change.
 
 **Execution model: full discussion/plan/mill-go pipeline**, not manual/mechanical — this touches 24+ importing packages and retires a CI-enforced invariant.
@@ -203,7 +207,7 @@ Read-only verbs the caller can run directly.
   either require it pre-created, or have clone provision it.
 - **Slice 6's orchestration-layer half** — still open. `Fabric.Pull` (fabric-layer detection + re-anchor + `PullResult` residue) is shipped;
   which layer drives pull → conflict-resolve → raddle-regen, and how `PullResult`/`PATTERN` re-alignment is presented to an LLM resolving agent, stays open until `loom`/`Shed` exist to consume it.
-- **`worktreePath` naming** — new, see slice 7 above: `worktreePath` was this discussion's working label for hubgeometry's public root field;
+- **`worktreePath` naming** — new, see slice 7 above: `worktreePath` was this discussion's working label for the resolver's public root field;
   not pinned as the final Go identifier.
 
 ## Related
@@ -211,7 +215,7 @@ Read-only verbs the caller can run directly.
 > **Superseded:** `_pattern` no longer exists as a junction, and `_raddle` is anchor-level, never junction-reached — see `manifest/designs/raddle.md`.
 > The `_pattern` mention below is historical narrative describing the state as of when slice 1 landed.
 
-- `internal/fabricengine` (doc.go), `internal/hubgeometry` (hubgeometry.go, anchor.go) — the shipped bases slices 7-10 restructure;
+- `internal/fabricengine` (doc.go), `internal/lyxcwd` (lyxcwd.go, anchor.go) — the shipped bases slices 7-10 restructured;
   durable parts fold here on landing.
 - [finalize.md](finalize.md) — the document-driven weft-conflict mechanism slice 6's orchestration half will reuse.
 - [raddle.md](raddle.md) — the regenerate-don't-merge property bounding rebase recovery;
@@ -221,4 +225,4 @@ Read-only verbs the caller can run directly.
   a `_pattern` junction consumer of the slice-1 config-driven list;
   also the residue of rebase re-alignment.
 - `fabric-v2-crucible` (wiki) — the final hardening slice, sequenced after every slice in this doc including 7-10, per project policy that it runs last.
-- CONSTRAINTS.md's Fabric Git Invariant and Cwd Resolution Invariant — the invariants this doc's shipped work enforces and slice 7 narrows.
+- CONSTRAINTS.md's Fabric Git Invariant and Cwd Resolution Invariant — the invariants this doc's shipped work enforces and slice 7 narrowed.

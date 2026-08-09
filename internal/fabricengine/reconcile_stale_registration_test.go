@@ -96,8 +96,10 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 
 // newFabricFixture returns a lyxtest.CopyPairedLocal fixture seeded with a
 // fabric config and its weft prime on the suffixed primary branch. It also
-// materializes the repo-wide config via seedRepoWideFabricConfig so migrated
-// reads succeed.
+// materializes <Hub>/_board as a real weft worktree on the warp's unsuffixed
+// default branch — the shape CloneHub produces and the shape Cleanup reads the
+// repo's primary weft branch from — and the repo-wide config inside it via
+// seedRepoWideFabricConfig, so migrated reads succeed.
 func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	t.Helper()
 
@@ -105,9 +107,45 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add",
+		fabricengine.BoardDir(fixture.Layout.HubPath), "main")
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	return fixture
+}
+
+// TestReconcile_MissingWeftRepoIsDiagnosedByName destroys the weft prime — the checkout holding the
+// weft repo's gitdir — and asserts reconcile reports the missing weft repo by name with a remedy,
+// instead of the raw chdir errors each corrective branch used to fail with.
+func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	if err := os.RemoveAll(fixture.WeftPrime); err != nil {
+		t.Fatalf("remove weft prime: %v", err)
+	}
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	if len(result.Pairs) == 0 {
+		t.Fatal("Reconcile() returned no pairs; want the prime pair reported")
+	}
+	pr := result.Pairs[0]
+	if !strings.Contains(pr.Error, "weft repo missing at") {
+		t.Errorf("Reconcile() pair error = %q; want it to diagnose the missing weft repo by name", pr.Error)
+	}
+	if !strings.Contains(pr.Error, "re-clone") {
+		t.Errorf("Reconcile() pair error = %q; want it to name a remedy", pr.Error)
+	}
+	if pr.Action != fabricengine.ReconcileActionUnmanagedReported {
+		t.Errorf("Reconcile() pair action = %q; want %q (report, never a corrective attempt against a missing repo)", pr.Action, fabricengine.ReconcileActionUnmanagedReported)
+	}
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
@@ -229,7 +267,7 @@ func TestPrune_ApplyRemovesPortalAndLaunchers(t *testing.T) {
 		t.Fatalf("remove warp dir: %v", err)
 	}
 
-	res, err := topology.Prune(l, true)
+	res, err := topology.Prune(l, true, false)
 	if err != nil {
 		t.Fatalf("Prune(apply=true): %v", err)
 	}
@@ -274,7 +312,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Fatalf("bare-remove warp worktree: %v", err)
 		}
 
-		dry, err := topology.Prune(l, false)
+		dry, err := topology.Prune(l, false, false)
 		if err != nil {
 			t.Fatalf("Prune(dry-run): %v", err)
 		}
@@ -282,7 +320,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Errorf("dry-run reported weft %s %d times; want exactly 1", weftPath, got)
 		}
 
-		apply, err := topology.Prune(l, true)
+		apply, err := topology.Prune(l, true, false)
 		if err != nil {
 			t.Fatalf("Prune(apply): %v", err)
 		}
@@ -320,7 +358,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 			t.Fatalf("bare-remove weft worktree: %v", err)
 		}
 
-		apply, err := topology.Prune(l, true)
+		apply, err := topology.Prune(l, true, false)
 		if err != nil {
 			t.Fatalf("Prune(apply): %v", err)
 		}
@@ -493,5 +531,169 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 	}
 	if reason.Cause != fabricengine.CauseNotAJunction || reason.Detail != "_lyx is not a junction" {
 		t.Errorf("Healthy reason = %+v; want {Cause: %q, Detail: %q}", reason, fabricengine.CauseNotAJunction, "_lyx is not a junction")
+	}
+}
+
+// TestReconcile_RecreatedWeftIsWiredInTheSamePass proves a single reconcile pass fully repairs a
+// pair whose weft worktree was deleted out from under it. Recreating the worktree alone leaves the
+// warp junctions pointing at directories that vanished with it, so the pair stayed unhealthy — with
+// a raw EvalSymlinks error as its reported reason — until a SECOND reconcile ran.
+func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "reconcile-recreated-pair"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+	}
+
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	if err != nil {
+		t.Fatalf("WeftRepoRoot: %v", err)
+	}
+	weftPath := fabricengine.WeftWorktreePath(l, slug)
+	lyxtest.MustRun(t, weftRepoRoot, "git", "worktree", "remove", "--force", weftPath)
+
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	pair := findReconcilePair(t, result.Pairs, weftPath)
+	if pair.Error != "" {
+		t.Fatalf("Error = %q; want empty", pair.Error)
+	}
+	if pair.Action != fabricengine.ReconcileActionWeftRecreated {
+		t.Errorf("Action = %q; want %q — the repair must not relabel what happened",
+			pair.Action, fabricengine.ReconcileActionWeftRecreated)
+	}
+
+	ok, reason, err := fabricengine.Healthy(warpLayout)
+	if err != nil {
+		t.Fatalf("Healthy: %v", err)
+	}
+	if !ok {
+		t.Errorf("Healthy = false (reason %+v) after ONE reconcile pass; want the pair fully repaired", reason)
+	}
+}
+
+// TestCleanup_DryRunMatchesApplyVerdict proves a dry run answers the question a dry run is for:
+// what the same flags plus --apply would actually do. The gate used to be evaluated only under
+// --apply, so a dry run reported every orphan branch as deletable while --apply then protected all
+// of them — the report and the action never agreed.
+func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "cleanup-dryrun-parity"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := topology.Remove(l, slug, true); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	// Remove deletes the pair's weft branch, so re-create an orphaned one by hand: a weft branch
+	// whose paired warp branch no warp worktree is on.
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	if err != nil {
+		t.Fatalf("WeftRepoRoot: %v", err)
+	}
+	orphan := fabricengine.WeftBranchName(slug)
+	lyxtest.MustRun(t, weftRepoRoot, "git", "branch", orphan)
+
+	findEntry := func(t *testing.T, entries []fabricengine.CleanupBranchEntry) fabricengine.CleanupBranchEntry {
+		t.Helper()
+		for _, e := range entries {
+			if e.Branch == orphan {
+				return e
+			}
+		}
+		t.Fatalf("cleanup result has no entry for %q: %+v", orphan, entries)
+		return fabricengine.CleanupBranchEntry{}
+	}
+
+	dry, err := topology.Cleanup(l, false, false)
+	if err != nil {
+		t.Fatalf("Cleanup(dry): %v", err)
+	}
+	applied, err := topology.Cleanup(l, true, false)
+	if err != nil {
+		t.Fatalf("Cleanup(apply): %v", err)
+	}
+
+	dryEntry := findEntry(t, dry.Entries)
+	appliedEntry := findEntry(t, applied.Entries)
+	if dryEntry.Protected != appliedEntry.Protected {
+		t.Errorf("dry-run Protected = %v; --apply Protected = %v; want them to agree",
+			dryEntry.Protected, appliedEntry.Protected)
+	}
+	if appliedEntry.Deleted {
+		t.Fatalf("--apply deleted %q without --force; the gate is not doing its job, so this test proves nothing", orphan)
+	}
+}
+
+// TestReconcile_RestoresDeletedPortalAndLaunchers proves Reconcile repairs the hub-level portal
+// junction and launcher directory.
+// Add creates both and Remove/Prune tear both down, so they are part of the managed topology — but
+// nothing repaired them: a pair whose portal had been deleted was reported already_healthy forever
+// and could only be recovered by removing and re-adding the pair, which a leftover portal link then
+// blocked.
+func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	const slug = "portal-repair"
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add(%q) error = %v", slug, err)
+	}
+
+	portalLink := fabricengine.PortalLink(l, slug)
+	launcherDir := fabricengine.LauncherDir(l, slug)
+	if _, err := os.Lstat(portalLink); err != nil {
+		t.Fatalf("Add(%q) did not create the portal at %s: %v", slug, portalLink, err)
+	}
+	if err := os.Remove(portalLink); err != nil {
+		t.Fatalf("delete portal: %v", err)
+	}
+	if err := os.RemoveAll(launcherDir); err != nil {
+		t.Fatalf("delete launcher dir: %v", err)
+	}
+
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	var repaired *fabricengine.ReconcilePairResult
+	for i := range result.Pairs {
+		if filepath.Base(result.Pairs[i].WarpWorktree) == slug {
+			repaired = &result.Pairs[i]
+		}
+	}
+	if repaired == nil {
+		t.Fatalf("Reconcile() reported no pair for slug %q", slug)
+	}
+
+	if repaired.Action != fabricengine.ReconcileActionPortalRestored {
+		t.Errorf("Reconcile() action for %q = %q; want %q — a missing portal must not read as healthy",
+			slug, repaired.Action, fabricengine.ReconcileActionPortalRestored)
+	}
+	if _, err := os.Lstat(portalLink); err != nil {
+		t.Errorf("Reconcile() left the portal missing at %s: %v", portalLink, err)
+	}
+	if _, err := os.Stat(launcherDir); err != nil {
+		t.Errorf("Reconcile() left the launcher dir missing at %s: %v", launcherDir, err)
 	}
 }

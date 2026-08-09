@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -15,7 +14,7 @@ import (
 // fabric junction for this worktree. Weft-side content, including _lyx and
 // .lyx, is never touched.
 func runUnwire(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
+	cwd, _, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -28,5 +27,8 @@ func runUnwire(out io.Writer, _ []string) int {
 		"junctions_removed": res.JunctionsRemoved,
 		"weft_content":      res.WeftContent,
 		"git_exclude":       res.GitExclude,
+		// _board is a named special case outside the pathspec-derived sweep, so its removal can
+		// never appear in junctions_removed and must be surfaced under its own key.
+		"board_junction_removed": res.BoardJunctionRemoved,
 	})
 }
