@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-file-renames
+phase: self-resolved-verify-logic
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-wordswap-tool  '2026-08-09T06:38:43Z'
 approved-pre-sweep-rewords  '2026-08-09T06:41:14Z'
 approved-go-sweep  '2026-08-09T06:45:47Z'
 approved-file-renames  '2026-08-09T06:49:51Z'
+self-resolved-verify-logic  '2026-08-09T06:52:56Z'
 ```
 
 ## Batches

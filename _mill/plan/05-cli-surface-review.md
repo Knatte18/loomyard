@@ -9,6 +9,10 @@ verify: go test ./cmd/lyx/... ./internal/fabriccli/... ./tools/sandbox/...
 depends-on: [4]
 ```
 
+## Prior failure
+
+- Round 1: implementer reported `status: success` with `cards_done: [13, 14]` and zero content commits (both cards found nothing to correct, per their explicit "make no commit" instruction) — finalize's completeness recount classified this as `stuck_type: logic, reason: "success reported but no content commit (only batch-start commit since start_sha)"`. The two per-card "make no commit" instructions did not say the required "record that explicitly in the batch notes" step itself must land in a commit, so the implementer's batch-notes record (if any) was never captured in git history for finalize to see. Clarified below: the record is now an explicit committed artifact.
+
 ## Batch Scope
 
 The judgment pass over everything a **user** sees, applied to text that batch 3 already rewrote mechanically.
@@ -57,8 +61,8 @@ the deliverable is the confirmation, and any correction it turns up.
 
   `cmd/lyx/helptree_test.go`, `cmd/lyx/longlist_test.go` and `cmd/lyx/jsonhelp_test.go` were verified to contain zero `host` assertions before this task began, so they should pass unchanged;
   confirm that rather than assume it, since the invariant names them as the machine half of this check.
-  If this card's review finds nothing to correct, make no commit and record that explicitly in the batch notes.
-- **Commit:** `docs(fabriccli): apply the Fabric vocabulary rule to the fabric help surface`
+  If this card's review finds nothing to correct, make no source-file commit — but the confirmation itself must still be committed: append a one-line dated note to this batch file's `## Batch Notes` section (create the section at the end of this file, after `## Batch Tests`, if it does not exist) stating the review found nothing to correct, and commit that note with a trivial message (e.g. `docs(fabriccli): record card 13 review — no correction needed`).
+- **Commit:** `docs(fabriccli): apply the Fabric vocabulary rule to the fabric help surface` (or the no-correction record commit above, if the review found nothing to change)
 
 ### Card 14: re-check the user-visible runtime strings
 
@@ -97,8 +101,8 @@ the deliverable is the confirmation, and any correction it turns up.
 
   Do not touch `tools/sandbox/*.md` here;
   the eight `SANDBOX-*-SUITE.md` agent prompt templates are consumer-facing prose and belong to batch 6.
-  If this card's review finds nothing to correct, make no commit and record that explicitly in the batch notes.
-- **Commit:** `docs(fabric,sandbox): apply the Fabric vocabulary rule to user-visible runtime strings`
+  If this card's review finds nothing to correct, make no source-file commit — but the confirmation itself must still be committed: append a one-line dated note to this batch file's `## Batch Notes` section (create the section at the end of this file, after `## Batch Tests`, if it does not exist) stating the review found nothing to correct (including the undercount confirmation), and commit that note with a trivial message (e.g. `docs(fabric,sandbox): record card 14 review — no correction needed`).
+- **Commit:** `docs(fabric,sandbox): apply the Fabric vocabulary rule to user-visible runtime strings` (or the no-correction record commit above, if the review found nothing to change)
 
 ## Batch Tests
 
