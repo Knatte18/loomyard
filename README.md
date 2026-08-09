@@ -83,7 +83,7 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).
-- **webster** — the implementer module: one long-lived Master session reads the flat card-list plan (plan-format v3, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch.
+- **webster** — the implementer module: one long-lived Master session reads the flat card-list plan (plan-format, via `internal/planparser`) once and forks one implementer per batch **in-session** instead of spawning a fresh strand per batch.
 - **perch** — a generic profile-driven review-gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK`, standalone or as loom's gate between phases.
 - **burler** — one review+fix round (review → fix, no self-grading) over the shuttle file contract;
   composed by `perch`.

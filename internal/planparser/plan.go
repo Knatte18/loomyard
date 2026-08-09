@@ -1,12 +1,12 @@
 // plan.go defines planparser's public struct model: Plan (the whole parsed `_lyx/plan/` directory)
-// and Card (one flat, plan-format-v3 card), plus MovePair, the normalized-path pair a card's Moves:
+// and Card (one flat, plan-format card), plus MovePair, the normalized-path pair a card's Moves:
 // field carries.
 // No parsing logic lives here — see parse.go, normalize.go, and sections.go for how these types are
 // filled.
 
 package planparser
 
-// Plan is the in-memory form of a fully parsed plan-format v3 plan directory.
+// Plan is the in-memory form of a fully parsed plan-format plan directory.
 type Plan struct {
 	// Dir is the plan directory ParsePlan was given.
 	Dir string
@@ -36,7 +36,7 @@ type Plan struct {
 	Verify string
 }
 
-// Card is one flat, plan-format-v3 card: the Card Index entry's fields plus everything parsed from
+// Card is one flat, plan-format card: the Card Index entry's fields plus everything parsed from
 // the card's own file.
 type Card struct {
 	// Number is the card's own flat number (1..N), taken from the Card Index entry.

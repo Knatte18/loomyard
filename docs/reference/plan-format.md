@@ -1,8 +1,6 @@
-# Plan format v3 — flat card list
+# Plan-format — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format v3**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
->
-> **v3 is the live plan format.** [plan-format.md v2](plan-format.md) is retired now that builder, its sole consumer, is gone. v3 — consumed by `webster` — is the sole plan format.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
 
 ## What a card is
 
@@ -25,7 +23,7 @@ The DAG is a **consequence** of the compile-validity requirement, not a separate
 The plan's unit is always the individual **card** — the smallest, most precise, independently verifiable unit.
 Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared file-op fields) is a later, measured, entirely internal decision, not something the plan format needs to express or the planner needs to decide.
 
-v2's per-batch `## Scope` concept is **removed entirely** — there is no batch-level "declared ownership" list in v3.
+There is no batch-level "declared ownership" `## Scope` concept.
 A card's own typed file-op fields (`Context:`/`Edits:`/`Creates:`/ `Deletes:`/`Moves:`) *are* its declared footprint;
 there is no wider unit left to declare a footprint for.
 
@@ -66,7 +64,7 @@ Each card lives in its own file,
 and the file's content is, in this order:
 
 1. **Title heading** — `# Card N — <name>`, where `N` is the card's own flat number (see [Numbering and commit subject](#numbering-and-commit-subject) below).
-2. **`**What:**`** — the instruction: the change to make, concretely (prose, may span multiple lines until the next field label). v3 keeps lyx's own established `What:` name, playing the same role it played in v2.
+2. **`**What:**`** — the instruction: the change to make, concretely (prose, may span multiple lines until the next field label). plan-format keeps lyx's own established `What:` name.
 3. **The five typed file-op fields, all required, in this order:** `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`.
    Never omitted — a field with nothing to declare carries the literal `none` on its own label line:
 
@@ -117,13 +115,13 @@ Three reasons to include it now:
 
 ## Card path resolution: `root:` and `//`
 
-`00-overview.md`'s frontmatter may carry an optional **plan-level** `root: <worktree-relative-dir>` (unlike v2, where `root:` was per-batch).
+`00-overview.md`'s frontmatter may carry an optional **plan-level** `root: <worktree-relative-dir>`.
 When set, every card file-op path in the plan — all five typed fields, both sides of every `Moves:` pair — resolves as `<root>/<path>` **unless** the path starts with `//`, which is *always* worktree-root-relative (root set or not — one rule, no special cases): that is how a card names a file outside the shared root, e.g. `//cmd/lyx/main.go`.
 This is purely a token-economy shorthand for a plan whose cards repeat the same directory prefix over and over.
 The degenerate `root: "."` case (the worktree root itself) resolves a card path to the raw path unchanged, rather than the unclean `"./<raw>"` a literal string join would produce.
 
 The parser normalizes every card path to a plain worktree-relative, forward-slash path exactly once, at parse time — the validator and any future consumer never see `root:` or `//` again, only normalized paths.
-A single-`/` prefix or a `..` segment in a card path is malformed and is flagged by the `card-path-malformed` check (v2's `scope-malformed`, renamed because Scope is gone).
+A single-`/` prefix or a `..` segment in a card path is malformed and is flagged by the `card-path-malformed` check.
 
 ## Moves and the Rename mechanic
 
@@ -133,7 +131,7 @@ A path appearing as a `Moves:` endpoint must not also appear in the same plan's 
 **Rename-plus-extraction is one `Moves:` pair plus a separate `Creates:` entry**: when a rename also splits new content out of the relocated file, the relocation itself is still exactly one `Moves:` pair (the file that moved),
 and the newly-split-out file is a plain `Creates:` entry in that same card or another — never folded into the `Moves:` pair itself.
 
-**`## Rename mechanic` is now a plan-level section**, one section in `00-overview.md`, **required when any card in the plan has a non-empty `Moves:`** — the `move-mechanic-missing` check (now plan-level) flags a plan that declares a rename but omits it.
+**`## Rename mechanic` is a plan-level section**, one section in `00-overview.md`, **required when any card in the plan has a non-empty `Moves:`** — the `move-mechanic-missing` check (plan-level) flags a plan that declares a rename but omits it.
 The section's text is CANONICAL — reproduce it verbatim (adjusted only for the specific paths involved):
 
 ```markdown
@@ -175,7 +173,7 @@ The symbol fields — `creates-symbols`/`edits-symbols`/`reads-symbols` — are 
 They depend on a working, planner-side-verified `scout`, which is deprioritized (see the roadmap's Someday list).
 Adding them now as unused optional fields would create confusion later;
 better to add them explicitly once `scout` is actually ready.
-See [../../manifest/designs/scout-redesign.md](../../manifest/designs/scout-redesign.md) for what they'd depend on.
+See [`internal/scoutengine`](../../internal/scoutengine/doc.go) for what they'd depend on.
 
 **The derived `changes-files` union** — the union of the typed file-op fields (`Edits:` ∪ `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — is the artifact webster's future contract-verification compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note;
 a file-list mismatch against `changes-files` is always informational, never blocking on its own).
@@ -193,14 +191,14 @@ Machine checks this format is designed to support — they land with webster, no
 1. `format-unrecognized` / `plan-unapproved` — `format:` recognized, `approved: true`;
    else refuse to run.
 2. `index-file-mismatch` — Card Index ↔ card files consistent (numbering, slugs, no gaps, no orphaned file on disk).
-   This check **absorbs** v2's `card-count-mismatch` — v3 has no `(C cards)` segment to cross-check separately;
+   This check covers the card count because there is no separate `(C cards)` segment to cross-check;
    the index itself IS the card list.
-3. `card-path-malformed` — every card path, once normalized (both `Moves:` sides included, `root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes. (v2's `scope-malformed`, renamed because Scope is gone.)
+3. `card-path-malformed` — every card path, once normalized (both `Moves:` sides included, `root:`/`//` resolution applied), is non-empty, relative, clean, and free of `..` escapes.
 4. `move-format` — every non-`none` `Moves:` sub-bullet matches the `` `src` -> `dst` `` grammar.
 5. `move-redundant` — a path is both a `Moves:` endpoint and in `Creates:`/`Deletes:` of the same plan.
 6. `move-source-missing` — a `Moves:` source neither exists on disk nor is a `Creates:` target or `Moves:` destination of an earlier or later card.
 7. `move-target-collision` — a `Moves:` target already exists on disk, is targeted by more than one card, or collides with a different card's `Creates:` entry (same-card overlap is `card-field-overlap`'s job).
-8. `move-mechanic-missing` — the plan has at least one `Moves:` pair somewhere but `00-overview.md` has no `## Rename mechanic` section (now plan-level, was per-batch in v2).
+8. `move-mechanic-missing` — the plan has at least one `Moves:` pair somewhere but `00-overview.md` has no `## Rename mechanic` section (plan-level).
 9. `card-missing-field` — a card lacks one of `What:`/`Context:`/`Edits:`/`Creates:`/`Deletes:`/ `Moves:`/`Depends-on:` (now including the new `Depends-on:` field).
 10. `card-field-overlap` — the same path appears in more than one of a single card's `Context:`/`Edits:`/`Creates:`/`Deletes:` fields or `Moves:` endpoints (per-card mutual exclusivity only — the legitimate cross-card `Creates:`-then-`Edits:` sequencing is never flagged).
 11. `card-numbering` — flat `N` runs 1..M across the whole plan, no gaps or duplicates;
@@ -209,16 +207,10 @@ Machine checks this format is designed to support — they land with webster, no
 13. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix.
 14. `depends-on-order` (**new**) — a card's `Depends-on:` names a card at or after its own position (a later card or itself), or names an id that references no existing card.
 
-**Dropped from v2, and why:** `verify-missing` (no mandatory verify gate in v3);
-`chain-end-dangling` (deferred-verify chains are gone — there is no oversized/chained escape mechanism in v3);
-`batch-oversized` (oversized batches are gone along with batch itself);
-`card-outside-scope` (Scope is gone — a card's typed file-op fields are its own declared footprint, nothing to check them against);
-`card-count-mismatch` (folded into `index-file-mismatch` above).
-
 ## Worked example
 
 A complete minimal plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent across Card Index ↔ per-card filenames ↔ card headings/numbering.
-Across its four card files this example demonstrates every plan-format v3 feature: all five typed file-op fields (with `none` sentinels), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with a `//`-escaped path, a `Depends-on:` field with a real dependency, a pinned `Commit:` field, and a `Moves:` card with its plan-level `## Rename mechanic` section.
+Across its four card files this example demonstrates every plan-format feature: all five typed file-op fields (with `none` sentinels), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with a `//`-escaped path, a `Depends-on:` field with a real dependency, a pinned `Commit:` field, and a `Moves:` card with its plan-level `## Rename mechanic` section.
 
 `_lyx/plan/00-overview.md`:
 
@@ -342,4 +334,4 @@ the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay wo
 
 - [webster-contract.md](webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [scout-redesign.md](../../manifest/designs/scout-redesign.md) — the module the symbol fields depend on.
+- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — the module the symbol fields depend on.

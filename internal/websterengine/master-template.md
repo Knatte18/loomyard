@@ -1,4 +1,4 @@
-<!-- This is the webster Master session prompt (plan-format v3, the flat card
+<!-- This is the webster Master session prompt (plan-format, the flat card
      list).
      It is filled by `run`'s engine core via internal/stencil and handed to the shuttle as the Master session's entire instruction set for one whole plan run: the long-lived session that reads the codebase and the plan once, then forks one implementer per execution batch in-session (Claude Code's Agent tool, subagent_type "fork").
      Every marker below is a top-level {{.X}} substitution;

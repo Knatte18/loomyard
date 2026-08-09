@@ -1,5 +1,5 @@
 // Package planparser is the SOLE parser of the on-disk plan format written under
-// `_lyx/plan/` (see docs/reference/plan-format-v3.md, the pinned spec this package
+// `_lyx/plan/` (see docs/reference/plan-format.md, the pinned spec this package
 // implements). No other package may read `_lyx/plan/` directly — every consumer
 // (webster's batcher, master, and fork prompt rendering) goes through
 // planparser.ParsePlan and the Plan/Card model it returns, so the on-disk grammar has
@@ -29,7 +29,7 @@
 //
 // # The none sentinel
 //
-// Plan-format v3 requires every card to carry all five typed file-op fields and
+// Plan-format requires every card to carry all five typed file-op fields and
 // Depends-on, never omitted: a field with nothing to declare carries the literal
 // `none` on its label line. ParsePlan distinguishes three states per field: the
 // label was never seen at all (nil slice, HasX false), the label carried `none`
