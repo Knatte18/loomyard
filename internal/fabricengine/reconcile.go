@@ -446,13 +446,24 @@ func junctionRepointedDetail(warpLayout *lyxcwd.Location) string {
 	return "junction re-pointed: " + strings.Join(parts, "; ")
 }
 
-// scanOnDiskJunctionNames lists the names of link entries directly under
-// filepath.Join(worktreeRoot, relPath), excluding hub-reserved names
-// (_board/_portals/_launchers). Returns (nil, err) if the directory
-// cannot be read; callers must treat a scan error as "skip removal", not
-// as "the on-disk set is empty".
-func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
-	dir := filepath.Join(worktreeRoot, relPath)
+// scanOnDiskJunctionNames lists the names of the fabric-owned link entries directly under the slug
+// worktree's anchored directory, excluding hub-reserved names (_board/_portals/_launchers).
+// Returns (nil, err) if the directory cannot be read;
+// callers must treat a scan error as "skip removal", not as "the on-disk set is empty".
+//
+// Ownership, not merely link-ness, is the membership test, and it is load-bearing rather than
+// defensive: the anchored directory is ordinary warp-repo content, so a hand-authored symlink
+// checked into the user's repo (`latest -> v2`, `README.md -> docs/README.md`) sits right beside
+// fabric's junctions.
+// Treating every link as fabric's made `applyStaleRemoval` delete such a symlink out of the user's
+// working tree, which is exactly the "fabric never deletes what might be user content" rule
+// seedLyxJunction and unseedJunctionRecords already enforce everywhere else.
+// A link is fabric-owned only when it resolves inside the paired weft worktree or onto the hub's
+// board directory — the only two targets any fabric junction is ever created with.
+// A link that cannot be resolved at all is deliberately NOT claimed: an unresolvable link cannot be
+// proven fabric's, and unseedJunctionRecords already refuses to remove one for the same reason.
+func scanOnDiskJunctionNames(l *lyxcwd.Location, slug string) ([]string, error) {
+	dir := filepath.Join(WorktreePath(l, slug), l.AnchorRel)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -468,15 +479,48 @@ func scanOnDiskJunctionNames(worktreeRoot, relPath string) ([]string, error) {
 		if reserved[entry.Name()] {
 			continue
 		}
-		isLink, err := fslink.IsLink(filepath.Join(dir, entry.Name()))
+		link := filepath.Join(dir, entry.Name())
+		isLink, err := fslink.IsLink(link)
 		if err != nil {
 			return nil, err
 		}
-		if isLink {
+		if !isLink {
+			continue
+		}
+		owned, err := linkIsFabricOwned(l, slug, link)
+		if err != nil {
+			return nil, err
+		}
+		if owned {
 			names = append(names, entry.Name())
 		}
 	}
 	return names, nil
+}
+
+// linkIsFabricOwned reports whether the link at linkPath resolves to a location fabric itself
+// would have pointed a junction at: somewhere inside the slug's paired weft worktree, or the hub's
+// board directory.
+// It returns (false, nil) — never an error — for a link whose target does not resolve, so an
+// unreadable or dangling link is left alone rather than swept.
+func linkIsFabricOwned(l *lyxcwd.Location, slug, linkPath string) (bool, error) {
+	resolved, err := fslink.PointsTo(linkPath)
+	if err != nil {
+		return false, nil
+	}
+	resolved = filepath.Clean(resolved)
+
+	for _, root := range []string{WeftWorktreePath(l, slug), BoardDir(l.HubPath)} {
+		normalizedRoot, rootErr := filepath.EvalSymlinks(root)
+		if rootErr != nil {
+			continue
+		}
+		normalizedRoot = filepath.Clean(normalizedRoot)
+		if resolved == normalizedRoot || strings.HasPrefix(resolved, normalizedRoot+string(filepath.Separator)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // appendPrDetail appends text to pr.Detail, joining on "; " when a prior
@@ -501,7 +545,7 @@ func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 		return
 	}
 
-	onDisk, err := scanOnDiskJunctionNames(warpLayout.WorktreePath(), warpLayout.AnchorRel)
+	onDisk, err := scanOnDiskJunctionNames(warpLayout, slug)
 	if err != nil {
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return
