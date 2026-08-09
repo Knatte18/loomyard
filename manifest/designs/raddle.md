@@ -1,10 +1,11 @@
 # raddle — codeguide's woven-in successor (Someday, deprioritized)
 
-> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Already has a reserved-but-unbuilt phase slot between Webster and Finalize (see [loom.md](loom.md#the-phase-machine)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
+> **Status: Design partially exists, not scheduled.** Deprioritized — not required to land a first `loom` plan. Raddle-regeneration is folded into `Finalize`'s own contract, not a reserved phase slot of its own (see [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots)). This doc covers the parts of raddle's design settled during the vacation-time discussion, not the whole module.
 
 ## What it is
 
-Raddle is codeguide's weaving-vocabulary successor, living in `weft`: an always-run step after Webster (deliberately not the implementer's job — implementers, busy with code, forget the docs) that generates docs over the diff a plan produced, building heavily on Millhouse's `codeguide-update`.
+Raddle is codeguide's weaving-vocabulary successor, living in `weft`: it generates docs over the diff a plan produced, building heavily on Millhouse's `codeguide-update`, deliberately not the implementer's job — implementers, busy with code, forget the docs.
+See [When it runs](#when-it-runs-deferred-to-merge-time-not-mid-task) below for when regeneration actually happens.
 
 ## Geometry — where raddle content lives
 
@@ -51,8 +52,8 @@ This collapses the two potential runs into one and guarantees the output describ
 If another task's merge landed in parent partway through regeneration, the docs would be stale against the HEAD they're about to be committed onto.
 Same "advance only on confirmed success" discipline the `Warp-SHA` trailer mechanism uses elsewhere in `fabric` for recording a baseline, extended to cover the compute step, not just the write step.
 
-**Open, not yet decided:** whether this removes raddle's reserved phase slot between Webster and Finalize in [loom.md](loom.md#the-phase-machine) entirely (folding regeneration into the Finalize/Merge step instead), or whether an earlier, non-authoritative mid-task run stays for human visibility before PR.
-Not resolved here.
+**Decided:** raddle has no reserved phase slot of its own in [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) — regeneration is folded into `Finalize`'s own contract instead, landed at [shed.md](shed.md) and [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+See [finalize.md](finalize.md#raddle-regeneration--part-of-the-merge-not-a-step-before-it) for Finalize's side of the contract.
 
 ## Staleness tracking, via `fabric`
 
@@ -82,5 +83,6 @@ Master (and any fork inheriting its context) must treat raddle content as "how t
 ## Related
 
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the `Warp-SHA`/`Snapshot` trailer and `SyncWeft` mechanics this design relies on.
-- [loom.md](loom.md) — where raddle's phase slot sits in the phase machine.
+- [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) — the flat producer list Raddle has no slot of its own in;
+  regeneration is folded into `Finalize`'s contract instead.
 - The `internal/boardengine` package documentation — `PATTERN.md` (raddle's neighbor in `weft`) mentioned there.
