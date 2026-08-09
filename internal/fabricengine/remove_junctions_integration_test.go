@@ -143,8 +143,11 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	if result.LinksRemoved == 0 {
-		t.Errorf("LinksRemoved = 0; want the anchored junctions counted — the sweep read the worktree root instead")
+	// Exactly the two wired junctions (_lyx, .lyx) plus the _board convenience link — an exact
+	// count, not merely non-zero: the _board link is removed on a separate path and contributes 1
+	// on its own, so a non-zero assertion stayed green with the anchored sweep entirely disabled.
+	if result.LinksRemoved != 3 {
+		t.Errorf("LinksRemoved = %d; want 3 (_lyx, .lyx, _board at the anchored directory)", result.LinksRemoved)
 	}
 }
 
