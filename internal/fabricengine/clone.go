@@ -33,6 +33,28 @@ var RemoveAll = os.RemoveAll
 // re-anchoring at the wrong subpath.
 const staleFabricAnchorName = ".fabric-anchor"
 
+// CloneOptions carries CloneHub's parameters as named fields rather than positionals.
+// This is a struct and not five positionals because two adjacent optional URL strings are exactly the
+// shape that produces silent argument-order bugs, and the argument order is what this change flips:
+// the weft URL is now required and first, the warp URL optional and resolved from the recorded
+// binding when empty.
+type CloneOptions struct {
+	// WeftURL is the weft repository URL. Required.
+	WeftURL string
+	// WarpURL is the warp repository URL. Optional: when empty, it is resolved from the warp
+	// binding recorded on the weft candidate.
+	WarpURL string
+	// Subpath is the lyx-anchor subpath to resolve; see CloneHub's anchor resolution step.
+	Subpath string
+	// Reset tears down an existing hub before cloning, for an idempotent re-clone.
+	Reset bool
+	// ForceBootstrap bypasses the old-order guard that refuses to bootstrap a warp-shaped
+	// repository as a weft. It is ignored outside the bootstrap path (the two-argument form
+	// writing a fresh binding): the guard is reachable only there, so ForceBootstrap has no effect
+	// anywhere else.
+	ForceBootstrap bool
+}
+
 // CloneResult carries the resolved geometry CloneHub hands back to the caller once the git-level
 // clone, board-worktree materialization, and anchor resolution are done.
 // It is deliberately git/geometry-only — the CLI layer (internal/fabriccli) drives config
@@ -46,6 +68,12 @@ type CloneResult struct {
 	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
 	PrimeCwd string // PrimeCwd is the resolved prime warp worktree path at Anchor.
+	// WarpURL is the effective warp URL actually cloned, whether supplied in opts or derived from
+	// the recorded binding.
+	WarpURL string
+	// WarpBindingRecorded is true only when this clone wrote the .lyx-warp record (a fresh binding,
+	// including the clone-time backfill of a pre-binding hub).
+	WarpBindingRecorded bool
 }
 
 // CloneHub orchestrates the cloning of warp and weft repositories, then
@@ -55,52 +83,123 @@ type CloneResult struct {
 // to drive config materialization and wiring — CloneHub deliberately does NOT
 // do that itself, to avoid the fabricengine → configsync import cycle.
 //
-// It takes cwd (current working directory), two repository URLs (warpURL and
-// weftURL), and subpath (the lyx-anchor subpath to resolve; see the anchor
-// resolution step below). It returns the resolved CloneResult and any error
+// It takes cwd (current working directory) and opts (see CloneOptions).
+// opts.WeftURL is required; opts.WarpURL is optional and, when empty, is resolved from the warp
+// binding recorded on the weft candidate. It returns the resolved CloneResult and any error
 // encountered.
 //
-// The operation proceeds in phases:
-//  1. Derive the warp repo name; if derivation fails, return an error without cleanup.
-//  2. Compute the Hub path as <cwd>/<name>-HUB.
-//  3. Check if the Hub path exists; if so, return an error without removing it (we did not create it).
-//  4. Create the Hub directory; if it fails, return the wrapped error (no teardown yet).
-//  5. Clone warp repo to <Hub>/<name>; on failure, teardown and return the error.
-//  6. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
-//     6b. Read the weft primary's checked-out branch and check out its
+// The two forms order their early steps differently, because the hub name is derived from the warp
+// URL and the warp URL's availability differs between them:
+//
+//   - Two-argument form (opts.WarpURL != ""): the hub name is derivable with no network at all, so
+//     the hub-exists check (and any --reset teardown) runs offline, exactly as before this change,
+//     and only then does the pre-hub probe of opts.WeftURL run to resolve the effective warp
+//     binding and check the old-order guard.
+//   - One-argument form (opts.WarpURL == ""): the hub name is unknowable until the binding is read,
+//     so the pre-hub probe of opts.WeftURL runs first, and the hub name, the --reset teardown, and
+//     the hub-exists check all follow it.
+//
+// After that resolution, the operation proceeds exactly as before this change:
+//  1. Create the Hub directory; if it fails, return the wrapped error (no teardown yet).
+//  2. Clone warp repo to <Hub>/<name>; on failure, teardown and return the error.
+//  3. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
+//     3b. Read the weft primary's checked-out branch and check out its
 //     WeftBranchName-suffixed pairing at the same HEAD, capturing the warp
 //     branch name it read; on failure, teardown and return the error.
-//  7. Materialize <Hub>/_board as a second weft worktree via ensureBoardWorktree,
+//  4. Materialize <Hub>/_board as a second weft worktree via ensureBoardWorktree,
 //     adopted onto the captured warp branch if it already exists locally from
-//     step 6's clone, freshly orphan-created otherwise; on failure, teardown
+//     step 3's clone, freshly orphan-created otherwise; on failure, teardown
 //     and return the error.
-//  8. Resolve the lyx-anchor subpath adopt-or-create (adopt: read the marker
+//  5. Resolve the lyx-anchor subpath adopt-or-create (adopt: read the marker
 //     already committed on weft:main; create: validate subpath exists in the
 //     warp worktree, then write the marker to the board worktree on disk —
-//     the CLI commits it), and return the resolved CloneResult.
+//     the CLI commits it), write the warp-binding record when it is new, and
+//     return the resolved CloneResult.
 //
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
 // original failure and the residual Hub path.
-func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
+func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
-	// Step 1: Derive warp repo name
-	name := DeriveWarpName(warpURL)
-	if name == "" {
-		return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", warpURL)
+	if opts.WeftURL == "" {
+		return CloneResult{}, fmt.Errorf("weft URL is required")
 	}
 
-	// Step 2: Compute Hub path
-	hubPath := HubPath(cwd, name)
+	var name, hubPath, effective string
+	var writeRecord, derivedFromRecord bool
 
-	// Step 3: Check if Hub already exists
-	if _, err := os.Stat(hubPath); err == nil {
-		return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+	if opts.WarpURL != "" {
+		// Two-argument form: the hub name is derivable with no network at all, so resolve it,
+		// apply --reset, and check for an existing hub before ever touching the network.
+		name = DeriveWarpName(opts.WarpURL)
+		if name == "" {
+			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", opts.WarpURL)
+		}
+		hubPath = HubPath(cwd, name)
+		if opts.Reset {
+			if err := RemoveAll(hubPath); err != nil {
+				return CloneResult{}, fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+			}
+		}
+		if _, err := os.Stat(hubPath); err == nil {
+			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+		}
+
+		// Only now, with the offline checks passed, does the pre-hub probe touch the network.
+		probe, err := probeWeftBinding(cwd, opts.WeftURL)
+		if err != nil {
+			return CloneResult{}, err
+		}
+		effective, writeRecord, err = resolveEffectiveWarpURL(probe.RecordedWarpURL, probe.Found, opts.WarpURL)
+		if err != nil {
+			return CloneResult{}, err
+		}
+		if writeRecord && !probe.WeftLooksLikeWeft && !opts.ForceBootstrap {
+			// The guard fires only on the bootstrap path (writeRecord == true), which is reachable
+			// only in this two-argument form, so ForceBootstrap is structurally ignored everywhere
+			// else — no usage error, no warning.
+			return CloneResult{}, fmt.Errorf(
+				"refusing to bootstrap %s as a weft: its history carries neither %s nor an empty tree — check the argument order, clone now takes <weft-url> [<warp-url>]",
+				opts.WeftURL, lyxcwd.AnchorFileName)
+		}
+	} else {
+		// One-argument form: the hub name is unknowable until the binding is read, so the probe
+		// runs first and the offline checks follow it.
+		probe, err := probeWeftBinding(cwd, opts.WeftURL)
+		if err != nil {
+			return CloneResult{}, err
+		}
+		effective, writeRecord, err = resolveEffectiveWarpURL(probe.RecordedWarpURL, probe.Found, "")
+		if err != nil {
+			// resolveEffectiveWarpURL's own message must not attempt to name the weft URL; the
+			// caller prefixes it here.
+			return CloneResult{}, fmt.Errorf("weft %s has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>", opts.WeftURL)
+		}
+		derivedFromRecord = true
+		name = DeriveWarpName(effective)
+		if name == "" {
+			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s recorded in the %s binding on weft:main", effective, WarpBindingFileName)
+		}
+		hubPath = HubPath(cwd, name)
+		if opts.Reset {
+			if err := RemoveAll(hubPath); err != nil {
+				return CloneResult{}, fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+			}
+		}
+		// The asymmetry with the two-argument form is deliberate: an offline two-argument re-clone
+		// against an existing hub still fails with "hub already exists", exactly as today; an
+		// offline one-argument invocation fails with "probe weft <url>:" instead, which is the
+		// irreducible cost of deriving the hub name from a remote fact.
+		if _, err := os.Stat(hubPath); err == nil {
+			return CloneResult{}, fmt.Errorf("hub already exists at %s", hubPath)
+		}
 	}
 
-	// Step 4: Create Hub directory
+	warpURL := effective
+
+	// Create Hub directory
 	if err := os.MkdirAll(hubPath, 0o755); err != nil {
 		return CloneResult{}, err
 	}
@@ -121,6 +220,11 @@ func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 	// Step 5: Clone warp repo
 	warpWorktreePath := filepath.Join(hubPath, name)
 	if err := cloneRepo(warpURL, warpWorktreePath); err != nil {
+		if derivedFromRecord {
+			// The derive path names its source so a failure here is traceable back to the
+			// binding that produced it, not just the bare URL.
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("clone warp %s (from the %s binding on weft:main): %w", warpURL, WarpBindingFileName, err))
+		}
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
@@ -143,7 +247,7 @@ func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 
 	// Step 6: Clone weft repo
 	weftPath := weftname.SiblingPath(hubPath, name)
-	if err := cloneRepo(weftURL, weftPath); err != nil {
+	if err := cloneRepo(opts.WeftURL, weftPath); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
@@ -192,7 +296,7 @@ func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 		// Adopt path: ensureBoardWorktree checked out weft:main, which already
 		// carries a committed marker from a prior clone — this is a re-clone.
 		recorded := strings.TrimSpace(string(data))
-		if requested := filepath.Clean(subpath); subpath != "" && requested != "." && requested != recorded {
+		if requested := filepath.Clean(opts.Subpath); opts.Subpath != "" && requested != "." && requested != recorded {
 			// A non-default requested subpath disagrees with the recorded
 			// anchor: never silently re-anchor, the record is authoritative.
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
@@ -204,8 +308,8 @@ func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 		// Validate the requested subpath exists in the warp worktree before
 		// recording it, so a typo like "backedn" fails loudly instead of
 		// silently anchoring to a directory that was never there.
-		anchor = filepath.Clean(subpath)
-		if subpath == "" {
+		anchor = filepath.Clean(opts.Subpath)
+		if opts.Subpath == "" {
 			anchor = "."
 		}
 		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
@@ -214,6 +318,19 @@ func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("write %s: %w", markerPath, err))
 		}
+	}
+
+	// Immediately after the anchor block writes .lyx-anchor (both the adopt and the create branch
+	// fall through to this point), write the warp-binding record when this clone is the one that
+	// determined it. This is the clone-time backfill too: a re-clone of a pre-binding hub has
+	// .lyx-anchor already committed but no .lyx-warp, so found is false, writeRecord is true, and
+	// the record is written here with no special casing.
+	var warpBindingRecorded bool
+	if writeRecord {
+		if err := writeWarpBinding(boardDir, effective); err != nil {
+			return CloneResult{}, teardownHub(hubPath, err)
+		}
+		warpBindingRecorded = true
 	}
 
 	// Resolve the prime layout now that the marker exists on disk, so
@@ -235,11 +352,13 @@ func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 	weftBase := filepath.Join(WeftWorktree(l), l.AnchorRel)
 
 	return CloneResult{
-		HubPath:  hubPath,
-		Anchor:   anchor,
-		BoardDir: boardDir,
-		WeftBase: weftBase,
-		PrimeCwd: primeCwd,
+		HubPath:             hubPath,
+		Anchor:              anchor,
+		BoardDir:            boardDir,
+		WeftBase:            weftBase,
+		PrimeCwd:            primeCwd,
+		WarpURL:             warpURL,
+		WarpBindingRecorded: warpBindingRecorded,
 	}, nil
 }
 

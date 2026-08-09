@@ -144,13 +144,17 @@ What actually landed:
 
 Depended on slice 7.
 **Sequenced before slice 10** (not parallel) — both touch `internal/fabriccli/clone.go`'s `runCloneWithReset` in the same ~45-line span;
-slice 10 is still pending and still collides on `runCloneWithReset`.
+slice 10 has since shipped.
 
-### Slice 10 — store the warp-URL binding in `weft:main`; fold bootstrap into `fabric clone`
+### Slice 10 — store the warp-URL binding in `weft:main`; fold bootstrap into `fabric clone` (shipped)
 
 A weft repo is bound to exactly one warp (many-to-one: one warp can back many wefts).
-Store that binding (warp URL + `--subpath`) on **weft:main** via the `Bolt` handle (`fabric-collapse-external-surface`), the same weft:main area slice 5's `.fabric-anchor` already lives in — **a distinct piece of data from the subpath anchor**: the anchor says *where in warp* lyx is rooted;
+Store that binding on **weft:main** via the `Bolt` handle (`fabric-collapse-external-surface`), the same weft:main area slice 5's `.lyx-anchor` already lives in — **a distinct piece of data from the subpath anchor**: the anchor says *where in warp* lyx is rooted;
 this binding says *which warp repo* this weft pairs with at all.
+
+**Shipped correction: the record holds the warp URL only, never `--subpath`.**
+The subpath already has one authoritative home in the `.lyx-anchor` marker;
+a second copy in the binding record would create two records that can disagree with no rule for which wins.
 
 No new verb — `fabric clone` takes the optional warp URL directly:
 
@@ -159,14 +163,26 @@ lyx fabric clone <weft-url>                 # binding already exists on weft:mai
 lyx fabric clone <weft-url> <warp-url>      # bootstrap — weft has no binding yet, warp given explicitly
 ```
 
-**Breaking change: `clone`'s argument order flips to weft-first** (today warp-first: `internal/fabriccli/clone.go` reads `warpURL := args[0]; weftURL := args[1]`).
-Update `runCloneWithReset`'s arg parsing, `fabricengine.CloneHub`'s parameter order, every call site/help text/test, and `docs/`/this file's own examples above (which still show today's order and must be corrected in the same commit as the flip).
+**Breaking change: `clone`'s argument order flipped to weft-first** (previously warp-first: `internal/fabriccli/clone.go` read `warpURL := args[0]; weftURL := args[1]`).
+`runCloneWithReset`'s arg parsing, `fabricengine.CloneHub`'s parameter order, every call site, help text, and test were updated in the same commit as the flip.
 
-**Conflict rule**: if `<warp-url>` is supplied and a binding already exists — matches: no-op, proceed.
+**Conflict rule (shipped as designed)**: if `<warp-url>` is supplied and a binding already exists — matches: no-op, proceed.
 Differs: hard error, never silently re-point (re-pointing is a distinct, deliberate operation).
 No `<warp-url>` supplied and no binding recorded: error, unbound weft requires an explicit warp URL.
 
-Depends on slice 7 (builds the new bootstrap logic against slice 7's already-narrowed clone/junction structure, not the pre-slice-7 one) and slice 9 (clone.go collision, see above — sequenced after).
+**Shipped additions this design did not anticipate:**
+
+- A throwaway pre-hub probe clone of the weft candidate (`warpprobe.go`) reads the recorded binding before any hub directory exists, because the hub is named after the warp repo and so has no path until the warp URL is known.
+- The one-argument form's old-order bootstrap guard: a two-argument call that would bootstrap a fresh binding refuses when the weft candidate's history carries neither the recorded binding nor the `.lyx-anchor` marker (nor an empty tree), since that shape usually means the caller passed a warp URL where a weft URL belongs.
+  `--force-bootstrap` bypasses the guard for a caller who genuinely means it.
+- `CloneHub`'s parameters became an options struct (`CloneOptions`) rather than growing a sixth positional, since two adjacent optional URL strings is exactly the shape that produces silent argument-order bugs — the same shape this slice's own breaking change fixes.
+- `Reconcile` backfills the binding once per hub from the warp side's `origin` remote, for every hub that predates it, with an outcome set (`recorded`, `present`, `diverged`, `skipped`, `deferred`, `record_failed`) reported through the CLI layer.
+
+**Known limitation, not fixed by this slice**: the hub still stays `<cwd>/<warp-name>-HUB`, so two wefts bound to warps of the same name collide on that directory name.
+This is true today and predates this slice;
+nothing here changes it.
+
+Depended on slice 7 (built the new bootstrap logic against slice 7's already-narrowed clone/junction structure, not the pre-slice-7 one) and slice 9 (clone.go collision, see above — sequenced after).
 
 ## Warp stays ordinary git — preserved, unaffected by slices 7-10
 

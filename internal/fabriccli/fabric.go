@@ -14,6 +14,7 @@
 package fabriccli
 
 import (
+	"fmt"
 	"io"
 	"strings"
 
@@ -54,10 +55,10 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] <warp-url> <weft-url> [board-url]
+	// clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] <warp-url> <weft-url>",
+		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-HUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
@@ -65,7 +66,19 @@ subpath, repo-wide config, warp junctions, and per-worktree module configs —
 a single command, no follow-up activation step required. Warp junctions are
 excluded through the warp's .git/info/exclude, never a committed .gitignore.
 
-  <warp-name>            — warp prime (the main working repo)
+There are two forms. "lyx fabric clone <weft-url>" derives the warp URL from
+the binding recorded on weft:main. "lyx fabric clone <weft-url> <warp-url>"
+supplies the warp URL explicitly, which is required the first time a weft is
+bound and is a hard error when it disagrees with an existing binding.
+
+The binding itself is a plain single-line record, ` + fabricengine.WarpBindingFileName + `,
+kept at the board root and holding the warp URL only. It is committed onto
+weft:main beside the recorded lyx-anchor subpath, written the first time a
+warp URL is supplied for an unbound weft.
+
+  <warp-name>            — warp prime (the main working repo); in the
+                           one-argument form its name is derived from the
+                           recorded binding
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
@@ -75,6 +88,12 @@ repo instead of its root — e.g. --subpath backend for a monorepo where lyx
 only manages the backend/ tree. On a re-clone, the previously recorded
 subpath is adopted from weft:main; an explicit --subpath that disagrees with
 it is a hard error.
+
+Use --force-bootstrap to bypass the weft-candidate guard when bootstrapping a
+brand-new weft remote that is neither empty nor already lyx-anchored (for
+example one created with an auto-generated README), which the guard would
+otherwise refuse. It applies to exactly that situation: it is ignored in the
+one-argument form and whenever a binding is already recorded.
 
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
 "main` + weftname.Suffix + `" for default branch "main") — fabric's
@@ -92,16 +111,18 @@ Clone wires everything automatically — no follow-up command is needed to
 activate junctions or config.
 
 Example:
-  lyx fabric clone https://github.com/user/repo https://github.com/user/repo-weft
-  lyx fabric clone --subpath backend https://github.com/user/mono https://github.com/user/mono-weft`,
+  lyx fabric clone --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
+  lyx fabric clone https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
-			return runCloneWithReset(out, args, reset, subpath)
+			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
+			return runCloneWithReset(out, args, reset, subpath, forceBootstrap)
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the warp repo")
+	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
@@ -431,8 +452,15 @@ func runPairs(out io.Writer, _ []string) int {
 	})
 }
 
-// runReconcile executes the fabric reconcile subcommand, walking and repairing
-// all warp↔weft pairs.
+// runReconcile executes the fabric reconcile subcommand, walking and repairing all warp↔weft pairs.
+// Beyond the per-pair repair Topology.Reconcile performs itself, this handler owns the commit-and-push
+// half of the once-per-hub warp-URL binding backfill: on a fresh "recorded" outcome it commits the
+// written record through Bolt, and on both "recorded" and "present" it attempts a push, so a
+// previously committed-but-unpushed record is retried on every subsequent reconcile. Either step
+// failing downgrades the reported outcome to WarpBindingOutcomeRecordFailed — a CLI-only value
+// Topology.Reconcile itself never returns — but never the exit code: a failed backfill commit or push
+// is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
+// downgrade a reconcile verdict.
 func runReconcile(out io.Writer, _ []string) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -455,9 +483,55 @@ func runReconcile(out io.Writer, _ []string) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	return output.Ok(out, map[string]any{
-		"pairs": r.Pairs,
-	})
+
+	binding := r.WarpBinding
+	detail := r.WarpBindingDetail
+
+	if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
+		b := fabricengine.NewBolt(fabricengine.BoardDir(l.HubPath))
+
+		if binding == fabricengine.WarpBindingOutcomeRecorded {
+			if _, _, commitErr := b.Commit("fabric reconcile: record warp binding", fabricengine.SyncOptions{}); commitErr != nil {
+				binding = fabricengine.WarpBindingOutcomeRecordFailed
+				detail = commitErr.Error()
+			}
+		}
+
+		// Push on both "recorded" and "present": the "present" case is what retries a backfill that
+		// committed locally but failed to push on a prior reconcile — without it, the next reconcile
+		// would see the record already on disk, report "present" again, and a commit-only-on-
+		// "recorded" handler would skip the push forever.
+		//
+		// Bolt.Push reaches gitrepo.PushCoalesced, which checks HasUnpushed (a purely local
+		// rev-list) and returns nil without contacting the remote when HEAD is already in sync, so
+		// this costs nothing when there is nothing to push. Caveat: HasUnpushed treats *no configured
+		// upstream* as unpushed, so a board worktree with no upstream attempts a network push on
+		// every reconcile. That is the adopt path's non-case — a board on an already-existing default
+		// branch carries its upstream from the initial clone — but it IS the steady state for a hub
+		// bootstrapped against a genuinely empty weft remote, whose board branch is orphan-created
+		// with no upstream at all. The attempt is harmless: it either succeeds or yields
+		// record_failed with the error in the detail.
+		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
+			if pushErr := b.Push(fabricengine.SyncOptions{}); pushErr != nil {
+				wasPresent := binding == fabricengine.WarpBindingOutcomePresent
+				binding = fabricengine.WarpBindingOutcomeRecordFailed
+				if wasPresent {
+					detail = fmt.Sprintf("a previously committed warp binding record could not be pushed: %v", pushErr)
+				} else {
+					detail = fmt.Sprintf("commit succeeded but push failed: %v", pushErr)
+				}
+			}
+		}
+	}
+
+	envelope := map[string]any{
+		"pairs":        r.Pairs,
+		"warp_binding": string(binding),
+	}
+	if detail != "" {
+		envelope["warp_binding_detail"] = detail
+	}
+	return output.Ok(out, envelope)
 }
 
 // runPruneWithFlag executes the prune logic with the resolved apply flag.

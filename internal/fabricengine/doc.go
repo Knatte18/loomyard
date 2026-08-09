@@ -370,6 +370,23 @@
 // exactly — and falls back to `AnchorRel` `"."` only when no marker is recorded yet (mid-clone, a
 // lyxtest synthetic hub, or a non-fabric git repo).
 //
+// The warp binding is a fourth repo-wide record beside the anchor and the repo-wide `fabric.yaml`
+// config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,
+// see warpbinding.go), containing the warp URL only.
+// `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL,
+// and writes the record when none exists yet and a warp URL is supplied;
+// a supplied URL that disagrees with the recorded one is a hard error, never a silent re-point.
+// That resolution runs through a throwaway pre-hub probe clone of the weft remote (warpprobe.go),
+// because the hub is named after the warp repo and therefore has no path to resolve into until the
+// warp URL is known.
+// `Reconcile` backfills the record once per hub from the warp side's own `origin` remote
+// (reconcile.go's reconcileWarpBinding), with the CLI layer driving the commit and push, exactly as
+// clone's own binding write is committed CLI-side.
+//
+// The anchor, the repo-wide config, and the warp binding are the three repo-wide records that let a
+// later `lyx fabric reconcile` re-wire a hub with no re-clone at all;
+// `Unwire` leaves all three untouched.
+//
 // The wired junction set is likewise a **repo-wide** fact, not a per-worktree one: the `pathspec`
 // key lives in the repo-wide `fabric.yaml` at `<BoardDir>/_lyx/config/fabric.yaml`, so every
 // worktree in the repo reconciles against the one recorded name-set rather than each carrying its

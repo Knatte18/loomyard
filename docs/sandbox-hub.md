@@ -60,7 +60,7 @@ This command:
 2. Computes the Hub path as `C:\Code\lyx-test-HUB`.
 3. Checks if the Hub already exists;
    if not, proceeds to clone.
-4. Runs `lyx fabric clone https://github.com/Knatte18/lyx-test https://github.com/Knatte18/lyx-test-weft` with the parent directory set to `C:\Code`.
+4. Runs `lyx fabric clone https://github.com/Knatte18/lyx-test-weft https://github.com/Knatte18/lyx-test` with the parent directory set to `C:\Code`.
 5. Streams all output (stdout/stderr) to the terminal.
 6. Exits with the clone command's exit code (0 on success, 1 on failure).
 

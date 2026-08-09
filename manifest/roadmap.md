@@ -9,18 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **fabric: unified-repo view — the single entry-portal that makes warp+weft look like one repo** — `fabric` is the sole, deliberately-simplified git portal for everything LoomYard does, giving callers the illusion of one flat repo over the two underlying warp+weft histories.
-   **Slices 1-6 (clone-does-everything, `Fabric.Commit`/`Diff`/`Status`, commit lock + push coalescing, snapshot-as-trailer, warp-rebase/remote-reconcile detection) are shipped** — see `fabric` in Done below.
-   **Slice 7, identified 2026-08-05 off GitHub issue #127, has shipped**: `internal/hubgeometry` shrunk to the minimal cwd/root/anchor primitive `internal/lyxcwd`;
-   its ~20 per-module path constructors moved to their owning modules;
-   the `Weft*`/junction plumbing moved to `internal/fabricengine`;
-   the weft-visibility leak closed at all seven call sites;
-   and the `cwd`-reachable `_board` junction wired (operator-convenience only, mirroring millhouse's own `.wiki` junction).
-   **Slice 9, the former `dotlyx-scratch-hygiene` item, has shipped**: `.lyx` is now a structural, code-injected junction (never a `fabric.yaml` `pathspec` entry), the committed `.gitignore` `.lyx/` block is gone in favor of the warp's own `.git/info/exclude`, a pre-existing real `.lyx` is adopted rather than refused, and `Unwire` no longer deletes weft-side content.
-   **Slices 8 and 10 remain**: slice 8's mechanical leak-closing landed with slice 7 above, leaving only its open CLI-wording policy question (should `buildercli`/`perchcli`/`webstercli` output ever say "weft" to the end user);
-   slice 10 stores the warp-URL binding on `weft:main` (fold bootstrap into `fabric clone`, weft-first argument order).
-   See [designs/fabric-unified-view.md](designs/fabric-unified-view.md).
-
 1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
    Everything that used to be "special" is just a producer like any other: `loom`'s own Preflight is the first producer in `loom`'s list;
    Finalize is an ordinary producer both `loom` and `Hardener` happen to reference at the end of their own list (shared by reference, not by Shed special-casing it) — Raddle-regeneration is now scoped as part of Finalize's own contract, not a separate producer, since merge-conflict risk makes updating Raddle before the Finalize merge impractical (`Tenter`/`Hardener` will need the equivalent, deferred).
@@ -126,7 +114,7 @@ No build order is implied between these items.
    See [designs/scout-plan-symbol-fields.md](designs/scout-plan-symbol-fields.md).
 
 1. **config: repo-wide default + per-worktree override, millhouse `config.local.yaml`-style** — every module's config today resolves only from `<cwd>/_lyx/config/<module>.yaml` (per-worktree, no shared default;
-   `fabric.yaml` is the sole exception, anchored at `_board`/weft:main — see the Planned `fabric` item's slices 7-10).
+   `fabric.yaml` is the sole exception, anchored at `_board`/weft:main — see the Done `fabric: unified-repo view — slices 7-10` item).
    Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses.
    Generalizes `fabric.yaml`'s existing `_board` anchor to every module's config, not just fabric's. Not yet designed.
 
@@ -145,6 +133,13 @@ No build order is implied between these items.
 1. **fabric** — unified warp↔weft git-coordination module replacing warp/weft;
    cut over and old modules deleted.
    Warp-rebase / remote-reconcile recovery landed via `Fabric.Pull` (`internal/fabricengine/pull.go`): fabric-layer detection (ancestry, never `SHAExists`) + safe re-anchor + a `PullResult` PATTERN-residue document, driven by `lyx fabric pull`.
+
+1. **fabric: unified-repo view — slices 7-10** — the `internal/hubgeometry`-shrink follow-up campaign (GitHub issue #127) is complete.
+   Slice 7 shrank `internal/hubgeometry` to the minimal cwd/root/anchor primitive now in `internal/lyxcwd`, moving its ~20 per-module path constructors and its `Weft*`/junction plumbing into their owning modules and `internal/fabricengine`, and wired the `cwd`-reachable `_board` junction (operator-convenience only, mirroring millhouse's own `.wiki` junction).
+   Slice 8 closed the weft-visibility leak at every call site, including its CLI-wording policy question: consumer-emitted prose says "fabric," never "weft," while the wrapped error detail fabric itself produces keeps naming the weft repo and path freely.
+   Slice 9 relocated `.lyx`'s ephemeral transients out of `_lyx`, fixed `.lyx`'s own junction geometry as a structural code-injected junction, and stopped `Unwire` from deleting weft-side content.
+   Slice 10 stores the warp-URL binding as a fourth repo-wide record on `weft:main` and folds bootstrap into `fabric clone`, flipping the clone argument order to weft-first.
+   See [designs/fabric-unified-view.md](designs/fabric-unified-view.md) — the doc survives this task because slice 6's orchestration-layer half is still open.
 
 1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface `gitrepo` uses (reads and writes, including the `Push` rebase-retry path).
    Recommendation: ADOPT-PARTIAL — the read surface, both commit methods, and `SetSnapshotSHA` migrate cleanly;
