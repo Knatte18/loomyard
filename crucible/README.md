@@ -246,6 +246,17 @@ A grep is only as good as its pattern: an `os.RemoveAll` pattern cannot see call
 **Twice in this campaign the round corrected the orchestrator's count rather than the reverse** — which is the round working, not failing.
 Write down what the pattern cannot see, so a later exact match is not mistaken for agreement when it should have been a correction.
 
+*Measured effect, stated honestly.*
+Across this campaign the pre-count **detected zero truncations** — every round met or exceeded every number.
+It also caused one wrong conclusion: the orchestrator had predicted a specific blind spot would force R6's `os.WriteFile` total above the pre-count, and when R6 reported an exact match, accused it of adopting the number rather than counting.
+R6 had decomposed the total correctly (8 call sites plus 3 comment mentions); the prediction was what was wrong.
+
+What the pre-count demonstrably DID deliver was different from its stated purpose: it forced rounds to **explain deltas instead of just reporting totals** (R5 wrote out why its 388 err-check blocks is more accurate than the orchestrator's 304 — 108 inline `if x, err := f(); err != nil` lines the simpler grep cannot see), and it got the orchestrator's own numbers corrected twice.
+
+Keep doing it — it is cheap and it makes reports checkable.
+But do not claim it catches truncation on this evidence.
+A deterrent cannot be measured by how often it fires, and whether no round truncated *because* it knew it would be counted is not something this campaign can establish.
+
 **2. When the tail starts circling, stop reviewing and start counting.**
 By R3 the findings were still real but were repeating two or three recognisable shapes.
 A fourth broad review would most likely have produced a fourth variant.
