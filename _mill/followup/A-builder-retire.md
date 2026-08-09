@@ -39,15 +39,6 @@ The implementation itself stays one `git show` away, permanently.
    - `internal/webstercli/cli.go:11–12` — a doc comment comparing websterCLI to buildercli.
    - `tools/sandbox` — `suite.go`'s `//go:embed SANDBOX-BUILDER-SUITE.md` (`:47`), the `builderSuite` spec (`:123–128`), the `"builder-suite"` case in `main.go:326`, the doc comments in `suite.go:2` and `main.go:6,12`, and the `SANDBOX-BUILDER-SUITE.md` file itself.
    - `CONSTRAINTS.md` — review `:97` and `:106`, which list `builderengine` among feature packages.
-   - `README.md` — `:25` lists `lyx builder` in the subcommand tree, `:86` is the `builder` module bullet, `:87` defines webster as "a fork-based sibling of `builder`", `:94` asserts builder "stays frozen in-tree as the plan-format-v2 consumer" (directly falsified by this task), and `:115` describes builder's place in the module topology.
-   - `docs/sandbox-howto.md` — `:8`'s launcher list, `:141–147`'s "Run the builder suite" section, and `:190`'s `SANDBOX-BUILDER-SUITE.md` see-also.
-   - `sandbox/builder-suite.cmd` — delete it.
-     It invokes the `"builder-suite"` case this task removes from `tools/sandbox/main.go:326`, so it is an orphan by construction, not an independent decision.
-   - `.gitattributes:7–9` — the three `internal/builderengine/*` `text eol=lf` pins (`implementer-template.md`, `orchestrator-template.md`, `template.yaml`), all pointing at files this task deletes.
-   - **Comment-only residue, swept opportunistically** (none of it breaks the build, all of it reads as stale once builder is gone): `internal/perchengine/doc.go:13` ("builder-review"), `internal/modelspec/modelspec.go:7,35` ("builder's roles", "builder, perch/burler/loom configs"), `internal/loomengine/configtemplate.go:4` ("mirroring builderengine's ... embed-and-accessor").
-   - `manifest/roadmap.md` — the Done `builder` item (`:196`, `:202`) and `:42`'s "builder implementer" template mention.
-   - `docs/reference/status-schema.md` — its builder-specific prose (`:16`, `:53`, `:69`, `:73`, `:81`) and the `builder-contract.md` link at `:3`.
-     **The `phase` enum itself is deliberately NOT this task's** — see the standalone note below on the deferred phase enum.
 
 **The `**Covers:** builder` trap.**
 `tools/sandbox/SANDBOX-CORE-SUITE.md:224–232`'s scenario S9 "Builder plan validate/status", including its `**Covers:** builder` tag at `:229`, must go.
@@ -70,6 +61,15 @@ This task states this so nobody files it as a leak.
    - `discussion-format.md:30` — its justification for `plan-format`'s `approved:` field reads "because `lyx builder run` can be invoked standalone, outside loom", which is false once this task lands; `discussion-format.md:3` links `plan-format.md`.
      Both belong to this task, since this task is what falsifies them.
    - `docs/overview.md` — all builder and plan-format references, not the module table alone: `:92` (lists both `plan-format.md` and `plan-format-v3.md` as kept reference docs — only one survives), `:227` (the `internal/pattern` tree comment naming builder as a consumer), `:264` (the `builder` module-table entry), `:265` (the webster entry, defined as "fork-based sibling of builder"), `:268` (the deep link, above), `:292` (names "builder implementer" among `internal/pattern`'s prompt consumers — the same phrase this task also owns at `roadmap.md:42`), and `:375` (the `builder-contract.md` see-also).
+   - `README.md` — `:25` lists `lyx builder` in the subcommand tree, `:86` is the `builder` module bullet, `:87` defines webster as "a fork-based sibling of `builder`", `:94` asserts builder "stays frozen in-tree as the plan-format-v2 consumer" (directly falsified by this task), and `:115` describes builder's place in the module topology.
+   - `docs/sandbox-howto.md` — `:8`'s launcher list, `:141–147`'s "Run the builder suite" section, and `:190`'s `SANDBOX-BUILDER-SUITE.md` see-also.
+   - `sandbox/builder-suite.cmd` — delete it.
+     It invokes the `"builder-suite"` case this task removes from `tools/sandbox/main.go:326`, so it is an orphan by construction, not an independent decision.
+   - `.gitattributes:7–9` — the three `internal/builderengine/*` `text eol=lf` pins (`implementer-template.md`, `orchestrator-template.md`, `template.yaml`), all pointing at files this task deletes.
+   - **Comment-only residue, swept opportunistically** (none of it breaks the build, all of it reads as stale once builder is gone): `internal/perchengine/doc.go:13` ("builder-review"), `internal/modelspec/modelspec.go:7,35` ("builder's roles", "builder, perch/burler/loom configs"), `internal/loomengine/configtemplate.go:4` ("mirroring builderengine's ... embed-and-accessor").
+   - `manifest/roadmap.md` — the Done `builder` item (`:196`, `:202`) and `:42`'s "builder implementer" template mention.
+   - `docs/reference/status-schema.md` — its builder-specific prose (`:16`, `:53`, `:69`, `:73`, `:81`) and the `builder-contract.md` link at `:3`.
+     **The `phase` enum itself is deliberately NOT this task's** — see the standalone note below on the deferred phase enum.
 
 3. **Comment-only residue and v2-coexistence prose class.**
    Sweep the comment-only residue listed above opportunistically.
