@@ -163,6 +163,12 @@ Related commands:
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Short: "commit and push weft changes",
+		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the weft
+branch's unpushed commits in the same process.
+
+Related commands:
+  lyx fabric commit — commit only
+  lyx fabric sync   — commit then async-push (detached child process)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -236,6 +242,13 @@ tracking ref:
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "commit and async-push weft changes",
+		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
+to a detached child process and return immediately — the push happens in the
+background, coalesced under fabric's push lock.
+
+Related commands:
+  lyx fabric commit — commit only
+  lyx fabric push   — commit then push in the same process`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

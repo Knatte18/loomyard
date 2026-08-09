@@ -165,7 +165,8 @@ use "lyx fabric pairs".`,
 		Use:   "remove [--force] <slug>",
 		Short: "destroy a dual warp+weft worktree pair",
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
-(_lyx and .lyx), portal junctions, and launchers.
+(_lyx, .lyx, and the _board convenience link), portal junctions, and
+launchers.
 
 By default the command refuses to remove a worktree with uncommitted changes
 on either the warp or weft side. Use --force to remove anyway.
@@ -238,6 +239,19 @@ not reported already-healthy.`,
 	pruneCmd = &cobra.Command{
 		Use:   "prune [--apply]",
 		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
+		Long: `Prune scans for on-disk pair debris in two passes: a registered pair whose
+warp worktree directory is gone (stale), and a weft worktree with no warp
+sibling at all (orphaned).
+
+By default this is a dry run: every stale or orphaned pair is reported and
+nothing is removed. With --apply, each entry's weft worktree is removed, the
+dead slug's portal junction and launcher directory are torn down, and stale
+worktree registrations are pruned on both repos. Branches are never deleted
+here — orphaned weft branches are "lyx fabric cleanup"'s job.
+
+Example:
+  lyx fabric prune
+  lyx fabric prune --apply`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := pruneCmd.Flags().GetBool("apply")
 			return runPruneWithFlag(out, apply)
@@ -267,7 +281,10 @@ branch, and its being checked out means the pair is still on disk.
 
 The weft repo may also hold weft branches without the fabric suffix (e.g.
 inherited from history predating fabric's uniform naming scheme); those are
-reported but never deleted here, since they are not fabric-managed.`,
+reported but never deleted here, since they are not fabric-managed.
+
+Deletion is local to the hub's weft repo: a deleted branch's copy on the
+weft remote, if it was ever pushed, is left untouched.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
@@ -282,14 +299,14 @@ reported but never deleted here, since they are not fabric-managed.`,
 		Use:   "unwire",
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
-junction present (_lyx and .lyx) and their warp .git/info/exclude
-entries. It leaves every weft-side directory intact — weft-side content is
-never deleted by unwire.
+junction present (_lyx, .lyx, and the _board convenience link) and their
+warp .git/info/exclude entries. It leaves every weft-side directory intact —
+weft-side content is never deleted by unwire.
 
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
-always tears wiring down. It leaves the repo's anchor and repo-wide config
-(.lyx-anchor, fabric.yaml on weft:main) intact, so a later
+always tears wiring down. It leaves the repo-wide weft:main records intact
+(.lyx-anchor, the .lyx-warp binding, and fabric.yaml), so a later
 "lyx fabric reconcile" can re-wire this worktree.
 
 Example:
