@@ -17,7 +17,7 @@ Go can file these directly off its own history trail — deterministic, no LLM c
 
 ## Tier 2 — a narrow, per-agent friction note
 
-Every spawned agent (producer, reviewer, builder/webster implementer fork, ...) already writes one output file per the file-contract discipline.
+Every spawned agent (producer, reviewer, webster implementer fork, ...) already writes one output file per the file-contract discipline.
 Tier 2 adds one more, optional file to that same contract: a short friction note about anything unexpected **within its own scoped task** — the same self-report judgment call Millhouse's LLM makes today, just narrowed to what a single-purpose agent can actually see.
 This does not violate the "doesn't know about the others" rule: an agent reporting on its own scope is the same as it already writing its own output file, not a window into the rest of the run.
 

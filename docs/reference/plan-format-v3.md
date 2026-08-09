@@ -2,7 +2,7 @@
 
 > **Status: Contract — pinned.** This doc pins **plan-format v3**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
 >
-> **Coexistence, not replacement.** v3 does not retire v2 today. [plan-format.md v2](plan-format.md) stays live and valid — the frozen `builder` still parses it — and retires only when `builder` is deleted (v3 wins at that point). Until then the two formats coexist: v2 is what the frozen `builder` consumes; v3 is what the shipped webster consumes.
+> **v3 is the live plan format.** [plan-format.md v2](plan-format.md) is retired now that its predecessor, `builder`, is gone. v3 — consumed by `webster` — is the sole plan format.
 
 ## What a card is
 
