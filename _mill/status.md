@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: raddle-finalize-fold-and-link-repair
 branch: raddle-finalize-fold-and-link-repair
 plan: _mill/plan
@@ -22,4 +22,13 @@ plan-review-r1  '2026-08-09T12:45:05Z'
 plan-fix-r1  '2026-08-09T12:45:05Z'
 plan-fix-r2  '2026-08-09T12:52:35Z'
 planned  '2026-08-09T12:52:51Z'
+implementing  '2026-08-09T13:18:14Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: raddle-fold-and-link-guard
+    state: pending
 ```
