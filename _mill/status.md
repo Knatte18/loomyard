@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reconcile backfill
+phase: approved-docs and sandbox suites
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-probe and clone flip  '2026-08-09T10:09:22Z'
 approved-cli surface  '2026-08-09T10:15:14Z'
 approved-clone integration tests  '2026-08-09T10:23:11Z'
 approved-reconcile backfill  '2026-08-09T10:32:24Z'
+approved-docs and sandbox suites  '2026-08-09T10:40:46Z'
 ```
 
 ## Batches
@@ -72,8 +73,9 @@ batches:
     commit_sha: 40bb4f47dbc70cd580978db4173a442031d162e2
     verify_baseline_failures: []
   - name: docs and sandbox suites
-    state: running
+    state: approved
     implementer_session: 07c2edd3-06b8-4125-b3cc-0b4379afe71c
     start_sha: b5a3e27cd25f9104bf5264e9498566c6c24fac46
+    commit_sha: 59a3ade4c9668783c7bd4028a904d7052a20092e
     verify_baseline_failures: []
 ```
