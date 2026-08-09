@@ -85,8 +85,11 @@ func TestCloneRepo_InvalidURLFails(t *testing.T) {
 	if destName := filepath.Base(dest); !strings.Contains(err.Error(), destName) {
 		t.Errorf("cloneRepo(%q, %q) error = %q; want substring %q (destination)", url, dest, err.Error(), destName)
 	}
-	if strings.Contains(err.Error(), "fatal:") {
-		t.Errorf("cloneRepo(%q, %q) error = %q; want no %q substring (raw git stderr leak)", url, dest, err.Error(), "fatal:")
+	// git's own explanation must survive alongside the local context: an exit code by itself does
+	// not tell the operator whether the URL was wrong, unreachable, or unauthorised.
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("cloneRepo(%q, %q) error = %q; want git's own explanation included, not just an exit code",
+			url, dest, err.Error())
 	}
 }
 

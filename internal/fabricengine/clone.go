@@ -16,12 +16,12 @@ package fabricengine
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -259,7 +259,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// would always have succeeded — there is no failure path left to log.
 	hookLocation := &lyxcwd.Location{HubPath: hubPath, WorktreeName: name}
 	if hookErr := InstallPostCheckoutHook(hookLocation); hookErr != nil {
-		log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
+		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", hookErr)
 	}
 
 	// Step 6: Clone weft repo
@@ -409,12 +409,13 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 // git branch --show-current at weftPath after this function returns would
 // incorrectly see the already-renamed <warpBranch>-weft, not warpBranch.
 func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
+	stdout, showStderr, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
 	if err != nil {
 		return "", fmt.Errorf("resolve weft primary branch: %w", err)
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("git branch --show-current in weft primary failed (git exit %d)", exitCode)
+		return "", fmt.Errorf("git branch --show-current in weft primary failed (git exit %d): %s",
+			exitCode, strings.TrimSpace(showStderr))
 	}
 	warpBranch = strings.TrimSpace(stdout)
 	if warpBranch == "" {
@@ -438,12 +439,13 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 		checkoutArgs = append(checkoutArgs, "origin/"+suffixedBranch)
 	}
 
-	_, _, exitCode, err = gitexec.RunGit(checkoutArgs, weftPath)
+	_, checkoutStderr, exitCode, err := gitexec.RunGit(checkoutArgs, weftPath)
 	if err != nil {
 		return "", fmt.Errorf("create weft primary branch %q: %w", suffixedBranch, err)
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d)", suffixedBranch, exitCode)
+		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d): %s",
+			suffixedBranch, exitCode, strings.TrimSpace(checkoutStderr))
 	}
 
 	if err := bornWeftPrimaryBranch(weftPath, suffixedBranch); err != nil {
@@ -516,13 +518,14 @@ func cloneRepo(url, dest string) error {
 	gitURL := filepath.ToSlash(url)
 	gitDest := filepath.ToSlash(destName)
 
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
+	stdout, cloneStderr, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}
 
 	if exitCode != 0 {
-		return fmt.Errorf("clone %q to %q failed (git exit %d)", url, dest, exitCode)
+		return fmt.Errorf("clone %q to %q failed (git exit %d): %s",
+			url, dest, exitCode, strings.TrimSpace(cloneStderr))
 	}
 
 	_ = stdout // stdout is not used; we only check for errors

@@ -104,7 +104,7 @@ func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) err
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	_, _, exitCode, err := gitexec.RunGit(
+	_, createStderr, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
 		weftRepoRoot,
 	)
@@ -112,7 +112,8 @@ func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) err
 		return fmt.Errorf("failed to run git worktree add for weft: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("create weft worktree %q for branch %q failed (git exit %d)", weftPath, branch, exitCode)
+		return fmt.Errorf("create weft worktree %q for branch %q failed (git exit %d): %s",
+			weftPath, branch, exitCode, strings.TrimSpace(createStderr))
 	}
 	return nil
 }
@@ -124,7 +125,7 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 	}
 
 	weftPath := WeftWorktreePath(l, slug)
-	_, _, exitCode, err := gitexec.RunGit(
+	_, pushStderr, exitCode, err := gitexec.RunGit(
 		[]string{"push", "-u", "origin", branch},
 		weftPath,
 	)
@@ -132,7 +133,8 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 		return fmt.Errorf("failed to run git push for weft: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("push weft branch %q failed (git exit %d)", branch, exitCode)
+		return fmt.Errorf("push weft branch %q failed (git exit %d): %s",
+			branch, exitCode, strings.TrimSpace(pushStderr))
 	}
 
 	return nil

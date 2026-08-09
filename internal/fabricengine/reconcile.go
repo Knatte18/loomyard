@@ -260,6 +260,8 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 	// below reads exactly the status those patterns govern, so a hub that never runs a weft-git verb
 	// would defer its backfill forever on an artifact the current binary excludes.
 	// A seeding failure is not fatal: the gate simply sees whatever git reports.
+	// Best-effort: the board worktree's artifact excludes are self-healing (every weft-git verb
+	// re-seeds them), so a failure here must not stop the binding backfill this function exists for.
 	_ = seedWeftArtifactExcludes(boardDir)
 
 	// git remote get-url is read-only, so it falls outside the Fabric Git Invariant's
@@ -323,12 +325,15 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 // unhealthy branch. A wiring failure there is surfaced as a Detail note, never as an Error or a
 // changed Action — this convenience link must never be able to downgrade a reconcile verdict.
 func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
-	junctionHealthy, _ := checkJunctionHealth(warpLayout)
+	junctionHealthy, unhealthyReason := checkJunctionHealth(warpLayout)
 
 	if !junctionHealthy {
 		if setAction {
 			pr.Action = ReconcileActionJunctionRepointed
 		}
+		// Record WHAT was broken, not just that something was: "missing", "not a junction" and
+		// "points at the wrong weft" are different operator problems with the same repair.
+		appendPrDetail(pr, unhealthyReason)
 		names, namesErr := RepoWiredNames(warpLayout)
 		if namesErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
@@ -416,6 +421,8 @@ func (t *Topology) reconcileMissingWeft(
 
 	if weftBranchExists(warpLayout, weftBranch) {
 		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout); weftRepoRootErr == nil {
+			// Bookkeeping only: a failed prune leaves the stale registration the adopt below
+			// re-reports, and must not abort the repair.
 			_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)
 		}
 
@@ -451,7 +458,7 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
-	_, _, exitCode, err := gitexec.RunGit(
+	_, adoptStderr, exitCode, err := gitexec.RunGit(
 		[]string{"worktree", "add", weftPath, branch},
 		weftRepoRoot,
 	)
@@ -459,7 +466,8 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 		return fmt.Errorf("git worktree add: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("adopt weft worktree %q for branch %q failed (git exit %d)", weftPath, branch, exitCode)
+		return fmt.Errorf("adopt weft worktree %q for branch %q failed (git exit %d): %s",
+			weftPath, branch, exitCode, strings.TrimSpace(adoptStderr))
 	}
 	return nil
 }
@@ -485,7 +493,7 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
 
-	parentWeftOut, _, exitCode, err := gitexec.RunGit(
+	parentWeftOut, parentWeftStderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftRoot,
 	)
@@ -493,7 +501,8 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 		return fmt.Errorf("capture parent weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("capture parent weft branch failed with exit code %d", exitCode)
+		return fmt.Errorf("capture parent weft branch failed (git exit %d): %s",
+			exitCode, strings.TrimSpace(parentWeftStderr))
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 

@@ -51,12 +51,12 @@ func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
 // output — empty when clean, non-empty when dirty. label names the command
 // in wrapped errors so a warp-vs-weft spawn failure is distinguishable.
 func dirtyReason(label, dir string) (string, error) {
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, dir)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, dir)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", label, err)
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("%s failed with exit code %d", label, exitCode)
+		return "", fmt.Errorf("%s failed with exit code %d: %s", label, exitCode, strings.TrimSpace(stderr))
 	}
 	return strings.TrimSpace(stdout), nil
 }

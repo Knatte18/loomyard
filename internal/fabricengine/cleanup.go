@@ -232,7 +232,7 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	out, _, exitCode, err := gitexec.RunGit(
+	out, listStderr, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "--format=%(refname:short)\x1f%(worktreepath)"},
 		weftRepoRoot,
 	)
@@ -240,7 +240,7 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 		return nil, fmt.Errorf("git branch: %w", err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("list weft branches failed (git exit %d)", exitCode)
+		return nil, fmt.Errorf("list weft branches failed (git exit %d): %s", exitCode, strings.TrimSpace(listStderr))
 	}
 
 	raw := strings.TrimSpace(out)
@@ -269,7 +269,7 @@ func deleteWeftBranch(l *lyxcwd.Location, branch string, entry *CleanupBranchEnt
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
 		return false
 	}
-	_, _, exitCode, err := gitexec.RunGit(
+	_, deleteStderr, exitCode, err := gitexec.RunGit(
 		[]string{"branch", "-D", branch},
 		weftRepoRoot,
 	)
@@ -278,7 +278,8 @@ func deleteWeftBranch(l *lyxcwd.Location, branch string, entry *CleanupBranchEnt
 		return false
 	}
 	if exitCode != 0 {
-		entry.Error = fmt.Sprintf("delete weft branch %q failed (git exit %d)", branch, exitCode)
+		entry.Error = fmt.Sprintf("delete weft branch %q failed (git exit %d): %s",
+			branch, exitCode, strings.TrimSpace(deleteStderr))
 		return false
 	}
 	return true

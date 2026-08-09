@@ -188,7 +188,10 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 
 			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
 			slug := "test-slug"
-			got := launcherSpawnRel(l, slug)
+			got, err := launcherSpawnRel(l, slug)
+			if err != nil {
+				t.Fatalf("launcherSpawnRel returned an unexpected error: %v", err)
+			}
 
 			launcherDir := LauncherDir(l, slug)
 			targetPath := filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel)
@@ -204,7 +207,10 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 
 			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
 			slug := "test-slug"
-			got := launcherSpawnRel(l, slug)
+			got, err := launcherSpawnRel(l, slug)
+			if err != nil {
+				t.Fatalf("launcherSpawnRel returned an unexpected error: %v", err)
+			}
 
 			launcherDir := LauncherDir(l, slug)
 			targetPath := filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel)
@@ -224,7 +230,10 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 
 			l := newPortalLauncherTestLocation(hub, worktreeRoot, ".")
 			primeName := filepath.Base(worktreeRoot)
-			got := menuLauncherRel(l, primeName)
+			got, err := menuLauncherRel(l, primeName)
+			if err != nil {
+				t.Fatalf("menuLauncherRel returned an unexpected error: %v", err)
+			}
 
 			menuDir := filepath.Dir(menuLauncherPath(l))
 			targetPath := filepath.Join(l.HubPath, primeName, l.AnchorRel)
@@ -240,7 +249,10 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 
 			l := newPortalLauncherTestLocation(hub, worktreeRoot, filepath.Join("services", "api"))
 			primeName := filepath.Base(worktreeRoot)
-			got := menuLauncherRel(l, primeName)
+			got, err := menuLauncherRel(l, primeName)
+			if err != nil {
+				t.Fatalf("menuLauncherRel returned an unexpected error: %v", err)
+			}
 
 			menuDir := filepath.Dir(menuLauncherPath(l))
 			targetPath := filepath.Join(l.HubPath, primeName, l.AnchorRel)

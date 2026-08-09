@@ -58,12 +58,13 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	_ = removeLaunchers(l, slug)
 
 	if !force {
-		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, target)
+		stdout, statusStderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, target)
 		if err != nil {
-			return RemoveResult{}, fmt.Errorf("failed to check worktree status: %v", err)
+			return RemoveResult{}, fmt.Errorf("check warp worktree status at %s: %w", target, err)
 		}
 		if exitCode != 0 {
-			return RemoveResult{}, fmt.Errorf("failed to check worktree status")
+			return RemoveResult{}, fmt.Errorf("check warp worktree status at %s (git exit %d): %s",
+				target, exitCode, strings.TrimSpace(statusStderr))
 		}
 		if strings.TrimSpace(stdout) != "" {
 			return RemoveResult{}, fmt.Errorf("worktree has uncommitted changes; use --force")
@@ -181,7 +182,7 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 
 	_, stderr, exitCode, err := gitexec.RunGit(args, l.WorktreePath())
 	if err != nil {
-		return fmt.Errorf("failed to run git worktree remove: %v", err)
+		return fmt.Errorf("run git worktree remove for %s: %w", target, err)
 	}
 	if exitCode == 0 {
 		return nil
@@ -196,6 +197,8 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 	if removeErr := os.RemoveAll(target); removeErr != nil {
 		return fmt.Errorf("fallback removal failed: %w", removeErr)
 	}
+	// Bookkeeping only: a failed prune leaves a stale registration the next reconcile or prune
+	// re-reports, and it must not turn a completed removal into an error.
 	_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
 	return nil
 }

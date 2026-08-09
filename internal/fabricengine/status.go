@@ -180,14 +180,14 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 		args = append(args, filepath.ToSlash(spec))
 	}
 
-	out, _, exitCode, err := gitexec.RunGit(args, warpPath)
+	out, lsFilesStderr, exitCode, err := gitexec.RunGit(args, warpPath)
 	if err != nil {
 		return nil, fmt.Errorf("ls-files: %w", err)
 	}
 	if exitCode != 0 {
 		// A non-zero exit from ls-files means the command itself failed, not just
 		// that no files matched; report as an error.
-		return nil, fmt.Errorf("ls-files exited %d", exitCode)
+		return nil, fmt.Errorf("ls-files exited %d: %s", exitCode, strings.TrimSpace(lsFilesStderr))
 	}
 
 	output := strings.TrimSpace(out)
