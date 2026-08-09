@@ -26,7 +26,7 @@ Each agent collapses to one job over a file contract:
 
 - Plan producer: "read `discussion.md`, write the `plan/` directory."
   Nothing else.
-  **The target format is changing:** today's pinned [plan-format.md v2](../../docs/reference/plan-format.md) (batch-based) is being replaced by [plan-format](../../docs/reference/plan-format.md) (a flat card list) — see that doc for the schema the Plan producer will write against, and `internal/websterengine`'s package documentation for the consumer that now implements it.
+  The pinned plan format is [plan-format.md](../../docs/reference/plan-format.md), a flat card list — see that doc for the schema the Plan producer writes against, and `internal/websterengine`'s package documentation for the consumer that implements it.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize,
