@@ -44,7 +44,9 @@ batches:
     commit_sha: 1c3a842b2687d0d50a465f2ba27f84fc51316e5a
     verify_baseline_failures: []
   - name: probe and clone flip
-    state: pending
+    state: running
+    implementer_session: 78df627b-9b79-45fa-84dc-c80ac42b76ac
+    start_sha: cd607f18e26347d9af0ab0bd57083aef13bc1e75
     verify_baseline_failures: []
   - name: cli surface
     state: pending
