@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
@@ -94,5 +95,66 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	}
 	if _, statErr := os.Lstat(nestedPatternLink); !os.IsNotExist(statErr) {
 		t.Errorf("nested _extra junction %s still exists after Remove", nestedPatternLink)
+	}
+}
+
+// TestRemove_SweepsAnchoredLinksOnSubpathHub proves Remove's link sweep reads the pair's ANCHORED
+// directory rather than the worktree root.
+// On a subpath-anchored hub the root holds no junction at all — every one of them sits at
+// <worktree>/<anchorRel> — so a root sweep saw nothing, left the links behind, and reported
+// LinksRemoved: 0 while three junctions existed one directory down.
+func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "remove-anchored-sweep"
+	const anchor = "backend"
+
+	fixture := newFabricFixture(t)
+	// PrimeName resolves the hub from the anchored directory, so it must exist in the prime
+	// worktree before the anchor is recorded — the same precondition CloneHub's own subpath guard
+	// enforces against the freshly cloned warp.
+	if err := os.MkdirAll(filepath.Join(fixture.Layout.WorktreePath(), anchor), 0o755); err != nil {
+		t.Fatalf("create anchored directory in prime: %v", err)
+	}
+	seedAnchorMarker(t, fixture.Layout.HubPath, anchor)
+
+	l, err := lyxcwd.ResolveWorktree(fixture.Layout.WorktreePath())
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree: %v", err)
+	}
+	if l.AnchorRel != anchor {
+		t.Fatalf("fixture AnchorRel = %q; want %q — the anchored geometry this test needs is not in place", l.AnchorRel, anchor)
+	}
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	anchorDir := filepath.Join(fabricengine.WorktreePath(l, slug), anchor)
+	lyxLink := filepath.Join(anchorDir, lyxdirs.LyxDirName)
+	if isLink, linkErr := fslink.IsLink(lyxLink); linkErr != nil || !isLink {
+		t.Fatalf("setup: %s is not a junction (isLink=%v err=%v)", lyxLink, isLink, linkErr)
+	}
+
+	result, err := topology.Remove(l, slug, true)
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if result.LinksRemoved == 0 {
+		t.Errorf("LinksRemoved = 0; want the anchored junctions counted — the sweep read the worktree root instead")
+	}
+}
+
+// seedAnchorMarker records anchor as the hub-wide subpath the same way a real clone does, by writing
+// the marker into the hub's board directory.
+func seedAnchorMarker(t *testing.T, hubPath, anchor string) {
+	t.Helper()
+	boardDir := fabricengine.BoardDir(hubPath)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
+		t.Fatalf("write anchor marker: %v", err)
 	}
 }

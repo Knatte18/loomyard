@@ -1,6 +1,8 @@
 // remove.go implements Remove: it tears down the portal and launchers before the target-exists
 // check, so cleanup still runs when the worktree dir is already gone.
 // The weft branch it removes is WeftBranchName(warpBranch).
+// Its link sweep is anchored and ownership-filtered — see the sweep's own comment for why reading
+// the worktree root and trusting link-ness alone was wrong on both hub geometries.
 
 package fabricengine
 
@@ -9,7 +11,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -60,15 +61,19 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 		}
 	}
 
-	names, namesErr := RepoWiredNames(l)
-	if namesErr != nil {
-		names = nil
+	// Sweep the ANCHORED directory, and only the links fabric itself created there.
+	// The previous sweep read the worktree ROOT and removed every symlink it found: on a
+	// subpath-anchored hub that saw none of the pair's junctions (they live at
+	// <worktree>/<anchorRel>) and reported LinksRemoved: 0, and at a root anchor it deleted the
+	// user's own checked-in symlinks alongside fabric's.
+	linksRemoved := 0
+	if ownedNames, scanErr := scanOnDiskJunctionNames(l, slug); scanErr == nil {
+		if removeErr := removeWarpJunction(l, slug, ownedNames); removeErr == nil {
+			linksRemoved = len(ownedNames)
+		}
 	}
-	_ = removeWarpJunction(l, slug, names)
-
-	linksRemoved, err := fslink.RemoveLinksIn(target)
-	if err != nil {
-		return RemoveResult{}, err
+	if boardRemoved, boardErr := unwireBoardLink(l, slug); boardErr == nil && boardRemoved {
+		linksRemoved++
 	}
 
 	args := []string{"worktree", "remove"}
