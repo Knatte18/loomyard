@@ -18,6 +18,8 @@ The key cannot go straight to `loom.yaml` today: both live `batcher.Select` call
 
 **Rejected alternatives:**
 
+- Dropping `Batchifier` from `loom`'s producer list to preserve the shipped `internal/batcher` framing — would subordinate the newest decision to older doc text.
+- Surfacing `Batchifier`'s position as unresolved — the user already resolved it.
 - Moving the key straight to `loom.yaml` now — unworkable, since no `loom.yaml` reader exists.
 - Leaving it in `webster.yaml` — contradicts the split.
 - A `loom.yaml` key with `webster.yaml` fallback — a transition mechanism with no transition to serve.
