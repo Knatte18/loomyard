@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: store the warp-URL binding in weft:main; fold bootstrap into clone (slice 10)'
 slug: fabric-warp-binding-in-weft
-approved: false
+approved: true
 started: '20260809-085424'
 parent: main
 root: ""

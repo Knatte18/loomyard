@@ -95,6 +95,9 @@ This applies to every line touched in this batch, in every `.md` file, not only 
 
   Relocate the bullet accordingly: it currently sits under the roadmap's Planned heading, and the file's own Maintenance section says an item moves from Planned to Done when it ships.
   A "complete" statement left under Planned would contradict itself, so move the whole entry to the Done section, preserving the design-doc pointer and renumbering per whatever convention the Done section already uses.
+
+  The move orphans one same-file cross-reference: the Someday section's repo-wide-config item points readers at "the Planned `fabric` item's slices 7-10" when explaining that the fabric config is the sole `_board`-anchored exception.
+  Update that pointer to name the Done section instead, in the same edit — otherwise the file contradicts itself the moment the bullet moves.
 - **Commit:** `docs(manifest): mark fabric slice 10 shipped`
 
 ### Card 19: flip the constraint example and fix the stale anchor name
