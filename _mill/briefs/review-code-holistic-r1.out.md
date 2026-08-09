@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: finalize: fold Raddle into its own contract and repair the dead links in raddle.md, finalize.md and self-report.md — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-09
+```
+
+## Findings
+
+None.
+
+Verified end to end against the plan and `_mill/discussion.md`:
+
+- `internal/lyxcwd/docslink_test.go` implements exactly the four-symbol seam the overview's shared decision specifies (`docsLinkSlug`, `docsLinkHeadingAnchors`, `docsLinkExtract`, `docsLinkScan`), stdlib-only imports, fence-aware extraction for both ``` and `~~~`, GitHub duplicate-anchor `-1`/`-2` suffixing, and the "unmatched = allowlist key not matched by any break in this run" staleness definition from the `allowlist-is-keyed-and-self-expiring` decision (covering both the now-resolves and renamed-away stale cases, each with its own subtest). All four `TestDocsLinkSlug` worked examples (including the card-5-dependent Fabric Git Invariant slug) are present and hand-verified correct against the actual headings they target.
+- The 7-entry allowlist matches `_mill/discussion.md`'s table exactly (same 7 `(file, target)` keys, same reasons, "7 entries covering 8 link instances" phrasing used verbatim), and none of the 11 repaired links appear in it.
+- All 12 touched links (11 repairs + the new `finalize.md:26` Fabric Git Invariant link) resolve: hand-traced every target file's existence and every `#anchor` against the destination heading's GitHub slug, including `webster-contract.md#the-summary-artifact--_lyxwebstersummarymd`, `CONSTRAINTS.md#fabric-git-invariant-warp--weft`, and both `loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots` repoints — no stale `fabric.md`, `loom.md#the-phase-machine)`, or "Weft Git Invariant" citation remains anywhere in the five touched design docs.
+- `finalize.md`'s new "Raddle regeneration" section lands after "Only Raddle forwards," states the fold in `shed.md:19`/`loom.md:65-67`'s own terms, states the merge-lock-spans-the-whole-critical-section requirement, points at (does not restate) `raddle.md`'s mechanics, and is phrased as the landed decision without foreclosing the `raddle-as-own-producer-deferred` alternative — matches the `fold-shape-dedicated-section` decision precisely.
+- `raddle.md:3/7/54/85` residue removed per the `raddle-md-three-slot-references` decision, including `:7`'s reword (the case the discussion flagged as proving list-based enumeration insufficient) and `:54`'s open-question closure; the `## When it runs...` heading text is untouched (byte-for-byte), preserving `finalize.md:28`'s link into it.
+- `self-report.md:30` anchor repaired; the `:48-49` Related bullet rereads correctly post-fold with no link to repoint (unchanged, no anchor).
+- The six unowned-file repairs (`semantic-index.md` x3, `webster-parallel-execution.md` x2, `docs/shared-libs/README.md` x1) are individually reworded per-site, not a find-and-replace, matching the `scout-redesign-target-is-the-package-doc` decision's implementer note.
+- `README.md:93`'s phase chain drops Raddle; `CONSTRAINTS.md`'s new `## Markdown Link Integrity` section is correctly placed between Fabric Git Invariant and Review Round Invariant and states all five required elements (rule, enforcing test, file-layout-convenience caveat, honest not-reached list including the still-accurate `roadmap.md:98` citation, source-side-only root restriction, self-expiring allowlist contract).
+- No out-of-plan files touched; `All Files Touched` in the overview matches the 9 edited files exactly; no untouched multi-owner file (`loom.md`, `docs/overview.md`, `docs/reference/*`, `manifest/roadmap.md`, `shed.md`, `shed-followups.md`) was modified.
+- No global-utility duplication (single new test file, no production code).
+- Semantic-line-break spot check on touched paragraphs found no comma+"and"/"but"/"or" independent-clause joins left unbroken — the multi-item lists that do appear (e.g. `finalize.md`'s merge-lock sentence, `raddle.md:17`'s doc list) are enumerations sharing one subject/verb, not independent clauses, so the one-line form is correct per the rule as stated.
+
+## Verdict
+
+APPROVE
+Implementation matches the plan, shared decisions, and CONSTRAINTS.md precisely; all touched links/anchors verified to resolve by hand-trace.
+MILL_REVIEW_END
