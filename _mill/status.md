@@ -2,6 +2,7 @@
 
 ```yaml
 phase: blocked
+blocked_reason: 'holistic code review ERROR-only round 1: [resolve_ref_paths] referenced path not found: ''.scratch/sweep/main.go''; not in plan creates_union, not on disk'
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -30,7 +31,7 @@ approved-doc-prose-v2-erasure  '2026-08-09T13:40:38Z'
 approved-go-comments-and-guards  '2026-08-09T13:45:05Z'
 approved-override-notes-and-acceptance  '2026-08-09T13:52:13Z'
 holistic-reviewing  '2026-08-09T13:52:34Z'
-blocked  '2026-08-09T13:53:53Z'
+blocked  '2026-08-09T13:54:35Z'
 ```
 
 ## Batches
