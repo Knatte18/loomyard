@@ -45,8 +45,9 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
 - **Dated historical records are not edited.**
   `docs/benchmarks/test-suite-timing.md`, `docs/benchmarks/fixture-copy.md`, `docs/benchmarks/scout-vs-grep.md`, `docs/research/scout-agent-usage-findings.md`, `docs/research/scout-spike.md`, `docs/research/scout-multilang.md`, `crucible/README.md:158`, `crucible/review-prompt-template.md:152`.
   These are timestamped records of what was measured or what happened on a given date; editing them falsifies the record rather than cleaning it.
-- **`manifest/designs/loom.md`'s prose claims** at `:91–94` and `:187` — task E is the named owner (`shed-followups.md:379–380`), and `loom.md` has a strict chain-order owner list (B → C → E).
-  This task fixes **only the dangling links** in those lines, because their target file ceases to exist; the prose stays E's.
+- **`manifest/designs/loom.md`'s prose claims** at `:91–94` and `:187` — **claimed by this task**, overriding `shed-followups.md:379–380`'s assignment to task E.
+  See the `loom-md-links-fixed-prose-deferred` decision for why the deferral could not survive the acceptance gate.
+  Everything else in `loom.md` remains E's.
 - **`docs/reference/plan-format-v3.md:5`'s "Coexistence, not replacement" section** — entirely task C's, per `shed-followups.md:101` and `:239–240`.
   Its `[plan-format.md v2](plan-format.md)` link is **left dangling on purpose** — see the `plan-format.md` exclusion in `loom-md-links-fixed-prose-deferred`.
 - **Every other inbound `plan-format.md` link** — left dangling for the same reason, for the A→B window only.
@@ -119,6 +120,14 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
 - **`shed-followups.md` must be edited in the same commit** to record that task A now owns the phase rename, so task E and the `Shed` build task do not work from a stale ownership claim.
 - Rejected: renaming prose only (internally contradictory);
   deferring entirely (leaves live validation code naming a deleted module).
+- **On-disk `status.json` migration: the break is accepted, not handled.**
+  `internal/loomengine/coherence.go` rejects any phase outside `validPhases` with `CheckSeedIncoherent` ("phase %q is not a valid phase"), so an existing durable `_lyx/.../status.json` carrying `phase: "builder"` hard-fails preflight after the rename.
+  No compatibility shim, no read-time migration.
+  **The assumption this rests on, stated so it is falsifiable rather than silent:** `lyx loom` is unbuilt (`docs/overview.md:273` — "the `lyx loom` command and phase machine are unbuilt"), so no real `status.json` with `phase: "builder"` exists outside test fixtures.
+  If the implementer finds one in a live worktree, that invalidates the assumption and is a finding to report, not a case to quietly handle.
+  This is a **harder** break than the inert-`builder.yaml` case, which fails nothing — hence the explicit statement rather than a shared carve-out.
+- Rejected: keeping `"builder"` as a transitional accepted value in `validPhases` (leaves the deleted module's name in live validation code — the exact thing this task removes);
+  migrating on read (adds migration code to a module whose phase set `Shed` replaces wholesale).
 
 ### sweep-everything
 
@@ -147,13 +156,21 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
 - Rejected: scripting both;
   hand-doing both (loses the zero-hit guarantee on the rename).
 
-### loom-md-links-fixed-prose-deferred
+### loom-md-lines-claimed-from-task-e
 
-- Decision: this task fixes **only the dangling `builder-contract.md` links** at `manifest/designs/loom.md:91`, `:94`, and `:187`.
-  The surrounding prose — the "real, separate, already-shipped sibling implementer loop" naming note and the module-decomposition table row repeating it — is left to task E.
-- Rationale: `shed-followups.md:379–380` names those exact lines as E's, and `loom.md` has a declared strict chain-order owner list precisely so two tasks never fight over one file.
-  But the link fix is not a matter of ownership: `builder-contract.md` ceases to exist in this commit, so leaving the links would ship three dangling references that no downstream grep would catch.
-  Fixing a link is mechanical and does not collide with E rewriting the sentence around it.
+- Decision: this task **rewrites `manifest/designs/loom.md:91`, `:94`, and `:187` in full** — the "real, separate, already-shipped sibling implementer loop" naming note, its `builder-contract.md` link, and the module-decomposition table row repeating both.
+  `shed-followups.md:379–380` assigns those exact lines to task E; this task overrides that.
+  Everything else in `loom.md` stays E's, and the chain-order owner list (B → C → E) is otherwise untouched.
+- Rationale: the deferral is not survivable alongside the acceptance gate.
+  `:91` and `:187` literally contain `internal/builderengine` and `internal/buildercli`, so the package-name zero-hit pattern — the strongest gate this task has — forces the rewrite regardless of who "owns" the lines.
+  `:94` carries a bare, non-link `builder-contract.md` mention, so there is no link to repair there in isolation.
+  The alternative was a per-file hole in the gate, which reintroduces exactly the judgment call the gate exists to remove.
+  A design doc asserting that a deleted package "is a real, separate, already-shipped sibling implementer loop" is a worse outcome than an ownership overlap.
+- Rejected: excluding `loom.md` from the grep and naming E as follow-up owner (punches a hole in the strongest gate and ships three false sentences);
+  rewriting only the clauses containing the package names (splits single sentences between two owners, which is precisely what chain order exists to prevent).
+- **Record as a fourth override in `shed-followups.md`**, so E finds the lines already handled rather than concluding its obligation lapsed.
+- **The `builder-contract.md` link-repair rule still applies generally** — wherever this task deletes a file that does not come back, it repairs every inbound link to it, even in another task's territory, and touches nothing else on those lines.
+  `loom.md` is now a claimed-outright exception rather than an application of it.
 - **The rule is scoped to permanently-deleted files, and `builder-contract.md` is the only one.**
   Wherever this task deletes a file **that does not come back**, it repairs every inbound link to it, even in another task's territory, and touches nothing else on those lines.
 - **`plan-format.md` is explicitly excluded — its links are left to dangle.**
@@ -442,5 +459,7 @@ Run all four; all must be clean:
 - **Q:** Should the sweep be scripted? **A:** Split by kind — script the phase rename (a true rename, grep-verifiable), hand-rewrite the ~40 comments (a rewrite no regex can produce), and gate both halves with the same repo-wide zero-hit grep.
 - **Q:** What is the verification bar? **A:** `go build ./...`, untagged `go test ./...`, `go test -tags integration ./...` (required — the one real compile blocker is integration-tagged), plus the zero-hit completeness grep with its exclusions written out explicitly.
 - **Q:** `loom.md:91`/`:94`/`:187` are task E's per the spec, but deleting `builder-contract.md` leaves their links dangling rather than merely stale. **A:** This task fixes the links only; the prose stays E's. The chain-order ownership rule protects against two tasks rewriting the same sentence, not against one task repairing a reference to a file it deleted.
+- **Q:** The package-name grep gate forces rewriting `loom.md:91`/`:94`/`:187`, which `shed-followups.md:379–380` assigns to task E. Exclude the file from the gate, or claim the lines? **A:** Claim them. A per-file hole in the strongest gate reintroduces the judgment call the gate exists to remove, and a doc asserting a deleted package is "already-shipped" is worse than the ownership overlap. Recorded as a fourth `shed-followups.md` override.
+- **Q:** After the phase rename, an on-disk `status.json` with `phase: "builder"` hard-fails preflight. Shim, migrate, or accept? **A:** Accept the break, and state the assumption it rests on — `lyx loom` is unbuilt, so no such file should exist outside fixtures. A live counter-example is a finding to report, not a case to handle silently.
 - **Q:** Does that link-repair rule extend to `plan-format.md`, which this task also deletes? **A:** No — and an earlier round of this discussion had it wrong. `shed-followups.md:183–184` records the A→B window where `plan-format.md` does not exist as **deliberate**: task B re-creates the file under the same name, so repairing the links would retarget them at `plan-format-v3.md` only for B to rename that back to `plan-format.md`. The rule is therefore scoped to permanently-deleted files, of which `builder-contract.md` is the only one.
 - **Q:** Then what happens to the sentences asserting v2 exists alongside v3? **A:** Unchanged ownership — they are the v2-coexistence prose class, already this task's. Only the link mechanics differ: the prose is rewritten, the link is left to dangle briefly.
