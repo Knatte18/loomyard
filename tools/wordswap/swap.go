@@ -11,6 +11,8 @@ import (
 
 // Occurrence records one place in a file where a candidate match for `from` was found but not
 // substituted -- either because it was classified AMBIGUOUS or because a -skip regexp claimed it.
+// Text is the full text of the line the occurrence sits on, matching the "<path>:<line>: <line
+// text>" report format main.go prints for each bucket.
 type Occurrence struct {
 	Line int
 	Text string
@@ -122,6 +124,7 @@ func swapText(in, from, to string, skips []*regexp.Regexp) (Result, error) {
 	n := len(from)
 
 	var out strings.Builder
+	var spans []span
 	var result Result
 
 	pos := 0
@@ -141,11 +144,12 @@ func swapText(in, from, to string, skips []*regexp.Regexp) (Result, error) {
 
 		out.WriteString(in[pos:i])
 
-		if matchesAnySkip(lineText(in, i), skips) {
+		line := lineText(in, i)
+		if matchesAnySkip(line, skips) {
 			out.WriteString(candidate)
 			result.Skipped = append(result.Skipped, Occurrence{
 				Line: lineNumber(in, i),
-				Text: candidate,
+				Text: line,
 			})
 			pos = i + n
 			continue
@@ -155,21 +159,55 @@ func swapText(in, from, to string, skips []*regexp.Regexp) (Result, error) {
 			out.WriteString(candidate)
 			result.Ambiguous = append(result.Ambiguous, Occurrence{
 				Line: lineNumber(in, i),
-				Text: candidate,
+				Text: line,
 			})
 			pos = i + n
 			continue
 		}
 
 		replacement := applyCase(form, to)
+		start := out.Len()
 		out.WriteString(replacement)
+		spans = append(spans, span{start: start, end: start + len(replacement), orig: candidate})
 		pos = i + n
 	}
 	out.WriteString(in[pos:])
 
 	result.Out = out.String()
+	if revertSpans(result.Out, spans) != in {
+		result.Mismatch = true
+		result.Out = in
+	}
 	return result, nil
 }
+
+// span records, for one substitution swapText performed, the byte offsets of the replacement in
+// the output and the original text it displaced -- what revertSpansImpl needs to undo it.
+type span struct {
+	start, end int
+	orig       string
+}
+
+// revertSpansImpl rebuilds the input from out by replacing each recorded output span with its
+// orig text, walking spans in ascending start order.
+// This is the reversibility safety check: reverting exactly the recorded substitution offsets
+// must reproduce the input byte-for-byte, even when to already occurs in the input, because the
+// check compares reconstructed bytes rather than counting occurrences.
+func revertSpansImpl(out string, spans []span) string {
+	var b strings.Builder
+	pos := 0
+	for _, sp := range spans {
+		b.WriteString(out[pos:sp.start])
+		b.WriteString(sp.orig)
+		pos = sp.end
+	}
+	b.WriteString(out[pos:])
+	return b.String()
+}
+
+// revertSpans is a package-level indirection over revertSpansImpl so tests can inject a
+// deliberately broken transform to exercise the Result.Mismatch path.
+var revertSpans = revertSpansImpl
 
 // lineNumber returns the 1-based line number containing byte offset i in s, counted by "\n".
 func lineNumber(s string, i int) int {

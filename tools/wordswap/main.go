@@ -74,6 +74,94 @@ func main() {
 		}
 	}
 
-	_ = paths
-	_ = dryRun
+	changed, unchanged := 0, 0
+	var mismatches []string
+	var ambiguous []pathOccurrence
+	var skippedList []pathOccurrence
+
+	for _, p := range paths {
+		status, result, err := processFile(p, *from, *to, skips, *dryRun)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "wordswap:", err)
+			os.Exit(1)
+		}
+		switch status {
+		case "mismatch":
+			mismatches = append(mismatches, p)
+			fmt.Printf("MISMATCH (left untouched): %s\n", p)
+		case "changed":
+			changed++
+			verb := "changed"
+			if *dryRun {
+				verb = "would change"
+			}
+			fmt.Printf("%s: %s\n", verb, p)
+		default:
+			unchanged++
+		}
+		for _, occ := range result.Ambiguous {
+			ambiguous = append(ambiguous, pathOccurrence{path: p, occurrence: occ})
+		}
+		for _, occ := range result.Skipped {
+			skippedList = append(skippedList, pathOccurrence{path: p, occurrence: occ})
+		}
+	}
+
+	fmt.Printf("\n%d changed, %d unchanged, %d mismatches\n", changed, unchanged, len(mismatches))
+
+	fmt.Println("\nAMBIGUOUS (unresolved):")
+	for _, po := range ambiguous {
+		fmt.Printf("  %s:%d: %s\n", po.path, po.occurrence.Line, po.occurrence.Text)
+	}
+	fmt.Println("\nSKIPPED (deliberate):")
+	for _, po := range skippedList {
+		fmt.Printf("  %s:%d: %s\n", po.path, po.occurrence.Line, po.occurrence.Text)
+	}
+
+	if len(mismatches) > 0 || len(ambiguous) > 0 {
+		os.Exit(1)
+	}
+}
+
+// pathOccurrence pairs an Occurrence with the file path it came from, for the report's
+// "<path>:<line>: <line text>" entries.
+type pathOccurrence struct {
+	path       string
+	occurrence Occurrence
+}
+
+// processFile reads the file at path, runs swapText over its contents, and -- unless dryRun is
+// set or the reversibility check failed -- writes the result back preserving the file's existing
+// mode, exactly as tools/mdreflow/main.go's processFile does.
+// It returns the status string "mismatch", "changed", or "unchanged", plus the underlying Result
+// for the caller's report buckets.
+func processFile(path string, from, to string, skips []*regexp.Regexp, dryRun bool) (string, Result, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", Result{}, err
+	}
+	original := string(data)
+
+	result, err := swapText(original, from, to, skips)
+	if err != nil {
+		return "", Result{}, err
+	}
+
+	if result.Mismatch {
+		return "mismatch", result, nil
+	}
+	if result.Out == original {
+		return "unchanged", result, nil
+	}
+
+	if !dryRun {
+		mode := os.FileMode(0o644)
+		if info, statErr := os.Stat(path); statErr == nil {
+			mode = info.Mode()
+		}
+		if err := os.WriteFile(path, []byte(result.Out), mode); err != nil {
+			return "", Result{}, err
+		}
+	}
+	return "changed", result, nil
 }
