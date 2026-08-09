@@ -40,7 +40,8 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
   `suite.go` independently declares `hostDirName` (`:27`–`:29`) and its own `hostRepoDir` (`:169`–`:380`).
 - Fabric-sense `host` in the **non-owner packages** that carry residue — almost entirely test code, plus one production comment:
   `internal/loomengine` (35 hits, `TestPreflight_HostDirty`, "paired host+fabric worktree"), `internal/webstercli` (21, incl. the `newHostWeftPair`/`newHostWeftPairAt` helpers and the literal fixture repo names `"host"`/`"host-weft"`), `internal/buildercli` (24), `internal/configcli` (15, incl. production `configcli.go:269` "the host `_lyx` parent"), `internal/perchcli` (14), `internal/websterengine/audit_test.go` (4, incl. the fixture path literal `cd /hub/host`).
-  See Decisions, "Non-owner residue is folded in, not deferred".
+  Plus `internal/builderengine/gitquery_test.go:23` ("lyxtest's weft/host fixtures") — the rest of that package is machine-/verb-sense and stays.
+  See Decisions, "Non-owner residue is folded in, not deferred", and Technical context, "Exhaustive repo-wide classification".
 - Four file renames as `Moves:` pairs (see Technical context).
 - User-visible CLI surface: `fabriccli` `Short`/`Long` strings, `post-checkout.sh`'s stderr output, and `tools/sandbox/main.go`'s two error strings.
 - **All** documentation carrying fabric-sense "host": `docs/overview.md`, `docs/sandbox-hub.md`, `docs/sandbox-howto.md`, `docs/shared-libs/configengine.md`, `README.md`, `manifest/roadmap.md`, `manifest/designs/loom.md`, `manifest/designs/host-visibility.md`, the eight `tools/sandbox/SANDBOX-*-SUITE.md` agent prompt templates, and the five `.claude/agents/crucible-reviewer-{low,medium,high,max,xhigh}.md` files (each line 16, "host-repo").
@@ -54,6 +55,10 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 - Machine-sense and verb-sense `host` anywhere: `conhost` (`internal/reedengine`, `internal/shell`), `localhost`, `Hostname`, `hostURL`/`redditHostPattern`/`redditHostReplace` (`internal/prowler`), `ghost`/`ghostFile`, `hosts`, `hosting`.
   These are not the warp repo and must not be touched.
   Concretely including `internal/configengine/config_test.go:283`–`:308`, whose `server:\n  host: localhost` YAML fixture is machine-sense test data despite matching a bare `host` grep.
+- **The whole `crucible/` directory.** All five hits are machine-sense and must survive verbatim: `orchestrator-prompt.md:94` ("exhaust the host's RAM in minutes"), `review-prompt-template.md:38` ("a host process killed"), `:110` and `:119` ("exhaust the host's RAM"), `README.md:110` (same).
+  These mean *this machine*, not the warp repo.
+  Called out explicitly because a plain `host` grep surfaces them and the directory is otherwise adjacent to in-scope work — `.claude/agents/crucible-reviewer-*.md:16` **is** in scope, since "a host-repo commit … never a weft-repo operation" contrasts the two fabric sides.
+  `crucible/` sits outside `internal/` and `cmd/`, so no guard covers it either way; this is review obligation only.
 - The `host` **ban list itself**: `CONSTRAINTS.md` lines 160–161 and `enforcement_test.go`'s `hostPhrases` / `hostGeometryIdentifiers` values.
   These name the retired vocabulary in order to forbid it, so they keep the word (see Technical context — "The ban list is not a rename target").
 - Renaming anything to "Merriam", or any other unrelated vocabulary work.
@@ -102,16 +107,22 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
   the boundary before `host` is the same rule in reverse, or start-of-input.
   Everything of the form `host` + lowercase letters at a token start — `hostclean`, `hostlayout`, `hosthub`, and equally `hostname`, `localhost`, `conhost` — is classified **AMBIGUOUS**: not swapped, and printed with file and line number.
   The implementing agent resolves each reported occurrence by judgment.
-  `wordswap` exits non-zero if any ambiguity was reported and left unresolved.
+- **How a verdict is recorded — otherwise the tool can never exit zero.**
+  An adjudication has two possible outcomes, and both must be expressible:
+  - *"This one is fabric-sense"* → edit the occurrence by hand (or rename the file), so it no longer appears in the next run's report.
+  - *"Leave this one alone"* → re-run with the occurrence named in `-skip`.
+  The run is complete when `wordswap` exits **zero** with an explicit `-skip` set, and that `-skip` set is the audit record of every deliberate keep — enumerated, reviewable, and reproducible.
+  Without this, a correct "leave `hosting` alone" verdict has no representation and the exit code never clears.
+  This supersedes the earlier framing that the fabric-package run takes no `-skip` at all: that held for the original narrow scope, but the widened scope contains verb-sense keeps (`internal/buildercli/poll_test.go:212`, "a live pane hosting an idle agent") that are neither reworded nor swapped.
 - **Rationale:** `hostclean` and `hostname` are character-class-identical, so no mechanical rule can separate them — only a dictionary or a pre-enumerated list can, and both are exactly the "someone must have remembered it" failure a generic tool exists to avoid.
   Reporting rather than guessing keeps the tool correct *and* general: the next vocabulary rename discovers its own ambiguities instead of requiring the author to know them up front.
   This is the boundary between mechanical and judgment work that the whole task is organised around — script what is mechanical, let the LLM decide what is not, and make the tool surface the difference rather than hide it.
-- **Measured for commit (a)'s Go sweep only:** five ambiguous occurrences — `internal/fabricengine/hostclean.go:1`, `internal/fabricengine/drift.go:3`, `internal/fabricengine/hostlayout.go:1`, `internal/fabricengine/hostjunction_test.go:1`, and `internal/lyxtest/lyxtest.go:128` (the `lyxtest-hosthub-*` temp-dir prefix).
-  All five are the fabric sense and resolve to `warp`.
-  They are listed as the expected report for that commit, not as a pre-enumerated exclude list — the tool must surface them independently, and a sixth in commit (a) is a finding worth pausing on.
-- **No count is pinned for commits (c) and (d).** The doc sweep carries its own `host`+lowercase occurrences — `docs/overview.md:302`, `manifest/designs/loom.md:131` and `:198`, `manifest/designs/fabric-unified-view.md:88`, `docs/sandbox-hub.md`, `tools/sandbox/SANDBOX-REED-SUITE.md:225` among them — and the non-owner residue folded in above adds more.
-  Treat the report as the work list for those commits rather than checking it against a number;
-  the five-occurrence tripwire applies to commit (a) alone.
+- **No occurrence count is pinned for any commit.** An earlier draft pinned five for commit (a);
+  that was measured against the original narrow scope and is wrong for the widened one — `internal/buildercli/poll_test.go:212` ("hosting") alone breaks it, and the doc sweep in commits (c)/(d) adds more (`docs/overview.md:302`, `manifest/designs/loom.md:131` and `:198`, `manifest/designs/fabric-unified-view.md:88`, `docs/sandbox-hub.md`, `tools/sandbox/SANDBOX-REED-SUITE.md:225`).
+  A pinned number would fire as a false tripwire on known-benign hits.
+  **Treat the report as the work list, not as a checksum.**
+- **Known fabric-sense ambiguities, for orientation only:** `internal/fabricengine/hostclean.go:1`, `internal/fabricengine/drift.go:3`, `internal/fabricengine/hostlayout.go:1`, `internal/fabricengine/hostjunction_test.go:1`, and `internal/lyxtest/lyxtest.go:128` (the `lyxtest-hosthub-*` temp-dir prefix) all resolve to `warp`.
+  Listed so the implementer recognises them, not as a set to check the report against.
 - **Rejected:** a strict rule plus a hand-edit of the five known occurrences — works this once, but depends on the survey being exhaustive and teaches the next user nothing.
   An `-also <literal,...>` flag for explicit extra matches — pushes the judgment back onto a pre-enumerated list, the thing being avoided.
   A permissive rule where `host` + lowercase always matches — would rewrite `hostname`, `localhost`, and `conhost`, destroying the tool for reuse.
@@ -182,6 +193,20 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 - **This residue is NOT machine-guarded, before or after the tightening.** These are non-owner packages, so the host-phrase rule already applies to them today — yet they pass, because the surviving phrasings ("paired host+fabric worktree", "the host's own default branch", `TestPreflight_HostDirty`) are not on `hostPhrases`, and because `*_test.go` is excluded from every rule.
   That is precisely why the residue accumulated, and why finding it required a grep rather than a failing test.
   After this task it stays a review obligation.
+- **Critical: non-owner *production* files are never passed to `wordswap`.**
+  `enforcement_test.go:883` fails any non-owner directory whose production file carries a bare `warp` token.
+  Swapping `internal/configcli/configcli.go:269` to "the warp `_lyx` parent" would make `internal/configcli` fail `TestEnforcement_FabricVocabulary` on the spot.
+  The residue therefore splits by file kind, and the split is exact:
+
+  | File | Kind | Treatment |
+  | --- | --- | --- |
+  | `internal/configcli/configcli.go:269` ("the host `_lyx` parent") | non-owner production, fabric-sense | **Hand-reword** to a neutral phrase — drop the qualifier, or say "Fabric". Never `warp`. |
+  | `internal/builderengine/spawn.go:446` ("the host commit immediately before") | non-owner production, fabric-sense | **Hand-reword** the same way. The same file's `:9`, `:178`, `:236`, `:277` are machine/verb-sense and stay, so the file is hand-edited end to end. |
+  | `internal/buildercli/poll.go:321` ("a live pane hosting an idle agent") | non-owner production, verb-sense | **Untouched.** File excluded from the sweep. |
+  | Every other residue file — `loomengine/preflight_integration_test.go`, `webstercli/{cli,sync_integration,verbs}_test.go`, `buildercli/{sync_integration,sync,validate}_test.go`, `configcli/configcli_integration_test.go`, `perchcli/run_integration_test.go`, `websterengine/audit_test.go`, `builderengine/gitquery_test.go` | non-owner **test**, pure fabric-sense | **Swept by `wordswap`.** `*_test.go` is excluded from all three guard rules, so `warp` is safe there. |
+
+  Only three non-owner production files contain the token at all, and only two lines in them change.
+  "Fabric" is not a policed token — the bare-token rule covers `weft` and `warp` only — so a neutral rewording using it is safe.
 - **Boundary within the residue:** `internal/configengine/config_test.go`'s `server: host: localhost` YAML fixture is machine-sense and stays.
   `internal/websterengine/audit_test.go`'s `cd /hub/host` is a fixture *path* naming the warp directory, so it is fabric-sense and renames to `/hub/warp`.
   `internal/webstercli/sync_integration_test.go` creates git repos literally named `"host"` and `"host-weft"` — fixture repo names, fabric-sense, renamed.
@@ -206,7 +231,9 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 ### Enforcement guard is tightened, not just preserved
 
 - **Decision:** remove the owner-dir skip for the **host half** of `TestEnforcement_FabricVocabulary`, so a fabric-sense `host` phrase or geometry identifier fails inside `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine` too.
-  The bare weft/warp owner-set skip is unchanged.
+  The host half appears in **two** walks and both are tightened: the Go walk's `!fabricVocabularyOwners[dir] && hostHit` at `:886`, and the `internal/**/*.md` walk's `!fabricVocabularyOwners[dir] && fabricSenseHostPhrase(text)` at `:903`.
+  The `.md` half is free — no owner dir contains a `.md` file, as verified above.
+  The bare weft/warp owner-set skip is unchanged in both walks.
   The phrase predicate stays — it is what separates fabric-sense from verb-sense and machine-sense.
 - **Rationale:** today the owner dirs are skipped entirely, so nothing machine-proves the rename stays done and a future card can reintroduce `hostBranch` freely.
   After this task the fabric packages contain zero "host" in any sense, so the tightened rule has no false positives to accommodate.
@@ -260,10 +287,51 @@ That survey is complete and its result is recorded here, so **mill-plan does not
 
 - Machine-sense `host` inside `internal/fabricengine` / `internal/fabriccli`: **none**.
   No `conhost`, no `localhost`, no `Hostname`, no `Write-Host`.
-- Verb-sense across the whole in-scope set: exactly three — `internal/fabricengine/coalesce.go:1`, `internal/boardengine/board.go:23` and `:26`, plus `tools/sandbox/main.go:32`.
-  All are reworded before the sweep rather than skipped, so the run takes **no `-skip` argument**.
+- Verb-sense **in the files actually swept**: four, all reworded before the sweep — `internal/fabricengine/coalesce.go:1`, `internal/boardengine/board.go:23` and `:26`, and `tools/sandbox/main.go:32`.
+  Verb-sense **kept as-is**: `internal/buildercli/poll_test.go:212` ("a live pane hosting an idle agent"), adjudicated via `-skip`;
+  and `internal/buildercli/poll.go:321` (same wording), whose file is excluded from the sweep entirely as non-owner production.
+  So the run does take a `-skip` argument — see Decisions, "Ambiguous compounds are reported, not guessed".
+  `internal/builderengine/spawn.go`'s machine/verb-sense lines (`:9`, `:178`, `:236`, `:277`) never reach the tool either;
+  that file is hand-edited because bare `host` with a clean token boundary ("the plain host filesystem") would otherwise be swapped silently rather than reported as ambiguous.
 - `DeriveHostName(hostURL)` looks machine-sense but is not: it extracts the **warp repository basename** from a raw URL or file path (`clone.go:355–371`). It renames to `DeriveWarpName(warpURL)`.
 - Ambiguous all-lowercase compounds are handled by the tool's report, not by this list — see Decisions, "Ambiguous compounds are reported, not guessed".
+
+### Exhaustive repo-wide classification
+
+Every tracked file containing `host` in any case was enumerated via `git ls-files | xargs grep -li host` and classified.
+The result is closed — a plan writer does not need to re-derive it, and anything not listed below contains no `host` at all.
+
+**Fabric-sense — in scope** (detailed elsewhere in this document): `internal/fabricengine` (62 files), `internal/fabriccli` (5), `tools/sandbox` (6 `.go` + 8 `SUITE.md`), `internal/lyxtest` (3), `internal/boardengine` (4), `internal/weftname` (1), the non-owner residue (`internal/buildercli`, `internal/webstercli`, `internal/configcli`, `internal/loomengine`, `internal/perchcli`, `internal/websterengine`), the `CopyHostHub` caller sites in `internal/idecli` and `internal/lyxcwd`, `cmd/lyx/tierpurity_test.go:50`, the swept docs, `.claude/agents/crucible-reviewer-*.md:16`, and `README.md`/`CONSTRAINTS.md`.
+
+Plus one hit the phrase-based greps missed:
+
+- `internal/builderengine/gitquery_test.go:23` — "lyxtest's weft/host fixtures".
+  Fabric-sense, in scope.
+  The rest of `internal/builderengine` is machine-sense ("the plain host filesystem", `spawn.go:9`/`:236`) or verb-sense ("a downed reed session hosts no live strand", `spawn.go:178`) and stays.
+
+**Machine-sense, verb-sense, or unrelated — out of scope, no change:**
+
+| Location | Sense |
+| --- | --- |
+| `plugins/prowler/*` | `Hostname()`, "unresponsive hosts", Chrome on the host — machine |
+| `internal/reedengine` | "can host a strand" — verb; "host-testable" — machine |
+| `internal/reedcli` | `Write-Host` PowerShell cmdlet |
+| `internal/treadleengine`, `internal/shuttlecli` | orphaned `conhost.exe` teardown probes |
+| `internal/burlerengine` | "low-core host", "slow host" — machine; `"ghost"` — test data |
+| `internal/shuttleengine` | `\\host\share` UNC path, "absolute on any host" — machine |
+| `internal/shell` | "host-testable", "the current host" — machine |
+| `internal/stencil`, `internal/modelspec`, `internal/boardcli` | `Ghost`/`"ghost"` — test data |
+| `internal/githubclient` | "not logged in to any GitHub hosts" |
+| `internal/configengine/config_test.go` | `server: host: localhost` YAML fixture |
+| `cmd/lyx/crosscompile_test.go`, `gitrepoboundary_test.go` | "the host's native", "it hosts three r.run calls" — machine/verb |
+| `crucible/` (3 files, 5 hits) | "the host's RAM", "a host process killed" — machine |
+| `docs/reference/builder-contract.md` | "a pane hosting an idle agent", "hosts no live strand" — verb |
+| `docs/reference/tmux_scripting.md` | `#H` → `Hostname` |
+| `docs/research/reed-exploration.md` | "reed is host-agnostic" — machine |
+| `docs/research/reed-hooks-exploration.md` | "daemon hosts background sessions" — verb |
+| `docs/research/scout-multilang.md` | "same host as the scout spike" — machine |
+| `docs/shared-libs/yamlengine.md` | `${env:HOST:-localhost}` env-var example |
+| `go.mod`, `go.sum` | `github.com/skeema/knownhosts` dependency |
 
 ### Merged names — the co-occurrence check is generalized, not spot-checked
 
@@ -354,6 +422,8 @@ Historical records keep the vocabulary that was true when they were written:
 - `docs/benchmarks/test-suite-timing.md` — lines 547, 748, 754, 854, 936 (`CopyHostHub`, `TestRemoveHostJunctionRemoved`, `TestWeftRollbackOnPostHostCreateFailure`, `TestWeftHostPristineEnforced`).
 - `docs/benchmarks/fixture-copy.md` — lines 214, 236, 242 (`hostLayoutFor`, `hostPath`, alongside `internal/warpengine` at `:56`, `:58`, `:83`, `:212`).
 - `docs/research/scout-spike.md` — lines 111, 116, 118, 123, 133 (`hubgeometry.WeftHostSlug`, and a call chain naming `internal/warpengine/prune.go` and `internal/warpcli/warp.go`).
+- `docs/research/linux-portability-survey.md` — line 46 ("the symlink model otherwise carries the weft/host topology fine on Linux").
+  Fabric-sense, but the sentence records what a specific past survey observed and names `internal/warpengine` in the same breath.
 
 This is a closed list, not a rule of thumb: any *other* doc citing a retired identifier is swept (see the two identifier-citing docs named above).
 The distinction is whether the doc records a past observation or describes present behaviour.
@@ -368,7 +438,10 @@ The distinction is whether the doc records a past observation or describes prese
 - `fabricVocabularyHits(f *ast.File)` (line ~688) — returns `(bareIdent, bareLiteralOrComment, hostHit)`; the host half currently shares the same owner skip as the bare-token half (per "card 26").
 
 The tightening splits that shared skip: the bare weft/warp half keeps the owner skip; the host half no longer applies it.
-`CONSTRAINTS.md` states the owner set includes `tools/` and `sandbox/` — reconcile the doc against the actual map, which does not list them, while rewriting the invariant.
+`CONSTRAINTS.md:164` states the owner set includes `tools/` and `sandbox/`, while `fabricVocabularyOwners` does not list them.
+**Intended end state: the doc drops them from the owner set** and instead records that `tools/` and `sandbox/` lie outside the enforcement walk entirely — the Go walk covers `internal/` and `cmd/` only, so an owner-map entry for them would be dead code that never matches.
+Calling them "owners" implies a carve-out from a check that never reaches them.
+Do not add them to the map.
 
 ### Tooling available
 
@@ -406,9 +479,11 @@ From this repo's `CLAUDE.md`:
 
 Discovered during discussion:
 
-- `wordswap` must never be run over `CONSTRAINTS.md`, `internal/lyxcwd/enforcement_test.go`, `docs/benchmarks/test-suite-timing.md`, `docs/benchmarks/fixture-copy.md`, `docs/research/scout-spike.md`, or `internal/configengine/config_test.go`.
+- `wordswap` must never be run over `CONSTRAINTS.md`, `internal/lyxcwd/enforcement_test.go`, `docs/benchmarks/test-suite-timing.md`, `docs/benchmarks/fixture-copy.md`, `docs/research/scout-spike.md`, `docs/research/linux-portability-survey.md`, `internal/configengine/config_test.go`, or anything under `crucible/`.
 - The three verb-sense rewords (`coalesce.go:1`, `board.go:23`/`:26`, `tools/sandbox/main.go:32`) must precede the `wordswap` run.
-- The guard tightening and the `weftname`/`boardengine` fixes must land in the same commit — the tightening fails `go test` without them.
+- The `weftname`/`boardengine` fixes must land **in or before** the tightening's commit — the tightening fails `go test` without them.
+  The four-commit plan satisfies this: the fixes are in (a), the tightening in (d).
+- Non-owner **production** files (`internal/configcli/configcli.go`, `internal/builderengine/spawn.go`, `internal/buildercli/poll.go`) are hand-edited, never passed to `wordswap` — a bare `warp` token there fails the guard.
 
 ## Testing
 
@@ -446,8 +521,9 @@ After removing the host half's owner skip, add cases proving:
 - `configsync`'s narrower literal-and-comment carve-out is unaffected.
 - The existing sense-discrimination sub-tests still pass: `host_verb_sense_passes`, `host_machine_sense_passes`, `write_host_cmdlet_passes`.
 
-**Repo-wide completeness check, run manually at the end of commit (d):** grep for any remaining `host` in any case across the in-scope set — the fabric packages, `internal/lyxtest`, `internal/weftname`, `internal/boardengine`, `tools/sandbox`, and every swept doc.
-Expect zero hits outside the three named exclusions (the `CONSTRAINTS.md` ban list, `enforcement_test.go`'s ban list, and `docs/benchmarks/test-suite-timing.md`).
+**Repo-wide completeness check, run manually at the end of commit (d):** grep for any remaining `host` in any case across the in-scope set — the fabric packages, `internal/lyxtest`, `internal/weftname`, `internal/boardengine`, `tools/sandbox`, the non-owner residue packages, and every swept doc.
+Expect zero hits outside the exclusion list, which is **exactly** the "never run over" list in the Constraints section plus the machine-/verb-sense keeps recorded in the final `-skip` set.
+The two lists are the same set by construction — if they ever diverge, the Constraints list is authoritative.
 
 This is a **manual** check, and it stays manual: as recorded in Decisions, the tightened guard covers production Go under `internal/`+`cmd/` only — not `*_test.go`, not `docs/`, not `tools/`, not shell.
 Do not describe the tightened test as encoding this check permanently; it does not.
@@ -484,4 +560,13 @@ Round 2 review gaps:
 - **Q:** The `tools/sandbox` line list names only `main.go`, but `suite.go`, `report.go` and three test files carry ~157 further occurrences — enumerate or glob? **A:** Glob. The scope is `tools/sandbox/*.go`; the per-line citations are illustrative, and there are four user-visible error strings, not two.
 - **Q:** `docs/benchmarks/fixture-copy.md` and `docs/research/scout-spike.md` are the same historical-record class as the excluded `test-suite-timing.md` — exclude them too? **A:** Yes. Closed list of three, distinguished by whether the doc records a past observation or describes present behaviour.
 - **Q:** `docs/shared-libs/lyxcwd.md:82` and `manifest/designs/fabric-unified-view.md:86` cite retired identifiers but appear in no list — in or out? **A:** In. They cite identifiers rather than phrases, so a phrase-based grep missed them.
-- **Q:** Does the "five ambiguous occurrences" figure hold for the whole task? **A:** No — it is commit (a)'s Go sweep only. No count is pinned for commits (c)/(d); the report is the work list there.
+- **Q:** Does the "five ambiguous occurrences" figure hold for the whole task? **A:** No — and after round 3 no count is pinned for any commit. The report is the work list, never a checksum.
+
+Round 3 review gaps:
+
+- **Q:** Word-swapping non-owner production comments to `warp` would fail `enforcement_test.go:883`'s bare-token rule — how is the residue applied? **A:** Split by file kind. Non-owner production files are hand-edited and never passed to the tool (exactly three files, two changed lines, reworded neutrally); non-owner test files are swept freely, since `*_test.go` is excluded from every guard rule. This also averts a second failure the finding did not name: bare machine-sense `host` with a clean token boundary (`spawn.go:9`, "the plain host filesystem") would have been swapped silently rather than reported.
+- **Q:** "Exactly three verb-sense hits" undercounts the widened scope — restate? **A:** Restated as four swept-and-reworded plus two kept (`poll.go:321`, `poll_test.go:212`).
+- **Q:** If the tool exits non-zero while any ambiguity is unresolved, how is a legitimate "leave it alone" verdict recorded? **A:** Via `-skip`. Completion is an exit-zero run with an explicit `-skip` set, and that set is the audit record of every deliberate keep. The earlier "no `-skip` at all" framing held only for the original narrow scope.
+- **Q:** The completeness-grep's exclusion list omits three files excluded elsewhere in the same document. **A:** Unified — it is the Constraints "never run over" list plus the `-skip` keeps, with Constraints authoritative.
+- **Q:** "Guard tightening and the fixes in the same commit" contradicts the four-commit plan. **A:** Restated as "in or before"; (a)→(d) satisfies it.
+- **Q:** Is `internal/builderengine` in the residue list? **A:** Yes — `gitquery_test.go:23` and `spawn.go:446` are fabric-sense; `spawn.go:9`/`:178`/`:236`/`:277` are machine/verb-sense and stay, so that file is hand-edited end to end.
