@@ -29,6 +29,7 @@ Batch-local decisions:
 - **Context:**
   - `internal/fabricengine/warpbinding.go`
   - `internal/fabricengine/boardweft.go`
+  - `internal/fabricengine/bolt.go`
   - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/topology.go`
   - `internal/gitexec/gitexec.go`

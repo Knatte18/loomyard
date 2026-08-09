@@ -92,6 +92,9 @@ This applies to every line touched in this batch, in every `.md` file, not only 
   The design doc is the authority here, so the roadmap entry should record slice 8 as resolved too.
   With both slices settled, the entry reduces to a statement that the fabric campaign's slices are complete;
   keep the pointer to the design doc, which survives this task because slice 6's orchestration half is still open.
+
+  Relocate the bullet accordingly: it currently sits under the roadmap's Planned heading, and the file's own Maintenance section says an item moves from Planned to Done when it ships.
+  A "complete" statement left under Planned would contradict itself, so move the whole entry to the Done section, preserving the design-doc pointer and renumbering per whatever convention the Done section already uses.
 - **Commit:** `docs(manifest): mark fabric slice 10 shipped`
 
 ### Card 19: flip the constraint example and fix the stale anchor name
@@ -161,8 +164,9 @@ This applies to every line touched in this batch, in every `.md` file, not only 
   In the fabric suite, flip any spelled clone argument order in the preamble and the existing scenarios.
   While in the file, correct one stale marker name: the unwire scenario's Watch line names the pre-rename `.fabric-anchor` when listing the repo-wide records that survive unwire.
   Correct it to the current anchor marker name — the same staleness card 19 fixes in the constraints file, in the same batch — and, since the binding is now a third such record, add it to that same list.
-  Then add a new scenario after the existing clone-geometry one, numbered to follow the file's existing `F<N>` sequence.
+  Then add a new scenario at the end of the scenario list, taking the next number in the file's existing `F<N>` sequence — appended rather than inserted next to the clone-geometry scenario it is thematically closest to, because inserting would renumber every scenario after it and the session-log block that mirrors them.
   It must carry a `**Covers:** fabric` line, a Goal, a Watch, and the same `**Verdict:** \`OK\` / \`WARN\` / \`FAIL\`` line every other scenario in the file ends with.
+  Append the matching `F<N>: <OK|WARN|FAIL> -- <one-line note if not OK>` line to the file's closing session-log-format block, which carries one line per scenario and would otherwise be short by one.
 
   The scenario's substance: after the dedicated fabric hub has been cloned once with both URLs — which is what writes the binding — delete the hub directory outright and re-clone with the weft URL alone.
   Watch that the warp URL is derived rather than asked for;

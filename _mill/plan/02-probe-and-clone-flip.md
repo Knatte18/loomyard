@@ -219,12 +219,19 @@ Until then the CLI passes `ForceBootstrap: false`, which is the correct default 
   The mapping is purely mechanical: `CloneHub(parent, warp, weft, subpath)` becomes `CloneHub(parent, fabricengine.CloneOptions{WeftURL: weft, WarpURL: warp, Subpath: subpath})` — note that the warp and weft arguments swap position as well as becoming named fields, so a careless edit that keeps the old order silently inverts the test.
   In `clone_test.go` the call is unqualified (`package fabricengine`), so the struct literal is `CloneOptions{...}` with no package prefix; the other two files are `package fabricengine_test` and need the `fabricengine.` qualifier.
 
-  Do not change any assertion, fixture, or test name in this card — the behaviour under test is unchanged and every one of these tests must still pass for exactly the reason it passed before.
+  Do not change any assertion, fixture, or test name in this card — with one carved-out exception below — because the behaviour under test is otherwise unchanged and every one of these tests must still pass for exactly the reason it passed before.
+
+  The exception is `TestCloneHub_StrictAbortRemovesHubOnFailure`.
+  It reaches `teardownHub` today by pointing the WEFT at a nonexistent path, which under the new ordering now fails at the pre-hub probe, before the hub directory is ever created — the assertions would still pass, but for a different reason than the test's name and doc comment claim, silently retiring the only coverage of the residual-hub teardown path.
+  Retarget it: keep a valid weft fixture so the probe succeeds, and point the WARP at a nonexistent path instead, so the failure lands at the warp-clone step after the hub directory exists and `teardownHub` genuinely runs.
+  Derive the expected hub path from the bogus warp URL as the test already does, and update the doc comment to name the warp clone as the failure point.
+  The nonexistent-weft case is not lost — batch 4 covers it as a probe-taxonomy hard error, which is what it now is.
   The one substantive consequence to check: these fixtures clone a weft bare repo that carries a committed readme file and no anchor marker, so the new old-order guard would reject them.
   Each of these call sites therefore needs `ForceBootstrap: true` UNLESS its weft fixture is empty (`makeEmptyBareRemote`) or already carries an anchor marker seeded via `commitFileOnBranch`.
   The anchor-marker exception covers BOTH marker names: the stale-marker test seeds the pre-rename `.fabric-anchor` and must NOT get `ForceBootstrap: true`, because the guard admits it (card 3 probes for both names) and the test asserts on the stale-marker error naming re-clone as the remedy — a message the bootstrap guard never produces.
   Work through the call sites one at a time and set the field from the fixture actually used;
-  add a short comment at each `ForceBootstrap: true` site saying the fixture is a seeded bare repo standing in for a weft, not a repo that has ever been a weft.
+  add a short comment at each `ForceBootstrap: true` site saying the fixture is an ordinary seeded repo standing in for a weft, not a repo that has ever been one.
+  Word it to fit the fixture actually in use rather than pasting one sentence everywhere: most sites use a seeded bare remote, but `TestCloneHub_CreatesHubDotLyx` builds its weft with `initTinyRepo`, a non-bare working repository.
 
   Two files in this package mention `CloneHub` in comments only and call nothing — `internal/configcli/configcli_integration_test.go` and `internal/fabricengine/add_rollback_adopt_test.go` — do not touch them.
 - **Commit:** `test(fabricengine): move CloneHub invocations to the options form`
