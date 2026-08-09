@@ -90,7 +90,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		if weftRepoRootErr != nil {
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
-		return AddResult{}, fmt.Errorf("no weft repo at %s; run the hub-creator first", weftRepoRoot)
+		return AddResult{}, fmt.Errorf("no weft repo at %s; create the hub with \"lyx fabric clone\" first", weftRepoRoot)
 	}
 
 	weftTarget := WeftWorktreePath(l, slug)
