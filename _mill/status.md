@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-surface-review
+phase: approved-docs-sweep
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-go-sweep  '2026-08-09T06:45:47Z'
 approved-file-renames  '2026-08-09T06:49:51Z'
 self-resolved-verify-logic  '2026-08-09T06:52:56Z'
 approved-cli-surface-review  '2026-08-09T06:56:38Z'
+approved-docs-sweep  '2026-08-09T07:10:42Z'
 ```
 
 ## Batches
@@ -66,9 +67,10 @@ batches:
     commit_sha: 43dd14dc5a75994b8cb6253d7dc3d55bec92f7e8
     verify_baseline_failures: []
   - name: docs-sweep
-    state: running
+    state: approved
     implementer_session: ed5429b7-4755-49b8-8fd3-0d42f9074c47
     start_sha: cf38eef4d4310a84cde8de90551692e88215ef83
+    commit_sha: a2bfff66d34463d4e136fbe899cdf78506954704
     verify_baseline_failures: []
   - name: constraints-and-guard
     state: pending
