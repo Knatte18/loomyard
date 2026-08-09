@@ -23,7 +23,7 @@ Fuller design/how-to lives in godoc and `docs/`.
   Adding a module's own subdirectory is never a `lyxcwd` change.
   Its ephemeral twin is the Durable-vs-Ephemeral State Invariant below.
 - `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/gitexec` — this is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic.
-- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths,
+- Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`WarpLyxLink`/`WarpJunctions`/portal and launcher paths,
   and the `Prime`/sibling-worktree-list lookup they're built from, are `fabricengine`-private. `lyxcwd` never mentions weft.
   See the Fabric Vocabulary Invariant below for the vocabulary rule this bullet is one instance of.
 - Geometry is structural, never config/env-overridable.
@@ -186,12 +186,12 @@ Keep these lists verbatim: they are the ban list, and renaming them would delete
 
 ## Fabric Git Invariant (warp + weft)
 
-Every git operation that LYX/LoomYard's own code performs — on **either** the weft repo or the warp/host repo — goes through `internal/fabricengine` in Go, in-process, never raw git and never an LLM agent.
+Every git operation that LYX/LoomYard's own code performs — on **either** the weft repo or the warp repo — goes through `internal/fabricengine` in Go, in-process, never raw git and never an LLM agent.
 This binds LYX's own code only;
 a human or any tool outside LYX keeps ordinary git in their warp worktree, untouched.
 
 - **Module ownership.**
-  Weft-internal git (`commit`/`push`/`pull`/`sync`) and coordinated host↔weft topology (checkout, dual-worktree add/remove/clone) both go through `internal/fabricengine`.
+  Weft-internal git (`commit`/`push`/`pull`/`sync`) and coordinated warp↔weft topology (checkout, dual-worktree add/remove/clone) both go through `internal/fabricengine`.
   The same holds for warp: no LYX package other than `internal/fabricengine` runs raw git against warp.
   Read-only verbs (current SHA, `git status --porcelain`) are exempt — only *mutating* warp git must dispatch through fabric;
   see `fabric-unified-view.md`'s "Scope boundary" section for the current warp-mutation call sites.
@@ -199,7 +199,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   The weft commit is Go calling the engine in-process at a round/phase boundary the loop owner (loom, or perch's CLI standalone) controls — never an LLM agent, not raw git, not by shelling `lyx fabric`.
   Agents ride the file contract: they **write** overlay files into `_lyx` via the junction — raddle content lives at `_lyx/raddle/` and therefore arrives through this same junction;
   Go **reads and commits** them.
-  An agent does commit its own code to the **host** repo (commit-per-fix) — the weft, never.
+  An agent does commit its own code to the **warp** repo (commit-per-fix) — the weft, never.
   **Board carve-out:** `internal/boardengine`'s writes to `weft:main` are the one exception to timing control — any LLM session, in any worktree, may trigger a board write at any time — but module ownership still holds (board's git flows through `Bolt`, never raw git);
   only the *timing*-control half is scoped away.
 - **Cross-module exclusions.**
@@ -211,7 +211,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
   `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
 - **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
-- **Unwire** removes host junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
+- **Unwire** removes warp junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
   Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
   Never-committed routing: `internal/fabricengine/classify_test.go`, `structuraldirs_test.go`, `internal/fabriccli/cli_test.go`.
@@ -225,7 +225,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 One review+fix round (burler now, hardener later) follows: A-before-B (review fully written to disk before any target file is touched);
 every recorded finding is fixed in B, all severities including LOW/NIT;
 no self-grading (round N's fix is judged by round N+1's fresh review, never its own);
-commit-per-fix on host source, never push.
+commit-per-fix on warp source, never push.
 In a cluster round, fork reports, the handler's own holistic review, and the consolidation into one review file are ALL part of A;
 fork reviewers are read-only (no writes, no git), mechanically enforced by the fork audit.
 
