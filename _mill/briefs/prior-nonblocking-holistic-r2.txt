@@ -1,0 +1,2 @@
+- F's body drops half of the "carry rejected alternatives from both decisions" instruction: **Location:** `_mill/followup/F-batcher-standalone-split.md:19-23`
+- A regroups discussion's Doc-retirement inventory under "Code deletion" instead of transcribing its own section boundaries: **Location:** `_mill/followup/A-builder-retire.md:42-49`
