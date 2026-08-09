@@ -226,7 +226,7 @@ Record every one of this task's own instructions it departed from, since tasks C
      That skip was temporary: task B rewrote the line by hand so it names no version, and the final acceptance grep carries no roadmap exclusion at all.
    - This file is the sole permanent exemption.
      Its citations of the doc's pre-rename path, and its other references to the format by the old name, survive on purpose.
-     A verified count, not a remembered one: `grep -c 'plan-format-v3\.md' manifest/designs/shed-followups.md` returns **five** while this note is being written — do not carry forward the "four" that appears in this task's discussion, whose tally silently omitted one occurrence, because this note is a durable record tasks C and E will read.
+     A verified count, not a remembered one: `grep -c 'plan-format-v3\.md' manifest/designs/shed-followups.md` returns **six** once this whole block is written — five citations predating this override plus the one two sentences above (the `manifest/roadmap.md` mention) — do not carry forward the "four" that appears in this task's discussion, whose tally silently omitted one occurrence, because this note is a durable record tasks C and E will read.
      The file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment; rewriting them would make the record claim the scoping task knew the post-rename name.
      A reader who follows one of them will not find the file — this note is where they learn it moved to `docs/reference/plan-format.md`.
 3. "This task changes paths and names only, never prose" is superseded.
