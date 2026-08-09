@@ -71,11 +71,8 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	}
 
 	if !force {
-		weftTarget := WeftWorktreePath(l, slug)
-		stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, weftTarget)
-		if err != nil {
-		} else if exitCode == 0 && strings.TrimSpace(stdout) != "" {
-			return RemoveResult{}, fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")
+		if err := refuseDirtyWeftWorktree(WeftWorktreePath(l, slug)); err != nil {
+			return RemoveResult{}, err
 		}
 	}
 
@@ -116,6 +113,33 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 		Path:         target,
 		LinksRemoved: linksRemoved,
 	}, nil
+}
+
+// refuseDirtyWeftWorktree returns an error when the weft worktree at weftTarget carries
+// uncommitted changes, or when its status could not be read at all.
+//
+// An ABSENT weft worktree is not a refusal: there is no uncommitted work to lose, and tearing down
+// a half-present pair is exactly what Remove is for.
+// An unreadable one IS a refusal, and that is the whole point of this helper: the probe used to
+// swallow its own spawn error in an empty if-branch, so a git that failed to run silently reported
+// the weft side clean and the no-force gate simply disappeared.
+func refuseDirtyWeftWorktree(weftTarget string) error {
+	if _, statErr := os.Stat(weftTarget); os.IsNotExist(statErr) {
+		return nil
+	}
+
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, weftTarget)
+	if err != nil {
+		return fmt.Errorf("check weft worktree status at %s: %w", weftTarget, err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("check weft worktree status at %s (git exit %d): %s",
+			weftTarget, exitCode, strings.TrimSpace(stderr))
+	}
+	if strings.TrimSpace(stdout) != "" {
+		return fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")
+	}
+	return nil
 }
 
 // refusePrimeSlug returns an error when slug names the hub's prime (main) warp worktree.
