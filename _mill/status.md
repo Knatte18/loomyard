@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-doc-prose-v2-erasure
+phase: approved-go-comments-and-guards
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-08-09T13:27:31Z'
 implementing  '2026-08-09T13:28:00Z'
 approved-rename-and-sweep  '2026-08-09T13:36:19Z'
 approved-doc-prose-v2-erasure  '2026-08-09T13:40:38Z'
+approved-go-comments-and-guards  '2026-08-09T13:45:05Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     start_sha: 2642b648b202b4ec8bd485446583209a2f4ffc65
     commit_sha: 1aa15333068553de073f236b6ba8428833d3f1e5
   - name: go-comments-and-guards
-    state: running
+    state: approved
     implementer_session: 0f0d6e57-86dc-4b06-8570-d34cc4a37d89
     start_sha: 4709dd495a99c76db0591c3dc9ba8ca856ea3bee
+    commit_sha: f1706640f9761ed5b5038ca66d37749859c67137
     verify_baseline_failures: []
   - name: override-notes-and-acceptance
     state: pending
