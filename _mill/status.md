@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: shed-producer-model-scoping
 branch: shed-producer-model-scoping
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-08-08T19:39:47Z'
 discussed  '2026-08-09T06:01:51Z'
 planning  '2026-08-09T06:10:43Z'
 plan-fix-r1  '2026-08-09T06:19:02Z'
+planned  '2026-08-09T06:19:16Z'
 ```
