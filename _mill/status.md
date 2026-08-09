@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-go-comments-and-guards
+phase: approved-override-notes-and-acceptance
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-08-09T13:28:00Z'
 approved-rename-and-sweep  '2026-08-09T13:36:19Z'
 approved-doc-prose-v2-erasure  '2026-08-09T13:40:38Z'
 approved-go-comments-and-guards  '2026-08-09T13:45:05Z'
+approved-override-notes-and-acceptance  '2026-08-09T13:52:13Z'
 ```
 
 ## Batches
@@ -52,8 +53,9 @@ batches:
     commit_sha: f1706640f9761ed5b5038ca66d37749859c67137
     verify_baseline_failures: []
   - name: override-notes-and-acceptance
-    state: running
+    state: approved
     implementer_session: f3b40cd5-55d8-4bef-a7c0-1a64b612fa87
     start_sha: 2f45b5a448b5b8fbadff064faccd0246ea856af9
+    commit_sha: 5e9a9af65ce258b5a9ec9d73afc94aa1209d9440
     verify_baseline_failures: []
 ```
