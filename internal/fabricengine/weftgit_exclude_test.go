@@ -276,13 +276,11 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 	relPaths := []string{".", "sub", "wts/some-task"}
 	for _, rel := range relPaths {
 		dotLyxDir := filepath.Join(weftFixture.WeftPath, filepath.FromSlash(rel), lyxdirs.DotLyxDirName)
-		mustWriteFile(t, filepath.Join(dotLyxDir, "builder", "run.lock"), "lock")
-		mustWriteFile(t, filepath.Join(dotLyxDir, "builder", "pause"), "")
 		mustWriteFile(t, filepath.Join(dotLyxDir, "webster", "pause"), "")
 		mustWriteFile(t, filepath.Join(dotLyxDir, "webster", "prompts", "01.md"), "prompt")
 
 		lyxDir := filepath.Join(weftFixture.WeftPath, filepath.FromSlash(rel), lyxdirs.LyxDirName)
-		mustWriteFile(t, filepath.Join(lyxDir, "builder", "state.json"), "{}")
+		mustWriteFile(t, filepath.Join(lyxDir, "webster", "state.json"), "{}")
 	}
 
 	for _, rel := range relPaths {
@@ -299,7 +297,7 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 	tracked := gitLsFiles(t, weftFixture.WeftPath)
 	for _, rel := range relPaths {
 		lyxRel := filepath.ToSlash(filepath.Join(filepath.FromSlash(rel), lyxdirs.LyxDirName))
-		durable := lyxRel + "/builder/state.json"
+		durable := lyxRel + "/webster/state.json"
 		if !strings.Contains(tracked, durable) {
 			t.Errorf("git ls-files at rel=%q does not track durable %q; want it committed\nfull ls-files:\n%s", rel, durable, tracked)
 		}
