@@ -37,7 +37,7 @@
 // Directive's Role parameter selects one of three directive-text variants,
 // one per agent shape in the stack, because each shape needs its constraint
 // text worded for what that agent actually does: RoleImplementer for any
-// agent that edits code (builder implementer, webster fork, loom plan) is
+// agent that edits code (webster fork/Master, burler review+fix, loom plan) is
 // worded as a pre-edit checklist; RoleReviewFix for the one review+fix round
 // (burler) covers both of that round's phases in the round's own order,
 // since a pure reviewer variant would have no user — burler is the only

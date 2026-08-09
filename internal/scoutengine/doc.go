@@ -30,7 +30,7 @@
 // the envelope" split every other lyx module follows. Beyond that negative
 // rule there is no import allowlist: scoutengine draws on the shared
 // infrastructure layer as freely as any other engine module, which keeps it
-// cycle-free and importable by any future consumer (e.g. builder or webster)
+// cycle-free and importable by any future consumer (e.g. webster)
 // without charging rent on each new dependency. CONSTRAINTS.md's "Scout
 // Engine-Seam Invariant" records the rule; the package's seam enforcement
 // test enforces it.
