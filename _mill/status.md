@@ -6,6 +6,7 @@ slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: store the warp-URL binding in weft:main; fold bootstrap into clone (slice 10)'
 task_description: |
   fabric: store the warp-URL binding in weft:main; fold bootstrap into clone (slice 10)
@@ -36,15 +37,23 @@ implementing  '2026-08-09T09:53:35Z'
 ```yaml
 batches:
   - name: warp-binding core
-    state: pending
+    state: running
+    implementer_session: ca2ab51a-6492-4b38-ab93-add5f9bd9065
+    start_sha: ab0a6449e9c944e416882f2687b765b0fc737eb3
+    verify_baseline_failures: []
   - name: probe and clone flip
     state: pending
+    verify_baseline_failures: []
   - name: cli surface
     state: pending
+    verify_baseline_failures: []
   - name: clone integration tests
     state: pending
+    verify_baseline_failures: []
   - name: reconcile backfill
     state: pending
+    verify_baseline_failures: []
   - name: docs and sandbox suites
     state: pending
+    verify_baseline_failures: []
 ```
