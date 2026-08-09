@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-task-bodies
+phase: approved-wiki-publish-and-summary
 slug: shed-producer-model-scoping
 branch: shed-producer-model-scoping
 plan: _mill/plan
@@ -22,6 +22,7 @@ planned  '2026-08-09T06:19:16Z'
 implementing  '2026-08-09T06:19:47Z'
 approved-code-task-bodies  '2026-08-09T06:24:27Z'
 approved-docs-task-bodies  '2026-08-09T06:27:43Z'
+approved-wiki-publish-and-summary  '2026-08-09T06:31:11Z'
 ```
 
 ## Batches
@@ -39,8 +40,9 @@ batches:
     start_sha: 612ca3ff4106593a4d9ad222a08e43fcbc71a5f4
     commit_sha: 0b668d8390ec9bd963bb9aacddb99e734a6c9586
   - name: wiki-publish-and-summary
-    state: running
+    state: approved
     implementer_session: af8d917c-33c5-4861-b8b8-9ac5ccc6568b
     start_sha: 67d4b0eb9a3e3c3d69581b67284d95e744b65155
+    commit_sha: e4ee3132029b014c640c289eb40c3c38ba1055a9
     verify_baseline_failures: []
 ```
