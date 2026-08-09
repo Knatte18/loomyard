@@ -72,6 +72,8 @@ batches:
     commit_sha: 40bb4f47dbc70cd580978db4173a442031d162e2
     verify_baseline_failures: []
   - name: docs and sandbox suites
-    state: pending
+    state: running
+    implementer_session: 07c2edd3-06b8-4125-b3cc-0b4379afe71c
+    start_sha: b5a3e27cd25f9104bf5264e9498566c6c24fac46
     verify_baseline_failures: []
 ```
