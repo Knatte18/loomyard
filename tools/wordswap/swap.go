@@ -141,6 +141,16 @@ func swapText(in, from, to string, skips []*regexp.Regexp) (Result, error) {
 
 		out.WriteString(in[pos:i])
 
+		if matchesAnySkip(lineText(in, i), skips) {
+			out.WriteString(candidate)
+			result.Skipped = append(result.Skipped, Occurrence{
+				Line: lineNumber(in, i),
+				Text: candidate,
+			})
+			pos = i + n
+			continue
+		}
+
 		if !boundaryAfter(in, i, n) {
 			out.WriteString(candidate)
 			result.Ambiguous = append(result.Ambiguous, Occurrence{
@@ -164,4 +174,27 @@ func swapText(in, from, to string, skips []*regexp.Regexp) (Result, error) {
 // lineNumber returns the 1-based line number containing byte offset i in s, counted by "\n".
 func lineNumber(s string, i int) int {
 	return 1 + strings.Count(s[:i], "\n")
+}
+
+// lineText returns the full text of the line containing byte offset i in s, excluding the
+// terminating newline.
+func lineText(s string, i int) string {
+	start := strings.LastIndexByte(s[:i], '\n') + 1
+	end := strings.IndexByte(s[i:], '\n')
+	if end < 0 {
+		return s[start:]
+	}
+	return s[start : i+end]
+}
+
+// matchesAnySkip reports whether line matches any regexp in skips.
+// A skip claims the occurrence regardless of whether it would otherwise have been swapped or
+// classified AMBIGUOUS -- this is what makes a deliberate keep expressible.
+func matchesAnySkip(line string, skips []*regexp.Regexp) bool {
+	for _, re := range skips {
+		if re.MatchString(line) {
+			return true
+		}
+	}
+	return false
 }
