@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-rename-and-sweep
+phase: approved-doc-prose-v2-erasure
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r2  '2026-08-09T13:27:22Z'
 planned  '2026-08-09T13:27:31Z'
 implementing  '2026-08-09T13:28:00Z'
 approved-rename-and-sweep  '2026-08-09T13:36:19Z'
+approved-doc-prose-v2-erasure  '2026-08-09T13:40:38Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: e2a8b4b2c03797a28d29fcc186c600456444e87b
     verify_baseline_failures: []
   - name: doc-prose-v2-erasure
-    state: running
+    state: approved
     implementer_session: c037f54e-d272-4ba7-8fd6-765078fc6b2c
     start_sha: 2642b648b202b4ec8bd485446583209a2f4ffc65
+    commit_sha: 1aa15333068553de073f236b6ba8428833d3f1e5
   - name: go-comments-and-guards
     state: pending
     verify_baseline_failures: []
