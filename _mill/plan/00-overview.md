@@ -3,7 +3,7 @@
 ```yaml
 task: "Scope the Shed producer-model rewrite into buildable tasks"
 slug: shed-producer-model-scoping
-approved: false
+approved: true
 started: "20260809-060437"
 parent: "main"
 root: ""
