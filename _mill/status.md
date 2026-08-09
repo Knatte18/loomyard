@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-08T19:39:36Z'
+discussed  '2026-08-09T05:53:11Z'
 ```

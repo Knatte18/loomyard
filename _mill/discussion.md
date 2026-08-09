@@ -51,7 +51,8 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 
 **Out:**
 
-- Any behaviour change. Every diff is an identifier, a filename, a comment, a help string, or prose.
+- Any behaviour change **except one, declared below**: the JSON output field rename.
+  Every other diff is an identifier, a filename, a comment, a help string, or prose.
 - Machine-sense and verb-sense `host` anywhere: `conhost` (`internal/reedengine`, `internal/shell`), `localhost`, `Hostname`, `hostURL`/`redditHostPattern`/`redditHostReplace` (`internal/prowler`), `ghost`/`ghostFile`, `hosts`, `hosting`.
   These are not the warp repo and must not be touched.
   Concretely including `internal/configengine/config_test.go:283`–`:308`, whose `server:\n  host: localhost` YAML fixture is machine-sense test data despite matching a bare `host` grep.
@@ -111,6 +112,10 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
   An adjudication has two possible outcomes, and both must be expressible:
   - *"This one is fabric-sense"* → edit the occurrence by hand (or rename the file), so it no longer appears in the next run's report.
   - *"Leave this one alone"* → re-run with the occurrence named in `-skip`.
+  The report therefore has **two buckets**, and only one of them affects the exit code:
+  - **Unresolved AMBIGUOUS** — an occurrence the tool could not classify and no `-skip` claimed. Non-empty ⇒ **exit non-zero**.
+  - **Deliberately skipped** — an occurrence a `-skip` pattern matched. Reported for the audit trail, **informational only, never affects the exit code**.
+  Without this split the two rules collide: `-skip` matches are "left untouched and reported", so if reporting alone drove the exit code the run could never clear.
   The run is complete when `wordswap` exits **zero** with an explicit `-skip` set, and that `-skip` set is the audit record of every deliberate keep — enumerated, reviewable, and reproducible.
   Without this, a correct "leave `hosting` alone" verdict has no representation and the exit code never clears.
   This supersedes the earlier framing that the fabric-package run takes no `-skip` at all: that held for the original narrow scope, but the widened scope contains verb-sense keeps (`internal/buildercli/poll_test.go:212`, "a live pane hosting an idle agent") that are neither reworded nor swapped.
@@ -127,11 +132,13 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
   An `-also <literal,...>` flag for explicit extra matches — pushes the judgment back onto a pre-enumerated list, the thing being avoided.
   A permissive rule where `host` + lowercase always matches — would rewrite `hostname`, `localhost`, and `conhost`, destroying the tool for reuse.
 
-### Exclude list is empty — reword the one verb-sense hit instead of skipping it
+### Verb-sense hits are reworded where they sit in swept files
 
-- **Decision:** `internal/fabricengine/coalesce.go:1` reads `// coalesce.go hosts the generic loop-until-clean coalescing primitive …`.
-  Reword to `// coalesce.go holds the generic …` **before** running `wordswap`, rather than skipping it.
-  `wordswap`'s `-skip <regexp>` flag is still built and unit-tested as a general capability, but **this rename runs with no `-skip` argument**.
+- **Decision:** where a verb-sense `host` occurs in a file the sweep touches, reword it rather than skip it.
+  `internal/fabricengine/coalesce.go:1` reads `// coalesce.go hosts the generic loop-until-clean coalescing primitive …` — reword to `// coalesce.go holds the generic …` **before** running `wordswap`.
+  Same treatment for `internal/boardengine/board.go:23` and `:26`, and `tools/sandbox/main.go:32`.
+  **The exclude list is empty in the fabric packages specifically** — after that one reword, nothing there needs skipping.
+  It is *not* empty for the task as a whole: the widened scope keeps `internal/buildercli/poll_test.go:212`'s "hosting" via `-skip`, and excludes three non-owner production files from the sweep outright.
 - **Rationale:** verified by exhaustive grep — that line is the *only* standalone English `host`/`hosts`/`hosting`/`hosted` in either fabric package.
   Rewording it means the word "host" does not survive in the fabric packages in any sense, which makes the tightened enforcement guard trivially verifiable and removes all risk of the script skipping the wrong occurrence.
 - **Rejected:** `-skip 'hosts the generic'` — leaves a retired word in the package for no benefit.
@@ -183,6 +190,21 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
   Abandon the host-half tightening — reverses a decision made for good reason.
   `tools/sandbox` as a follow-up task — leaves the retired name in a user-visible error message.
   `tools/sandbox` error strings only, identifiers untouched — half a rename, and the guard does not cover `tools/` to catch the remainder.
+
+### The JSON output fields rename — the one declared observable change
+
+- **Decision:** `json:"host_worktree"` → `json:"warp_worktree"` and `json:"host_branch"` → `json:"warp_branch"`, at `internal/fabricengine/status.go:40` and `:44`, `reconcile.go:73`, and `prune.go:22`.
+  This changes the field names emitted by `lyx fabric status --json`, `lyx fabric reconcile --json`, and `lyx fabric prune --json`.
+  It is the **only** observable behaviour change in the task and must be named as such in commit (a)'s message.
+- **Rationale:** a struct tag is a machine-readable output contract, not prose, so a blanket sweep would change it silently — that is the thing to avoid, not the rename itself.
+  Renaming is nonetheless correct: the JSON field is the single most externally-visible surface in the whole task, and the established vocabulary rule puts warp/weft exactly where the two repo sides must be distinguished, which `host_worktree`-versus-weft is.
+  Preserving the tag would leave `WarpWorktree string \`json:"host_worktree"\`` — field and tag disagreeing permanently, which is worse than either consistent option and would re-teach the retired mapping to every future reader.
+- **Blast radius verified as nil in-repo:** grep for `host_worktree`/`host_branch` finds only the four declaration sites;
+  no Go code, test, doc, or script reads these field names as strings.
+  lyx publishes no stable JSON API contract, and `CONSTRAINTS.md`'s CLI/Cobra Invariant pins the envelope shape, not individual payload field names.
+  The exposure is to an operator's own ad-hoc `jq` usage.
+- **Rejected:** preserve the tags verbatim and exclude them from the sweep — keeps a strict no-behaviour-change promise, but permanently desynchronises field name from tag and leaves the retired vocabulary in machine-readable output.
+  Emit both old and new keys for a deprecation window — real API-compatibility machinery for a single-operator tool with no external consumers.
 
 ### Non-owner residue is folded in, not deferred
 
@@ -412,6 +434,19 @@ The eight `tools/sandbox/SANDBOX-*-SUITE.md` files are **agent prompt templates*
 Applying the vocabulary rule per file: `manifest/designs/fabric-unified-view.md` and the `fabricengine`/`fabriccli` package docs are **owner prose** and keep warp/weft freely.
 Everything else is consumer prose — "Fabric" for the composite, warp/weft only for genuine two-sided distinctions.
 
+**The doc work therefore splits in two, and `wordswap` only does half of it.**
+A mechanical `host`→`warp` swap over consumer prose produces "the warp repo" precisely where the vocabulary rule demands "the Fabric repo", so running the tool over these files would actively violate the rule this task exists to establish:
+
+| Set | Files | Mechanism |
+| --- | --- | --- |
+| **Mechanically swept** — retired *identifier* citations and one two-sided phrase | `docs/shared-libs/lyxcwd.md:82`, `manifest/designs/fabric-unified-view.md:86`, `.claude/agents/crucible-reviewer-*.md:16` (5 files, "host-repo" → "warp-repo") | `wordswap` |
+| **Hand-reworded** — consumer prose, per the Fabric rule | `docs/overview.md`, `README.md`, `docs/sandbox-hub.md`, `docs/sandbox-howto.md`, `docs/shared-libs/configengine.md`, `manifest/roadmap.md`, `manifest/designs/loom.md`, `manifest/designs/warp-visibility.md` (post-rename), and the eight `tools/sandbox/SANDBOX-*-SUITE.md` templates | LLM judgment, file by file |
+| **Not touched** | the three historical-record docs | excluded |
+
+The hand-reworded set is the larger one and is the judgment core of commit (d).
+For each occurrence the writer asks: does this sentence mean *the composite repo* (→ "Fabric"), or does it genuinely need to distinguish the two sides (→ warp/weft)?
+`wordswap` cannot make that call, which is why it is not pointed at these files.
+
 ### Deliberate documentation exclusions — the historical-record class
 
 Three files are **not** swept.
@@ -467,7 +502,7 @@ From `CONSTRAINTS.md`:
 - **Fabric Vocabulary Invariant** — rewritten by this task (see Decisions). Enforced by `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`).
 - **Fabric Git Invariant (warp + weft)** — prose renames (lines 175, 180, 188, 200, 214), semantics unchanged.
 - **Cwd Resolution Invariant** — **semantics** unaffected (no path, anchor, or cwd-resolution change), but its text is not: the "Weft-sibling paths and junction construction" bullet cites `HostLyxLink`/`HostJunctions` by name and renames with them.
-  `internal/lyxcwd` code is touched only in its enforcement test and in `anchor_test.go`'s `CopyHostHub` call sites.
+  `internal/lyxcwd` code is touched only in its enforcement test and in the `CopyHostHub` call sites in `anchor_test.go` (`:44`, `:85`, `:127`, `:174`, `:210`) **and `lyxcwd_test.go` (`:25`, `:68`, `:91`)** — both files must be in the `wordswap` file list.
 - **lyxtest Leaf Invariant** — unaffected; the rename adds no imports to `internal/lyxtest`.
 - **CLI/Cobra Invariant** — `Short` must remain present on every command; the help-tree tests must stay green after the `Short`/`Long` rewording.
 - **Documentation Lifecycle** — this task changes observable CLI text and cross-cutting infrastructure, so `docs/overview.md`, the module docs, and `CONSTRAINTS.md` land in the same commits. `manifest/roadmap.md` moves only for a completed or added planned item; here it is edited for prose and the `host-visibility.md` link, not for a roadmap status change.
@@ -513,8 +548,16 @@ It does **not** prove the two merged names are safe — a local shadowing a same
 **Existing tests that must stay green and will need name updates:** the ~16 renamed `Test*` functions listed in Technical context are renamed by `wordswap` in commit (a), so they must still be discovered and pass.
 `cmd/lyx/helptree_test.go`, `longlist_test.go`, and `jsonhelp_test.go` must stay green after the CLI help rewording in commit (c) — verified to contain no `host` assertions, so this should be a no-op, but it is the CLI/Cobra Invariant's check and must be confirmed rather than assumed.
 
-**`TestEnforcement_FabricVocabulary` — the tightening needs its own new cases.**
-After removing the host half's owner skip, add cases proving:
+**`TestEnforcement_FabricVocabulary` — the tightening edits existing sites, not only adds cases.**
+Three existing sites are falsified by the tightening and must be edited in commit (d):
+
+- `enforcement_test.go:787`–`:798`, the `owner_set_file_with_all_of_the_above_passes` sub-test.
+  Its second assertion (`if !fabricVocabularyOwners["internal/fabricengine"] { … "expected internal/fabricengine to skip the host-phrase check entirely" }`) asserts exactly the behaviour being removed, and its comment says the owner file "is skipped outright, for both the bare-token rule and the host-phrase rule".
+  Both assertion and comment must change.
+- `:591`–`:595`, the `fabricVocabularyOwners` doc comment claiming "card 26 scopes the host-phrase rule to 'the same files' as the bare-token rule, so both rules share this one owner set".
+- `:734`–`:744`, the same claim restated in the walk's own commentary.
+
+After those edits, add cases proving:
 
 - A fabric-sense host phrase in an owner dir now **fails** (it previously passed).
 - The bare weft/warp owner skip is **unchanged** — an owner dir may still say warp/weft freely.
@@ -538,8 +581,8 @@ Do not describe the tightened test as encoding this check permanently; it does n
 - **Q:** Which tool performs the substitution? **A:** One generic case-preserving whole-word swap, not a per-identifier table — the exclude list is empty, so a table protects against nothing.
 - **Q:** Should the rename script be committed? **A:** Not as a one-off specialised script. Make it general enough to be reusable and commit it — `tools/wordswap/`, following the `tools/mdreflow/` and `tools/godocreflow/` precedent.
 - **Q:** What is the tool's safety invariant, analogous to `mdreflow`'s collapsed-text check? **A:** Reversibility over recorded spans — revert exactly the recorded substitution offsets and require byte-identity with the input. Works despite `warp`'s 576 pre-existing occurrences.
-- **Q:** How is the verb-sense hit in `coalesce.go:1` excluded? **A:** It is not excluded — it is reworded to "holds" first, leaving an empty exclude list and no `-skip` argument for this run.
-- **Q:** Should the word "host" appear in the skip pattern at all? **A:** No. Rewording removes the last occurrence, so the fabric packages end with zero "host" in any sense.
+- **Q:** How is the verb-sense hit in `coalesce.go:1` excluded? **A:** It is not excluded — it is reworded to "holds" first. **Superseded in part by rounds 3–4:** that leaves the exclude list empty *in the fabric packages*, but the widened scope does use `-skip`.
+- **Q:** Should the word "host" appear in the skip pattern at all? **A:** Not for the fabric packages — rewording removes the last occurrence there. **Superseded in part by rounds 3–4:** the final `-skip` set does contain the word, since `internal/buildercli/poll_test.go:212`'s verb-sense "hosting" is kept rather than reworded.
 - **Q:** Are file renames done by the tool or separately? **A:** Separately, as explicit `git mv` / `Moves:` pairs — four of them, including `host-visibility.md` → `warp-visibility.md`.
 - **Q:** What does a CLI user see — `<host-url>`, `<warp-url>`, or `<repo-url>`? **A:** `<warp-url>`/`<weft-url>`. warp/weft are used at exactly the few points where the two repos must be distinguished; "repo" alone is too vague for warp; "host" is never used.
 - **Q:** What replaces "host repo" in non-owner docs? **A:** "Fabric" — the name of the fully wired-up composite, warp with junctions into weft inside it.
@@ -570,3 +613,17 @@ Round 3 review gaps:
 - **Q:** The completeness-grep's exclusion list omits three files excluded elsewhere in the same document. **A:** Unified — it is the Constraints "never run over" list plus the `-skip` keeps, with Constraints authoritative.
 - **Q:** "Guard tightening and the fixes in the same commit" contradicts the four-commit plan. **A:** Restated as "in or before"; (a)→(d) satisfies it.
 - **Q:** Is `internal/builderengine` in the residue list? **A:** Yes — `gitquery_test.go:23` and `spawn.go:446` are fabric-sense; `spawn.go:9`/`:178`/`:236`/`:277` are machine/verb-sense and stay, so that file is hand-edited end to end.
+
+Round 4 review gaps (final round — see "Review rounds" below):
+
+- **Q:** `json:"host_worktree"`/`json:"host_branch"` are machine-readable output contract, not prose — rename or preserve? **A:** Rename to `warp_worktree`/`warp_branch`, declared explicitly as the task's one observable behaviour change. Nothing in-repo reads the field names; preserving them would leave field and tag permanently disagreeing.
+- **Q:** A mechanical sweep over consumer prose yields "warp repo" where the rule demands "the Fabric repo" — how is commit (d)'s doc work done? **A:** Split. `wordswap` handles only retired *identifier* citations and the `.claude/agents` two-sided phrase; all consumer prose is hand-reworded file by file.
+- **Q:** If `-skip` matches are "left untouched and reported", and reporting drives a non-zero exit, the run can never clear. **A:** Two report buckets — unresolved AMBIGUOUS fails the exit code, deliberately-skipped is informational only.
+- **Q:** The "exclude list is empty / no `-skip`" decision now contradicts later text. **A:** Retitled and rewritten; scoped to the fabric packages, with the two stale Q&A answers above marked superseded.
+
+### Review rounds
+
+Four holistic review rounds ran (of a configured five).
+Rounds 1–3 each changed the design materially — scope was too narrow twice, and round 3 caught a build-breaking interaction between the fold-in decision and the guard's bare-token rule.
+Round 4 produced two genuine design gaps (the JSON tags and the doc-sweep mechanism), one specification defect, and three editorial fixes.
+The fifth round was deliberately skipped: the remaining finding classes are self-correcting — a missed file fails to compile, a stale guard assertion fails its test — rather than design ambiguity that only discussion can resolve.
