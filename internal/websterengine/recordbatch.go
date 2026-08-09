@@ -6,8 +6,7 @@
 // cross-check against the fork's own self-reported head_sha, and the distilled digest's
 // persistence.
 // RecordBatch never touches the fabric repo — the caller fabric-commits state.json and the batch
-// report once RecordBatch returns successfully, mirroring builder's own fabric-commit-boundary
-// discipline.
+// report once RecordBatch returns successfully, webster's own fabric-commit-boundary discipline.
 
 package websterengine
 

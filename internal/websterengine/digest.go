@@ -1,8 +1,8 @@
 // digest.go implements webster's own state Digest — the batch-outcome snapshot internal/webstercli
 // persists into state.json and the resume trail (consumed there via a digestFields adapter, wired
 // in batch 9) — and distill, which computes a terminal Done/Stuck digest from a fork's Report.
-// This replaces builderengine.Digest/Distill entirely: webster carries the fork-return facts
-// (status, head SHA, informational deviation list) plus recovery metadata, and drops builder's
+// webster's Digest carries the fork-return facts
+// (status, head SHA, informational deviation list) plus recovery metadata, and drops any
 // out_of_scope/DriftUnreported/scope-drift model wholesale, since the flat plan format has no `##
 // Scope` for a changed file to drift against.
 

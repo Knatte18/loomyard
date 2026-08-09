@@ -1,5 +1,4 @@
-// gitwrap.go re-points webster's git-query helpers at internal/gitrepo, replacing the helpers
-// builderengine/gitquery.go implements locally over internal/gitexec directly: headSHA captures a
+// gitwrap.go implements webster's own git-query helpers over internal/gitrepo: headSHA captures a
 // batch's start-SHA and the report cross-check's actual HEAD, and dirty is the half-done-work
 // signal.
 // Per the Shared Decision git-verification-via-gitrepo, every helper here goes through gitrepo.Repo

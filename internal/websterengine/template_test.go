@@ -4,8 +4,7 @@
 // bullet list is pinned against webster's own Digest field set and order, the outcome-file bullet
 // list against the outcome schema, and the fork/recovery templates' report-schema section against
 // the minimal fork-return contract's field set (status, head_sha, deviations) — all as
-// literal-statement and exact-field-list assertions in the same style as
-// builderengine/template_test.go, plus stencil.Fill/ FillOptional round-trips proving every
+// literal-statement and exact-field-list assertions, plus stencil.Fill/ FillOptional round-trips proving every
 // required marker and RenderForkPrompt/RenderRecoveryPrompt round-trips proving the
 // fork-context-hygiene Shared Decision: a thin in-session fork prompt that injects nothing already
 // inherited from Master, a full cold-start recovery prompt, and card content delivered by a
@@ -62,9 +61,8 @@ func patternActiveLayout(t *testing.T) *lyxcwd.Location {
 }
 
 // requireContains fails the test, naming the missing needle, if text does
-// not contain it. Mirrors builderengine/template_test.go's helper of the
-// same name (package-local — the two packages deliberately do not share a
-// test-helper package).
+// not contain it. Kept package-local rather than shared, since test-helper
+// packages are deliberately not shared across modules.
 func requireContains(t *testing.T, text, needle string) {
 	t.Helper()
 	if !strings.Contains(text, needle) {
@@ -88,8 +86,7 @@ func requireNotContains(t *testing.T, text, needle string) {
 // token from every "- `token`" bullet line appearing strictly between
 // heading (matched by trimmed equality) and the next "## " heading or EOF —
 // the shape both the digest-field and outcome-key bullet lists take in
-// master-template.md. Mirrors builderengine/template_test.go's helper of
-// the same name.
+// master-template.md.
 func extractBacktickBullets(text, heading string) []string {
 	lines := strings.Split(text, "\n")
 

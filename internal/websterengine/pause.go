@@ -1,10 +1,8 @@
-// pause.go implements webster's pause-flag mechanics: a webster-local copy of builderengine's
-// pause.go (RequestPause/PauseRequested/ClearPause), since builder's own versions have an in-tree
-// builder caller (frozen, per the Shared Decision builder-is-frozen-copy-not-move) and cannot be
-// moved.
+// pause.go implements webster's own pause-flag mechanics (RequestPause/PauseRequested/ClearPause),
+// deliberately module-local rather than shared.
 // RequestPause writes a flag file that the batch boundary refuses against, PauseRequested observes
 // it, and ClearPause removes it.
-// The clearing rules mirror builder's exactly: ClearPause must be called once a run has passed its
+// The clearing rules: ClearPause must be called once a run has passed its
 // refusal gates and is committed to spawning (never instantly re-pause on the flag that requested
 // the pause a resumed run is now resuming from — while a run that refuses on validation or a
 // fingerprint mismatch leaves a pending pause intact) and again at every terminal outcome (a pause

@@ -4,10 +4,9 @@
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
 // WorktreeRoot for the genuine HeadSHA/ChangedFiles/Dirty calls, a real
 // *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/
-// shuttleengine.Engine doubles is the Starter (builderengine's own
-// established fake-starter approach — spawn_test.go's spawnFixture
-// pattern), and a fake Clock replays the whole bounded-wait sequence with
-// no real sleeps, mirroring builderengine/poll_test.go's fakeClock. The
+// shuttleengine.Engine doubles is the Starter, webster's own
+// established fake-starter approach, and a fake Clock replays the whole
+// bounded-wait sequence with no real sleeps, webster's own fakeClock. The
 // re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-
 // calls) is this file's test centre, per the batch's own "Batch Tests"
 // note. This package's testmain_test.go already wires
@@ -365,7 +364,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 // TestRecoverBatch_DoneReportRefusedUnlessPriorDead proves the finished-work guard: a batch whose
 // on-disk report already parses to status: done is refused (recover-batch never archives finished
 // work — record-batch is the consuming verb), EXCEPT when the batch's persisted state is terminal
-// dead, builder's dead-orphan late-report case, where the report is archived and the spawn
+// dead, webster's own dead-orphan late-report case, where the report is archived and the spawn
 // proceeds.
 func TestRecoverBatch_DoneReportRefusedUnlessPriorDead(t *testing.T) {
 	doneReport := "status: OK\nhead_sha: deadbeef\n"

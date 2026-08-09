@@ -1,8 +1,7 @@
 // report.go implements webster's own fork-return report contract: the minimal YAML shape a fork
 // writes as its final action to the per-batch report file under websterengine.ReportsDir(...),
 // and the strict parser that reads it back.
-// This replaces builderengine.ParseReport/Report and its done/stuck/green/red/skipped/out_of_scope
-// grammar entirely — webster's flat card format carries no per-batch Scope, so there is nothing to
+// webster's flat card format carries no per-batch Scope, so there is nothing to
 // justify an out-of-scope entry against;
 // a fork simply reports whether it succeeded, the head SHA it left, and an informational list of
 // files it touched beyond the plan's prediction (see the deviation-list-is- informational Shared
@@ -40,8 +39,7 @@ type Report struct {
 	Deviations []string `yaml:"deviations"`
 }
 
-// ReportFileName returns the per-batch report file's name, "NN-<slug>.yaml", webster's own naming
-// (replacing builderengine.BatchReportFileName).
+// ReportFileName returns the per-batch report file's name, "NN-<slug>.yaml", webster's own naming.
 func ReportFileName(number int, slug string) string {
 	return fmt.Sprintf("%02d-%s.yaml", number, slug)
 }

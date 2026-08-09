@@ -233,8 +233,8 @@ const DefaultSettleTick = 250 * time.Millisecond
 
 // Sleeper abstracts time.Sleep so SettleRetry's wait loop never blocks for real under test — a
 // recording fake Sleeper lets a test assert exactly how many ticks were requested and drive
-// SettleRetry's retry loop to completion instantly, mirroring the clock seam builderengine's
-// PollUntilTerminal and shuttleengine's wait.go already establish for the same reason.
+// SettleRetry's retry loop to completion instantly, the same clock seam pattern
+// shuttleengine's wait.go already establishes for the same reason.
 type Sleeper interface {
 	// Sleep blocks (in production) or records a request to block (under test)
 	// for d.

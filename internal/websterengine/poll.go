@@ -1,8 +1,7 @@
-// poll.go implements webster's own long-poll loop: a webster-local copy of
-// builderengine.PollUntilTerminal (builderengine/poll.go) retargeted to webster's Digest, plus the
-// unexported clock seam (clock, realClock, pollTick) that copy relies on so a test can inject a
+// poll.go implements webster's own long-poll loop over webster's Digest, plus the
+// unexported clock seam (clock, realClock, pollTick) it relies on so a test can inject a
 // fake clock and replay a whole poll sequence instantly.
-// The long-poll IS the notification (mirroring builder's own `poll` semantics decision): the loop
+// The long-poll IS the notification: the loop
 // blocks inside Go on a fixed tick, costing the caller nothing per tick, and returns the instant a
 // batch reaches a terminal classification.
 

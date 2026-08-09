@@ -1,7 +1,5 @@
-// fingerprint.go implements fingerprint, webster's own plan-identity hash builder: a verbatim
-// webster-local copy of builderengine.Fingerprint (builderengine/fingerprint.go), since builder's
-// own Fingerprint has an in-tree builder caller (frozen, per the Shared Decision
-// builder-is-frozen-copy-not-move) and cannot be moved.
+// fingerprint.go implements fingerprint, webster's own plan-identity hash constructor,
+// deliberately module-local rather than shared.
 // webster's state.json records the fingerprint at first init,
 // and every later run/begin-batch entry recomputes and compares it against the on-disk plan, so a
 // --fresh crash/resume guard (wired into state and runlevel in batch 7) can detect a stale plan
