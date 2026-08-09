@@ -65,7 +65,9 @@ batches:
     commit_sha: 96e1c18e114d5592b04bd6b91c975a5537c339bb
     verify_baseline_failures: []
   - name: reconcile backfill
-    state: pending
+    state: running
+    implementer_session: 9f4e64f9-b76a-4873-abdb-fe56384fba81
+    start_sha: 0f68e858d02d83f565a3e4acdb16c06b3db462ac
     verify_baseline_failures: []
   - name: docs and sandbox suites
     state: pending
