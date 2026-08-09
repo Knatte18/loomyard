@@ -22,8 +22,11 @@ import (
 // derive the hub path in either the one- or two-argument form. After CloneHub succeeds, this handler
 // drives the wiring sequence: repo-wide fabric.yaml, weft:main commits, warp junctions, and
 // per-worktree config. On error, the clone is left intact; the operator completes wiring with
-// reconcile.
-func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string) int {
+// reconcile. The returned envelope carries "hub" and "anchor" from the resolved geometry, plus
+// "warp" (the effective warp URL, supplied or derived) and "warp_binding_recorded" (whether this
+// clone wrote the .lyx-warp record) — both always present so a consumer never has to distinguish
+// absent from false.
+func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -38,14 +41,12 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		warpURL = args[1]
 	}
 
-	// ForceBootstrap is false here: the flag itself arrives in a later change, and false keeps the
-	// old-order guard fully armed until then.
 	res, err := fabricengine.CloneHub(cwd, fabricengine.CloneOptions{
 		WeftURL:        weftURL,
 		WarpURL:        warpURL,
 		Subpath:        subpath,
 		Reset:          reset,
-		ForceBootstrap: false,
+		ForceBootstrap: forceBootstrap,
 	})
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -84,7 +85,9 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 	}
 
 	return output.Ok(out, map[string]any{
-		"hub":    res.HubPath,
-		"anchor": res.Anchor,
+		"hub":                   res.HubPath,
+		"anchor":                res.Anchor,
+		"warp":                  res.WarpURL,
+		"warp_binding_recorded": res.WarpBindingRecorded,
 	})
 }
