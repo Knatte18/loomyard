@@ -4,15 +4,15 @@
 // (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
 // a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner
 // wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles
-// is the starter/injector seam (exactly buildercli's own spawnbatch_test.go
-// pattern — a fake struct alone cannot satisfy these interfaces, since a
+// is the starter/injector seam, webster's own fixture pattern — a fake
+// struct alone cannot satisfy these interfaces, since a
 // genuine *shuttleengine.Run's StrandGUID is only ever minted by a real
 // Runner.Start), and run's own Master spawn is a local fake MasterStarter
 // (mirroring websterengine's own runlevel_test.go runFakeStarter). Tests
 // build a *websterCLI literal directly (bypassing Command()'s
 // PersistentPreRunE) and drive one verb's cobra.Command through
-// clihelp.Execute, the package-local injection point buildercli's own
-// tests establish. WEFT_SKIP_GIT=1 is set on every test that reaches a
+// clihelp.Execute, webster's own package-local injection point for these
+// tests. WEFT_SKIP_GIT=1 is set on every test that reaches a
 // fabricSync call, so no real weft sibling worktree is needed; the one test
 // that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves
 // WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or
