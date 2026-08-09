@@ -275,8 +275,16 @@ skipped. Use --force to remove it anyway, discarding those changes. Untracked
 files are not a reason to protect an entry — they are the ordinary residue of
 an abandoned pair — and they go with the worktree when it is removed.
 
-A dry run computes the same protected verdict the matching --apply run would
-act on, so "protected: false" in a dry run means "--apply would remove this".
+The orphan pass enumerates by directory NAME alone, so an ordinary directory —
+or a wholly unrelated git clone — parked in the hub under a name ending in the
+weft suffix is reported too. Such an entry is flagged "unowned": true and is
+never removed, in any mode: --force does not apply to it, because the question
+it answers is not "is this work worth keeping" but "is this fabric's at all".
+Only a path the hub's weft repo registers as a linked worktree is removable.
+
+A dry run computes the same protected and unowned verdicts the matching --apply
+run would act on, so "protected": false with no "unowned" in a dry run means
+"--apply would remove this".
 
 Example:
   lyx fabric prune

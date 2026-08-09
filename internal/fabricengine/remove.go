@@ -205,7 +205,20 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 // A failure to enumerate answers false, the conservative direction: an unenumerable repo is exactly
 // where a blind directory removal is least defensible.
 func isRegisteredLinkedWorktree(l *lyxcwd.Location, target string) bool {
-	entries, err := List(l.WorktreePath())
+	return isRegisteredLinkedWorktreeIn(l.WorktreePath(), target)
+}
+
+// isRegisteredLinkedWorktreeIn is the repo-agnostic form of isRegisteredLinkedWorktree: it asks the
+// repo at repoDir whether target is one of its registered LINKED worktrees.
+//
+// It is shared rather than duplicated because both sides of the pair need the same rule.
+// Remove asks it of the WARP repo before falling back to a directory removal;
+// Prune asks it of the WEFT repo for the same reason, and for the same data loss — a hub directory
+// whose name merely ends in the weft suffix is not fabric's to delete, however loudly git refuses to
+// remove it as a worktree.
+// A failure to enumerate answers false, the conservative direction.
+func isRegisteredLinkedWorktreeIn(repoDir, target string) bool {
+	entries, err := List(repoDir)
 	if err != nil {
 		return false
 	}
