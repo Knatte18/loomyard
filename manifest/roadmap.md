@@ -17,7 +17,7 @@ Committed to, in this order, next.
    the weft-visibility leak closed at all seven call sites;
    and the `cwd`-reachable `_board` junction wired (operator-convenience only, mirroring millhouse's own `.wiki` junction).
    **Slice 9, the former `dotlyx-scratch-hygiene` item, has shipped**: `.lyx` is now a structural, code-injected junction (never a `fabric.yaml` `pathspec` entry), the committed `.gitignore` `.lyx/` block is gone in favor of the warp's own `.git/info/exclude`, a pre-existing real `.lyx` is adopted rather than refused, and `Unwire` no longer deletes weft-side content.
-   **Slices 8 and 10 remain**: slice 8's mechanical leak-closing landed with slice 7 above, leaving only its open CLI-wording policy question (should `buildercli`/`perchcli`/`webstercli` output ever say "weft" to the end user);
+   **Slices 8 and 10 remain**: slice 8's mechanical leak-closing landed with slice 7 above, leaving only its open CLI-wording policy question (should `perchcli`/`webstercli` output ever say "weft" to the end user);
    slice 10 stores the warp-URL binding on `weft:main` (fold bootstrap into `fabric clone`, weft-first argument order).
    See [designs/fabric-unified-view.md](designs/fabric-unified-view.md).
 
@@ -27,7 +27,7 @@ Committed to, in this order, next.
    A producer's contract is two parts only — **Input** (artifact(s) consumed, pointer to the format-contract file defining their shape, never a copy) and **Output** (artifact produced, same pointer discipline) — a producer is always atomic (one mechanical action or one LLM session, never an internal multi-step process of its own).
    **Review is not a property of a producer — it is always its own, separate producer** in the list, immediately following the one it reviews (e.g. `Plan-Write` → `Plan-Review-Gate` (mechanical, hard-fail) → `Plan-Review` (LLM/perch round)), consistent with `loom.md`'s existing phase diagram already drawing review as a separate box, and with `perch` already being "its own module... reused for every phase... and standalone."
    What used to look like one multi-step "Plan" phase becomes several flat, sequential producers (e.g. `Plan-Sweep` (mechanical scout inventory) → `Plan-Write` (LLM) → `Plan-Review-Gate` → `Plan-Review` → `Batchifier` (mechanical, `internal/batcher` — already ships exactly this shape, zero LLM involvement)) — many more producers than the old model implied, with grouping (e.g. "the Plan producers") staying a documentation/presentation convention only, never a structural concept `Shed` itself knows about.
-   **Broken down into six buildable follow-up tasks (2026-08-09, via the `shed-producer-model-scoping` scoping task)**: `builder-retire` (A — delete `internal/builderengine`/`internal/buildercli`, retire `builder-contract.md` as a reference) → `plan-format-drop-v3-suffix` (B — mechanical rename sweep, `plan-format-v3.md` → `plan-format.md`) → {`format-docs-name-producers` (C — rewrite `discussion-format.md`/`plan-format.md` in producer-model terms, add the `Discussion-Review-Gate` producer), `batcher-standalone-split` (F — extract `internal/batcher` out of webster as a standalone `configreg` module)} → `shed-model-contradiction-sweep` (E — final owner of `shed.md`/`loom.md`/this roadmap item, sweeps the remaining contradictions and adds the `CONSTRAINTS.md` pointer-rule invariant), with `raddle-finalize-fold-and-link-repair` (D — folds Raddle into `Finalize`'s own contract, repairs dead links in `raddle.md`/`finalize.md`/`self-report.md`) branching off A in parallel.
+   **Broken down into six buildable follow-up tasks (2026-08-09, via the `shed-producer-model-scoping` scoping task)**: `builder-retire` (A — retires the superseded batch-implementation loop, renames the loom Builder phase to Webster, and adds `webster-contract.md`) → `plan-format-drop-v3-suffix` (B — mechanical rename sweep, `plan-format-v3.md` → `plan-format.md`) → {`format-docs-name-producers` (C — rewrite `discussion-format.md`/`plan-format.md` in producer-model terms, add the `Discussion-Review-Gate` producer), `batcher-standalone-split` (F — extract `internal/batcher` out of webster as a standalone `configreg` module)} → `shed-model-contradiction-sweep` (E — final owner of `shed.md`/`loom.md`/this roadmap item, sweeps the remaining contradictions and adds the `CONSTRAINTS.md` pointer-rule invariant), with `raddle-finalize-fold-and-link-repair` (D — folds Raddle into `Finalize`'s own contract, repairs dead links in `raddle.md`/`finalize.md`/`self-report.md`) branching off A in parallel.
    Full task bodies live at [designs/shed-followups.md](designs/shed-followups.md);
    each task is also tracked in the mill wiki under its own slug.
    **Open precondition, not yet decided:** `loom.md` documents `Webster` as `black box (LLM + mechanical internally)` with its own internal per-batch fork loop — in apparent conflict with the model's own producer-atomicity rule (a producer must always be one mechanical action or one LLM session, never an internal multi-step process of its own).
@@ -43,7 +43,7 @@ Committed to, in this order, next.
 1. **`PATTERN.md` — loomyard's own invariants mechanism, wired into every agent** — a from-scratch equivalent of Millhouse's `CONSTRAINTS.md`, owned by loomyard (which has no such mechanism today;
    the root `CONSTRAINTS.md` is Millhouse's, present only because mill develops loomyard).
    A weft-backed `_lyx/PATTERN.md` file plus `_lyx/pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt.
-   **The wiring has landed**: the `hubgeometry`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all five code-touching templates (builder implementer, burler round, webster fork, webster Master, loom plan) are built and merged.
+   **The wiring has landed**: the `hubgeometry`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all four code-touching templates (burler round, webster fork, webster Master, loom plan) are built and merged.
    **The content migration** out of `CONSTRAINTS.md` into `_lyx/PATTERN.md` + detail docs remains outstanding and still happens only at loomyard-init-via-lyx — `CONSTRAINTS.md` stays the single live invariants doc until that cutover.
    Also supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See [internal/pattern](../internal/pattern/doc.go).
@@ -69,7 +69,7 @@ No build order is implied between these items.
 
 1. **raddle** — codeguide's woven-in successor;
    parallel-regeneration design exists;
-   deferred phase slot between Builder and Finalize.
+   deferred phase slot between Webster and Finalize.
    See [designs/raddle.md](designs/raddle.md).
 
 1. **webster: parallel card execution** — worktree-per-card concurrent forking with a DAG;
@@ -197,18 +197,15 @@ No build order is implied between these items.
 
 1. **perch** — the gate loop: run `burler` rounds until `APPROVED`/`STUCK`.
 
-1. **builder** — batch-implementation loop over a pinned plan (sequential, one strand per batch) — superseded as an active plan-format consumer now that `webster`'s flat-card-list rewrite has shipped;
-   stays frozen and functional in-tree, with deletion tracked as a separate later task.
-
 1. **webster: rewrite for flat card list** — fork-per-card unchanged;
    no DAG/SCC in v0 (a dead `HasSymbolFields()` scheduler branch is reserved for later);
    consumes the flat card-list plan format via `internal/planparser` (sole parser) and `internal/batcher` (config-selected batchifier registry);
-   integration suite runs as one final fork with SHA-bisect on failure. `builder` becomes obsolete as a plan-format consumer.
+   integration suite runs as one final fork with SHA-bisect on failure.
    See the `internal/websterengine` package documentation.
 
 1. **plan-format v3: flat card list** — a card carries `What:`, the five typed file-op fields (`Context:`/`Edits:`/`Creates:`/`Deletes:`/`Moves:`), and `Depends-on:` only;
    symbol fields wait for `scout`.
-   Coexists with the still-live [plan-format v2](../docs/reference/plan-format.md) — still used by the frozen `builder` — until `builder` is deleted.
+   v3 is the live plan format now that its predecessor is retired.
    See [docs/reference/plan-format-v3.md](../docs/reference/plan-format-v3.md).
 
 1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
