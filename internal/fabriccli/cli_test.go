@@ -401,22 +401,23 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 	}
 }
 
-// TestRunCLI_CloneRequiresExactlyTwoArgs verifies that "fabric clone" rejects both too few (1) and
-// too many (3, the old <warp-url> <weft-url> <board-url> form this task removed) positional
-// arguments with exit 1 and the updated usage message — runCloneWithReset's len(args) != 2 check
-// runs before any git spawn, so a t.TempDir + t.Chdir is sufficient with no fixture.
-func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
+// TestRunCLI_CloneAcceptsOneOrTwoArgs verifies that "fabric clone" now accepts either one
+// positional (<weft-url>, warp URL derived from the recorded binding) or two
+// (<weft-url> <warp-url>), and rejects both zero and three positional arguments with exit 1 and the
+// updated usage message — runCloneWithReset's len(args) != 1 && len(args) != 2 check runs before any
+// git spawn, so a t.TempDir + t.Chdir is sufficient with no fixture.
+func TestRunCLI_CloneAcceptsOneOrTwoArgs(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 	}{
 		{
-			name: "OneArg",
-			args: []string{"clone", "https://example.com/warp"},
+			name: "ZeroArgs",
+			args: []string{"clone"},
 		},
 		{
 			name: "ThreeArgs",
-			args: []string{"clone", "https://example.com/warp", "https://example.com/weft", "https://example.com/board"},
+			args: []string{"clone", "https://example.com/weft", "https://example.com/warp", "https://example.com/board"},
 		},
 	}
 	for _, tt := range tests {
@@ -498,10 +499,11 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <warp> <weft>" against a local
-// two-repo fixture and asserts the end-to-end clone-does-everything contract: the JSON envelope,
-// the wired warp junctions, the anchor marker and repo-wide config committed onto weft:main, and
-// per-worktree module config reconciliation — i.e.
+// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <weft> <warp>" against a local
+// two-repo fixture and asserts the end-to-end clone-does-everything contract: the JSON envelope
+// (including the "warp" and "warp_binding_recorded" keys), the wired warp junctions, the anchor
+// marker, repo-wide config, and warp-binding record committed onto weft:main, and per-worktree
+// module config reconciliation — i.e.
 // that the card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's own git-level
 // clone.
 func TestRunCLI_CloneEndToEnd(t *testing.T) {
@@ -515,7 +517,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
 		"clone", "--subpath", "backend",
-		filepath.ToSlash(warpBare), filepath.ToSlash(weftBare),
+		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone --subpath backend) = %d; want 0\noutput: %s", exitCode, out.String())
@@ -531,6 +533,12 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	}
 	if anchor, _ := result["anchor"].(string); anchor != "backend" {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
+	}
+	if warp, _ := result["warp"].(string); warp != filepath.ToSlash(warpBare) {
+		t.Errorf("RunCLI(clone) warp = %q; want %q", warp, filepath.ToSlash(warpBare))
+	}
+	if recorded, ok := result["warp_binding_recorded"].(bool); !ok || !recorded {
+		t.Errorf("RunCLI(clone) warp_binding_recorded = %v; want true", result["warp_binding_recorded"])
 	}
 
 	// The prime warp worktree's structural junctions (_lyx and .lyx) must be
@@ -565,6 +573,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	for _, relPath := range []string{
 		lyxcwd.AnchorFileName,
 		filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"),
+		fabricengine.WarpBindingFileName,
 	} {
 		tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", filepath.ToSlash(relPath)))
 		if tracked == "" {
@@ -593,7 +602,7 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
-		"clone", filepath.ToSlash(warpBare), filepath.ToSlash(weftBare),
+		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
@@ -605,6 +614,38 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 	}
 	if anchor, _ := result["anchor"].(string); anchor != "." {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, ".")
+	}
+}
+
+// TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm asserts that a one-positional clone against a
+// local bare weft fixture carrying no recorded binding exits 1 through the output.Err envelope,
+// with a message naming both the unbound-binding condition and the two-argument form's exact
+// invocation as the remedy. makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
+// the unborn-HEAD case the weft-candidate guard admits on its own, so --force-bootstrap is not
+// needed here.
+func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
+	fixtures := t.TempDir()
+	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft")
+
+	cloneParent := t.TempDir()
+	t.Chdir(cloneParent)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"clone", filepath.ToSlash(weftBare)})
+	if exitCode != 1 {
+		t.Fatalf("RunCLI(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); ok {
+		t.Errorf("RunCLI(clone <weft-url>) ok = true; want false")
+	}
+	errMsg, _ := result["error"].(string)
+	if !strings.Contains(errMsg, "has no recorded warp binding") {
+		t.Errorf("RunCLI(clone <weft-url>) error = %q; want \"has no recorded warp binding\" substring", errMsg)
+	}
+	if !strings.Contains(errMsg, "lyx fabric clone <weft-url> <warp-url>") {
+		t.Errorf("RunCLI(clone <weft-url>) error = %q; want \"lyx fabric clone <weft-url> <warp-url>\" substring", errMsg)
 	}
 }
 
