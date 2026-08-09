@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-rename-and-sweep
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -25,6 +25,7 @@ planning  '2026-08-09T13:15:42Z'
 plan-fix-r2  '2026-08-09T13:27:22Z'
 planned  '2026-08-09T13:27:31Z'
 implementing  '2026-08-09T13:28:00Z'
+approved-rename-and-sweep  '2026-08-09T13:36:19Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-08-09T13:28:00Z'
 ```yaml
 batches:
   - name: rename-and-sweep
-    state: running
+    state: approved
     implementer_session: 15eda839-8b71-41ab-8e3b-4c948b3cb818
     start_sha: 577352471dda8ca80fa6f57774643c365c17a7ca
+    commit_sha: e2a8b4b2c03797a28d29fcc186c600456444e87b
     verify_baseline_failures: []
   - name: doc-prose-v2-erasure
     state: pending
