@@ -109,8 +109,9 @@ batch 5 edits `internal/fabriccli/fabric.go` again but in a different function (
   the envelope's `warp_binding_recorded` key is `true` (this is a first-ever clone of that weft fixture);
   and the binding file named by `fabricengine.WarpBindingFileName` is tracked on the board worktree, checked with the same `git ls-files` shape the existing loop uses for the anchor marker and `fabric.yaml` — add it to that loop's path list rather than writing a second loop.
 
-  The bare weft fixtures these tests build carry a seeded commit and no anchor, so the old-order guard would refuse them;
-  pass `--force-bootstrap` on the two end-to-end clones and add a comment saying the fixture is a seeded bare repo standing in for a weft.
+  Do NOT pass `--force-bootstrap` on the two end-to-end clones.
+  `makeCLICloneWeftBare` creates a genuinely empty bare repo with zero commits, which is the unborn-HEAD case the weft-candidate guard admits on its own — the flag would be redundant, and passing it here would leave a future reader doubting the guard's unborn-HEAD carve-out.
+  The new unbound-weft test uses the same helper for the same reason.
 - **Commit:** `test(fabriccli): cover the new clone arity, envelope keys, and unbound-weft error`
 
 ## Batch Tests

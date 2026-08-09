@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -18,4 +18,6 @@ discussing  '2026-08-09T07:56:53Z'
 discussion-fix-r5  '2026-08-09T08:43:44Z'
 discussed  '2026-08-09T08:43:44Z'
 planning  '2026-08-09T09:02:12Z'
+plan-review-r1  '2026-08-09T09:11:54Z'
+plan-fix-r1  '2026-08-09T09:11:54Z'
 ```

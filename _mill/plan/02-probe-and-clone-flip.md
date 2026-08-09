@@ -164,6 +164,7 @@ Until then the CLI passes `ForceBootstrap: false`, which is the correct default 
   In `runCloneWithReset`, replace the `len(args) != 2` check with an arity check accepting one or two positionals;
   zero or three-or-more is a usage error reading
   `usage: lyx fabric clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]`.
+  The string names `--force-bootstrap` one card before the flag is registered, which is deliberate: writing the pre-flag spelling here and rewriting it in card 8 would churn the same line twice, and every batch in this plan squashes into one commit on merge, so no released build ever advertises an unregistered flag.
   Parse `weftURL := args[0]` and set `warpURL` to `args[1]` when present and `""` otherwise.
 
   Delete the whole `if reset { ... }` block: the `DeriveWarpName` call, the `HubPath` computation, and the `fabricengine.RemoveAll` call all move into `CloneHub` in card 4.

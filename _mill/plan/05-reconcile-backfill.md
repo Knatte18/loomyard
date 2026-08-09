@@ -94,7 +94,7 @@ Batch-local decisions:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Edit `runReconcile` only — leave `runStatus`, `runPruneWithFlag`, and the clone command declaration alone.
+  Edit `runReconcile` only — leave `runPairs`, `runPruneWithFlag`, and the clone command declaration alone.
 
   Today the handler returns `output.Ok(out, map[string]any{"pairs": r.Pairs})` and never serializes `ReconcileResult` itself, so the new struct tags alone would have no effect on output.
   Build the payload explicitly instead:
@@ -124,6 +124,7 @@ Batch-local decisions:
   - `internal/fabricengine/warpbinding.go`
   - `internal/fabricengine/clone.go`
   - `internal/fabricengine/config.go`
+  - `internal/fabricengine/bolt.go`
   - `internal/fabricengine/clone_adopt_test.go`
   - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/reconcile_stale_removal_test.go`
@@ -144,8 +145,15 @@ Batch-local decisions:
   load the config with `fabricengine.LoadConfig` at the board directory and build a `Topology` with `fabricengine.NewTopology`.
   Return whatever the tests need (the `CloneResult`, the layout, the topology, and the two bare paths).
   This shape is required rather than `lyxtest.CopyPairedLocal` because the backfill reads the warp side's `origin` and the push half needs a real weft remote — neither exists in a purely local paired fixture.
+
+  The fixture must leave the board worktree CLEAN, or every `recorded`-outcome test gets `deferred` instead.
+  `CloneHub` writes the anchor marker and the fixture seeds the repo-wide config, but neither is committed — `CloneHub` never commits, only the CLI's `Bolt.Commit` does — so the board is dirty the moment the helper returns.
+  End `newClonedHubFixture` with a local stage-all commit through `fabricengine.NewBolt(res.BoardDir).Commit(...)` with a zero-valued `fabricengine.SyncOptions{}`, and no push.
+
   Since `CloneHub` itself writes the record, every test that exercises the absent-record path must delete the board's binding file and commit that deletion first;
-  give the helper a companion `unbindHub` that does exactly that, so the "unbound hub that predates the binding" state is produced explicitly rather than assumed.
+  give the helper a companion `unbindHub` that removes the file from the board worktree and commits that deletion the same way, through `fabricengine.NewBolt(boardDir).Commit(...)`.
+  Do NOT reach for `commitFileOnBranch` here — it commits through a throwaway scratch clone pushed to the bare remote and never touches an existing local worktree, so it cannot produce a clean board.
+  Producing the "unbound hub that predates the binding" state explicitly, rather than assuming it, is the point of the helper.
 
   Tests:
 
@@ -177,7 +185,9 @@ Batch-local decisions:
 - **Moves:** none
 - **Requirements:**
   Two tests, driven through the `fabriccli.RunCLI` seam so the commit-and-push half of the backfill is actually exercised — the `record_failed` value is set only by the handler and cannot be observed from an engine-only test.
-  Build the hub with the file's existing `makeCLICloneWarpBare` and `makeCLICloneWeftBare` helpers and a `--force-bootstrap` clone through the same seam, then delete and commit away the binding record on the board worktree so the hub is in the unbound, pre-binding state the backfill exists for.
+  Build the hub with the file's existing `makeCLICloneWarpBare` and `makeCLICloneWeftBare` helpers and a two-positional clone through the same seam, then delete the binding record from the board worktree and commit that deletion with plain git (the file's existing `lyxtest.MustRun` idiom), so the hub is in the unbound, pre-binding state the backfill exists for and the board is left clean.
+  No `--force-bootstrap` is needed: `makeCLICloneWeftBare` creates a genuinely empty bare repo, which is the unborn-HEAD case the weft-candidate guard admits on its own.
+  The CLI clone commits the anchor and the repo-wide config through `Bolt` as part of its normal run, so the board is already clean before the deletion commit.
 
   `TestRunCLI_ReconcileBacksFillsWarpBinding` — running reconcile against that hub exits 0 and returns an envelope carrying `warp_binding` equal to `recorded`, and the record is tracked on the board worktree afterwards.
   Assert the `pairs` key is still present and unchanged in shape — the binding is reported repo-wide, never per-pair.
