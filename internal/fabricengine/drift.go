@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -52,32 +50,21 @@ type HealthReason struct {
 // (false, reason, nil) if out of sync;
 // (false, HealthReason{}, err) if a system error occurs.
 func Healthy(l *lyxcwd.Location) (ok bool, reason HealthReason, err error) {
-	// Verify the warp worktree's current branch via rev-parse --abbrev-ref HEAD.
-	warpOut, _, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		l.WorktreePath(),
-	)
+	// Both branch reads go through readBranch (reconcile.go) rather than a bare
+	// rev-parse --abbrev-ref HEAD, so an UNBORN branch — the weft primary's ordinary state
+	// immediately after a clone against an empty remote — is answered rather than reported as an
+	// aborted check. loom's preflight consumes this verdict, and a just-cloned hub must not make it
+	// hard-error.
+	warpBranch, err := readBranch(l.WorktreePath())
 	if err != nil {
 		return false, HealthReason{}, fmt.Errorf("get warp branch: %w", err)
 	}
-	if exitCode != 0 {
-		return false, HealthReason{}, fmt.Errorf("get warp branch failed with exit code %d", exitCode)
-	}
-	warpBranch := strings.TrimSpace(warpOut)
 
-	// Verify the weft worktree's current branch via rev-parse --abbrev-ref HEAD.
 	weftWorktree := WeftWorktree(l)
-	weftOut, _, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
-		weftWorktree,
-	)
+	weftBranch, err := readBranch(weftWorktree)
 	if err != nil {
 		return false, HealthReason{}, fmt.Errorf("get weft branch: %w", err)
 	}
-	if exitCode != 0 {
-		return false, HealthReason{}, fmt.Errorf("get weft branch failed with exit code %d", exitCode)
-	}
-	weftBranch := strings.TrimSpace(weftOut)
 
 	// Check branch correspondence: the weft branch must be the suffixed sibling of the
 	// warp branch, not merely an equal name (fabric's uniform <warp>/<warp>-weft scheme).

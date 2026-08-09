@@ -374,7 +374,16 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 	return nil
 }
 
-// readBranch returns the current branch name for the worktree at dir via rev-parse.
+// readBranch returns the current branch name for the worktree at dir, reporting "HEAD" for a
+// detached HEAD exactly as `git rev-parse --abbrev-ref HEAD` does.
+//
+// The rev-parse spelling alone is not enough: it exits 128 on an UNBORN branch (a branch with zero
+// commits), which is the ordinary state of the weft primary immediately after a clone against an
+// empty remote — the documented first-ever-setup path. Reporting that as an error made a
+// just-cloned hub describe itself as out of sync and made Healthy fail loudly at loom preflight
+// until the first sync landed a commit. `git branch --show-current` answers correctly on an unborn
+// branch, so it is consulted as the fallback, and only a genuinely branch-less HEAD falls through
+// to an error.
 func readBranch(dir string) (string, error) {
 	out, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
@@ -383,10 +392,25 @@ func readBranch(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("rev-parse: %w", err)
 	}
-	if exitCode != 0 {
-		return "", fmt.Errorf("rev-parse exited %d", exitCode)
+	if exitCode == 0 {
+		return strings.TrimSpace(out), nil
 	}
-	return strings.TrimSpace(out), nil
+
+	unbornOut, _, unbornExit, unbornErr := gitexec.RunGit(
+		[]string{"branch", "--show-current"},
+		dir,
+	)
+	if unbornErr != nil {
+		return "", fmt.Errorf("branch --show-current: %w", unbornErr)
+	}
+	if unbornExit != 0 {
+		return "", fmt.Errorf("rev-parse exited %d and branch --show-current exited %d", exitCode, unbornExit)
+	}
+	branch := strings.TrimSpace(unbornOut)
+	if branch == "" {
+		return "", fmt.Errorf("rev-parse exited %d and no current branch is set", exitCode)
+	}
+	return branch, nil
 }
 
 // checkJunctionHealth verifies that every junction in WarpJunctionsHere(warpLayout, names)
