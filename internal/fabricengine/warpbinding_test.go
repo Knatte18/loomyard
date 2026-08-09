@@ -25,7 +25,7 @@ func TestNormalizeWarpURL(t *testing.T) {
 		{"trailing_slash_stripped", "https://github.com/u/repo/", "https://github.com/u/repo"},
 		{"trailing_dot_git_stripped", "https://github.com/u/repo.git", "https://github.com/u/repo"},
 		{"both_slash_and_dot_git_stripped", "https://github.com/u/repo.git/", "https://github.com/u/repo"},
-		{"scheme_and_host_lowercased_path_case_kept", "https://GitHub.COM/U/Repo", "https://github.com/u/repo"},
+		{"scheme_and_host_lowercased_path_case_kept", "https://GitHub.COM/U/Repo", "https://github.com/U/Repo"},
 		// The scp form has no <scheme>:// prefix, so case is left byte-identical apart from the
 		// .git strip; it must therefore NOT equal the https spelling of the same repo.
 		{"scp_form_case_untouched", "git@github.com:u/repo.git", "git@github.com:u/repo"},
