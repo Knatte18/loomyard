@@ -109,8 +109,9 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 		t.Errorf(".lyx junction resolves to %q; want %q", resolved, wantResolved)
 	}
 
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, lyxdirs.DotLyxDirName) {
-		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", lyxdirs.DotLyxDirName, lines)
+	warpPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, lyxdirs.DotLyxDirName)
+	if lines := readExcludeLines(t, l, slug); !containsLine(lines, warpPattern) {
+		t.Fatalf("warp .git/info/exclude does not contain %q after WireJunctions: %v", warpPattern, lines)
 	}
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)

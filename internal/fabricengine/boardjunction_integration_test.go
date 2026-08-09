@@ -106,8 +106,9 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 	}
 
 	lines := readExcludeLines(t, l, slug)
-	if !slices.Contains(lines, fabricengine.BoardDirName) {
-		t.Errorf(".git/info/exclude = %v; want it to contain %q after Add", lines, fabricengine.BoardDirName)
+	boardPattern := fabricengine.ExcludePatternForTest(warpLayout.AnchorRel, fabricengine.BoardDirName)
+	if !slices.Contains(lines, boardPattern) {
+		t.Errorf(".git/info/exclude = %v; want it to contain %q after Add", lines, boardPattern)
 	}
 
 	// A reconcile run immediately after wiring must not remove the link:
@@ -130,8 +131,8 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 	// worktree still has its own _board link wired, and stripping the entry here would make that
 	// live junction show up as untracked dirt in a worktree this call never touched.
 	lines = readExcludeLines(t, l, slug)
-	if !slices.Contains(lines, fabricengine.BoardDirName) {
-		t.Errorf(".git/info/exclude = %v; want %q kept while the prime worktree still wires it", lines, fabricengine.BoardDirName)
+	if !slices.Contains(lines, boardPattern) {
+		t.Errorf(".git/info/exclude = %v; want %q kept while the prime worktree still wires it", lines, boardPattern)
 	}
 
 	// Once the last worktree wiring it is unwired too, the now-dead entry does go.
@@ -139,8 +140,8 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 		t.Fatalf("Unwire(prime): %v", err)
 	}
 	lines = readExcludeLines(t, l, slug)
-	if slices.Contains(lines, fabricengine.BoardDirName) {
-		t.Errorf(".git/info/exclude = %v; want it to no longer contain %q once no worktree wires it", lines, fabricengine.BoardDirName)
+	if slices.Contains(lines, boardPattern) {
+		t.Errorf(".git/info/exclude = %v; want it to no longer contain %q once no worktree wires it", lines, boardPattern)
 	}
 }
 

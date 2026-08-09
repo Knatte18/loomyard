@@ -473,9 +473,9 @@ func unseedJunctionRecords(junctions []WarpJunction) (removed []string, err erro
 //
 // It resolves the exclude path exactly as seedGitExclude does (git rev-parse
 // --git-path info/exclude, joined with the worktree path if relative), then for
-// each junction in WarpJunctions(l, slug, names) removes any line that trims to
-// exactly that junction's Name (the same line-exact comparison seedGitExclude
-// uses to detect presence). The remaining lines are rewritten in their original
+// each junction in WarpJunctions(l, slug, names) removes any line that trims to exactly that
+// junction's anchored exclude pattern, or to its legacy bare name (the same line-exact comparison
+// seedGitExclude uses to detect presence). The remaining lines are rewritten in their original
 // order.
 //
 // A name another warp worktree in the same hub still has wired is deliberately KEPT, even though
@@ -524,6 +524,10 @@ func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed 
 		if keep[j.Name] {
 			continue
 		}
+		// Both spellings are stripped: the anchored pattern this binary writes, and the legacy bare
+		// name an earlier one wrote, so unwiring a hub wired before the narrowing still reverts
+		// cleanly.
+		stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
 		stripSet[j.Name] = true
 	}
 	if len(stripSet) == 0 {
@@ -592,14 +596,32 @@ func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []strin
 	return wired
 }
 
+// excludePatternFor returns the gitignore pattern that excludes exactly the junction named name at
+// the anchored directory, and nothing else.
+//
+// A bare name is what fabric used to write, and gitignore treats a pattern containing no slash as
+// matching at ANY depth: on a subpath-anchored monorepo that silently untracked every same-named
+// directory elsewhere in the repo (a `frontend/_lyx/` the operator genuinely tracks, say), even
+// though fabric only ever wires one junction, at one known path.
+// The leading slash anchors the pattern to the repo root, which is where .git/info/exclude is
+// evaluated from.
+// There is deliberately no trailing slash: a directory junction is a symlink, and git matches a
+// symlink as a file, so a directory-only pattern would not exclude it at all.
+func excludePatternFor(anchorRel, name string) string {
+	return "/" + filepath.ToSlash(filepath.Join(anchorRel, name))
+}
+
 // seedGitExclude adds junction names to the warp worktree's .git/info/exclude file if not already present.
 //
 // It iterates over the junctions returned by WarpJunctions(l, slug, names) and
-// appends each junction's Name to the exclude file if not already present.
+// appends each junction's anchored exclude pattern (see excludePatternFor) if not already present.
 // Resolves the exclude path via git rev-parse --git-path info/exclude. If the
 // path is relative, joins it with the worktree path. Preserves line-exact
 // idempotency per name.
-// Idempotent: re-running when all junction names are already present is a no-op.
+// A legacy bare-name line left by an earlier binary is REPLACED by the anchored pattern rather than
+// left beside it, so an existing hub converges on the narrower exclusion the first time anything
+// re-wires it.
+// Idempotent: re-running when all junction patterns are already present is a no-op.
 func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
 	worktreePath := WorktreePath(l, slug)
 
@@ -635,30 +657,45 @@ func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
 
 	contentStr := string(content)
 
-	// Iterate over junction names and append each if not already present.
-	junctions := WarpJunctions(l, slug, names)
-	for _, j := range junctions {
-		name := j.Name
+	// Drop any legacy bare-name line for a junction being seeded, so the anchored pattern replaces
+	// it rather than accumulating beside it.
+	legacy := make(map[string]bool, len(names))
+	for _, j := range WarpJunctions(l, slug, names) {
+		legacy[j.Name] = true
+	}
+	kept := make([]string, 0)
+	dropped := false
+	for _, line := range strings.Split(contentStr, "\n") {
+		if legacy[strings.TrimSpace(line)] {
+			dropped = true
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if dropped {
+		contentStr = strings.Join(kept, "\n")
+	}
 
-		// Check if name is already present as a line-exact match
+	// Iterate over junction names and append each anchored pattern if not already present.
+	for _, j := range WarpJunctions(l, slug, names) {
+		pattern := excludePatternFor(l.AnchorRel, j.Name)
+
 		found := false
 		for _, line := range strings.Split(contentStr, "\n") {
-			if strings.TrimSpace(line) == name {
+			if strings.TrimSpace(line) == pattern {
 				found = true
 				break
 			}
 		}
 
 		if found {
-			// Already present, skip to next junction
 			continue
 		}
 
-		// Append name with newline
 		if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
 			contentStr += "\n"
 		}
-		contentStr += name + "\n"
+		contentStr += pattern + "\n"
 	}
 
 	// Write back
