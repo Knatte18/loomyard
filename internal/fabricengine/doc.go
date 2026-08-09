@@ -377,6 +377,11 @@
 // there is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor) rather
 // than a bare name, since a slash-free gitignore pattern matches at every depth and would untrack
 // same-named directories fabric never wired.
+// git resolves `info/exclude` to the repo's COMMON gitdir, so the file is shared by every worktree
+// in the hub and two verbs running side by side edit the same bytes;
+// every mutation of it therefore goes through `mutateGitExclude` (gitexclude.go), which holds a
+// repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
+// a concurrent reader sees either the whole old file or the whole new one.
 //
 // # The `_board` convenience junction
 //

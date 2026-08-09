@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -488,70 +487,35 @@ func unseedJunctionRecords(junctions []WarpJunction) (removed []string, err erro
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
 func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
-	worktreePath := WorktreePath(l, slug)
-
-	stdout, stderr, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--git-path", "info/exclude"},
-		worktreePath,
-	)
-	if err != nil {
-		return false, fmt.Errorf("failed to get git-path for info/exclude: %w", err)
-	}
-	if exitCode != 0 {
-		return false, fmt.Errorf("git rev-parse --git-path failed: %s", stderr)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Nothing was ever seeded; nothing to revert.
-			return false, nil
+	return mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+		// The sibling census runs INSIDE the lock, so the answer it gives cannot be invalidated by a
+		// concurrent wire in another worktree between the census and the write it feeds.
+		keep := namesWiredInSiblingWorktrees(l, slug, names)
+		stripSet := make(map[string]bool)
+		for _, j := range WarpJunctions(l, slug, names) {
+			if keep[j.Name] {
+				continue
+			}
+			// Both spellings are stripped: the anchored pattern this binary writes, and the legacy
+			// bare name an earlier one wrote, so unwiring a hub wired before the narrowing still
+			// reverts cleanly.
+			stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
+			stripSet[j.Name] = true
 		}
-		return false, fmt.Errorf("read exclude file: %w", err)
-	}
-
-	// Build the set of junction names to strip from the caller-supplied names,
-	// iterating WarpJunctions(l, slug, names) for parity with seedGitExclude,
-	// minus every name a sibling worktree still has wired.
-	keep := namesWiredInSiblingWorktrees(l, slug, names)
-	stripSet := make(map[string]bool)
-	for _, j := range WarpJunctions(l, slug, names) {
-		if keep[j.Name] {
-			continue
+		if len(stripSet) == 0 {
+			return content, nil
 		}
-		// Both spellings are stripped: the anchored pattern this binary writes, and the legacy bare
-		// name an earlier one wrote, so unwiring a hub wired before the narrowing still reverts
-		// cleanly.
-		stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
-		stripSet[j.Name] = true
-	}
-	if len(stripSet) == 0 {
-		return false, nil
-	}
 
-	lines := strings.Split(string(content), "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if stripSet[strings.TrimSpace(line)] {
-			changed = true
-			continue
+		lines := strings.Split(content, "\n")
+		kept := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if stripSet[strings.TrimSpace(line)] {
+				continue
+			}
+			kept = append(kept, line)
 		}
-		kept = append(kept, line)
-	}
-
-	if !changed {
-		return false, nil
-	}
-
-	if err := os.WriteFile(excludePath, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
-		return false, fmt.Errorf("write exclude file: %w", err)
-	}
-	return true, nil
+		return strings.Join(kept, "\n"), nil
+	})
 }
 
 // namesWiredInSiblingWorktrees reports, per name, whether some OTHER warp worktree registered in
@@ -623,85 +587,47 @@ func excludePatternFor(anchorRel, name string) string {
 // re-wires it.
 // Idempotent: re-running when all junction patterns are already present is a no-op.
 func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
-	worktreePath := WorktreePath(l, slug)
-
-	// Get the exclude path via git rev-parse --git-path
-	stdout, _, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--git-path", "info/exclude"},
-		worktreePath,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to get git-path for info/exclude: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("resolve git exclude path for %q failed (git exit %d)", worktreePath, exitCode)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-
-	// If path is relative, join with worktree path
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	// Create parent directories if needed
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
-		return fmt.Errorf("mkdir for exclude file: %w", err)
-	}
-
-	// Read the file
-	content, err := os.ReadFile(excludePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read exclude file: %w", err)
-	}
-
-	contentStr := string(content)
-
-	// Drop any legacy bare-name line for a junction being seeded, so the anchored pattern replaces
-	// it rather than accumulating beside it.
-	legacy := make(map[string]bool, len(names))
-	for _, j := range WarpJunctions(l, slug, names) {
-		legacy[j.Name] = true
-	}
-	kept := make([]string, 0)
-	dropped := false
-	for _, line := range strings.Split(contentStr, "\n") {
-		if legacy[strings.TrimSpace(line)] {
-			dropped = true
-			continue
+	_, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+		// Drop any legacy bare-name line for a junction being seeded, so the anchored pattern
+		// replaces it rather than accumulating beside it.
+		legacy := make(map[string]bool, len(names))
+		for _, j := range WarpJunctions(l, slug, names) {
+			legacy[j.Name] = true
 		}
-		kept = append(kept, line)
-	}
-	if dropped {
-		contentStr = strings.Join(kept, "\n")
-	}
-
-	// Iterate over junction names and append each anchored pattern if not already present.
-	for _, j := range WarpJunctions(l, slug, names) {
-		pattern := excludePatternFor(l.AnchorRel, j.Name)
-
-		found := false
-		for _, line := range strings.Split(contentStr, "\n") {
-			if strings.TrimSpace(line) == pattern {
-				found = true
-				break
+		kept := make([]string, 0)
+		dropped := false
+		for _, line := range strings.Split(content, "\n") {
+			if legacy[strings.TrimSpace(line)] {
+				dropped = true
+				continue
 			}
+			kept = append(kept, line)
+		}
+		if dropped {
+			content = strings.Join(kept, "\n")
 		}
 
-		if found {
-			continue
+		for _, j := range WarpJunctions(l, slug, names) {
+			pattern := excludePatternFor(l.AnchorRel, j.Name)
+
+			found := false
+			for _, line := range strings.Split(content, "\n") {
+				if strings.TrimSpace(line) == pattern {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+
+			if content != "" && !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			content += pattern + "\n"
 		}
 
-		if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
-			contentStr += "\n"
-		}
-		contentStr += pattern + "\n"
-	}
-
-	// Write back
-	if err := os.WriteFile(excludePath, []byte(contentStr), 0o644); err != nil {
-		return fmt.Errorf("write exclude file: %w", err)
-	}
-
-	return nil
+		return content, nil
+	})
+	return err
 }

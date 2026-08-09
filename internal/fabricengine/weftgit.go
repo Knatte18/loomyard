@@ -81,54 +81,28 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // where a prior sync already committed them; see commitWeft's doc comment
 // for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
-	stdout, stderr, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--git-path", "info/exclude"},
-		weftPath,
-	)
-	if err != nil {
-		return fmt.Errorf("fabricengine: resolve weft git exclude path: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("fabricengine: git rev-parse --git-path info/exclude in %s: %s", weftPath, stderr)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(weftPath, excludePath)
-	}
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
-		return fmt.Errorf("fabricengine: mkdir weft exclude dir: %w", err)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("fabricengine: read weft exclude file: %w", err)
-	}
-	contentStr := string(content)
-
-	entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", lockFilePattern, swapLockFilePattern}
-	for _, entry := range entries {
-		present := false
-		for _, line := range strings.Split(contentStr, "\n") {
-			if strings.TrimSpace(line) == entry {
-				present = true
-				break
+	_, err := mutateGitExclude(weftPath, func(content string) (string, error) {
+		entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", lockFilePattern, swapLockFilePattern}
+		for _, entry := range entries {
+			present := false
+			for _, line := range strings.Split(content, "\n") {
+				if strings.TrimSpace(line) == entry {
+					present = true
+					break
+				}
 			}
+			if present {
+				continue
+			}
+			if content != "" && !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			content += entry + "\n"
 		}
-		if present {
-			continue
-		}
-		if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
-			contentStr += "\n"
-		}
-		contentStr += entry + "\n"
-	}
-
-	if string(content) == contentStr {
-		return nil
-	}
-	if err := os.WriteFile(excludePath, []byte(contentStr), 0o644); err != nil {
-		return fmt.Errorf("fabricengine: write weft exclude file: %w", err)
+		return content, nil
+	})
+	if err != nil {
+		return fmt.Errorf("fabricengine: seed weft artifact excludes in %s: %w", weftPath, err)
 	}
 	return nil
 }

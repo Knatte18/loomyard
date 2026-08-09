@@ -215,6 +215,8 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
 - **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
   That file lives in the repo's COMMON gitdir, so it is one repo-wide file, never per-worktree: an exclude entry is removed only once NO warp worktree in the hub still wires a junction of that name (`namesWiredInSiblingWorktrees`).
+  Because it is repo-wide, every read-modify-write of it — warp and weft alike — goes through `fabricengine.mutateGitExclude`, which holds a repo-wide flock across read, rewrite and write and replaces the file by same-directory rename.
+  No caller may read or write `info/exclude` directly: an unsynchronised `os.ReadFile`/`os.WriteFile` pair loses a sibling worktree's update, and `os.WriteFile`'s truncate-then-write lets a concurrent reader observe an empty file and write that emptiness back, destroying the operator's own exclude patterns along with fabric's junction exclusions.
 - **Unwire** removes warp junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
   Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.
