@@ -363,7 +363,28 @@
 // `weft:main`, creates every warp junction (`_lyx`, `.lyx`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
 // every config materialized without a second command. Every junction is excluded through the warp's
-// own `.git/info/exclude`, never a committed `.gitignore` in the user's repo.
+// own `.git/info/exclude`, never a committed `.gitignore` in the user's repo, and the entry written
+// there is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor) rather
+// than a bare name, since a slash-free gitignore pattern matches at every depth and would untrack
+// same-named directories fabric never wired.
+//
+// # The `_board` convenience junction
+//
+// Alongside the pathspec junctions, fabric wires one more link at every anchor: `<anchor>/_board`,
+// pointing at `<Hub>/_board` (`wireBoardLink`, junction.go). It exists so the shared board data is
+// reachable from inside an ordinary worktree, on the same model as millhouse's `.wiki` link, and it
+// carries three properties a later caller may not quietly opt out of.
+// It is **wire-only and unmonitored** — `Healthy`, `checkJunctionHealth` and `junctionRepointedDetail`
+// never inspect it, so a broken `_board` link can never block loom preflight.
+// It is **unconditionally re-wired** on clone, add, and every reconcile pass, precisely because
+// nothing diagnoses its breakage, so the repair cannot be conditioned on detection.
+// And it is **read by no lyx code path** — every `BoardDir` consumer resolves `<Hub>/_board`
+// directly, and board mutation continues through `internal/boardengine`.
+// It is deliberately absent from `fabric.yaml`'s `pathspec`: that key is dual-purpose (it also feeds
+// the weft commit pathspec), and `_board` is itself a weft worktree, never committable content from
+// the warp side.
+// `Unwire` removes it as an explicitly named case, since `scanOnDiskJunctionNames` skips every
+// `HubReservedNames()` entry and so can never see it.
 //
 // The lyx-anchor subpath (e.g. `backend` or `.`) is recorded once, on `weft:main`, as the plain
 // `.lyx-anchor` marker at `BoardDir(Hub)` (see `internal/lyxcwd/anchor.go`);
@@ -441,9 +462,12 @@
 // `internal/weftname` (the `-weft` suffix leaf), `internal/lyxtest` (the test-fixture leaf that
 // builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
 // board lives at `weft:main`), `internal/configsync` (string literals and comments, never
-// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`), and
-// `tools/`/`sandbox/` (the black-box harness naming
-// the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos).
+// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
+// `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
+// `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
+// their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
+// review obligation instead. See CONSTRAINTS.md's Fabric Vocabulary Invariant for the authoritative
+// list.
 // `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;
