@@ -1,0 +1,252 @@
+# Discussion: fabric: store the warp-URL binding in weft:main; fold bootstrap into clone (slice 10)
+
+```yaml
+task: 'fabric: store the warp-URL binding in weft:main; fold bootstrap into clone (slice 10)'
+slug: fabric-warp-binding-in-weft
+status: discussing
+parent: main
+```
+
+## Problem
+
+A fabric hub is two git repos: a **warp** (the user's real repo) and a **weft** (lyx's own artefact repo, cloned as a sibling and reached through junctions).
+`lyx fabric clone` today requires the operator to name both URLs every single time, in that order — `lyx fabric clone <warp-url> <weft-url>` (`internal/fabriccli/clone.go:32-36`).
+Nothing anywhere records which warp a given weft belongs to,
+so that pairing lives only in the operator's head and in shell history.
+
+A weft is bound to exactly one warp (many-to-one: one warp can back several wefts), which makes the pairing a durable per-weft fact, not a per-invocation argument.
+Slice 5 already established the precedent for storing exactly this kind of repo-wide fact: the lyx-anchor subpath is recorded once on `weft:main` as a plain `.lyx-anchor` marker at the board root, and every later clone adopts it instead of re-asking.
+The warp binding is the same shape of fact — **but a distinct one**: the anchor says *where in warp* lyx is rooted, the binding says *which warp repo* this weft pairs with at all.
+
+**Why now:** this is slice 10 of `manifest/designs/fabric-unified-view.md`, the last functional slice of the fabric campaign.
+Slice 9 has landed, which was its stated blocker (both slices edit `runCloneWithReset` in the same ~45-line span, so they were deliberately sequenced rather than parallelised).
+The design doc is deleted once slice 10 and slice 6's still-open orchestration half are both done, so this is the last structural change to fabric's clone surface before the fabric-v2 hardening pass.
+
+## Scope
+
+**In:**
+
+- New warp-binding record `.lyx-warp` on `weft:main` (a plain single-line file at the board root, beside `.lyx-anchor`), written and read by `internal/fabricengine`, committed through the existing `Bolt` board-commit path.
+- `internal/fabricengine`'s `CloneHub` gains an optional warp URL: it resolves the effective warp URL from the record when none is supplied, and enforces the conflict rule when one is.
+- A pre-hub **probe** step that reads the record off the weft remote before any hub directory is created.
+- **Breaking CLI change:** `lyx fabric clone`'s positional arguments flip to weft-first and the warp URL becomes optional — `lyx fabric clone <weft-url> [<warp-url>]`.
+- `CloneHub`'s Go signature changes from five positionals to `CloneHub(cwd string, opts CloneOptions) (CloneResult, error)`.
+- `--reset`'s hub teardown moves out of `internal/fabriccli/clone.go` and into `CloneHub`, so it works in both argument forms.
+- `Topology.Reconcile` backfills the record for hubs that predate it, with the CLI layer committing and pushing the backfill via `Bolt`.
+- Every call site, help text, test, sandbox suite doc, and design/constraint doc that spells the clone argument order, updated in the same commit.
+
+**Out:**
+
+- **No new verb.** No `fabric bind`, no `fabric rebind`. Re-pointing a bound weft at a different warp stays a deliberate operation that this task does not provide; it is a hard error here.
+- **No change to `.lyx-anchor`** — neither its format, its location, its reader (`internal/lyxcwd`), nor the subpath semantics. The binding does not store the subpath.
+- **No change to hub naming.** The hub stays `<cwd>/<warp-name>-HUB`. Two wefts of the same warp collide on that directory name; that is true today, it is not what slice 10 is about, and it is recorded as a known limitation rather than fixed here.
+- **No removal of `--reset`.** It has a live consumer (`tools/sandbox/SANDBOX-CORE-SUITE.md:211`) and removing pre-existing CLI surface is a separate decision.
+- **Weft remote provisioning at first clone** — still an open question in the design doc, untouched.
+- **Slice 6's orchestration half** — untouched.
+- `internal/fabricengine`'s `add`/`checkout`/`prune`/`cleanup`/`unwire` verbs gain no binding awareness beyond `unwire` leaving the record alone (see Decisions).
+
+## Decisions
+
+### binding-record-format
+
+- Decision: a plain single-line file named `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`, i.e. tracked at the root of `weft:main`, the same directory `.lyx-anchor` lives in). Its entire content is the warp URL plus a trailing newline. It holds the warp URL **only** — not the subpath.
+- Rationale: exactly mirrors the shipped `.lyx-anchor` precedent (`internal/lyxcwd/anchor.go:32-41`), which is a plain single-line marker read with `os.ReadFile` + `strings.TrimSpace` and needs no YAML dependency. The subpath already has one authoritative home in `.lyx-anchor`; putting it in a second file creates two records that can disagree, with no rule for which wins.
+- Rejected: a `.lyx-warp.yaml` with `warp_url:`/`subpath:` keys — matches the design doc's literal wording ("warp URL + `--subpath`") but duplicates the subpath. Extending `.lyx-anchor` into a keyed two-field file — one file, but it changes a format `internal/lyxcwd` parses and re-couples two deliberately independent facts.
+- Note for the plan: `manifest/designs/fabric-unified-view.md:152` says the binding stores "warp URL + `--subpath`". That is superseded by this decision and the doc must be corrected in the same commit.
+
+### binding-ownership
+
+- Decision: a new `internal/fabricengine/warpbinding.go` owns the filename constant and the read/write/normalize helpers. The file is committed onto `weft:main` by the existing `Bolt` board-commit call in `internal/fabriccli/clone.go:60-66` — the same call that already commits `.lyx-anchor` and the repo-wide `fabric.yaml`.
+- Rationale: the binding is fabric's own illusion plumbing and has no bearing on cwd resolution, so the Cwd Resolution Invariant puts it in `fabricengine`, not `lyxcwd`. The design doc's "via the `Bolt` handle" is satisfied by the commit path: `Bolt` is a git-verb handle (`Commit`/`Push`/`Sync`), and fabric's established pattern is engine-writes-to-disk / CLI-commits-via-Bolt.
+- Rejected: adding `ReadFile`/`WriteFile` methods to `Bolt` — a more literal reading of the design doc, but it widens a deliberately narrow git-verb handle, and the *read* that matters most happens during the probe, when no `BoardDir` exists at all. Putting the reader in `internal/lyxcwd` beside the anchor reader — barred by the Cwd Resolution Invariant.
+
+### pre-hub-probe
+
+- Decision: before any hub directory is created, clone the weft remote into a throwaway probe directory created with `os.MkdirTemp(cwd, ".lyx-clone-probe-")`, using `git clone --depth 1 --filter=tree:0 --no-checkout --single-branch <weft-url> <probe>`, then read the record with `git show HEAD:.lyx-warp`, then `os.RemoveAll` the probe (deferred, so it is removed on every exit path including error).
+- Rationale: the hub is named after the warp repo (`DeriveWarpName`, `internal/fabricengine/clone.go:90-96`), so in the one-argument form there is no hub path — and therefore no `BoardDir` and no weft clone — until the warp URL is known. Git has no porcelain that reads a single file from a remote without a local repo directory: `git archive --remote` would, but GitHub does not enable it, and `git ls-remote` sees refs only. A partial clone is the minimal-wire equivalent: `--filter=tree:0` fetches no trees and no blobs, so the transfer is the ref advertisement plus one commit object, and `git show HEAD:.lyx-warp` then lazily fetches just the root tree and that one small blob. Because the probe is discarded, a binding conflict aborts before the hub exists, leaving zero residue and requiring no change to `teardownHub`'s semantics.
+- `HEAD` in the probe is the weft remote's default branch, which is `main` — the branch `_board` is a worktree of and the branch `Bolt` commits to. The local `main` → `main-weft` rename (`suffixWeftPrimaryBranch`, `internal/fabricengine/clone.go:262`) happens only in the real weft clone and never touches the remote default.
+- Known degradation, stated honestly: partial clone requires `uploadpack.allowFilter` on the server. GitHub and GitLab have it. Against a **local bare repo path** — which is what every test in `internal/fabricengine` and `internal/fabriccli` uses — git ignores `--filter` and `--depth` with a warning and performs an ordinary local (hardlinked) clone. Correctness is unaffected; the probe is simply not minimal under test. The implementation must not treat those warnings as failures.
+- Rejected: cloning the weft into a temp dir for real and `os.Rename`-ing it into `<Hub>/<name>-weft` once the name is known — avoids the extra fetch, but reorders `CloneHub`'s steps 5 and 6, adds a rename and a new teardown path, and makes the flow harder to follow. Splitting into two code paths (two-arg keeps today's order and conflict-checks after the real weft clone, one-arg probes) — cheapest for bootstrap, but two paths to specify and test for one rule.
+
+### clone-argument-surface
+
+- Decision: `lyx fabric clone [--reset] [--subpath <rel>] <weft-url> [<warp-url>]`. One or two positionals; three or more, or zero, is a usage error.
+- Rationale: the design doc pins the weft-first flip as a deliberate breaking change. Weft-first is what makes the warp URL droppable: the required argument comes first, the optional one last.
+- The `Use` string, the `Long` body, both examples (`internal/fabriccli/fabric.go:60,68,95-96`), the stale `// clone [--reset] <warp-url> <weft-url> [board-url]` comment at `fabric.go:57`, and the usage string at `internal/fabriccli/clone.go:33` all change together. The `Long` gains a paragraph explaining the two forms and the binding.
+
+### clonehub-signature
+
+- Decision: `CloneHub(cwd string, opts CloneOptions) (CloneResult, error)`, where `CloneOptions` carries `WeftURL`, `WarpURL`, `Subpath`, and `Reset`. `CloneResult` gains a field naming the effective warp URL used (so the CLI can report it) and a boolean or string recording whether the binding was newly written.
+- Rationale: the alternative is five positionals of which two are optional strings and two are adjacent URLs — exactly the shape that produces silent argument-order bugs, and the argument order is the very thing this task is flipping. Every call site is being touched anyway, so the struct costs nothing extra.
+- Rejected: keeping reordered positionals (`CloneHub(cwd, weftURL, warpURL, subpath string, reset bool)`) — smaller diff at the ~12 call sites, but preserves the failure mode.
+
+### conflict-rule
+
+Resolution of the effective warp URL, evaluated after the probe and before the hub is created:
+
+| Record on `weft:main` | `<warp-url>` argument | Outcome |
+| --- | --- | --- |
+| absent | absent | hard error — unbound weft |
+| absent | supplied | bootstrap: clone with the supplied URL, write the record |
+| present | absent | derive: clone with the recorded URL |
+| present | supplied, normalizes equal | no-op: proceed, record untouched |
+| present | supplied, normalizes different | hard error — never silently re-point |
+
+- Decision: comparison is on **normalized** URLs. Normalization strips one trailing `/`, then one trailing `.git`, and lowercases the scheme and host portion. `https://github.com/u/r`, `https://github.com/u/r.git`, and `https://github.com/u/r/` are the same warp.
+- Decision: a transport swap is **not** a match. `git@github.com:u/r.git` against a recorded `https://github.com/u/r` is a differing URL and therefore a hard error.
+- Rationale: the trailing-`/`-and-`.git` variants are pure spelling noise that would otherwise produce a baffling error for an operator who typed the same repo. A transport swap is not noise: accepting it silently would leave the record describing something other than what was actually cloned, and the operator can always drop the argument and let the record win.
+- Decision: the record is written whenever it is absent and a warp URL is available — including on the *adopt* path, where `.lyx-anchor` already exists (a re-clone of a pre-binding hub) but `.lyx-warp` does not. That is clone-time backfill and it needs no special casing beyond "absent ⇒ write".
+- Rejected: byte-exact comparison (simplest and most predictable, but punishes a trailing `.git`); full URL equivalence including transport (hides a real difference).
+
+### unbound-weft-error
+
+- Decision: the message names both the cause and the fix — `weft <url> has no recorded warp binding; supply the warp URL explicitly: lyx fabric clone <weft-url> <warp-url>`.
+- Rationale: every hub in existence today is unbound, so this message is the migration instruction the first operator to hit it needs. A terse `unbound weft: warp URL required` makes them go read the help.
+- The error surfaces through the ordinary `output.Err` envelope, per the CLI/Cobra Invariant. No hub directory has been created at this point, so there is nothing to tear down.
+
+### reset-folding
+
+- Decision: `--reset` survives unchanged in meaning (remove an existing `<cwd>/<name>-HUB` entirely, then clone fresh), but its implementation moves from `internal/fabriccli/clone.go:38-49` into `CloneHub`, driven by `CloneOptions.Reset`. Removal happens after the effective warp URL and hub name are resolved and immediately before the existing hub-exists check (`internal/fabricengine/clone.go:98-101`). The CLI stops calling `DeriveWarpName` and `fabricengine.RemoveAll` itself.
+- Rationale: `--reset` needs the warp URL for one reason only — to compute the hub name — so once the probe has answered that question, the teardown belongs next to the check it short-circuits. It must keep working in the one-argument form, because once a weft is bound the one-argument form *is* the normal invocation and "re-clone this hub from scratch" is exactly the case `--reset` exists for.
+- Rejected: requiring an explicit `<warp-url>` alongside `--reset` (makes the bound form second-class); removing `--reset` (live consumer at `tools/sandbox/SANDBOX-CORE-SUITE.md:211`, and it is pre-existing surface outside this slice).
+
+### reconcile-backfill
+
+- Decision: `Topology.Reconcile` writes `.lyx-warp` into the board worktree when the record is **absent** and the warp worktree has an `origin` remote, taking the URL from `git remote get-url origin` against the warp side. `ReconcileResult` gains a field naming the backfilled URL; `internal/fabriccli`'s reconcile handler sees that field and drives the `Bolt` commit + push, exactly as the clone handler already does.
+- Rationale: nothing has ever written this record, so every hub that exists today — the loomyard hub, the sandbox `lyx-test-HUB`, every operator clone — is unbound. Without backfill the one-argument form fails for all of them and the only migration is a manual two-argument re-clone per hub. Reconcile already runs against a wired worktree that has the warp `origin` sitting right there, so this is a read plus a one-line write. `git remote get-url` is read-only and therefore exempt from the Fabric Git Invariant's mutating-warp-git rule, and it is inside `fabricengine` regardless.
+- Decision: when the record is **present but differs** from the warp `origin` URL, reconcile does **not** overwrite it and does **not** hard-error; it records a detail line on the pair result so the divergence is reported. Rationale: never silently re-point (the same rule clone follows), but reconcile is the repair verb, and hard-erroring would block junction repair on an unrelated URL mismatch.
+- Decision: when the warp worktree has no `origin` remote (a `lyxtest` synthetic hub, a locally-initialised warp), backfill is silently skipped. Rationale: an absent remote is a legitimate state, not an error condition for reconcile.
+- Rejected: reconcile committing via `Bolt` itself (fewer moving parts, but makes the engine silently push to the weft remote); write-but-never-commit (leaves an uncommitted file loose in `_board` indefinitely).
+
+### unwire-and-other-verbs
+
+- Decision: `unwire` leaves `.lyx-warp` on `weft:main` untouched, exactly as it already leaves `.lyx-anchor` and the repo-wide `fabric.yaml`. No other fabric verb reads or writes the record.
+- Rationale: those three are the repo-wide records that let a later `lyx fabric reconcile` re-wire a hub with no re-clone; the binding is a fourth member of that set. Post-slice-9 `unwire` reverses wiring only and never deletes weft-side content, so this requires no code change — only that the plan does not add one.
+
+## Technical context
+
+**The two packages.**
+`internal/fabricengine` is the git/geometry engine; `internal/fabriccli` is the cobra layer.
+`fabricengine` must never import `internal/configsync` (there is a documented `fabricengine → configsync → configreg → fabricengine` cycle), which is why `CloneHub` returns a `CloneResult` describing geometry and the CLI drives config materialization, the weft:main commit, and junction wiring from those fields — see the `CloneResult` doc comment at `internal/fabricengine/clone.go:36-49`.
+Keep that split: the probe, the binding read/write, and the effective-URL resolution are all engine-side; the `Bolt` commit stays CLI-side.
+
+**`CloneHub`'s current step order** (`internal/fabricengine/clone.go:85-244`), which the probe slots in front of:
+
+1. Derive the warp repo name from the warp URL (`DeriveWarpName`).
+2. Compute `hubPath = <cwd>/<name>-HUB`.
+3. Error if the hub already exists (this is where `--reset`'s teardown lands).
+4. `MkdirAll` the hub, then `<hub>/.lyx`.
+5. Clone warp to `<Hub>/<name>`; install the post-checkout hook (non-fatal).
+6. Clone weft to `<Hub>/<name>-weft`.
+   6b. `suffixWeftPrimaryBranch` renames the freshly-cloned branch to its `-weft` pairing and returns the pre-rename warp branch name.
+7. `ensureBoardWorktree` materializes `<Hub>/_board` as a second weft worktree on that branch.
+8. Resolve the lyx-anchor adopt-or-create, guard against a stale `.fabric-anchor`, write `.lyx-anchor` to disk.
+9. `lyxcwd.Resolve(primeCwd)`, `wireBoardLink`, build and return `CloneResult`.
+
+Everything from step 1 onward is unchanged in shape; the probe becomes a step 0 that yields the effective warp URL feeding step 1, and step 8 gains a sibling write of `.lyx-warp` on the absent-record path.
+Any failure from step 5 onward still routes through `teardownHub`.
+
+**The `.lyx-anchor` precedent to copy.**
+`internal/lyxcwd/anchor.go:32-41` declares `AnchorFileName = ".lyx-anchor"` with a comment explaining that it is a structural geometry artifact, never a config/env override.
+`readRecordedAnchor` (`anchor.go:100-111`) is the read shape: `os.ReadFile`, `strings.TrimSpace`, empty-after-trim treated as absent.
+`internal/fabricengine/clone.go:189-217` is the write shape.
+Note that `clone.go:29-34` keeps a `staleFabricAnchorName = ".fabric-anchor"` constant purely to hard-error on a pre-rename marker; the new binding has no such legacy and needs no equivalent.
+
+**Call sites to update for the signature and argument flip:**
+
+- `internal/fabriccli/clone.go` — `runCloneWithReset`: usage string (line 33), argument parsing (lines 32-36), the `--reset` block (lines 38-49) which is deleted, and the `CloneHub` call (line 51).
+- `internal/fabriccli/fabric.go` — line 57 (stale comment), 60 (`Use`), 68 (`<warp-name>` explanation), 95-96 (both examples); add the two-form explanation to `Long`.
+- `internal/fabricengine/clone.go` — `CloneHub` itself, plus its doc comment's phase list.
+- `internal/fabricengine/doc.go:358` — the package doc's clone-does-everything paragraph.
+- `tools/sandbox/main.go:67` — `exec.Command(lyxPath, "fabric", "clone", fabricWarpURL, fabricWeftURL)` flips to weft-first.
+- Test files calling `fabricengine.CloneHub` (~12 call sites): `internal/fabricengine/clone_adopt_test.go` (9), `internal/fabricengine/clone_test.go`, `internal/fabricengine/boardjunction_integration_test.go:38`, `internal/fabricengine/add_rollback_adopt_test.go`, `internal/configcli/configcli_integration_test.go`.
+- `internal/fabriccli/cli_test.go` — `TestRunCLI_CloneRequiresExactlyTwoArgs` (lines 404-440) needs rewriting for the new arity (one or two args valid, zero and three invalid), plus the two end-to-end clone tests at lines 501 and 584.
+
+**Docs that must change in the same commit** (per CLAUDE.md's task-completion rule and the Documentation Lifecycle):
+
+- `manifest/designs/fabric-unified-view.md` — slice 10 section (lines 149-169): mark shipped, correct `.fabric-anchor` → `.lyx-anchor`, correct the two example lines (which currently show the *new* order but are described as needing correction elsewhere in the doc — verify both), record the warp-URL-only divergence from "warp URL + `--subpath`", record the hub-name collision as a known limitation. The doc's header says it is deleted once slice 10 *and* slice 6's open half are both done — slice 6's half is still open, so the file survives; fold the durable behaviour into `internal/fabricengine/doc.go`'s package comment.
+- `CONSTRAINTS.md:161` — the Fabric Vocabulary Invariant's example `lyx fabric clone <warp-url> <weft-url>` flips to `lyx fabric clone <weft-url> [<warp-url>]`.
+- `CONSTRAINTS.md:31` — drive-by: the Cwd Resolution Invariant still says `.fabric-anchor`, stale since the rename. Fix it while in the file.
+- `docs/overview.md` — lines 150 and 254 mention clone; check whether either spells the argument order and update if so.
+- `docs/sandbox-hub.md:63` — spells the full command warp-first; flip it.
+- `tools/sandbox/SANDBOX-CORE-SUITE.md:205,211` — the `--subpath` scenario spells the order; flip it.
+- `tools/sandbox/SANDBOX-FABRIC-SUITE.md` — flip any spelled order and add the new one-argument scenario (see Testing).
+- `manifest/roadmap.md:21` — slice 10 moves to completed. (This is a planned-item completion, which is exactly what the roadmap moves for.)
+
+**Gotcha — `tools/sandbox/SANDBOX-CORE-SUITE.md:211` is already stale** for an unrelated reason: it claims `unwire` "clears the weft-side `_lyx` content", which slice 9 changed to always-preserve.
+That is not this task's bug. Do not fix it as part of this change; it belongs to whoever audits the sandbox docs.
+
+**Vocabulary.** `.lyx-warp` and the identifiers around it name warp explicitly. That is fine: `internal/fabricengine` and `internal/fabriccli` are both in the Fabric Vocabulary Invariant's owner set. The record must never be read from `internal/lyxcwd`, which is not.
+
+## Constraints
+
+From `CONSTRAINTS.md`:
+
+- **Cwd Resolution Invariant** — the binding is not cwd resolution and must not enter `internal/lyxcwd`. `internal/lyxcwd`'s import cap (stdlib + `internal/gitexec`) and its ban on exposing weft/junction/per-module paths both stand. `root` means the git worktree root and `cwd` means the current working directory; never name one for the other.
+- **Fabric Git Invariant** — every mutating git operation goes through `internal/fabricengine`. The probe clone is a `fabricengine`-internal `gitexec.RunGit` call, which is where it belongs. `git remote get-url origin` and `git show` are read-only and exempt, but they live in `fabricengine` anyway.
+- **Fabric Vocabulary Invariant** — machine-checked by `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_FabricVocabulary` over production `.go` under `internal/` and `cmd/`, plus `internal/**/*.md`. `fabricengine`/`fabriccli` are owners for the warp/weft vocabulary; the `host` ban applies to them too. `tools/` and `sandbox/` are outside the walk — vocabulary there is a review obligation.
+- **CLI / Cobra Invariant** — `Short` stays non-empty; the `Long` gains concrete examples of both forms; all errors go through the `internal/output` envelope, no bare plain-text paths. Help accuracy is a review obligation, and this change alters observable behaviour, so every affected `Short`/`Long` must be re-read. `cmd/lyx/helptree_test.go` and `drift_test.go` will exercise the new `Use` string.
+- **Test Tier Purity Invariant** — anything that spawns git (the probe, every clone test) must live in a file whose first non-empty line is a `//go:build` constraint mentioning `integration`. Untagged files may not name `gitexec.RunGit` or `exec.Command` even in a comment or string literal.
+- **Hermetic Git Test Environment Invariant** — any git-spawning test package needs a `TestMain` calling `lyxtest.HermeticGitEnv()`. `internal/fabricengine` and `internal/fabriccli` already have one (`testmain_test.go`); `internal/configcli` must be checked if its `CloneHub` call site moves.
+- **Never Force-Add Invariant** — no `git add -f` anywhere near the new record.
+- **Lyxdirs Single-Declarer Invariant** — do not write the `_lyx`/`.lyx` literals in path construction; the probe directory name `.lyx-clone-probe-*` is a `MkdirTemp` prefix, not a `_lyx`/`.lyx` path token, but check that `TestEnforcement_GeometryLiterals` does not match it and pick a different prefix if it does.
+- **Sandbox Suite Coverage** — `fabric` is already a covered module; the new scenario adds depth, not a new coverage row.
+- **Documentation Lifecycle** — see the docs list under Technical context.
+
+From `CLAUDE.md`:
+
+- Docs land in the same commit as the code.
+- Markdown uses semantic line breaks, never fixed-column hard-wrap.
+- This is a task worktree, so never push to `main` from here.
+
+## Testing
+
+TDD candidates — the genuinely unit-testable, git-free cores, which should be written test-first:
+
+1. **`normalizeWarpURL`** — table test over: bare URL unchanged; one trailing `/` stripped; one trailing `.git` stripped; both together; scheme and host lowercased while the path keeps its case; scp-form left as-is (and therefore not equal to the https spelling); empty string.
+2. **The effective-URL resolver** — a pure function over `(recorded string, found bool, supplied string)` returning `(effective string, writeRecord bool, err error)`. Table test covering all five rows of the conflict-rule table, plus the normalization-equal row and the transport-swap row. This is where the whole conflict rule lives, so it should be provable without git.
+
+Integration tests (`//go:build integration`, against local bare fixture repos, in `internal/fabricengine`):
+
+- Bootstrap: two-argument clone against a weft with no record writes `.lyx-warp` at the board root with the supplied URL, and the file is committed on `weft:main`.
+- Derive: a one-argument clone against a weft whose `main` carries a record clones the recorded warp and produces the same `CloneResult` geometry as the two-argument form.
+- Match: two-argument clone against a matching record is a no-op — the record's bytes are unchanged and the clone succeeds.
+- Normalized match: the supplied URL differs only by a trailing `.git` and is still treated as matching.
+- Conflict: two-argument clone against a differing record hard-errors, the error names both URLs, **and no hub directory is left behind** (this is the property the probe buys — assert on the filesystem, not just the error).
+- Unbound: one-argument clone against a weft with no record errors with the message naming the two-argument form, and creates no hub.
+- Clone-time backfill: a weft carrying `.lyx-anchor` but no `.lyx-warp` (a pre-binding hub) plus an explicit warp URL writes the record.
+- `--reset` in both argument forms tears down an existing hub and re-clones.
+- Reconcile backfill: an unbound wired hub gains the record after `lyx fabric reconcile`, committed and pushed.
+- Reconcile divergence: a record differing from the warp `origin` is left untouched and reported, and reconcile still succeeds.
+- Reconcile with no warp `origin` skips backfill silently and succeeds.
+- Unwire leaves `.lyx-warp` in place.
+
+CLI-level (`internal/fabriccli/cli_test.go`):
+
+- Arity: zero args and three args are usage errors; one and two args are accepted. This replaces `TestRunCLI_CloneRequiresExactlyTwoArgs` (lines 404-440), whose name and table both encode the old rule.
+- The two existing end-to-end clone tests (lines 501, 584) flip to weft-first and keep asserting the same wiring outcomes.
+- The unbound-weft error text is asserted through the `output.Err` envelope.
+
+Whole-suite obligations:
+
+- `cmd/lyx/helptree_test.go`, `drift_test.go`, `registration_test.go`, `longlist_test.go` must pass with the new `Use`/`Long`.
+- `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_FabricVocabulary` and `TestEnforcement_GeometryLiterals` must pass with the new identifiers and the new `.md` prose.
+- `cmd/lyx/tierpurity_test.go` must pass — no git spawning from an untagged file.
+- `cmd/lyx/sandbox_coverage_test.go` must still pass after the suite-doc edits.
+
+Sandbox (black-box, `tools/sandbox/SANDBOX-FABRIC-SUITE.md`):
+
+- A new scenario covering the one-argument bound clone: after the dedicated fabric hub has been cloned once with both URLs (which writes the binding), delete the hub and re-clone with `lyx fabric clone <weft-url>` alone, confirming the warp is derived and the hub comes up identically wired. Tag it `**Covers:** fabric`.
+
+## Q&A log
+
+- **Q:** How does clone learn the warp URL before the hub directory exists — probe clone, clone-then-rename, or two separate code paths? **A:** Probe. The operator asked whether exactly the one small file could be fetched from the weft remote rather than a whole repo; a `--depth 1 --filter=tree:0 --no-checkout` partial clone plus `git show HEAD:.lyx-warp` is precisely that, and git offers nothing that avoids a local scratch directory entirely (`git archive --remote` is not enabled on GitHub).
+- **Q:** Does the probe stay minimal everywhere? **A:** No, and this was stated rather than glossed: against local bare-repo fixtures — every test in the suite — git ignores `--filter`/`--depth` and does an ordinary hardlinked clone. Correct, just not minimal. The implementation must not treat the resulting warnings as failures.
+- **Q:** Does the record hold the subpath as the design doc says? **A:** No — warp URL only. `.lyx-anchor` stays the single source of truth for the subpath, and the design doc's "warp URL + `--subpath`" is corrected in this commit.
+- **Q:** Is "matching URL" byte-exact? **A:** No: normalize away a trailing `/` and a trailing `.git` and lowercase scheme+host. But a transport swap (scp-form vs https for the same repo) counts as differing and hard-errors, because accepting it would leave the record describing something other than what was cloned.
+- **Q:** Why must `--reset` work when no warp URL is given, and what does it even do? **A:** It removes `<cwd>/<name>-HUB` and clones fresh — the blow-it-away-and-redo path, rarely needed. It needs the warp URL solely to compute the hub name, which the probe now answers first. It must keep working one-argument because once a weft is bound, one-argument is the normal invocation. The operator noted it is nearly the same as deleting by hand; it is kept because `tools/sandbox/SANDBOX-CORE-SUITE.md:211` uses it and removing pre-existing CLI surface is a separate decision.
+- **Q:** Why is a reconcile backfill needed at all? **A:** Because nothing has ever written this record, so every hub in existence — including the one this task is being written in — is unbound. Without backfill the one-argument form fails everywhere and the only migration is a manual two-argument re-clone per hub.
+- **Q:** What happens when a record is present but disagrees with the warp `origin` at reconcile time? **A:** Reported, never overwritten, never fatal. Same never-silently-re-point rule as clone, but reconcile is the repair verb and must not be blocked by an unrelated URL mismatch. (Decided during write-up, not asked — flagged here as such.)
+- **Q:** `CloneHub`'s signature — options struct or reordered positionals? **A:** Delegated to the assistant; options struct chosen, because five positionals with two adjacent optional URLs is the exact shape that produces argument-order bugs, and the argument order is what this task is flipping.
+- **Q:** Should the hub-naming collision between two wefts of the same warp be fixed here? **A:** No. Hub naming stays warp-derived; the collision is pre-existing and gets recorded as a known limitation in the design doc.
+- **Q:** Does the sandbox suite exercise the new one-argument form? **A:** Yes — the sandbox call site flips to weft-first two-argument, and a new `SANDBOX-FABRIC-SUITE.md` scenario covers the one-argument bound clone.
