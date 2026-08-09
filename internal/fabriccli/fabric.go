@@ -51,8 +51,9 @@ clone-time primary.
 fabric is the sole warp↔weft git-coordination module. See docs/overview.md.
 
 Example:
+  lyx fabric clone https://github.com/user/repo-weft
   lyx fabric add my-task
-  lyx fabric checkout my-task`,
+  lyx fabric remove my-task`,
 		RunE: clihelp.GroupRunE,
 	}
 
@@ -206,6 +207,12 @@ When no branch is given, the current warp branch is re-resolved and used as
 the target — this performs an in-place re-checkout that re-points junctions
 and re-syncs the weft side, which is how the fabric-checkout launcher
 shortcut invokes this command.
+
+The command refuses before switching anything if the WEFT worktree has
+uncommitted tracked changes: a half-switched pair is the one state this verb
+must never produce, so commit or stash the weft side first. A dirty WARP
+worktree is not refused — git carries those changes across the switch, as it
+would for a plain "git switch".
 
 The switch is all-or-nothing: on any weft-side or junction failure the warp
 switch is rolled back so the pair is never left half-switched.
