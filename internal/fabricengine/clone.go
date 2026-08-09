@@ -319,9 +319,14 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		if recordedErr != nil {
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("recorded anchor in %s on weft:main is unusable: %w", lyxcwd.AnchorFileName, recordedErr))
 		}
-		if subpathRequestedExplicitly && requestedAnchor != "." && requestedAnchor != recorded {
-			// A non-default requested subpath disagrees with the recorded
-			// anchor: never silently re-anchor, the record is authoritative.
+		if subpathRequestedExplicitly && requestedAnchor != recorded {
+			// An explicitly requested subpath disagrees with the recorded anchor: never silently
+			// re-anchor, the record is authoritative.
+			// "." is not exempted. It used to be, because the CLI's own flag default was "." and the
+			// two cases were indistinguishable — so `--subpath .` against a hub recorded at a real
+			// subpath was silently adopted, the one value that escaped the never-silently-re-anchor
+			// rule. The flag now defaults to the empty string, which normalises to "." with
+			// subpathRequestedExplicitly false, so an explicit "." can be honoured as explicit here.
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
 				"requested --subpath %q does not match the recorded anchor %q for this hub", requestedAnchor, recorded))
 		}

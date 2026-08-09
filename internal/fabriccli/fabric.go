@@ -124,7 +124,12 @@ Example:
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
-	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the warp repo")
+	// The default is the EMPTY string, not "." — CloneHub normalises empty to the "." root anchor
+	// anyway, and only an empty default lets it tell "the operator typed nothing" apart from "the
+	// operator typed --subpath .". With "." as the cobra default the two were identical, so an
+	// explicit --subpath . against a hub recorded at a real subpath was silently adopted instead of
+	// refused like every other disagreeing value.
+	cloneCmd.Flags().String("subpath", "", `anchor lyx at this subdirectory of the warp repo (default ".", the repo root)`)
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
