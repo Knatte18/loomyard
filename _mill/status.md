@@ -33,7 +33,9 @@ batches:
     start_sha: a288d02b34ac1a787b7abde680aebfb1a8775e81
     commit_sha: 5ddc7c19b6bad6f9aa2542985e76200fe3475846
   - name: docs-task-bodies
-    state: pending
+    state: running
+    implementer_session: d549a284-6e97-4666-b337-cdc232205e2b
+    start_sha: 612ca3ff4106593a4d9ad222a08e43fcbc71a5f4
   - name: wiki-publish-and-summary
     state: pending
     verify_baseline_failures: []
