@@ -59,7 +59,7 @@ The key cannot go straight to `loom.yaml` today: both live `batcher.Select` call
    - Honouring the old key as a fallback.
    - Silently ignoring it.
 
-   **Doc amendments** (each its own step):
+5. **Doc amendments.**
    - `internal/batcher/doc.go`'s package comment must stop saying batching is "100% webster's own execution-policy decision" and instead say it is a standalone step webster consumes today and `Shed` will drive as producer #8 once built.
    - `CONSTRAINTS.md`'s Batcher Registry+Config Invariant, both the ownership claim and the `webster.yaml` config-key pin.
    - `docs/overview.md:271`'s batcher module-table entry, which pins the key to `webster.yaml`.
