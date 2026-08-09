@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
@@ -23,4 +23,6 @@ plan-review-r1  '2026-08-09T09:16:43Z'
 plan-fix-r1  '2026-08-09T09:16:43Z'
 plan-review-r2  '2026-08-09T09:26:57Z'
 plan-fix-r2  '2026-08-09T09:26:57Z'
+plan-review-r3  '2026-08-09T09:36:53Z'
+plan-fix-r3  '2026-08-09T09:36:53Z'
 ```

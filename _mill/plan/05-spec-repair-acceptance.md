@@ -68,6 +68,8 @@ It is the last batch because both cards depend on every preceding one: the overr
   - `docs/research/scout-multilang.md`
   - `docs/research/scout-spike.md`
   - `internal/fabricengine/refscanner_test.go`
+  - `internal/gitrepo/parity_test.go`
+  - `internal/lyxtest/lyxtest.go`
   - `internal/webstercli/sync_integration_test.go`
   - `internal/websterengine/audit_test.go`
   - `manifest/designs/fabric-unified-view.md`
@@ -99,9 +101,14 @@ It is the last batch because both cards depend on every preceding one: the overr
   "fluent builder method";
   "Hub builder:";
   "concurrent builders'";
+  "Template builders";
+  the bare "builders beyond newRepo/writeFile/commitAll" line in `internal/gitrepo/parity_test.go`;
   and the task slug `builder-retire` where a document names this task by name.
-  Two of those tokens are additions to the discussion's derived list, both known at plan time rather than discovered by the scan, and both are recorded here rather than applied silently: the task slug `builder-retire`, which documents naming this task by name necessarily contain;
-  and "concurrent builders'" at `plugins/prowler/scripts/run.sh`, ordinary English about concurrent writers, distinct from that file's already-enumerated "a builder that died".
+  Four of those tokens are additions to the discussion's derived list, all known at plan time rather than discovered by the scan, and all recorded here rather than applied silently:
+  the task slug `builder-retire`, which documents naming this task by name necessarily contain;
+  "concurrent builders'" at `plugins/prowler/scripts/run.sh`, ordinary English about concurrent writers, distinct from that file's already-enumerated "a builder that died";
+  "Template builders" at `internal/lyxtest/lyxtest.go`, the same ordinary-English class as the enumerated "fixture builder(s)" but a different phrase;
+  and the `internal/gitrepo/parity_test.go` header comment, where the enumerated phrase "fixture builders" is **line-wrapped** across two comment lines, so a line-based grep sees only the bare continuation word and would otherwise report an already-enumerated site as novel.
   The discussion's `"internal/builder"` synthetic path-prefix fixture exclusion no longer applies — batch 1 renamed that fixture to `internal/webster`.
   If the scan turns up any other ordinary-English or unrelated-fixture site, stop and report it as a finding rather than adding a token to this list — the list's provenance is the point.
   Then confirm three checks recorded during planning and left deliberately untouched, and report if any is no longer true:
