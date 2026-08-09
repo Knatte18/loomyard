@@ -442,6 +442,16 @@
 // `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
 // same anchor and pathspec.
 //
+// `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
+// to remove unless that directory is a registered LINKED worktree of the warp repo.
+// The rule is load-bearing rather than defensive: `git worktree remove` refuses a main working
+// tree, a path belonging to another repo (`<Hub>/_board` is a worktree of the WEFT repo), and a
+// worktree carrying state it will not discard — and treating every one of those refusals as licence
+// to delete the directory turned an ordinary typo into the loss of a whole git clone, gitdir
+// included, reported as success.
+// The hub's prime worktree is refused by name before any teardown begins, since it is the warp
+// repository rather than a pair.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx
