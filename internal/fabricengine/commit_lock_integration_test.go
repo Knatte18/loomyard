@@ -244,7 +244,7 @@ func TestCommitLock_ReleasedBeforePush(t *testing.T) {
 // approach (pre-creating the weft gitdir's index.lock) to force that outcome.
 func TestCommitLock_PushFiresOnPartialFailure(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "partial failure warp change")
 	writeWeftConfigContent(t, weftPath, "partial failure weft change")
@@ -271,7 +271,7 @@ func TestCommitLock_PushFiresOnPartialFailure(t *testing.T) {
 		t.Errorf("Commit() = %+v; want the warp commit to have landed", result)
 	}
 
-	if len(*calls) != 1 {
-		t.Fatalf("push recorder invocation count = %d; want 1 (the WarpCommitted||WeftCommitted gate should still fire the push seam)", len(*calls))
+	if len(recorder.Calls()) != 1 {
+		t.Fatalf("push recorder invocation count = %d; want 1 (the WarpCommitted||WeftCommitted gate should still fire the push seam)", len(recorder.Calls()))
 	}
 }

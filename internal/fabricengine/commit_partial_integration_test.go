@@ -27,7 +27,7 @@ import (
 // with weftCommitted=false, and the durable warp commit must still be pushed.
 func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
@@ -65,8 +65,8 @@ func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 		t.Errorf("Commit() = %+v; want WeftCommitted=false", result)
 	}
 
-	if len(*calls) != 1 {
-		t.Fatalf("push recorder invocation count = %d; want 1 (the durable warp commit should still be pushed)", len(*calls))
+	if len(recorder.Calls()) != 1 {
+		t.Fatalf("push recorder invocation count = %d; want 1 (the durable warp commit should still be pushed)", len(recorder.Calls()))
 	}
 }
 
@@ -76,7 +76,7 @@ func TestCommit_PartialFailure_WarpLandsWeftCommitFails(t *testing.T) {
 // Fabric.Commit returns before the push step on a warp-commit failure.
 func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
@@ -108,8 +108,8 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 		t.Errorf("weft HEAD changed after a failed warp commit: %q -> %q; want unchanged", preWeftSHA, postWeftSHA)
 	}
 
-	if len(*calls) != 0 {
-		t.Errorf("push recorder invocation count = %d; want 0 (Commit returns before the push step on a warp-commit failure)", len(*calls))
+	if len(recorder.Calls()) != 0 {
+		t.Errorf("push recorder invocation count = %d; want 0 (Commit returns before the push step on a warp-commit failure)", len(recorder.Calls()))
 	}
 }
 
@@ -125,7 +125,7 @@ func TestCommit_PartialFailure_WarpCommitFails(t *testing.T) {
 // doc comment.
 func TestCommit_PartialFailure_CommittedButUnrecorded(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
@@ -155,8 +155,8 @@ func TestCommit_PartialFailure_CommittedButUnrecorded(t *testing.T) {
 		t.Errorf("Commit() = %+v; want WeftCommitted=true and a populated WeftSHA", result)
 	}
 
-	if len(*calls) != 1 {
-		t.Fatalf("push recorder invocation count = %d; want 1 (the landed commits should still be pushed)", len(*calls))
+	if len(recorder.Calls()) != 1 {
+		t.Fatalf("push recorder invocation count = %d; want 1 (the landed commits should still be pushed)", len(recorder.Calls()))
 	}
 
 	// Clear the block, rebuild the index from the landed commit's own
