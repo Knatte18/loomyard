@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: raddle-finalize-fold-and-link-repair
 branch: raddle-finalize-fold-and-link-repair
 plan: _mill/plan
@@ -21,4 +21,5 @@ planning  '2026-08-09T12:34:57Z'
 plan-review-r1  '2026-08-09T12:45:05Z'
 plan-fix-r1  '2026-08-09T12:45:05Z'
 plan-fix-r2  '2026-08-09T12:52:35Z'
+planned  '2026-08-09T12:52:51Z'
 ```
