@@ -63,6 +63,12 @@ This task states this so nobody files it as a leak.
    - Re-point all four deep links into that section, per the dangling-anchor trap above.
    - Re-status `builder-contract.md` as a retired-design reference.
    - Delete `docs/reference/plan-format.md` (v2).
+
+     **Override recorded 2026-08-09 (task A, as landed).**
+     The "re-status as a retired-design reference" instruction above did not hold either: task A deleted `docs/reference/builder-contract.md` outright rather than keeping it in place with a retired-status banner, and created `docs/reference/webster-contract.md` as webster's own consumer-facing contract in its place — a new file, not a rename.
+     `webster-contract.md` carries webster's live cross-module contract prose; it does not attempt to restate `builder-contract.md`'s recovery ladder, chain-rollback design, or the `mutate.lock` state-mutation lease material — none of that transferred anywhere in-tree.
+     That material is recoverable only from git history, one `git show`/`git log -- docs/reference/builder-contract.md` away, exactly as the "genuinely reusable asset is the design, not the code" framing above anticipated for the *implementation*, now extended to this doc as well.
+     Any downstream task that expects a retired-but-present `builder-contract.md` on disk will not find one.
    - `discussion-format.md:30` — its justification for `plan-format`'s `approved:` field reads "because `lyx builder run` can be invoked standalone, outside loom", which is false once this task lands; `discussion-format.md:3` links `plan-format.md`.
      Both belong to this task, since this task is what falsifies them.
    - `docs/overview.md` — all builder and plan-format references, not the module table alone: `:92` (lists both `plan-format.md` and `plan-format-v3.md` as kept reference docs — only one survives), `:227` (the `internal/pattern` tree comment naming builder as a consumer), `:264` (the `builder` module-table entry), `:265` (the webster entry, defined as "fork-based sibling of builder"), `:268` (the deep link, above), `:292` (names "builder implementer" among `internal/pattern`'s prompt consumers — the same phrase this task also owns at `roadmap.md:42`), and `:375` (the `builder-contract.md` see-also).
@@ -83,6 +89,11 @@ This task states this so nobody files it as a leak.
 Once this task deletes v2 and task B reuses the filename, every surviving "plan-format v2" link silently re-targets v3 content — a worse failure than a dangling link, because nothing breaks.
 This task owns every site whose claim it itself falsifies: `docs/reference/builder-contract.md:3`, `:7`, `:224` ("until then it stays frozen and fully functional in-tree"), `:243`; `docs/reference/model-spec.md:3` ("Pinned alongside [plan-format v2] and the emerging [v3]"); `docs/reference/status-schema.md:3`; `manifest/roadmap.md:207` ("Coexists with the still-live plan-format v2 — still used by the frozen `builder`"); and `manifest/designs/review-finding-classification.md:7`, `:47` — where task B's sweep would otherwise turn a v2/v3 pair into "plan-format.md / plan-format.md".
 
+**Instruction repaired 2026-08-09 (task A, as landed).**
+This list's first four sites — `docs/reference/builder-contract.md:3`, `:7`, `:224`, `:243` — named lines inside a file this task deletes outright rather than retiring in place (see task A's own override above); those four lines no longer exist anywhere to edit, and no successor file inherited their v2-coexistence claims.
+They are struck from this ownership list as satisfied-by-deletion, not left open.
+The remaining members of the class — `docs/reference/model-spec.md:3`, `docs/reference/status-schema.md:3`, `manifest/roadmap.md:207`, and `manifest/designs/review-finding-classification.md:7`/`:47` — are unaffected by this repair and remain this task's under the same ownership rule.
+
 ### What this task does not own
 
 The `phase` enum in `internal/loomengine/coherence.go:14–22`'s `validPhases` map and its twin in `docs/reference/status-schema.md` — both currently `preflight | discussion | plan | builder | raddle | finalize | done` — are deliberately left alone by this task and the rest of the follow-up set.
@@ -92,6 +103,14 @@ The enum is not wrong today: it describes the machine that exists.
 
 **What is not deferred:** `status-schema.md`'s builder-specific prose and its `builder-contract.md` link go stale the moment this task lands, so those are this task's, per the "Doc retirement" list above.
 Only the enum itself waits.
+
+**Override recorded 2026-08-09 (task A, as landed).**
+The deferral above no longer holds.
+Task A renamed the `phase` enum in both `internal/loomengine/coherence.go`'s `validPhases` map and `docs/reference/status-schema.md`'s twin from `builder` to `webster`, in place, rather than leaving either untouched for `Shed` to realign.
+An enum entry naming a module task A itself deletes is not a neutral interim state the way an unedited-but-still-correct enum would be — leaving `"builder"` in live phase validation after `internal/builderengine` no longer exists means the validator accepts a phase word for a module gone from the tree, which is strictly worse than the churn the original deferral was trying to avoid.
+That `Shed` will later replace the whole phase enum with a flat producer list is not a reason to ship a wrong value in the meantime; the deferral's premise (rewriting now means inventing an interim phase set `Shed` would discard) does not apply to a same-name rename, only to a genuinely new interim vocabulary.
+Both files now read `webster` wherever this section previously said `builder`.
+`Shed`'s own realignment work is otherwise unaffected — it still replaces the enum with the flat producer list; it simply does not do so starting from a `builder` value.
 
 ### Scope
 
@@ -162,11 +181,15 @@ A half-done rename is worse than either end state, because `planparser` and `web
    - `internal/batcher/doc.go`
    - `docs/overview.md`
    - `docs/reference/model-spec.md`
-   - `docs/reference/builder-contract.md`
+   - `docs/reference/webster-contract.md`
    - `manifest/roadmap.md`
    - several `manifest/designs/*.md` files
    - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`
    - `CONSTRAINTS.md`'s Planparser Sole-Parser Invariant, whose wording changes for the renamed format.
+
+**Instruction repaired 2026-08-09 (task A, as landed).**
+This inventory originally listed `docs/reference/builder-contract.md`; that path no longer exists, since task A deleted the file outright rather than leaving it as a retired reference (see task A's own override above).
+The entry above has been replaced with `docs/reference/webster-contract.md`, task A's new consumer-facing contract doc, which is in this task's sweep scope: it links `plan-format-v3.md` twice (`:13`, `:48`) and therefore needs the same `v3`-suffix rename this task performs everywhere else.
 
 #### Hard exclusion — `gopkg.in/yaml.v3`
 
@@ -234,6 +257,11 @@ This was not left open for this task to re-derive — the real paths are already
 5. Restate `discussion-format.md:14` in producer-model terms.
    It currently grounds the two-file split in "Builder's 'distilled digest, never raw prose' rule (see `builder-contract.md`'s digest contract)" — a live contract justified by a retired design doc.
    The rule itself is sound and stays; only its attribution is rewritten.
+
+   **Instruction repaired 2026-08-09 (task A, as landed).**
+   `builder-contract.md`'s "digest contract" no longer exists to ground the citation in — task A deleted the file outright, and no digest-contract section survived into `docs/reference/webster-contract.md`.
+   The rule is grounded elsewhere in the live tree instead: `internal/websterengine`'s own package documentation (`doc.go`) states the distilled-`Digest`-persisted-at-terminal contract directly (see also `recordbatch.go`'s `RecordResult.Digest` handling), and `docs/overview.md:60` independently states the same "Go-distilled digests, never raw prose" rule at the architecture level.
+   Task C should re-ground `discussion-format.md:14`'s citation in one or both of those live sources, not in the deleted file.
 6. Rewrite `plan-format.md:5`'s "Coexistence, not replacement" section, which asserts the format does not retire v2.
    That claim is false once task A deletes v2, so the renamed file would otherwise carry the claim forward about itself.
 
@@ -380,12 +408,24 @@ This task is `loom.md`'s final owner, and owns everything in the file except the
 - `:187`, the module-decomposition row repeating the same already-shipped-sibling claim and `builder-contract.md` link.
 - `:56`, row 8's `Batchifier` entry, rewritten to match whatever task F landed.
 
+  **Override recorded 2026-08-09 (task A, as landed).**
+  The `:91–94` naming note and the `:187` module-decomposition row, both assigned to this task (E), were rewritten in full by task A instead of being left for E.
+  Task A did this because its own package-name zero-hit criterion (`builderengine`, `buildercli`) reaches those two sites regardless of which task's ownership list they sit on — a bare-word or package-name grep does not respect chain-order assignment, and leaving those two names in place through E's turn would have failed task A's own acceptance gate.
+  Both sites now describe `internal/websterengine`/`internal/webstercli` and link `webster-contract.md` instead of `builder-contract.md`.
+  Everything else on this list — `:15–17`, `:29`, `:56`, and the rest of `loom.md` not named above — remains E's, and the B → C → E chain-order ownership for the file is otherwise unchanged: E still runs after B and C and still writes the file's finished state.
+
 #### Part four — the other files
 
 - `hardener.md:17`'s "producer-slot".
 - `docs/overview.md:272`'s stale chain "Preflight → Discussion → Plan → Builder → Raddle → Finalize".
 - `manifest/roadmap.md`, where this task is the last owner and therefore carries:
   - `:68`'s "deferred phase slot between Builder and Finalize", moved off task D.
+
+    **Override recorded 2026-08-09 (task A, as landed).**
+    Task A's `builder` → `webster` phase rename necessarily touched the word `Builder` on this line — it now reads "deferred phase slot between Webster and Finalize" — because the phase-token rename is repo-wide and this line names a phase word, not a task label.
+    That is a **word**-level change only.
+    The **semantics** this task (E) is assigned — deciding what actually fills that deferred slot, and whether the slot framing itself survives `Shed`'s flat producer list — remain entirely E's remaining roadmap obligation, unaffected by the rename.
+    E should not find the line already reading `Webster` and conclude its obligation here has lapsed; the word changed, the open question did not.
   - the retirement of `:31`'s "**A dedicated scoping task should run first** ... this item is not yet broken down into buildable units" — stale the moment this scoping task lands.
     This task is the right place to declare the breakdown done and name the six follow-up tasks.
 
