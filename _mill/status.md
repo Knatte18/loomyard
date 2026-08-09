@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-warp-binding core
+phase: approved-probe and clone flip
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r5  '2026-08-09T09:52:55Z'
 planned  '2026-08-09T09:53:05Z'
 implementing  '2026-08-09T09:53:35Z'
 approved-warp-binding core  '2026-08-09T09:59:33Z'
+approved-probe and clone flip  '2026-08-09T10:09:22Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 1c3a842b2687d0d50a465f2ba27f84fc51316e5a
     verify_baseline_failures: []
   - name: probe and clone flip
-    state: running
+    state: approved
     implementer_session: 78df627b-9b79-45fa-84dc-c80ac42b76ac
     start_sha: cd607f18e26347d9af0ab0bd57083aef13bc1e75
+    commit_sha: d62efbd204a2d8f8270a4ea4f824307552446750
     verify_baseline_failures: []
   - name: cli surface
     state: pending
