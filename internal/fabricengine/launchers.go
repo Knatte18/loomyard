@@ -145,17 +145,32 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	return nil
 }
 
-// removeLaunchers removes the launcher directory for the given slug, pruning
-// empty ancestors. The menu launcher is left in place. Returns nil if the
-// directory does not exist.
+// removeLaunchers removes the launcher scripts fabric wrote for the given slug and then the
+// directory itself, pruning empty ancestors.
+// The menu launcher is left in place. Returns nil if the directory does not exist.
+//
+// It deletes the named scripts rather than the whole tree so anything else under the directory
+// survives: an os.RemoveAll there destroyed whatever the operator had put beside the launchers,
+// while the portal half of the same teardown (fslink.Remove) correctly declines to delete a
+// non-empty real directory. A leftover file is reported by the directory removal below, never
+// silently swept.
 func removeLaunchers(l *lyxcwd.Location, slug string) error {
 	launcherDir := LauncherDir(l, slug)
 	if err := refuseUncontainedPath(launchersDir(l), launcherDir, "launcher dir"); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(launcherDir); err != nil {
+
+	ext := launcherExt(runtime.GOOS)
+	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
+		if err := os.Remove(filepath.Join(launcherDir, name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove launcher script %s: %w", filepath.Join(launcherDir, name), err)
+		}
+	}
+
+	if err := os.Remove(launcherDir); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
+
 	// Prune empty ancestors up to but not including launchersDir
 	pruneEmptyAncestors(filepath.Dir(launcherDir), launchersDir(l))
 	return nil

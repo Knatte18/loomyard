@@ -7,6 +7,7 @@
 package fabricengine
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -263,4 +264,45 @@ func TestMirroredPortalLauncherMethods(t *testing.T) {
 			}
 		})
 	})
+}
+
+// TestRemoveLaunchers_PreservesForeignContent proves the launcher teardown deletes only the scripts
+// fabric wrote.
+// It used to os.RemoveAll the whole directory, destroying anything the operator had placed beside
+// the launchers, while the portal half of the same teardown (fslink.Remove) correctly declines to
+// delete a non-empty real directory.
+func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
+	t.Parallel()
+
+	hub := t.TempDir()
+	l := newPortalLauncherTestLocation(hub, filepath.Join(hub, "prime"), ".")
+	const slug = "my-task"
+
+	launcherDir := LauncherDir(l, slug)
+	if err := os.MkdirAll(launcherDir, 0o755); err != nil {
+		t.Fatalf("mkdir launcher dir: %v", err)
+	}
+	ext := launcherExt(runtime.GOOS)
+	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
+		if err := os.WriteFile(filepath.Join(launcherDir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+	}
+	operatorFile := filepath.Join(launcherDir, "operator-notes.txt")
+	if err := os.WriteFile(operatorFile, []byte("keep me\n"), 0o644); err != nil {
+		t.Fatalf("seed operator file: %v", err)
+	}
+
+	// The directory cannot be removed while the operator's file is in it, and that refusal is the
+	// point: teardown reports it rather than deleting what it does not own.
+	if err := removeLaunchers(l, slug); err == nil {
+		t.Error("removeLaunchers() = nil; want the non-empty-directory refusal to be reported")
+	}
+
+	if _, err := os.Stat(operatorFile); err != nil {
+		t.Errorf("removeLaunchers() destroyed the operator's own file at %s: %v", operatorFile, err)
+	}
+	if _, err := os.Stat(filepath.Join(launcherDir, "ide"+ext)); !os.IsNotExist(err) {
+		t.Errorf("removeLaunchers() left ide%s in place; want fabric's own scripts removed", ext)
+	}
 }
