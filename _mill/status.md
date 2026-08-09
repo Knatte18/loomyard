@@ -51,7 +51,9 @@ batches:
     commit_sha: d6d3e68c4d82b055a322b577f55fbf3d21a9740f
     verify_baseline_failures: []
   - name: file-renames
-    state: pending
+    state: running
+    implementer_session: b290a829-2c2a-4835-add8-becd5d4d87c0
+    start_sha: 92dfaaaca26223c343e4d975bf78aae780f9c43b
     verify_baseline_failures: []
   - name: cli-surface-review
     state: pending
