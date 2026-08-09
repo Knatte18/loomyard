@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5
+reviewed_file: plan/
+date: 2026-08-09
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 12 misses two duplicate builder mentions in status-schema.md
+**Location:** batch 4 / card 12 **Issue:** Card 12 names the per-field-notes prose "when Builder begins"/"until Builder starts" (line 67) and the `pause_requested` divergence note (line 69), but the same doc also carries near-identical inline jsonc comments — `// repo HEAD stamped when Builder begins (Raddle diff base)` (line 52) and `(diverges from builder, which uses a separate flag file)` (line 53) — that the Requirements text never names. **Fix:** Add both inline-comment sites to card 12's Requirements explicitly, so an implementer working from the literal enumeration doesn't leave them for card 18's grep to catch as an unplanned failure.
+
+### [BLOCKING:scope] Card 13 misses the Precedence section's opening "(e.g. builder.yaml)"
+**Location:** batch 4 / card 13 **Issue:** `docs/reference/model-spec.md` line 77 reads "the module's own config (e.g. `builder.yaml`)" as part of the Precedence section's opening sentence, distinct from the "worked example" block card 13 explicitly rebuilds (lines 83-94). This site is never named, and `builder.yaml` is one of card 18's own banned Module-word tokens. **Fix:** Add the opening precedence-hierarchy line's "(e.g. builder.yaml)" to card 13's Requirements (e.g. rewrite as "(e.g. `webster.yaml`)").
+
+### [NIT:consistency] tools/sandbox/main.go's "ten subcommands" count goes stale
+**Location:** batch 1 / card 1 **Issue:** main.go's header comment states "It supports ten subcommands" and enumerates `builder-suite` as one of them; card 1's Requirements say to drop `builder-suite` from "the two usage/doc comment suite lines" but never mention updating the leading count, which becomes wrong (nine, not ten) once the case is deleted. Unlike this, card 1 explicitly requires suite.go's "seven"→"six" doc-comment counts to be fixed. **Fix:** Add "change 'ten subcommands' to 'nine subcommands'" to card 1's tools/sandbox/main.go instructions — note this site is not reachable by any of card 18's six grep patterns, so it will not self-surface.
+
+## Verdict
+
+REQUEST_CHANGES
+Two card-12/13 completeness gaps would trip card 18's own acceptance grep; one main.go count goes stale silently.
+MILL_REVIEW_END
