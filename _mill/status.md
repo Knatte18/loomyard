@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: shed-producer-model-scoping
 branch: shed-producer-model-scoping
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-docs-task-bodies  '2026-08-09T06:27:43Z'
 approved-wiki-publish-and-summary  '2026-08-09T06:31:11Z'
 holistic-reviewing  '2026-08-09T06:31:36Z'
 holistic-fixing  '2026-08-09T06:36:24Z'
+holistic-reviewing  '2026-08-09T06:41:18Z'
 ```
 
 ## Batches
