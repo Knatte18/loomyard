@@ -478,3 +478,223 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 		t.Errorf("res.WarpURL = %q; want %q", res.WarpURL, warpURL)
 	}
 }
+
+// TestCloneHub_OldOrderInvocationIsRefused is the regression test that matters most: passing an
+// ordinary source repo (no lyx markers) as the weft candidate and a real repo as the warp — the
+// pre-change argument order — with ForceBootstrap left false must be refused, must create no hub, and
+// must leave the rejected repo completely untouched.
+func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
+	fixtures := t.TempDir()
+
+	ordinarySourceBare := makeBareRemote(t, fixtures, "old-order-source")
+	warpBare := makeBareRemote(t, fixtures, "old-order-warp")
+
+	beforeCommitCount := gitOutput(t, ordinarySourceBare, "rev-list", "--count", "--all")
+	beforeRefs := gitOutput(t, ordinarySourceBare, "for-each-ref", "--format=%(refname)")
+
+	cloneParent := t.TempDir()
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(ordinarySourceBare),
+		WarpURL: filepath.ToSlash(warpBare),
+	})
+	if err == nil {
+		t.Fatalf("CloneHub() with the pre-change argument order should have been refused")
+	}
+	if !strings.Contains(err.Error(), "refusing to bootstrap") {
+		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "refusing to bootstrap")
+	}
+	if !strings.Contains(err.Error(), "check the argument order") {
+		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "check the argument order")
+	}
+
+	noProbeResidueInParent(t, cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
+
+	afterCommitCount := gitOutput(t, ordinarySourceBare, "rev-list", "--count", "--all")
+	afterRefs := gitOutput(t, ordinarySourceBare, "for-each-ref", "--format=%(refname)")
+	if afterCommitCount != beforeCommitCount {
+		t.Errorf("rejected repo commit count changed: before = %s, after = %s; want unchanged", beforeCommitCount, afterCommitCount)
+	}
+	if afterRefs != beforeRefs {
+		t.Errorf("rejected repo ref list changed: before = %q, after = %q; want unchanged", beforeRefs, afterRefs)
+	}
+}
+
+// TestCloneHub_AnchorBearingWeftPassesGuard asserts, specifically for the guard rather than the
+// backfill outcome, that a weft whose HEAD carries .lyx-anchor but no .lyx-warp passes the old-order
+// guard and bootstraps with ForceBootstrap false.
+// This setup overlaps TestCloneHub_BackfillsBindingOnPreBindingHub, but is kept as its own test so a
+// guard regression names itself rather than hiding behind the backfill assertion.
+func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
+	fixtures := t.TempDir()
+
+	warpBare := makeBareRemote(t, fixtures, "guard-pass-warp")
+	weftBare := makeBareRemote(t, fixtures, "guard-pass-weft")
+	commitFileOnBranch(t, fixtures, weftBare, "main", lyxcwd.AnchorFileName, ".\n")
+
+	cloneParent := t.TempDir()
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+	})
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil (an anchor-bearing weft passes the guard without ForceBootstrap)", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+}
+
+// TestCloneHub_ForceBootstrapOverridesGuard asserts that the same ordinary-source-repo weft candidate
+// TestCloneHub_OldOrderInvocationIsRefused rejects succeeds when ForceBootstrap is set, and writes the
+// record — together the two tests establish that the flag is the only way through the guard.
+func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
+	fixtures := t.TempDir()
+
+	ordinarySourceBare := makeBareRemote(t, fixtures, "force-override-source")
+	warpBare := makeBareRemote(t, fixtures, "force-override-warp")
+	warpURL := filepath.ToSlash(warpBare)
+
+	cloneParent := t.TempDir()
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(ordinarySourceBare),
+		WarpURL:        warpURL,
+		ForceBootstrap: true,
+	})
+	if err != nil {
+		t.Fatalf("CloneHub() error = %v; want nil (ForceBootstrap is the only way through the old-order guard)", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+
+	if !res.WarpBindingRecorded {
+		t.Errorf("res.WarpBindingRecorded = false; want true")
+	}
+	if res.WarpURL != warpURL {
+		t.Errorf("res.WarpURL = %q; want %q", res.WarpURL, warpURL)
+	}
+}
+
+// TestCloneHub_ResetInBothArgumentForms covers --reset in both invocation shapes. The two-argument
+// subtest re-clones the same pair with Reset true and asserts the second call succeeds. The
+// one-argument subtest is the point of the whole reset-folding change: once a weft is bound, re-clone
+// with only the weft URL and Reset true must tear the hub down, re-create it, and still derive the
+// warp from the recorded binding.
+func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
+	t.Run("TwoArgument", func(t *testing.T) {
+		fixtures := t.TempDir()
+		warpBare := makeBareRemote(t, fixtures, "reset-two-warp")
+		weftBare := makeBareRemote(t, fixtures, "reset-two-weft")
+		warpURL := filepath.ToSlash(warpBare)
+
+		cloneParent := t.TempDir()
+		opts := fabricengine.CloneOptions{
+			WeftURL:        filepath.ToSlash(weftBare),
+			WarpURL:        warpURL,
+			ForceBootstrap: true,
+		}
+		res, err := fabricengine.CloneHub(cloneParent, opts)
+		if err != nil {
+			t.Fatalf("first CloneHub() error = %v; want nil", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+
+		opts.Reset = true
+		res2, err := fabricengine.CloneHub(cloneParent, opts)
+		if err != nil {
+			t.Fatalf("second CloneHub() with Reset error = %v; want nil", err)
+		}
+		if res2.HubPath != res.HubPath {
+			t.Errorf("res2.HubPath = %q; want %q (same hub geometry after reset)", res2.HubPath, res.HubPath)
+		}
+		if _, statErr := os.Stat(res2.HubPath); statErr != nil {
+			t.Errorf("hub %s does not exist after reset re-clone: %v", res2.HubPath, statErr)
+		}
+	})
+
+	t.Run("OneArgument", func(t *testing.T) {
+		fixtures := t.TempDir()
+		warpBare := makeBareRemote(t, fixtures, "reset-one-warp")
+		weftBare := makeBareRemote(t, fixtures, "reset-one-weft")
+		warpURL := filepath.ToSlash(warpBare)
+
+		// CloneHub never commits the record itself (the CLI layer does, through Bolt), so a "bound
+		// hub" precondition is seeded directly onto weft:main here, exactly as a real prior clone
+		// followed by the CLI's commit would have left it.
+		seedWeftBinding(t, fixtures, weftBare, warpURL)
+
+		cloneParent := t.TempDir()
+		firstRes, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+			WeftURL: filepath.ToSlash(weftBare),
+		})
+		if err != nil {
+			t.Fatalf("first CloneHub() error = %v; want nil", err)
+		}
+		originalHubPath := firstRes.HubPath
+		t.Cleanup(func() { _ = os.RemoveAll(originalHubPath) })
+
+		// Once bound, the one-argument form is the normal invocation: re-clone with only the weft
+		// URL and Reset true. The hub name is derived from the now-recorded binding, so it resolves
+		// to the same hub path as the first clone.
+		res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+			WeftURL: filepath.ToSlash(weftBare),
+			Reset:   true,
+		})
+		if err != nil {
+			t.Fatalf("one-argument CloneHub() with Reset error = %v; want nil", err)
+		}
+		if res.HubPath != originalHubPath {
+			t.Errorf("res.HubPath = %q; want %q (torn down and re-created at the same derived path)", res.HubPath, originalHubPath)
+		}
+		if res.WarpURL != warpURL {
+			t.Errorf("res.WarpURL = %q; want %q (still derived from the recorded binding)", res.WarpURL, warpURL)
+		}
+		if _, statErr := os.Stat(res.HubPath); statErr != nil {
+			t.Errorf("hub %s does not exist after one-argument reset re-clone: %v", res.HubPath, statErr)
+		}
+	})
+}
+
+// TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm asserts that a second two-argument clone of an
+// already-cloned pair, with Reset false, fails with today's "hub already exists" and — the observable
+// difference this test exists to lock in — never runs the probe: no directory whose name begins with
+// the probe prefix is ever created in the clone parent, proving the hub-exists check short-circuits
+// before the probe touches the network.
+//
+// The one-argument form is not asserted symmetrically here: in that form the probe necessarily
+// precedes the hub-exists check (the hub name is unknowable until the binding is read), and that
+// asymmetry is deliberate — a future reader should not "fix" it into matching the two-argument order.
+func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
+	fixtures := t.TempDir()
+	warpBare := makeBareRemote(t, fixtures, "precedes-warp")
+	weftBare := makeBareRemote(t, fixtures, "precedes-weft")
+	warpURL := filepath.ToSlash(warpBare)
+
+	cloneParent := t.TempDir()
+	firstRes, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        warpURL,
+		ForceBootstrap: true,
+	})
+	if err != nil {
+		t.Fatalf("first CloneHub() error = %v; want nil", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(firstRes.HubPath) })
+
+	_, err = fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: warpURL,
+	})
+	if err == nil {
+		t.Fatalf("second CloneHub() against an existing hub should have failed")
+	}
+	if !strings.Contains(err.Error(), "hub already exists") {
+		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "hub already exists")
+	}
+
+	entries, err := os.ReadDir(cloneParent)
+	if err != nil {
+		t.Fatalf("read clone parent %s: %v", cloneParent, err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), fabricengine.WarpProbeDirPrefixForTest) {
+			t.Errorf("probe residue %s exists; want the hub-exists check to short-circuit before the probe ever runs", entry.Name())
+		}
+	}
+}
