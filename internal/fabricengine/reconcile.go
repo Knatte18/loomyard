@@ -67,6 +67,38 @@ const (
 	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
 )
 
+// WarpBindingOutcome describes the result of the once-per-Reconcile warp-URL binding backfill.
+type WarpBindingOutcome string
+
+const (
+	// WarpBindingOutcomeRecorded means no binding existed yet and Reconcile wrote one from the warp
+	// side's origin remote.
+	WarpBindingOutcomeRecorded WarpBindingOutcome = "recorded"
+
+	// WarpBindingOutcomePresent means a binding already existed and normalizes to the same URL as the
+	// warp side's origin remote, so nothing was written.
+	WarpBindingOutcomePresent WarpBindingOutcome = "present"
+
+	// WarpBindingOutcomeDiverged means a binding already existed but normalizes to a different URL
+	// than the warp side's origin remote; the record is left untouched and reconcile still succeeds.
+	WarpBindingOutcomeDiverged WarpBindingOutcome = "diverged"
+
+	// WarpBindingOutcomeSkipped means the warp side has no origin remote to read, which is a
+	// legitimate state (a synthetic test hub, a locally-initialised warp) rather than an error.
+	WarpBindingOutcomeSkipped WarpBindingOutcome = "skipped"
+
+	// WarpBindingOutcomeDeferred means no binding existed and Reconcile declined to write one this
+	// pass — either the board worktree was dirty, or the write itself failed — leaving the backfill
+	// for the next Reconcile call.
+	WarpBindingOutcomeDeferred WarpBindingOutcome = "deferred"
+
+	// WarpBindingOutcomeRecordFailed means the CLI handler committed or pushed the backfilled record
+	// and that commit or push failed.
+	// Topology.Reconcile never returns this value — only the CLI handler sets it, because the commit
+	// and push that can fail happen after Reconcile has already returned.
+	WarpBindingOutcomeRecordFailed WarpBindingOutcome = "record_failed"
+)
+
 // ReconcilePairResult describes the outcome for one warp↔weft pair.
 type ReconcilePairResult struct {
 	// WarpWorktree is the absolute path to the warp worktree.
@@ -85,6 +117,20 @@ type ReconcilePairResult struct {
 type ReconcileResult struct {
 	// Pairs is the ordered list of per-worktree reconcile outcomes.
 	Pairs []ReconcilePairResult `json:"pairs"`
+
+	// WarpBinding is the outcome of the once-per-Reconcile warp-URL binding backfill.
+	// The check runs exactly once per Reconcile call, after the pair loop, and is never reported
+	// per-pair — the binding is a once-per-hub fact written to the board directory, so running it
+	// inside the per-worktree loop would repeat it N times and leave "which pair owns a repo-wide
+	// fact" unanswerable.
+	// runReconcile hand-builds its own envelope and never serializes this struct, so this tag
+	// documents intent rather than driving output.
+	WarpBinding WarpBindingOutcome `json:"warp_binding"`
+
+	// WarpBindingDetail provides human-readable context for WarpBinding.
+	// Like WarpBinding, it is a once-per-Reconcile, repo-wide field, never a per-pair one, and its
+	// json tag documents intent only — runReconcile never serializes this struct directly.
+	WarpBindingDetail string `json:"warp_binding_detail,omitempty"`
 }
 
 // Reconcile walks all warp worktrees reachable from layout l and applies corrective actions to
@@ -172,7 +218,64 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		result.Pairs = append(result.Pairs, pr)
 	}
 
+	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(l)
+
 	return result, nil
+}
+
+// reconcileWarpBinding backfills the once-per-hub .lyx-warp record from the warp side's origin
+// remote, for every hub that predates the binding.
+// It runs exactly once per Reconcile call, after the pair loop, never per-pair, and it never
+// returns an error: like wireBoardLink's board-junction repair, a binding backfill is a convenience
+// that may never fail or downgrade a reconcile verdict, so any failure is folded into a Deferred
+// outcome instead.
+func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome, string) {
+	boardDir := BoardDir(l.HubPath)
+
+	// git remote get-url is read-only, so it falls outside the Fabric Git Invariant's
+	// mutating-warp-git rule even though it targets the warp worktree.
+	originOut, _, exitCode, err := gitexec.RunGit([]string{"remote", "get-url", "origin"}, l.WorktreePath())
+	origin := strings.TrimSpace(originOut)
+	if err != nil || exitCode != 0 || origin == "" {
+		// An absent origin remote is a legitimate state (a synthetic test hub, a locally-initialised
+		// warp), not an error condition.
+		return WarpBindingOutcomeSkipped, ""
+	}
+
+	recorded, found := readWarpBinding(boardDir)
+	if found {
+		if normalizeWarpURL(recorded) == normalizeWarpURL(origin) {
+			return WarpBindingOutcomePresent, ""
+		}
+
+		detail := fmt.Sprintf("recorded warp binding %s does not match warp origin %s", recorded, origin)
+		if warpURLTransportIdentity(recorded) == warpURLTransportIdentity(origin) {
+			// The record does not describe the transport in use, so a transport-only spelling
+			// difference is advisory rather than a genuine divergence — surfaced but never fatal.
+			detail += "; the two spellings differ only by transport, which is advisory: the record does not describe the transport in use"
+		}
+		// Divergence is reported, never overwritten and never fatal: the same never-silently-re-point
+		// rule clone follows, but reconcile is the repair verb and must not be blocked by an unrelated
+		// URL mismatch.
+		return WarpBindingOutcomeDiverged, detail
+	}
+
+	// Bolt.Commit is stage-all: safe at clone time, when the board was created seconds earlier, but
+	// not at reconcile time, when a long-lived board may carry unrelated uncommitted content a
+	// backfill commit would sweep up and push. This check is read-only and runs before anything is
+	// written, so no half-written state is ever left behind.
+	statusOut, _, statusExit, statusErr := gitexec.RunGit([]string{"status", "--porcelain"}, boardDir)
+	if statusErr != nil || statusExit != 0 {
+		return WarpBindingOutcomeDeferred, fmt.Sprintf("board status check failed: %v (exit %d)", statusErr, statusExit)
+	}
+	if strings.TrimSpace(statusOut) != "" {
+		return WarpBindingOutcomeDeferred, "board worktree has uncommitted changes; backfill deferred to avoid sweeping them into an unrelated commit"
+	}
+
+	if err := writeWarpBinding(boardDir, origin); err != nil {
+		return WarpBindingOutcomeDeferred, fmt.Sprintf("write warp binding: %v", err)
+	}
+	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
 }
 
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree

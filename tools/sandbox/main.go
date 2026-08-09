@@ -45,7 +45,7 @@ var fabricSandboxSuiteMD string
 
 // cloneRun is a testability seam for executing the clone command.
 var cloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", warpURL, weftURL)
+	cmd := exec.Command(lyxPath, "fabric", "clone", weftURL, warpURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -64,7 +64,7 @@ var cloneRun = func(parentDir, lyxPath string) error {
 // fabricCloneRun is a testability seam for executing `lyx fabric clone`
 // against the dedicated fabric sandbox repos.
 var fabricCloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", fabricWarpURL, fabricWeftURL)
+	cmd := exec.Command(lyxPath, "fabric", "clone", fabricWeftURL, fabricWarpURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
