@@ -237,8 +237,8 @@ func TestValidate_MoveFormat(t *testing.T) {
 }
 
 // TestValidate_MoveRedundant covers move-redundant: a path that is both a Moves: endpoint (on one
-// card) and a Creates: target (on another) anywhere in the plan — the plan-wide scope v3 uses since
-// batch is gone.
+// card) and a Creates: target (on another) anywhere in the plan — the check's scope is plan-wide
+// because there is no batch to scope it to.
 func TestValidate_MoveRedundant(t *testing.T) {
 	t.Parallel()
 

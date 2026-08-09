@@ -33,7 +33,7 @@ func writePlanFiles(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// minimalOverview is a syntactically complete v3 overview with a single Card Index
+// minimalOverview is a syntactically complete overview with a single Card Index
 // entry, used as the base fixture for tests that don't care about framing or
 // plan-level sections.
 const minimalOverview = `---
@@ -50,7 +50,7 @@ Framing paragraph.
 1 — only — the only card
 `
 
-// minimalCardFile is a syntactically complete v3 card file body: all five typed
+// minimalCardFile is a syntactically complete card file body: all five typed
 // file-op fields plus Depends-on carry "none" except a single Edits: bullet.
 func minimalCardFile(number int, name, editsPath string) string {
 	return fmt.Sprintf("# Card %d — %s\n\n", number, name) +
@@ -212,9 +212,9 @@ func TestParsePlan_Overview_Errors(t *testing.T) {
 func TestParsePlan_Overview_MissingFormatOrApprovedIsNotFailLoud(t *testing.T) {
 	t.Parallel()
 
-	// Unlike the frozen v2 parser, a missing format:/approved: key is not a
-	// ParsePlan failure — format-unrecognized/plan-unapproved are Validate's
-	// checks, not the parser's; a plan simply parses with the zero value.
+	// A missing format:/approved: key is not a ParsePlan failure —
+	// format-unrecognized/plan-unapproved are Validate's checks, not the parser's; a plan
+	// simply parses with the zero value.
 	dir := writePlanFiles(t, map[string]string{
 		"00-overview.md": "---\n{}\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
 		"01-only.md":     minimalCardFile(1, "only", "a.go"),

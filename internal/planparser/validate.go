@@ -7,9 +7,8 @@
 // (card-missing-field, card-field-overlap), the card-numbering heading cross-check, the
 // existence-dependent cross-referencing checks (path-missing, commit-subject-mismatch), and the
 // depends-on-order gate.
-// Findings are keyed by card
-// (flat `N-<slug>`), not batch — v3 has no batch concept — and there is no ValidateCaps: the
-// oversized-batch cap dies with batch itself.
+// Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
+// and there is no ValidateCaps because there is no oversized-batch cap to configure.
 //
 // This file is added across three cards (see docs/reference/plan-format.md's worked spec):
 // format/structure checks land first, then the card-path/Moves grammar checks, then the
