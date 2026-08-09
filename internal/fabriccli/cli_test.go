@@ -818,3 +818,33 @@ func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
 		t.Errorf("board link %s still exists after unwire", boardLink)
 	}
 }
+
+// TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal pins the refusal an operator sees from a
+// weft sibling's NON-anchored directory on a subpath-anchored hub: the specific
+// weft-sibling message, never the generic cwd-gate error — which names the weft's own anchored
+// directory as the place to stand and thereby directs the operator deeper INTO the weft.
+func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	// Record a subpath anchor so the weft ROOT is not the anchored directory.
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("mkdir board dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte("sub\n"), 0o644); err != nil {
+		t.Fatalf("write anchor marker: %v", err)
+	}
+
+	t.Chdir(fixture.WeftPrime)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", out.String())
+	}
+	result := decodeResult(t, &out)
+	errMsg, _ := result["error"].(string)
+	if !strings.Contains(errMsg, "weft sibling of a pair") {
+		t.Errorf("RunCLI(pairs) error = %q; want the specific weft-sibling refusal, not the generic gate error", errMsg)
+	}
+}

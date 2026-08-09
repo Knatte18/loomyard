@@ -327,6 +327,15 @@ func resolveWarpLocation() (cwd string, l *lyxcwd.Location, err error) {
 
 	l, err = lyxcwd.Resolve(cwd)
 	if err != nil {
+		// On a gate failure the generic error can actively misdirect: from a weft sibling's
+		// NON-anchored directory it names the weft's own anchored directory as the place to stand,
+		// where RequireWarpWorktree then refuses anyway.
+		// Classify the worktree ungated and prefer the specific weft/board refusal when it applies.
+		if worktreeLocation, worktreeErr := lyxcwd.ResolveWorktree(cwd); worktreeErr == nil {
+			if refusal := fabricengine.RequireWarpWorktree(worktreeLocation); refusal != nil {
+				return "", nil, refusal
+			}
+		}
 		return "", nil, err
 	}
 
