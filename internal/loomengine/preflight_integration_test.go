@@ -1,7 +1,7 @@
 //go:build integration
 
 // preflight_integration_test.go drives Preflight/checkResolved end-to-end
-// against real git fixtures — a paired host+fabric worktree with a wired _lyx
+// against real git fixtures — a paired warp+fabric worktree with a wired _lyx
 // junction and a seeded status.json — covering every pass/fail scenario
 // across all four preconditions. It is integration-tagged because it spawns
 // git via lyxtest fixtures (Test Tier Purity Invariant).
@@ -40,7 +40,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	// LoomStatusLock lives under the host worktree's own .lyx tree, wired above
+	// LoomStatusLock lives under the warp worktree's own .lyx tree, wired above
 	// as a real junction (dotlyx-junction-wiring-and-unwire) -- WireJunctions'
 	// own seedGitExclude call already keeps the .lyx junction entry itself out
 	// of `git status`, so no test-local exclude is needed here.
@@ -51,7 +51,7 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	// _lyx junction into the fabric worktree's own git repo, where they start
 	// out untracked. Commit them so a freshly-built fixture is genuinely
 	// clean on both sides — required now that Clean checks the fabric worktree
-	// too, not just the host.
+	// too, not just the warp.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
 	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
 
@@ -165,9 +165,9 @@ func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
 	}
 }
 
-// TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired host+fabric worktree
+// TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired warp+fabric worktree
 // with a valid fresh seed reports OK.
-// Since CopyPaired's host hub is a single-worktree repo, its Layout.Prime already equals
+// Since CopyPaired's warp hub is a single-worktree repo, its Layout.Prime already equals
 // Layout.WorktreeRoot — this test doubles as the "Prime worktree with a healthy pair+seed" scenario
 // (run-in-existing-or-prime-worktree).
 func TestPreflight_HealthyPairAndSeed(t *testing.T) {
@@ -241,10 +241,10 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	assertCheckSet(t, report, CheckWorktreeRoot)
 }
 
-// TestPreflight_HostDirty covers all three ways Clean can observe a dirty repo (a
+// TestPreflight_WarpDirty covers all three ways Clean can observe a dirty repo (a
 // tracked-and-modified file, a staged file, and an untracked-only file), plus the genuinely-new
 // fabric-dirty-only and both-dirty shapes now that Clean also checks the fabric side.
-func TestPreflight_HostDirty(t *testing.T) {
+func TestPreflight_WarpDirty(t *testing.T) {
 	tests := []struct {
 		name  string
 		dirty func(t *testing.T, f lyxtest.PairedFixture)
@@ -289,9 +289,9 @@ func TestPreflight_HostDirty(t *testing.T) {
 		{
 			name: "BothDirty",
 			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
-				hostUntracked := filepath.Join(f.Hub, "untracked.txt")
-				if err := os.WriteFile(hostUntracked, []byte("new"), 0o644); err != nil {
-					t.Fatalf("write untracked host file: %v", err)
+				warpUntracked := filepath.Join(f.Hub, "untracked.txt")
+				if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
+					t.Fatalf("write untracked warp file: %v", err)
 				}
 				fabricUntracked := filepath.Join(f.WeftPrime, "untracked.txt")
 				if err := os.WriteFile(fabricUntracked, []byte("new"), 0o644); err != nil {
@@ -340,17 +340,17 @@ func TestPreflight_FabricNotReady(t *testing.T) {
 	assertCheckSet(t, report, CheckFabricReady, CheckSeedUnreadable)
 }
 
-// TestPreflight_HostFabricDifferentBranches asserts that host and fabric worktrees on different
+// TestPreflight_WarpFabricDifferentBranches asserts that warp and fabric worktrees on different
 // branches report fabric-sync — the CauseBranchMismatch/CheckFabricSync equivalence pinned by
 // healthy-typed-reason,
 // and that fabric-sync alone does NOT block the seed check (the junction and fabric directory are both
 // still healthy).
-func TestPreflight_HostFabricDifferentBranches(t *testing.T) {
+func TestPreflight_WarpFabricDifferentBranches(t *testing.T) {
 	t.Parallel()
 
 	f, _ := setupPreflightFixture(t)
 
-	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "host-only")
+	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {
@@ -402,39 +402,39 @@ func TestPreflight_ConfigLoadFailed(t *testing.T) {
 func TestPreflight_JunctionBroken(t *testing.T) {
 	shapes := []struct {
 		name    string
-		corrupt func(t *testing.T, hostLink string)
+		corrupt func(t *testing.T, warpLink string)
 	}{
 		{
 			name: "Missing",
-			corrupt: func(t *testing.T, hostLink string) {
-				if err := fslink.Remove(hostLink); err != nil {
-					t.Fatalf("remove junction %s: %v", hostLink, err)
+			corrupt: func(t *testing.T, warpLink string) {
+				if err := fslink.Remove(warpLink); err != nil {
+					t.Fatalf("remove junction %s: %v", warpLink, err)
 				}
 			},
 		},
 		{
 			name: "NotALink",
-			corrupt: func(t *testing.T, hostLink string) {
-				if err := fslink.Remove(hostLink); err != nil {
-					t.Fatalf("remove junction %s: %v", hostLink, err)
+			corrupt: func(t *testing.T, warpLink string) {
+				if err := fslink.Remove(warpLink); err != nil {
+					t.Fatalf("remove junction %s: %v", warpLink, err)
 				}
-				if err := os.Mkdir(hostLink, 0o755); err != nil {
-					t.Fatalf("mkdir real dir in junction's place %s: %v", hostLink, err)
+				if err := os.Mkdir(warpLink, 0o755); err != nil {
+					t.Fatalf("mkdir real dir in junction's place %s: %v", warpLink, err)
 				}
 			},
 		},
 		{
 			name: "PointsElsewhere",
-			corrupt: func(t *testing.T, hostLink string) {
-				if err := fslink.Remove(hostLink); err != nil {
-					t.Fatalf("remove junction %s: %v", hostLink, err)
+			corrupt: func(t *testing.T, warpLink string) {
+				if err := fslink.Remove(warpLink); err != nil {
+					t.Fatalf("remove junction %s: %v", warpLink, err)
 				}
-				wrongTarget := filepath.Join(filepath.Dir(hostLink), "not-the-fabric-junction-dir")
+				wrongTarget := filepath.Join(filepath.Dir(warpLink), "not-the-fabric-junction-dir")
 				if err := os.MkdirAll(wrongTarget, 0o755); err != nil {
 					t.Fatalf("mkdir wrong target %s: %v", wrongTarget, err)
 				}
-				if err := fslink.CreateDirLink(hostLink, wrongTarget); err != nil {
-					t.Fatalf("CreateDirLink(%s, %s): %v", hostLink, wrongTarget, err)
+				if err := fslink.CreateDirLink(warpLink, wrongTarget); err != nil {
+					t.Fatalf("CreateDirLink(%s, %s): %v", warpLink, wrongTarget, err)
 				}
 			},
 		},
@@ -447,7 +447,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 	}{
 		{
 			name:       "Lyx",
-			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return fabricengine.HostLyxLink(f.Layout, slug) },
+			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return fabricengine.WarpLyxLink(f.Layout, slug) },
 			wantChecks: []CheckID{CheckSeedUnreadable},
 		},
 		{
@@ -465,8 +465,8 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 				t.Parallel()
 
 				f, slug := setupPreflightFixture(t)
-				hostLink := j.linkFor(f, slug)
-				tt.corrupt(t, hostLink)
+				warpLink := j.linkFor(f, slug)
+				tt.corrupt(t, warpLink)
 
 				report, err := checkResolved(f.Layout)
 				if err != nil {
@@ -518,7 +518,7 @@ func TestPreflight_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	}
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.HostWorktree != filepath.ToSlash(f.Layout.WorktreePath()) {
+		if pair.WarpWorktree != filepath.ToSlash(f.Layout.WorktreePath()) {
 			continue
 		}
 		found = true
@@ -648,7 +648,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 }
 
 // TestPreflight_MultipleSimultaneousFailures asserts that independently tripped checks (a dirty
-// host and a branch-diverged fabric) are both collected into one Report rather than the first
+// warp and a branch-diverged fabric) are both collected into one Report rather than the first
 // short-circuiting the rest.
 func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	t.Parallel()
@@ -659,7 +659,7 @@ func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 		t.Fatalf("write untracked file: %v", err)
 	}
-	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "host-only")
+	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {

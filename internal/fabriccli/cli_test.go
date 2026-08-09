@@ -28,10 +28,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// setupCLIRepo creates a hub via lyxtest.CopyHostHub, changes into it, and writes a
+// setupCLIRepo creates a hub via lyxtest.CopyWarpHub, changes into it, and writes a
 // _lyx/config/fabric.yaml config at the repo-wide board dir so RunCLI's
 // migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can
-// resolve it. f.Hub is the fixture's host worktree root, i.e.
+// resolve it. f.Hub is the fixture's warp worktree root, i.e.
 // lyxcwd.Location.WorktreePath() once resolved — the real lyxcwd HubPath
 // (WorktreePath()'s parent) is filepath.Dir(f.Hub), matching the established
 // idiom in internal/boardcli's own cli_test.go/notes_test.go fixtures.
@@ -39,7 +39,7 @@ import (
 // required for RunCLI.
 func setupCLIRepo(t *testing.T) string {
 	t.Helper()
-	f := lyxtest.CopyHostHub(t)
+	f := lyxtest.CopyWarpHub(t)
 	t.Chdir(f.Hub)
 
 	boardDir := fabricengine.BoardDir(filepath.Dir(f.Hub))
@@ -159,13 +159,13 @@ func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
 
 // TestRunCLI_PairsReportsPollutionEntryWithRemedy pins the pollution JSON shape at the CLI
 // boundary, not only at the fabricengine.Status engine boundary: with a file tracked directly
-// under _lyx in the host index, "fabric pairs" must still emit a pollution entry naming that
+// under _lyx in the warp index, "fabric pairs" must still emit a pollution entry naming that
 // path with a non-empty "remedy" key. The removed report-only marker key is gone from
 // PollutionEntry as of this batch — Remedy == "" now carries the report-only signal on its own —
 // so this test does not assert its absence directly; it asserts the surviving "remedy" key is
 // present and non-empty instead, which is the shape that matters to a CLI consumer.
 func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
-	// A paired fixture (host + weft sibling), not the host-only setupCLIRepo
+	// A paired fixture (warp + weft sibling), not the warp-only setupCLIRepo
 	// fixture: Status bails out of the per-pair pollution scan early when the
 	// weft sibling is missing, so a paired fixture is required to reach it.
 	fixture := lyxtest.CopyPaired(t)
@@ -180,11 +180,11 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 
 	t.Chdir(fixture.Hub)
 
-	hostLyxDir := filepath.Join(fixture.Hub, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(hostLyxDir, 0o755); err != nil {
-		t.Fatalf("mkdir host _lyx dir: %v", err)
+	warpLyxDir := filepath.Join(fixture.Hub, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(warpLyxDir, 0o755); err != nil {
+		t.Fatalf("mkdir warp _lyx dir: %v", err)
 	}
-	trackedFile := filepath.Join(hostLyxDir, "PATTERN.md")
+	trackedFile := filepath.Join(warpLyxDir, "PATTERN.md")
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 }
 
 // TestRunCLI_CloneRequiresExactlyTwoArgs verifies that "fabric clone" rejects both too few (1) and
-// too many (3, the old <host-url> <weft-url> <board-url> form this task removed) positional
+// too many (3, the old <warp-url> <weft-url> <board-url> form this task removed) positional
 // arguments with exit 1 and the updated usage message — runCloneWithReset's len(args) != 2 check
 // runs before any git spawn, so a t.TempDir + t.Chdir is sufficient with no fixture.
 func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
@@ -412,11 +412,11 @@ func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
 	}{
 		{
 			name: "OneArg",
-			args: []string{"clone", "https://example.com/host"},
+			args: []string{"clone", "https://example.com/warp"},
 		},
 		{
 			name: "ThreeArgs",
-			args: []string{"clone", "https://example.com/host", "https://example.com/weft", "https://example.com/board"},
+			args: []string{"clone", "https://example.com/warp", "https://example.com/weft", "https://example.com/board"},
 		},
 	}
 	for _, tt := range tests {
@@ -443,14 +443,14 @@ func TestRunCLI_CloneRequiresExactlyTwoArgs(t *testing.T) {
 	}
 }
 
-// makeCLICloneHostBare creates a bare host remote at <dir>/<name>.git seeded
+// makeCLICloneWarpBare creates a bare warp remote at <dir>/<name>.git seeded
 // with a README and a committed "backend" subdirectory, so a clone --subpath
 // backend test has a real subpath to anchor at. This package has no existing
-// two-repo clone fixture helper (CopyHostHub/CopyPaired both pre-materialize
+// two-repo clone fixture helper (CopyWarpHub/CopyPaired both pre-materialize
 // an already-paired hub, not raw clone sources), so it is built minimally
 // inline, mirroring internal/fabricengine/clone_adopt_test.go's
 // makeBareRemoteWithSubdir.
-func makeCLICloneHostBare(t *testing.T, dir, name string) string {
+func makeCLICloneWarpBare(t *testing.T, dir, name string) string {
 	t.Helper()
 
 	bare := filepath.Join(dir, name+".git")
@@ -498,15 +498,15 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	return bare
 }
 
-// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <host> <weft>" against a local
+// TestRunCLI_CloneEndToEnd drives "fabric clone --subpath backend <warp> <weft>" against a local
 // two-repo fixture and asserts the end-to-end clone-does-everything contract: the JSON envelope,
-// the wired host junctions, the anchor marker and repo-wide config committed onto weft:main, and
+// the wired warp junctions, the anchor marker and repo-wide config committed onto weft:main, and
 // per-worktree module config reconciliation — i.e.
 // that the card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's own git-level
 // clone.
 func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	fixtures := t.TempDir()
-	hostBare := makeCLICloneHostBare(t, fixtures, "clonecli-host")
+	warpBare := makeCLICloneWarpBare(t, fixtures, "clonecli-warp")
 	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-weft")
 
 	cloneParent := t.TempDir()
@@ -515,7 +515,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
 		"clone", "--subpath", "backend",
-		filepath.ToSlash(hostBare), filepath.ToSlash(weftBare),
+		filepath.ToSlash(warpBare), filepath.ToSlash(weftBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone --subpath backend) = %d; want 0\noutput: %s", exitCode, out.String())
@@ -533,12 +533,12 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		t.Errorf("RunCLI(clone) anchor = %q; want %q", anchor, "backend")
 	}
 
-	// The prime host worktree's structural junctions (_lyx and .lyx) must be
+	// The prime warp worktree's structural junctions (_lyx and .lyx) must be
 	// wired: .lyx is structural (structuralNeverCommittedDirs) and is wired by
 	// every clone regardless of pathspec, so it is checked here rather than
 	// an optional config-driven name, which a genuinely empty bare weft
 	// clone (zero commits, no pre-existing weft:main fabric.yaml) never wires.
-	primeCwd := filepath.Join(hubPath, "clonecli-host", "backend")
+	primeCwd := filepath.Join(hubPath, "clonecli-warp", "backend")
 	for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
 		link := filepath.Join(primeCwd, name)
 		isLink, err := fslink.IsLink(link)
@@ -574,7 +574,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// Per-worktree module configs (e.g. "board") must have been reconciled
 	// on the weft side.
-	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-host"), "backend")
+	weftBase := filepath.Join(weftname.SiblingPath(hubPath, "clonecli-warp"), "backend")
 	boardConfigPath := configengine.ConfigFile(weftBase, "board")
 	if _, err := os.Stat(boardConfigPath); err != nil {
 		t.Errorf("per-worktree board config missing at %s: %v", boardConfigPath, err)
@@ -585,7 +585,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 // echoes anchor "." — the default root anchor.
 func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 	fixtures := t.TempDir()
-	hostBare := makeCLICloneHostBare(t, fixtures, "clonecli-root-host")
+	warpBare := makeCLICloneWarpBare(t, fixtures, "clonecli-root-warp")
 	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-root-weft")
 
 	cloneParent := t.TempDir()
@@ -593,7 +593,7 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
-		"clone", filepath.ToSlash(hostBare), filepath.ToSlash(weftBare),
+		"clone", filepath.ToSlash(warpBare), filepath.ToSlash(weftBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())

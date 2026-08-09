@@ -79,7 +79,7 @@ No other accessor, weft path, junction path, or per-module subdirectory construc
 
 Every per-module durable-storage subdirectory (`_lyx/plan`, `_lyx/webster`,
 and the rest) is now that module's own private relative-path constant, joined onto `AnchorPath()` directly by the module that owns it — never a `lyxcwd` function call.
-Weft-sibling paths and junction construction (`WeftWorktree`, `HostLyxLink`, `HostJunctions`, portal and launcher paths,
+Weft-sibling paths and junction construction (`WeftWorktree`, `WarpLyxLink`, `WarpJunctions`, portal and launcher paths,
 and the `Prime`/sibling-worktree-list lookup they are built from) belong to `internal/fabricengine`.
 The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`) — also `fabricengine`'s concern, never `lyxcwd`'s. See `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full, current per-token ownership map.
 

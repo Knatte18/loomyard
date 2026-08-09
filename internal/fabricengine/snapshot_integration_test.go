@@ -267,7 +267,7 @@ func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 // package, unreachable from this internal-package file.
 // It would also test the wrong thing — snapshotWarpSHA scans the weft worktree's CURRENT branch and
 // nothing else, so a weft-side branch switch by itself is the whole mechanism under test;
-// the coordinated host+weft checkout is only how that state arises in production.
+// the coordinated warp+weft checkout is only how that state arises in production.
 func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	t.Parallel()
 

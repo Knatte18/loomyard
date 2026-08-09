@@ -1,6 +1,6 @@
 // diff.go implements the unified Fabric.Diff and Fabric.Status: two read-only, side-labelled views
 // over what changed across a warp<->weft pair, distinct from status.go's Topology.Status (the
-// paired host<->weft topology/branch-drift view).
+// paired warp<->weft topology/branch-drift view).
 // Fabric.Diff answers "what changed since this warp SHA, on both sides" via the correspondence
 // index;
 // Fabric.Status answers "what is currently uncommitted, on both sides" via

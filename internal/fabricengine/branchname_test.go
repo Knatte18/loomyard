@@ -8,12 +8,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
-// TestWeftBranchName covers the uniform <host>/<host>-weft scheme across the primary branch, a
+// TestWeftBranchName covers the uniform <warp>/<warp>-weft scheme across the primary branch, a
 // prefixed task branch, and a plain (empty-prefix) slug.
 func TestWeftBranchName(t *testing.T) {
 	tests := []struct {
 		name       string
-		hostBranch string
+		warpBranch string
 		want       string
 	}{
 		{"primary", "main", "main-weft"},
@@ -22,27 +22,27 @@ func TestWeftBranchName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := fabricengine.WeftBranchName(tt.hostBranch)
+			got := fabricengine.WeftBranchName(tt.warpBranch)
 			if got != tt.want {
-				t.Errorf("WeftBranchName(%q) = %q; want %q", tt.hostBranch, got, tt.want)
+				t.Errorf("WeftBranchName(%q) = %q; want %q", tt.warpBranch, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestWeftBranchName_RoundTripsWithWeftHostSlug asserts that fabricengine.WeftHostSlug, the
-// documented inverse, recovers the original host branch from every WeftBranchName output.
-func TestWeftBranchName_RoundTripsWithWeftHostSlug(t *testing.T) {
-	hostBranches := []string{"main", "hanf/foo", "foo"}
-	for _, host := range hostBranches {
-		weft := fabricengine.WeftBranchName(host)
-		gotHost, ok := fabricengine.WeftHostSlug(weft)
+// TestWeftBranchName_RoundTripsWithWeftWarpSlug asserts that fabricengine.WeftWarpSlug, the
+// documented inverse, recovers the original warp branch from every WeftBranchName output.
+func TestWeftBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {
+	warpBranches := []string{"main", "hanf/foo", "foo"}
+	for _, warp := range warpBranches {
+		weft := fabricengine.WeftBranchName(warp)
+		gotWarp, ok := fabricengine.WeftWarpSlug(weft)
 		if !ok {
-			t.Errorf("WeftHostSlug(%q) ok = false; want true", weft)
+			t.Errorf("WeftWarpSlug(%q) ok = false; want true", weft)
 			continue
 		}
-		if gotHost != host {
-			t.Errorf("WeftHostSlug(%q) = %q; want %q", weft, gotHost, host)
+		if gotWarp != warp {
+			t.Errorf("WeftWarpSlug(%q) = %q; want %q", weft, gotWarp, warp)
 		}
 	}
 }

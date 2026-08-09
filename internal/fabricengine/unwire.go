@@ -1,4 +1,4 @@
-// unwire.go implements the Unwire verb: a per-host-worktree full deactivation of fabric wiring, the
+// unwire.go implements the Unwire verb: a per-warp-worktree full deactivation of fabric wiring, the
 // teardown successor to the deleted `lyx init --undo`.
 //
 // Unwire is per-worktree and never touches the repo-wide `weft:main` records (`.lyx-anchor`,
@@ -23,7 +23,7 @@ import (
 
 // UnwireVerbResult summarizes what Unwire changed.
 type UnwireVerbResult struct {
-	// JunctionsRemoved lists the Name of each host junction that was actually
+	// JunctionsRemoved lists the Name of each warp junction that was actually
 	// present and removed. Empty when no junction was wired.
 	JunctionsRemoved []string
 	// WeftContent describes _lyx only — "preserved" or "not_present" — weft-side
@@ -44,8 +44,8 @@ type UnwireVerbResult struct {
 	BoardJunctionRemoved bool
 }
 
-// Unwire reverses every host junction wired for the worktree at cwd and their warp
-// `.git/info/exclude` entries — a full per-host-worktree deactivation.
+// Unwire reverses every warp junction wired for the worktree at cwd and their warp
+// `.git/info/exclude` entries — a full per-warp-worktree deactivation.
 // The junction name-set is enumerated from a full on-disk scan, removing every fabric junction
 // present on disk, including stale ones absent from the repo-wide pathspec.
 // It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
@@ -117,7 +117,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 // present, and its matching .git/info/exclude entry via a standalone
 // unseedGitExclude(l, slug, []string{BoardDirName}) call — the unwire
 // counterpart to wireBoardLink's own standalone seedGitExclude call, since
-// _board has no HostJunctions mirror-pair record either function can drive
+// _board has no WarpJunctions mirror-pair record either function can drive
 // generically.
 //
 // Removing an absent link is not an error: it returns (false, nil). A
@@ -134,7 +134,7 @@ func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) 
 		}
 		if !isLink {
 			return false, fmt.Errorf(
-				"host repo already contains a real %s at %s; it is not a junction — refusing to remove it",
+				"warp repo already contains a real %s at %s; it is not a junction — refusing to remove it",
 				filepath.Base(link), link,
 			)
 		}

@@ -1,11 +1,11 @@
 // fabric_test.go — unit tests for the Fabric handle, sync options, and ScopedPathspec.
 // No git spawn: newPaired only stat-checks paths, and Open needs nothing beyond a hand-built
 // *lyxcwd.Location for that same stat-only contract to hold.
-// The missing-path contract (host checked first, *ErrMissingPath naming the absent side) is
+// The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is
 // restated here through Open(l), the constructor the contract now belongs to, using a hand-built
 // Location rather than a real git fixture — the fast Tier-1 home for this contract.
 // open_integration_test.go pins the identical contract end-to-end against a real paired lyxtest
-// fixture (CopyPaired; TestOpen_MissingHostWorktree / TestOpen_MissingSiblingWorktree); that is the Tier-2 home,
+// fixture (CopyPaired; TestOpen_MissingWarpWorktree / TestOpen_MissingSiblingWorktree); that is the Tier-2 home,
 // not a duplicate of these — these prove the pure stat-check logic without a git spawn.
 
 package fabricengine_test
@@ -20,14 +20,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// TestOpen_MissingWarpPath asserts that Open errors on a missing host (warp) worktree, naming the
-// host path — the host side is checked first, ahead of the weft sibling.
+// TestOpen_MissingWarpPath asserts that Open errors on a missing warp (warp) worktree, naming the
+// warp path — the warp side is checked first, ahead of the weft sibling.
 func TestOpen_MissingWarpPath(t *testing.T) {
 	hub := t.TempDir()
 	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "warp", AnchorRel: "."}
 
-	// The weft sibling exists, so a failure here can only be the host side —
-	// proving Open checks host first.
+	// The weft sibling exists, so a failure here can only be the warp side —
+	// proving Open checks warp first.
 	if err := os.Mkdir(fabricengine.WeftWorktree(l), 0755); err != nil {
 		t.Fatalf("mkdir weft sibling: %v", err)
 	}
@@ -46,13 +46,13 @@ func TestOpen_MissingWarpPath(t *testing.T) {
 }
 
 // TestOpen_MissingWeftPath asserts that Open errors on a missing weft sibling, naming the weft
-// path, when the host worktree is present.
+// path, when the warp worktree is present.
 func TestOpen_MissingWeftPath(t *testing.T) {
 	hub := t.TempDir()
 	l := &lyxcwd.Location{HubPath: hub, WorktreeName: "warp", AnchorRel: "."}
 
 	if err := os.Mkdir(l.WorktreePath(), 0755); err != nil {
-		t.Fatalf("mkdir host worktree: %v", err)
+		t.Fatalf("mkdir warp worktree: %v", err)
 	}
 
 	_, err := fabricengine.Open(l)

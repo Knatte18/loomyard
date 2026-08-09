@@ -47,7 +47,7 @@ var knownTierTags = []string{"integration", "smoke", "scout"}
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
 // matches exec.CommandContext, and lyxtest.Copy prefix-matches lyxtest.CopyPaired,
-// lyxtest.CopyPairedLocal, lyxtest.CopyHostHub, lyxtest.CopyWeft, and any future
+// lyxtest.CopyPairedLocal, lyxtest.CopyWarpHub, lyxtest.CopyWeft, and any future
 // Copy* fixture. Comment or string-literal mentions trip the guard too — that is
 // accepted (rename the mention or tag the file).
 var bannedTokens = []string{

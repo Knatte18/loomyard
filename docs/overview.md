@@ -4,7 +4,7 @@ Loomyard is a Go toolkit of one-shot CLI modules.
 Each invocation starts a process, runs one command, writes JSON to stdout, and exits — there is no daemon and no shared memory.
 State lives on disk per module and is coordinated with file locks, so concurrent `lyx` processes on a machine cooperate through the filesystem.
 The first module, **board** (a task tracker), is implemented;
-**fabric** (the host↔weft git-coordination module) is implemented;
+**fabric** (the warp↔weft git-coordination module) is implemented;
 and **reed**, the clean tmux overlay built on what its now-deleted proof-of-concept (`muxpoc`) proved, is implemented (see [manifest/roadmap.md](../manifest/roadmap.md)).
 
 In the long term, Loomyard is intended to **replace mill/millhouse (Python)** entirely.
@@ -77,7 +77,8 @@ Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, lau
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
-A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync` string-literal-only, `tools/`, `sandbox/`), the tokens `weft`/`warp` and the fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
+A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync` string-literal-only), the tokens `weft`/`warp` may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
+The fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) is banned everywhere this test reaches, including inside the owner set — `host` is retired, not merely scoped.
 It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lyxcwd`'s to own — see CONSTRAINTS.md's Fabric Vocabulary Invariant.
 
 See [CONSTRAINTS.md](../CONSTRAINTS.md) for details.
@@ -97,24 +98,24 @@ Planned-but-not-built work lives under the separate top-level `manifest/` (`mani
 
 ## Weft overlay model
 
-lyx organizes overlay artifacts (configuration, task state, raddle docs, and the board) into a **weft repo** — a companion git repository that stays separate from the host repo, keeping the host pristine.
+lyx organizes overlay artifacts (configuration, task state, raddle docs, and the board) into a **weft repo** — a companion git repository that stays separate from the Fabric repo, keeping it pristine.
 
 ### Topology
 
 ```
 <hub>/                              (top-level Hub, NOT a git repo)
-  ├── <prime>/                      (host worktree, main branch; git repo root)
+  ├── <prime>/                      (warp worktree, main branch; git repo root)
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
-  ├── <slug>/                       (additional host worktree; git repo root)
+  ├── <slug>/                       (additional warp worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
   └── _board/                       (weft:main worktree; the task store)
 ```
 
 ### Git ownership
 
-The **host repo** is the project's source of truth, maintained by developers.
+The **Fabric repo** is the project's source of truth, maintained by developers.
 All lyx-specific artifacts live in the **weft repo**, a separate git repository that lyx controls.
-This separation keeps host commits focused on project code and delegates lyx infrastructure to the weft.
+This separation keeps Fabric commits focused on project code and delegates lyx infrastructure to the weft.
 
 ### Artifacts location
 
@@ -123,8 +124,8 @@ This separation keeps host commits focused on project code and delegates lyx inf
 | `_lyx/config/` | Weft worktree | Weft | Live YAML configuration files for all modules (board, fabric); reconciled via `lyx config reconcile` |
 | `.env` | Weft worktree | Weft | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_lyx/raddle/` | Weft worktree | Weft | Raddle documentation (the raddle nav-doc overlay), reached through the `_lyx` junction like every other `_lyx` subtree |
-| `_board/` | Hub | Board | A second weft worktree, checked out on the host's own unsuffixed default branch (`weft:main` in the common case) — never a separate clone, never `<branch>-weft` |
-| Host source | Host worktree | Host | Project source code |
+| `_board/` | Hub | Board | A second weft worktree, checked out on the warp's own unsuffixed default branch (`weft:main` in the common case) — never a separate clone, never `<branch>-weft` |
+| Warp source | Warp worktree | Warp | Project source code |
 
 ### Durable vs ephemeral state (`_lyx/` vs `.lyx/`)
 
@@ -144,8 +145,8 @@ A pane handle no → `.lyx/`.
 
 ### Junction model
 
-Each host worktree has a sibling weft worktree.
-Host worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree.
+Each warp worktree has a sibling weft worktree.
+Warp worktrees use **junctions** (Windows) or symlinks to route writes into the sibling weft worktree.
 Worktrees are wired eagerly at `lyx fabric clone`/`lyx fabric add` time — there is no separate setup step: clone and worktree-add each materialize junctions, `_lyx`, and config in one call.
 
 The wired junction set is not hardcoded,
@@ -156,8 +157,8 @@ Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converge
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
 This produces the two concrete junctions this repo ships with today:
-- `<host>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction, structural)
-- `<host>/.lyx` → `<hub>/<slug>-weft/.lyx` (machine-local scratch junction, structural)
+- `<warp>/_lyx` → `<hub>/<slug>-weft/_lyx` (config junction, structural)
+- `<warp>/.lyx` → `<hub>/<slug>-weft/.lyx` (machine-local scratch junction, structural)
 
 The optional `pathspec` default is empty today.
 A future weft-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lyxcwd` code change needed — but that mechanism now applies to *optional* directories only;
@@ -175,15 +176,15 @@ A pre-existing real `.lyx` directory — every worktree that predates this junct
 
 ### Branch model
 
-Weft branches mirror host-repo branching: when a new weft worktree is spawned, its branch forks from the weft branch whose name equals the host worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations.
+Weft branches mirror warp-repo branching: when a new weft worktree is spawned, its branch forks from the weft branch whose name equals the warp worktree's current branch at spawn time, preserving a shared merge-base for future squash-merge-back operations.
 This guarantees subtasks (spawned from non-main branches) inherit the correct fork point: branch isolation is **not** orphan-based but **merge-base-preserving** (each on its parent's timeline). `_lyx` is isolated by pathspec (junctions route it into weft;
-host `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
+warp `.git/info/exclude` hides it) rather than by orphan topology, so no merge-back state is lost.
 
 ### Weft suffix convention
 
-The weft worktree for any host worktree is deterministic:
-- Host: `<hub>/<slug>/` → Weft: `<hub>/<slug>-weft/`
-- Host: `<prime>/` → Weft: `<prime>-weft/` (prime is the name of the main worktree)
+The weft worktree for any warp worktree is deterministic:
+- Warp: `<hub>/<slug>/` → Weft: `<hub>/<slug>-weft/`
+- Warp: `<prime>/` → Weft: `<prime>-weft/` (prime is the name of the main worktree)
 
 The `-weft` suffix is fixed and non-configurable.
 Weft paths are computed on demand from geometry and do not require a registry.
@@ -202,7 +203,7 @@ github.com/Knatte18/loomyard/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
-├── internal/fabriccli/           the fabric CLI command (host↔weft git coordination)
+├── internal/fabriccli/           the fabric CLI command (warp↔weft git coordination)
 ├── internal/fabricengine/        the fabric domain kernel
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
@@ -250,7 +251,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **config** — interactive menu for viewing and editing module configs;
   `lyx config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
   `lyx config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path. ✅ Implemented.
-- **fabric** — the sole host↔weft git-coordination module, unified over two `internal/gitrepo.Repo` instances: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches host+weft together + re-points junctions), reconcile, status, prune, cleanup, and weft content-sync (commit/push/pull/sync/diff), all in one command tree (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|status|commit|push|pull|sync|diff`. `status` is the unified both-sides uncommitted-change view (`Fabric.Status`); `diff` reports the side-labelled changes since a given warp SHA (`Fabric.Diff`). `pull` is now unified across warp+weft, not weft-only: it fast-forwards weft first, then fetches and inspects warp, detecting a rebased/force-pushed warp remote via ancestry and safely re-anchoring weft's correspondence to it when it is safe to do so. ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
+- **fabric** — the sole warp↔weft git-coordination module, unified over two `internal/gitrepo.Repo` instances: clone (hub-creator), dual-worktree add/remove, coordinated checkout (switches warp+weft together + re-points junctions), reconcile, status, prune, cleanup, and weft content-sync (commit/push/pull/sync/diff), all in one command tree (`internal/fabriccli` + `internal/fabricengine`); CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|status|commit|push|pull|sync|diff`. `status` is the unified both-sides uncommitted-change view (`Fabric.Status`); `diff` reports the side-labelled changes since a given warp SHA (`Fabric.Diff`). `pull` is now unified across warp+weft, not weft-only: it fast-forwards weft first, then fetches and inspects warp, detecting a rebased/force-pushed warp remote via ancestry and safely re-anchoring weft's correspondence to it when it is safe to do so. ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient` (`lyx selfreport create <title>`).
   Credentials resolve from `GH_TOKEN`/`GITHUB_TOKEN` first, with the `gh` CLI (`gh auth token`) as a bounded, non-blocking fallback token source — not a hard prerequisite.

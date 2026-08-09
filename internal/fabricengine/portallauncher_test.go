@@ -27,7 +27,7 @@ func newPortalLauncherTestLocation(hub, worktreeRoot, relPath string) *lyxcwd.Lo
 
 // wantMenuLauncherName returns the expected menu launcher filename for the
 // current runtime.GOOS, mirroring the GOOS-aware selection in launchers.go
-// so these tests are green regardless of host OS.
+// so these tests are green regardless of warp OS.
 func wantMenuLauncherName() string {
 	if runtime.GOOS == "windows" {
 		return "ide-menu.cmd"

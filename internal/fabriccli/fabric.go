@@ -1,15 +1,15 @@
 // fabric.go is the cobra Command() entry point and the RunCLI seam for the fabric module.
 // It builds the "fabric" parent command and its hub-scoped topology verbs (add, list, remove,
-// checkout, pairs, reconcile, prune, cleanup), each driving fabricengine.Topology for the host↔weft
+// checkout, pairs, reconcile, prune, cleanup), each driving fabricengine.Topology for the warp↔weft
 // worktree pairing.
 // The weft-git content-sync verbs (status, commit, push, pull, sync, diff) are wired in by
 // weft_verbs.go, which also extends this file's Command() build with the --weft-path bypass flag
 // and its PersistentPreRunE.
 
-// Package fabriccli owns the unified host↔weft cobra surface for lyx: the flat 16-verb "lyx fabric"
-// tree combining host↔weft topology verbs and weft content-sync verbs over the fabricengine
+// Package fabriccli owns the unified warp↔weft cobra surface for lyx: the flat 16-verb "lyx fabric"
+// tree combining warp↔weft topology verbs and weft content-sync verbs over the fabricengine
 // package.
-// fabric is the sole host↔weft git-coordination module (see docs/overview.md).
+// fabric is the sole warp↔weft git-coordination module (see docs/overview.md).
 // Every fabric weft branch carries the uniform "-weft" suffix (fabricengine.WeftBranchName).
 package fabriccli
 
@@ -33,20 +33,20 @@ import (
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fabric",
-		Short: "unified host↔weft git-coordination",
-		Long: `fabric manages the host↔weft topology and weft content-sync for lyx-managed
+		Short: "unified warp↔weft git-coordination",
+		Long: `fabric manages the warp↔weft topology and weft content-sync for lyx-managed
 git repositories, unifying worktree pairing with commit/push/pull.
 
 It owns worktree pairing, coordinated branch switching with junction re-point,
 reconcile/prune/cleanup of managed pairs, and weft-side status/commit/push/pull/
 sync, all under one module.
 
-Branch scheme: every fabric weft branch is named after the paired host branch
-plus a fixed suffix (e.g. host branch "wt-foo" pairs with weft branch
+Branch scheme: every fabric weft branch is named after the paired warp branch
+plus a fixed suffix (e.g. warp branch "wt-foo" pairs with weft branch
 "wt-foo` + weftname.Suffix + `") — uniform for every pair, including the
 clone-time primary.
 
-fabric is the sole host↔weft git-coordination module. See docs/overview.md.
+fabric is the sole warp↔weft git-coordination module. See docs/overview.md.
 
 Example:
   lyx fabric add my-task
@@ -54,23 +54,23 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] <host-url> <weft-url> [board-url]
+	// clone [--reset] <warp-url> <weft-url> [board-url]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] <host-url> <weft-url>",
+		Use:   "clone [--reset] [--subpath <rel>] <warp-url> <weft-url>",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
-		Long: `Clone two repositories into a new hub directory (<parent>/<host-name>-HUB)
-and wire everything: the host prime, weft prime, _board worktree, lyx-anchor
-subpath, repo-wide config, host junctions, and per-worktree module configs —
-a single command, no follow-up activation step required. Host junctions are
+		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-HUB)
+and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
+subpath, repo-wide config, warp junctions, and per-worktree module configs —
+a single command, no follow-up activation step required. Warp junctions are
 excluded through the warp's .git/info/exclude, never a committed .gitignore.
 
-  <host-name>            — host prime (the main working repo)
-  <host-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
+  <warp-name>            — warp prime (the main working repo)
+  <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
-Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the host
+Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the warp
 repo instead of its root — e.g. --subpath backend for a monorepo where lyx
 only manages the backend/ tree. On a re-clone, the previously recorded
 subpath is adopted from weft:main; an explicit --subpath that disagrees with
@@ -85,7 +85,7 @@ state; otherwise the branch is created fresh at the cloned HEAD. The cloned
 default branch itself remains, unclaimed.
 
 _board is then materialized as a second worktree of the weft repo, on the
-host's unsuffixed default branch — adopted if the weft remote already carries
+warp's unsuffixed default branch — adopted if the weft remote already carries
 board history, freshly orphan-created otherwise.
 
 Clone wires everything automatically — no follow-up command is needed to
@@ -101,19 +101,19 @@ Example:
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
-	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the host repo")
+	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the warp repo")
 	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <slug>",
-		Short: "create a dual host+weft worktree pair",
-		Long: `Create a new paired host and weft git worktree for the given slug.
+		Short: "create a dual warp+weft worktree pair",
+		Long: `Create a new paired warp and weft git worktree for the given slug.
 
 The new weft branch is forked from the HEAD of the worktree you run
 "lyx fabric add" from — that worktree's current checked-out branch, not main
 and not prime's branch. This makes the new pair an exact continuation of
-the context you were working in. The weft branch name is always the host
+the context you were working in. The weft branch name is always the warp
 branch's name with fabric's uniform suffix appended.
 
 The command errors if the worktree is on a detached HEAD or an unborn branch,
@@ -127,10 +127,10 @@ Example:
 	// list
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "list host worktrees (use 'lyx fabric pairs' for full pair geometry)",
-		Long: `List all host worktrees registered in the current hub.
+		Short: "list warp worktrees (use 'lyx fabric pairs' for full pair geometry)",
+		Long: `List all warp worktrees registered in the current hub.
 
-This command outputs host worktree paths only. For the full host↔weft pair
+This command outputs warp worktree paths only. For the full warp↔weft pair
 geometry view — including weft pairing, branch drift, and junction health —
 use "lyx fabric pairs".`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runList(out, args) }),
@@ -140,12 +140,12 @@ use "lyx fabric pairs".`,
 	var removeCmd *cobra.Command
 	removeCmd = &cobra.Command{
 		Use:   "remove [--force] <slug>",
-		Short: "destroy a dual host+weft worktree pair",
-		Long: `Remove a paired host and weft git worktree, plus every host junction
+		Short: "destroy a dual warp+weft worktree pair",
+		Long: `Remove a paired warp and weft git worktree, plus every warp junction
 (_lyx and .lyx), portal junctions, and launchers.
 
 By default the command refuses to remove a worktree with uncommitted changes
-on either the host or weft side. Use --force to remove anyway.
+on either the warp or weft side. Use --force to remove anyway.
 
 Example:
   lyx fabric remove my-task
@@ -161,16 +161,16 @@ Example:
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "checkout [branch]",
-		Short: "coordinated branch switch across host+weft with junction re-point",
-		Long: `Switch the host worktree to <branch> and its weft sibling to the
+		Short: "coordinated branch switch across warp+weft with junction re-point",
+		Long: `Switch the warp worktree to <branch> and its weft sibling to the
 suffix-paired weft branch, re-pointing junctions in the same operation.
 
-When no branch is given, the current host branch is re-resolved and used as
+When no branch is given, the current warp branch is re-resolved and used as
 the target — this performs an in-place re-checkout that re-points junctions
 and re-syncs the weft side, which is how the fabric-checkout launcher
 shortcut invokes this command.
 
-The switch is all-or-nothing: on any weft-side or junction failure the host
+The switch is all-or-nothing: on any weft-side or junction failure the warp
 switch is rolled back so the pair is never left half-switched.
 
 Example:
@@ -181,15 +181,15 @@ Example:
 	// pairs
 	cmd.AddCommand(&cobra.Command{
 		Use:   "pairs",
-		Short: "show full host↔weft pair geometry with drift and junction-health fields",
-		Long: `Show every host↔weft pair's branch, in-sync verdict, junction health, and
-host-pollution scan.
+		Short: "show full warp↔weft pair geometry with drift and junction-health fields",
+		Long: `Show every warp↔weft pair's branch, in-sync verdict, junction health, and
+warp-pollution scan.
 
-junction_healthy and junction_reason cover BOTH host junctions (_lyx and
+junction_healthy and junction_reason cover BOTH warp junctions (_lyx and
 .lyx): a pair is only healthy when every junction resolves to its own
 weft directory, and junction_reason names the first unhealthy one by name
 when it is not. The pollution scan likewise covers _lyx paths accidentally
-tracked in the host index; every match carries an automated git rm --cached
+tracked in the warp index; every match carries an automated git rm --cached
 remedy.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runPairs(out, args) }),
 	})
@@ -198,12 +198,12 @@ remedy.`,
 	cmd.AddCommand(&cobra.Command{
 		Use:   "reconcile",
 		Short: "repair a managed pair whose weft side drifted or broke",
-		Long: `Reconcile walks every host worktree and applies the minimal corrective
+		Long: `Reconcile walks every warp worktree and applies the minimal corrective
 action needed to restore a valid paired topology: recreate a missing weft
-worktree, re-point a broken junction, adopt a raw (non-lyx) host worktree, or
+worktree, re-point a broken junction, adopt a raw (non-lyx) warp worktree, or
 report an unmanaged branch untouched.
 
-Junction repair covers BOTH host junctions (_lyx and .lyx): if either is
+Junction repair covers BOTH warp junctions (_lyx and .lyx): if either is
 missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
 not reported already-healthy.`,
@@ -214,7 +214,7 @@ not reported already-healthy.`,
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
 		Use:   "prune [--apply]",
-		Short: "identify and optionally remove stale or orphaned host↔weft pairs",
+		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := pruneCmd.Flags().GetBool("apply")
 			return runPruneWithFlag(out, apply)
@@ -226,8 +226,8 @@ not reported already-healthy.`,
 	var cleanupCmd *cobra.Command
 	cleanupCmd = &cobra.Command{
 		Use:   "cleanup [--apply] [--force]",
-		Short: "delete weft branches whose host sibling is gone",
-		Long: `cleanup finds weft branches with no corresponding host worktree sibling.
+		Short: "delete weft branches whose warp sibling is gone",
+		Long: `cleanup finds weft branches with no corresponding warp worktree sibling.
 
 Flag matrix:
   (no flags)          dry-run: report orphaned weft branches only.
@@ -255,7 +255,7 @@ reported but never deleted here, since they are not fabric-managed.`,
 	cmd.AddCommand(&cobra.Command{
 		Use:   "unwire",
 		Short: "fully deactivate fabric wiring for this worktree",
-		Long: `unwire is a full per-host-worktree deactivation: it removes every host
+		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
 junction present (_lyx and .lyx) and their warp .git/info/exclude
 entries. It leaves every weft-side directory intact — weft-side content is
 never deleted by unwire.
@@ -351,7 +351,7 @@ func runList(out io.Writer, _ []string) int {
 }
 
 // runCheckout executes the fabric checkout subcommand. When no branch is
-// supplied, it resolves the current host branch and performs an in-place
+// supplied, it resolves the current warp branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
 	cwd, err := lyxcwd.Getwd()
@@ -402,7 +402,7 @@ func runCheckout(out io.Writer, args []string) int {
 	})
 }
 
-// runPairs executes the fabric pairs subcommand, enumerating all host↔weft
+// runPairs executes the fabric pairs subcommand, enumerating all warp↔weft
 // pairs with drift and pollution data.
 func runPairs(out io.Writer, _ []string) int {
 	cwd, err := lyxcwd.Getwd()
@@ -432,7 +432,7 @@ func runPairs(out io.Writer, _ []string) int {
 }
 
 // runReconcile executes the fabric reconcile subcommand, walking and repairing
-// all host↔weft pairs.
+// all warp↔weft pairs.
 func runReconcile(out io.Writer, _ []string) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {

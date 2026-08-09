@@ -4,8 +4,8 @@
 // chain of an existing user hook, and correct weft-sibling branch resolution for
 // prime and child worktrees under fabric's suffixed branch-naming scheme.
 //
-// fabric's weft branch is always the host branch plus WeftBranchName's "-weft"
-// suffix, never a literal host/weft branch-name match, so each case additionally
+// fabric's weft branch is always the warp branch plus WeftBranchName's "-weft"
+// suffix, never a literal warp/weft branch-name match, so each case additionally
 // asserts the in-sync (correctly suffixed) state produces no warning before
 // diverging it. The child-pair setup uses raw `git worktree add` rather than
 // fabricengine's own Add verb, for test-fixture simplicity.
@@ -48,7 +48,7 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	f := lyxtest.CopyHostHub(t)
+	f := lyxtest.CopyWarpHub(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -95,7 +95,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 
 	const userHookContent = "#!/bin/sh\necho user\n"
 
-	f := lyxtest.CopyHostHub(t)
+	f := lyxtest.CopyWarpHub(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -153,8 +153,8 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 
 // TestInstallPostCheckoutHook_WeftResolution_Prime verifies that the hook script correctly resolves
 // the <PrimeName>-weft sibling for a prime (main) worktree under fabric's suffixed branch scheme:
-// the weft prime must sit on WeftBranchName(hostBranch) to be considered in sync, not on a literal
-// host-branch-name match.
+// the weft prime must sit on WeftBranchName(warpBranch) to be considered in sync, not on a literal
+// warp-branch-name match.
 // A real git checkout is performed for both the in-sync and diverged cases.
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
@@ -170,15 +170,15 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
-	// Put the weft prime on the suffixed branch that pairs with host "main"
+	// Put the weft prime on the suffixed branch that pairs with warp "main"
 	// under fabric's uniform scheme — this is the in-sync state.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", WeftBranchName("main"))
 
-	// Create a scratch branch in the host prime so we have something to switch
+	// Create a scratch branch in the warp prime so we have something to switch
 	// away from and back to "main".
 	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "hook-prime-scratch")
 
-	// Host back to main while weft sits on "main-weft": in sync, no warning.
+	// Warp back to main while weft sits on "main-weft": in sync, no warning.
 	cmd := exec.Command("git", "checkout", "main")
 	cmd.Dir = f.Hub
 	out, _ := cmd.CombinedOutput()
@@ -189,7 +189,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	// Diverge: move weft to a branch that is not the suffixed pairing.
 	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", "hook-prime-weft-side")
 
-	// Switch host away and back to fire the hook again with weft diverged.
+	// Switch warp away and back to fire the hook again with weft diverged.
 	lyxtest.MustRun(t, f.Hub, "git", "checkout", "hook-prime-scratch")
 	cmd = exec.Command("git", "checkout", "main")
 	cmd.Dir = f.Hub
@@ -208,7 +208,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 // the weft child's branch is WeftBranchName(slug).
 //
 // Note: git worktrees cannot check out a branch that is already checked out in another worktree.
-// To trigger the hook without hitting that constraint, we create an extra branch in the child host
+// To trigger the hook without hitting that constraint, we create an extra branch in the child warp
 // and switch between it and slug while the weft child stays on a third, non-overlapping branch for
 // the diverged case.
 func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
@@ -223,43 +223,43 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	}
 
 	// Create a child worktree pair directly via git worktree add — fabricengine's
-	// own Add verb lands in a later batch; this test only needs a host/weft
+	// own Add verb lands in a later batch; this test only needs a warp/weft
 	// worktree pair on disk to exercise the hook script itself.
-	childHost := WorktreePath(l, slug)
-	lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", childHost, "-b", slug)
+	childWarp := WorktreePath(l, slug)
+	lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", childWarp, "-b", slug)
 
 	weftBranch := WeftBranchName(slug)
 	childWeft := WeftWorktreePath(l, slug)
 	lyxtest.MustRun(t, f.WeftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
-	// Install the hook (affects the shared common .git/hooks for the host repo,
-	// which covers the host prime and every host child worktree).
+	// Install the hook (affects the shared common .git/hooks for the warp repo,
+	// which covers the warp prime and every warp child worktree).
 	if err := InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
-	// Create a second branch in the child host so we have two branches to switch
+	// Create a second branch in the child warp so we have two branches to switch
 	// between (avoids the git constraint that a branch can only be checked out in
 	// one worktree at a time).
-	lyxtest.MustRun(t, childHost, "git", "checkout", "-b", "hook-host-alt")
+	lyxtest.MustRun(t, childWarp, "git", "checkout", "-b", "hook-warp-alt")
 
-	// Child host back to slug while weft sits on its correctly-suffixed branch:
+	// Child warp back to slug while weft sits on its correctly-suffixed branch:
 	// in sync, no warning.
 	cmd := exec.Command("git", "checkout", slug)
-	cmd.Dir = childHost
+	cmd.Dir = childWarp
 	out, _ := cmd.CombinedOutput()
 	if strings.Contains(string(out), "fabric:") {
 		t.Errorf("unexpected fabric drift warning for in-sync suffixed child state: %s", out)
 	}
 
 	// Move the weft child to a different branch — this creates the divergence the
-	// hook should detect. The weft branch is independent of the host's branches.
+	// hook should detect. The weft branch is independent of the warp's branches.
 	lyxtest.MustRun(t, childWeft, "git", "checkout", "-b", "hook-weft-diverge")
 
-	// Switch host away and back to fire the hook again with weft diverged.
-	lyxtest.MustRun(t, childHost, "git", "checkout", "hook-host-alt")
+	// Switch warp away and back to fire the hook again with weft diverged.
+	lyxtest.MustRun(t, childWarp, "git", "checkout", "hook-warp-alt")
 	cmd = exec.Command("git", "checkout", slug)
-	cmd.Dir = childHost
+	cmd.Dir = childWarp
 	out, _ = cmd.CombinedOutput()
 
 	if !strings.Contains(string(out), "fabric:") {

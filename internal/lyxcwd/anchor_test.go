@@ -41,7 +41,7 @@ func writeAnchor(t *testing.T, hub, anchor string) {
 func TestResolve_RootAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -82,7 +82,7 @@ func TestResolve_RootAnchor(t *testing.T) {
 func TestResolve_SubpathAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -124,7 +124,7 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -171,7 +171,7 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	root := fix.Hub
 
 	subDir := filepath.Join(root, "sub", "nested")
@@ -200,14 +200,14 @@ func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	})
 }
 
-// TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry fabricengine's hostLayoutFor
+// TestResolveWorktree_SubpathAnchorNoGate verifies the exact geometry fabricengine's warpLayoutFor
 // fallback hits: calling the gate-free resolver with a worktree root that sits ABOVE a recorded
 // subpath anchor must return RelPath="backend" and must NOT return ErrCwdOutsideAnchor — this
 // gate-free behavior is what distinguishes ResolveWorktree from Resolve.
 func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)

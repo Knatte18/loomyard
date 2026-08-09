@@ -21,14 +21,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// seedBuilderFixture returns a host-hub git fixture with shuttle/reed/
-// builder config seeded, chdir'd into the host hub, ready for a builder CLI
+// seedBuilderFixture returns a warp-hub git fixture with shuttle/reed/
+// builder config seeded, chdir'd into the warp hub, ready for a builder CLI
 // invocation. No weft-prime sibling is created: neither validate nor status
 // ever fabric-commits.
-func seedBuilderFixture(t *testing.T) lyxtest.HostFixture {
+func seedBuilderFixture(t *testing.T) lyxtest.WarpFixture {
 	t.Helper()
 
-	fixture := lyxtest.CopyHostHub(t)
+	fixture := lyxtest.CopyWarpHub(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
