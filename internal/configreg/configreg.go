@@ -7,7 +7,6 @@ package configreg
 
 import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -41,7 +40,6 @@ type Module struct {
 func Modules() []Module {
 	return []Module{
 		{Name: "board", Template: boardengine.ConfigTemplate},
-		{Name: "builder", Template: builderengine.ConfigTemplate},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate},
 		{Name: "loom", Template: loomengine.ConfigTemplate},

@@ -4,7 +4,7 @@
 // path resolves as a transient and every transient path resolves under .lyx at the mirrored
 // subpath of the _lyx-rooted content it relates to.
 // It lives in cmd/lyx because this is the only package that may import every owning module at
-// once (loomengine, websterengine, builderengine, perchengine, treadleengine, scoutengine,
+// once (loomengine, websterengine, perchengine, treadleengine, scoutengine,
 // logger), the same reason constructoranchoring_test.go lives here.
 // It stays untagged: every constructor exercised here is pure filepath.Join arithmetic over a
 // hand-built *lyxcwd.Location, so no process is spawned and no fixture tree is copied, per the
@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -54,8 +53,6 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
 		{"websterengine.Dir", websterengine.Dir(l)},
 		{"websterengine.ReportsDir", websterengine.ReportsDir(l)},
-		{"builderengine.Dir", builderengine.Dir(l)},
-		{"builderengine.ReportsDir", builderengine.ReportsDir(l)},
 		{"perchengine.RunsDir", perchengine.RunsDir(l)},
 		{"perchengine.RunsDir/blk", filepath.Join(perchengine.RunsDir(l), "blk")},
 	}
@@ -66,7 +63,6 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"websterengine.ScratchDir", websterengine.ScratchDir(l)},
 		{"websterengine.PromptsDir", websterengine.PromptsDir(l)},
-		{"builderengine.ScratchDir", builderengine.ScratchDir(l)},
 		{"perchengine.ScratchDir", perchengine.ScratchDir(l)},
 		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
@@ -149,7 +145,6 @@ func TestNoTransientsUnderLyx(t *testing.T) {
 				scratch string
 			}{
 				{"websterengine.Dir/ScratchDir", websterengine.Dir(l), websterengine.ScratchDir(l)},
-				{"builderengine.Dir/ScratchDir", builderengine.Dir(l), builderengine.ScratchDir(l)},
 				{"perchengine.RunsDir/ScratchDir", perchengine.RunsDir(l), perchengine.ScratchDir(l)},
 			}
 			for _, mp := range mirroredPairs {

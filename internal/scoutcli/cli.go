@@ -124,7 +124,7 @@ a caller must still filter by hand. --within <dir> restricts the result set
 to references whose file lies within <dir> (relative to --target-dir, or
 absolute), discarding everything else, so a query already known to be
 scoped to one package comes back both complete and precise:
-    lyx scout refs --within internal/builderengine SomeMethod`,
+    lyx scout refs --within internal/websterengine SomeMethod`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -470,7 +470,7 @@ func lookupContext(cwd, dir string) (scoutengine.Registry, *lyxcwd.Location, err
 	// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 	// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
 	// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
-	// silently miss every overlay, exactly as internal/buildercli/cli.go
+	// silently miss every overlay, exactly as internal/webstercli/cli.go
 	// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
 	// to the pinned built-in registry rather than failing the lookup.
 	registry := scoutengine.BuiltinRegistry()

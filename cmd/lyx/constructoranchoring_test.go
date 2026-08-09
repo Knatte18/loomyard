@@ -2,7 +2,7 @@
 // its owning module to the anchoring table the overview's Shared Decisions record: there is no
 // single base.
 // It lives in cmd/lyx because this is the only package that may import every owning module at once
-// (loomengine, builderengine, websterengine, perchengine, scoutengine, pattern, logger, reedengine,
+// (loomengine, websterengine, perchengine, scoutengine, pattern, logger, reedengine,
 // planparser).
 // Every case here is pure filepath.Join arithmetic -- no subprocess is spawned and no fixture tree
 // is copied -- so this file stays untagged, per the Test Tier Purity Invariant.
@@ -18,7 +18,7 @@
 // byte-identical.
 //
 // As of this batch there are two groups, not three: the _lyx-durable group, and the .lyx group in
-// full (loomengine.LoomStatusLock, websterengine.PromptsDir/ScratchDir, builderengine.ScratchDir,
+// full (loomengine.LoomStatusLock, websterengine.PromptsDir/ScratchDir,
 // perchengine.ScratchDir, logger.LogsDir, scoutengine.DaemonStateFile/DaemonLock) -- all
 // AnchorPath-anchored, so every worktree-level .lyx entry sits under exactly one root:
 // filepath.Join(anchor, ".lyx"). A prior slice split this into an already-migrated and a
@@ -31,7 +31,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/builderengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -75,8 +74,6 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "status.json"))
-	assertPath(t, "builderengine.Dir", builderengine.Dir(l), filepath.Join(lyxBase, "builder"))
-	assertPath(t, "builderengine.ReportsDir", builderengine.ReportsDir(l), filepath.Join(lyxBase, "builder", "reports"))
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
@@ -89,7 +86,6 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "status.json.lock"))
 	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxBase, "webster", "prompts"))
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxBase, "webster"))
-	assertPath(t, "builderengine.ScratchDir", builderengine.ScratchDir(l), filepath.Join(dotLyxBase, "builder"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
@@ -127,8 +123,6 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "status.json"))
-	assertPath(t, "builderengine.Dir", builderengine.Dir(l), filepath.Join(lyxBase, "builder"))
-	assertPath(t, "builderengine.ReportsDir", builderengine.ReportsDir(l), filepath.Join(lyxBase, "builder", "reports"))
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
@@ -141,7 +135,6 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "status.json.lock"))
 	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxBase, "webster", "prompts"))
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxBase, "webster"))
-	assertPath(t, "builderengine.ScratchDir", builderengine.ScratchDir(l), filepath.Join(dotLyxBase, "builder"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
@@ -163,7 +156,6 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 		"loomengine.LoomStatusLock":   loomengine.LoomStatusLock(l),
 		"websterengine.PromptsDir":    websterengine.PromptsDir(l),
 		"websterengine.ScratchDir":    websterengine.ScratchDir(l),
-		"builderengine.ScratchDir":    builderengine.ScratchDir(l),
 		"perchengine.ScratchDir":      perchengine.ScratchDir(l),
 		"logger.LogsDir":              logger.LogsDir(l),
 		"scoutengine.DaemonStateFile": scoutengine.DaemonStateFile(l, "go"),
