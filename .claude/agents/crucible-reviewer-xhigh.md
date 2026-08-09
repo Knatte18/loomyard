@@ -13,7 +13,7 @@ Read the per-module review prompt named in your brief (`.scratch/<module>-review
   Do not read any prior round's review/fixer-report material before your own findings list is complete (see "Clean-room review constraint" in `crucible/review-prompt-template.md`).
 - **Commit per fix, never push.**
   As each individual fix lands green, commit it on the current branch with a message identifying the finding it closes (see "Commit per fix" in `crucible/review-prompt-template.md`).
-  This is a **host-repo** commit on the crucible worktree, never a weft-repo operation.
+  This is a **warp-repo** commit on the crucible worktree, never a weft-repo operation.
   Never push unless explicitly told to.
 - **Final chat message is an executive summary only.**
   Reply with a concise executive summary, counts by severity, the two report file paths (review + fixer report),
