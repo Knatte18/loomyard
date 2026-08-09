@@ -3,7 +3,7 @@
 ```yaml
 task: 'builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference'
 slug: builder-retire
-approved: false
+approved: true
 started: '20260809-085916'
 parent: main
 root: ""
