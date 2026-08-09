@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
@@ -31,4 +31,21 @@ plan-review-r5  '2026-08-09T09:53:07Z'
 plan-fix-r5  '2026-08-09T09:53:07Z'
 plan-review-r6  '2026-08-09T10:06:37Z'
 planned  '2026-08-09T10:06:46Z'
+implementing  '2026-08-09T10:07:17Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: code-retirement
+    state: pending
+  - name: comment-sweep
+    state: pending
+  - name: reference-contracts
+    state: pending
+  - name: module-phase-docs
+    state: pending
+  - name: spec-repair-acceptance
+    state: pending
 ```
