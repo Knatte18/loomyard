@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-wordswap-tool
+phase: approved-pre-sweep-rewords
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-review-r2  '2026-08-09T06:29:02Z'
 planned  '2026-08-09T06:29:34Z'
 implementing  '2026-08-09T06:30:13Z'
 approved-wordswap-tool  '2026-08-09T06:38:43Z'
+approved-pre-sweep-rewords  '2026-08-09T06:41:14Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ batches:
     commit_sha: 3be81471cb02275fdea17b29e997ccd92b022e3c
     verify_baseline_failures: ["FAIL\t./tools/wordswap/... [setup failed]"]
   - name: pre-sweep-rewords
-    state: running
+    state: approved
     implementer_session: 0e1cd2aa-1d75-4ca2-9157-6dc6c3184122
     start_sha: 97c5869745a7f2f4281bceb4c2a2a3f2347cdca3
+    commit_sha: 5ee3045bad8521e8dfaf5fb889a3d8ac8ba29526
     verify_baseline_failures: []
   - name: go-sweep
     state: pending
