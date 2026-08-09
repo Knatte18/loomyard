@@ -27,5 +27,8 @@ func runUnwire(out io.Writer, _ []string) int {
 		"junctions_removed": res.JunctionsRemoved,
 		"weft_content":      res.WeftContent,
 		"git_exclude":       res.GitExclude,
+		// _board is a named special case outside the pathspec-derived sweep, so its removal can
+		// never appear in junctions_removed and must be surfaced under its own key.
+		"board_junction_removed": res.BoardJunctionRemoved,
 	})
 }

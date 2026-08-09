@@ -776,3 +776,45 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 		t.Errorf("RunCLI(reconcile) warp_binding_detail is empty; want a non-empty push-failure message")
 	}
 }
+
+// TestRunCLI_Unwire_ReportsBoardJunctionRemoval pins the unwire envelope's
+// board_junction_removed key at the CLI boundary: the _board link is a named special case outside
+// the pathspec-derived sweep, so its removal can never appear in junctions_removed — a CLI envelope
+// without its own key silently hid that the link was torn down.
+func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
+
+	// Wire the operator-convenience _board link the way clone/add/reconcile do.
+	boardLink := filepath.Join(fixture.Hub, fabricengine.BoardDirName)
+	if err := fslink.CreateDirLink(boardLink, boardDir); err != nil {
+		t.Fatalf("create board link: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(unwire) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	removed, present := result["board_junction_removed"].(bool)
+	if !present {
+		t.Fatalf("RunCLI(unwire) output missing 'board_junction_removed' key; got %v", result)
+	}
+	if !removed {
+		t.Errorf("RunCLI(unwire) board_junction_removed = false; want true (the link was present and must be reported removed)")
+	}
+	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
+		t.Errorf("board link %s still exists after unwire", boardLink)
+	}
+}
