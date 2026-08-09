@@ -173,7 +173,7 @@ The symbol fields — `creates-symbols`/`edits-symbols`/`reads-symbols` — are 
 They depend on a working, planner-side-verified `scout`, which is deprioritized (see the roadmap's Someday list).
 Adding them now as unused optional fields would create confusion later;
 better to add them explicitly once `scout` is actually ready.
-See [../../manifest/designs/scout-redesign.md](../../manifest/designs/scout-redesign.md) for what they'd depend on.
+See [`internal/scoutengine`](../../internal/scoutengine/doc.go) for what they'd depend on.
 
 **The derived `changes-files` union** — the union of the typed file-op fields (`Edits:` ∪ `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — is the artifact webster's future contract-verification compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note;
 a file-list mismatch against `changes-files` is always informational, never blocking on its own).
@@ -334,4 +334,4 @@ the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay wo
 
 - [webster-contract.md](webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [scout-redesign.md](../../manifest/designs/scout-redesign.md) — the module the symbol fields depend on.
+- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — the module the symbol fields depend on.
