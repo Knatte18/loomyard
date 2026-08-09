@@ -200,7 +200,7 @@ Read-only verbs the caller can run directly.
 - [finalize.md](finalize.md) — the document-driven weft-conflict mechanism slice 6's orchestration half will reuse.
 - [raddle.md](raddle.md) — the regenerate-don't-merge property bounding rebase recovery;
   the snapshot-staleness consumer slice 4 serves.
-- [host-visibility.md](host-visibility.md) — the narrower sibling illusion (`CLAUDE.local.md`), same junction mechanism slice 1 generalized.
+- [warp-visibility.md](warp-visibility.md) — the narrower sibling illusion (`CLAUDE.local.md`), same junction mechanism slice 1 generalized.
 - [internal/pattern](../../internal/pattern/doc.go) — hand-authored weft content;
   a `_pattern` junction consumer of the slice-1 config-driven list;
   also the residue of rebase re-alignment.

@@ -41,7 +41,7 @@ Committed to, in this order, next.
    A weft-backed `_lyx/PATTERN.md` file plus `_lyx/pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt.
    **The wiring has landed**: the `hubgeometry`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all five code-touching templates (builder implementer, burler round, webster fork, webster Master, loom plan) are built and merged.
    **The content migration** out of `CONSTRAINTS.md` into `_lyx/PATTERN.md` + detail docs remains outstanding and still happens only at loomyard-init-via-lyx — `CONSTRAINTS.md` stays the single live invariants doc until that cutover.
-   Also supersedes the constraints-hiding half of Someday's `host-visibility`.
+   Also supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See [internal/pattern](../internal/pattern/doc.go).
 
 ## Someday
@@ -78,10 +78,10 @@ No build order is implied between these items.
    Both stay Someday — neither is needed to get `loom` running, unlike the Planned `Treadle`/`Shed`/perch-rewrite work they build on once scheduled.
    See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
-1. **host-visibility: CLAUDE.local.md invisible in host's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in host's own git history.
+1. **warp-visibility: CLAUDE.local.md invisible in host's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in host's own git history.
    The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the host repo, so no junction-to-hide-a-constraints-dir is needed;
    only `CLAUDE.local.md` remains.
-   See [designs/host-visibility.md](designs/host-visibility.md).
+   See [designs/warp-visibility.md](designs/warp-visibility.md).
 
 1. **reed daemon: foreign-pane self-heal** — extends the **reed: daemon → Slack relay** item.
    Today reed is one-shot, so an operator-split or stray "faux" pane is only reaped on the *next* reed verb;
@@ -237,7 +237,7 @@ No build order is implied between these items.
   Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's `scout` item") — every reference elsewhere in this file and in `designs/*.md` already does this.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
 - Delete a module's doc under `designs/` once it ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — that's why Done entries above don't link anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout`, `raddle`, `webster: parallel card execution`, `hardener`, `host-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout`, `raddle`, `webster: parallel card execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`scout`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.
