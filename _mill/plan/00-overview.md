@@ -80,9 +80,20 @@ batches:
 - **Rationale:** `_mill/discussion.md`'s `## Scope` "Out" section — each is inside a multi-owner chain in the `shed-producer-model-scoping` follow-up set, and editing one here recreates exactly the shared-file collision that forced task E to be serialized.
 - **Applies to:** all batches
 
+### Decision: `README.md` is taken as an unowned file, `manifest/designs/shed-followups.md` is not
+
+- **Decision:** card 10 repairs `README.md:93`'s stale `Preflight → Discussion → Plan → Webster → Raddle → Finalize` phase chain.
+  No card edits `manifest/designs/shed-followups.md`.
+- **Rationale:** `README.md:93` is the same Raddle-as-a-distinct-phase residue this task exists to remove, and it is genuinely orphaned across the whole six-task set: task A's `README.md` line list at `shed-followups.md:75` names `:25`, `:86`, `:87`, `:94`, and `:115` but never `:93`, task A has landed as `0149776a`, and no other task in the set names `README.md` at all.
+  It is prose rather than a markdown link, so `TestEnforcement_MarkdownLinks` will never flag it either — it would ship unfixed and unnoticed.
+  Taking it satisfies the same test `_mill/discussion.md`'s `repair-scope-owned-plus-safe-unowned` decision applied to `semantic-index.md`, `webster-parallel-execution.md`, and `docs/shared-libs/README.md`: a file no live task claims costs nothing in collision risk.
+  `shed-followups.md` stays untouched because it is the task-set spec every sibling task reads, and amending another task's scope from inside this one is the collision this task is structured to avoid.
+- **Applies to:** all batches
+
 ## All Files Touched
 
 - `CONSTRAINTS.md`
+- `README.md`
 - `docs/shared-libs/README.md`
 - `internal/lyxcwd/docslink_test.go`
 - `manifest/designs/finalize.md`

@@ -4,17 +4,17 @@
 task: 'finalize: fold Raddle into its own contract and repair the dead links in raddle.md, finalize.md and self-report.md'
 batch: raddle-fold-and-link-guard
 number: 1
-cards: 10
+cards: 11
 verify: go test ./internal/lyxcwd/
 depends-on: []
 ```
 
 ## Batch Scope
 
-This batch delivers the whole task: a new permanent markdown link/anchor enforcement test (`internal/lyxcwd/docslink_test.go`), the 11 dead-link repairs plus one citation-to-link conversion across six documentation files, the Raddle-into-Finalize fold section in `manifest/designs/finalize.md`, the producer-model residue rewrites in `finalize.md`/`raddle.md`/`self-report.md`, and the `## Markdown Link Integrity` invariant in `CONSTRAINTS.md`.
+This batch delivers the whole task: a new permanent markdown link/anchor enforcement test (`internal/lyxcwd/docslink_test.go`), the 11 dead-link repairs plus one citation-to-link conversion across six documentation files, the Raddle-into-Finalize fold section in `manifest/designs/finalize.md`, the producer-model residue rewrites in `finalize.md`/`raddle.md`/`self-report.md`/`README.md`, and the `## Markdown Link Integrity` invariant in `CONSTRAINTS.md`.
 
 It is one batch because the guard and the repairs are mutually dependent — see the overview's "one batch, because the guard and the repairs are one unit" Shared Decision.
-Cards 1–4 build the checker, cards 5–8 apply the repairs and prose rewrites, card 9 records the invariant, card 10 is a zero-diff probe proving the checker resolves rather than trivially passing.
+Cards 1–4 build the checker, cards 5–8 apply the repairs and prose rewrites, card 9 records the invariant, card 10 removes the orphaned phase-chain residue in `README.md`, and card 11 is a zero-diff probe proving the checker resolves rather than trivially passing.
 
 **Cards 2 and 3 commit a deliberately-failing test.**
 Do not "fix" that by reordering the cards or by pre-emptively repairing links early — the red step is the point, and the batch `verify:` at the end is the green boundary.
@@ -263,7 +263,28 @@ There is no external interface for a next batch to consume — this is the only 
   Apply semantic line breaks throughout.
 - **Commit:** `docs(constraints): record the Markdown Link Integrity invariant`
 
-### Card 10: prove the checker resolves rather than trivially passing
+### Card 10: README.md — drop Raddle from the phase chain
+
+- **Context:**
+  - `manifest/designs/shed.md`
+  - `manifest/designs/loom.md`
+  - `manifest/designs/shed-followups.md`
+- **Edits:**
+  - `README.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** At `README.md:93`, rewrite "**loom** — the phased orchestrator (Preflight → Discussion → Plan → Webster → Raddle → Finalize), each producing phase gated by a `perch` review." so it no longer lists `Raddle` as a phase of its own between Webster and Finalize.
+  Raddle-regeneration is folded into `Finalize`'s contract per `shed.md:19` and `loom.md:65-67`, so the chain is Preflight, Discussion, Plan, Webster, Finalize.
+  Keep the rest of the bullet's claim intact — each producing phase is still gated by a `perch` review — and keep the sentence on one line, matching the surrounding bullets' existing style.
+  Check `:94-95`'s follow-on sentence in the same bullet ("Preflight is built; Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.") still reads correctly after the chain edit and does not itself name a Raddle phase.
+  Do not touch any other line of `README.md`.
+  In particular, leave `:25`, `:86`, `:87`, `:94`, and `:115` alone — those were task A's (`builder-retire`, landed as `0149776a`) and are already done.
+  This file is taken here because it is genuinely unowned: task A's `README.md` line list in `shed-followups.md:75` never included `:93`, task A has landed, and no other task in the six-task set names `README.md` at all, so this residue would otherwise ship unfixed and un-flagged — the checker cannot see it, since it is prose rather than a markdown link.
+  Do not edit `manifest/designs/shed-followups.md`.
+- **Commit:** `docs(readme): drop Raddle from loom's phase chain`
+
+### Card 11: prove the checker resolves rather than trivially passing
 
 - **Context:**
   - `internal/lyxcwd/docslink_test.go`
@@ -289,7 +310,7 @@ This is a Go project, so the `PYTHONPATH= ` prefix rule does not apply.
 Scoping the verify to the one package is correct here: `internal/lyxcwd/docslink_test.go` is the only Go file this batch touches, it is a test file with no production dependents, and the other eight edited files are markdown.
 Running the package rather than the single test function is deliberate — the new file shares `repoRootForEnforcement` and `walkEnforcementRoots` with `enforcement_test.go`, so a compile-level mistake in the new file breaks the existing enforcement tests too, and the package-scoped run surfaces that immediately.
 
-Card 10 additionally runs `go build ./... && go test ./...` once as a hand-off check, and `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`) covers the repo-wide case at task completion.
+Card 11 additionally runs `go build ./... && go test ./...` once as a hand-off check, and `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`) covers the repo-wide case at task completion.
 
 The scenarios the test itself must cover are enumerated per card: card 1 covers the slug, extractor, and anchor-set grammar as table tests over literal data; card 4 covers link resolution, URL skipping, fences, duplicate-heading disambiguation, non-`.md` targets, and both stale-allowlist cases over `t.TempDir()` trees; card 2's `repo` subtest is the single real-repo case and is the one that must report zero.
-Card 10 proves the `repo` subtest is resolving rather than trivially passing by breaking a real link and confirming the failure.
+Card 11 proves the `repo` subtest is resolving rather than trivially passing by breaking a real link and confirming the failure.
