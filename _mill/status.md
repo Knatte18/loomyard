@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -40,6 +40,7 @@ holistic-reviewing  '2026-08-09T10:41:07Z'
 holistic-fixing  '2026-08-09T10:46:45Z'
 nits-fixed-holistic  '2026-08-09T10:51:26Z'
 holistic-approved  '2026-08-09T10:51:37Z'
+done  '2026-08-09T10:52:33Z'
 ```
 
 ## Batches
