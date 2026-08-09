@@ -22,7 +22,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // PollutionEntry describes a single tracked path in the warp index that should never be committed
@@ -139,8 +138,10 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 			pair.InSync = true
 		}
 
-		// Scan the warp index for _lyx paths that must never be tracked there.
-		pollution, pollErr := detectWarpPollution(warpPath)
+		// Scan the warp index for _lyx paths that must never be tracked there, scoped through this
+		// pair's own anchor — on a subpath-anchored hub the tracked content sits at
+		// <anchor>/_lyx/..., which a root-relative pathspec never matches.
+		pollution, pollErr := detectWarpPollution(warpPath, warpLayout.AnchorRel)
 		if pollErr != nil {
 			// Non-fatal: record the error inline and continue. Remedy stays
 			// empty since no automated remedy applies to a scan failure.
@@ -160,19 +161,26 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 // detectWarpPollution scans the warp worktree index for _lyx paths that should
 // never be tracked in the warp repo.
 //
+// anchorRel scopes the pathspec through the pair's recorded anchor, exactly as Fabric.Commit scopes
+// its own routing prefixes. This is load-bearing rather than tidy: a subpath-anchored hub keeps its
+// durable tree at <anchor>/_lyx, which a bare "_lyx" pathspec never matches, so the scan reported a
+// genuinely polluted index as clean — a false negative in the one verb that advertises the check.
+//
 // Every match under _lyx has a junction wired to restore, so the remedy is
 // always the git rm --cached command that removes the file from the index
 // without deleting it from disk, plus a reminder to restore the
 // junction/exclude entry. No pollution class in this scan lacks an automated
 // remedy, which is why PollutionEntry has no report-only signal beyond an
 // empty Remedy.
-func detectWarpPollution(warpPath string) ([]PollutionEntry, error) {
+func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
-	out, _, exitCode, err := gitexec.RunGit(
-		[]string{"ls-files", "--", lyxdirs.LyxDirName},
-		warpPath,
-	)
+	args := []string{"ls-files", "--"}
+	for _, spec := range ScopedPathspec(anchorRel, structuralCommittedDirs) {
+		args = append(args, filepath.ToSlash(spec))
+	}
+
+	out, _, exitCode, err := gitexec.RunGit(args, warpPath)
 	if err != nil {
 		return nil, fmt.Errorf("ls-files: %w", err)
 	}
@@ -194,20 +202,16 @@ func detectWarpPollution(warpPath string) ([]PollutionEntry, error) {
 			continue
 		}
 
-		// Determine whether the path is under _lyx.
-		switch {
-		case strings.HasPrefix(tracked, lyxdirs.LyxDirName) || tracked == lyxdirs.LyxDirName:
-			// Offer git rm --cached as the remedy, plus a reminder to restore the
-			// junction and exclude entry so lyx topology is intact afterwards.
-			remedy := fmt.Sprintf(
-				"git -C %s rm --cached -- %s  # then restore junction and git-exclude entry",
-				warpPath, tracked,
-			)
-			entries = append(entries, PollutionEntry{
-				Path:   tracked,
-				Remedy: remedy,
-			})
-		}
+		// Offer git rm --cached as the remedy, plus a reminder to restore the
+		// junction and exclude entry so lyx topology is intact afterwards.
+		remedy := fmt.Sprintf(
+			"git -C %s rm --cached -- %s  # then restore junction and git-exclude entry",
+			warpPath, tracked,
+		)
+		entries = append(entries, PollutionEntry{
+			Path:   tracked,
+			Remedy: remedy,
+		})
 	}
 
 	return entries, nil
