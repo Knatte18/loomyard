@@ -20,12 +20,14 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
@@ -143,6 +145,36 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	}
 	if result.LinksRemoved == 0 {
 		t.Errorf("LinksRemoved = 0; want the anchored junctions counted — the sweep read the worktree root instead")
+	}
+}
+
+// TestRemove_FailedWeftTeardownIsReported locks the weft worktree so `git worktree remove --force`
+// refuses it, and asserts Remove reports the surviving weft worktree instead of returning success —
+// the silent `_ =` swallow used to leave a half-torn pair behind with an ok verdict.
+func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "remove-locked-pair"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	weftTarget := fabricengine.WeftWorktreePath(l, slug)
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "lock", weftTarget)
+
+	_, err := topology.Remove(l, slug, true)
+	if err == nil {
+		t.Fatal("Remove() with a locked weft worktree error = nil; want the surviving weft worktree reported")
+	}
+	if !strings.Contains(err.Error(), "weft teardown failed") {
+		t.Errorf("Remove() error = %q; want it to report the failed weft teardown", err)
+	}
+	if _, statErr := os.Stat(weftTarget); statErr != nil {
+		t.Fatalf("test premise broken: locked weft worktree %s was removed anyway: %v", weftTarget, statErr)
 	}
 }
 
