@@ -58,6 +58,13 @@ const (
 	// ReconcileActionAlreadyHealthy means the pair required no corrective action.
 	ReconcileActionAlreadyHealthy ReconcileAction = "already_healthy"
 
+	// ReconcileActionPortalRestored means the pair's junctions were healthy but its hub-level portal
+	// junction or launcher directory was missing and has been recreated.
+	// It is reported instead of ReconcileActionAlreadyHealthy for the same reason
+	// ReconcileActionStaleRemoved is: a consumer keying off Action must see that convergence altered
+	// the pair.
+	ReconcileActionPortalRestored ReconcileAction = "portal_restored"
+
 	// ReconcileActionStaleRemoved means the pair's junction/repoint check found nothing to add or
 	// re-point,
 	// but declarative stale-removal deleted at least one on-disk junction absent from the repo-wide
@@ -338,7 +345,50 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
 	}
 
+	if restorePortalAndLaunchers(warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
+		pr.Action = ReconcileActionPortalRestored
+	}
+
 	applyStaleRemoval(warpLayout, slug, pr)
+}
+
+// restorePortalAndLaunchers recreates the pair's hub-level portal junction and launcher directory
+// when either is missing, and reports whether it restored anything.
+//
+// Both are part of the managed topology — Add creates them, Remove and Prune tear them down — but
+// nothing repaired them, so a pair whose portal had been deleted was reported already_healthy
+// forever and could only be recovered by removing and re-adding the pair.
+// The hub's prime worktree is skipped: it never had a portal or a launcher directory in the first
+// place, and Reconcile is a repair verb, not the place to start creating artefacts Clone does not.
+// A restore failure is a Detail note, never an Error or a changed Action: the portal is convenience
+// plumbing, and failing to rebuild it must not downgrade a verdict about the pair's git topology.
+func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
+	primeName, primeErr := PrimeName(warpLayout)
+	if primeErr != nil || slug == primeName {
+		return false
+	}
+
+	restored := false
+
+	if _, err := os.Lstat(PortalLink(warpLayout, slug)); os.IsNotExist(err) {
+		if portalErr := createPortal(warpLayout, slug); portalErr != nil {
+			appendPrDetail(pr, fmt.Sprintf("portal restore failed: %v", portalErr))
+		} else {
+			appendPrDetail(pr, "portal junction restored")
+			restored = true
+		}
+	}
+
+	if _, err := os.Stat(LauncherDir(warpLayout, slug)); os.IsNotExist(err) {
+		if launcherErr := writeLaunchers(warpLayout, slug); launcherErr != nil {
+			appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
+		} else {
+			appendPrDetail(pr, "launcher scripts restored")
+			restored = true
+		}
+	}
+
+	return restored
 }
 
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree

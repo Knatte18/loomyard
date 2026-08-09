@@ -640,3 +640,60 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 		t.Fatalf("--apply deleted %q without --force; the gate is not doing its job, so this test proves nothing", orphan)
 	}
 }
+
+// TestReconcile_RestoresDeletedPortalAndLaunchers proves Reconcile repairs the hub-level portal
+// junction and launcher directory.
+// Add creates both and Remove/Prune tear both down, so they are part of the managed topology — but
+// nothing repaired them: a pair whose portal had been deleted was reported already_healthy forever
+// and could only be recovered by removing and re-adding the pair, which a leftover portal link then
+// blocked.
+func TestReconcile_RestoresDeletedPortalAndLaunchers(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	const slug = "portal-repair"
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add(%q) error = %v", slug, err)
+	}
+
+	portalLink := fabricengine.PortalLink(l, slug)
+	launcherDir := fabricengine.LauncherDir(l, slug)
+	if _, err := os.Lstat(portalLink); err != nil {
+		t.Fatalf("Add(%q) did not create the portal at %s: %v", slug, portalLink, err)
+	}
+	if err := os.Remove(portalLink); err != nil {
+		t.Fatalf("delete portal: %v", err)
+	}
+	if err := os.RemoveAll(launcherDir); err != nil {
+		t.Fatalf("delete launcher dir: %v", err)
+	}
+
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	var repaired *fabricengine.ReconcilePairResult
+	for i := range result.Pairs {
+		if filepath.Base(result.Pairs[i].WarpWorktree) == slug {
+			repaired = &result.Pairs[i]
+		}
+	}
+	if repaired == nil {
+		t.Fatalf("Reconcile() reported no pair for slug %q", slug)
+	}
+
+	if repaired.Action != fabricengine.ReconcileActionPortalRestored {
+		t.Errorf("Reconcile() action for %q = %q; want %q — a missing portal must not read as healthy",
+			slug, repaired.Action, fabricengine.ReconcileActionPortalRestored)
+	}
+	if _, err := os.Lstat(portalLink); err != nil {
+		t.Errorf("Reconcile() left the portal missing at %s: %v", portalLink, err)
+	}
+	if _, err := os.Stat(launcherDir); err != nil {
+		t.Errorf("Reconcile() left the launcher dir missing at %s: %v", launcherDir, err)
+	}
+}

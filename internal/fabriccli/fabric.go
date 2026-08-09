@@ -254,7 +254,12 @@ report an unmanaged branch untouched.
 Junction repair covers BOTH warp junctions (_lyx and .lyx): if either is
 missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
-not reported already-healthy.`,
+not reported already-healthy.
+
+It also restores a pair's hub-level portal junction (_portals/<slug>) and
+launcher directory (_launchers/<slug>) when either has gone missing, reporting
+portal_restored rather than already_healthy. The hub's prime worktree is
+skipped: it never had either, so there is nothing there to repair.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runReconcile(out, args) }),
 	})
 
