@@ -58,7 +58,9 @@ batches:
     commit_sha: f3b465c7ee20b89095f1b9043a46a2832c4fd6e6
     verify_baseline_failures: []
   - name: cli-surface-review
-    state: pending
+    state: running
+    implementer_session: c11b60d3-bb2d-42af-af1a-f3f8bb3274b0
+    start_sha: 45676f507638134b7b13552cb7fc976bfe3e6e76
     verify_baseline_failures: []
   - name: docs-sweep
     state: pending
