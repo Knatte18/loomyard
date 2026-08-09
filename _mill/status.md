@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs and sandbox suites
+phase: holistic-reviewing
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-cli surface  '2026-08-09T10:15:14Z'
 approved-clone integration tests  '2026-08-09T10:23:11Z'
 approved-reconcile backfill  '2026-08-09T10:32:24Z'
 approved-docs and sandbox suites  '2026-08-09T10:40:46Z'
+holistic-reviewing  '2026-08-09T10:41:07Z'
 ```
 
 ## Batches
