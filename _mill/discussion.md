@@ -47,7 +47,9 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
   These are timestamped records of what was measured or what happened on a given date; editing them falsifies the record rather than cleaning it.
 - **`manifest/designs/loom.md`'s prose claims** at `:91–94` and `:187` — task E is the named owner (`shed-followups.md:379–380`), and `loom.md` has a strict chain-order owner list (B → C → E).
   This task fixes **only the dangling links** in those lines, because their target file ceases to exist; the prose stays E's.
-- **`docs/reference/plan-format-v3.md:5`'s "Coexistence, not replacement" section** — task C's, per `shed-followups.md:101` and `:239–240`.
+- **`docs/reference/plan-format-v3.md:5`'s "Coexistence, not replacement" *prose*** — task C's, per `shed-followups.md:101` and `:239–240`.
+  **But its dangling link is this task's**, symmetrically with the `loom.md` rule below: `:5` reads `[plan-format.md v2](plan-format.md)`, and this task deletes that file.
+  Repair the link; leave the surrounding "v3 does not retire v2 today … retires only when `builder` is deleted" prose for C to rewrite.
 - **The `plan-format-v3.md` → `plan-format.md` rename itself** — task B's whole job.
   This task only *frees* the filename.
 - **Existing `builder.yaml` files in already-created worktrees.**
@@ -91,6 +93,10 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
   required and fail-loud (presence + non-empty + title line) **only** when `outcome: done`;
   follows archive-never-refuse like every other stale artifact.
   It is Finalize's PR-text source, because a long-lived Master session is the only party with full oversight of what actually shipped.
+- **The integration-failure section is part of the consumer-facing contract.**
+  `internal/websterengine/summary.go`'s `AppendIntegrationFailure` extends an already-written `summary.md` with a `## Integration suite failed` section naming the bisect-localized offending card and its SHA (`summary.go:101–106`), as the document half of `BisectAndEscalate`'s escalation.
+  Because Finalize dumps `summary.md` **verbatim** into the PR body, that appended section reaches the consumer — so `webster-contract.md` must state that a `summary.md` may carry it, not just the title-plus-prose shape.
+  The *bisect mechanism* that produces it stays webster-internal, documented in `websterengine/doc.go`; only the fact that the section can appear in the artifact is contract.
 - Rejected: putting the content in `websterengine/doc.go` (Markdown cannot anchor into a Go file, so all four inbound deep links would degrade to anchorless path mentions, and webster would be the only module whose cross-module contract lives solely in a Go comment);
   folding it into `plan-format-v3.md` (conflates the plan *format* with the *consumer's* contract, and hands task B a larger file to rename).
 
@@ -147,6 +153,8 @@ A package deletion is atomic by nature; splitting it guarantees an intermediate 
 - Rationale: `shed-followups.md:379–380` names those exact lines as E's, and `loom.md` has a declared strict chain-order owner list precisely so two tasks never fight over one file.
   But the link fix is not a matter of ownership: `builder-contract.md` ceases to exist in this commit, so leaving the links would ship three dangling references that no downstream grep would catch.
   Fixing a link is mechanical and does not collide with E rewriting the sentence around it.
+- **This rule is general, not `loom.md`-specific: wherever this task deletes a file, it repairs every inbound link to it, even in another task's territory, and touches nothing else on those lines.**
+  Its other application is `docs/reference/plan-format-v3.md:5`, whose `[plan-format.md v2](plan-format.md)` link dies with the v2 doc while its surrounding prose stays task C's.
 - Rejected: fixing the prose too (violates the chain-order rule and guarantees a conflict with E);
   leaving the links (ships dangling references).
 
@@ -253,7 +261,16 @@ Comment-only (the "sweep everything" set — ~50 sites):
 - **`docs/skills.md`** — `:14`, `:160` ("loom Builder phase"), `:184`, `:185` ("builder/fixer prompt template").
   `:160` is a phase rename; `:14`/`:184`/`:185` name a *prompt template* that this task deletes — reattribute to webster's fork prompt.
 - **`tools/sandbox/SANDBOX-BUILDER-SUITE.md`** — delete the file.
-- **`tools/sandbox/SANDBOX-CORE-SUITE.md:224–232`** — scenario S9 and its `**Covers:** builder` tag at `:229`.
+- **`tools/sandbox/SANDBOX-CORE-SUITE.md`** — scenario **S9 in full**.
+  It spans **`:224` (the `### S9 -- Builder plan validate/status` heading) through its `**Verdict:**` line at `:284`, up to but not including the closing `---` at `:287`** — including the `**Covers:** builder` tag at `:229`, the plan fixture, and the `lyx builder status` / `lyx builder validate` steps at `:234–:283`.
+  The task spec's `:224–232` range covers only the heading and preamble; deleting that alone orphans the scenario body.
+  Delete the whole block plus one of its bracketing `---` rules so the remaining separators stay balanced.
+- **`tools/sandbox/SANDBOX-WEBSTER-SUITE.md`** — `:5` (defines webster by "mirroring `SANDBOX-BUILDER-SUITE.md`'s own operating model" and "webster is builder's fork-based sibling"), `:7` ("two scenarios, not builder's nine"), `:28` (`lyx builder` in the wired-worktree list), `:49` ("mirroring the reed/shuttle/burler/builder suites'"), `:123` ("the way builder's separate implementer strands do"), `:193` ("builder's batch-loop scenarios stay in `SANDBOX-BUILDER-SUITE.md`"), `:195` ("deliberately narrower than builder's own").
+  **Not in the task spec's inventory.**
+  `:193` in particular points at a file this task deletes.
+  Note task B also edits this file (`shed-followups.md:168`), for the plan-format rename only — no collision.
+- **`tools/sandbox/suite.go:2`, `:4`, `:54` and `tools/sandbox/main.go:6`, `:12`** — doc comments listing `builder-suite` among the suite names.
+  These are separate from the code deletions already listed under Scope → In.
 - **`.gitattributes:7–9`** — the three `internal/builderengine/*` LF pins.
 
 ### The `**Covers:** builder` trap
@@ -315,12 +332,18 @@ Run all four; all must be clean:
 1. `go build ./...`
 2. `go test ./...` (untagged)
 3. `go test -tags integration ./...` — **required**, because `internal/webstercli/sync_integration_test.go` (the one real cross-package compile blocker) is integration-tagged and invisible to the untagged run.
-4. The completeness grep — this is what makes "sweep everything" checkable rather than a judgment call:
-   - zero hits for `builderengine` and `buildercli` repo-wide;
-   - zero hits for the phase token `builder` (as a phase/gate value, i.e. `"builder"`, `phase: builder`, `builder-review`, and the `→ Builder →` phase-list form);
-   - **excluding** `manifest/designs/shed-followups.md`, the historical records listed under Scope → Out, and this task's own `_mill/` directory.
+4. The completeness grep — this is what makes "sweep everything" checkable rather than a judgment call.
+   **Three patterns, not two** — the package names alone do not cover the sweep the `sweep-everything` decision claims:
+   - **Package names:** zero hits for `builderengine` and `buildercli` repo-wide.
+   - **Phase/gate token:** zero hits for `builder` as a phase or gate value — `"builder"`, `phase: builder`, `builder-review`, and the `→ Builder →` phase-list form.
+   - **Module word:** zero hits for the builder *module* — `lyx builder`, `builder.yaml`, `builder-suite`, `builder suite`, `SANDBOX-BUILDER-SUITE`, and `_lyx/builder` / `.lyx/builder`.
+     This is the pattern that catches `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`, `docs/sandbox-howto.md`, `README.md:25`, and `model-spec.md`'s `builder.yaml` example — none of which the first two patterns see.
 
-The exclusion list must be written into the grep invocation explicitly, so a reviewer sees exactly what was deliberately left behind rather than inferring it.
+   **Ordinary-English false positives must be excluded by pattern, never by judgment**, so the grep stays a mechanical gate: `strings.Builder`, "fixture builders" (`docs/benchmarks/test-suite-timing.md:739`), "fluent builder method" (`docs/research/scout-multilang.md:29`), and similar.
+   This is why the module-word pattern is a list of specific builder-module forms rather than a bare `-i builder`.
+
+   **Excluding** `manifest/designs/shed-followups.md`, the historical records listed under Scope → Out, and this task's own `_mill/` directory.
+   The exclusion list must be written into the grep invocation explicitly, so a reviewer sees exactly what was deliberately left behind rather than inferring it.
 
 ## Q&A log
 
