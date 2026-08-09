@@ -54,7 +54,9 @@ batches:
     commit_sha: 634e40df2c60a0c2bda43c56f5129f4f4c9abb4e
     verify_baseline_failures: []
   - name: reference-contracts
-    state: pending
+    state: running
+    implementer_session: 85160c82-aa7a-495d-9b38-d7f799c93848
+    start_sha: a7d3bba19cfaeb2393e9cfcf53213aa972d0f8bd
   - name: module-phase-docs
     state: pending
   - name: spec-repair-acceptance
