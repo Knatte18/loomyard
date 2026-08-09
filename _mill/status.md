@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-code-retirement
+phase: approved-comment-sweep
 slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-review-r6  '2026-08-09T10:06:37Z'
 planned  '2026-08-09T10:06:46Z'
 implementing  '2026-08-09T10:07:17Z'
 approved-code-retirement  '2026-08-09T10:18:55Z'
+approved-comment-sweep  '2026-08-09T10:29:52Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: 12a9f7d692b1824d1d3e37e00822a6ec8a898509
     verify_baseline_failures: []
   - name: comment-sweep
-    state: running
+    state: approved
     implementer_session: 8a051e0e-3f38-424a-880f-5356782de26f
     start_sha: 08974f98543e572e1ea9760032160e72f53f8dc5
+    commit_sha: 634e40df2c60a0c2bda43c56f5129f4f4c9abb4e
     verify_baseline_failures: []
   - name: reference-contracts
     state: pending
