@@ -4,9 +4,9 @@
 // prompt/profile fed to shuttle.Run, one shuttle.Run producing one artifact.
 // Its sole input is `_lyx/discussion/decision-record.md` (see layout.DiscussionDecisionRecord);
 // it never reads the support log and never reads the board.
-// Its output is a plan-format-v3 flat-card plan written into `_lyx/plan/`: one `NN-<card-slug>.md`
+// Its output is a plan-format flat-card plan written into `_lyx/plan/`: one `NN-<card-slug>.md`
 // per card plus `00-overview.md`, written LAST as the run's done-sentinel (see
-// docs/reference/plan-format-v3.md).
+// docs/reference/plan-format.md).
 // The producer always writes `approved: false` in `00-overview.md`'s frontmatter — it has no review
 // logic of its own (that is perch/burler's separate job); flipping `approved` to `true` after perch
 // returns APPROVED is the future loom orchestrator's job, not built here.

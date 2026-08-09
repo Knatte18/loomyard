@@ -1,6 +1,6 @@
-# Plan format v3 — flat card list
+# Plan format — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format v3**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
 >
 > **v3 is the live plan format.** [plan-format.md v2](plan-format.md) is retired now that builder, its sole consumer, is gone. v3 — consumed by `webster` — is the sole plan format.
 
@@ -218,7 +218,7 @@ Machine checks this format is designed to support — they land with webster, no
 ## Worked example
 
 A complete minimal plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent across Card Index ↔ per-card filenames ↔ card headings/numbering.
-Across its four card files this example demonstrates every plan-format v3 feature: all five typed file-op fields (with `none` sentinels), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with a `//`-escaped path, a `Depends-on:` field with a real dependency, a pinned `Commit:` field, and a `Moves:` card with its plan-level `## Rename mechanic` section.
+Across its four card files this example demonstrates every plan-format feature: all five typed file-op fields (with `none` sentinels), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with a `//`-escaped path, a `Depends-on:` field with a real dependency, a pinned `Commit:` field, and a `Moves:` card with its plan-level `## Rename mechanic` section.
 
 `_lyx/plan/00-overview.md`:
 

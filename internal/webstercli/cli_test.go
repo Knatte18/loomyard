@@ -178,7 +178,7 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	return c, hub
 }
 
-// seedValidPlanDir writes a valid plan-format v3 plan with one card into dir.
+// seedValidPlanDir writes a valid plan-format plan with one card into dir.
 func seedValidPlanDir(t *testing.T, dir string) {
 	t.Helper()
 	overview := "---\nformat: 3\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n" +

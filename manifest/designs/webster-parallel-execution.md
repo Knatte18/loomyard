@@ -4,7 +4,7 @@
 
 ## Why it's parked
 
-[plan-format-v3.md](../../docs/reference/plan-format-v3.md) is deliberately a flat, sequential card list with **no DAG wired into scheduling**.
+[plan-format.md](../../docs/reference/plan-format.md) is deliberately a flat, sequential card list with **no DAG wired into scheduling**.
 Running cards as *parallel* forks would require reintroducing a DAG and worktree isolation, which reopens exactly the problem sequential execution avoids: git's index/staging area is a single shared file per working tree, so two forks concurrently committing — even to fully disjoint files — race on the same lock.
 Current (2026) ecosystem guidance treats worktree isolation as effectively required for concurrent subagents on the same repo.
 A declared-disjoint card pair that turns out (via deviation) to actually overlap is a **live corruption risk** in a concurrent-no-worktree model, not just a bookkeeping problem to fix after the fact as it is sequentially;
@@ -45,7 +45,7 @@ sequential is the complete correct design, not just the MVP.
 
 ## The separable, cheap win already taken
 
-A planner that emits true card dependencies (`depends-on`) instead of an over-constrained batch line recovers most of the *width* insight with **no worktrees and no concurrent execution** — this is exactly what [plan-format-v3.md](../../docs/reference/plan-format-v3.md) already does.
+A planner that emits true card dependencies (`depends-on`) instead of an over-constrained batch line recovers most of the *width* insight with **no worktrees and no concurrent execution** — this is exactly what [plan-format.md](../../docs/reference/plan-format.md) already does.
 Only the *executor that actually runs the width* (this entry) remains parked.
 
 ## Relationship to scout (Part B of the retired draft)
@@ -56,5 +56,5 @@ That idea is superseded, not lost: it's the direct ancestor of the [scout](scout
 ## Related
 
 - `internal/websterengine`'s package documentation — the sequential model this would extend.
-- [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — already captures the cheap win (`depends-on`).
+- [plan-format.md](../../docs/reference/plan-format.md) — already captures the cheap win (`depends-on`).
 - [scout-redesign.md](scout-redesign.md) — Part B's successor.

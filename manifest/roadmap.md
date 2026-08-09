@@ -106,7 +106,7 @@ No build order is implied between these items.
 1. **board: curation/triage automation** — the GitHub-issue-intake and periodic-triage workflow originally scoped in `designs/board-weft-storage.md`'s Curation flow section, deferred out of `board: move storage to weft:main`: an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via `promote-note` (which already ships as a plain mechanical CLI primitive — this item is the automation layer on top, not the primitive itself).
    See [designs/curation-triage.md](designs/curation-triage.md).
 
-1. **scout-backed plan symbol fields** — `plan-format-v3.md` deliberately deferred its `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending "a working, planner-side-verified `scout`";
+1. **scout-backed plan symbol fields** — `plan-format.md` deliberately deferred its `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending "a working, planner-side-verified `scout`";
    both that and the loom Planner producer have since shipped (see Done below), unblocking the idea but not yet scoping it.
    Two integration shapes exist, not yet chosen between: a small prompt-only change to `plan-template.md`'s Step 2 (point the Planner at `lyx scout refs`/the new `lyx scout assert-no-callers` instead of grepping for a card's file-op fields, for cards that touch an *existing* symbol only),
    or the fuller original schema fields themselves, cross-checked by `internal/planparser`.
@@ -198,10 +198,10 @@ No build order is implied between these items.
    integration suite runs as one final fork with SHA-bisect on failure.
    See the `internal/websterengine` package documentation.
 
-1. **plan-format v3: flat card list** — a card carries `What:`, the five typed file-op fields (`Context:`/`Edits:`/`Creates:`/`Deletes:`/`Moves:`), and `Depends-on:` only;
+1. **plan-format: flat card list** — a card carries `What:`, the five typed file-op fields (`Context:`/`Edits:`/`Creates:`/`Deletes:`/`Moves:`), and `Depends-on:` only;
    symbol fields wait for `scout`.
    v3 is the live plan format now that its predecessor is retired.
-   See [docs/reference/plan-format-v3.md](../docs/reference/plan-format-v3.md).
+   See [docs/reference/plan-format.md](../docs/reference/plan-format.md).
 
 1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
 
@@ -209,14 +209,14 @@ No build order is implied between these items.
 
 1. **loom: contracts, Preflight, Discussion producer** — the three loom pieces shipped so far (loom as a whole is not done — see the Planned `loom` item).
 
-1. **loom: Planner producer** — reads the discussion decision-record and writes a plan-format-v3 flat-card plan;
+1. **loom: Planner producer** — reads the discussion decision-record and writes a plan-format flat-card plan;
    a prompt/profile fed to `shuttle.Run` (not a module), the `PlanSpec(...)` factory + `plan-template.md` in `internal/loomengine`.
    No review logic of its own.
 
 1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target (`deploy-dev`/`deploy-dev.cmd`) so review/sandbox tooling never overwrites the stable production binary with an in-progress test build.
    See CONSTRAINTS.md's Dev/Prod Binary Separation invariant.
 
-1. **scout: LSP-backed code intelligence — V1 Go-only, built for multi-language** — gives planner/implementer/reviewer fast, deterministic "where is this defined / used" lookups so they stop grepping blindly and stop paying an LLM round per false-positive hit; also what makes plan-format-v3's symbol fields trustworthy. lyx is an LSP **client**, never a server — it drives published language-server binaries (`gopls` first). Two consumer entry points on one engine: an in-process **Go API** (webster's DAG-derivation) and a **`lyx scout refs|definition|symbol` CLI** for agents (**no MCP** — the fixed 2–3 query surface doesn't justify it, and a CLI is one code path + engine-neutral + fits the CLI/Cobra invariant). The lifecycle is one `EnsureServer(lang, worktree)` seam with two swappable spawn strategies behind it — `native` (`gopls -remote=auto`, gopls owns supervision), Go's production path, and `supervised` (lyx's own state-file/auto-spawn/staleness/detached-spawn daemon, proven standalone against a plain `gopls`, for a future `ty`/OmniSharp adapter with no native shared-daemon of its own). Was independent of the rest of the Planned queue (no dependency on board / native-clients / fabric / loom) and built in parallel. V1 populates the registry for Go only but locks its format for all three planned languages. See the `internal/scoutengine` package documentation.
+1. **scout: LSP-backed code intelligence — V1 Go-only, built for multi-language** — gives planner/implementer/reviewer fast, deterministic "where is this defined / used" lookups so they stop grepping blindly and stop paying an LLM round per false-positive hit; also what makes plan-format's symbol fields trustworthy. lyx is an LSP **client**, never a server — it drives published language-server binaries (`gopls` first). Two consumer entry points on one engine: an in-process **Go API** (webster's DAG-derivation) and a **`lyx scout refs|definition|symbol` CLI** for agents (**no MCP** — the fixed 2–3 query surface doesn't justify it, and a CLI is one code path + engine-neutral + fits the CLI/Cobra invariant). The lifecycle is one `EnsureServer(lang, worktree)` seam with two swappable spawn strategies behind it — `native` (`gopls -remote=auto`, gopls owns supervision), Go's production path, and `supervised` (lyx's own state-file/auto-spawn/staleness/detached-spawn daemon, proven standalone against a plain `gopls`, for a future `ty`/OmniSharp adapter with no native shared-daemon of its own). Was independent of the rest of the Planned queue (no dependency on board / native-clients / fabric / loom) and built in parallel. V1 populates the registry for Go only but locks its format for all three planned languages. See the `internal/scoutengine` package documentation.
 
 1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalized `perch`'s existing judge/gate/round-spawn/cap/pause/lock loop into `internal/treadleengine`, a shared engine with a pluggable `RoundRunner` seam (`internal/perchengine`'s burler adapter is the reference consumer;
    a live-substrate agent for the Someday `Tenter` is a future second one) and a judge-maintained handoff that bounds the progress judge's read-set — an efficiency fix to `perch`'s own shipped behavior, not just a `Tenter` need. `perch` was rewritten onto it in the same task, behavior/CLI unchanged from the outside: `internal/perchengine` is the thin configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto treadle's `RoundRunner` seam.

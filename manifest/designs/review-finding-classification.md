@@ -4,7 +4,7 @@
 
 ## Idea
 
-lyx is building its own discussion and plan formats (`docs/reference/discussion-format.md`, `docs/reference/plan-format-v3.md`) and its own review rounds (`internal/burlerengine`, the Review Round Invariant in `CONSTRAINTS.md`).
+lyx is building its own discussion and plan formats (`docs/reference/discussion-format.md`, `docs/reference/plan-format.md`) and its own review rounds (`internal/burlerengine`, the Review Round Invariant in `CONSTRAINTS.md`).
 Before those formats harden, they should carry a **finding-class** dimension on review findings, not just a severity marker.
 
 ## Where the idea came from
@@ -44,7 +44,7 @@ But then the right behaviour is to raise it **once, as a design finding about me
 
 1. **`discussion-format.md`** — define a finding-class vocabulary for discussion review: `design`, `scope`, `decision`, `consistency`.
    State that only `design` gates the round loop and only `design` is ever escalated to the operator; the rest auto-resolve.
-2. **`plan-format-v3.md`** — same class dimension for plan review, with its own catchment: batching/sequencing/verify-command correctness gates; prose-level nits do not.
+2. **`plan-format.md`** — same class dimension for plan review, with its own catchment: batching/sequencing/verify-command correctness gates; prose-level nits do not.
 3. **Round-exit condition** — replace a flat round cap with "stop when a round returns zero gating-class findings," keeping the cap as a backstop.
    On the observed task this exits at r6 by rule rather than by operator override, and correctly refuses to exit at r2-r4.
 4. **Per-class counts in whatever envelope lyx's review rounds emit** — so "same class, fourth round running" is visible.

@@ -1,6 +1,6 @@
 // validate.go implements the `validate` webster verb: the standalone pre-flight half of the
 // automatic gate websterengine.Run runs itself before ever spawning Master.
-// It parses the plan and runs every plan-format v3 machine check against it, printing exactly one
+// It parses the plan and runs every plan-format machine check against it, printing exactly one
 // JSON envelope: ok with {"valid": true, "cards": <n>} for a clean plan, or an error envelope
 // carrying every finding for a plan with findings -- exit non-zero either way a finding exists,
 // never plain text.
@@ -43,8 +43,8 @@ func (c *websterCLI) validateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "lint the plan against the plan-format machine checks without running anything",
-		Long: `validate parses the plan at _lyx/plan and runs every plan-format v3 machine
-check against it -- the 14 checks docs/reference/plan-format-v3.md's
+		Long: `validate parses the plan at _lyx/plan and runs every plan-format machine
+check against it -- the 14 checks docs/reference/plan-format.md's
 "Validation checks" section pins: format/approval, Card Index <-> card-file
 consistency, card path well-formedness, the Moves: grammar/redundancy/
 mechanic checks, the per-card structural checks, the card-numbering

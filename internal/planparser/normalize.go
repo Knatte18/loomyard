@@ -1,5 +1,5 @@
-// normalize.go implements plan-format-v3's root:/// card-path resolution rule
-// (docs/reference/plan-format-v3.md, "Card path resolution: root: and //"): normalizeCardPath
+// normalize.go implements plan-format's root:/// card-path resolution rule
+// (docs/reference/plan-format.md, "Card path resolution: root: and //"): normalizeCardPath
 // resolves one raw card path against the plan's root:, and normalizeCard applies it to every path
 // field on a single Card.
 // ParsePlan calls normalizeCard exactly once per card, right after that card's body is parsed, so
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-// normalizeCardPath resolves one card file-op path per the plan-format-v3 three-case rule: "//" paths are always worktree-root-relative; otherwise join with root unless root is "."; malformed paths (absolute, ".." escapes) are left in place for Validate's card-path-malformed check.
+// normalizeCardPath resolves one card file-op path per the plan-format three-case rule: "//" paths are always worktree-root-relative; otherwise join with root unless root is "."; malformed paths (absolute, ".." escapes) are left in place for Validate's card-path-malformed check.
 func normalizeCardPath(root, raw string) string {
 	if hasWorktreeRootEscape(raw) {
 		return cleanPosixPath(raw[2:])
@@ -24,7 +24,7 @@ func normalizeCardPath(root, raw string) string {
 	return cleanPosixPath(raw)
 }
 
-// hasWorktreeRootEscape reports whether raw carries plan-format-v3's "//"
+// hasWorktreeRootEscape reports whether raw carries plan-format's "//"
 // worktree-root-relative escape prefix.
 func hasWorktreeRootEscape(raw string) bool {
 	return len(raw) >= 2 && raw[0] == '/' && raw[1] == '/'

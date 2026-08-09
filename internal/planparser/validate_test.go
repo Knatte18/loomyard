@@ -1,9 +1,9 @@
-// validate_test.go covers all 14 of Validate's plan-format-v3 checks, each with at least one
+// validate_test.go covers all 14 of Validate's plan-format checks, each with at least one
 // triggering and one clean case.
 // The three existence-dependent checks (move-source-missing, move-target-collision, path-missing)
 // build a hermetic t.TempDir() worktreeRoot and materialize real files on disk — no git, no
 // fixtures outside this package — per the go-test-tiers-and-hermetic-git Shared Decision.
-// The golden happy-path test reuses the docs/reference/ plan-format-v3.md worked example
+// The golden happy-path test reuses the docs/reference/ plan-format.md worked example
 // (testdata/goodplan, already parsed by parse_test.go's TestParsePlan_GoldenFixture) and
 // materializes exactly the files its cards' Edits:/Context: fields and Moves: source name,
 // deliberately leaving the Moves: destination and any Creates: target absent, so the whole 14-check
@@ -86,7 +86,7 @@ func materializeFiles(t *testing.T, root string, paths ...string) {
 // (testdata/goodplan) through Validate with every referenced Edits:/Context: path and Moves: source
 // materialized under a t.TempDir() worktreeRoot,
 // but deliberately NOT the Moves: destination (rowsjson.go) or any Creates: target (the fixture has
-// none) — proving all 14 checks pass simultaneously on the plan-format-v3 happy path.
+// none) — proving all 14 checks pass simultaneously on the plan-format happy path.
 func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	t.Parallel()
 
@@ -111,7 +111,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 }
 
 // TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since
-// both stem from the same overview frontmatter and plan-format-v3.md checks them as a pair.
+// both stem from the same overview frontmatter and plan-format.md checks them as a pair.
 func TestValidate_FormatAndApproval(t *testing.T) {
 	t.Parallel()
 
