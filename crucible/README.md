@@ -216,3 +216,93 @@ In retrospect, the operator's experience with an earlier review setup (millhouse
 Round count dropped sharply once the instruction changed to fix everything a round finds, all severities, in the same round.
 This is why the shuttle instance of this method (and the template, going forward) requires fixing every recorded finding — including NITs — not just the BLOCKING/MEDIUM ones;
 severity affects how a finding is reported, not whether it gets fixed.
+
+## Worked example — the fabric campaign (where the method was refined)
+
+Six serial rounds against `fabric` after the slice 1–10 v2 rewrite.
+81 findings, 9 BLOCKING, 8 of them data-loss.
+
+| Round | Model | Effort | What it did |
+|------:|-------|--------|-------------|
+| R1 | Opus  | high   | 23 findings; self-reported "ready to merge" and the operator rejected that outright |
+| R2 | Fable | high   | 17 findings; `pull` destroying uncommitted warp work via `ResetHard` while returning `ok:true` |
+| R3 | Opus  | high   | 6 findings; hostile-slug `remove`, plus a 40-cell dirty-worktree matrix |
+| R4 | Opus  | medium | **three graded sweeps instead of a fourth review** — closed two defect classes with counted evidence |
+| R5 | Opus  | medium | 15 findings, 2 BLOCKING, in three regions no prior round had ever driven |
+| R6 | Fable | high   | two graded sweeps; **no BLOCKING and no MEDIUM** — first round to meet the bar |
+
+Every round self-reported some form of "all green, all fixed".
+**Six for six, the orchestrator's independent verification found something material the round's own report did not surface** — including, after R3, a BLOCKING data-loss bug in a file R3 had been editing.
+
+### The refinements this campaign produced
+
+**1. Pre-count the ground truth BEFORE spawning the round — and record the count's blind spots next to the number.**
+When a round is asked to enumerate a class, the orchestrator counts the same class first, into a file the round never sees.
+A total *below* the pre-count is the truncation signal; a total *above* it is the correct direction.
+Without this, "I enumerated 28 sites" is unfalsifiable.
+
+The blind-spot half matters as much as the number.
+A grep is only as good as its pattern: an `os.RemoveAll` pattern cannot see calls routed through a seam, and a line count cannot tell code from a comment mentioning the same identifier.
+**Twice in this campaign the round corrected the orchestrator's count rather than the reverse** — which is the round working, not failing.
+Write down what the pattern cannot see, so a later exact match is not mistaken for agreement when it should have been a correction.
+
+**2. When the tail starts circling, stop reviewing and start counting.**
+By R3 the findings were still real but were repeating two or three recognisable shapes.
+A fourth broad review would most likely have produced a fourth variant.
+R4 was therefore given *sweeps* instead: enumerate every site in a class, present a table with a row for every site **including the ones judged correct, with the reason**, and state the total plus the enumeration method as reproducible shell.
+
+The sweep found a defect at a site the orchestrator's own worked example did not point at — which is the whole argument for counting a class rather than fixing its instances.
+It was also **cheaper** than a broad review (428k tokens vs 535k), because one file read covers many table rows and the enumeration is scripted rather than performed per-site by the model.
+
+**3. Derive each round's assignment from the previous round's residue — never "review it again".**
+R4 became sweeps because R3 was circling.
+R5 became adversarial work on three regions nobody had driven, because R4's sweeps had closed the countable classes.
+R6 became two new sweeps because R5's two BLOCKING findings were interesting as *shapes* rather than as bugs, and both shapes were unenumerated.
+Each round's yield came from a region the previous round's *method* could not reach — not from luck.
+
+**4. Grade an adversarial round on evidence of execution, not on argument.**
+A race reasoned about but never made to happen is not a finding.
+Require the interleaved run behind every concurrency claim, a **strictly sequential control** of the identical sequence, and a **reproduction on a second independent hub**.
+The control is what turns "the file got corrupted" into "the file got corrupted *because of concurrency*"; the second hub is what turns an anecdote into a finding.
+
+**5. Prove the scenario actually reached the code before believing a clean result.**
+This is the sharpest lesson of the campaign, and both the orchestrator and a round fell into it.
+
+While verifying R5's `.git/info/exclude` fix, the orchestrator ran a six-way concurrency storm that stayed green — and then stayed green *with the lock and the atomic write both sabotaged*.
+The scenario had never entered the write path: sibling worktrees kept every exclusion, so the read-modify-write short-circuited on "nothing changed" and never wrote.
+R6 then reproduced the same mistake independently: its two `.git/info/exclude` table rows were marked "driven — correct" on the strength of concurrent verbs that, on an established hub, do not touch that file at all.
+
+**A green run that never executed the code is indistinguishable from a fix.**
+Reporting one as the other is the worst error available to a verifier.
+The check is cheap: sabotage the mechanism and confirm the scenario now fails, or instrument the write and confirm it happened.
+If the scenario stays green under sabotage, the scenario is unproven — not the code.
+
+**6. Read the neighbouring code while preparing each sabotage.**
+The single highest-yield habit the campaign produced.
+Reverting a hunk to watch a test fail means reading closely around it, and that is how the orchestrator found a BLOCKING data-loss bug in `prune` that three dedicated review rounds had missed.
+Three rounds of looking for bugs did not find it; ten minutes of reading one file closely enough to neuter a single line did.
+
+**7. Seed cost rules — with an explicit guardrail against under-driving.**
+Rounds cost 300–535k tokens each, roughly 70% of it tool results rather than reasoning.
+Cost rules (re-verify narrowly, never read a verbose command's full output back, read large files with offset/limit, batch independent shell work, script repetitive fixtures) cut the cost of the largest round by 40% with no loss of coverage.
+
+They must ship with the guardrail, verbatim in the prompt:
+**this is about removing waste, never about driving less** — and a "what is NOT waste" list naming the independent fixture per destructive scenario, the sabotage proofs, the live reproduction of every BLOCKING finding, and the full hermetic gates at the end.
+A round that saves tokens by reading code instead of driving it has failed, and its findings get rejected.
+
+**8. Never characterise a round's work without reading its "what was tested" section.**
+The orchestrator once told the operator that one round "drove live where the other read code".
+That was false and had not been checked — both had driven live, and the actual difference was much narrower.
+Check before summarising; a wrong characterisation of a round misdirects every round after it.
+
+### What a converged round looks like, and what it still does not prove
+
+R6 met the bar: no BLOCKING, no MEDIUM, gates reproduced by the orchestrator, working tree provably untouched.
+
+It is worth recording what that does *not* establish.
+R6's scope was two enumerated classes, so its zero says those two classes are clean — not that the module is.
+Its own method failed to demonstrate itself on the two calibration rows (see refinement 5), so its zero is weaker evidence than a zero from a method proven able to detect.
+And after six rounds the campaign still carried a named, never-executed gap: Windows path behaviour, unreachable from a Linux host and reasoned about rather than driven, every single round.
+
+State those limits in the convergence verdict.
+A campaign that ends by claiming more than it proved teaches the next campaign to do the same.
