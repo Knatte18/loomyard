@@ -6,6 +6,7 @@ slug: builder-retire
 branch: builder-retire
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference'
 task_description: |
   builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference
@@ -39,13 +40,18 @@ implementing  '2026-08-09T10:07:17Z'
 ```yaml
 batches:
   - name: code-retirement
-    state: pending
+    state: running
+    implementer_session: c9e8d9cc-6675-442c-8033-2ab9af34ce3d
+    start_sha: a803b2c77dfcca95e6da0f948cc63fcda4429ac0
+    verify_baseline_failures: []
   - name: comment-sweep
     state: pending
+    verify_baseline_failures: []
   - name: reference-contracts
     state: pending
   - name: module-phase-docs
     state: pending
   - name: spec-repair-acceptance
     state: pending
+    verify_baseline_failures: []
 ```
