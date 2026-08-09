@@ -78,8 +78,8 @@ No build order is implied between these items.
    Both stay Someday — neither is needed to get `loom` running, unlike the Planned `Treadle`/`Shed`/perch-rewrite work they build on once scheduled.
    See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
-1. **warp-visibility: CLAUDE.local.md invisible in host's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in host's own git history.
-   The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the host repo, so no junction-to-hide-a-constraints-dir is needed;
+1. **warp-visibility: CLAUDE.local.md invisible in the Fabric repo's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in the Fabric repo's own git history.
+   The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the Fabric repo, so no junction-to-hide-a-constraints-dir is needed;
    only `CLAUDE.local.md` remains.
    See [designs/warp-visibility.md](designs/warp-visibility.md).
 
@@ -138,7 +138,7 @@ No build order is implied between these items.
 
 ## Done
 
-1. **fabric** — unified host↔weft git-coordination module replacing warp/weft;
+1. **fabric** — unified warp↔weft git-coordination module replacing warp/weft;
    cut over and old modules deleted.
    Warp-rebase / remote-reconcile recovery landed via `Fabric.Pull` (`internal/fabricengine/pull.go`): fabric-layer detection (ancestry, never `SHAExists`) + safe re-anchor + a `PullResult` PATTERN-residue document, driven by `lyx fabric pull`.
 
@@ -162,7 +162,7 @@ No build order is implied between these items.
 
 1. **board: use `gitrepo` as its git operator** — board's detached sync (`internal/boardengine`) talks to git exclusively through a single `gitrepo.Repo` (`StageAllAndCommit` + `PushCoalesced`) under board's own write and push locks, replacing its former hand-rolled `gitexec` calls.
 
-1. **board: move storage to `weft:main`** — replaces board's separate remote repo with a reserved `weft:main` branch: a second weft worktree at `<hub>/_board` on the host's own unsuffixed default branch (never a separate clone, never `<branch>-weft`);
+1. **board: move storage to `weft:main`** — replaces board's separate remote repo with a reserved `weft:main` branch: a second weft worktree at `<hub>/_board` on the warp's own unsuffixed default branch (never a separate clone, never `<branch>-weft`);
    board's git routes through `internal/fabricengine`'s `CommitWeftAt`/`PushWeftAt` (a new warp-untethered primitive) instead of a direct `gitrepo.Repo` handle, preserving board's existing detached-sync architecture unchanged;
    a new `notes.json` store for not-yet-claimable manifest entries, sharing `tasks.json`'s exact schema;
    a `promote-note` cross-store move command;
@@ -177,11 +177,11 @@ No build order is implied between these items.
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by `warp`).
 
-1. **weft** — companion weft repo, paired host+weft spawn/teardown (superseded by the `fabric` module).
+1. **weft** — companion weft repo, paired warp+weft spawn/teardown (superseded by the `fabric` module).
 
 1. **config TUI** — `lyx config` interactive menu + `reconcile`.
 
-1. **warp** — host↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup) (superseded by the `fabric` module).
+1. **warp** — warp↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup) (superseded by the `fabric` module).
 
 1. **proc** — cross-OS process spawn.
 
