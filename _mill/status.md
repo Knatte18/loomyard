@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-code-task-bodies
 slug: shed-producer-model-scoping
 branch: shed-producer-model-scoping
 plan: _mill/plan
@@ -20,6 +20,7 @@ planning  '2026-08-09T06:10:43Z'
 plan-fix-r1  '2026-08-09T06:19:02Z'
 planned  '2026-08-09T06:19:16Z'
 implementing  '2026-08-09T06:19:47Z'
+approved-code-task-bodies  '2026-08-09T06:24:27Z'
 ```
 
 ## Batches
@@ -27,9 +28,10 @@ implementing  '2026-08-09T06:19:47Z'
 ```yaml
 batches:
   - name: code-task-bodies
-    state: running
+    state: approved
     implementer_session: fd1f8d39-48ca-488b-9b1c-9717d00e6c60
     start_sha: a288d02b34ac1a787b7abde680aebfb1a8775e81
+    commit_sha: 5ddc7c19b6bad6f9aa2542985e76200fe3475846
   - name: docs-task-bodies
     state: pending
   - name: wiki-publish-and-summary
