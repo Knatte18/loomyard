@@ -1,4 +1,4 @@
-// hostlayout.go provides the guarded per-warp-worktree Location deriver shared by Status and
+// warplayout.go provides the guarded per-warp-worktree Location deriver shared by Status and
 // Reconcile: it avoids re-spawning git for the common case where the enumerated worktree is a hub
 // sibling of the caller's already-resolved Location.
 // Its non-sibling fallback resolves via the gate-free lyxcwd.ResolveWorktree, not the gated

@@ -125,7 +125,7 @@ var (
 // populated with a README and initial commit (called once per test binary; panics on failure).
 func buildWarpHub() (hub, bare string) {
 	warpHubOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "lyxtest-hosthub-*")
+		tmpDir, err := os.MkdirTemp("", "lyxtest-warphub-*")
 		if err != nil {
 			panic(err)
 		}

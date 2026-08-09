@@ -1,4 +1,4 @@
-// hostclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
+// warpclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
 // by loomengine.Preflight to determine whether both sides of a warp/weft pair have any dirty
 // (uncommitted or untracked) paths before a loom phase transition proceeds.
 

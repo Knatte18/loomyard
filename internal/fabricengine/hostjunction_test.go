@@ -1,4 +1,4 @@
-// hostjunction_test.go covers the warp-side junction primitives relocated from internal/lyxcwd in
+// warpjunction_test.go covers the warp-side junction primitives relocated from internal/lyxcwd in
 // this batch — WarpLyxLink, WarpLyxLinkHere, WarpJunctions and WarpJunctionsHere, plus the
 // WarpJunction record shape — over synthetic *lyxcwd.Location literals rather than real fixtures,
 // the same table shapes lyxcwd's own tests used.
