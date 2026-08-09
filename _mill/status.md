@@ -27,9 +27,12 @@ implementing  '2026-08-09T06:19:47Z'
 ```yaml
 batches:
   - name: code-task-bodies
-    state: pending
+    state: running
+    implementer_session: fd1f8d39-48ca-488b-9b1c-9717d00e6c60
+    start_sha: a288d02b34ac1a787b7abde680aebfb1a8775e81
   - name: docs-task-bodies
     state: pending
   - name: wiki-publish-and-summary
     state: pending
+    verify_baseline_failures: []
 ```
