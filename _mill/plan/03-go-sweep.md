@@ -141,7 +141,7 @@ This batch also carries the task's **one observable behaviour change**: the `jso
   go run ./tools/wordswap -from host -to warp -dry-run -skip 'pane hosting an idle agent' $(cat .scratch/sweep-files.txt)
   ```
 
-  Confirm the report shows zero `MISMATCH` lines and an `AMBIGUOUS (unresolved)` bucket of exactly six entries — `internal/fabricengine/drift.go:3`, `internal/fabricengine/hostclean.go:1`, `internal/fabricengine/hostjunction_test.go:1`, `internal/fabricengine/hostlayout.go:1`, `internal/lyxtest/lyxtest.go:128`, and nothing else — plus a `SKIPPED (deliberate)` bucket containing only `internal/buildercli/poll_test.go:212`.
+  Confirm the report shows zero `MISMATCH` lines and an `AMBIGUOUS (unresolved)` bucket of exactly five entries — `internal/fabricengine/drift.go:3`, `internal/fabricengine/hostclean.go:1`, `internal/fabricengine/hostjunction_test.go:1`, `internal/fabricengine/hostlayout.go:1`, `internal/lyxtest/lyxtest.go:128`, and nothing else — plus a `SKIPPED (deliberate)` bucket containing only `internal/buildercli/poll_test.go:212`.
   Treat that list as the work list for card 9, never as a checksum: if the report differs, read the extra entries and classify them, do not assume the run is wrong.
   A `MISMATCH` line means the reversibility invariant failed for that file — stop and investigate rather than proceeding, since the tool leaves such a file untouched by design.
 
@@ -207,8 +207,9 @@ This batch also carries the task's **one observable behaviour change**: the `jso
 - **Moves:** none
 - **Requirements:**
   Verification only — this card changes no file.
-  Two swept names merge into a pre-existing twin rather than introducing a new one: `hostPath` (47 occurrences) merges into `warpPath` (321), and `hostBare` (29) merges into `warpBare`.
-  Both were verified pre-sweep to have **zero** files containing both names, so the substitution removes a duplicate name rather than creating a clash.
+  Two swept names merge into a pre-existing twin rather than introducing a new one: `hostPath` merges into `warpPath`, and `hostBare` merges into `warpBare`.
+  Both were verified pre-sweep, by enumerating the files containing each name across `internal/`, `cmd/` and `tools/`, to have **zero** files containing both names of a pair — so the substitution removes a duplicate name rather than creating a clash.
+  No occurrence count is pinned here deliberately: counts drift with every commit and would fire as a false tripwire, while the file-overlap property is what the safety argument actually rests on.
 
   Confirm that still holds after the sweep, because `go build` alone cannot: it catches package-level redeclaration, but a function-local `warpPath` shadowing a same-named package-level symbol compiles silently.
   Run, from the repo root:
