@@ -139,6 +139,10 @@ type ReconcileResult struct {
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
+	if err := refuseEmptyAnchorMarker(l); err != nil {
+		return ReconcileResult{}, err
+	}
+
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("list worktrees: %w", err)
@@ -201,6 +205,37 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(l)
 
 	return result, nil
+}
+
+// refuseEmptyAnchorMarker aborts a reconcile pass when the hub's recorded lyx-anchor marker exists
+// but is empty after trimming.
+//
+// lyxcwd deliberately treats an empty marker as ABSENT, so `Resolve` falls back to the `"."` anchor
+// and succeeds at the warp worktree root — correct for a hub that never recorded one, and a trap
+// for a hub that did.
+// Reconcile is the only verb that wires junctions, so on a subpath-anchored hub whose marker was
+// truncated it is the verb that materialises a SECOND junction set at the repo root beside the
+// still-live set at the real anchor — exactly the damage lyxcwd.ErrStaleAnchorMarker exists to
+// prevent for the pre-rename spelling.
+// A present-but-empty marker is a corrupt record rather than an absent one, so the repair verb
+// refuses it here instead, leaving lyxcwd's own documented fallback untouched.
+//
+// A marker that cannot be read at all (including a genuinely absent one) is the legitimate
+// root-anchored case and passes.
+func refuseEmptyAnchorMarker(l *lyxcwd.Location) error {
+	markerPath := filepath.Join(BoardDir(l.HubPath), lyxcwd.AnchorFileName)
+
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(string(data)) != "" {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"recorded anchor marker at %s is empty; write the repo's subpath into it (or %q for the repo root) in the hub's %s worktree and commit, then re-run — reconciling against an empty marker would wire a second junction set at the warp repo root",
+		markerPath, ".", BoardDirName)
 }
 
 // reconcileWarpBinding backfills the once-per-hub .lyx-warp record from the warp side's origin

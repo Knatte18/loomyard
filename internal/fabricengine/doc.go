@@ -409,6 +409,14 @@
 // there. `CloneHub` refuses the same state at clone time, naming the same literal from the same
 // single declarer.
 //
+// A marker that is PRESENT but empty after trimming is a third state, and it is fabric's to refuse
+// rather than lyxcwd's: `lyxcwd` deliberately treats it as absent and falls back to `"."`, which is
+// exactly right for a hub that never recorded an anchor and exactly wrong for one whose marker was
+// truncated.
+// Since `Reconcile` is the only verb that wires junctions, it is the only verb that can turn that
+// fallback into the second-junction-set damage above, so it reads the marker directly (see
+// `refuseEmptyAnchorMarker`) and aborts the pass, leaving `lyxcwd`'s documented fallback untouched.
+//
 // The warp binding is a fourth repo-wide record beside the anchor and the repo-wide `fabric.yaml`
 // config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,
 // see warpbinding.go), containing the warp URL only.
