@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -33,6 +33,8 @@ approved-docs-sweep  '2026-08-09T07:10:42Z'
 approved-constraints-and-guard  '2026-08-09T07:18:54Z'
 holistic-reviewing  '2026-08-09T07:19:09Z'
 holistic-fixing  '2026-08-09T07:23:39Z'
+nits-fixed-holistic  '2026-08-09T07:26:45Z'
+holistic-approved  '2026-08-09T07:26:57Z'
 ```
 
 ## Batches
