@@ -86,8 +86,12 @@ This applies to every line touched in this batch, in every `.md` file, not only 
   Card 17 is what folds the durable behaviour into the package doc so the eventual deletion loses nothing.
 
   In the roadmap, move slice 10 to completed: the entry currently lists slices 8 and 10 as remaining and describes slice 10 as pending.
-  Rewrite it so only slice 8's open CLI-wording policy question remains, and state that slice 10 shipped.
   This is a planned-item completion, which is exactly what the roadmap moves for.
+
+  While rewriting that entry, resolve the contradiction it carries rather than preserving it: the roadmap calls slice 8's CLI-wording policy question open, but the design doc's own slice 8 section is headed shipped and states that the question was resolved — consumer-emitted prose says "fabric," never "weft," while the wrapped error detail fabric itself produces keeps naming the weft repo and path freely.
+  The design doc is the authority here, so the roadmap entry should record slice 8 as resolved too.
+  With both slices settled, the entry reduces to a statement that the fabric campaign's slices are complete;
+  keep the pointer to the design doc, which survives this task because slice 6's orchestration half is still open.
 - **Commit:** `docs(manifest): mark fabric slice 10 shipped`
 
 ### Card 19: flip the constraint example and fix the stale anchor name

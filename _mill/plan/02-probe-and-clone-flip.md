@@ -73,6 +73,10 @@ Until then the CLI passes `ForceBootstrap: false`, which is the correct default 
      Set `RecordedWarpURL` to the `strings.TrimSpace`d stdout and `Found` to true.
      An empty-after-trim value is treated as absent (`Found: false`), matching `readWarpBinding`'s own empty-is-absent rule.
   6. When the record is absent (from step 4 or the empty-after-trim case in step 5), run the same discriminator for the anchor: `gitexec.RunGit([]string{"ls-tree", "HEAD", "--name-only", "--", lyxcwd.AnchorFileName}, probeDir)`, hard-erroring on error or nonzero exit, and set `WeftLooksLikeWeft` to whether the trimmed stdout is non-empty.
+     When that comes back empty, run the discriminator a second time for `staleFabricAnchorName`, the pre-rename marker `clone.go` already declares, and set `WeftLooksLikeWeft` when THAT is non-empty.
+     A legacy hub predating the anchor rename carries only the old marker, and it is unambiguously a weft;
+     recognising it here is what keeps `clone.go`'s existing stale-marker hard error — the one that names re-cloning as the migration remedy — reachable.
+     Without this second probe the new guard would fire first and replace that specific, actionable message with a generic argument-order complaint, which would be a real regression for exactly the operator the migration error exists for.
      When the record IS present, `WeftLooksLikeWeft` is irrelevant (no bootstrap can occur) and may be left false.
 
   Every hard error is formatted as `probe weft %s: %s` with the weft URL and git's trimmed stderr (falling back to a description of the failing git subcommand when stderr is empty).
@@ -217,7 +221,8 @@ Until then the CLI passes `ForceBootstrap: false`, which is the correct default 
 
   Do not change any assertion, fixture, or test name in this card — the behaviour under test is unchanged and every one of these tests must still pass for exactly the reason it passed before.
   The one substantive consequence to check: these fixtures clone a weft bare repo that carries a committed readme file and no anchor marker, so the new old-order guard would reject them.
-  Each of these call sites therefore needs `ForceBootstrap: true` UNLESS its weft fixture is empty (`makeEmptyBareRemote`) or already carries `.lyx-anchor` (seeded via `commitFileOnBranch`).
+  Each of these call sites therefore needs `ForceBootstrap: true` UNLESS its weft fixture is empty (`makeEmptyBareRemote`) or already carries an anchor marker seeded via `commitFileOnBranch`.
+  The anchor-marker exception covers BOTH marker names: the stale-marker test seeds the pre-rename `.fabric-anchor` and must NOT get `ForceBootstrap: true`, because the guard admits it (card 3 probes for both names) and the test asserts on the stale-marker error naming re-clone as the remedy — a message the bootstrap guard never produces.
   Work through the call sites one at a time and set the field from the fixture actually used;
   add a short comment at each `ForceBootstrap: true` site saying the fixture is a seeded bare repo standing in for a weft, not a repo that has ever been a weft.
 

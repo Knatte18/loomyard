@@ -29,6 +29,7 @@ Batch-local decisions:
 - **Context:**
   - `internal/fabricengine/warpbinding.go`
   - `internal/fabricengine/boardweft.go`
+  - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/topology.go`
   - `internal/gitexec/gitexec.go`
   - `internal/lyxcwd/anchor.go`
@@ -107,8 +108,9 @@ Batch-local decisions:
   - Push on both `recorded` and `present`.
     The `present` push is what retries a backfill that committed locally but failed to push: without it, the next reconcile sees the record on disk, returns `present`, and a commit-only-on-`recorded` handler would skip it forever.
     It costs nothing when there is nothing to push — `Bolt.Push` reaches `gitrepo.PushCoalesced`, which checks `HasUnpushed` (a purely local rev-list) and returns nil without contacting the remote when HEAD is in sync.
-    Add a short comment recording the caveat that `HasUnpushed` treats *no configured upstream* as unpushed, so a board worktree with no upstream would attempt a network push on every reconcile;
-    the board branch tracks its remote from the clone, so this is not the normal case.
+    Add a short comment recording the caveat that `HasUnpushed` treats *no configured upstream* as unpushed, so a board worktree with no upstream attempts a network push on every reconcile.
+    That is the adopt path's non-case — a board on an already-existing default branch carries its upstream from the initial clone — but it IS the steady state for a hub bootstrapped against a genuinely empty weft remote, whose board branch is orphan-created with no upstream at all.
+    The attempt is harmless (it either succeeds or yields `record_failed` with the error in the detail), but the comment must not claim it never happens.
     On push failure set `binding` to `WarpBindingOutcomeRecordFailed` and set `detail` to a message distinguishing the two paths — on the `present` path it must say a previously committed record could not be pushed.
   - A failed commit or push is non-fatal: the handler still returns `output.Ok` with an unchanged exit code.
     This mirrors the precedent already in `Reconcile` itself, where a board-junction wiring failure is a Detail note that may never downgrade a reconcile verdict, and it keeps offline reconcile working for a fact the next reconcile can persist just as well.
