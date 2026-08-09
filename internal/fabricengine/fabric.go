@@ -1,9 +1,9 @@
 // fabric.go — the Fabric handle: fabric's cross-repo coordination point over two
 // internal/gitrepo.Repo instances, plus the sync-options/pathspec plumbing its cross-repo
 // operations need.
-// Fabric exposes Warp and Weft directly as exported fields rather than a forwarding method per
-// gitrepo operation — consumers call f.warp.StageAndCommit(...) / f.weft.ChangedFilesSince(...)
-// for anything repo-specific and uncoordinated;
+// Fabric holds its two gitrepo.Repo instances as UNEXPORTED fields, so anything repo-specific and
+// uncoordinated (f.warp.StageAndCommit(...), f.weft.ChangedFilesSince(...)) is reachable only from
+// inside this package;
 // only the genuinely cross-repo operations (Commit, Pull, Diff, Status) get their own method on
 // Fabric.
 // A single-sided, uncoordinated op also earns a named Fabric method — rather than staying direct

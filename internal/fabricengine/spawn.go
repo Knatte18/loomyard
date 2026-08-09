@@ -4,7 +4,7 @@
 // internal/fabriccli.spawnPush: it launches a detached `lyx fabric --warp-path <abs> --weft-path
 // <abs> push` child (either flag omitted when its path is empty) that re-enters the fabric CLI's
 // bypass mode and pushes whichever side(s) were supplied.
-// PushWarpAt is the warp-side sibling of weftgit.go's PushWeftAt — the synchronous, no-Fabric-
+// PushWarpAt is the warp-side sibling of weftgit.go's pushWeftAt — the synchronous, no-Fabric-
 // instance push primitive the detached child's bypass handler calls for the warp side.
 
 package fabricengine
@@ -72,7 +72,7 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 // PushWarpAt pushes unpushed commits at warpPath directly, with no Fabric instance and no weft path
 // involved — the warp-side analog of weftgit.go's PushWeftAt, and the detached push child's
 // bypass-push entry point for the warp side (see fabriccli's --warp-path bypass flag).
-// Gating matches PushWeftAt exactly.
+// Gating matches pushWeftAt exactly.
 func PushWarpAt(warpPath string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
