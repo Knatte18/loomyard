@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-override-notes-and-acceptance
+phase: holistic-reviewing
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-rename-and-sweep  '2026-08-09T13:36:19Z'
 approved-doc-prose-v2-erasure  '2026-08-09T13:40:38Z'
 approved-go-comments-and-guards  '2026-08-09T13:45:05Z'
 approved-override-notes-and-acceptance  '2026-08-09T13:52:13Z'
+holistic-reviewing  '2026-08-09T13:52:34Z'
 ```
 
 ## Batches
