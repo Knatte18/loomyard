@@ -296,9 +296,14 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// for a subpath-anchored repo.
 	if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
 		if _, newErr := os.Stat(filepath.Join(boardDir, lyxcwd.AnchorFileName)); os.IsNotExist(newErr) {
+			// The remedy names the marker rename, never "re-clone": this error is emitted BY a
+			// clone, so telling the operator to clone again just reproduces it. The record lives on
+			// weft:main, so migrating it is a rename plus a commit in an existing hub's board
+			// worktree, after which this clone succeeds.
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
-				"found stale %s marker with no %s beside it at %s; re-clone this hub to migrate to the renamed marker",
-				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir))
+				"found stale %s marker with no %s beside it at %s; in an existing hub's %s worktree run `git mv %s %s` and commit, then retry this clone",
+				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir,
+				BoardDirName, staleFabricAnchorName, lyxcwd.AnchorFileName))
 		}
 	}
 

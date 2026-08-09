@@ -637,8 +637,8 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
 	// No ForceBootstrap: the guard admits this fixture on its own (card 3's probe recognises the
-	// stale pre-rename marker), and the test asserts on the stale-marker error naming re-clone as
-	// the remedy — a message the bootstrap guard never produces.
+	// stale pre-rename marker), and the test asserts on the stale-marker error naming the marker
+	// rename as the remedy — a message the bootstrap guard never produces.
 	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
 		WeftURL: filepath.ToSlash(weftBare),
 		WarpURL: filepath.ToSlash(warpBare),
@@ -647,8 +647,13 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CloneHub() against a stale .fabric-anchor with no .lyx-anchor should have failed")
 	}
-	if !strings.Contains(err.Error(), "re-clone") {
-		t.Errorf("CloneHub() error = %q; want it to name re-clone as the remedy", err.Error())
+	// The remedy must be the marker rename, never "re-clone": this error is produced BY a clone, so
+	// prescribing another clone is a loop the operator cannot exit.
+	if !strings.Contains(err.Error(), "git mv .fabric-anchor .lyx-anchor") {
+		t.Errorf("CloneHub() error = %q; want it to name the marker rename as the remedy", err.Error())
+	}
+	if strings.Contains(err.Error(), "re-clone this hub") {
+		t.Errorf("CloneHub() error = %q; want it NOT to prescribe the very action that produced it", err.Error())
 	}
 	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
 		t.Errorf("hub directory %s should have been removed by teardownHub after the stale-marker guard failure", expectedHubPath)
