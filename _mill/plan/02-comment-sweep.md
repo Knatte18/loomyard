@@ -129,5 +129,6 @@ no regex turns "mirroring builderengine's own runlevel.go naming note" into stan
 
 `verify:` runs `go build ./...` and `go vet ./...` because this batch is comment-only: the risk it carries is a malformed comment block or an accidentally-truncated declaration, which is exactly what build and vet catch.
 The scoped `go test` covers `./internal/websterengine/...` and `./internal/webstercli/...`, the two packages whose test files this batch edits, plus `./internal/pattern/...`, whose `leaf_enforcement_test.go` parses the feature-package list this batch shortens.
+The integration-tagged run over the same two webster packages is required, not optional: three of the test files this batch edits — `internal/websterengine/beginbatch_test.go`, `internal/websterengine/recoverbatch_test.go`, and `internal/webstercli/verbs_test.go` — carry the `integration` build tag, so an untagged run never compiles the comments this batch rewrites in them.
 No new tests are written;
 the sweep's real completion criterion is the repo-wide zero-hit grep at batch 5.

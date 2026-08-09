@@ -119,7 +119,9 @@ The external interface the later batches consume: after this batch, `builder` is
 - **Moves:** none
 - **Requirements:** In `internal/scoutcli/cli.go`, the user-facing help example `lyx scout refs --within internal/builderengine SomeMethod` must name a package that exists — change it to `internal/websterengine`.
   Change the comment that cites the deleted buildercli package's own cli.go so it names `internal/webstercli/cli.go` instead.
-  In `internal/scoutcli/cli_test.go`, rewrite the synthetic path fixtures in the `--within` path-containment test: `inScope1`/`inScope2` become `/repo/internal/websterengine/poll.go` and `/repo/internal/websterengine/state.go`, `prefixCollision` becomes `/repo/internal/webstercli/cli.go`, the two `within:` values become `/repo/internal/websterengine` and `internal/websterengine`, and the deliberate prefix-collision `within:` becomes `/repo/internal/webster`.
+  In `internal/scoutcli/cli_test.go`, rewrite the synthetic path fixtures in `TestFilterWithin`: `inScope1`/`inScope2` become `/repo/internal/websterengine/poll.go` and `/repo/internal/websterengine/state.go`, `prefixCollision` becomes `/repo/internal/webstercli/cli.go`, the two `within:` values become `/repo/internal/websterengine` and `internal/websterengine`, and the deliberate prefix-collision `within:` becomes `/repo/internal/webster`.
+  The `crossPackage` negative control must be renamed in the same edit: it is currently `/repo/internal/websterengine/poll.go`, which after the rename above would be byte-identical to `inScope1` and would classify as in-scope, contradicting every `wantRefs` in the table.
+  Change it to a sibling package that stays genuinely outside the new `within` scope — `/repo/internal/perchengine/identity.go`.
   Update the accompanying comment so it explains the collision check against `internal/webster` vs `internal/websterengine`.
   The property under test — that a path-containment check never treats a shorter prefix as containment — is preserved exactly;
   only the synthetic package names change.

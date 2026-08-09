@@ -26,7 +26,7 @@ batches:
     name: comment-sweep
     file: 02-comment-sweep.md
     depends-on: [1]
-    verify: go build ./... && go vet ./... && go test ./internal/websterengine/... ./internal/webstercli/... ./internal/pattern/...
+    verify: go build ./... && go vet ./... && go test ./internal/websterengine/... ./internal/webstercli/... ./internal/pattern/... && go test -tags integration ./internal/websterengine/... ./internal/webstercli/...
   - number: 3
     name: reference-contracts
     file: 03-reference-contracts.md
