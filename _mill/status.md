@@ -39,6 +39,8 @@ batches:
     start_sha: 612ca3ff4106593a4d9ad222a08e43fcbc71a5f4
     commit_sha: 0b668d8390ec9bd963bb9aacddb99e734a6c9586
   - name: wiki-publish-and-summary
-    state: pending
+    state: running
+    implementer_session: af8d917c-33c5-4861-b8b8-9ac5ccc6568b
+    start_sha: 67d4b0eb9a3e3c3d69581b67284d95e744b65155
     verify_baseline_failures: []
 ```
