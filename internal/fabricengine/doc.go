@@ -20,6 +20,11 @@
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
 // survives it at all (`ErrNoSurvivingAnchor`).
+// A third refusal guards the working tree rather than history: whenever warp would have to move at
+// all — fast-forward or reconcile — a warp worktree carrying uncommitted tracked changes aborts
+// with `ErrWarpDirty` before anything mutates warp, because every warp advance goes through a
+// `reset --hard` that would silently destroy those changes (weft has already been fast-forwarded
+// when this fires; warp is untouched).
 // Every rewrite/anchor determination is ancestry-based — `f.warp.IsAncestor`, via `git merge-base
 // --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection

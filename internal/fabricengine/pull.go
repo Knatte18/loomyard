@@ -111,6 +111,29 @@ var ErrWarpDivergedUnpushed = errors.New("fabricengine: warp remote diverged and
 // Fabric.Pull makes no change to either repo when this is returned.
 var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and no recorded correspondence survives; aborting, no changes")
 
+// ErrWarpDirty is returned by Fabric.Pull when warp would have to move (fast-forward or reconcile)
+// while the warp worktree carries uncommitted tracked changes.
+// Every warp advance goes through ResetHard, which silently discards uncommitted tracked
+// modifications — strictly more destructive than the plain `git pull` an external actor would run —
+// so Pull refuses before mutating warp instead, mirroring Checkout's dirty-weft refusal.
+// The weft side has already been fast-forwarded when this is returned; warp is untouched.
+var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted changes; commit or stash them, then re-run pull; aborting, no warp changes")
+
+// warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
+// state ResetHard would silently destroy.
+// Untracked files are deliberately excluded: reset --hard leaves them alone, so they are no reason
+// to refuse a pull.
+func (f *Fabric) warpWorktreeDirty() (bool, error) {
+	stdout, stderr, code, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, f.warpPath)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: git status in %s: %w", f.warpPath, err)
+	}
+	if code != 0 {
+		return false, fmt.Errorf("fabricengine: git status in %s: %s", f.warpPath, stderr)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
 // ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
 // Fabric.Pull calls this AFTER f.warp.Fetch has refreshed the remote-tracking
@@ -164,6 +187,16 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 
 	if localHEAD == upstreamSHA {
 		return result, nil
+	}
+
+	// Every remaining branch moves warp via ResetHard, which discards uncommitted tracked changes
+	// without a trace — so a dirty warp worktree is refused here, before anything mutates warp.
+	dirty, err := f.warpWorktreeDirty()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "dirty-check", Err: err}
+	}
+	if dirty {
+		return result, ErrWarpDirty
 	}
 
 	isFF, err := f.warp.IsAncestor(localHEAD, upstreamSHA)

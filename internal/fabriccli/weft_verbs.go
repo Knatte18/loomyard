@@ -210,7 +210,10 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
     already carries unpushed commits of its own AND the remote diverged (the
     double-conflict case pull refuses to resolve unattended), or the warp
     rewrite is so thorough that no recorded correspondence survives (no safe
-    baseline to re-anchor against).`,
+    baseline to re-anchor against).
+  - A warp worktree with uncommitted tracked changes is refused before warp
+    is moved at all — commit or stash, then re-run. Advancing warp goes
+    through a hard reset that would silently discard those changes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

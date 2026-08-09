@@ -435,6 +435,50 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	}
 }
 
+// TestPull_DirtyWarpRefusesBeforeMovingWarp guards the data-loss hole where Pull's ResetHard
+// discarded uncommitted tracked warp changes on a routine fast-forward: with a modified tracked file
+// in the warp worktree and an advanced remote, Pull must return ErrWarpDirty, leave warp HEAD
+// unmoved, and leave the modification intact on disk.
+func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, warpPath, bareDir, _, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
+
+	preWarpHEAD := currentSHA(t, warpPath)
+
+	clone := filepath.Join(fixturesDir, "warp-clone-dirty-ff")
+	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	commitPlain(t, clone, "ff-file.txt", "ff change")
+	lyxtest.MustRun(t, clone, "git", "push")
+
+	// Dirty a TRACKED warp file — the exact state ResetHard would destroy.
+	dirtyFile := filepath.Join(warpPath, "README")
+	const dirtyContent = "uncommitted local edit that must survive pull"
+	if err := os.WriteFile(dirtyFile, []byte(dirtyContent), 0o644); err != nil {
+		t.Fatalf("dirty tracked file: %v", err)
+	}
+
+	result, err := f.Pull(SyncOptions{})
+	if !errors.Is(err, ErrWarpDirty) {
+		t.Fatalf("Pull() error = %v; want ErrWarpDirty", err)
+	}
+	if result.WarpAdvanced {
+		t.Errorf("Pull() WarpAdvanced = true; want false (refused before moving warp)")
+	}
+
+	if got := currentSHA(t, warpPath); got != preWarpHEAD {
+		t.Errorf("warp HEAD after refused Pull() = %q; want unchanged %q", got, preWarpHEAD)
+	}
+	data, readErr := os.ReadFile(dirtyFile)
+	if readErr != nil {
+		t.Fatalf("read dirtied file after Pull(): %v", readErr)
+	}
+	if string(data) != dirtyContent {
+		t.Errorf("uncommitted warp edit was destroyed by Pull(): got %q; want %q", data, dirtyContent)
+	}
+}
+
 // TestPull_EmptyIndexNoDrift covers a non-fast-forward remote with an empty correspondence index
 // (warp commits that were never synced to weft at all): warp must still advance, with no reconcile
 // commit written.
