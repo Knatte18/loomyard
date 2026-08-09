@@ -47,7 +47,9 @@ batches:
     commit_sha: 12a9f7d692b1824d1d3e37e00822a6ec8a898509
     verify_baseline_failures: []
   - name: comment-sweep
-    state: pending
+    state: running
+    implementer_session: 8a051e0e-3f38-424a-880f-5356782de26f
+    start_sha: 08974f98543e572e1ea9760032160e72f53f8dc5
     verify_baseline_failures: []
   - name: reference-contracts
     state: pending
