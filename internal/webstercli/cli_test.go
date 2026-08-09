@@ -96,15 +96,15 @@ func TestCommand_AllEightSubcommandsRegistered(t *testing.T) {
 	}
 }
 
-func TestCommand_LongStringsHaveNoStaleV2Language(t *testing.T) {
-	forbidden := []string{"--restart-chain", "restart-chain", "chain", "oversized", "v2"}
+func TestCommand_LongStringsHaveNoStaleBatchLanguage(t *testing.T) {
+	forbidden := []string{"--restart-chain", "restart-chain", "chain", "oversized"}
 
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
 		lower := strings.ToLower(cmd.Long)
 		for _, bad := range forbidden {
 			if strings.Contains(lower, bad) {
-				t.Errorf("command %q Long string contains stale v2/chain/oversized language %q:\n%s", cmd.CommandPath(), bad, cmd.Long)
+				t.Errorf("command %q Long string contains stale batch-era language %q:\n%s", cmd.CommandPath(), bad, cmd.Long)
 			}
 		}
 		for _, sub := range cmd.Commands() {
