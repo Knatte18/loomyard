@@ -151,8 +151,8 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		}
 		hubPath = HubPath(cwd, name)
 		if opts.Reset {
-			if err := RemoveAll(hubPath); err != nil {
-				return CloneResult{}, fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+			if err := resetHub(hubPath); err != nil {
+				return CloneResult{}, err
 			}
 		}
 		if _, err := os.Stat(hubPath); err == nil {
@@ -196,8 +196,8 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		}
 		hubPath = HubPath(cwd, name)
 		if opts.Reset {
-			if err := RemoveAll(hubPath); err != nil {
-				return CloneResult{}, fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+			if err := resetHub(hubPath); err != nil {
+				return CloneResult{}, err
 			}
 		}
 		// The asymmetry with the two-argument form is deliberate: an offline two-argument re-clone
@@ -482,6 +482,69 @@ func cloneRepo(url, dest string) error {
 	_ = stdout // stdout is not used; we only check for errors
 
 	return nil
+}
+
+// resetHub implements --reset: it removes an existing hub at hubPath, but only once it has
+// established that hubPath IS one.
+//
+// The hub name is derived, never typed — from the warp URL in the two-argument form, and from the
+// warp URL recorded on the weft's own `.lyx-warp` binding in the one-argument form, where the
+// operator never sees the name of the directory being deleted at all.
+// An unconditional RemoveAll on a derived path therefore destroyed any directory that merely
+// happened to be called `<name>-HUB`, user content and all, on a flag whose help promises to
+// "remove an existing hub".
+//
+// The hub predicate is structural and cheap: a fabric hub always holds `<hub>/_board`, and always
+// holds at least one `*-weft` sibling.
+// Either is enough — a hub whose `_board` worktree was hand-deleted is still recognisably a hub, and
+// so is one mid-clone whose board has not been materialised yet.
+// An absent path stays a silent no-op, so --reset remains idempotent.
+func resetHub(hubPath string) error {
+	info, statErr := os.Stat(hubPath)
+	if os.IsNotExist(statErr) {
+		return nil
+	}
+	if statErr != nil {
+		return fmt.Errorf("reset: inspect %s: %w", hubPath, statErr)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("reset: refusing to remove %s: it is not a directory, so it is not a hub", hubPath)
+	}
+
+	if !looksLikeHub(hubPath) {
+		return fmt.Errorf(
+			"reset: refusing to remove %s: it has no %s and no %q sibling, so it is not a fabric hub — remove it yourself if that is really what you meant",
+			hubPath, BoardDirName, "*"+weftname.Suffix)
+	}
+
+	if err := RemoveAll(hubPath); err != nil {
+		return fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+	}
+	return nil
+}
+
+// looksLikeHub reports whether hubPath carries the structural marks of a fabric hub: a `_board`
+// entry, or at least one weft sibling directory.
+// An unreadable directory answers false, the conservative direction — a directory fabric cannot
+// enumerate is exactly where an unconditional recursive removal is least defensible.
+func looksLikeHub(hubPath string) bool {
+	if _, err := os.Stat(filepath.Join(hubPath, BoardDirName)); err == nil {
+		return true
+	}
+
+	entries, err := os.ReadDir(hubPath)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, ok := WeftWarpSlug(entry.Name()); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // teardownHub removes the Hub directory and returns an error combining the cause with

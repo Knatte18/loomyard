@@ -84,6 +84,10 @@ warp URL is supplied for an unbound weft.
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
+The teardown is refused unless the target really is a fabric hub — it must hold
+a _board entry or a weft sibling. The hub name is derived rather than typed (in
+the one-argument form, from the binding recorded on the weft), so a directory
+that merely happens to be named <name>-HUB is reported and left alone.
 
 Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the warp
 repo instead of its root — e.g. --subpath backend for a monorepo where lyx
