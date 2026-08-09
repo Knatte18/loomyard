@@ -79,7 +79,10 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, 
 	}
 
 	// Switch the warp worktree to the target branch.
-	_, _, exitCode, err = gitexec.RunGit(
+	// git's own stderr is carried into the error: the actionable half of a failure here is
+	// invariably in it ("'main' is already used by worktree at ..."), and a bare exit code leaves
+	// the operator with nothing to act on.
+	_, switchStderr, exitCode, err := gitexec.RunGit(
 		[]string{"switch", branch},
 		l.WorktreePath(),
 	)
@@ -87,7 +90,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, 
 		return CheckoutResult{}, fmt.Errorf("warp switch: %w", err)
 	}
 	if exitCode != 0 {
-		return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed (git exit %d)", branch, exitCode)
+		return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed (git exit %d): %s", branch, exitCode, strings.TrimSpace(switchStderr))
 	}
 
 	// Resolve the weft sibling branch; roll back warp on failure.
@@ -134,7 +137,7 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 
 	if weftBranchExists(l, weftBranch) {
 		// Branch exists: switch to it.
-		_, _, exitCode, err := gitexec.RunGit(
+		_, switchStderr, exitCode, err := gitexec.RunGit(
 			[]string{"switch", weftBranch},
 			weftWorktree,
 		)
@@ -142,7 +145,7 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 			return false, fmt.Errorf("weft switch: %w", err)
 		}
 		if exitCode != 0 {
-			return false, fmt.Errorf("weft switch to branch %q failed (git exit %d)", weftBranch, exitCode)
+			return false, fmt.Errorf("weft switch to branch %q failed (git exit %d): %s", weftBranch, exitCode, strings.TrimSpace(switchStderr))
 		}
 		return false, nil
 	}
@@ -161,7 +164,7 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 	parentWeftBranch := strings.TrimSpace(parentWeftBranchOut)
 
 	// Create and switch to the new weft branch.
-	_, _, exitCode, err = gitexec.RunGit(
+	_, forkStderr, exitCode, err := gitexec.RunGit(
 		[]string{"switch", "-c", weftBranch, parentWeftBranch},
 		weftWorktree,
 	)
@@ -169,7 +172,7 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 		return false, fmt.Errorf("fork weft branch: %w", err)
 	}
 	if exitCode != 0 {
-		return false, fmt.Errorf("fork weft branch %q from %q failed (git exit %d)", weftBranch, parentWeftBranch, exitCode)
+		return false, fmt.Errorf("fork weft branch %q from %q failed (git exit %d): %s", weftBranch, parentWeftBranch, exitCode, strings.TrimSpace(forkStderr))
 	}
 
 	return true, nil
