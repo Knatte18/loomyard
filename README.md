@@ -62,7 +62,8 @@ Each warp worktree uses a **junction** (Windows) or symlink to route writes (`_l
 Two state roots with opposite lifecycles: **`_lyx/`** is durable and fabric-synced (config, board, orchestration status — resume works across machines);
 **`.lyx/`** is ephemeral and machine-bound (live tmux runtime state, never synced).
 
-All worktree and Hub geometry resolves through a single package, `internal/hubgeometry` — the sole owner of cwd and worktree-root math.
+All cwd resolution goes through a single package, `internal/lyxcwd` — the sole owner of cwd, worktree-root, and lyx-anchor math, and nothing else.
+Weft paths, junctions, and every per-module subdirectory are the owning module's own relative constants, joined onto the coordinates `lyxcwd` resolves.
 See [CONSTRAINTS.md](CONSTRAINTS.md).
 
 ## Modules
