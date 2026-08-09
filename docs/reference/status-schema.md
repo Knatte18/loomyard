@@ -13,7 +13,7 @@ Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `interna
 
 ## Format decision (defended)
 
-The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `builder` uses for its own `state.json`.
+The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `webster` uses for its own `_lyx/webster/state.json`.
 
 This **overrides the board brief's "plain YAML."**
 The brief's real point was "structured, not markdown-with-frontmatter" — and that point stands, unchanged.
@@ -42,15 +42,15 @@ there is no seed→full conversion step.
 {
   "slug": "loom-contracts",        // board-task pointer (board owns title/description)
   "parent": "main",                // parent branch
-  "phase": "builder",              // preflight | discussion | plan | builder | raddle | finalize | done
+  "phase": "webster",              // preflight | discussion | plan | webster | raddle | finalize | done
   "stage": "gate",                 // "produce" | "gate": producing the artifact vs in its review gate
   "narration": "now: … / last: … / wait: …",  // human line for `lyx loom status --watch`
   "history": [                     // per-phase outcome trail (per-round verdicts live in perch's block files)
     { "phase": "discussion", "outcome": "approved", "ts": "2026-07-17T10:01:30Z" },
     { "phase": "plan", "outcome": "stuck", "bounced_to": "discussion", "ts": "2026-07-17T11:14:02Z" }
   ],
-  "start_sha": null,               // repo HEAD stamped when Builder begins (Raddle diff base)
-  "pause_requested": false,        // pause flag kept IN-status (diverges from builder, which uses a separate flag file)
+  "start_sha": null,               // repo HEAD stamped when Webster begins (Raddle diff base)
+  "pause_requested": false,        // pause flag kept IN-status (diverges from webster, which uses a separate flag file)
   "next_action": null              // when loom yields at a human gate: what the human must do next
 }
 ```
@@ -59,18 +59,18 @@ Per-field notes:
 
 - **`slug` / `parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
-- **`phase`** — the phase enum from loom's phase machine, plus the terminal `done`: `preflight | discussion | plan | builder | raddle | finalize | done`.
+- **`phase`** — the phase enum from loom's phase machine, plus the terminal `done`: `preflight | discussion | plan | webster | raddle | finalize | done`.
 - **`stage`** — `produce | gate`: whether the current phase is mid-produce or mid-gate. Kept because this file is loom's single total overview of *where it is* and loom needs produce-vs-gate for resume; the finer per-round detail stays in perch's block files (see [Parse discipline](#parse-discipline) and history below).
 - **`narration`** — one composed human string with `now:`/`last:`/`wait:` segments. loom writes it, the `lyx loom status --watch` strand prints it;
   reed never parses it.
 - **`history`** — a **per-phase outcome trail**: one entry per phase attempt (`{phase, outcome: approved | stuck, bounced_to?, ts}`), including stuck-handler bounce-backs. Per-*round* verdicts are **not** duplicated here — those live in perch's block files, since the progress-judge that needs them lives inside perch and reads perch's own files directly. `bounced_to` is present only on a `stuck` entry that routes back to an earlier phase.
-- **`start_sha`** — the repo `HEAD` stamped when Builder begins, so Raddle can diff `start_sha..HEAD`. `null` until Builder starts.
+- **`start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
 - **`pause_requested`** — the pause flag, kept **in-status**.
-  This diverges from `builder`, which uses a separate pause *flag file* — called out here deliberately so the divergence reads as a decision, not an inconsistency.
+  This diverges from `webster`, which uses a separate pause *flag file* — called out here deliberately so the divergence reads as a decision, not an inconsistency.
 - **`next_action`** — a dedicated, machine-checkable field for "is this blocked on a human, and on what?", set whenever loom yields at a human gate.
   It is also reflected in `narration`'s `wait:` segment, so a human reading the narration sees the same fact in prose.
 - **No `schema_version`/`format` field.**
-  Unlike `plan-format.md` (which needs `format:` because `builder` mechanically validates plans across a real v1→v2 bump), this file has a single writer (loom itself) and no version-compatibility pressure.
+  This file has a single writer (loom itself) and no version-compatibility pressure.
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
 - **Timestamps.**
@@ -78,7 +78,7 @@ Per-field notes:
 
 ## Parse discipline
 
-Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` — the JSON analogue of the discipline builder's `ParseOutcome` and the burler verdict-parse apply to their own YAML.
+Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` — the JSON analogue of the discipline webster's own strict `outcome.yaml` decode and the burler verdict-parse apply to their own YAML.
 An unparseable or malformed status file is a hard error;
 loom never guesses a status.
 
@@ -89,7 +89,7 @@ Spec for a future validator:
 - Required fields: the five mandatory string fields (`slug`, `parent`, `phase`, `stage`, `narration`) are structurally presence-enforced — an empty string is treated as "absent".
   The remaining nullable/bool/slice fields (`start_sha`, `next_action`, `pause_requested`, `history`) satisfy "present" via their own zero/null semantics: an absent `start_sha`/`next_action` decodes to `null`, an absent `pause_requested` decodes to `false`,
   and an absent `history` decodes to an empty list — all legitimate values, not violations (matching `loomengine.checkCoherence`).
-- `phase` is one of `preflight | discussion | plan | builder | raddle | finalize | done`.
+- `phase` is one of `preflight | discussion | plan | webster | raddle | finalize | done`.
 - `stage` is one of `produce | gate`.
 - Every `history[].outcome` is one of `approved | stuck`; `bounced_to` is present only when `outcome: stuck`.
 - Every timestamp field is RFC3339 UTC.
@@ -113,15 +113,15 @@ A realistic **seed** — written by the spawn-time lyx command, before `lyx loom
 }
 ```
 
-A realistic **mid-run** instance of the same file, later in the same task's life — Discussion and Plan approved, Builder now mid-review-gate:
+A realistic **mid-run** instance of the same file, later in the same task's life — Discussion and Plan approved, Webster now mid-review-gate:
 
 ```jsonc
 {
   "slug": "loom-contracts",
   "parent": "main",
-  "phase": "builder",
+  "phase": "webster",
   "stage": "gate",
-  "narration": "now: spawned builder-review round 2, waiting on Stop hook / last: round 1 BLOCKING, 3 findings / wait: —",
+  "narration": "now: spawned webster-review round 2, waiting on Stop hook / last: round 1 BLOCKING, 3 findings / wait: —",
   "history": [
     { "phase": "discussion", "outcome": "approved", "ts": "2026-07-17T10:01:30Z" },
     { "phase": "plan", "outcome": "approved", "ts": "2026-07-17T10:22:14Z" }
