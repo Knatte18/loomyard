@@ -96,8 +96,10 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 
 // newFabricFixture returns a lyxtest.CopyPairedLocal fixture seeded with a
 // fabric config and its weft prime on the suffixed primary branch. It also
-// materializes the repo-wide config via seedRepoWideFabricConfig so migrated
-// reads succeed.
+// materializes <Hub>/_board as a real weft worktree on the warp's unsuffixed
+// default branch — the shape CloneHub produces and the shape Cleanup reads the
+// repo's primary weft branch from — and the repo-wide config inside it via
+// seedRepoWideFabricConfig, so migrated reads succeed.
 func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	t.Helper()
 
@@ -105,8 +107,10 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add",
+		fabricengine.BoardDir(fixture.Layout.HubPath), "main")
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	return fixture
 }
 

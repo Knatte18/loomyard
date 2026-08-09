@@ -287,6 +287,14 @@ A weft branch currently checked out at a worktree is always reported as
 protected and never deleted, in every mode — git cannot delete a checked-out
 branch, and its being checked out means the pair is still on disk.
 
+The repo's primary weft branch (the weft pairing of the branch the hub's
+_board worktree is on, e.g. "main-weft") is likewise always protected, in
+every mode. It stays the durable weft line however the prime worktree happens
+to be checked out, so a coordinated checkout onto another branch must not
+promote it to a deletable orphan. If that primary cannot be determined —
+a hub with no readable _board worktree — cleanup refuses to enumerate
+orphans at all rather than sweep on a guess.
+
 The weft repo may also hold weft branches without the fabric suffix (e.g.
 inherited from history predating fabric's uniform naming scheme); those are
 reported but never deleted here, since they are not fabric-managed.
