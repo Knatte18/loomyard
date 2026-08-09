@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-09
+```
+
+## Findings
+
+### [BLOCKING:scope] finalize.md:9's Builder-escalation sentence is never swept
+**Location:** Batch 3 / Card 9 (edits `manifest/designs/finalize.md`)
+**Issue:** `finalize.md:9` reads "escalating **the same way Builder escalates a stuck batch to a fresh higher-capability model**" — a bare-word `Builder` reference in a file Card 9 edits, but Card 9's Requirements only rewrite the `require_pr_to_base` link (`:36`) and the See-also link (`:50`); this sentence is untouched by any card in any batch. `manifest/designs/shed-followups.md:310` explicitly says "`:9` references Builder's escalation behavior, which task A retires" — the plan's own spec assigns this exact site to this task, and it's missing.
+**Fix:** Add a Card 9 requirement rewriting `finalize.md:9` to describe Finalize's escalation on its own terms (webster's package doc), dropping the Builder comparison.
+
+### [BLOCKING:consistency] Card 18 exempts fabric-unified-view.md from editing but not from its own zero-hit grep
+**Location:** Batch 5 / Card 18
+**Issue:** Card 18 instructs the implementer to confirm `manifest/designs/fabric-unified-view.md` "is left alone," citing its historical `BuilderDir` reference — but that file is absent from Card 18's enumerated exclusion list (only the git dir, `_mill/`, `shed-followups.md`, and eight named dated records are excluded). The file genuinely contains bare-word hits ("`BuilderDir`" at `:49`, "builder's pause flag" at `:133`) that the same card's zero-hit bare-word pattern will catch, self-contradicting the "left alone" instruction.
+**Fix:** Add `manifest/designs/fabric-unified-view.md` to Card 18's exclusion list (it is already a documented historical-migration-record case, same class as the dated-benchmarks exclusions).
+
+### [BLOCKING:scope] plugins/prowler/scripts/run.sh:111 is an unenumerated bare-word hit
+**Location:** Batch 5 / Card 18
+**Issue:** `run.sh:111` reads "concurrent **builders'** renames are last-writer-wins" — ordinary English, inside `plugins/`, which Card 18 explicitly includes in sweep scope ("`plugins/`, `tools/` and `sandbox/` included"). It matches none of the enumerated bare-word exclusions (the nearest, "a builder that died," is a different sentence at `:72`). Per the Decision `sweep-completion-is-a-grep-not-a-judgment`, completion requires an *explicit* exclusion list, not eyeballing — this genuine, discoverable-at-plan-time site is absent from it and no card addresses it.
+**Fix:** Add the exact phrase to Card 18's enumerated exclusions, or add a requirement to reword the line.
+
+## Verdict
+
+REQUEST_CHANGES
+Card 18's acceptance sweep has demonstrable unaccounted-for hits, and finalize.md:9 is dropped despite the spec assigning it to this task.
+MILL_REVIEW_END

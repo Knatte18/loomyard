@@ -73,13 +73,14 @@ It is the last batch because both cards depend on every preceding one: the overr
   - `manifest/designs/fabric-unified-view.md`
   - `manifest/designs/loom.md`
   - `manifest/designs/shed-followups.md`
+  - `plugins/prowler/scripts/run.sh`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Run the acceptance sweep and confirm it is clean.
   Write every exclusion into the grep invocation explicitly rather than filtering by eye, so the check is auditable and a reviewer sees exactly what was deliberately left behind.
-  Six patterns, all of which must return zero hits across the whole repo — `plugins/`, `tools/` and `sandbox/` included — minus the git metadata directory, this task's own `_mill/` directory, `manifest/designs/shed-followups.md`, and the dated historical records (`docs/benchmarks/test-suite-timing.md`, `docs/benchmarks/fixture-copy.md`, `docs/benchmarks/scout-vs-grep.md`, `docs/research/scout-agent-usage-findings.md`, `docs/research/scout-spike.md`, `docs/research/scout-multilang.md`, `crucible/README.md`, `crucible/review-prompt-template.md`), which are timestamped records of what was measured and are falsified by editing:
+  Six patterns, all of which must return zero hits across the whole repo — `plugins/`, `tools/` and `sandbox/` included — minus the git metadata directory, this task's own `_mill/` directory, `manifest/designs/shed-followups.md`, and the dated historical records (`docs/benchmarks/test-suite-timing.md`, `docs/benchmarks/fixture-copy.md`, `docs/benchmarks/scout-vs-grep.md`, `docs/research/scout-agent-usage-findings.md`, `docs/research/scout-spike.md`, `docs/research/scout-multilang.md`, `crucible/README.md`, `crucible/review-prompt-template.md`), which are timestamped records of what was measured and are falsified by editing, and `manifest/designs/fabric-unified-view.md`, which is a record of an already-completed migration in the same class — its `BuilderDir` mention names a symbol that no longer exists in the tree at all:
   1. **Package names** — `builderengine`, `buildercli`.
   2. **Phase and gate token** — `"builder"`, `phase: builder`, `builder-review`, and the `→ Builder →` phase-list form.
   3. **Module word** — `lyx builder`, `builder.yaml`, `builder-suite`, `builder suite`, `SANDBOX-BUILDER-SUITE`, `_lyx/builder`, `.lyx/builder`.
@@ -97,9 +98,10 @@ It is the last batch because both cards depend on every preceding one: the overr
   "`xCmd()` builder";
   "fluent builder method";
   "Hub builder:";
+  "concurrent builders'";
   and the task slug `builder-retire` where a document names this task by name.
-  The `builder-retire` token is an addition to the discussion's derived list and was known at plan time, not discovered by the scan;
-  it is recorded here rather than applied silently.
+  Two of those tokens are additions to the discussion's derived list, both known at plan time rather than discovered by the scan, and both are recorded here rather than applied silently: the task slug `builder-retire`, which documents naming this task by name necessarily contain;
+  and "concurrent builders'" at `plugins/prowler/scripts/run.sh`, ordinary English about concurrent writers, distinct from that file's already-enumerated "a builder that died".
   The discussion's `"internal/builder"` synthetic path-prefix fixture exclusion no longer applies — batch 1 renamed that fixture to `internal/webster`.
   If the scan turns up any other ordinary-English or unrelated-fixture site, stop and report it as a finding rather than adding a token to this list — the list's provenance is the point.
   Then confirm three checks recorded during planning and left deliberately untouched, and report if any is no longer true:
