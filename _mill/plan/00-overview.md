@@ -97,6 +97,14 @@ Batch-local decisions live in each batch file._
   One normalizer serves both clone and reconcile so the two verbs can never disagree about what "same URL" means.
 - **Applies to:** all batches
 
+### Decision: the DAG is deliberately linear
+
+- **Decision:** every batch depends on exactly its predecessor, even where a narrower dependency would be technically sufficient.
+  Batch 4 is the clearest case: its cards exercise `CloneHub` through the options struct delivered by batch 2 and touch nothing under `internal/fabriccli`, so `depends-on: [2]` would be equally correct and would let batches 3 and 4 schedule independently.
+- **Rationale:** all batches execute in this one worktree on this one branch, so parallel batches would interleave commits on a shared history for no benefit at this size — six batches, none long-running.
+  The linear chain also means each batch's verify runs against a tree that already contains every earlier batch, which is what makes the narrow per-batch verify scopes safe.
+- **Applies to:** all batches
+
 ### Decision: docs land in this task, commits squash on merge
 
 - **Decision:** the documentation updates live in their own final batch rather than being scattered across the code batches.
@@ -134,6 +142,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/fabricengine/clone_adopt_test.go`
 - `internal/fabricengine/clone_test.go`
 - `internal/fabricengine/doc.go`
+- `internal/fabricengine/export_test.go`
 - `internal/fabricengine/reconcile.go`
 - `internal/fabricengine/warpbinding.go`
 - `internal/fabricengine/warpbinding_clone_integration_test.go`

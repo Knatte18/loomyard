@@ -24,6 +24,7 @@ batch 5 edits `internal/fabriccli/fabric.go` again but in a different function (
 - **Context:**
   - `internal/fabriccli/clone.go`
   - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/warpbinding.go`
   - `internal/weftname/weftname.go`
   - `CONSTRAINTS.md`
 - **Edits:**

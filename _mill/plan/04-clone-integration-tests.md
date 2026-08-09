@@ -72,6 +72,7 @@ Batch-local decision: no new fixture helper is invented where an existing one fi
   - `internal/fabricengine/clone_adopt_test.go`
 - **Edits:**
   - `internal/fabricengine/warpbinding_clone_integration_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -96,8 +97,9 @@ Batch-local decision: no new fixture helper is invented where an existing one fi
     The one-argument case is the point of the whole reset-folding change — once a weft is bound, the one-argument form is the normal invocation.
   - `TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm` — clone once, then attempt a second two-argument clone of the same pair with `Reset` false.
     Assert the error is today's `hub already exists` and, as the observable difference, that no directory whose name begins with the probe prefix was ever created in the clone parent — the check short-circuits before the probe runs.
-    Read the probe prefix through the production constant if it is reachable from `package fabricengine_test`;
-    if it is unexported and not exported through the package's existing `export_test.go` seam, add it there rather than duplicating the literal in the test.
+    `warpProbeDirPrefix` is declared unexported in card 3, so this card also adds a re-export to the package's existing `export_test.go` seam — `const WarpProbeDirPrefixForTest = warpProbeDirPrefix`, with a doc comment in the shape of that file's existing `NewPairedForTest`/`WarpForTest` entries — and the test reads the prefix through it.
+    Never duplicate the literal in the test.
+    This is not conditional: the constant is unexported by construction, so the re-export is always required.
 
   Do not assert the one-argument form's ordering symmetrically: in that form the probe necessarily precedes the hub-exists check, and that asymmetry is deliberate.
   State it in a comment on this test so a future reader does not "fix" it.

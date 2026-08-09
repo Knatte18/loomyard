@@ -150,11 +150,14 @@ This applies to every line touched in this batch, in every `.md` file, not only 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  In the core suite, the subpath-anchored-clone scenario spells the full command warp-first in both its Goal and its Watch lines.
-  Flip both to `lyx fabric clone --subpath <sub> <weft-url> <warp-url>`.
+  In the core suite, the subpath-anchored-clone scenario spells the full command warp-first in its Goal line only — its Watch line names the command without URLs and needs no change.
+  Flip the Goal line to `lyx fabric clone --subpath <sub> <weft-url> <warp-url>`.
   Leave the durability note, the reset guidance, and the rest of the scenario as they are, and do not touch the unrelated stale claim about unwire clearing weft-side content — that belongs to a separate audit.
 
-  In the fabric suite, flip any spelled clone argument order in the preamble and the existing scenarios, then add a new scenario after the existing clone-geometry one, numbered to follow the file's existing `F<N>` sequence.
+  In the fabric suite, flip any spelled clone argument order in the preamble and the existing scenarios.
+  While in the file, correct one stale marker name: the unwire scenario's Watch line names the pre-rename `.fabric-anchor` when listing the repo-wide records that survive unwire.
+  Correct it to the current anchor marker name — the same staleness card 19 fixes in the constraints file, in the same batch — and, since the binding is now a third such record, add it to that same list.
+  Then add a new scenario after the existing clone-geometry one, numbered to follow the file's existing `F<N>` sequence.
   It must carry a `**Covers:** fabric` line, a Goal, a Watch, and the same `**Verdict:** \`OK\` / \`WARN\` / \`FAIL\`` line every other scenario in the file ends with.
 
   The scenario's substance: after the dedicated fabric hub has been cloned once with both URLs — which is what writes the binding — delete the hub directory outright and re-clone with the weft URL alone.
