@@ -245,6 +245,11 @@ Comment-only (the "sweep everything" set — ~50 sites):
 - `internal/pattern/leaf_enforcement_test.go:3` — the feature-package list.
 - `internal/loomengine/configtemplate.go:4`, `internal/loomengine/config_test.go:5`.
 - `internal/perchengine/doc.go:13` — `builder-review` (phase/gate rename).
+- `internal/pattern/doc.go:40` — "builder implementer, webster fork, loom plan".
+  This is a **third** mirror of the `CONSTRAINTS.md:106` / `pattern/leaf_enforcement_test.go:3` pair; keep all three consistent.
+- `internal/scoutengine/doc.go:33` — "importable by any future consumer (e.g. builder or webster)".
+- `internal/webstercli/validate.go:7` — "Unlike builder, webster's own Run pre-flight ALSO refuses a zero-batch plan outright".
+- `internal/webstercli/status.go:5`, `:9` — "unlike builder (which only learns …)", "builder-parity in verb shape".
 - `internal/fabricengine/trailer_test.go:42–43`, `:54–56` — pins the `"builder: <label>"` weft commit-subject form as the `builder_style_subject` fixture, with a comment reading "the `builder: <label>`/`webster: <label>` form every builder/webster weft commit uses".
   **Not in the task spec's inventory.**
   The builder subject form dies with the module: rename the fixture to a webster-only case and narrow the comment.
@@ -307,9 +312,10 @@ This list is a starting inventory, not a bound; the bare-word acceptance scan is
   `:160` is a phase rename; `:14`/`:184`/`:185` name a *prompt template* that this task deletes — reattribute to webster's fork prompt.
 - **`tools/sandbox/SANDBOX-BUILDER-SUITE.md`** — delete the file.
 - **`tools/sandbox/SANDBOX-CORE-SUITE.md`** — scenario **S9 in full**.
-  It spans **`:224` (the `### S9 -- Builder plan validate/status` heading) through its `**Verdict:**` line at `:284`, up to but not including the closing `---` at `:287`** — including the `**Covers:** builder` tag at `:229`, the plan fixture, and the `lyx builder status` / `lyx builder validate` steps at `:234–:283`.
+  **Locate the span by content, not line number** (per this section's own rule): from the `### S9 -- Builder plan validate/status` heading through its `**Verdict:** \`OK\` / \`WARN\` / \`FAIL\`` line, plus one of the two bracketing `---` rules so the remaining separators stay balanced.
+  It includes the `**Covers:** builder` tag, the plan fixture, and the `lyx builder status` / `lyx builder validate` steps.
   The task spec's `:224–232` range covers only the heading and preamble; deleting that alone orphans the scenario body.
-  Delete the whole block plus one of its bracketing `---` rules so the remaining separators stay balanced.
+  **Caution:** the block contains two `---` lines *inside a fenced code block*, which are content, not section separators — a naive separator-balancing edit will trip on them.
   **Two further S9 references sit outside that span and must also go** — neither contains the word "builder", so no acceptance pattern and no test would ever catch them:
   `:99` (`- \`ref\` is the scenario id (\`S0\`-\`S6\`, \`S9\`).`) and `:306` (`S9: <OK|WARN|FAIL> -- <one-line note if not OK>` in the session-log template).
   Leaving them makes the suite instruct operators to report a scenario that no longer exists.
@@ -400,13 +406,24 @@ Run all four; all must be clean:
      **This pattern is load-bearing, not belt-and-braces.** The five patterns above all key on a qualified form, but the single largest swept class — the ~30 provenance doc-comments in `websterengine` — writes plain "builder" ("mirroring builder's own fabric-commit-boundary discipline", "Unlike builder, only the cold recovery strand carries its own role", "webster-local copies of a builder mechanism with an in-tree builder caller").
      Without this pattern the `sweep-everything` decision's "opinion → test" claim fails for exactly the class it was written for.
 
-   **Ordinary-English and unrelated-fixture false positives are excluded by an enumerated token list, never by judgment**, so the bare-word scan stays a mechanical gate:
-   - `strings.Builder`
-   - "fixture builders" (`docs/benchmarks/test-suite-timing.md:739`), "fluent builder method" (`docs/research/scout-multilang.md:29`), "content builder"
-   - `master-builder` / `master-builder-weft` — unrelated worktree-name fixtures in `internal/fabricengine/refscanner_test.go` and `internal/websterengine/audit_test.go`
-   - "Hub builder:" (`sandbox/build.cmd:2`)
+   **Scan scope:** the whole repo, `plugins/` and `tools/` and `sandbox/` included, minus `.git/` and the Scope → Out path exclusions.
 
-   Enumerating the exclusions is what makes a bare-word scan usable: the list is auditable and finite, whereas "skip the ones that are obviously fine" is the judgment call this gate exists to remove.
+   **The exclusion list below was derived by running the scan against the tree, not assembled from guesswork** — that is what makes "mechanical, never by judgment" true rather than asserted.
+   After the qualified-form and path exclusions, exactly **eight** ordinary-English or unrelated-fixture sites remain, and every one is excluded by an enumerated token:
+   - `strings.Builder` — 37 hits, stdlib type.
+   - `master-builder` / `master-builder-weft` — 23 hits, unrelated worktree-name fixtures (`internal/fabricengine/refscanner_test.go`, `internal/websterengine/audit_test.go`).
+   - "content builder" — `internal/fabricengine/launchers.go:4`, `internal/fabricengine/launcher_content_test.go:1`.
+   - "fixture builder" (**singular and plural**) — `internal/gitrepo/parity_test.go:169`, `docs/benchmarks/test-suite-timing.md:739`.
+   - "the same builder produces" — `internal/shuttleengine/claudeengine/command_test.go:203`.
+   - "a builder that died" — `plugins/prowler/scripts/run.sh:72`.
+   - "`xCmd()` builder" — `internal/reedcli/cli.go:31`.
+   - "fluent builder method" — `docs/research/scout-multilang.md:29`.
+   - "Hub builder:" — `sandbox/build.cmd:2`.
+   - `"internal/builder"` as a synthetic **path-prefix fixture** — `internal/scoutcli/cli_test.go:672`, `:700`.
+     This one deliberately proves a path-containment check does *not* treat `internal/builder` as `internal/builderengine`; it names a package path that never existed, so it survives the deletion unchanged.
+
+   Enumerating the exclusions is what makes a bare-word scan usable: the list is auditable, finite, and derived from a real scan, whereas "skip the ones that are obviously fine" is the judgment call this gate exists to remove.
+   **If the implementer's scan turns up a ninth ordinary-English site, that is a finding to report, not a token to add silently** — the list's provenance is the point.
 
    **Excluding** `manifest/designs/shed-followups.md`, the historical records listed under Scope → Out, and this task's own `_mill/` directory.
    The exclusion list must be written into the grep invocation explicitly, so a reviewer sees exactly what was deliberately left behind rather than inferring it.
