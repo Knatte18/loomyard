@@ -184,7 +184,8 @@ To confirm the guard holds, follow the rejected add with `lyx fabric list`/`lyx 
 or a pair added in F2).
 Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) — `ls`/`git -C <warp> ls-files --others -i --exclude-standard` or plain directory inspection should show the junction entries gone.
 Confirm it preserves the weft-side `_lyx` content, explicitly including `_lyx/PATTERN.md` — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
-Confirm it reverts the managed `.gitignore` block's `.lyx/` entry.
+Confirm it reverts the junction's own `.git/info/exclude` entry — there is no committed `.gitignore` block to revert, since junctions are excluded through `.git/info/exclude` alone.
+If a SECOND worktree in the same hub is still wired, confirm the exclude entry is KEPT (that file lives in the repo's shared gitdir, so removing it would make the other worktree's live junctions show up as untracked dirt) — check with `git -C <other-warp-worktree> status --porcelain`, which must stay clean.
 Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
 Finally, confirm the repo-wide records survive unwire — `.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`, and `.lyx-warp` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
 
@@ -220,6 +221,39 @@ Confirm the hub comes up at the same path and identically wired: the same `_boar
 Confirm the success envelope reports the derived warp URL, and reports that the binding was **not** re-written on this re-clone -- it already existed from the earlier two-URL clone.
 Confirm the binding record itself is present and tracked at the board root;
 the record's filename is the one the fabric module documents (`.lyx-warp`), so confirm that exact name rather than guessing at it.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F8 -- Subpath-anchored hub, end to end
+
+**Covers:** fabric
+
+**Goal:** "Clone a hub anchored at a subdirectory of the warp repo rather than its root, and confirm the whole verb surface works from the anchored directory and nowhere else."
+
+**Watch:** Clone with `lyx fabric clone --subpath <dir> <weft-url> <warp-url>`, where `<dir>` is a directory that really exists in the warp repo.
+Confirm `_lyx`, `.lyx` and `_board` land as links inside `<warp>/<dir>/`, and that the warp repo ROOT has none of them — `ls -la` both.
+Confirm every verb runs from `<warp>/<dir>` (`status`, `pairs`, `list`, `reconcile`, `prune`, `cleanup`, `sync`), and that running any of them from the warp repo root, from a subdirectory of `<dir>`, or from a sibling directory is REFUSED with an error naming both cwd and the anchored directory — not a confusing downstream failure.
+Confirm `lyx fabric add <slug>` produces a second pair anchored identically (`<hub>/<slug>/<dir>/_lyx`), and that `lyx fabric commit` after editing `<dir>/_lyx/...` commits to the weft at `<dir>/_lyx/...` while leaving the warp side untouched (`git -C <warp> status`).
+Confirm a bad `--subpath` is refused before anything is created and leaves no hub behind: an absolute path (`--subpath /<dir>`), one escaping the repo (`--subpath ../..`), one naming a file, and one naming a directory that does not exist.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F9 -- Reconcile never eats warp content
+
+**Covers:** fabric
+
+**Goal:** "Confirm `lyx fabric reconcile`, the repair verb, converges wiring without deleting anything the operator put in the warp repo themselves."
+
+**Watch:** In a wired worktree, commit a real symlink of your own beside the junctions at the anchored directory — e.g. `ln -s <existing-dir> latest && git add latest && git commit`.
+Run `lyx fabric reconcile`.
+The symlink must still be there afterwards, and `git status` must be clean: fabric owns only the links it created (those pointing into the paired weft worktree or the hub's `_board`), and a link pointing anywhere else is the operator's, never a "stale junction" to sweep.
+Then check the anchor-marker migration guard: rename `<hub>/_board/.lyx-anchor` to `.fabric-anchor` and run any verb.
+Every verb must hard-error naming both marker names and the rename remedy — it must NOT fall back to treating the repo as root-anchored, which on a subpath hub would wire a second junction set at the warp repo root.
+Rename it back and confirm normal operation resumes.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
