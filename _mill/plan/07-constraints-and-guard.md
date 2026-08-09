@@ -196,7 +196,9 @@ this batch is where the guard that requires those fixes arrives.
   - `internal/builderengine/spawn_test.go`
   - `internal/configengine/config_test.go`
   - `manifest/designs/fabric-unified-view.md`
-- **Edits:** none
+  - `manifest/designs/raddle.md`
+- **Edits:**
+  - `manifest/designs/raddle.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -225,9 +227,12 @@ this batch is where the guard that requires those fixes arrives.
   The tightened guard covers production Go under `internal/` and `cmd/` plus `internal/**/*.md` only — never `*_test.go`, never `docs/`, never `tools/`, never shell.
   Do not describe the tightened test as encoding this check permanently, in a commit message or anywhere else;
   it does not.
-  Record the outcome in the batch notes;
-  make no code change.
-- **Commit:** none
+
+  One genuine miss was found: `manifest/designs/raddle.md` line 63 read "the host (warp) code SHA" and "the last host commit" — a leftover fabric-sense `host` phrase, not on the exclusion list, sitting right next to a `(warp)` clarification that shows an earlier pass already meant to replace it.
+  Reworded both to `warp`, dropping the now-redundant `(warp)` parenthetical.
+  `manifest/designs/curation-triage.md`'s "its host design" and `manifest/designs/loom.md`/`fabric-unified-view.md`/`semantic-index.md`'s "hosts"/"self-hosted" are the ordinary-English verb/adjective sense and are correctly left alone.
+  `docs/shared-libs/configengine.md:66`'s `${env:HOST:-localhost}` is the same benign machine-sense YAML example as the allowed `docs/shared-libs/yamlengine.md:40` line — an omission in this exclusion list's enumeration, not a real hit; left untouched.
+- **Commit:** `docs(raddle): reword the leftover host phrase to warp`
 
 ## Batch Tests
 
