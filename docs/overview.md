@@ -108,8 +108,14 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── <prime>-weft/                 (weft Prime worktree; git repo root)
   ├── <slug>/                       (additional warp worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
-  └── _board/                       (weft:main worktree; the task store)
+  ├── _board/                       (weft:main worktree; the task store)
+  ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
+  ├── _launchers/<anchor>/<slug>    (per-worktree launcher scripts; anchor-mirrored)
+  └── .lyx/                         (hub-level machine-local scratch; a real dir, never a junction)
 ```
+
+`_board`, `_portals`, `_launchers`, and `.lyx` are hub geometry, so none of them can be claimed as a worktree slug
+(`fabricengine.IsReservedHubName`).
 
 ### Git ownership
 
