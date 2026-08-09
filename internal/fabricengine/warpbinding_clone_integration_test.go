@@ -34,14 +34,11 @@ func seedWeftBinding(t *testing.T, dir, bareRemote, warpURL string) {
 	commitFileOnBranch(t, dir, bareRemote, "main", fabricengine.WarpBindingFileName, warpURL+"\n")
 }
 
-// probeDirPrefixLiteral mirrors warpProbeDirPrefix (warpprobe.go), duplicated here because this
-// card's tests need it before card 12 adds the export_test.go re-export that later tests in this same
-// file read the prefix through instead.
-const probeDirPrefixLiteral = ".lyx-clone-probe-"
-
 // noProbeResidueInParent asserts that clonParent contains neither a directory named after
 // derivedName-HUB nor any directory whose name begins with the probe's throwaway-clone prefix — the
 // filesystem property the pre-hub probe exists to guarantee on every failure path.
+// It reads the prefix through fabricengine.WarpProbeDirPrefixForTest so this file has a single source
+// of truth for the literal, shared with TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm below.
 func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...string) {
 	t.Helper()
 
@@ -57,7 +54,7 @@ func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...st
 		t.Fatalf("read clone parent %s: %v", cloneParent, err)
 	}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), probeDirPrefixLiteral) {
+		if strings.HasPrefix(entry.Name(), fabricengine.WarpProbeDirPrefixForTest) {
 			t.Errorf("probe residue %s survives in clone parent; want it removed", entry.Name())
 		}
 	}
