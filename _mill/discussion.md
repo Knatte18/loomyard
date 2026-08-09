@@ -41,7 +41,7 @@ The user's ruling: **those three rewritten files are the newest and the decided 
 **Out:**
 
 - Writing the rewritten `shed.md` / `loom.md` / format docs themselves — that is the follow-up work this task's output *describes*.
-- Deleting `internal/builderengine` / `internal/buildercli`, performing the `plan-format-v3` rename sweep, or moving the `batcher:` config key — all are follow-up tasks (A, B, F), not this task's own edits.
+- Deleting `internal/builderengine` / `internal/buildercli`, performing the `plan-format-v3` rename sweep, or extracting `batcher` into a standalone module — all are follow-up tasks (A, B, F), not this task's own edits.
 - `Hardener` / `Tenter`'s equivalent Raddle-fold-into-Finalize — deferred by the landed design, noted but not designed.
 - Any behavioral code change in this worktree.
 
@@ -61,13 +61,17 @@ The follow-up set it emits explicitly may — and does — include code tasks.
 - Decision: `Batchifier` **is** a `Shed`-level producer, position 8 in `loom`'s list, between `Plan-Review` and `Webster`. Batching is no longer webster-internal execution policy.
 - Rationale: `loom.md`'s rewritten producer table (row 56) is the decided state, and the flat producer list is precisely the mechanism that lets a mechanical, zero-LLM step like batching be named and resumed like any other producer.
 - Rejected: dropping `Batchifier` from the list to preserve the shipped `internal/batcher` framing (would subordinate the newest decision to older doc text); surfacing it as unresolved (the user resolved it).
-- **Consequence, deliberately accepted:** this contradicts shipped artifacts — `internal/batcher/doc.go`'s package comment ("100% webster's own execution-policy decision... never an LLM's decision"), `CONSTRAINTS.md`'s **Batcher Registry+Config Invariant**, and `plan-format-v3.md`'s "Batch is gone / the card is the unit" section. Follow-up task **F** cleans up all of it.
+- **Consequence, deliberately accepted:** this contradicts shipped artifacts — `internal/batcher/doc.go`'s package comment ("100% webster's own execution-policy decision... never an LLM's decision"), `CONSTRAINTS.md`'s **Batcher Registry+Config Invariant**, `plan-format-v3.md`'s "Batch is gone / the card is the unit" section, and `docs/overview.md:271`'s module-table entry. Follow-up task **F** cleans up all of it.
+- Where the config lives during and after the split is a separate decision — see [batcher-extracts-standalone-now-absorbed-by-shed-later](#batcher-extracts-standalone-now-absorbed-by-shed-later).
 
-### batcher-config-key-moves-to-loom-yaml
+### batcher-extracts-standalone-now-absorbed-by-shed-later
 
-- Decision: the `batcher:` config key moves from `webster.yaml` to `loom.yaml`.
-- Rationale: `loom.yaml` is where a product declares **which producers its list contains**; which batchifier that list's `Batchifier` producer uses belongs in the same place. Matches `finalize.md:41`'s existing precedent — "per-phase profiles live in loom, not perch.yaml."
-- Rejected: leaving it in `webster.yaml` (webster is now merely the *consumer* of the batches, not the decider); a standalone `batcher.yaml` (a producer definition's config does not warrant its own file).
+- Decision: two-step.
+  **Now:** extract `batcher` out of webster as a **standalone module** with its own `batcher.yaml`, registered in `internal/configreg`. The `batcher:` key leaves `webster.yaml`.
+  **Later, when `Shed` is built:** the `Batchifier` producer is absorbed into `loom` via `Shed`, and the batchifier choice becomes part of `loom`'s producer-list configuration at that point.
+- Rationale: `Batchifier` genuinely stops being webster's internal policy (the `batchifier-splits-out-of-webster` decision above), so its config must leave `webster.yaml`. But it cannot land in `loom.yaml` today: `internal/websterengine/runlevel.go:332` is the **only** live `batcher.Select(deps.Config.Batcher)` caller, and `Shed` — the thing that would own a `loom.yaml` batchifier key — does not exist. Making webster read `loom.yaml` in the interim would either break standalone `lyx webster run` or couple two modules' configs for no live benefit. A standalone module resolves both: webster-standalone and the future `Shed` producer both resolve through it.
+- Rejected: moving the key straight to `loom.yaml` now (unworkable — see above; this reverses the earlier answer, on a fact discovered after it was given); leaving it in `webster.yaml` (contradicts the split); a `loom.yaml` key with `webster.yaml` fallback (a transition mechanism with no transition to serve, since no `loom.yaml` reader exists).
+- `websterengine.Config.Batcher` is **retained** until `Shed` exists to hand webster its batching — F does not remove it.
 
 ### discussion-stays-two-files-with-current-names
 
@@ -102,9 +106,11 @@ The follow-up set it emits explicitly may — and does — include code tasks.
 
 ### discussion-review-gate-exists
 
-- Decision: the `Discussion` side is **not** inherently asymmetric — scope a `Discussion-Review-Gate` mechanical producer, mirroring `Plan-Review-Gate`, running exactly the three checks `discussion-format.md:80–83` already specifies.
-- Rationale: those three checks are already written down and already mechanical — both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections present; the Plan-never-reads-`support-log` boundary holds (the Plan producer's declared input set never names `support-log.md`). No new design is needed, only naming them as a producer. The third check in particular is a structural guard worth failing hard on, since violating it silently destroys the access boundary the two-file split exists to create.
-- Rejected: surfacing as open; confirming the asymmetry and dropping the gate (would leave three already-specified mechanical checks with no producer to run them).
+- Decision: the `Discussion` side is **not** inherently asymmetric — scope a `Discussion-Review-Gate` mechanical producer, mirroring `Plan-Review-Gate`.
+  It runs **checks 1–2** of `discussion-format.md:80–82`: both files exist under `_lyx/discussion/`, and `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria).
+- Rationale: both are per-run, artifact-observable properties of exactly the kind `Plan-Review-Gate` already hard-fails on, and both are already written down — no new design, only naming them as a producer.
+- **Check 3 is not a gate check.** `discussion-format.md:83`'s "the Plan producer's declared input set never names `support-log.md`" is a property of the **producer definition**, not of any run's artifacts — there is nothing per-run for a gate to evaluate. It becomes a **build-time test assertion** over the producer definition instead: a static property is caught once and forever by a compile/test-time guard, rather than re-evaluated on every run. C's body must say this explicitly, so nobody re-files it as a missing gate check.
+- Rejected: surfacing the asymmetry as open; confirming it and dropping the gate (would leave already-specified mechanical checks with no producer to run them); restating check 3 as an artifact-observable condition (it is not one — the input set is declared, not emitted).
 
 ### builder-is-deleted-contract-doc-is-retired-not-code
 
@@ -125,14 +131,16 @@ The follow-up set it emits explicitly may — and does — include code tasks.
   the "v3" suffix goes. Sweep **all** references — docs and Go alike — in one task, performed **mechanically, by script**.
 - Rationale: v3 is the only live format once `builder` is gone, and a version suffix on the sole format is exactly the kind of stale guard `discussion-format.md` already argues against (see its `no-schema-version` reference to `status-schema.md`). A half-done rename is worse than either end state: `planparser`/`websterengine` identifiers and template prose must move with the filename.
 - Rejected: docs-only rename with Go identifiers deferred (leaves the codebase mid-rename); renaming the file but leaving in-text "v3" as a historical label (the suffix is what is being retired).
-- **Scale:** 30 files reference `plan-format-v3`, including `internal/planparser` (7 files), `internal/websterengine` (4), `internal/webstercli` (3), `internal/loomengine` (3), `internal/batcher/doc.go`, `README.md`, `docs/overview.md`, `docs/reference/model-spec.md`, `docs/reference/builder-contract.md`, `manifest/roadmap.md`, and four `manifest/designs/*.md`. `CONSTRAINTS.md`'s Planparser Sole-Parser Invariant is also affected.
+- **Scale:** do **not** trust a file count written here — B's own first step re-derives the list.
+  The affected clusters are `internal/planparser`, `internal/websterengine`, `internal/webstercli`, `internal/loomengine` (including `plan-template.md`), `internal/batcher/doc.go`, `docs/overview.md`, `docs/reference/model-spec.md`, `docs/reference/builder-contract.md`, `manifest/roadmap.md`, several `manifest/designs/*.md`, and `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`. `CONSTRAINTS.md`'s Planparser Sole-Parser Invariant is also affected.
+- **Acceptance check, not a count:** a repo grep for `plan-format-v3`, `plan_format_v3`, and `plan-format v3` returns zero hits, and `go test ./...` passes. That is the completion criterion; any figure quoted in prose is a snapshot that goes stale.
 - **Execution discipline:** scripted find/replace plus a full `go test ./...`, not a hand-edit pass. Per the repo's own tooling rules the script must not use `sed`.
 
 ### follow-up-task-set
 
-- Decision: six follow-up wiki tasks, split by file-cluster, with `depends_on` wired strictly only where a real dependency exists and left parallel otherwise.
-- Rationale: a strict linear chain would serialize two clusters (D and E) that touch disjoint files and have no ordering need; fully parallel would collide on `plan-format.md`'s filename and on `finalize.md:36`'s link target.
-- Rejected: one consolidated reconciliation task (too large, and mixes mechanical sweeps with genuine design edits); a single linear chain; all-parallel.
+- Decision: six follow-up wiki tasks, split by file-cluster, with `depends_on` wired wherever two tasks edit the same file and left parallel only where the file sets are genuinely disjoint.
+- Rationale: `E` was initially scoped parallel on the claim that it touched files disjoint from the rest. That claim was false — `E` edits `loom.md:15–17` and `loom.md:75` while `C` scoped-edits `loom.md`'s table rows, and `docs/overview.md` is edited by `A`, `B` and `E` alike. Doc edits are cheap, so the parallelism `E` bought is worth less than the conflict risk, and sequencing it last lets its contradiction sweep read `C`'s finished table rather than guess at it. `loom.md:75` holds **both** open questions (the Discussion pre-gate, owned by `C`'s decision, and the thin-Output carve-out, owned by `E`'s), so a single owner beats splitting one line between two tasks.
+- Rejected: keeping `E` parallel with explicit line-range ownership stated in each body (line ranges drift the moment either task inserts a paragraph); keeping `E` parallel and accepting conflicts; one consolidated reconciliation task (too large, and mixes mechanical sweeps with genuine design edits); a fully linear chain (would needlessly serialize `D`, which really is disjoint).
 
 The set, with the reason each exists:
 
@@ -142,25 +150,52 @@ The set, with the reason each exists:
 | B | `plan-format-drop-v3-suffix` | code (mechanical) | A |
 | C | `format-docs-name-producers` | docs | B |
 | D | `raddle-finalize-fold-and-link-repair` | docs | A |
-| E | `shed-model-contradiction-sweep` | docs | — |
-| F | `batchifier-split-cleanup` | code + docs | B |
+| E | `shed-model-contradiction-sweep` | docs | C |
+| F | `batcher-standalone-split` | code + docs | B |
+
+Chain: `A` → `B` → {`C` → `E`, `F`}, with `D` branching off `A` in parallel.
+`D` is the only task that stays parallel, and it is genuinely disjoint: it owns `finalize.md`, `raddle.md`, and `self-report.md`, none of which `C`, `E`, or `F` touch.
 
 **A — `builder-retire`.**
-Delete `internal/builderengine` and `internal/buildercli`; unregister `buildercli.Command()` from `cmd/lyx/main.go:107`; remove `builder` from `cmd/lyx/main.go:75`'s module list, `cmd/lyx/helptree_test.go` (lines 28, 106–107), and `cmd/lyx/notransients_test.go` (lines 21, 57–58).
-Extract `builder-contract.md`'s `## Webster: the fork-based sibling` section into `internal/websterengine`'s package doc and re-point `finalize.md:36`.
-Re-status `builder-contract.md` as a retired-design reference.
-Delete `docs/reference/plan-format.md` (v2).
-Update `docs/overview.md`'s module table and `manifest/roadmap.md`.
+One task, one compiling commit — a package deletion is atomic by nature, and splitting it guarantees an intermediate state that does not build.
+
+*Code deletion:*
+- Delete `internal/builderengine` and `internal/buildercli` entirely.
+- `cmd/lyx/main.go` — unregister `buildercli.Command()` (`:107`) and drop `builder` from the module list in the long help text (`:75`).
+- `internal/configreg/configreg.go` — drop the `{Name: "builder", Template: builderengine.ConfigTemplate}` entry (`:44`) and its import (`:10`); update `internal/configreg/configreg_test.go:17`'s expected module list.
+- `cmd/lyx/helptree_test.go` — lines 28 and 106–107.
+- `cmd/lyx/notransients_test.go` — the import (`:21`) and the two `builderengine.Dir`/`ReportsDir` cases (`:57–58`).
+- `cmd/lyx/constructoranchoring_test.go` — the import and its builder assertions.
+- `cmd/lyx/rawgitmutation_test.go` — the `internal/builderengine` half of `TestNoRawGitMutation_WebsterBuilderProductionSource`.
+- `internal/scoutcli/cli_test.go`, `internal/webstercli/cli_test.go`, `internal/webstercli/sync_integration_test.go` — builder references.
+- `internal/webstercli/cli.go:11–12` — a doc comment comparing websterCLI to buildercli.
+- `tools/sandbox` — `suite.go`'s `//go:embed SANDBOX-BUILDER-SUITE.md` (`:47`), the `builderSuite` spec (`:123–128`), the `"builder-suite"` case in `main.go:326`, the doc comments in `suite.go:2` and `main.go:6,12`, and the `SANDBOX-BUILDER-SUITE.md` file itself. Leaving these trips **Sandbox Suite Coverage**'s `TestSandboxCoverage_AllModulesCoveredOrExcluded`.
+- `CONSTRAINTS.md` — the **Review Round Invariant**'s `:205` clause naming `internal/builderengine` in `rawgitmutation_test.go`'s machine-checked ownership; also review `:97` and `:106`, which list `builderengine` among feature packages.
+
+*Config disposition:* removing `builder` from `configreg`'s module list means `lyx config reconcile` stops emitting `builder.yaml`.
+Existing `builder.yaml` files in already-created worktrees are **left in place** — they are inert once no module reads them, and reconcile does not delete files it no longer owns. A's body states this so nobody files it as a leak.
+
+*Doc retirement:*
+- Extract `builder-contract.md`'s `## Webster: the fork-based sibling` section (`:222`) into `internal/websterengine`'s package doc.
+- Re-point **both** deep links into that section: `finalize.md:36` and `finalize.md:50` (Related).
+- Re-status `builder-contract.md` as a retired-design reference.
+- Delete `docs/reference/plan-format.md` (v2).
+- `discussion-format.md:30` — its justification for `plan-format`'s `approved:` field reads "because `lyx builder run` can be invoked standalone, outside loom", which is false once A lands; `discussion-format.md:3` links `plan-format.md`. Both are A's, since A is what falsifies them.
+- Update `docs/overview.md`'s module table and `manifest/roadmap.md`.
+
 No `depends_on` — nothing blocks it.
 
 **B — `plan-format-drop-v3-suffix`.**
-Rename `plan-format-v3.md` → `plan-format.md` and sweep all 30 referencing files by script.
+Rename `plan-format-v3.md` → `plan-format.md` and sweep every reference by script, docs and Go alike.
+First step re-derives the file list by grep rather than trusting any figure written down beforehand.
+B's body notes the **deliberate window** between A and B where `docs/reference/plan-format.md` does not exist at all: A deletes v2 to free the name, B re-creates it from v3. Links to `plan-format.md` are dangling in between, by design and briefly.
 `depends_on: A` — the filename is not free until v2's doc is deleted.
 
 **C — `format-docs-name-producers`.**
 Rewrite `discussion-format.md` and the renamed `plan-format.md` to name their producers and contracts explicitly in producer-model terms.
-Add the `Discussion-Review-Gate` producer covering `discussion-format.md:80–83`'s three mechanical checks.
+Add the `Discussion-Review-Gate` producer covering `discussion-format.md:80–82`'s checks 1–2, and state explicitly that check 3 (`:83`) is a **build-time test assertion over the producer definition**, not a gate check — so it is not later re-filed as a missing check.
 Scoped-edit `loom.md`'s table rows 2–7 to name `_lyx/discussion/decision-record.md` and `_lyx/plan/`, and insert `Discussion-Review-Gate` into the list.
+C owns `loom.md` for the duration; E follows it.
 `depends_on: B` — it edits the renamed file.
 
 **D — `raddle-finalize-fold-and-link-repair`.**
@@ -170,7 +205,9 @@ Fix `finalize.md:3`'s verbatim two-slot text ("not a swappable per-instance slot
 Fix `finalize.md:11` and `:52`, which link `fabric.md` — **that file does not exist** in `manifest/designs/`.
 Fix the dead `loom.md#the-phase-machine` anchor (renamed to `#the-phase-machine--a-flat-producer-list-no-predefined-slots`) in `raddle.md:3`, `raddle.md:54`, and `self-report.md:30`.
 Fix `roadmap.md:68`'s "deferred phase slot between Builder and Finalize".
-`depends_on: A` — `finalize.md:36`'s link target moves in A.
+Fix `finalize.md:26`, which cites "CONSTRAINTS.md's **Weft Git Invariant**" — no such entry exists; the real one is `CONSTRAINTS.md:173`'s **Fabric Git Invariant (warp + weft)**.
+`depends_on: A` — `finalize.md:36` and `:50`'s link targets move in A.
+D stays parallel to the C/E/F chain: it owns `finalize.md`, `raddle.md`, and `self-report.md`, which no other task touches.
 
 **E — `shed-model-contradiction-sweep`.**
 Fix `shed.md:7` and `:19`, which say "superseding ... **below**" and "the pre-revision text **below**" — that text was deleted in `256b8262`, so both references dangle.
@@ -180,14 +217,18 @@ Fix `hardener.md:17`'s "producer-slot".
 Fix `docs/overview.md:272`'s stale chain "Preflight → Discussion → Plan → Builder → Raddle → Finalize".
 Resolve `loom.md:75`'s thin-Output question per the decision above and record it in `shed.md`'s contract section.
 Add the short `CONSTRAINTS.md` pointer-rule invariant.
-Record the surfaced open questions below wherever each belongs.
-No `depends_on` — touches files disjoint from D.
+Record the surfaced open questions below wherever each belongs, and — for the Webster-atomicity tension specifically — add it as a **named precondition on `manifest/roadmap.md`'s Planned `Shed` item**, so the decision is gated rather than merely written down.
+`depends_on: C` — both edit `loom.md`, and E's sweep should read C's finished table.
 
-**F — `batchifier-split-cleanup`.**
-Amend `internal/batcher/doc.go`'s package comment to state that `Batchifier` is a `Shed`-level producer whose output webster consumes, not webster's own internal policy.
-Amend `CONSTRAINTS.md`'s **Batcher Registry+Config Invariant** for the same reason and for the config-key move.
+**F — `batcher-standalone-split`.**
+Extract `batcher` out of webster as a standalone module: its own `batcher.yaml`, registered in `internal/configreg`, with `webster.yaml`'s `batcher:` key removed.
+`websterengine.Config.Batcher` is **retained** — `internal/websterengine/runlevel.go:332` is the only live `batcher.Select` caller, and it keeps working; only where the name comes from changes.
+Migration: `configreg`'s new `batcher` entry means `lyx config reconcile` emits `batcher.yaml`; an existing worktree's `webster.yaml` `batcher:` value must be honoured or explicitly reported once, not silently dropped — F's body decides which and says so.
+Amend `internal/batcher/doc.go`'s package comment: batching is no longer "100% webster's own execution-policy decision" — it is a standalone step webster consumes today and `Shed` will drive as producer #8 once built.
+Amend `CONSTRAINTS.md`'s **Batcher Registry+Config Invariant** — both the ownership claim and the `webster.yaml` config-key pin.
+Amend `docs/overview.md:271`'s `batcher` module-table entry, which pins the key to `webster.yaml`.
 Amend the renamed `plan-format.md`'s "Batch is gone / the card is the unit" section — the card stays the plan's unit (unchanged), but the "entirely internal to webster" framing goes.
-Move the `batcher:` config key from `webster.yaml` to `loom.yaml`, updating `websterengine`'s config loading and `loomengine`'s config accordingly.
+Also add `batcher` to `tools/sandbox` coverage or the `excludedModules` allowlist with a reason, per **Sandbox Suite Coverage** — registering a new module triggers that guard.
 `depends_on: B` — it edits the renamed file.
 
 ### run-mill-plan-and-mill-go
@@ -207,6 +248,7 @@ They belong in task **E**'s output as named open questions, and in the relevant 
    That is precisely an internal multi-step process.
    Either atomicity admits a carve-out for black-box producers that own their own loop, or `Webster` must decompose into flat producers the way `Plan` did.
    This is the single largest unresolved tension in the model and it should be decided before `Shed` is built, not during.
+   **Owner:** task E records it as a named precondition on `manifest/roadmap.md`'s Planned `Shed` item — not merely as prose in a design doc. Recording it without gating it is how it gets skipped.
 2. **`Discussion-Write` has no Input.**
    `loom.md:50` records its Input as "— (starting point)".
    The thin-Output carve-out is now decided for `Preflight`/`Finalize`; the symmetric thin-*Input* case has not been.
@@ -220,7 +262,9 @@ They belong in task **E**'s output as named open questions, and in the relevant 
 ## Technical context
 
 - **Repo layout:** design docs in `manifest/designs/`, pinned contracts in `docs/reference/`, the roadmap in `manifest/roadmap.md`, cross-cutting invariants in `CONSTRAINTS.md`, the module table and execution stack in `docs/overview.md`. No `_codeguide/` in this repo.
-- **`internal/batcher`** ships today: `batcher.go` (the `Batcher` interface), `registry.go` (name-keyed registry + `Select`), `identity.go` (the one-card-one-batch default), plus tests. Task F changes **only** its package doc and the config-key location — the interface, registry, and `Select` are untouched, because the caller that would move is `Shed`, which does not exist yet.
+- **`internal/batcher`** ships today: `batcher.go` (the `Batcher` interface), `registry.go` (name-keyed registry + `Select`), `identity.go` (the one-card-one-batch default), plus tests. The `Batcher` interface, registry, and `Select` stay untouched by F — what changes is where the *name* fed to `Select` is configured, plus the module's registration and docs.
+- **`internal/websterengine` is `batcher`'s only live consumer.** `runlevel.go:332` holds the sole `batcher.Select(deps.Config.Batcher)` call; `config.go:30–34` declares the `Batcher` field; `beginbatch.go`, `recoverbatch.go`, `awaitbatch.go`, and `template.yaml` all traffic in `batcher.Batch` values. This is why the config key could not simply move to `loom.yaml` — see the standalone-split decision.
+- **`internal/builderengine` / `internal/buildercli` reach further than the CLI registration.** Outside their own packages they are referenced by `internal/configreg/configreg.go`, `cmd/lyx/main.go`, `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `cmd/lyx/rawgitmutation_test.go`, `internal/scoutcli/cli_test.go`, `internal/webstercli/cli.go` (doc comment) plus its two test files, and `tools/sandbox`. `CONSTRAINTS.md:205` names `internal/builderengine` in a machine-checked ownership clause. Task A's inventory enumerates all of it.
 - **`internal/loomengine`** holds the already-built Discussion and Planner producers (`discussion-template.md`/`prompt.go`/`discussion.go`, `plan-template.md`/`plantemplate.go`/`plan.go`) plus the `DiscussionDir` / `DiscussionDecisionRecord` / `DiscussionSupportLog` path accessors in `config.go`. `Preflight` is built here too, engine-only, no cobra module.
 - **`internal/planparser`** is the sole plan parser (see the Planparser Sole-Parser Invariant); it is the largest single cluster in task B's rename sweep.
 - **Existing precedent for the shared-engine seam** `Shed` will need: `internal/treadleengine`'s `RoundRunner` and `internal/batcher`'s `Batcher` — both already documented as `Shed`'s reference pattern in `shed.md:36–37`.
@@ -233,7 +277,9 @@ From `CONSTRAINTS.md` (authoritative; read before writing or reviewing):
 
 - **CLI / Cobra Invariant** — module `Command()`/`RunCLI` seam, `Short` on every command, help-tree tests. Task A must remove `builder` from the help tree cleanly, not orphan it.
 - **Planparser Sole-Parser Invariant** — one plan parser. Task A's deletion of `builderengine` is what finally makes this literally true; task B updates the invariant's wording for the renamed format.
-- **Batcher Registry+Config Invariant** — currently states "webster's execution unit is the batchifier-derived batch" and pins the `batcher:` key to `webster.yaml`. Task F amends it.
+- **Batcher Registry+Config Invariant** — currently states "webster's execution unit is the batchifier-derived batch" and pins the `batcher:` key to `webster.yaml`. Task F amends both halves.
+- **Sandbox Suite Coverage** — every registered module needs a `**Covers:**` scenario or an `excludedModules` entry with a reason, machine-checked by `cmd/lyx/sandbox_coverage_test.go`. Task A trips it by *removing* a module, task F by *adding* one; both must handle it.
+- **Review Round Invariant** — `CONSTRAINTS.md:205` machine-checks module ownership for `internal/websterengine`/`internal/builderengine` via `cmd/lyx/rawgitmutation_test.go`. Task A must narrow that clause to webster alone.
 - **Documentation Lifecycle** — governs when a design doc folds into a package doc and is deleted. Task A's retirement of `builder-contract.md` and extraction into `websterengine`'s package doc must follow it.
 - **Cwd Resolution Invariant** — `internal/lyxcwd` alone resolves cwd; each module owns its own relative subpath. Relevant to task F if the config-key move touches path resolution.
 - **New invariant to add (task E):** the pointer rule — an instruction file must never duplicate or paraphrase another producer's format-contract content, only point at it. Keep the entry short.
@@ -250,11 +296,11 @@ From `CLAUDE.md`:
 This task itself produces wiki tasks and a rationale doc, so it has no test surface of its own.
 The follow-up tasks do, and their bodies should carry these expectations:
 
-- **A (`builder-retire`)** — the real test is the existing suite. `go build ./...` and `go test ./...` must pass with `builderengine`/`buildercli` gone; `cmd/lyx/helptree_test.go` is the specific guard that fails loudly if `builder` is half-removed, and `cmd/lyx/notransients_test.go` is the second. No new tests needed — this is a deletion whose correctness is exactly "nothing else referenced it."
-- **B (`plan-format-drop-v3-suffix`)** — scripted sweep followed by a full `go test ./...`. The meaningful scenario is *incompleteness*: a grep for `plan-format-v3` / `plan_format_v3` / `plan-format v3` returning zero hits across the repo is the acceptance check, run as a step in the task, not an assertion in a test file. `internal/planparser`'s existing tests and `internal/webstercli/cli_test.go` cover behavior preservation.
-- **C (`format-docs-name-producers`)** — docs-only, no test surface. The `Discussion-Review-Gate`'s three checks are *specified* here, not implemented; implementation lands with `Shed`.
-- **D and E** — docs-only. The one mechanical check worth running: every relative markdown link and anchor introduced or touched resolves. A link-check pass over `manifest/` and `docs/` is the acceptance criterion, and it is what would have caught the dead `fabric.md` links and the dead `#the-phase-machine` anchors in the first place.
-- **F (`batchifier-split-cleanup`)** — the config-key move is the only behavioral change. TDD candidate: a config-loading test asserting `batcher:` resolves from `loom.yaml` and that a `batcher:` key left in `webster.yaml` is no longer consulted. `internal/batcher`'s existing registry/`Select` tests must continue passing untouched, which is the evidence that only the caller moved.
+- **A (`builder-retire`)** — the real test is the existing suite. `go build ./...` and `go test ./...` must pass with `builderengine`/`buildercli` gone. Four guards fail loudly on a half-removal, and A should expect to be driven by them: `cmd/lyx/helptree_test.go`, `cmd/lyx/notransients_test.go`, `internal/configreg/configreg_test.go:17`'s module-list assertion, and `cmd/lyx/sandbox_coverage_test.go`'s `TestSandboxCoverage_AllModulesCoveredOrExcluded`. No new tests — this is a deletion whose correctness is exactly "nothing else referenced it," and the existing suite already answers that question.
+- **B (`plan-format-drop-v3-suffix`)** — scripted sweep followed by a full `go test ./...`. The meaningful failure mode is *incompleteness*, and it is checked by grep, not by an assertion in a test file: `plan-format-v3`, `plan_format_v3`, and `plan-format v3` must all return zero hits repo-wide. `internal/planparser`'s existing tests and `internal/webstercli/cli_test.go` cover behavior preservation.
+- **C (`format-docs-name-producers`)** — docs-only, no test surface of its own. The `Discussion-Review-Gate`'s checks are *specified* here, not implemented; implementation lands with `Shed`. Check 3's build-time assertion is likewise specified, not written, since the producer definition it would assert over does not exist yet.
+- **D and E** — docs-only. The one mechanical check worth running: every relative markdown link and anchor introduced or touched resolves. A link-check pass over `manifest/` and `docs/` is the acceptance criterion, and it is exactly what would have caught the dead `fabric.md` links, the dead `#the-phase-machine` anchors, and the non-existent "Weft Git Invariant" citation before they shipped.
+- **F (`batcher-standalone-split`)** — the config relocation is the only behavioral change. TDD candidates: a config-loading test asserting the batchifier name resolves from `batcher.yaml`; a `configreg` test asserting `batcher` appears in the module list (mirroring `configreg_test.go:17`'s existing shape); and a migration test covering an existing worktree whose `webster.yaml` still carries a `batcher:` value. `internal/batcher`'s existing registry/`Select` tests must pass untouched — that is the evidence that only the configuration source moved, not the batching itself.
 
 ## Q&A log
 
@@ -274,3 +320,8 @@ The follow-up tasks do, and their bodies should carry these expectations:
 - **Q:** Do we need `mill-plan` and `mill-go` at all, given no code is written and the follow-up tasks each get their own full mill cycle? **A:** Yes, run both — the six task bodies must stand alone for autonomous sessions, so the review pass is worth it.
 - **Q:** This task's body says "no code changes"; may the follow-up set include code tasks? **A:** Yes — that constrains this task, not its output.
 - **Q:** Ordering of the follow-up tasks? **A:** Strict chain only where a real dependency exists, parallel otherwise.
+- **Q:** Review round 1 found A's deletion inventory build-breakingly incomplete (configreg, sandbox, three `cmd/lyx` test files, webstercli). Expand in place, or split A? **A:** Expand in place, keep it one task.
+- **Q:** Round 1 found C and E collide on `loom.md`, and A/B/E all edit `overview.md`. **A:** Serialize E last (`A → B → C → E`), keeping D parallel off A.
+- **Q:** Round 1 established the `batcher:` key cannot move to `loom.yaml` — webster is its only reader and `Shed` doesn't exist. **A:** Extract `batcher` out of Webster as a standalone module now; it goes into Loom via `Shed` eventually, when `Shed` is built.
+- **Q:** `Discussion-Review-Gate`'s third check is a property of the producer definition, not of any run's artifacts. **A:** The gate runs checks 1–2; check 3 becomes a build-time test assertion over the producer definition.
+- **Q:** Stale references that A and B themselves create (`finalize.md:50`, `discussion-format.md:3,30`, the window where `plan-format.md` doesn't exist) have no owner. **A:** Assign each to the task that invalidates it.
