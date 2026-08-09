@@ -110,6 +110,40 @@ func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
 	return fixture
 }
 
+// TestReconcile_MissingWeftRepoIsDiagnosedByName destroys the weft prime — the checkout holding the
+// weft repo's gitdir — and asserts reconcile reports the missing weft repo by name with a remedy,
+// instead of the raw chdir errors each corrective branch used to fail with.
+func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	if err := os.RemoveAll(fixture.WeftPrime); err != nil {
+		t.Fatalf("remove weft prime: %v", err)
+	}
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	if len(result.Pairs) == 0 {
+		t.Fatal("Reconcile() returned no pairs; want the prime pair reported")
+	}
+	pr := result.Pairs[0]
+	if !strings.Contains(pr.Error, "weft repo missing at") {
+		t.Errorf("Reconcile() pair error = %q; want it to diagnose the missing weft repo by name", pr.Error)
+	}
+	if !strings.Contains(pr.Error, "re-clone") {
+		t.Errorf("Reconcile() pair error = %q; want it to name a remedy", pr.Error)
+	}
+	if pr.Action != fabricengine.ReconcileActionUnmanagedReported {
+		t.Errorf("Reconcile() pair action = %q; want %q (report, never a corrective attempt against a missing repo)", pr.Action, fabricengine.ReconcileActionUnmanagedReported)
+	}
+}
+
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // fabricengine.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,

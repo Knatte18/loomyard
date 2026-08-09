@@ -309,12 +309,25 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree
 // does not exist for the given warp worktree: recreate from the existing branch,
 // adopt a raw worktree, or report unmanaged.
+// A missing weft REPO (the prime weft checkout that holds the weft gitdir) is diagnosed first and
+// reported by name — every corrective branch below needs the weft repo, and without this check each
+// of them failed with a raw chdir error that named a path instead of the actual problem.
 func (t *Topology) reconcileMissingWeft(
 	warpLayout *lyxcwd.Location,
 	warpPath, weftPath, slug, warpBranch string,
 	pr *ReconcilePairResult,
 ) ReconcileAction {
 	weftBranch := WeftBranchName(warpBranch)
+
+	if !weftRepoExists(warpLayout) {
+		weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
+		if weftRepoRootErr != nil {
+			pr.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
+		} else {
+			pr.Error = fmt.Sprintf("weft repo missing at %s; restore it or re-clone the hub", weftRepoRoot)
+		}
+		return ReconcileActionUnmanagedReported
+	}
 
 	if weftBranchExists(warpLayout, weftBranch) {
 		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout); weftRepoRootErr == nil {
@@ -329,7 +342,7 @@ func (t *Topology) reconcileMissingWeft(
 		return ReconcileActionWeftRecreated
 	}
 
-	isRaw := isRawWarpWorktree(warpPath)
+	isRaw := isRawWarpWorktree(warpLayout)
 	if isRaw {
 		if err := createDormantWeftForRawWarp(warpLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw warp worktree: %v", err)
@@ -366,10 +379,14 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 	return nil
 }
 
-// isRawWarpWorktree reports whether the worktree at warpPath lacks any lyx management
-// markers. A worktree is raw when it has no _lyx junction or directory.
-func isRawWarpWorktree(warpPath string) bool {
-	lyxPath := filepath.Join(warpPath, lyxdirs.LyxDirName)
+// isRawWarpWorktree reports whether warpLayout's worktree lacks any lyx management markers.
+// A worktree is raw when it has no _lyx junction or directory at its ANCHORED directory — the only
+// place fabric ever wires one.
+// Probing the worktree root instead misclassified every subpath-anchored, fully lyx-managed
+// worktree as raw the moment its weft side went missing, driving reconcile into raw-adoption where
+// a root-anchored hub in the identical state was reported unmanaged.
+func isRawWarpWorktree(warpLayout *lyxcwd.Location) bool {
+	lyxPath := filepath.Join(warpLayout.AnchorPath(), lyxdirs.LyxDirName)
 	_, err := os.Lstat(lyxPath)
 	return os.IsNotExist(err)
 }
