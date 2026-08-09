@@ -848,3 +848,25 @@ func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
 		t.Errorf("RunCLI(pairs) error = %q; want the specific weft-sibling refusal, not the generic gate error", errMsg)
 	}
 }
+
+// TestRunCLI_Reconcile_HealsMissingRepoWideConfig pins reconcile's self-healing of the repo-wide
+// fabric.yaml: on a hub that has none, reconcile used to fail with "not initialized here; run
+// \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead
+// materialize the config and proceed.
+func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+	// Deliberately NO repo-wide fabric.yaml seeding — the state that used to produce the circular
+	// error.
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"reconcile"})
+	if exitCode != 0 {
+		t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", exitCode, out.String())
+	}
+
+	cfgPath := configengine.ConfigFile(fabricengine.BoardDir(fixture.Container), "fabric")
+	if _, err := os.Stat(cfgPath); err != nil {
+		t.Errorf("repo-wide fabric config not materialized at %s: %v", cfgPath, err)
+	}
+}

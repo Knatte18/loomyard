@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -501,6 +502,14 @@ func runPairs(out io.Writer, _ []string) int {
 func runReconcile(out io.Writer, _ []string) int {
 	_, l, err := resolveWarpLocation()
 	if err != nil {
+		return output.Err(out, err.Error())
+	}
+
+	// Reconcile is the repair verb, so a missing repo-wide fabric config is healed here rather
+	// than reported: without this, LoadConfig's "not initialized here; run \"lyx fabric
+	// reconcile\"" remedy was circular when reconcile itself emitted it.
+	// ReconcileFabricAt only adds absent keys and never rewrites a recorded pathspec.
+	if _, err := configsync.ReconcileFabricAt(fabricengine.BoardDir(l.HubPath), true); err != nil {
 		return output.Err(out, err.Error())
 	}
 
