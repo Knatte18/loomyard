@@ -214,6 +214,34 @@ Per this repo's own tooling rules the script must not use `sed`.
 This task's position in `loom.md`'s three-owner chain is B → C → E: this task is the mechanical owner, because its zero-hit criterion necessarily rewrites `loom.md:29` and table rows 5–7 at `:53–55`, which spell `plan-format-v3.md`.
 
 This task changes paths and names only, never prose.
+
+**Override recorded 2026-08-09 (task B, as landed).**
+Record every one of this task's own instructions it departed from, since tasks C and E read this file rather than task B's now-torn-down state.
+
+1. The stated five-pattern set became six.
+   The five missed the doc title's space variant `# Plan format v3`, so the stated zero-hit criterion would have passed with the renamed doc still titled v3.
+2. The unqualified "repo grep" became a grep with exactly one file-level exclusion — this file — because its `### Acceptance` sentence naming the pattern set is itself a pattern-bearing line, and a blind sweep destroys the criterion it defines.
+   Both halves of what that means, since they are easy to conflate:
+   - The sweeper additionally skipped line 18 of `manifest/roadmap.md`, whose "`plan-format-v3.md` → `plan-format.md`" would have collapsed to a self-referential no-op.
+     That skip was temporary: task B rewrote the line by hand so it names no version, and the final acceptance grep carries no roadmap exclusion at all.
+   - This file is the sole permanent exemption.
+     Its citations of the doc's pre-rename path, and its other references to the format by the old name, survive on purpose.
+     A verified count, not a remembered one: `grep -c 'plan-format-v3\.md' manifest/designs/shed-followups.md` returns **six** once this whole block is written — five citations predating this override plus the one two sentences above (the `manifest/roadmap.md` mention) — do not carry forward the "four" that appears in this task's discussion, whose tally silently omitted one occurrence, because this note is a durable record tasks C and E will read.
+     The file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment; rewriting them would make the record claim the scoping task knew the post-rename name.
+     A reader who follows one of them will not find the file — this note is where they learn it moved to `docs/reference/plan-format.md`.
+3. "This task changes paths and names only, never prose" is superseded.
+   The repo-wide v2 erasure rewrote prose in `docs/reference/plan-format.md`, `manifest/designs/loom.md`, `manifest/roadmap.md`, and Go comments across three packages.
+4. The `### Why` subsection's rejected alternative — "renaming the file but keeping in-text `v3` as a historical label" — was honoured rather than overridden, and extended: the four bare-`v3` labels in `internal/planparser` comments were rewritten too.
+   This is recorded explicitly because it is a rejection rather than an instruction, and a reader could otherwise conclude task B left the class alone.
+5. The `### Sequencing` claim that this task "deliberately leaves `loom.md:29` self-contradicting" no longer holds — task B rewrote that line in full.
+6. The starting inventory's claim that `CONSTRAINTS.md`'s Planparser Sole-Parser Invariant needs rewording is stale.
+   The invariant carries no version reference and no link to the doc, and the file's only `v3` occurrences are its two `gopkg.in/yaml.v3` import-allowlist entries, which are the hard exclusion.
+   Task B edited nothing there.
+7. The `#### Hard exclusion` subsection's claim that the `gopkg.in/yaml.v3` import "appears in ten Go files" is wrong — the verified count is **32**.
+   The figure is corrected here so the next reader is not misled about the blast radius of a broad `v3` replace.
+8. The same subsection's claim that "This task's script names the exclusion explicitly" is wrong — the script names no exclusion.
+   All six patterns require a `plan` prefix, so the import string is unmatchable by construction; the exclusion is verified by a post-sweep count rather than implemented.
+
 Because this task runs before both C and E, this is chain order rather than concurrency — no two owners hold the file at once.
 
 ### Sequencing
@@ -264,6 +292,11 @@ This was not left open for this task to re-derive — the real paths are already
    Task C should re-ground `discussion-format.md:14`'s citation in one or both of those live sources, not in the deleted file.
 6. Rewrite `plan-format.md:5`'s "Coexistence, not replacement" section, which asserts the format does not retire v2.
    That claim is false once task A deletes v2, so the renamed file would otherwise carry the claim forward about itself.
+
+   **Override recorded 2026-08-09 (task B, as landed).**
+   This section is already gone: task A rewrote it away, and task B then deleted the surviving retired-v2 blockquote outright rather than leaving prose behind for this task to rewrite.
+   This task's obligation here is discharged;
+   task C's remaining work on `plan-format.md` is the producer-model rewrite only.
 
 #### The `Discussion-Review-Gate` producer
 
@@ -404,6 +437,11 @@ This task is `loom.md`'s final owner, and owns everything in the file except the
 
 - `:15–17`'s naming note, which still says "`loom` = `Shed` + loom's own Preflight + the Discussion/Plan/Webster producer" — old slot framing, contradicting the table 25 lines below it, and whose "This doc has not been rewritten to extract `Shed` explicitly" claim is now false.
 - `:29`, which links the v2 `plan-format.md` that task A deletes and frames v3 as "the target format is changing" — task B's mechanical sweep deliberately leaves this self-contradicting for this task to repair.
+
+  **Override recorded 2026-08-09 (task B, as landed).**
+  Task B rewrote the line in full instead of leaving it self-contradicting — it now states the live plan format directly, with no v2 link and no "target format is changing" framing.
+  This task's obligation on `:29` is to verify the rewrite rather than to repair it.
+  E remains `loom.md`'s final owner for everything else on this list.
 - `:91–94`, the naming note calling `internal/builderengine` and `internal/buildercli` "a real, separate, already-shipped sibling implementer loop", plus its `builder-contract.md` link.
 - `:187`, the module-decomposition row repeating the same already-shipped-sibling claim and `builder-contract.md` link.
 - `:56`, row 8's `Batchifier` entry, rewritten to match whatever task F landed.
@@ -428,6 +466,13 @@ This task is `loom.md`'s final owner, and owns everything in the file except the
     E should not find the line already reading `Webster` and conclude its obligation here has lapsed; the word changed, the open question did not.
   - the retirement of `:31`'s "**A dedicated scoping task should run first** ... this item is not yet broken down into buildable units" — stale the moment this scoping task lands.
     This task is the right place to declare the breakdown done and name the six follow-up tasks.
+
+  **Override recorded 2026-08-09 (task B, as landed).**
+  Record both roadmap edits task B made, so E does not go looking for either.
+  B deleted the "v3 is the live plan format now that its predecessor is retired." sentence from the plan-format Done item, since B's own sweep of the item's heading is what made it incoherent.
+  B also rewrote line 18's six-task breakdown parenthetical, which the sweeper had deliberately skipped, so it describes the rename instead of spelling both filenames.
+  The task slug on that line is untouched.
+  E's remaining roadmap obligation is unchanged by either edit.
 
 **Note (2026-08-09): this last bullet has already been done by the scoping task itself,** ahead of task E, per an explicit operator override of the original plan (see `manifest/roadmap.md`'s Planned `Shed` item, already showing the six-task breakdown, and this file's own existence).
 Task E should treat `roadmap.md:68`'s "deferred phase slot between Builder and Finalize" line as its remaining roadmap obligation and verify the breakdown text still matches reality by the time E runs, rather than re-writing it from scratch.

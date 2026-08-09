@@ -1,13 +1,13 @@
 # scout-backed plan symbol fields — making the Planner's file-op enumeration deterministic
 
-> **Status: Speculative, not scoped.** [plan-format-v3.md](../../docs/reference/plan-format-v3.md) already named this gap explicitly: the symbol fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) were "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `scout`, which is deprioritized." Both blockers are now gone — `scout` shipped (V1, Go-only) and the loom Planner producer (`internal/loomengine/plan.go` + `plan-template.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`plan-format-v3.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
+> **Status: Speculative, not scoped.** [plan-format.md](../../docs/reference/plan-format.md) already named this gap explicitly: the symbol fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) were "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `scout`, which is deprioritized." Both blockers are now gone — `scout` shipped (V1, Go-only) and the loom Planner producer (`internal/loomengine/plan.go` + `plan-template.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`plan-format.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
 
 ## The problem this responds to
 
 Today, `plan-template.md`'s Step 2 ("Explore the codebase") tells the Planner agent to read the relevant parts of the codebase before writing a card's `Edits:`/`Context:`/`Creates:`/`Deletes:`/`Moves:` fields — in practice this means grep-and-read exploration, paid for in tokens and wall-clock, for every card that touches existing code.
 Two failure modes follow: grepping a symbol's name returns false positives when an unrelated symbol elsewhere in the repo happens to share the name,
 and it structurally cannot prove a call reached only through an interface — the exact case `internal/scoutengine`'s own CLI help text calls out ("including calls reached only through an interface, which no amount of grepping can prove").
-A card whose `Edits:` silently omits a real caller is a plan defect no existing plan-format-v3 validator check can catch, because every current check (`all-files-touched-mismatch` included) only verifies internal consistency between the overview and the cards — never consistency between a card's claims and the actual code.
+A card whose `Edits:` silently omits a real caller is a plan defect no existing plan-format validator check can catch, because every current check (`all-files-touched-mismatch` included) only verifies internal consistency between the overview and the cards — never consistency between a card's claims and the actual code.
 
 ## Two integration points — benchmarked, not just theorized
 
@@ -23,7 +23,7 @@ Worse than the win/loss tally itself: Task 3 exposed that `refs`' `"resolution":
 An LLM given the *option* to call scout still has to exercise judgment about when the tool's output can be trusted as-is versus needs cross-checking — the benchmark shows that judgment call itself doesn't reliably pay for itself.
 This does not fully rule out (a) (single run, n=1 per cell, three hand-picked tasks — see that doc's own caveats), but it removes any presumption that giving the Planner tool access would obviously help, and no measurement has been done of (a) specifically wired into `plan-template.md` rather than a bare subagent.
 
-**(b) The originally-envisioned schema fields.** `plan-format-v3.md` names `creates-symbols`/`edits-symbols`/`reads-symbols` as the deferred fields themselves — a card would declare symbols, not just files, and something (`internal/planparser`'s `Validate`, most likely) would cross-check those declarations against `scout` mechanically, turning the "planner missed a caller" failure mode into a hard validation error instead of a silent gap.
+**(b) The originally-envisioned schema fields.** `plan-format.md` names `creates-symbols`/`edits-symbols`/`reads-symbols` as the deferred fields themselves — a card would declare symbols, not just files, and something (`internal/planparser`'s `Validate`, most likely) would cross-check those declarations against `scout` mechanically, turning the "planner missed a caller" failure mode into a hard validation error instead of a silent gap.
 This is the fuller original vision and the one `internal/websterengine`'s dead DAG scheduler seam is waiting on (see Relationship table below) — but it means real schema, parser, and validator work in `internal/planparser`, not just prompt wording.
 
 **(b) is the recommended direction if this is ever picked up, precisely because of what the benchmark found.** The failure modes in `scout-vs-grep.md` — imprecise workspace-wide interface resolution, a trust marker that overpromises — are LLM-facing problems: they matter only when an agent has to decide whether to believe the tool's output.
@@ -61,7 +61,7 @@ Go-only, same as `scout` V1; a lexer/AST approach cannot generalize by swapping 
 - **(a) vs. (b), or both, and in what order.**
   `scout-vs-grep.md` weakens the case for (a) specifically — see above — but has not measured (a) wired into `plan-template.md` itself, only bare subagents with/without tool access.
 - **Advisory vs. hard-fail.**
-  If symbol-derived checking ever becomes a validator check (whether via prompt convention or schema), does a mismatch halt plan approval outright, or just surface as a warning the human review gate weighs? `plan-format-v3.md`'s existing 14 checks are all hard-fail;
+  If symbol-derived checking ever becomes a validator check (whether via prompt convention or schema), does a mismatch halt plan approval outright, or just surface as a warning the human review gate weighs? `plan-format.md`'s existing 14 checks are all hard-fail;
   this would be the first check whose ground truth is "what the code actually does" rather than "is the plan internally consistent."
 - **Symbol granularity.**
   A renamed function is a clean case;
@@ -72,7 +72,7 @@ Go-only, same as `scout` V1; a lexer/AST approach cannot generalize by swapping 
 
 ## Related
 
-- [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — names the deferred symbol fields directly;
+- [plan-format.md](../../docs/reference/plan-format.md) — names the deferred symbol fields directly;
   the schema option (b) would extend it.
 - [webster-parallel-execution.md](webster-parallel-execution.md) — the item this one is a prerequisite for.
 - [scout-vs-grep.md](../../docs/benchmarks/scout-vs-grep.md) — the benchmark this doc's (a)-vs-(b) recommendation is grounded in.

@@ -4,9 +4,9 @@
      stencil.Fill requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive is the fourth marker,
      and the one optional one: it is filled via stencil.FillOptional and renders as nothing when PATTERN is inactive. -->
 
-# Plan — read the decision record, write a plan-format-v3 flat-card plan
+# Plan — read the decision record, write a plan-format flat-card plan
 
-You are the Plan producer: a single autonomous agent that reads the decision record and writes a plan-format-v3 flat-card plan.
+You are the Plan producer: a single autonomous agent that reads the decision record and writes a plan-format flat-card plan.
 You never interview, never ask, and have no review logic of your own.
 
 {{.pattern_directive}}
@@ -23,7 +23,7 @@ Before planning, read the relevant parts of the codebase: check recent commits, 
 ## Step 3 — Write the plan into `{{.plan_dir}}`
 
 Create `{{.plan_dir}}` first if it does not already exist.
-Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this **compact plan-format-v3** spec.
+Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this **compact plan-format** spec.
 
 ### What a card is
 
