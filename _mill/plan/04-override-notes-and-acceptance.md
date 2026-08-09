@@ -42,7 +42,10 @@ Batch-local decisions beyond `## Shared Decisions`:
   Record every one of B's own instructions this task departed from:
 
   1. The stated **five**-pattern set became six. The five missed the doc title's space variant `# Plan format v3`, so the stated zero-hit criterion would have passed with the renamed doc still titled v3.
-  2. The **unqualified "repo grep"** became a grep scoped to an exclusion set — this file, line 18 of `manifest/roadmap.md`, and `_mill/` — because the `### Acceptance` sentence naming the pattern set is itself a pattern-bearing line, and a blind sweep destroys the criterion it defines. Name the accepted consequence: four citations of the old path survive in this file, by design.
+  2. The **unqualified "repo grep"** became a grep with exactly one file-level exclusion — **this file** — because its `### Acceptance` sentence naming the pattern set is itself a pattern-bearing line, and a blind sweep destroys the criterion it defines.
+     Record both halves of what that means, since they are easy to conflate:
+     - The **sweeper** additionally skipped line 18 of `manifest/roadmap.md`, whose "`plan-format-v3.md` → `plan-format.md`" would have collapsed to a self-referential no-op. That skip was temporary: task B rewrote the line by hand so it names no version, and the **final** acceptance grep carries no roadmap exclusion at all.
+     - **This file is the sole permanent exemption.** Name the accepted consequence plainly: its four citations of the doc's pre-rename path, and its other references to the format by the old name, survive on purpose. The file is a historical record of what each task was told at scoping time, and those citations were accurate at that moment; rewriting them would make the record claim the scoping task knew the post-rename name. A reader who follows one of them will not find the file — this note is where they learn it moved to `docs/reference/plan-format.md`.
   3. **"This task changes paths and names only, never prose"** is superseded. The repo-wide v2 erasure rewrote prose in `docs/reference/plan-format.md`, `manifest/designs/loom.md`, `manifest/roadmap.md`, and Go comments across three packages.
   4. The `### Why` subsection's **rejected alternative** — "renaming the file but keeping in-text `v3` as a historical label" — was honoured rather than overridden, and extended: the four bare-`v3` labels in `internal/planparser` comments were rewritten too. Record it explicitly, because it is a *rejection* rather than an instruction and a reader could otherwise conclude task B left the class alone.
   5. The `### Sequencing` claim that this task "deliberately leaves `loom.md:29` self-contradicting" no longer holds — task B rewrote that line in full.
@@ -57,7 +60,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   **Block 3 — in section `## E — shed-model-contradiction-sweep`**, two notes:
 
   - On the `#### Part three` bullet for `:29`, which says task B "deliberately leaves this self-contradicting for this task to repair": record that task B rewrote the line in full instead, so E should verify it rather than repair it. E remains `loom.md`'s final owner for everything else on that list.
-  - In `#### Part four`'s `manifest/roadmap.md` list: record that task B deleted the "v3 is the live plan format now that its predecessor is retired." sentence from the Done item, since B's own sweep of the item's heading is what made it incoherent.
+  - In `#### Part four`'s `manifest/roadmap.md` list: record both roadmap edits task B made, so E does not go looking for either. B deleted the "v3 is the live plan format now that its predecessor is retired." sentence from the Done item, since B's own sweep of the item's heading is what made it incoherent;
+    and B rewrote line 18's six-task breakdown parenthetical, which the sweeper had deliberately skipped, so it describes the rename instead of spelling both filenames. The task slug on that line is untouched. E's remaining roadmap obligation is unchanged by either edit.
 
   Do **not** edit anything else in this file, and do not repair its four stale citations of the old path.
 - **Commit:** `docs(shed-followups): record task B's overrides for tasks C and E`
@@ -88,9 +92,13 @@ Batch-local decisions beyond `## Shared Decisions`:
      ```
      grep -rniE 'plan-format-v3|plan_format_v3|plan-format v3|plan format v3|plan-v3' . \
        --exclude-dir=.git --exclude-dir=_mill --exclude-dir=.scratch \
-       --exclude=shed-followups.md \
-       | grep -v '^\./manifest/roadmap\.md:18:'
+       --exclude=shed-followups.md
      ```
+
+     Note the **absent** `manifest/roadmap.md:18` filter — the intermediate gates in batch 1 card 3 and batch 2 card 8 carry it, this one deliberately does not.
+     Batch 2 card 7 rewrote that line by hand, so it must now pass like any other (`roadmap-18-is-rewritten-not-swept`).
+     If this gate fails on `manifest/roadmap.md:18`, the fix is in card 7's territory — never re-add the filter here.
+     `manifest/designs/shed-followups.md` is the sole remaining exclusion, and item 10 below states what survives there.
 
   3. Zero plan-format-v2 references remain. Run `grep -rniE '\bv2\b' --include='*.md' --include='*.go' . --exclude-dir=.git --exclude-dir=_mill --exclude-dir=.scratch` and review every hit against the deliberately-untouched list: `internal/state/state_test.go`, `internal/gitrepo/reset_test.go`, `internal/yamlengine/reconcile_test.go`, `internal/shuttleengine/claudeengine/command.go`, `internal/burlerengine/doc.go`, `manifest/designs/fabric-unified-view.md`, `manifest/designs/webster-parallel-execution.md`, and everything under `docs/research/`. None of those is a plan-format reference. Any hit outside that list is a miss.
   4. `grep -ni 'v3' docs/reference/plan-format.md` returns **nothing**.
@@ -100,9 +108,16 @@ Batch-local decisions beyond `## Shared Decisions`:
   8. `git status --porcelain` lists nothing under `.scratch/` — no sweeper file staged or committed.
   9. Every relative markdown link and anchor **touched by the sweep** resolves. `docs/reference/plan-format.md` now exists, closing the links that dangled from `manifest/designs/loom.md` and from the deleted blockquote. This gate explicitly exempts `manifest/designs/shed-followups.md`: its four citations of the old path are excluded by design and are not a regression.
 
-  One thing no gate can check: whether the six hand-written prose edits and the three override notes read correctly.
+  10. `manifest/designs/shed-followups.md` is the **sole** surviving plan-format-v3 site in the repo. Confirm that deliberately, rather than discovering it: `grep -rniE 'plan-format-v3|plan_format_v3|plan-format v3|plan format v3|plan-v3' . --exclude-dir=.git --exclude-dir=_mill --exclude-dir=.scratch` returns hits in that file and **no other**. Card 13's block 1 is what tells a future reader why it is exempt.
+  11. The task slug `plan-format-drop-v3-suffix` still appears wherever it did before — `manifest/roadmap.md:18`, `manifest/designs/shed-followups.md`, the branch name. It is a task name, not a format reference, and matches none of the six patterns. Its disappearance would mean an over-broad edit, not a cleaner tree.
+
+  One thing no gate can check: whether the seven hand-written prose edits and the three override notes read correctly.
   That is review's job.
-  Flag it at handoff, together with one open item from the discussion — the operator answered "out of scope" to bare-`v3` prose residue early on, and that answer was reversed twice during discussion review without being re-confirmed. The reversal is what put the four `internal/planparser` labels and the roadmap sentence in scope.
+  Flag it at handoff.
+
+  The discussion's one open item is **closed** and needs no further sign-off: the operator answered "out of scope" to bare-`v3` prose residue early on, that answer was reversed twice during discussion review, and the operator then confirmed the reversal explicitly on 2026-08-09 — the v3 jargon goes, and nothing should be called v3 once this task is done.
+  That confirmation is what keeps the four `internal/planparser` labels, the roadmap sentence, and the roadmap breakdown line in scope.
+  Do not re-raise it.
 - **Commit:** none
 
 ## Batch Tests

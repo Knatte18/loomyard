@@ -111,6 +111,7 @@ Letting the sweeper perform the rename inline was rejected — it would write a 
      Only the leading character carries case; the rest of the replacement is written lowercase as shown.
      There is no separate sixth entry for `Plan-format v3` — case-insensitive matching of `plan-format v3` already covers it, which is why the table has five rows for the six patterns named in the task.
   4. Exclude **line 18 of `manifest/roadmap.md` only**, not the whole file — that one line reads "mechanical rename sweep, `plan-format-v3.md` → `plan-format.md`" and sweeping it collapses both halves to the same name. Match the exclusion on the file's line index or on that line's distinctive `mechanical rename sweep` substring; the file's other five hits are swept normally.
+     The exclusion is **the sweeper's only**, and it is temporary: batch 2 card 7 rewrites that line by hand so it names no version at all (`roadmap-18-is-rewritten-not-swept`). Do not attempt the rewrite here — a hand edit inside the sweep card would make the scripted pass unauditable.
   5. Print one line per changed file with its hit count, plus a total, so the run is auditable and can be pasted into the commit message.
 
   The program names **no** exclusion for `gopkg.in/yaml.v3`: every pattern above requires a `plan` prefix, so that import string is unmatchable by construction (`yaml-v3-is-structurally-unreachable`).
@@ -139,6 +140,8 @@ Letting the sweeper perform the rename inline was rejected — it would write a 
      ```
 
      The exclusions anchor on the path field, never on line content (`exclusions-anchor-on-the-path-field`).
+     Both exclusions are correct **at this point in the plan only**. The `roadmap.md:18` filter covers the window between this sweep and batch 2 card 7's hand rewrite of that line;
+     batch 4's final gate drops the filter and expects the line to pass clean (`roadmap-18-is-rewritten-not-swept`).
   3. Acceptance gate for the hard exclusion — `grep -rl 'gopkg.in/yaml.v3' --include='*.go' . | wc -l` returns **32**, unchanged from before the sweep.
   4. Acceptance gate 7 — `git status --porcelain` lists nothing under `.scratch/`.
   5. `go build ./...` is clean and the batch `verify:` command is green.

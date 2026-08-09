@@ -20,6 +20,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 
 - `plan-format-5-in-scope` — the retired-v2 blockquote and its bare `>` separator are deleted as a pair, not repaired. The sweep leaves the line untouched (it carries no pattern), and after the rename its link points at the file itself. This task creates that defect, so this task fixes it.
 - `roadmap-203-in-scope` — `manifest/roadmap.md`'s "v3 is the live plan format now that its predecessor is retired." sentence is deleted rather than left for task E, because this task's own sweep of the heading above it is what makes the sentence incoherent. Same "owns every site whose claim it itself falsifies" rule the manifest applies to task A.
+- `roadmap-18-is-rewritten-not-swept` — card 7 additionally rewrites line 18, the one line the sweeper deliberately skipped, so `manifest/roadmap.md` ends this batch with no plan-format-v3 reference and no standing grep exclusion. Added on operator instruction, 2026-08-09: every plan-format-v3 reference the task can reach is removed, and this one is reachable by rewriting the sentence rather than replacing a token.
 - `loom-29-in-scope` — the `loom.md` producer-list line is rewritten in full rather than left self-contradicting for task E, overriding `shed-followups.md:209-210`. Repairing half a sentence is worse than repairing all of it.
 
 Both of the last two are deliberate departures from the manifest, and both are recorded as override notes by batch 4 — do not silently widen or narrow them here.
@@ -96,7 +97,7 @@ Both of the last two are deliberate departures from the manifest, and both are r
   the sweep already made its own path-level edits elsewhere in the file in batch 1 and those stand as they are.
 - **Commit:** `docs(loom): state the live plan format instead of a replacement in progress`
 
-### Card 7: Delete the stale live-format sentence from the roadmap Done item
+### Card 7: Repair both roadmap sites — the stale live-format sentence and the excluded breakdown line
 
 - **Context:** none
 - **Edits:**
@@ -104,16 +105,31 @@ Both of the last two are deliberate departures from the manifest, and both are r
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In the Done item whose heading the sweep rewrote to "**plan-format: flat card list**", delete the single sentence "v3 is the live plan format now that its predecessor is retired."
+- **Requirements:** Two separate edits in this file.
+
+  **Edit 1 — the Done item.** In the item whose heading the sweep rewrote to "**plan-format: flat card list**", delete the single sentence "v3 is the live plan format now that its predecessor is retired."
 
   Both of its claims are broken by this task's own edit: the item is no longer titled v3, so "v3 is the live plan format" names nothing, and "its predecessor is retired" is a v2 reference carrying no token for the sweep to catch.
   Delete the sentence outright rather than rewriting it — the heading and the following `See` link already say everything that remains true.
   Leave the item's other lines, including the `See [docs/reference/plan-format.md](../docs/reference/plan-format.md).` line the sweep already rewrote, exactly as they are.
 
-  Do **not** touch line 18 of this file, the six-task breakdown line reading "mechanical rename sweep, `plan-format-v3.md` → `plan-format.md`".
-  It is deliberately excluded from both the sweep and the acceptance grep (`exclusion-set-is-part-of-the-criterion`);
-  sweeping or hand-editing it would collapse both halves of the arrow to the same name and destroy the record of what this task did.
-- **Commit:** `docs(roadmap): drop the stale v3-is-live sentence from the plan-format item`
+  **Edit 2 — line 18, the six-task breakdown line.** The sweeper deliberately skipped this one line, so it still reads, in the middle of a longer sentence listing the six follow-up tasks:
+
+  ```
+`plan-format-drop-v3-suffix` (B — mechanical rename sweep, `plan-format-v3.md` → `plan-format.md`)
+  ```
+
+  Rewrite the parenthetical so it describes the change instead of spelling both filenames — for example, a mechanical rename sweep that drops the version suffix from the plan-format doc.
+  Naming the old file was never load-bearing here: the parenthetical is a one-line summary of what task B does, not a citation of a path, and the surrounding sentence already links `designs/shed-followups.md` for the full task bodies.
+  This is why the line is hand-rewritten rather than swept — a blind replacement would have collapsed the arrow to "`plan-format.md` → `plan-format.md`", destroying the record (`roadmap-18-is-rewritten-not-swept`).
+
+  Keep the task slug `plan-format-drop-v3-suffix` on that line exactly as it is.
+  It is a task name, not a format reference, it is the wiki and branch identifier for this very task, and it matches none of the six sweep patterns — `plan-format-drop-v3` breaks the `plan-format-v3` adjacency and the string `plan-v3` does not occur — so it passes the acceptance grep untouched.
+  The same slug appears elsewhere in the repo for the same reason;
+  leave every occurrence alone.
+
+  After this card, `manifest/roadmap.md` carries no plan-format-v3 reference at all and needs no grep exclusion — batch 4's final gate checks it like any other file.
+- **Commit:** `docs(roadmap): drop the v3 suffix from the plan-format item and the task breakdown`
 
 ### Card 8: Confirm the documentation gates
 
@@ -132,6 +148,8 @@ Both of the last two are deliberate departures from the manifest, and both are r
   2. `grep -niE '\bv2\b' docs/reference/plan-format.md manifest/designs/loom.md manifest/roadmap.md` returns **nothing**.
   3. Acceptance gate 8, for this batch's share — every relative markdown link and anchor this batch touched resolves. In particular `../../docs/reference/plan-format.md` from `manifest/designs/loom.md` and `../docs/reference/plan-format.md` from `manifest/roadmap.md` both resolve to the file that now exists, closing the dangling links task A deliberately left open.
   4. Re-run acceptance gate 2 (the six-pattern grep from card 3) and confirm it still returns zero — a hand edit that reintroduces a pattern is the one way this batch could regress batch 1's work.
+  5. Card 7's line-18 rewrite specifically — run the same grep **without** the `^\./manifest/roadmap\.md:18:` filter and confirm `manifest/roadmap.md` produces no line at all. This is the gate batch 4 runs repo-wide; proving it here localizes a failure to this batch rather than to the terminal one.
+  6. `grep -n 'plan-format-drop-v3-suffix' manifest/roadmap.md` still finds the task slug on line 18. The slug is deliberately preserved (`roadmap-18-is-rewritten-not-swept`) — if it is gone, card 7 over-edited.
 
   Explicitly **not** a regression, and not to be filed as one: `manifest/designs/shed-followups.md` still cites the doc's pre-rename path in four places.
   That file is excluded by design;
@@ -146,5 +164,5 @@ This batch edits three markdown files and no Go source, so there is no runnable 
 Nothing in the repo reads any of these three files at test time — the plan-format worked example that `internal/planparser`'s golden fixture mirrors is materialized from hardcoded test source, not loaded from `docs/reference/`, so a doc edit cannot turn a test red.
 The overview's module-wide `verify: go build ./...` still runs at the batch boundary as a cheap backstop.
 
-Verification for this batch is card 8's grep gates, which check the property that actually matters here — zero surviving version labels and zero surviving v2 references in the three files — plus review, which is the only thing that can judge whether the six rewritten sentences read correctly.
+Verification for this batch is card 8's grep gates, which check the property that actually matters here — zero surviving version labels and zero surviving v2 references in the three files — plus review, which is the only thing that can judge whether the seven rewritten sentences read correctly.
 That last point is the task's known blind spot: `shed-followups.md:232-233` is explicit that the meaningful failure mode is incompleteness, checked by grep rather than by an assertion.

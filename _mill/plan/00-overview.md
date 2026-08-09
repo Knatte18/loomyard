@@ -3,7 +3,7 @@
 ```yaml
 task: 'plan-format: drop the v3 suffix and sweep every reference by script'
 slug: plan-format-drop-v3-suffix
-approved: true
+approved: false
 started: '20260809-123134'
 parent: main
 root: ""
@@ -59,14 +59,24 @@ Batch-local decisions live in each batch file._
 
 ### Decision: exclusion-set-is-part-of-the-criterion
 
-- **Decision:** three paths are excluded from **both** the scripted sweep and the completion grep: `manifest/designs/shed-followups.md` (whole file), `manifest/roadmap.md` line 18 only, and the `_mill/` directory (plus `.scratch/` and `.git/`). The acceptance grep is defined as zero hits *outside* this set.
-- **Rationale:** each carries the pattern as quoted spec text that a blind replacement destroys. `shed-followups.md:228` **is** the sentence defining this task's own pattern set; sweeping it destroys the acceptance criterion. `manifest/roadmap.md:18` reads "`plan-format-v3.md` → `plan-format.md`", which sweeps to a self-referential no-op. `_mill/` is task state, torn down on merge.
+- **Decision:** the sweep and the **final** acceptance grep have **different** exclusion sets, and the difference is the point.
+  - Excluded from the **scripted sweep**: `manifest/designs/shed-followups.md` (whole file), `manifest/roadmap.md` line 18 only, and the `_mill/`, `.scratch/`, `.git/` directories.
+  - Excluded from the **final acceptance grep** (batch 4 card 14): `manifest/designs/shed-followups.md` and the same three directories — **but not** `manifest/roadmap.md:18`, which by then has been rewritten by hand and must pass the gate like every other line.
+- **Rationale:** both files carry the pattern as quoted spec text that a *blind replacement* destroys, but only one of them has to keep carrying it afterwards. `shed-followups.md:228` **is** the sentence defining this task's own pattern set, so sweeping it destroys the acceptance criterion it states — and the file is a historical record of what each task was told at scoping time, which is why it keeps its references permanently. `manifest/roadmap.md:18` reads "mechanical rename sweep, `plan-format-v3.md` → `plan-format.md`", which sweeps to a self-referential no-op — but the sentence does not *need* the old filename to say what it says, so batch 2 card 7 rewrites it by hand instead and the exclusion ends there. `_mill/` is task state, torn down on merge.
+- **Operator decision, 2026-08-09:** every plan-format-v3 reference the task can reach is removed, and `manifest/roadmap.md:18` can be reached — by rewriting the line rather than by sweeping it. `manifest/designs/shed-followups.md` is the sole surviving site, and batch 4's override notes state plainly why.
 - **Applies to:** all batches
+
+### Decision: roadmap-18-is-rewritten-not-swept
+
+- **Decision:** `manifest/roadmap.md:18` is excluded from the sweeper and then rewritten by hand in batch 2 card 7, so the finished line names no version at all. The task slug `plan-format-drop-v3-suffix` stays on that line unchanged.
+- **Rationale:** a blind replacement collapses "`plan-format-v3.md` → `plan-format.md`" into "`plan-format.md` → `plan-format.md`", destroying the record of what the task did — but naming the old file was never load-bearing for the sentence, which is a one-line summary of the task, not a citation. Rewriting it to describe the change instead of spelling both filenames keeps the record intact and removes the exclusion. The slug is a task name, not a format reference, and matches none of the six patterns (`plan-format-drop-v3` breaks the `plan-format-v3` adjacency, and `plan-v3` does not occur), so it survives the acceptance grep untouched.
+- **Rejected:** leaving line 18 permanently excluded — it is the one excluded site that does not have to stay excluded, and the operator's instruction is that every reachable plan-format-v3 reference goes.
+- **Applies to:** rename-and-sweep, doc-prose-v2-erasure, override-notes-and-acceptance
 
 ### Decision: exclusions-anchor-on-the-path-field
 
-- **Decision:** every acceptance grep filters exclusions on the **path** field, never on line content. Use `--exclude=shed-followups.md` (filename filter, applied before matching) and anchor the roadmap filter as `^\./manifest/roadmap\.md:18:`.
-- **Rationale:** a bare `grep -v 'shed-followups.md'` drops every output line whose *text* mentions that filename, so a genuine unfixed hit in another file that happens to cite `shed-followups.md` would be silently exempted and the gate would pass on an incomplete sweep.
+- **Decision:** every acceptance grep filters exclusions on the **path** field, never on line content. Use `--exclude=shed-followups.md` (filename filter, applied before matching). The intermediate gates in batch 1 card 3 and batch 2 card 8 additionally filter `manifest/roadmap.md`'s line 18, anchored as `^\./manifest/roadmap\.md:18:`; batch 4's final gate carries no roadmap filter at all.
+- **Rationale:** a bare `grep -v 'shed-followups.md'` drops every output line whose *text* mentions that filename, so a genuine unfixed hit in another file that happens to cite `shed-followups.md` would be silently exempted and the gate would pass on an incomplete sweep. The roadmap filter is anchored to one file and one line number for the same reason, and it exists only for the window between the sweep and card 7's hand rewrite — once that rewrite lands the filter must come off, or the gate would stop checking a line that is now expected to be clean.
 - **Applies to:** all batches
 
 ### Decision: yaml-v3-is-structurally-unreachable
