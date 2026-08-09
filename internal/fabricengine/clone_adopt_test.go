@@ -270,12 +270,14 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 
 	// Clone the hub fresh, as a second machine (or clone --reset) would.
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		".",
-	)
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor.
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        ".",
+		ForceBootstrap: true,
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
@@ -325,12 +327,14 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "fresh-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		".",
-	)
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor.
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        ".",
+		ForceBootstrap: true,
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
@@ -363,20 +367,31 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 }
 
 // TestCloneHub_StrictAbortRemovesHubOnFailure covers teardownHub's cleanup-on-failure behaviour: a
-// failing weft clone leaves no residual Hub directory behind, torn down through fabricengine's own
-// RemoveAll teardown seam (clone.go's teardownHub).
+// failing warp clone leaves no residual Hub directory behind, torn down through fabricengine's own
+// RemoveAll teardown seam (clone.go's teardownHub). The weft side must be a valid fixture so the
+// pre-hub probe succeeds and the hub directory is actually created — pointing the weft at a
+// nonexistent path instead would fail at the probe, before teardownHub is ever reached, which is now
+// covered as a probe-taxonomy hard error rather than this residual-hub path.
 func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 	fixtures := t.TempDir()
 
-	warpBare := makeBareRemote(t, fixtures, "abort-warp")
-	nonExistentWeft := filepath.Join(fixtures, "nonexistent-weft.git")
+	weftBare := makeBareRemote(t, fixtures, "abort-weft")
+	nonExistentWarp := filepath.Join(fixtures, "nonexistent-warp.git")
 
 	cloneParent := t.TempDir()
-	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
+	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(nonExistentWarp)))
 
-	_, err := fabricengine.CloneHub(cloneParent, filepath.ToSlash(warpBare), filepath.ToSlash(nonExistentWeft), ".")
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor; without this the old-order
+	// guard would fire before the warp clone is even attempted.
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(nonExistentWarp),
+		Subpath:        ".",
+		ForceBootstrap: true,
+	})
 	if err == nil {
-		t.Fatalf("CloneHub should have failed with a non-existent weft remote")
+		t.Fatalf("CloneHub should have failed with a non-existent warp remote")
 	}
 	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
 		t.Errorf("hub directory %s should have been removed by teardownHub after clone failure", expectedHubPath)
@@ -397,12 +412,13 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	weftBare := makeEmptyBareRemote(t, fixtures, "orphan-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		".",
-	)
+	// weftBare is a genuinely empty remote (makeEmptyBareRemote): the probe's unborn-HEAD check
+	// sets WeftLooksLikeWeft, so the old-order guard never fires and no ForceBootstrap is needed.
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: ".",
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
@@ -437,12 +453,14 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "anchor-create-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		"backend",
-	)
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor.
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        "backend",
+		ForceBootstrap: true,
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
@@ -484,12 +502,14 @@ func TestCloneHub_AnchorTypoPathHardErrors(t *testing.T) {
 	cloneParent := t.TempDir()
 	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
-	_, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		"backedn",
-	)
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor.
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        "backedn",
+		ForceBootstrap: true,
+	})
 	if err == nil {
 		t.Fatalf("CloneHub() with a nonexistent subpath should have failed")
 	}
@@ -508,12 +528,14 @@ func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "anchor-root-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		".",
-	)
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor.
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        ".",
+		ForceBootstrap: true,
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
@@ -550,14 +572,14 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	// what "adopt" means: the marker arrives via git history, not a write.
 	commitFileOnBranch(t, fixtures, weftBare, "main", lyxcwd.AnchorFileName, "backend\n")
 
-	// No --subpath: the recorded anchor is read and returned as-is.
+	// No --subpath: the recorded anchor is read and returned as-is. No ForceBootstrap needed: the
+	// weft already carries the .lyx-anchor marker seeded above, so the guard admits it regardless.
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		"",
-	)
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: "",
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
@@ -569,24 +591,22 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 	// A conflicting non-default --subpath must hard-error rather than
 	// silently re-anchor: the record is authoritative on adopt.
 	conflictParent := t.TempDir()
-	_, err = fabricengine.CloneHub(
-		conflictParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		"frontend",
-	)
+	_, err = fabricengine.CloneHub(conflictParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: "frontend",
+	})
 	if err == nil {
 		t.Fatalf("CloneHub() with --subpath frontend against a recorded backend anchor should have failed")
 	}
 
 	// A matching --subpath succeeds identically to the no-flag case.
 	matchParent := t.TempDir()
-	matchRes, err := fabricengine.CloneHub(
-		matchParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		"backend",
-	)
+	matchRes, err := fabricengine.CloneHub(matchParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: "backend",
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() with matching --subpath backend error = %v; want nil", err)
 	}
@@ -615,12 +635,14 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	cloneParent := t.TempDir()
 	expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
-	_, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		"",
-	)
+	// No ForceBootstrap: the guard admits this fixture on its own (card 3's probe recognises the
+	// stale pre-rename marker), and the test asserts on the stale-marker error naming re-clone as
+	// the remedy — a message the bootstrap guard never produces.
+	_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL: filepath.ToSlash(weftBare),
+		WarpURL: filepath.ToSlash(warpBare),
+		Subpath: "",
+	})
 	if err == nil {
 		t.Fatalf("CloneHub() against a stale .fabric-anchor with no .lyx-anchor should have failed")
 	}

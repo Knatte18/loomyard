@@ -35,12 +35,14 @@ func TestBoardJunction_WiredAtClone(t *testing.T) {
 	weftBare := makeBareRemote(t, fixtures, "board-clone-weft")
 
 	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(
-		cloneParent,
-		filepath.ToSlash(warpBare),
-		filepath.ToSlash(weftBare),
-		".",
-	)
+	// ForceBootstrap: true — weftBare is an ordinary seeded bare remote standing in for a weft,
+	// not a repo that has ever been one, so it carries no .lyx-anchor.
+	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+		WeftURL:        filepath.ToSlash(weftBare),
+		WarpURL:        filepath.ToSlash(warpBare),
+		Subpath:        ".",
+		ForceBootstrap: true,
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}

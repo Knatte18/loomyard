@@ -120,7 +120,15 @@ func TestCloneHub_CreatesHubDotLyx(t *testing.T) {
 	initTinyRepo(t, weftSrc)
 
 	cloneParent := t.TempDir()
-	res, err := CloneHub(cloneParent, filepath.ToSlash(warpSrc), filepath.ToSlash(weftSrc), ".")
+	// ForceBootstrap: true — the weft fixture here is a non-bare working repo built by
+	// initTinyRepo, an ordinary seeded repo standing in for a weft, not a repo that has ever
+	// been one, so it carries no .lyx-anchor and would otherwise trip the old-order guard.
+	res, err := CloneHub(cloneParent, CloneOptions{
+		WeftURL:        filepath.ToSlash(weftSrc),
+		WarpURL:        filepath.ToSlash(warpSrc),
+		Subpath:        ".",
+		ForceBootstrap: true,
+	})
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}
