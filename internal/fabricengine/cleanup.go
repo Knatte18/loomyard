@@ -2,7 +2,9 @@
 // corresponding warp worktree sibling and deletes them according to a flag matrix.
 //
 // Flag matrix:
-//   - apply == false                → dry-run/report only; nothing is deleted.
+//   - apply == false                → dry-run/report only; nothing is deleted. The gate verdict is
+//     still computed, so a dry run's Protected flags match exactly what the same flags plus --apply
+//     would do.
 //   - apply == true && !force       → delete non-gate-protected orphan branches;
 //     task branches where raddleFoldedBack returns false are skipped (protected).
 //   - apply == true && force == true → also delete gate-protected task branches.
@@ -143,15 +145,19 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 			continue
 		}
 
-		if !apply {
+		// The gate is evaluated in BOTH modes, before the apply check rather than after it. A dry
+		// run exists to answer "what would --apply do with these same flags", and evaluating the
+		// gate only under --apply made it answer a different question: every orphan branch is
+		// gate-protected while raddleFoldedBack is conservative, so a dry run reported branches as
+		// deletable that --apply then protected.
+		folded := raddleFoldedBack(branch)
+		if !folded && !force {
+			entry.Protected = true
 			result.Entries = append(result.Entries, entry)
 			continue
 		}
 
-		// Check gate unless --force is set.
-		folded := raddleFoldedBack(branch)
-		if !folded && !force {
-			entry.Protected = true
+		if !apply {
 			result.Entries = append(result.Entries, entry)
 			continue
 		}

@@ -544,3 +544,61 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 		t.Errorf("Healthy = false (reason %+v) after ONE reconcile pass; want the pair fully repaired", reason)
 	}
 }
+
+// TestCleanup_DryRunMatchesApplyVerdict proves a dry run answers the question a dry run is for:
+// what the same flags plus --apply would actually do. The gate used to be evaluated only under
+// --apply, so a dry run reported every orphan branch as deletable while --apply then protected all
+// of them — the report and the action never agreed.
+func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
+	t.Setenv("WEFT_SKIP_PUSH", "1")
+
+	const slug = "cleanup-dryrun-parity"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := topology.Remove(l, slug, true); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	// Remove deletes the pair's weft branch, so re-create an orphaned one by hand: a weft branch
+	// whose paired warp branch no warp worktree is on.
+	weftRepoRoot, err := fabricengine.WeftRepoRoot(l)
+	if err != nil {
+		t.Fatalf("WeftRepoRoot: %v", err)
+	}
+	orphan := fabricengine.WeftBranchName(slug)
+	lyxtest.MustRun(t, weftRepoRoot, "git", "branch", orphan)
+
+	findEntry := func(t *testing.T, entries []fabricengine.CleanupBranchEntry) fabricengine.CleanupBranchEntry {
+		t.Helper()
+		for _, e := range entries {
+			if e.Branch == orphan {
+				return e
+			}
+		}
+		t.Fatalf("cleanup result has no entry for %q: %+v", orphan, entries)
+		return fabricengine.CleanupBranchEntry{}
+	}
+
+	dry, err := topology.Cleanup(l, false, false)
+	if err != nil {
+		t.Fatalf("Cleanup(dry): %v", err)
+	}
+	applied, err := topology.Cleanup(l, true, false)
+	if err != nil {
+		t.Fatalf("Cleanup(apply): %v", err)
+	}
+
+	dryEntry := findEntry(t, dry.Entries)
+	appliedEntry := findEntry(t, applied.Entries)
+	if dryEntry.Protected != appliedEntry.Protected {
+		t.Errorf("dry-run Protected = %v; --apply Protected = %v; want them to agree",
+			dryEntry.Protected, appliedEntry.Protected)
+	}
+	if appliedEntry.Deleted {
+		t.Fatalf("--apply deleted %q without --force; the gate is not doing its job, so this test proves nothing", orphan)
+	}
+}

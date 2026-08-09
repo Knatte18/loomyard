@@ -258,6 +258,9 @@ Flag matrix:
   --apply --force     also delete gate-protected task branches.
   --force (alone)     report only; --force does not imply --apply.
 
+A dry run reports the same protected verdict the matching --apply run would
+act on, so "protected: false" in a dry run means "--apply would delete this".
+
 A weft branch currently checked out at a worktree is always reported as
 protected and never deleted, in every mode — git cannot delete a checked-out
 branch, and its being checked out means the pair is still on disk.
