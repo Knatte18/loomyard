@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: shed-producer-model-scoping
 branch: shed-producer-model-scoping
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-08T19:39:47Z'
+discussed  '2026-08-09T06:01:51Z'
 ```

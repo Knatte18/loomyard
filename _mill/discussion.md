@@ -134,7 +134,10 @@ The follow-up set it emits explicitly may — and does — include code tasks.
 - Rejected: docs-only rename with Go identifiers deferred (leaves the codebase mid-rename); renaming the file but leaving in-text "v3" as a historical label (the suffix is what is being retired).
 - **Scale:** do **not** trust a file count written here — B's own first step re-derives the list.
   The affected clusters are `internal/planparser`, `internal/websterengine`, `internal/webstercli`, `internal/loomengine` (including `plan-template.md`), `internal/batcher/doc.go`, `docs/overview.md`, `docs/reference/model-spec.md`, `docs/reference/builder-contract.md`, `manifest/roadmap.md`, several `manifest/designs/*.md`, and `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`. `CONSTRAINTS.md`'s Planparser Sole-Parser Invariant is also affected.
-- **Acceptance check, not a count:** a repo grep for `plan-format-v3`, `plan_format_v3`, and `plan-format v3` returns zero hits, and `go test ./...` passes. That is the completion criterion; any figure quoted in prose is a snapshot that goes stale.
+- **Acceptance check, not a count.** The completion criterion is a **case-insensitive** repo grep returning zero hits for the full pattern set, plus a passing `go test ./...`:
+  `plan-format-v3`, `plan_format_v3`, `plan-format v3`, `plan-v3`, and `Plan-format v3`.
+  The narrower three-pattern set stated earlier does not match this decision's own intent ("in-text v3 as a historical label" is rejected): it would leave `loom.md:58`'s "plan-v3's card contract", `loom.md:94`'s "Webster/plan-v3 equivalent", and `internal/planparser/doc.go:32`'s "Plan-format v3" all passing.
+- **Hard exclusion — `gopkg.in/yaml.v3`.** The sweep must never touch that import token. It appears in ten Go files, including `internal/planparser/parse.go:21` — the sole plan parser, i.e. the file B is most certain to be editing. A broad `v3` replace corrupts the import and breaks the build in the least obvious place. B's script names this exclusion explicitly rather than relying on the pattern set being narrow enough.
 - **Execution discipline:** scripted find/replace plus a full `go test ./...`, not a hand-edit pass. Per the repo's own tooling rules the script must not use `sed`.
 
 ### phase-enum-realignment-is-deferred-to-the-shed-build
@@ -210,6 +213,9 @@ Existing `builder.yaml` files in already-created worktrees are **left in place**
 - **Comment-only residue, swept opportunistically** (none of it breaks the build, all of it reads as stale once builder is gone): `internal/perchengine/doc.go:13` ("builder-review"), `internal/modelspec/modelspec.go:7,35` ("builder's roles", "builder, perch/burler/loom configs"), `internal/loomengine/configtemplate.go:4` ("mirroring builderengine's ... embed-and-accessor").
 - `manifest/roadmap.md` — the Done `builder` item (`:196`, `:202`) and `:42`'s "builder implementer" template mention.
 - `docs/reference/status-schema.md` — its builder-specific prose (`:16`, `:53`, `:69`, `:73`, `:81`) and the `builder-contract.md` link at `:3`. **The `phase` enum itself is deliberately NOT A's** — see the deferred-phase-enum note below.
+- **The v2-coexistence prose class.** Once A deletes v2 and B reuses the filename, every surviving "plan-format v2" link silently re-targets v3 content — a worse failure than a dangling link, because nothing breaks. A owns every site whose claim A itself falsifies: `docs/reference/builder-contract.md:3`, `:7`, `:224` ("until then it stays frozen and fully functional in-tree"), `:243`; `docs/reference/model-spec.md:3` ("Pinned alongside [plan-format v2] and the emerging [v3]"); `docs/reference/status-schema.md:3`; `manifest/roadmap.md:207` ("Coexists with the still-live plan-format v2 — still used by the frozen `builder`"); and `manifest/designs/review-finding-classification.md:7`, `:47` — where B's sweep would otherwise turn a v2/v3 pair into "plan-format.md / plan-format.md".
+  Two sites in this class are **not** A's: `plan-format-v3.md:5`'s own "Coexistence, not replacement" section belongs to C (the renamed doc's content owner — the renamed file would otherwise carry forward an assertion that it does not retire v2), and `loom.md:29` belongs to E per the `loom.md` ownership chain.
+  `manifest/roadmap.md` has two owners in chain order, A then E — sequential, not concurrent.
 
 No `depends_on` — nothing blocks it.
 
@@ -224,6 +230,8 @@ Rewrite `discussion-format.md` and the renamed `plan-format.md` to name their pr
 Add the `Discussion-Review-Gate` producer covering `discussion-format.md:80–82`'s checks 1–2, and state explicitly that check 3 (`:83`) is a **build-time test assertion over the producer definition**, not a gate check — so it is not later re-filed as a missing check.
 Scoped-edit `loom.md`'s table rows 2–7 to name `_lyx/discussion/decision-record.md` and `_lyx/plan/`, and insert `Discussion-Review-Gate` into the list.
 Fix `discussion-format.md:1`'s own title, which still reads "the `discussion.md` ↔ Plan contract" — the same nonexistent artifact the loom table named.
+Restate `discussion-format.md:14` in producer-model terms: it currently grounds the two-file split in "Builder's 'distilled digest, never raw prose' rule (see `builder-contract.md`'s digest contract)" — a live contract justified by a retired design doc. The rule itself is sound and worth keeping; only its attribution needs rewriting.
+Rewrite `plan-format.md:5`'s "Coexistence, not replacement" section, which asserts the format does not retire v2 — false once A deletes v2, and the renamed file would otherwise carry the claim forward about itself.
 C owns `loom.md`'s table rows 2–7 only; E owns the rest of the file and runs after both C and F.
 `depends_on: B` — it edits the renamed file.
 
@@ -322,6 +330,7 @@ They belong in task **E**'s output as named open questions, and in the relevant 
    `docs/overview.md:289` and `:318` record that earlier `reed` drafts split the model and view into separate modules named `shed` and `glance`.
    The historical mentions are harmless in isolation, but "shed" now names the outer phase-FSM, and a reader hitting `overview.md:289` first will mis-resolve it.
    Worth an explicit disambiguating note rather than leaving two unrelated `shed`s in one doc set.
+   **Owner:** E, as `docs/overview.md`'s last owner in the chain.
 4. **`Hardener` / `Tenter`'s equivalent Raddle-into-Finalize fold** is deferred by the landed design (`shed.md:20`, `loom.md:67`) and stays deferred — noted here only so a future pass does not mistake the silence for an oversight.
 
 ## Technical context
@@ -407,3 +416,7 @@ The follow-up tasks do, and their bodies should carry these expectations:
 - **Q:** F's inventory missed `websterengine/template.yaml:3` (where the key physically lives), `doc.go:12,25–27`, `verbs_test.go:696–732`, and `overview.md:267`. **A:** [auto-pick] Add all four, taking the whole gate-test pair rather than the `:697` comment alone. **Why:** both `PersistentPreRunE` tests string-replace `batcher: ""` out of the template, so both break the moment the key leaves it.
 - **Q:** `shed.md:63` and `loom.md:76` still claim this scoping task is pending, and E's `shed.md` scope was an explicit line list with no catch-all. **A:** [auto-pick] Name both explicitly, and give E the same end-to-end re-read discipline D has for `finalize.md`. **Why:** an enumerated line list cannot cover residue whose premise changes as earlier tasks land.
 - **Q:** Open question 2 (`Discussion-Write` has no Input) had no owner. **A:** [auto-pick] E records it in `shed.md`'s producer-contract section beside the thin-Output carve-out; no roadmap gate. **Why:** it is a contract-wording decision, not a precondition that could invalidate `Shed`'s design the way question 1 could.
+- **Q:** Round 5 found the v2-coexistence prose class surviving A+B unowned, with every "plan-format v2" link silently re-targeting v3 content once the filename is reused. **A:** [auto-pick] A owns every site whose claim A falsifies; C owns the renamed doc's own `:5` section; E owns `loom.md:29`. **Why:** a silently re-targeted link is worse than a dangling one — nothing breaks, so nothing surfaces it.
+- **Q:** B's acceptance grep didn't match its own stated intent, and a broad `v3` sweep could corrupt `gopkg.in/yaml.v3` imports. **A:** [auto-pick] State the full case-insensitive pattern set (adding `plan-v3` and `Plan-format v3`) and name `gopkg.in/yaml.v3` as a hard exclusion. **Why:** that import appears in ten Go files including `internal/planparser/parse.go:21` — the file B is most certain to be editing.
+- **Q:** Open question 3 (`shed` overloaded with reed's earlier draft module) proposed an action with no owner. **A:** [auto-pick] Assign to E, `docs/overview.md`'s last owner.
+- **Q:** Round 5 ended at the configured 5-round cap with 3 inventory/criterion gaps and no design-blocking findings. Run a sixth round? **A:** No — proceed to handoff. The remaining risk is inventory completeness in follow-up task bodies, and every one of the six tasks goes through its own `mill-start` → `mill-plan` → `mill-go` cycle with its own review gates, where a compiler checks the answer rather than prose review.
