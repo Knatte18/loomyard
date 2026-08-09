@@ -52,6 +52,8 @@ batches:
     commit_sha: f1706640f9761ed5b5038ca66d37749859c67137
     verify_baseline_failures: []
   - name: override-notes-and-acceptance
-    state: pending
+    state: running
+    implementer_session: f3b40cd5-55d8-4bef-a7c0-1a64b612fa87
+    start_sha: 2f45b5a448b5b8fbadff064faccd0246ea856af9
     verify_baseline_failures: []
 ```
