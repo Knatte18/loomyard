@@ -260,6 +260,42 @@ Rename it back and confirm normal operation resumes.
 
 ---
 
+### F10 -- Destructive-verb guardrails (`remove`, `cleanup`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm the two verbs that delete things refuse the targets that are not theirs to delete, instead of deleting them and reporting success."
+
+**Watch:** Run `lyx fabric remove <prime-slug>` -- the hub's own warp worktree directory name, the one every operator can reach by tab-completion.
+It must be **refused**, naming the prime worktree, and `<hub>/<prime>` must still be there afterwards WITH its `.git` directory: git declines to remove a main working tree, and fabric must report that rather than deleting the clone. (Historical: this deleted the entire warp repository, gitdir included, on a clean hub with no `--force`, while the JSON envelope claimed "warp worktree removed".)
+Then run `lyx fabric remove _board` and `lyx fabric remove <prime>-weft`.
+Both must be refused with an `invalid slug` error and both directories must survive intact -- `_board` holds `.lyx-anchor`, `.lyx-warp` and the repo-wide `fabric.yaml`, and `<prime>-weft` is the entire durable `_lyx` store. `lyx fabric add` already refuses exactly this name set;
+`remove` must refuse the same one.
+Then the cleanup half: with the prime pair on the default branch, `lyx fabric checkout <other-branch>` to move it off, then run `lyx fabric cleanup --apply --force` and confirm `main-weft` is reported `protected: true` and still exists (`git -C <hub>/<prime>-weft branch`).
+The primary weft branch is the durable weft line whatever the prime happens to be checked out on;
+promoting it to a deletable orphan destroys any weft commit it alone carries.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F11 -- Dirty-worktree matrix across the mutating verbs
+
+**Covers:** fabric
+
+**Goal:** "Cross every mutating verb with uncommitted work actually on disk, and confirm no verb silently discards it."
+
+**Watch:** Make an uncommitted edit to a TRACKED file on one side, then run one mutating verb, then check the edit is still there byte-for-byte.
+Repeat across the verbs -- `pull`, `sync`, `checkout`, `reconcile`, `remove`, `cleanup`, `unwire`, `prune`, `add`, `commit` -- and across the states: dirty warp only, dirty weft only, both dirty, untracked-only on each side.
+A verb that REFUSES is fine. A verb that proceeds and leaves the work intact is fine. A verb that proceeds and discards it is a FAIL, whatever it reported.
+Expected refusals worth confirming by name: `pull` refuses a dirty warp (`ErrWarpDirty`, before warp moves at all), `checkout` refuses a dirty weft, `add` refuses a dirty source worktree, `remove` refuses either side without `--force`, and `prune --apply` reports `protected: true` for a stale pair whose weft worktree is dirty until `--force` is given.
+Untracked files are deliberately NOT a reason to refuse -- but confirm they genuinely survive every verb that proceeds, rather than being swept along with something else.
+Do the whole matrix on a `--subpath`-anchored hub, since that is where the anchored pathspecs decide which side an edit lands on.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -276,6 +312,10 @@ F4: <OK|WARN|FAIL> -- <one-line note if not OK>
 F5: <OK|WARN|FAIL> -- <one-line note if not OK>
 F6: <OK|WARN|FAIL> -- <one-line note if not OK>
 F7: <OK|WARN|FAIL> -- <one-line note if not OK>
+F8: <OK|WARN|FAIL> -- <one-line note if not OK>
+F9: <OK|WARN|FAIL> -- <one-line note if not OK>
+F10: <OK|WARN|FAIL> -- <one-line note if not OK>
+F11: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
