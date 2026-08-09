@@ -28,7 +28,8 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
 - Rewrite `raddle.md`'s three surviving phase-slot references (`:3`, `:54`, `:85`), including closing its open question at `:54`.
 - Repair the 5 dead links/anchors in the three owned files.
 - Repair 6 additional dead links in 3 unowned files that no task in the set claims: `manifest/designs/semantic-index.md` (x3), `manifest/designs/webster-parallel-execution.md` (x2), `docs/shared-libs/README.md` (x1).
-- Add a permanent markdown link/anchor enforcement test covering `manifest/` and `docs/`, with an allowlist for the 8 remaining breaks that live in files owned by other tasks.
+- Convert `finalize.md:26`'s prose invariant citation into a real markdown link, so the checker covers that break class too.
+- Add a permanent markdown link/anchor enforcement test covering `manifest/` and `docs/`, with 7 allowlist entries covering the 8 remaining broken link instances that live in files owned by other tasks.
 - Record the new invariant in `CONSTRAINTS.md` in the same commit.
 
 **Out:**
@@ -82,12 +83,21 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
 
 ### weft-git-invariant-citation
 
-- Decision: `finalize.md:26` cites the **Fabric Git Invariant (warp + weft)** by name, not by line number.
+- Decision: `finalize.md:26` cites the **Fabric Git Invariant (warp + weft)** as a real markdown link with an anchor — `[Fabric Git Invariant (warp + weft)](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft)` — not by line number, and not as an unlinked prose mention.
 - Rationale: no "Weft Git Invariant" exists.
   The real section is `## Fabric Git Invariant (warp + weft)`, and it does carry the claim `finalize.md:26` is making — its "Orchestration, not agent" bullet states that agents write overlay files into `_lyx` via the junction and that raddle content lives at `_lyx/raddle/` and arrives through that same junction.
   The task spec cites `CONSTRAINTS.md:173`, which is **stale** — the heading is at `CONSTRAINTS.md:187` as of this branch.
   Citing by section name rather than line number is what stops this from rotting again.
-- Rejected: citing by line number (already demonstrated to rot within one task cycle).
+
+  **Why a link and not just a name.**
+  A by-name prose citation is invisible to the new enforcement test — the checker only sees markdown links, so a prose mention of a renamed or deleted section would rot exactly the way the original "Weft Git Invariant" citation did, and the test would never say a word.
+  That matters because this break class is one of the three the test's own rationale is built on (see `link-check-is-a-permanent-go-test`);
+  leaving it as prose would make one third of that rationale untrue on the day the test lands.
+  `finalize.md` is inside the walk and `CONSTRAINTS.md` is reachable at `../../CONSTRAINTS.md`, so as a link the citation is machine-verified from the first run.
+  Anchor slug verified against the GitHub rules the checker implements: `## Fabric Git Invariant (warp + weft)` -> `fabric-git-invariant-warp--weft` (the parens and the `+` are deleted rather than replaced, leaving the double hyphen from the two spaces that surrounded the `+`).
+- Rejected: citing by line number (already demonstrated to rot within one task cycle);
+  an unlinked prose mention of the section name (rots silently — the whole point of the test is to catch this class, and prose is outside its grammar);
+  linking the file without the anchor (`[...](../../CONSTRAINTS.md)`) — file existence would be checked, but a renamed section would still slip through, which is the actual failure mode here.
 
 ### raddle-md-three-slot-references
 
@@ -110,12 +120,17 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
   3. `manifest/designs/raddle.md:3` — `loom.md#the-phase-machine` -> `loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots`
   4. `manifest/designs/raddle.md:54` — same anchor repair
   5. `manifest/designs/self-report.md:30` — same anchor repair
-  6. `manifest/designs/semantic-index.md:3` — `scout-redesign.md` -> `internal/scoutengine`'s package doc
+  6. `manifest/designs/semantic-index.md:3` — `scout-redesign.md` -> `[`internal/scoutengine`](../../internal/scoutengine/doc.go)`
   7. `manifest/designs/semantic-index.md:8` — same
   8. `manifest/designs/semantic-index.md:54` — same
   9. `manifest/designs/webster-parallel-execution.md:54` — same
   10. `manifest/designs/webster-parallel-execution.md:60` — same
   11. `docs/shared-libs/README.md:12` — `../roadmap.md` -> `../../manifest/roadmap.md`
+
+  Plus one link that is **added**, not repaired — `finalize.md:26`'s prose invariant citation becomes `[Fabric Git Invariant (warp + weft)](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft)`, per the `weft-git-invariant-citation` decision.
+  It is not in the 11 because it is not currently a broken link;
+  it is currently not a link at all.
+  After this task the checker verifies 12 touched links, of which 11 were breaks.
 - Rationale: every allowlist entry is a debt marker, and 6 of the 14 breaks outside this task's files had **no owner at all** — nobody was scheduled to ever remove them.
   The three added files (`semantic-index.md`, `webster-parallel-execution.md`, `docs/shared-libs/README.md`) appear in no other task's scope, so taking them costs nothing in collision risk and cuts the allowlist from 14 entries to 8, all attributable to a named owner.
 - Rejected: owned-files-only (leaves 6 permanently unowned entries);
@@ -123,9 +138,15 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
 
 ### scout-redesign-target-is-the-package-doc
 
-- Decision: the 5 `scout-redesign.md` references in scope repoint at `internal/scoutengine`'s package documentation.
+- Decision: the 5 `scout-redesign.md` references in scope repoint at `internal/scoutengine`'s package documentation, in **linked** form — `[`internal/scoutengine`](../../internal/scoutengine/doc.go)` — not as unlinked prose mentions.
 - Rationale: verified — `scout-redesign.md` **never existed in git history** (`git log --diff-filter=A -- '*scout-redesign.md'` returns nothing), so this was never a rename or a deletion, just a link to a doc that was planned and never written.
-  Meanwhile scout shipped as `internal/scoutengine` + `internal/scoutcli`, and `manifest/roadmap.md:219` already ends its scout entry with "See the `internal/scoutengine` package documentation" — that is the established citation form for scout's design in this repo.
+  Meanwhile scout shipped as `internal/scoutengine` + `internal/scoutcli`, and `manifest/roadmap.md:219` already ends its scout entry with "See the `internal/scoutengine` package documentation" — that is the established citation target for scout's design in this repo.
+
+  **Linked, not prose.**
+  `roadmap.md:219`'s mention is unlinked prose, but `roadmap.md` is out of scope and its convention is not the one to copy here.
+  The five sites being repaired are all currently markdown links, and `raddle.md:29`, `:60`, and `:84` already use the linked ``[`internal/fabricengine`](../../internal/fabricengine/doc.go)`` form for exactly this kind of package-doc citation — as do repair items 1 and 2 in this same task.
+  Keeping them linked also keeps them inside the new checker's coverage;
+  downgrading them to prose would quietly remove five sites from the guard this task is building.
 - Rejected: pointing at `manifest/designs/semantic-index.md` (it is scout's *sibling*, not its successor — `semantic-index.md:3` and `:8` both describe `scout-redesign.md` as a separate thing they defer to, so pointing them at themselves is circular);
   pointing at `manifest/designs/scout-plan-symbol-fields.md` (a speculative downstream idea, not scout's design);
   leaving them allowlisted.
@@ -137,6 +158,8 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
 - Decision: add `TestEnforcement_MarkdownLinks` as a **new file** `internal/lyxcwd/docslink_test.go`, in package `lyxcwd`.
   It walks `manifest/` and `docs/` for `.md` files, extracts every inline markdown link, skips `http://`/`https://`/`mailto:`, resolves the file part relative to the containing file, and — for `.md` targets carrying a `#fragment` — resolves the anchor against the target's own headings using GitHub's slug rules.
 - Rationale: the task spec names a link-check pass as the acceptance criterion and says it "is exactly what would have caught the dead `fabric.md` links, the dead phase-machine anchors, and the non-existent Weft Git Invariant citation before they shipped" — "before they shipped" means a permanent guard, not a one-shot script.
+  All three of those break classes are genuinely covered by the test, but the third one only because the invariant citation is being converted from prose into a real markdown link (see `weft-git-invariant-citation`);
+  left as prose it would sit outside the checker's grammar, making a third of this rationale untrue on the day the test lands.
   The repo has a strong precedent for repo-wide enforcement tests, and `internal/lyxcwd/enforcement_test.go` already provides both helpers this needs: `repoRootForEnforcement(t)` and `walkEnforcementRoots(t, repoRoot, roots, suffixes, fn)`.
   That file already does a `.md` walk (`walkEnforcementRoots(t, repoRoot, []string{"internal"}, []string{".md"}, ...)` at line 925), so walking `[]string{"manifest", "docs"}` is the same call with different roots.
 - Rejected: appending to `enforcement_test.go` (already ~950 lines and thematically about cwd/geometry/vocabulary — a separate file in the same package gets the helper reuse without the bloat, and keeps blame clean);
@@ -144,16 +167,26 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
   a new `internal/docslink` leaf package with the checker as production code (heavier, and nothing today needs it callable from a CLI — YAGNI).
 - Note: `internal/lyxcwd`'s Leaf Invariant caps **production** imports to stdlib + `internal/gitexec` (`leaf_enforcement_test.go`).
   A test file is not production code, so this does not touch that invariant — but the new test must import stdlib only anyway, which it naturally does.
+- Note: placing the test in `internal/lyxcwd` is a file-layout convenience, **not** an ownership claim on markdown links by that package — the Cwd Resolution Invariant scopes `internal/lyxcwd` to cwd resolution and nothing else.
+  `CONSTRAINTS.md` must say so in the new section (see `constraints-entry`, point 3), exactly as `CONSTRAINTS.md:177` already does for `TestEnforcement_FabricVocabulary`.
 
 ### allowlist-is-keyed-and-self-expiring
 
 - Decision: the allowlist is a map keyed by `(file, target)` — never by line number — with a one-line reason naming the owning task.
-  The test additionally **fails on a stale entry**: if an allowlisted link now resolves, the test reports that the entry should be deleted.
+  The test additionally **fails on a stale entry**, where staleness is defined as: **the allowlist key was not matched by any broken link found in this run's scan.**
 - Rationale: line numbers rot on the first edit to the file.
   Naming the owner turns each entry into a tracked debt rather than anonymous wallpaper, and the stale-entry check is what makes the list shrink to zero on its own as tasks B and E land, instead of persisting after the underlying break is gone.
-- Rejected: the same map without the stale check (entries linger silently forever after B lands);
+
+  **Why "not matched by the scan" and not "the link now resolves".**
+  The narrower "now resolves" phrasing has a hole that hits 2 of the 7 entries.
+  Task B renames `docs/reference/plan-format-v3.md` to `plan-format.md` (`shed-followups.md:206`), so the two entries keyed on the old filename stop being visited by the walk at all once that lands — the walk never opens a file that no longer exists, the "does it resolve now?" question is never asked, and both entries linger silently forever.
+  That is precisely the rot this decision exists to prevent, so the check has to fire on the file-renamed-away case as well as the link-now-resolves case.
+  Defining staleness as *unmatched key* covers both with one condition and needs no second mechanism: after each run, every allowlist key that no scanned break matched is reported as deletable, whether that is because the link was fixed, because the containing file was renamed, or because the file was deleted outright.
+- Rejected: the same map without any stale check (entries linger silently forever after B lands);
+  "the link now resolves" as the staleness condition (the renamed-away hole above — it is the weaker of the two rules with no compensating benefit);
+  keeping "now resolves" and bolting on a separate per-entry file-existence check (two rules where one strictly more general rule does the job);
   a coarse list of ignored target filenames (would mask a genuinely new break to the same target, e.g. a fresh dead `plan-format.md` link added in an unrelated file).
-- The 8 entries, with owners:
+- The 7 entries, covering 8 broken link instances:
 
   | File | Dead target | Kind | Owner |
   |---|---|---|---|
@@ -165,14 +198,27 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
   | `docs/overview.md` | `../CONSTRAINTS.md#package-naming` | missing anchor | chain A -> B -> E; E is last owner |
   | `manifest/designs/loom.md` | `../../docs/overview.md#hub-geometry-invariants` | missing anchor | chain B -> C -> E; E is last owner |
 
-  Note this is 7 rows covering 8 link instances — `docs/reference/plan-format-v3.md` appears twice for `scout-redesign.md` (lines 178 and 345), and a `(file, target)` key collapses those two into one entry, which is the intended behaviour.
+  Note this is **7 entries covering 8 link instances** — `docs/reference/plan-format-v3.md` appears twice for `scout-redesign.md` (lines 178 and 345), and a `(file, target)` key collapses those two into one entry, which is the intended behaviour.
+  Use the "7 entries covering 8 link instances" phrasing wherever the count is stated, so the two numbers never read as a contradiction.
 
 ### constraints-entry
 
 - Decision: add a `## Markdown Link Integrity` section to `CONSTRAINTS.md`, in the same commit as the test.
 - Rationale: `CLAUDE.md` requires any new cross-cutting invariant to be recorded in `CONSTRAINTS.md` in the same commit, and this one binds every `.md` file under `manifest/` and `docs/`.
-  The section should state the rule, name the enforcing test (`internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks`), state honestly what it does **not** reach (external URLs are not fetched; reference-style links and bare `<...>` autolinks are out of the checker's grammar unless the implementer chooses to include them; prose mentions of a filename that are not markdown links are invisible to it — `roadmap.md:98` is a live example), and explain the allowlist's self-expiring contract.
-  Mirror the existing "What the machine check does and does not reach — stated honestly, not implying full coverage" framing the Fabric Vocabulary Invariant already uses at `CONSTRAINTS.md:178`.
+  The section must state:
+  1. **The rule** — every inline markdown link in a `.md` file under `manifest/` or `docs/` resolves, both its file part and its `#anchor`.
+  2. **The enforcing test** — `internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks`.
+  3. **A placement caveat**, in the same words the Fabric Vocabulary Invariant already uses at `CONSTRAINTS.md:177`: the test living in `internal/lyxcwd` is a **file-layout convenience** — it reuses that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers — and is **not an ownership claim**.
+     This matters because the Cwd Resolution Invariant says `internal/lyxcwd` owns cwd resolution *and nothing else*, so without the caveat the new test reads as a second ownership claim on that package.
+     The Fabric Vocabulary Invariant hit exactly this tension and resolved it with that sentence;
+     copy the resolution rather than re-litigating it.
+  4. **What the check does and does not reach, stated honestly** — mirroring the "What the machine check does and does not reach — stated honestly, not implying full coverage" framing at `CONSTRAINTS.md:178`.
+     Not reached: external `http`/`https`/`mailto` URLs (never fetched);
+     reference-style links and `<...>` autolinks (out of grammar by decision, not by oversight);
+     link-shaped text inside fenced code blocks (deliberately skipped);
+     prose mentions of a filename that are not markdown links (`roadmap.md:98`'s `scout-redesign.md` reference is a live example that this task leaves standing);
+     and everything outside `manifest/` and `docs/`, including `README.md`, `CLAUDE.md`, and `internal/**/*.md`.
+  5. **The allowlist's self-expiring contract** — keyed by `(file, target)`, each entry naming its owning task, and an entry whose key goes unmatched by a scan is reported as deletable.
 
 ## Technical context
 
@@ -197,7 +243,7 @@ Note that two of its line citations are already stale (see Gotchas).
 
 | File | Why |
 |---|---|
-| `manifest/designs/finalize.md` | fold section + full residue re-read + 2 link repairs + invariant citation |
+| `manifest/designs/finalize.md` | fold section + full residue re-read + 2 link repairs + invariant citation converted to a checked link |
 | `manifest/designs/raddle.md` | 3 slot references, 2 of which carry dead anchors |
 | `manifest/designs/self-report.md` | 1 dead anchor at `:30` |
 | `manifest/designs/semantic-index.md` | 3 dead `scout-redesign.md` links |
@@ -214,7 +260,11 @@ Confirmed residue as of this branch:
   Both halves are retired: there is no shared-Finalize special case, and there are no Preflight/producer slots to contrast against.
   Rewrite against `finalize-shared-by-reference`.
 - `:11` — `fabric.md` link + the stale "absorbed into `fabric` once that lands" framing.
-- `:26` — the non-existent "Weft Git Invariant" citation.
+- `:12` — "that's `warp cleanup`'s (future: `fabric`'s) existing, separate job".
+  Same rename residue as `:11`, one line later.
+  The shipped spelling is `lyx fabric cleanup` (verified: `internal/fabriccli/fabric.go:249` registers `Use: "cleanup ..."` under the `fabric` command), so the doc names a command that does not exist and hedges "future" about something already shipped.
+  Rewrite alongside `:11` — they are one sentence pair.
+- `:26` — the non-existent "Weft Git Invariant" citation, which also becomes a real markdown link (see `weft-git-invariant-citation`).
 - `:45-46` — "`Shed`'s literally-shared code ... both share this exact code", the same retired shared-code framing as `:3`.
 - `:48` — "`Shed` hasn't been extracted from it yet (see that doc's own naming note)".
   This is scheduled to become false when task E fixes `loom.md:15-17`.
@@ -240,9 +290,22 @@ Report this as already-satisfied rather than inventing a change.
   - `## The phase machine — a flat producer list, no predefined slots` -> `the-phase-machine--a-flat-producer-list-no-predefined-slots` (the em-dash vanishes, leaving the double hyphen from the two surrounding spaces).
   - `## The summary artifact — `_lyx/webster/summary.md`` -> `the-summary-artifact--_lyxwebstersummarymd` (backticks and slashes deleted, underscore kept as a word character).
   - `## When it runs: deferred to merge-time, not mid-task` -> `when-it-runs-deferred-to-merge-time-not-mid-task`.
+- **Link grammar — decided, not left to the implementer.**
+  The checker recognises **inline links only**: `[text](target)`.
+  Reference-style links (`[text][ref]` plus a `[ref]: target` definition) and angle-bracket autolinks (`<https://...>`) are **out of grammar** and silently ignored, because neither form appears anywhere in `manifest/` or `docs/` today and adding them would be speculative.
+  `CONSTRAINTS.md`'s honesty paragraph must say so explicitly, so a future author who introduces a reference-style link knows it is unguarded rather than assuming it is covered.
+- **Fenced code blocks are skipped.**
+  Track ``` and `~~~` fences while scanning and ignore any link-shaped text inside one — a fenced example of a broken link is documentation, not a broken link, and failing on it would make the test impossible to document around.
+  Indented (4-space) code blocks are not tracked;
+  they do not currently occur with link-shaped content in either tree.
+- **Duplicate headings get GitHub's `-1`, `-2` disambiguation suffixes.**
+  When two headings in one file slug identically, GitHub appends `-1` to the second occurrence, `-2` to the third, and so on.
+  The anchor resolver must build the target file's anchor set with those suffixes applied in document order, or a legitimate link to the second of two identically-named headings would be reported as broken.
+  This does not currently bite any link in either tree, but it is cheap to get right at build time and expensive to debug later.
 - A throwaway reference implementation of this checker lives at `.scratch/linkcheck.py` on this branch.
   It is gitignored scratch, not the deliverable — use it to cross-check the Go test's findings, then let it be.
-  Its current output on this branch is 19 problems across 45 files; after this task the Go test must report 0 with 7 allowlist entries active.
+  Its current output on this branch is 19 problems across 45 files; after this task the Go test must report 0 with 7 allowlist entries active (covering 8 link instances).
+  Note the reference implementation handles **neither** fenced-code-block skipping **nor** duplicate-heading `-1` suffixes — the Go test must, per the two bullets above, so a straight port is not sufficient.
 
 **Gotchas:**
 
@@ -305,10 +368,10 @@ The natural sequence:
 1. Write the test with an **empty** allowlist and run it.
    It must fail, reporting 19 broken links across `manifest/` and `docs/`.
    This is the red step, and it also validates the checker against a known-good expected set (the `.scratch/linkcheck.py` output).
-2. Populate the allowlist with the 7 entries.
+2. Populate the allowlist with the 7 entries (covering 8 link instances).
    The test must now fail with exactly 11 breaks — the ones this task repairs.
-3. Apply the 11 repairs.
-   The test goes green.
+3. Apply the 11 repairs, plus the `finalize.md:26` citation-to-link conversion.
+   The test goes green over 12 touched links.
 4. Add a deliberately-broken link to a scratch fixture or temporarily to a real file, confirm the test catches it, then revert.
    This proves the checker is actually resolving rather than trivially passing.
 
@@ -322,7 +385,10 @@ The natural sequence:
 - `http://`, `https://`, and `mailto:` targets are skipped, never fetched.
 - The three worked slug examples in Technical context each resolve — em-dash deletion, backtick/slash deletion, and colon deletion are the three rules most likely to be got wrong.
 - An allowlisted `(file, target)` pair does not fail the test.
-- A **stale** allowlist entry — one whose link now resolves — fails the test with a message saying to delete it.
+- A **stale** allowlist entry fails the test with a message saying to delete it, in **both** stale cases: (a) the link now resolves, and (b) the keyed file no longer exists or was renamed away, so the scan never visits it.
+  Case (b) is the one that motivated the definition — cover it explicitly, since it is the case a naive implementation silently passes.
+- Link-shaped text inside a fenced code block is ignored, for both ``` and `~~~` fences.
+- Two identically-slugging headings in one file produce anchors `foo` and `foo-1`, and a link to `#foo-1` resolves.
 - Links to non-`.md` targets (e.g. `../../internal/fabricengine/doc.go`) have their file existence checked but no anchor check attempted.
   This case matters: after this task, `finalize.md` has two of them.
 
@@ -342,4 +408,6 @@ The natural sequence:
 - **Q:** What shape does the Raddle fold take in `finalize.md`? **A:** A dedicated section (not a `Related` bullet, not a full producer-contract restatement). The user noted that the more logical arrangement might be Raddle as its own `Shed` producer with merge-in and locking lifted into `Shed` too, but judged that too large a change to decide now — recorded under `raddle-as-own-producer-deferred`, and the section is written so as not to foreclose it.
 - **Q:** Which three `raddle.md` references carry the slot framing? **A:** `:3` (status blockquote, dead anchor), `:54` (the open question, dead anchor), `:85` (Related bullet, link resolves but prose is wrong). All three are rewritten; the spec named only `:3` and `:85`, but `:54` carries both the third dead anchor and the question the fold answers.
 - **Q:** What do the `scout-redesign.md` references point at? **A:** `internal/scoutengine`'s package documentation. Verification changed the answer here — `scout-redesign.md` never existed in git at all, and scout has since shipped, with `roadmap.md:219` already using that exact citation form. The initial recommendation of `semantic-index.md` was wrong: that doc is scout's sibling, and pointing it at itself would be circular.
+- **Q:** [review r1, BLOCKING] The allowlist's stale-entry check is defined as "the link now resolves", but task B renames `plan-format-v3.md` away, so the two entries keyed on that filename are never scanned again and linger forever — 2 of 7 entries. How is staleness defined? **A:** Redefine it as "allowlist key not matched by any scanned broken link", which covers both the now-resolves case and the file-renamed-or-deleted case with one condition. Rejected keeping "now resolves" plus a bolted-on file-existence check (two rules where one strictly more general rule suffices).
+- **Q:** [review r1, BLOCKING] The permanent test is justified partly by "it would have caught the non-existent Weft Git Invariant citation", but the decided repair is a by-name *prose* citation, which the checker cannot see — so a third of the test's rationale is uncovered. **A:** Convert it to a real markdown link, `[Fabric Git Invariant (warp + weft)](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft)`. Anchor slug verified against the checker's own rules. `finalize.md` is inside the walk, so the break class becomes genuinely machine-guarded and the rationale becomes true. Rejected dropping the clause from the rationale (honest but leaves the class unguarded) and linking the file without an anchor (a renamed section would still slip through).
 - **Q:** Where does the enforcement test live, and what shape is the allowlist? **A:** Delegated to the assistant. New file `internal/lyxcwd/docslink_test.go` in package `lyxcwd`, reusing `repoRootForEnforcement` and `walkEnforcementRoots` from `enforcement_test.go` without bloating that ~950-line file. Allowlist is keyed by `(file, target)` — never line number — with an owning-task reason per entry, and the test fails on stale entries so the list self-expires as tasks B and E land.
