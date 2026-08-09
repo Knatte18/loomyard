@@ -66,7 +66,9 @@ batches:
     commit_sha: 43dd14dc5a75994b8cb6253d7dc3d55bec92f7e8
     verify_baseline_failures: []
   - name: docs-sweep
-    state: pending
+    state: running
+    implementer_session: ed5429b7-4755-49b8-8fd3-0d42f9074c47
+    start_sha: cf38eef4d4310a84cde8de90551692e88215ef83
     verify_baseline_failures: []
   - name: constraints-and-guard
     state: pending
