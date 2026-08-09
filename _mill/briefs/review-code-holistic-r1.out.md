@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-09
+```
+
+## Findings
+
+### [BLOCKING:consistency] Acceptance sweep is not actually zero-hit as landed
+**Location:** `manifest/roadmap.md:30`, `docs/reference/plan-format-v3.md:5`
+**Issue:** Both lines contain a bare-word "builder"/"Builder" occurrence that is not in card 18's enumerated exclusion-token list and is not one of the named-exclusion files (dated benchmarks/research docs, `shed-followups.md`, `fabric-unified-view.md`). `roadmap.md:30` reads "...renames the loom Builder phase to Webster..." and `plan-format-v3.md:5` reads "...is retired now that its predecessor, `builder`, is gone." A case-insensitive word-boundary grep for `builder` (card 18's pattern 6) hits both. The Shared Decision `sweep-completion-is-a-grep-not-a-judgment` makes the zero-hit grep the task's actual completion criterion, so the tree as landed does not satisfy the task's own acceptance gate — this is new, reproducible evidence (a grep run against the current diff), not a re-litigation of a prior decision.
+**Fix:** Reword both sentences to state the fact without the bare module name (e.g. "renames the loom's phase word to Webster", "is retired now that its predecessor is gone") — the same pattern already used correctly elsewhere in these same two files (`plan-format-v3.md`'s own See-also entry, `roadmap.md`'s other builder-free prose) — or add both as newly-discovered, explicitly-recorded exclusion tokens to card 18 if they are judged acceptable, per that card's own instruction to "stop and report" rather than silently pass a new site.
+
+## Verdict
+
+REQUEST_CHANGES
+Two bare-word "builder" residues in roadmap.md and plan-format-v3.md fail the plan's own zero-hit acceptance sweep.
+MILL_REVIEW_END
