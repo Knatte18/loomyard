@@ -333,7 +333,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		// silently anchoring to a directory that was never there.
 		anchor = requestedAnchor
 		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
-			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned warp repo", anchor))
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist as a directory in the cloned warp repo", anchor))
 		}
 		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("write %s: %w", markerPath, err))
