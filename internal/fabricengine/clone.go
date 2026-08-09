@@ -128,6 +128,17 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		return CloneResult{}, fmt.Errorf("weft URL is required")
 	}
 
+	// Validate the requested subpath before anything is created or fetched, so a structurally
+	// impossible anchor never reaches the point where teardown is the only way out. An absolute or
+	// escaping subpath used to pass the later "does it exist in the cloned warp" probe, because
+	// filepath.Join swallows a leading separator and ".." lands on a directory that certainly
+	// exists.
+	requestedAnchor, err := lyxcwd.ValidateAnchorRel(opts.Subpath)
+	if err != nil {
+		return CloneResult{}, err
+	}
+	subpathRequestedExplicitly := strings.TrimSpace(opts.Subpath) != ""
+
 	var name, hubPath, effective string
 	var writeRecord, derivedFromRecord bool
 
@@ -296,12 +307,18 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	if data, statErr := os.ReadFile(markerPath); statErr == nil {
 		// Adopt path: ensureBoardWorktree checked out weft:main, which already
 		// carries a committed marker from a prior clone — this is a re-clone.
-		recorded := strings.TrimSpace(string(data))
-		if requested := filepath.Clean(opts.Subpath); opts.Subpath != "" && requested != "." && requested != recorded {
+		// The recorded value is validated too, not trusted: an older binary could have recorded an
+		// absolute or escaping anchor, and adopting one produces a hub whose every weft commit
+		// fails.
+		recorded, recordedErr := lyxcwd.ValidateAnchorRel(strings.TrimSpace(string(data)))
+		if recordedErr != nil {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("recorded anchor in %s on weft:main is unusable: %w", lyxcwd.AnchorFileName, recordedErr))
+		}
+		if subpathRequestedExplicitly && requestedAnchor != "." && requestedAnchor != recorded {
 			// A non-default requested subpath disagrees with the recorded
 			// anchor: never silently re-anchor, the record is authoritative.
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
-				"requested --subpath %q does not match the recorded anchor %q for this hub", requested, recorded))
+				"requested --subpath %q does not match the recorded anchor %q for this hub", requestedAnchor, recorded))
 		}
 		anchor = recorded
 	} else {
@@ -309,10 +326,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		// Validate the requested subpath exists in the warp worktree before
 		// recording it, so a typo like "backedn" fails loudly instead of
 		// silently anchoring to a directory that was never there.
-		anchor = filepath.Clean(opts.Subpath)
-		if opts.Subpath == "" {
-			anchor = "."
-		}
+		anchor = requestedAnchor
 		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned warp repo", anchor))
 		}

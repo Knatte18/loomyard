@@ -55,6 +55,43 @@ const StaleAnchorFileName = ".fabric-anchor"
 // of guessing.
 var ErrStaleAnchorMarker = errors.New("stale pre-rename fabric anchor marker with no renamed marker beside it")
 
+// ErrInvalidAnchor is the hard-error sentinel returned for an anchor subpath that is not a
+// worktree-relative path staying inside the worktree.
+var ErrInvalidAnchor = errors.New("invalid lyx anchor subpath")
+
+// ValidateAnchorRel normalizes raw into the worktree-relative form AnchorRel holds, rejecting
+// anything that is not one.
+// It is the single validator for the anchor value on both sides of the marker: fabric's clone calls
+// it before recording a --subpath, and readRecordedAnchor calls it on every read, so a value that
+// could never be recorded today can also never be honoured if an older binary recorded it.
+//
+// An empty or whitespace-only raw normalizes to ".", the repo-root anchor.
+// An absolute path, a Windows volume-rooted path, and a path whose first segment escapes the
+// worktree (".." or "../…") are all rejected: filepath.Join silently swallows a leading separator,
+// so an absolute anchor LOOKS like it resolves, while every anchor-scoped git pathspec later built
+// on top of it becomes an absolute path git refuses outright — permanently breaking every commit
+// routed through the anchored subtree.
+func ValidateAnchorRel(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ".", nil
+	}
+
+	if filepath.VolumeName(trimmed) != "" {
+		return "", fmt.Errorf("%w %q: must be relative to the worktree root, not volume-rooted", ErrInvalidAnchor, raw)
+	}
+
+	cleaned := filepath.Clean(filepath.FromSlash(trimmed))
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, string(filepath.Separator)) {
+		return "", fmt.Errorf("%w %q: must be relative to the worktree root, not absolute", ErrInvalidAnchor, raw)
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%w %q: must stay inside the worktree, not escape it", ErrInvalidAnchor, raw)
+	}
+
+	return cleaned, nil
+}
+
 // ErrCwdOutsideAnchor is the hard-error sentinel Resolve returns when cwd does not equal the
 // anchored directory exactly.
 // It exists so a lyx invocation from anywhere else in the worktree — a subdirectory, a parent, or a
@@ -134,5 +171,10 @@ func readRecordedAnchor(hub string) (anchor string, found bool, err error) {
 	if trimmed == "" {
 		return "", false, nil
 	}
-	return trimmed, true, nil
+
+	validated, validateErr := ValidateAnchorRel(trimmed)
+	if validateErr != nil {
+		return "", false, fmt.Errorf("recorded anchor at %s is unusable: %w", board, validateErr)
+	}
+	return validated, true, nil
 }

@@ -21,6 +21,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -651,5 +652,49 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 	}
 	if _, statErr := os.Stat(expectedHubPath); statErr == nil {
 		t.Errorf("hub directory %s should have been removed by teardownHub after the stale-marker guard failure", expectedHubPath)
+	}
+}
+
+// TestCloneHub_RejectsUnusableSubpath asserts a structurally impossible --subpath is refused
+// BEFORE anything is created. An absolute subpath used to be accepted and recorded verbatim,
+// producing a hub whose every weft commit failed with git's "Invalid path '/backend'" because
+// ScopedPathspec built an absolute pathspec from it; an escaping subpath was caught only much
+// later, by an unrelated resolver, with a diagnosis blaming a marker that had never been written.
+func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
+	tests := []struct {
+		name    string
+		subpath string
+	}{
+		{"absolute", "/backend"},
+		{"escapes one level", ".."},
+		{"escapes two levels", "../.."},
+		{"escapes via a segment", "backend/../.."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixtures := t.TempDir()
+			warpBare := makeBareRemoteWithSubdir(t, fixtures, "unusable-subpath-warp", "backend")
+			weftBare := makeBareRemote(t, fixtures, "unusable-subpath-weft")
+
+			cloneParent := t.TempDir()
+			expectedHubPath := fabricengine.HubPath(cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
+
+			_, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+				WeftURL:        filepath.ToSlash(weftBare),
+				WarpURL:        filepath.ToSlash(warpBare),
+				Subpath:        tt.subpath,
+				ForceBootstrap: true,
+			})
+			if err == nil {
+				t.Fatalf("CloneHub(--subpath %q) = nil error; want a rejection", tt.subpath)
+			}
+			if !errors.Is(err, lyxcwd.ErrInvalidAnchor) {
+				t.Errorf("CloneHub(--subpath %q) error = %v; want wrapped ErrInvalidAnchor", tt.subpath, err)
+			}
+			if _, statErr := os.Stat(expectedHubPath); statErr == nil {
+				t.Errorf("hub directory %s exists after a rejected --subpath; want nothing created", expectedHubPath)
+			}
+		})
 	}
 }

@@ -85,7 +85,9 @@ Use --reset to tear down an existing hub before cloning (idempotent re-clone).
 
 Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the warp
 repo instead of its root — e.g. --subpath backend for a monorepo where lyx
-only manages the backend/ tree. On a re-clone, the previously recorded
+only manages the backend/ tree. It must be a path relative to the warp repo
+root that stays inside it: an absolute path, or one escaping via "..", is
+refused before anything is cloned. On a re-clone, the previously recorded
 subpath is adopted from weft:main; an explicit --subpath that disagrees with
 it is a hard error.
 
