@@ -14,6 +14,7 @@
 package fabriccli
 
 import (
+	"fmt"
 	"io"
 	"strings"
 
@@ -451,8 +452,15 @@ func runPairs(out io.Writer, _ []string) int {
 	})
 }
 
-// runReconcile executes the fabric reconcile subcommand, walking and repairing
-// all warp↔weft pairs.
+// runReconcile executes the fabric reconcile subcommand, walking and repairing all warp↔weft pairs.
+// Beyond the per-pair repair Topology.Reconcile performs itself, this handler owns the commit-and-push
+// half of the once-per-hub warp-URL binding backfill: on a fresh "recorded" outcome it commits the
+// written record through Bolt, and on both "recorded" and "present" it attempts a push, so a
+// previously committed-but-unpushed record is retried on every subsequent reconcile. Either step
+// failing downgrades the reported outcome to WarpBindingOutcomeRecordFailed — a CLI-only value
+// Topology.Reconcile itself never returns — but never the exit code: a failed backfill commit or push
+// is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
+// downgrade a reconcile verdict.
 func runReconcile(out io.Writer, _ []string) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
@@ -475,9 +483,55 @@ func runReconcile(out io.Writer, _ []string) int {
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	return output.Ok(out, map[string]any{
-		"pairs": r.Pairs,
-	})
+
+	binding := r.WarpBinding
+	detail := r.WarpBindingDetail
+
+	if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
+		b := fabricengine.NewBolt(fabricengine.BoardDir(l.HubPath))
+
+		if binding == fabricengine.WarpBindingOutcomeRecorded {
+			if _, _, commitErr := b.Commit("fabric reconcile: record warp binding", fabricengine.SyncOptions{}); commitErr != nil {
+				binding = fabricengine.WarpBindingOutcomeRecordFailed
+				detail = commitErr.Error()
+			}
+		}
+
+		// Push on both "recorded" and "present": the "present" case is what retries a backfill that
+		// committed locally but failed to push on a prior reconcile — without it, the next reconcile
+		// would see the record already on disk, report "present" again, and a commit-only-on-
+		// "recorded" handler would skip the push forever.
+		//
+		// Bolt.Push reaches gitrepo.PushCoalesced, which checks HasUnpushed (a purely local
+		// rev-list) and returns nil without contacting the remote when HEAD is already in sync, so
+		// this costs nothing when there is nothing to push. Caveat: HasUnpushed treats *no configured
+		// upstream* as unpushed, so a board worktree with no upstream attempts a network push on
+		// every reconcile. That is the adopt path's non-case — a board on an already-existing default
+		// branch carries its upstream from the initial clone — but it IS the steady state for a hub
+		// bootstrapped against a genuinely empty weft remote, whose board branch is orphan-created
+		// with no upstream at all. The attempt is harmless: it either succeeds or yields
+		// record_failed with the error in the detail.
+		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
+			if pushErr := b.Push(fabricengine.SyncOptions{}); pushErr != nil {
+				wasPresent := binding == fabricengine.WarpBindingOutcomePresent
+				binding = fabricengine.WarpBindingOutcomeRecordFailed
+				if wasPresent {
+					detail = fmt.Sprintf("a previously committed warp binding record could not be pushed: %v", pushErr)
+				} else {
+					detail = fmt.Sprintf("commit succeeded but push failed: %v", pushErr)
+				}
+			}
+		}
+	}
+
+	envelope := map[string]any{
+		"pairs":        r.Pairs,
+		"warp_binding": string(binding),
+	}
+	if detail != "" {
+		envelope["warp_binding_detail"] = detail
+	}
+	return output.Ok(out, envelope)
 }
 
 // runPruneWithFlag executes the prune logic with the resolved apply flag.
