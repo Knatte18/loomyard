@@ -20,10 +20,10 @@
 // This repo's earlier design considered and rejected two alternatives before landing here: a
 // separate third repo for board is extra git-identity overhead for something that doesn't need its
 // own identity;
-// and GitHub wiki rendering (an intermediate idea) requires whichever repo hosts the wiki to be
+// and GitHub wiki rendering (an intermediate idea) requires whichever repo holds the wiki to be
 // public on GitHub's free tier — in the old separate-repo model that meant board's own repo, never
 // the host/warp repo — disqualifying for private consulting work, where the host repo's
-// wiki-hosting repo would have had to go public just to render board's front page.
+// wiki-serving repo would have had to go public just to render board's front page.
 //
 // The long-lived "prime" worktree is the only worktree with a reason to check out two weft branches
 // simultaneously: its own ordinary <name>-weft companion (the standard pairing rule, unchanged),

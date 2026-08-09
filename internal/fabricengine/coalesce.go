@@ -1,4 +1,4 @@
-// coalesce.go hosts the generic loop-until-clean coalescing primitive coalescePush and fabric's own
+// coalesce.go holds the generic loop-until-clean coalescing primitive coalescePush and fabric's own
 // two-sided rebase-free push entry CoalescePushBothAt built on top of it.
 // The generic primitive stays caller-agnostic — it owns only the absorbing lock and the loop, never
 // any commit/stage/push policy — while fabric's push step (and the small helpers it needs) sit

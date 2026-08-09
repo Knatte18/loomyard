@@ -29,7 +29,7 @@ const (
 	hubName = "lyx-test-HUB"
 
 	// fabric-suite runs against its own dedicated hub, never the shared
-	// lyx-test-HUB above -- the dedicated hub hosts fabric's stricter
+	// lyx-test-HUB above -- the dedicated hub carries fabric's stricter
 	// "main-weft"-suffixed branch-naming suite, which the shared hub's fixtures
 	// do not exercise.
 	fabricHostURL   = "https://github.com/Knatte18/lyx-fabric-test"
