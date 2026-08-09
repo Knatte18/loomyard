@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-constraints-and-guard
+phase: holistic-reviewing
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -31,6 +31,7 @@ self-resolved-verify-logic  '2026-08-09T06:52:56Z'
 approved-cli-surface-review  '2026-08-09T06:56:38Z'
 approved-docs-sweep  '2026-08-09T07:10:42Z'
 approved-constraints-and-guard  '2026-08-09T07:18:54Z'
+holistic-reviewing  '2026-08-09T07:19:09Z'
 ```
 
 ## Batches
