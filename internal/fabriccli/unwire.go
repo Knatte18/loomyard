@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -15,7 +14,7 @@ import (
 // fabric junction for this worktree. Weft-side content, including _lyx and
 // .lyx, is never touched.
 func runUnwire(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
+	cwd, _, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

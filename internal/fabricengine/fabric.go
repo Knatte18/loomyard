@@ -17,9 +17,11 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -112,6 +114,35 @@ func EnvSyncOptions() SyncOptions {
 // lyxcwd.Location directly for a fabric-owned path.
 func WeftWorktree(l *lyxcwd.Location) string {
 	return weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))
+}
+
+// ErrNotAWarpWorktree is returned by RequireWarpWorktree for a Location that resolved onto one of
+// fabric's own internal checkouts rather than a warp worktree.
+var ErrNotAWarpWorktree = errors.New("fabricengine: not a warp worktree")
+
+// RequireWarpWorktree reports whether l names a legal warp worktree, returning ErrNotAWarpWorktree
+// when it does not.
+//
+// lyxcwd resolves coordinates from cwd alone and has no way to tell fabric's own checkouts apart
+// from an ordinary worktree — that distinction is fabric vocabulary, which the Cwd Resolution
+// Invariant keeps out of lyxcwd entirely. So standing in a weft sibling, or inside the operator-
+// convenience `_board` link fabric itself installs at every anchor, produces a Location that passes
+// the cwd gate and then drives every verb against invented geometry: a `<slug>-weft-weft` sibling
+// that cannot exist, a `_board-weft` pair, a hub whose "warp worktrees" are the weft repo's own
+// checkouts.
+// Refusing here is what keeps that from reaching a mutating verb.
+func RequireWarpWorktree(l *lyxcwd.Location) error {
+	name := filepath.Base(l.WorktreePath())
+
+	if strings.HasSuffix(name, weftname.Suffix) {
+		return fmt.Errorf("%w: %s is the weft sibling of a pair, not a warp worktree; run lyx from the paired warp worktree instead",
+			ErrNotAWarpWorktree, l.WorktreePath())
+	}
+	if name == BoardDirName {
+		return fmt.Errorf("%w: %s is the hub's %s checkout, not a warp worktree; run lyx from a warp worktree instead",
+			ErrNotAWarpWorktree, l.WorktreePath(), BoardDirName)
+	}
+	return nil
 }
 
 // WeftLyxDir returns the path to the _lyx directory in l's weft sibling worktree.

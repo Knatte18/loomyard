@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // TestOpen_MissingWarpPath asserts that Open errors on a missing warp (warp) worktree, naming the
@@ -156,6 +157,44 @@ func TestScopedPathspec(t *testing.T) {
 				if got[i] != tt.want[i] {
 					t.Errorf("ScopedPathspec(%q, %v)[%d] = %q; want %q", tt.relPath, tt.dirs, i, got[i], tt.want[i])
 				}
+			}
+		})
+	}
+}
+
+// TestRequireWarpWorktree covers the guard that keeps a cwd inside one of fabric's own checkouts
+// from driving a verb against invented geometry. lyxcwd resolves such a cwd cleanly — it has no
+// notion of a weft sibling or the board checkout — so the refusal has to happen here.
+// No git spawn: the guard is pure name math over a hand-built Location.
+func TestRequireWarpWorktree(t *testing.T) {
+	tests := []struct {
+		name         string
+		worktreeName string
+		wantErr      bool
+	}{
+		{name: "ordinary warp prime", worktreeName: "myrepo"},
+		{name: "ordinary task worktree", worktreeName: "wt-feature"},
+		{name: "a slug merely containing the suffix", worktreeName: "weft-tools"},
+		{name: "weft sibling of the prime", worktreeName: "myrepo" + weftname.Suffix, wantErr: true},
+		{name: "weft sibling of a task pair", worktreeName: "wt-feature" + weftname.Suffix, wantErr: true},
+		{name: "the hub board checkout", worktreeName: fabricengine.BoardDirName, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &lyxcwd.Location{HubPath: filepath.Join("/hub", "myrepo-HUB"), WorktreeName: tt.worktreeName, AnchorRel: "."}
+			err := fabricengine.RequireWarpWorktree(l)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("RequireWarpWorktree(%q) = nil; want a refusal", tt.worktreeName)
+				}
+				if !errors.Is(err, fabricengine.ErrNotAWarpWorktree) {
+					t.Errorf("RequireWarpWorktree(%q) error = %v; want wrapped ErrNotAWarpWorktree", tt.worktreeName, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("RequireWarpWorktree(%q) = %v; want nil", tt.worktreeName, err)
 			}
 		})
 	}

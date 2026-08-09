@@ -73,14 +73,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 			return nil
 		}
 
-		cwd, err := lyxcwd.Getwd()
-		if err != nil {
-			output.Err(out, err.Error())
-			clihelp.Abort(ctx, 1)
-			return nil
-		}
-
-		resolved, err := lyxcwd.Resolve(cwd)
+		_, resolved, err := resolveWarpLocation()
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

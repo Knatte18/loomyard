@@ -308,14 +308,35 @@ func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
-func runAdd(out io.Writer, args []string) int {
-	cwd, err := lyxcwd.Getwd()
+// resolveWarpLocation resolves the process's cwd into the acting Location, refusing any cwd that
+// resolves onto something other than a warp worktree.
+//
+// Every topology verb goes through it rather than calling lyxcwd.Resolve directly, because
+// lyxcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a
+// weft sibling, or inside the `_board` link fabric wires at every anchor, otherwise resolves
+// cleanly and drives the verb against geometry that does not exist.
+// It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
+func resolveWarpLocation() (cwd string, l *lyxcwd.Location, err error) {
+	cwd, err = lyxcwd.Getwd()
 	if err != nil {
-		return output.Err(out, err.Error())
+		return "", nil, err
 	}
 
-	l, err := lyxcwd.Resolve(cwd)
+	l, err = lyxcwd.Resolve(cwd)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if err := fabricengine.RequireWarpWorktree(l); err != nil {
+		return "", nil, err
+	}
+
+	return cwd, l, nil
+}
+
+// runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
+func runAdd(out io.Writer, args []string) int {
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -347,12 +368,7 @@ func runAdd(out io.Writer, args []string) int {
 
 // runList parses and executes the fabric list subcommand.
 func runList(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	cwd, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -377,12 +393,7 @@ func runList(out io.Writer, _ []string) int {
 // supplied, it resolves the current warp branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -428,12 +439,7 @@ func runCheckout(out io.Writer, args []string) int {
 // runPairs executes the fabric pairs subcommand, enumerating all warp↔weft
 // pairs with drift and pollution data.
 func runPairs(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -464,12 +470,7 @@ func runPairs(out io.Writer, _ []string) int {
 // is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
 // downgrade a reconcile verdict.
 func runReconcile(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -538,12 +539,7 @@ func runReconcile(out io.Writer, _ []string) int {
 
 // runPruneWithFlag executes the prune logic with the resolved apply flag.
 func runPruneWithFlag(out io.Writer, apply bool) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -567,12 +563,7 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and
 // force flags.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -595,12 +586,7 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
