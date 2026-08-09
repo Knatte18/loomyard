@@ -40,10 +40,12 @@ This is the framing the fold is written against.
 ## Scope
 
 This task deliberately does not touch `manifest/roadmap.md`.
-`roadmap.md:68`'s "deferred phase slot between Builder and Finalize" is real residue, but `roadmap.md` is edited by task A and task E too, so scoping it to this task would recreate exactly the shared-file collision that forced task E to be serialized.
+`roadmap.md:68`'s "deferred phase slot between Builder and Finalize" is real residue,
+but `roadmap.md` is edited by task A and task E too, so scoping it to this task would recreate exactly the shared-file collision that forced task E to be serialized.
 It moves to task E, `roadmap.md`'s last owner.
 
-This task owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task in the set touches any of them — that is what makes this task genuinely parallel rather than parallel-by-assertion.
+This task owns `finalize.md`, `raddle.md`, and `self-report.md`,
+and no other task in the set touches any of them — that is what makes this task genuinely parallel rather than parallel-by-assertion.
 
 **Deferred, on record so it does not read as an oversight.**
 Per the discussion's surfaced open questions, item 4: `Hardener` and `Tenter`'s equivalent Raddle-into-Finalize fold is deferred by the landed design at `shed.md:20` and `loom.md:67`, and stays deferred.
@@ -53,7 +55,8 @@ This task does not design it.
 
 `depends_on: builder-retire` — `finalize.md:36` and `:50`'s link targets move in task A.
 
-This task branches off task A in parallel with the B → {C, F} → E chain; it does not block, and is not blocked by, any of C, E, or F.
+This task branches off task A in parallel with the B → {C, F} → E chain;
+it does not block, and is not blocked by, any of C, E, or F.
 
 ## Acceptance
 

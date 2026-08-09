@@ -10,7 +10,8 @@ brief: |
 
 ## Why
 
-`v3` is the only live format once builder is gone, and a version suffix on the sole format is exactly the kind of stale guard `discussion-format.md` already argues against, via its `no-schema-version` reference to `status-schema.md`.
+`v3` is the only live format once builder is gone,
+and a version suffix on the sole format is exactly the kind of stale guard `discussion-format.md` already argues against, via its `no-schema-version` reference to `status-schema.md`.
 
 A half-done rename is worse than either end state, because `planparser` and `websterengine` identifiers and template prose must move with the filename.
 
@@ -54,7 +55,8 @@ Per this repo's own tooling rules the script must not use `sed`.
    Links to `plan-format.md` dangle in between, by design and briefly.
 
 4. Record what this task deliberately leaves broken: this task's rewrite of `loom.md:29` knowingly leaves that sentence self-contradicting, because a pure find/replace cannot repair an argument about two formats when only one survives.
-   This is accepted, not overlooked — this task's grep criterion passes while the sentence reads wrong, and task E repairs the prose as `loom.md`'s final owner.
+   This is accepted, not overlooked — this task's grep criterion passes while the sentence reads wrong,
+   and task E repairs the prose as `loom.md`'s final owner.
 
 ## Scope
 

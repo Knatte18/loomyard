@@ -21,10 +21,15 @@ This task runs last and writes the finished state.
 
 ### Part one — `shed.md`'s own contradictions
 
-- `:7` and `:19` say "superseding ... **below**" and "the pre-revision text **below**", but that text was deleted in commit `256b8262`, so both references dangle.
-- `:18` says Finalize is shared "by value"; it becomes "by reference" per the `finalize-shared-by-reference` decision — two of three sources already say by reference, and it is the phrasing that carries the actual meaning.
-- `:13` enumerates `loom`'s producer list verbatim, and `:41` lists the mechanical Go-function producers.
-  Both must gain `Discussion-Review-Gate` once task C inserts it into `loom.md`'s table, or the two docs silently disagree about what `loom`'s list contains.
+- `:7` and `:19` say "superseding ... **below**" and "the pre-revision text **below**",
+  but that text was deleted in commit `256b8262`, so both references dangle.
+- `:18` says Finalize is shared "by value";
+  it becomes "by reference" per the `finalize-shared-by-reference` decision — two of three sources already say by reference,
+  and it is the phrasing that carries the actual meaning.
+- `:13` enumerates `loom`'s producer list verbatim,
+  and `:41` lists the mechanical Go-function producers.
+  Both must gain `Discussion-Review-Gate` once task C inserts it into `loom.md`'s table,
+  or the two docs silently disagree about what `loom`'s list contains.
 
 ### Part two — the stale "this task is still pending" claims
 
@@ -55,7 +60,8 @@ This task is `loom.md`'s final owner, and owns everything in the file except the
 
 ### Part five — the two additions
 
-- Resolve `loom.md:75`'s thin-Output question per `preflight-finalize-thin-output-is-permitted`, and record the resolution in `shed.md`'s producer-contract section: the Output contract permits a pass/fail gate signal with no artifact, because `Preflight` and `Finalize` genuinely have no output artifact, and the resume-on-output-files rule degrades gracefully — a producer with no artifact simply re-runs on resume, which is correct for both.
+- Resolve `loom.md:75`'s thin-Output question per `preflight-finalize-thin-output-is-permitted`, and record the resolution in `shed.md`'s producer-contract section: the Output contract permits a pass/fail gate signal with no artifact, because `Preflight` and `Finalize` genuinely have no output artifact,
+  and the resume-on-output-files rule degrades gracefully — a producer with no artifact simply re-runs on resume, which is correct for both.
 - Add the new short `CONSTRAINTS.md` invariant naming the pointer rule as a review obligation.
   See the dedicated subsection below.
 
@@ -77,13 +83,15 @@ The following three questions are surfaced deliberately, per the discussion, and
 **Question 1 — `Webster` violates the producer-atomicity rule.**
 The landed model states a producer is always atomic: one mechanical action, or one LLM session, never an internal multi-step process of its own.
 But `loom.md:57` lists `Webster` as a black box with its own per-batch fork loop, opaque to `loom`'s flat list — precisely an internal multi-step process.
-Either atomicity admits a carve-out for black-box producers that own their own loop, or `Webster` decomposes into flat producers the way `Plan` did.
+Either atomicity admits a carve-out for black-box producers that own their own loop,
+or `Webster` decomposes into flat producers the way `Plan` did.
 This is the single largest unresolved tension in the model, to be decided before `Shed` is built rather than during.
 **This task's obligation:** record it as a named precondition on `manifest/roadmap.md`'s Planned `Shed` item, not merely as prose in a design doc — recording it without gating it is how it gets skipped.
 
 **Question 2 — `Discussion-Write` has no Input.**
 `loom.md:50` records its Input as "— (starting point)".
-The thin-Output carve-out is now decided for `Preflight` and `Finalize`, but the symmetric thin-*Input* case has not been.
+The thin-Output carve-out is now decided for `Preflight` and `Finalize`,
+but the symmetric thin-*Input* case has not been.
 The task body itself is arguably the Input, which would make the pointer target the wiki task record rather than a format-contract file — a different kind of pointer than every other row in the table.
 This task records it in `shed.md`'s producer-contract section, immediately beside the thin-Output carve-out it mirrors.
 It does **not** get a roadmap gate the way question 1 does, because it is a contract-wording decision rather than a precondition that could invalidate `Shed`'s design.
@@ -96,7 +104,8 @@ This task owns it as `docs/overview.md`'s last owner in the chain.
 
 **The deferred-phase-enum record.**
 Per `phase-enum-realignment-is-deferred-to-the-shed-build`: `internal/loomengine/coherence.go:14–22`'s `validPhases` map and `docs/reference/status-schema.md`'s matching phase enum are deliberately left alone by tasks A through F.
-Realigning them lands with the `Shed` build task, because the flat producer list replaces the phase enum rather than editing it, and rewriting it now would invent an interim phase set that `Shed` would immediately discard.
+Realigning them lands with the `Shed` build task, because the flat producer list replaces the phase enum rather than editing it,
+and rewriting it now would invent an interim phase set that `Shed` would immediately discard.
 This task records this deferral explicitly alongside its roadmap edits, so a later reader finds a decision rather than an oversight.
 
 ## Scope
@@ -111,7 +120,8 @@ This task writes the finished state rather than guessing, which is the whole rea
 
 ## Sequencing
 
-`depends_on: format-docs-name-producers, batcher-standalone-split` — this task must see task C's finished table, and it cannot write `loom.md` row 8 before task F has decided what row 8 says.
+`depends_on: format-docs-name-producers, batcher-standalone-split` — this task must see task C's finished table,
+and it cannot write `loom.md` row 8 before task F has decided what row 8 says.
 
 ## Acceptance
 

@@ -15,7 +15,8 @@ Both files still describe themselves in pre-producer terms, so the pointer rule 
 
 **`loom-table-names-real-artifacts`.**
 `loom.md`'s producer table currently names two artifacts that exist nowhere in the pinned contracts: `discussion.md` and `plan.md`.
-The real artifacts are `_lyx/discussion/decision-record.md` (not `discussion.md`) and the `_lyx/plan/` directory (not `plan.md`), and the two-file access boundary becomes part of the `Plan-Write` Input pointer.
+The real artifacts are `_lyx/discussion/decision-record.md` (not `discussion.md`) and the `_lyx/plan/` directory (not `plan.md`),
+and the two-file access boundary becomes part of the `Plan-Write` Input pointer.
 A producer table whose Input/Output pointers name nonexistent files defeats the pointer rule it is meant to demonstrate.
 This was not left open for this task to re-derive — the real paths are already pinned by `discussion-format.md` and by `loom.md:188`'s own statement that the Planner writes `_lyx/plan/NN-<card>.md` per card plus `00-overview.md` as the done-sentinel.
 
@@ -28,7 +29,8 @@ This was not left open for this task to re-derive — the real paths are already
 4. Fix `discussion-format.md:1`'s own title, which still reads "the `discussion.md` ↔ Plan contract" — the same nonexistent artifact the `loom.md` table named.
 5. Restate `discussion-format.md:14` in producer-model terms.
    It currently grounds the two-file split in "Builder's 'distilled digest, never raw prose' rule (see `builder-contract.md`'s digest contract)" — a live contract justified by a retired design doc.
-   The rule itself is sound and stays; only its attribution is rewritten.
+   The rule itself is sound and stays;
+only its attribution is rewritten.
 6. Rewrite `plan-format.md:5`'s "Coexistence, not replacement" section, which asserts the format does not retire v2.
    That claim is false once task A deletes v2, so the renamed file would otherwise carry the claim forward about itself.
 
@@ -36,8 +38,10 @@ This was not left open for this task to re-derive — the real paths are already
 
 **`discussion-review-gate-exists`.**
 The `Discussion` side is not inherently asymmetric — scope a `Discussion-Review-Gate` mechanical producer, mirroring `Plan-Review-Gate`.
-It runs checks 1–2 of `discussion-format.md:80–82`: both files exist under `_lyx/discussion/`, and `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria).
-Both are per-run, artifact-observable properties of exactly the kind `Plan-Review-Gate` already hard-fails on, and both are already written down — this task names them as a producer, it does not design anything new.
+It runs checks 1–2 of `discussion-format.md:80–82`: both files exist under `_lyx/discussion/`,
+and `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria).
+Both are per-run, artifact-observable properties of exactly the kind `Plan-Review-Gate` already hard-fails on,
+and both are already written down — this task names them as a producer, it does not design anything new.
 
 **Check 3 is not a gate check.**
 `discussion-format.md:83`'s claim — that the Plan producer's declared input set never names `support-log.md` — is a property of the producer *definition*, not of any run's artifacts.
@@ -50,8 +54,10 @@ This task's body states this explicitly, in so many words, so nobody re-files it
 `decision-record.md` is **not** renamed.
 `discussion-format.md:16` states the filenames are self-describing on purpose, `decision-record.md` pairs with `support-log.md`, and the file holds seven sections, so naming it after one of its own sections would mislead.
 Rejected alternatives: `decisions.md` and `decision.md` — both terser, both lose the sibling parallelism, and both would force a code sweep across `DiscussionDecisionRecord` in `internal/loomengine/config.go`, `discussionpath_test.go`, `discussion_test.go`, and `prompttemplate.go`, for no contract gain.
-Note: the sourcing discussion cites this sentence as `discussion-format.md:15`, but the self-describing-filenames sentence is actually at `:16` — `:15` is the preceding sentence about the filesystem boundary.
-This task uses `:16`; the off-by-one from the discussion is not propagated into this body.
+Note: the sourcing discussion cites this sentence as `discussion-format.md:15`,
+but the self-describing-filenames sentence is actually at `:16` — `:15` is the preceding sentence about the filesystem boundary.
+This task uses `:16`;
+the off-by-one from the discussion is not propagated into this body.
 
 **The symmetric "what NOT to look for" rule.**
 Per `review-finding-classification.md` item 5, a "what NOT to look for" instruction must be written symmetrically into both the producer's own format-contract and the reviewing producer's rubric.
@@ -71,7 +77,8 @@ Task E depends on this task, so that E writes `loom.md`'s finished table state r
 
 ## Acceptance
 
-Docs-only; this task has no test surface of its own.
+Docs-only;
+this task has no test surface of its own.
 
 The `Discussion-Review-Gate`'s checks are specified here, not implemented — implementation lands with `Shed`.
 Check 3's build-time assertion is likewise specified rather than written, since the producer definition it would assert over does not exist yet.

@@ -12,9 +12,11 @@ brief: |
 
 `Batchifier` is a `Shed`-level producer, position 8 in `loom`'s list, between `Plan-Review` and `Webster`, so batching is no longer webster-internal execution policy.
 
-Two-step consequence: extract `batcher` as a standalone module now, and absorb the `Batchifier` producer into `loom` via `Shed` later, when the batchifier choice becomes part of `loom`'s producer-list configuration.
+Two-step consequence: extract `batcher` as a standalone module now,
+and absorb the `Batchifier` producer into `loom` via `Shed` later, when the batchifier choice becomes part of `loom`'s producer-list configuration.
 
-The key cannot go straight to `loom.yaml` today: both live `batcher.Select` call sites are webster's, and `Shed` — the thing that would own a `loom.yaml` batchifier key — does not exist, so making webster read `loom.yaml` would either break standalone `lyx webster run` or couple two modules' configs for no live benefit.
+The key cannot go straight to `loom.yaml` today: both live `batcher.Select` call sites are webster's,
+and `Shed` — the thing that would own a `loom.yaml` batchifier key — does not exist, so making webster read `loom.yaml` would either break standalone `lyx webster run` or couple two modules' configs for no live benefit.
 
 **Rejected alternatives:**
 
@@ -37,7 +39,8 @@ The key cannot go straight to `loom.yaml` today: both live `batcher.Select` call
    `internal/batcher` gains the loading of `batcher.yaml` and exposes an entry point returning the active `Batcher` — the natural extension of the `Select`-by-name seam it already has.
    `websterengine.Config.Batcher` is therefore removed, not retained.
 
-   The earlier "retained" note is superseded: retaining the field would leave webster holding a yaml key it no longer owns, and populating it from `batcher.yaml` would be exactly the cross-module config coupling the `loom.yaml` option was rejected for.
+   The earlier "retained" note is superseded: retaining the field would leave webster holding a yaml key it no longer owns,
+   and populating it from `batcher.yaml` would be exactly the cross-module config coupling the `loom.yaml` option was rejected for.
 
 3. **The inventory.**
    Both call sites move, not one:
@@ -70,7 +73,8 @@ The key cannot go straight to `loom.yaml` today: both live `batcher.Select` call
 This task does not change the `Batcher` interface, the registry, or `Select` itself — those stay untouched.
 What changes is where the name fed to `Select` is configured, plus the module's registration and docs.
 
-This task does not edit `loom.md`; row 8 of `loom.md`'s producer table is task E's, written after this task lands.
+This task does not edit `loom.md`;
+row 8 of `loom.md`'s producer table is task E's, written after this task lands.
 
 ## Sequencing
 

@@ -10,10 +10,12 @@ brief: |
 
 ## Why
 
-Builder is not dormant: `cmd/lyx/main.go:107` registers `buildercli.Command()`, and it appears in `cmd/lyx/helptree_test.go`'s module list and `cmd/lyx/notransients_test.go`.
+Builder is not dormant: `cmd/lyx/main.go:107` registers `buildercli.Command()`,
+and it appears in `cmd/lyx/helptree_test.go`'s module list and `cmd/lyx/notransients_test.go`.
 Parking it in-tree therefore costs real, recurring maintenance: it stays in the CLI help tree per the **CLI / Cobra Invariant**, keeps a second plan parser alive against the **Planparser Sole-Parser Invariant**, and every future refactor must carry it.
 
-The genuinely reusable asset is the *design*, not the code — the recovery ladder, chain rollback, the `mutate.lock` state-mutation lease, the three fabric-commit points, and crash/resume semantics — and that already lives in `builder-contract.md`'s 247 lines, rewritable onto the flat card list later.
+The genuinely reusable asset is the *design*, not the code — the recovery ladder, chain rollback, the `mutate.lock` state-mutation lease, the three fabric-commit points, and crash/resume semantics —
+and that already lives in `builder-contract.md`'s 247 lines, rewritable onto the flat card list later.
 The implementation itself stays one `git show` away, permanently.
 
 `manifest/roadmap.md:196` already calls `builder` "superseded as an active plan-format consumer" and `:202` says it "becomes obsolete" — nobody had removed it.
@@ -29,8 +31,10 @@ The implementation itself stays one `git show` away, permanently.
    - Delete `internal/builderengine` and `internal/buildercli` entirely.
    - `cmd/lyx/main.go` — unregister `buildercli.Command()` (`:107`) and drop `builder` from the module list in the long help text (`:75`).
    - `internal/configreg/configreg.go` — drop the `{Name: "builder", Template: builderengine.ConfigTemplate}` entry (`:44`) and its import (`:10`); update `internal/configreg/configreg_test.go:17`'s expected module list.
-   - `internal/configcli/configcli_test.go` — `:311`, `:327–328` assert the config menu prints `builder (default)`, and `:455` notes builder is deliberately unseeded.
-     Dropping `builder` from `configreg` fails this test; it is a second, less obvious consequence of the same one-line registry edit.
+   - `internal/configcli/configcli_test.go` — `:311`, `:327–328` assert the config menu prints `builder (default)`,
+     and `:455` notes builder is deliberately unseeded.
+     Dropping `builder` from `configreg` fails this test;
+     it is a second, less obvious consequence of the same one-line registry edit.
    - `cmd/lyx/helptree_test.go` — lines 28 and 106–107.
    - `cmd/lyx/notransients_test.go` — the import (`:21`) and the two `builderengine.Dir`/`ReportsDir` cases (`:57–58`).
    - `cmd/lyx/constructoranchoring_test.go` — the import and its builder assertions.
@@ -50,7 +54,8 @@ B's zero-hit grep for `plan-format-v3` cannot catch a dangling `builder-contract
 
 **The inert-builder.yaml trap.**
 Removing `builder` from `configreg`'s module list means `lyx config reconcile` stops emitting `builder.yaml`.
-Existing `builder.yaml` files in already-created worktrees are left in place — they are inert once no module reads them, and reconcile does not delete files it no longer owns.
+Existing `builder.yaml` files in already-created worktrees are left in place — they are inert once no module reads them,
+and reconcile does not delete files it no longer owns.
 This task states this so nobody files it as a leak.
 
 2. **Doc retirement.**
@@ -58,10 +63,12 @@ This task states this so nobody files it as a leak.
    - Re-point all four deep links into that section, per the dangling-anchor trap above.
    - Re-status `builder-contract.md` as a retired-design reference.
    - Delete `docs/reference/plan-format.md` (v2).
-   - `discussion-format.md:30` — its justification for `plan-format`'s `approved:` field reads "because `lyx builder run` can be invoked standalone, outside loom", which is false once this task lands; `discussion-format.md:3` links `plan-format.md`.
+   - `discussion-format.md:30` — its justification for `plan-format`'s `approved:` field reads "because `lyx builder run` can be invoked standalone, outside loom", which is false once this task lands;
+     `discussion-format.md:3` links `plan-format.md`.
      Both belong to this task, since this task is what falsifies them.
    - `docs/overview.md` — all builder and plan-format references, not the module table alone: `:92` (lists both `plan-format.md` and `plan-format-v3.md` as kept reference docs — only one survives), `:227` (the `internal/pattern` tree comment naming builder as a consumer), `:264` (the `builder` module-table entry), `:265` (the webster entry, defined as "fork-based sibling of builder"), `:268` (the deep link, above), `:292` (names "builder implementer" among `internal/pattern`'s prompt consumers — the same phrase this task also owns at `roadmap.md:42`), and `:375` (the `builder-contract.md` see-also).
-   - `README.md` — `:25` lists `lyx builder` in the subcommand tree, `:86` is the `builder` module bullet, `:87` defines webster as "a fork-based sibling of `builder`", `:94` asserts builder "stays frozen in-tree as the plan-format-v2 consumer" (directly falsified by this task), and `:115` describes builder's place in the module topology.
+   - `README.md` — `:25` lists `lyx builder` in the subcommand tree, `:86` is the `builder` module bullet, `:87` defines webster as "a fork-based sibling of `builder`", `:94` asserts builder "stays frozen in-tree as the plan-format-v2 consumer" (directly falsified by this task),
+     and `:115` describes builder's place in the module topology.
    - `docs/sandbox-howto.md` — `:8`'s launcher list, `:141–147`'s "Run the builder suite" section, and `:190`'s `SANDBOX-BUILDER-SUITE.md` see-also.
    - `sandbox/builder-suite.cmd` — delete it.
      It invokes the `"builder-suite"` case this task removes from `tools/sandbox/main.go:326`, so it is an orphan by construction, not an independent decision.
@@ -82,7 +89,8 @@ This task owns every site whose claim it itself falsifies: `docs/reference/build
 
 The `phase` enum in `internal/loomengine/coherence.go:14–22`'s `validPhases` map and its twin in `docs/reference/status-schema.md` — both currently `preflight | discussion | plan | builder | raddle | finalize | done` — are deliberately left alone by this task and the rest of the follow-up set.
 Realigning them lands with the `Shed` build task.
-The flat producer list replaces the phase enum rather than editing it; rewriting the enum now would mean inventing an interim phase set that `Shed` would immediately discard — churn on a pinned contract and live validation code, to no end.
+The flat producer list replaces the phase enum rather than editing it;
+rewriting the enum now would mean inventing an interim phase set that `Shed` would immediately discard — churn on a pinned contract and live validation code, to no end.
 The enum is not wrong today: it describes the machine that exists.
 
 **What is not deferred:** `status-schema.md`'s builder-specific prose and its `builder-contract.md` link go stale the moment this task lands, so those are this task's, per the "Doc retirement" list above.
@@ -93,7 +101,8 @@ Only the enum itself waits.
 This task is one task producing one compiling commit, because a package deletion is atomic by nature and splitting it guarantees an intermediate state that does not build.
 
 This task's ownership rule for the v2-coexistence prose class is: it owns every site whose claim it itself falsifies.
-Two exclusions from that rule: `plan-format-v3.md:5`'s own "Coexistence, not replacement" section belongs to task C, and `loom.md:29` belongs to task E.
+Two exclusions from that rule: `plan-format-v3.md:5`'s own "Coexistence, not replacement" section belongs to task C,
+and `loom.md:29` belongs to task E.
 
 `manifest/roadmap.md` has two owners, this task then task E, in chain order rather than concurrently.
 
@@ -112,7 +121,8 @@ The existing suite is the test.
 `go build ./...` and `go test ./...` must pass with `builderengine` and `buildercli` gone.
 No new tests are written.
 
-Four guards fail loudly on a half-removal, and this task should expect to be driven by them:
+Four guards fail loudly on a half-removal,
+and this task should expect to be driven by them:
 
 - `cmd/lyx/helptree_test.go`
 - `cmd/lyx/notransients_test.go`
