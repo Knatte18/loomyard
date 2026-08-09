@@ -60,4 +60,3 @@ This task branches off task A in parallel with the B → {C, F} → E chain; it 
 Docs-only.
 The one mechanical check worth running is that every relative markdown link and anchor introduced or touched resolves — a link-check pass over `manifest/` and `docs/` is the acceptance criterion.
 It is exactly what would have caught the dead `fabric.md` links, the dead phase-machine anchors, and the non-existent Weft Git Invariant citation before they shipped.
-</content>

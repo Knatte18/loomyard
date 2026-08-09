@@ -116,4 +116,3 @@ This task writes the finished state rather than guessing, which is the whole rea
 ## Acceptance
 
 Docs-only, the same criterion as task D: every relative markdown link and anchor introduced or touched resolves, via a link-check pass over `manifest/` and `docs/`.
-</content>

@@ -77,4 +77,3 @@ The `Discussion-Review-Gate`'s checks are specified here, not implemented — im
 Check 3's build-time assertion is likewise specified rather than written, since the producer definition it would assert over does not exist yet.
 
 Every relative markdown link and anchor introduced or touched by this task must resolve.
-</content>
