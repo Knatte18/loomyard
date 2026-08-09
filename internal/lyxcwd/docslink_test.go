@@ -419,4 +419,181 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 			t.Errorf("stale allowlist entry, delete it: %s -> %s", u.File, u.Target)
 		}
 	})
+
+	// writeTree materializes files (each keyed by a slash-separated path relative to the tree
+	// root) under a fresh t.TempDir() and returns the tree's absolute root. None of these paths
+	// may contain "testdata" -- walkEnforcementRoots skips any directory whose name contains that
+	// substring, which would make the built fixture walk to zero files and pass vacuously.
+	writeTree := func(t *testing.T, files map[string]string) string {
+		t.Helper()
+		root := t.TempDir()
+		for relPath, content := range files {
+			full := filepath.Join(root, filepath.FromSlash(relPath))
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatalf("mkdir for %s: %v", relPath, err)
+			}
+			if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+				t.Fatalf("write %s: %v", relPath, err)
+			}
+		}
+		return root
+	}
+
+	t.Run("relative link to existing file with no fragment resolves", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[b](b.md)\n",
+			"b.md": "# B\n",
+		})
+		breaks, unmatched := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 || len(unmatched) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v unmatched=%v; want none", breaks, unmatched)
+		}
+	})
+
+	t.Run("relative link to missing file produces missing file break", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[b](b.md)\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 1 || breaks[0].Reason != "missing file" {
+			t.Errorf("docsLinkScan() breaks=%v; want one missing file break", breaks)
+		}
+	})
+
+	t.Run("fragment matching a heading in the target file resolves", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[b](b.md#some-heading)\n",
+			"b.md": "## Some Heading\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
+		}
+	})
+
+	t.Run("fragment with no matching heading produces missing anchor break", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[b](b.md#no-such-heading)\n",
+			"b.md": "## Some Heading\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 1 || breaks[0].Reason != "missing anchor" {
+			t.Errorf("docsLinkScan() breaks=%v; want one missing anchor break", breaks)
+		}
+	})
+
+	t.Run("same-file fragment resolves against the containing file's own headings", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "## Some Heading\n\n[self](#some-heading)\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
+		}
+	})
+
+	t.Run("http https and mailto targets are skipped and never produce a break", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[h](http://example.com/x) [s](https://example.com/y) [m](mailto:a@example.com)\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
+		}
+	})
+
+	t.Run("allowlisted pair produces no break and leaves unmatched empty", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[b](b.md)\n",
+		})
+		allow := map[docsLinkKey]string{
+			{File: "a.md", Target: "b.md"}: "test",
+		}
+		breaks, unmatched := docsLinkScan(t, root, []string{"."}, allow)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none (allowlisted)", breaks)
+		}
+		if len(unmatched) != 0 {
+			t.Errorf("docsLinkScan() unmatched=%v; want none", unmatched)
+		}
+	})
+
+	t.Run("stale allowlist entry whose link now resolves is reported in unmatched", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[b](b.md)\n",
+			"b.md": "# B\n",
+		})
+		allow := map[docsLinkKey]string{
+			{File: "a.md", Target: "b.md"}: "test",
+		}
+		breaks, unmatched := docsLinkScan(t, root, []string{"."}, allow)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
+		}
+		if len(unmatched) != 1 || unmatched[0] != (docsLinkKey{File: "a.md", Target: "b.md"}) {
+			t.Errorf("docsLinkScan() unmatched=%v; want the now-resolved entry reported stale", unmatched)
+		}
+	})
+
+	t.Run("stale allowlist entry whose keyed file no longer exists is reported in unmatched", func(t *testing.T) {
+		// The renamed-away case: the allowlisted file is not present in this tree at all, so the
+		// walk never visits it and never produces a matching break. A naive "does the link now
+		// resolve" staleness check would never catch this; docsLinkScan's "was this key matched
+		// by any break in this run" definition catches it because it was never matched.
+		root := writeTree(t, map[string]string{
+			"other.md": "# Other\n",
+		})
+		allow := map[docsLinkKey]string{
+			{File: "renamed-away.md", Target: "b.md"}: "test",
+		}
+		breaks, unmatched := docsLinkScan(t, root, []string{"."}, allow)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
+		}
+		if len(unmatched) != 1 || unmatched[0] != (docsLinkKey{File: "renamed-away.md", Target: "b.md"}) {
+			t.Errorf("docsLinkScan() unmatched=%v; want the renamed-away entry reported stale", unmatched)
+		}
+	})
+
+	t.Run("link-shaped text inside fences is ignored end-to-end", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "text\n```\n[missing](no-such-file.md)\n```\nmore\n~~~\n[missing2](also-no-such-file.md)\n~~~\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none (fenced links ignored)", breaks)
+		}
+	})
+
+	t.Run("two identically-slugging headings both resolve via foo and foo-1", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[first](b.md#foo) [second](b.md#foo-1)\n",
+			"b.md": "## Foo\n## Foo\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none", breaks)
+		}
+	})
+
+	t.Run("non-md target existence is checked with no anchor check attempted", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md":   "[doc](doc.go#nonexistent-anchor)\n",
+			"doc.go": "package p\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 0 {
+			t.Errorf("docsLinkScan() breaks=%v; want none -- non-.md target with fragment skips anchor check", breaks)
+		}
+	})
+
+	t.Run("missing non-md target still produces a missing file break", func(t *testing.T) {
+		root := writeTree(t, map[string]string{
+			"a.md": "[gone](gone.go)\n",
+		})
+		breaks, _ := docsLinkScan(t, root, []string{"."}, nil)
+		if len(breaks) != 1 || breaks[0].Reason != "missing file" {
+			t.Errorf("docsLinkScan() breaks=%v; want one missing file break", breaks)
+		}
+	})
 }
