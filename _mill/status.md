@@ -6,6 +6,7 @@ slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Rename the fabric host vocabulary to warp, and name the composite repo Fabric
 task_description: |
   Rename the fabric host vocabulary to warp, and name the composite repo Fabric
@@ -29,17 +30,26 @@ implementing  '2026-08-09T06:30:13Z'
 ```yaml
 batches:
   - name: wordswap-tool
-    state: pending
+    state: running
+    implementer_session: f52a7dc3-205e-421d-9030-85971e638e0b
+    start_sha: 9045c7272c1e677a6335b45274b4e1f0d22a5c70
+    verify_baseline_failures: ["FAIL\t./tools/wordswap/... [setup failed]"]
   - name: pre-sweep-rewords
     state: pending
+    verify_baseline_failures: []
   - name: go-sweep
     state: pending
+    verify_baseline_failures: []
   - name: file-renames
     state: pending
+    verify_baseline_failures: []
   - name: cli-surface-review
     state: pending
+    verify_baseline_failures: []
   - name: docs-sweep
     state: pending
+    verify_baseline_failures: []
   - name: constraints-and-guard
     state: pending
+    verify_baseline_failures: []
 ```
