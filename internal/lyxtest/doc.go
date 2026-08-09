@@ -2,7 +2,7 @@
 // internal/fabricengine, internal/fabriccli, and internal/lyxcwd.
 // It owns the fixture builders and per-test isolation helpers, following the template-built-once +
 // per-test filesystem copy pattern to minimize setup overhead and maximize parallelism.
-// See MustRun, CopyHostHub, CopyPaired, and CopyWeft.
+// See MustRun, CopyWarpHub, CopyPaired, and CopyWeft.
 //
 // Leaf Invariant: internal/lyxtest production code imports only stdlib, internal/lyxcwd,
 // internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every

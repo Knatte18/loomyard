@@ -25,10 +25,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// newHostWeftPair builds a hub with "host" and "host-weft" git repos and returns the layout.
-func newHostWeftPair(t *testing.T) (*lyxcwd.Location, string) {
+// newWarpWeftPair builds a hub with "warp" and "warp-weft" git repos and returns the layout.
+func newWarpWeftPair(t *testing.T) (*lyxcwd.Location, string) {
 	t.Helper()
-	return newHostWeftPairAt(t, ".")
+	return newWarpWeftPairAt(t, ".")
 }
 
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml.
@@ -65,10 +65,10 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 	}
 }
 
-// newHostWeftPairAt is newHostWeftPair with an explicit layout.AnchorRel: the
-// weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the host's own
+// newWarpWeftPairAt is newWarpWeftPair with an explicit layout.AnchorRel: the
+// weft-side _lyx is seeded at <weft>/<relPath>/_lyx, mirroring the warp's own
 // repo-subpath geometry, and the returned layout's AnchorPath() points at the
-// matching host subdirectory. Alongside state.json it seeds the three machine-local
+// matching warp subdirectory. Alongside state.json it seeds the three machine-local
 // artifacts (an advisory *.lock file, the pause flag, and a rendered fork prompt) at the
 // mirrored subpath under ".lyx", outside the committed "_lyx" pathspec, so a caller can
 // assert on what the commit did and did not pick up. It also seeds a builder
@@ -76,13 +76,13 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // durable state.json under "_lyx" plus its pause flag under ".lyx", so a caller can assert that a
 // WEBSTER commit keeps builder's runtime state out while still carrying
 // builder's durable state.
-func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
+func newWarpWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) {
 	t.Helper()
 
 	hub := t.TempDir()
-	host := filepath.Join(hub, "host")
-	weft := filepath.Join(hub, "host-weft")
-	for _, dir := range []string{host, weft} {
+	warp := filepath.Join(hub, "warp")
+	weft := filepath.Join(hub, "warp-weft")
+	for _, dir := range []string{warp, weft} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
@@ -90,7 +90,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 		mustGit(t, dir, "config", "user.name", "Test User")
 		mustGit(t, dir, "config", "user.email", "test@example.com")
 	}
-	commitFile(t, host, "base.txt", "base", "host base commit")
+	commitFile(t, warp, "base.txt", "base", "warp base commit")
 	commitFile(t, weft, "base.txt", "base", "weft base commit")
 
 	// Uncommitted changes under the webster pathspec, so CommitWeft has
@@ -141,7 +141,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 
 	return &lyxcwd.Location{
 		HubPath:      hub,
-		WorktreeName: filepath.Base(host),
+		WorktreeName: filepath.Base(warp),
 		AnchorRel:    relPath,
 	}, weft
 }
@@ -154,7 +154,7 @@ func newHostWeftPairAt(t *testing.T, relPath string) (*lyxcwd.Location, string) 
 func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "")
 	t.Setenv("WEFT_SKIP_PUSH", "")
-	layout, weft := newHostWeftPair(t)
+	layout, weft := newWarpWeftPair(t)
 
 	// A directory where RecordCorrespondence expects its index file makes
 	// the record step fail after the commit has already landed.
@@ -208,7 +208,7 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "")
 			t.Setenv("WEFT_SKIP_PUSH", "1")
-			layout, weft := newHostWeftPairAt(t, tt.relPath)
+			layout, weft := newWarpWeftPairAt(t, tt.relPath)
 
 			committed, err := fabricSync(layout, "depth probe")
 			if err != nil {

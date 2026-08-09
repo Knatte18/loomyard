@@ -72,9 +72,9 @@ func pushRebaseFreeLogged(path string) error {
 // CoalescePushBothAt pushes both warp and weft under fabric's absorbing push lock, looping until
 // neither side advances — a rebase-free entry point honoring SkipGit/SkipPush.
 // weftPath must be non-empty: the absorbing push lock's only sanctioned home.
-// is under weftPath's .weft/ (a host-root lock is forbidden by the lock-artifact-under-weft /
-// no-host-root-gitrepo-push-lock Shared Decisions), so an empty weftPath returns an error rather
-// than falling back to warpPath (which would put a lock at the pristine host root) or defaulting to
+// is under weftPath's .weft/ (a warp-root lock is forbidden by the lock-artifact-under-weft /
+// no-warp-root-gitrepo-push-lock Shared Decisions), so an empty weftPath returns an error rather
+// than falling back to warpPath (which would put a lock at the pristine warp root) or defaulting to
 // the process cwd (which ensureWeftLockDirAt("") would do — mkdir .weft and git rev-parse relative
 // to cwd).
 // This is a latent edge only: the detached push child always supplies both paths (see

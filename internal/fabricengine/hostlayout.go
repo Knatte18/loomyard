@@ -1,4 +1,4 @@
-// hostlayout.go provides the guarded per-host-worktree Location deriver shared by Status and
+// hostlayout.go provides the guarded per-warp-worktree Location deriver shared by Status and
 // Reconcile: it avoids re-spawning git for the common case where the enumerated worktree is a hub
 // sibling of the caller's already-resolved Location.
 // Its non-sibling fallback resolves via the gate-free lyxcwd.ResolveWorktree, not the gated
@@ -12,13 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// hostLayoutFor returns the per-host-worktree Location for a hub sibling
+// warpLayoutFor returns the per-warp-worktree Location for a hub sibling
 // (spawn-free optimization, constructed inline below now that
 // lyxcwd.Location.SiblingLayout no longer exists) or, for a worktree
 // outside the hub, by falling back to the spawning, gate-free
 // lyxcwd.ResolveWorktree. Both paths are equivalent; the guard is purely
 // a spawn-count optimization.
-func hostLayoutFor(l *lyxcwd.Location, worktreeRoot string) (*lyxcwd.Location, error) {
+func warpLayoutFor(l *lyxcwd.Location, worktreeRoot string) (*lyxcwd.Location, error) {
 	if filepath.Dir(worktreeRoot) != l.HubPath {
 		// worktreeRoot is not a direct child of l.HubPath, so reusing l.HubPath below
 		// would be wrong; fall back to the spawning, gate-free resolver.

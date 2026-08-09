@@ -1,6 +1,6 @@
 // config.go — configuration for the fabric module.
 //
-// Defines the Config type carrying the host branch prefix (BranchPrefix) and the weft-sync pathspec
+// Defines the Config type carrying the warp branch prefix (BranchPrefix) and the weft-sync pathspec
 // (Pathspec) in one fabric.yaml file, unified from fabric's two predecessor config schemas into one
 // file, plus LoadConfig.
 // LoadConfig uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve
@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the fabric configuration: host branch prefix and weft-sync pathspec.
+// Config represents the fabric configuration: warp branch prefix and weft-sync pathspec.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
 	Pathspec     string `yaml:"pathspec"`

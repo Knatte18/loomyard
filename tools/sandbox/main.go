@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	hostURL = "https://github.com/Knatte18/lyx-test"
+	warpURL = "https://github.com/Knatte18/lyx-test"
 	weftURL = "https://github.com/Knatte18/lyx-test-weft"
 	hubName = "lyx-test-HUB"
 
@@ -32,10 +32,10 @@ const (
 	// lyx-test-HUB above -- the dedicated hub carries fabric's stricter
 	// "main-weft"-suffixed branch-naming suite, which the shared hub's fixtures
 	// do not exercise.
-	fabricHostURL   = "https://github.com/Knatte18/lyx-fabric-test"
+	fabricWarpURL   = "https://github.com/Knatte18/lyx-fabric-test"
 	fabricWeftURL   = "https://github.com/Knatte18/lyx-fabric-test-weft"
 	fabricHubName   = "lyx-fabric-test-HUB"
-	fabricHostDir   = "lyx-fabric-test"
+	fabricWarpDir   = "lyx-fabric-test"
 	fabricSuiteFile = "SANDBOX-FABRIC-SUITE.md"
 	fabricSuiteAsk  = "Read ./SANDBOX-FABRIC-SUITE.md and follow the instructions in it exactly."
 )
@@ -45,7 +45,7 @@ var fabricSandboxSuiteMD string
 
 // cloneRun is a testability seam for executing the clone command.
 var cloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", hostURL, weftURL)
+	cmd := exec.Command(lyxPath, "fabric", "clone", warpURL, weftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -64,7 +64,7 @@ var cloneRun = func(parentDir, lyxPath string) error {
 // fabricCloneRun is a testability seam for executing `lyx fabric clone`
 // against the dedicated fabric sandbox repos.
 var fabricCloneRun = func(parentDir, lyxPath string) error {
-	cmd := exec.Command(lyxPath, "fabric", "clone", fabricHostURL, fabricWeftURL)
+	cmd := exec.Command(lyxPath, "fabric", "clone", fabricWarpURL, fabricWeftURL)
 	cmd.Dir = parentDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -133,12 +133,12 @@ func decideFabricClone(hubPath string) error {
 // runFabricSuite fingerprints lyx, writes SANDBOX-FABRIC-SUITE.md into the
 // fabric hub, and launches an interactive Claude session.
 func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
-	hostRepoDir := filepath.Join(parentDir, fabricHubName, fabricHostDir)
+	warpRepoDir := filepath.Join(parentDir, fabricHubName, fabricWarpDir)
 
-	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("fabric hub host repo not found at %s -- run sandbox/fabric-suite.cmd, which clones it first", hostRepoDir)
+	if _, err := os.Stat(warpRepoDir); os.IsNotExist(err) {
+		return fmt.Errorf("fabric hub warp repo not found at %s -- run sandbox/fabric-suite.cmd, which clones it first", warpRepoDir)
 	} else if err != nil {
-		return fmt.Errorf("stat fabric host repo %s: %w", hostRepoDir, err)
+		return fmt.Errorf("stat fabric warp repo %s: %w", warpRepoDir, err)
 	}
 
 	lyxPath, source, err := resolveLyx()
@@ -151,20 +151,20 @@ func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
 
-	suitePath := filepath.Join(hostRepoDir, fabricSuiteFile)
+	suitePath := filepath.Join(warpRepoDir, fabricSuiteFile)
 	if err := os.WriteFile(suitePath, []byte(renderScheme(info, fabricSandboxSuiteMD)), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", fabricSuiteFile, err)
 	}
 
-	if err := ensureGitExclude(hostRepoDir, fabricSuiteFile); err != nil {
+	if err := ensureGitExclude(warpRepoDir, fabricSuiteFile); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
-	reportPath := filepath.Join(hostRepoDir, reportFileName)
+	reportPath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
 	}
-	if err := ensureGitExclude(hostRepoDir, reportFileName); err != nil {
+	if err := ensureGitExclude(warpRepoDir, reportFileName); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
@@ -186,7 +186,7 @@ func runFabricSuite(parentDir, claudeOverride, promptOverride string) error {
 		binDir = filepath.Dir(lyxPath)
 	}
 
-	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
+	code := launchAgent(warpRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox/fetch.cmd to collect findings into .scratch.\n",
 		code)

@@ -3,8 +3,8 @@
 #
 # Fires after git checkout/switch; resolves the current worktree root, derives
 # the deterministic <base>-weft sibling, and warns (non-blocking) when the
-# weft worktree is not checked out on the host branch's paired weft branch
-# (<host-branch>-weft under fabric's uniform naming scheme). Exit 0 always per
+# weft worktree is not checked out on the warp branch's paired weft branch
+# (<warp-branch>-weft under fabric's uniform naming scheme). Exit 0 always per
 # principle 6 (never hard-block).
 #
 # Note: git sets GIT_DIR (and related env vars) in the hook environment. Calling
@@ -39,9 +39,9 @@ if [ ! -d "$WEFT_WORKTREE" ]; then
     exit 0
 fi
 
-# Get the host branch name.
-HOST_BRANCH="$(git -C "$WORKTREE_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-if [ -z "$HOST_BRANCH" ] || [ "$HOST_BRANCH" = "HEAD" ]; then
+# Get the warp branch name.
+WARP_BRANCH="$(git -C "$WORKTREE_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+if [ -z "$WARP_BRANCH" ] || [ "$WARP_BRANCH" = "HEAD" ]; then
     exit 0
 fi
 
@@ -51,16 +51,16 @@ if [ -z "$WEFT_BRANCH" ]; then
     exit 0
 fi
 
-# Under fabric's uniform branch scheme, the weft branch paired with HOST_BRANCH
-# is always HOST_BRANCH plus the "-weft" suffix — this literal is shell-side
+# Under fabric's uniform branch scheme, the weft branch paired with WARP_BRANCH
+# is always WARP_BRANCH plus the "-weft" suffix — this literal is shell-side
 # data mirroring hubgeometry.WeftSuffix, not Go path construction, so it does
 # not trip the Go-source geometry-literal ban.
-EXPECTED_WEFT_BRANCH="${HOST_BRANCH}-weft"
+EXPECTED_WEFT_BRANCH="${WARP_BRANCH}-weft"
 
 # Warn when they differ; exit 0 always (non-blocking).
 if [ "$EXPECTED_WEFT_BRANCH" != "$WEFT_BRANCH" ]; then
-    echo "fabric: host/weft out of sync — run \`lyx fabric checkout <branch>\` to re-sync, or \`lyx fabric reconcile\` to inspect" >&2
-    echo "  host: $HOST_BRANCH (expects weft: $EXPECTED_WEFT_BRANCH)" >&2
+    echo "fabric: warp/weft out of sync — run \`lyx fabric checkout <branch>\` to re-sync, or \`lyx fabric reconcile\` to inspect" >&2
+    echo "  warp: $WARP_BRANCH (expects weft: $EXPECTED_WEFT_BRANCH)" >&2
     echo "  weft: $WEFT_BRANCH" >&2
 fi
 

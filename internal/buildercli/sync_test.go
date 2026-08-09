@@ -24,7 +24,7 @@ func TestFabricSync_SkipGitBypassNeedsNoWeftWorktree(t *testing.T) {
 
 	// Neither side of the fabric repo pair exists on disk.
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "host")), AnchorRel: "."}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
 
 	committed, err := fabricSync(layout, "bypass probe")
 	if err != nil {
@@ -42,7 +42,7 @@ func TestFabricSync_NonBypassValidatesPairPaths(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "")
 
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "host")), AnchorRel: "."}
+	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
 
 	committed, err := fabricSync(layout, "missing-pair probe")
 	if committed {

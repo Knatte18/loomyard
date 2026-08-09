@@ -21,7 +21,7 @@ import (
 )
 
 // postCheckoutScript is the embedded POSIX sh post-checkout hook body.
-// It warns when the host and weft worktree branches diverge after a git checkout.
+// It warns when the warp and weft worktree branches diverge after a git checkout.
 //
 //go:embed post-checkout.sh
 var postCheckoutScript string

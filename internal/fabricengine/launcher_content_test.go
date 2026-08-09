@@ -1,7 +1,7 @@
 // launcher_content_test.go tests the pure, build-tag-free launcher content builder for both the
 // Windows (.cmd) and non-Windows (.sh) branches.
 // Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS,
-// both branches are exercised on any host, including this Windows dev box.
+// both branches are exercised on any warp, including this Windows dev box.
 // The fabric-checkout case asserts fabric's own checkout script content ("fabric checkout" lyx
 // args).
 

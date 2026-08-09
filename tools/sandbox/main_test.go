@@ -394,10 +394,10 @@ func TestRun_BuildNoResetDoesNotRemove(t *testing.T) {
 func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the Hub host repo directory that runSuite requires.
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	// Create the Hub warp repo directory that runSuite requires.
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -432,8 +432,8 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 	defer func() { launchAgent = oldLaunchAgent }()
 	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
-		if dir != hostRepoDir {
-			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		if dir != warpRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, warpRepoDir)
 		}
 		return 0
 	}
@@ -448,15 +448,15 @@ func TestRun_SuiteRoutesSuiteToLaunch(t *testing.T) {
 }
 
 // TestRun_ReedSuiteRoutesToLaunch tests that the "reed-suite" positional routes to the reed-suite
-// path and ultimately invokes launchAgent with the correct host repo directory and the reed default
+// path and ultimately invokes launchAgent with the correct warp repo directory and the reed default
 // instruction, mirroring TestRun_SuiteRoutesSuiteToLaunch for the "suite" dispatch.
 func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the Hub host repo directory that runSuite requires.
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	// Create the Hub warp repo directory that runSuite requires.
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -493,8 +493,8 @@ func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
-		if dir != hostRepoDir {
-			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		if dir != warpRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, warpRepoDir)
 		}
 		return 0
 	}
@@ -517,9 +517,9 @@ func TestRun_ReedSuiteRoutesToLaunch(t *testing.T) {
 func TestRun_ReedSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
@@ -575,21 +575,21 @@ func TestRun_ReedSuiteErrorPropagation(t *testing.T) {
 
 	code := run([]string{"-parent", tmpDir, "reed-suite"})
 	if code == 0 {
-		t.Error("run() = 0; want non-zero when Hub host repo is absent for reed-suite subcommand")
+		t.Error("run() = 0; want non-zero when Hub warp repo is absent for reed-suite subcommand")
 	}
 }
 
 // TestRun_ShuttleSuiteRoutesToLaunch tests that the "shuttle-suite" positional routes to the
-// shuttle-suite path and ultimately invokes launchAgent with the correct host repo directory and
+// shuttle-suite path and ultimately invokes launchAgent with the correct warp repo directory and
 // the shuttle default instruction, mirroring TestRun_ReedSuiteRoutesToLaunch for the
 // "shuttle-suite" dispatch.
 func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the Hub host repo directory that runSuite requires.
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	// Create the Hub warp repo directory that runSuite requires.
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -626,8 +626,8 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
-		if dir != hostRepoDir {
-			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		if dir != warpRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, warpRepoDir)
 		}
 		return 0
 	}
@@ -650,9 +650,9 @@ func TestRun_ShuttleSuiteRoutesToLaunch(t *testing.T) {
 func TestRun_ShuttleSuiteFlagsRoutedAfterToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	fakeLyx := filepath.Join(tmpDir, "lyx.exe")
@@ -708,21 +708,21 @@ func TestRun_ShuttleSuiteErrorPropagation(t *testing.T) {
 
 	code := run([]string{"-parent", tmpDir, "shuttle-suite"})
 	if code == 0 {
-		t.Error("run() = 0; want non-zero when Hub host repo is absent for shuttle-suite subcommand")
+		t.Error("run() = 0; want non-zero when Hub warp repo is absent for shuttle-suite subcommand")
 	}
 }
 
 // TestRun_BurlerSuiteRoutesToLaunch tests that the "burler-suite" positional routes to the
-// burler-suite path and ultimately invokes launchAgent with the correct host repo directory and the
+// burler-suite path and ultimately invokes launchAgent with the correct warp repo directory and the
 // burler default instruction, mirroring TestRun_ReedSuiteRoutesToLaunch for the "burler-suite"
 // dispatch.
 func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the Hub host repo directory that runSuite requires.
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	// Create the Hub warp repo directory that runSuite requires.
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -759,8 +759,8 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
-		if dir != hostRepoDir {
-			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		if dir != warpRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, warpRepoDir)
 		}
 		return 0
 	}
@@ -778,16 +778,16 @@ func TestRun_BurlerSuiteRoutesToLaunch(t *testing.T) {
 }
 
 // TestRun_PerchSuiteRoutesToLaunch tests that the "perch-suite" positional routes to the
-// perch-suite path and ultimately invokes launchAgent with the correct host repo directory and the
+// perch-suite path and ultimately invokes launchAgent with the correct warp repo directory and the
 // perch default instruction, mirroring TestRun_ReedSuiteRoutesToLaunch for the "perch-suite"
 // dispatch.
 func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the Hub host repo directory that runSuite requires.
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	// Create the Hub warp repo directory that runSuite requires.
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -824,8 +824,8 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
-		if dir != hostRepoDir {
-			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		if dir != warpRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, warpRepoDir)
 		}
 		return 0
 	}
@@ -843,20 +843,20 @@ func TestRun_PerchSuiteRoutesToLaunch(t *testing.T) {
 }
 
 // TestRun_FabricSuiteRoutesToLaunch tests that the "fabric-suite" positional routes to the
-// fabric-suite path and ultimately invokes launchAgent with the correct dedicated fabric host repo
+// fabric-suite path and ultimately invokes launchAgent with the correct dedicated fabric warp repo
 // directory and the fabric default instruction, mirroring TestRun_MuxSuiteRoutesToLaunch for the
 // "fabric-suite" dispatch.
-// The dedicated fabric hub host repo dir is pre-created so decideFabricClone finds the hub already
+// The dedicated fabric hub warp repo dir is pre-created so decideFabricClone finds the hub already
 // present and skips fabricCloneRun.
 func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the dedicated fabric Hub host repo directory that runFabricSuite
+	// Create the dedicated fabric Hub warp repo directory that runFabricSuite
 	// requires; decideFabricClone sees the fabric hub already exists (this
 	// directory is nested inside it) and skips the clone step.
-	hostRepoDir := filepath.Join(tmpDir, fabricHubName, fabricHostDir)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create fabric host repo dir: %v", err)
+	warpRepoDir := filepath.Join(tmpDir, fabricHubName, fabricWarpDir)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create fabric warp repo dir: %v", err)
 	}
 
 	// Provide a real file so binaryFingerprint can stat and hash it.
@@ -901,8 +901,8 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 	launchAgent = func(dir, claude, instruction, binDir string) int {
 		launchAgentCalled = true
 		gotInstruction = instruction
-		if dir != hostRepoDir {
-			t.Errorf("launchAgent dir = %q; want %q", dir, hostRepoDir)
+		if dir != warpRepoDir {
+			t.Errorf("launchAgent dir = %q; want %q", dir, warpRepoDir)
 		}
 		return 0
 	}
@@ -923,18 +923,18 @@ func TestRun_FabricSuiteRoutesToLaunch(t *testing.T) {
 }
 
 // TestRun_FetchReportRoutesToFetch verifies that the "fetch" positional routes to runFetch: with a
-// built Hub, an on-PATH lyx, and a host report, the dispatch reaches fetchReport and run returns 0.
+// built Hub, an on-PATH lyx, and a warp report, the dispatch reaches fetchReport and run returns 0.
 func TestRun_FetchReportRoutesToFetch(t *testing.T) {
 	tmpDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 
-	// Create the Hub host repo directory that runFetch requires, and drop a valid
+	// Create the Hub warp repo directory that runFetch requires, and drop a valid
 	// report there for the fetch to pick up.
-	hostRepoDir := filepath.Join(tmpDir, hubName, hostDirName)
-	if err := os.MkdirAll(hostRepoDir, 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	warpRepoDir := filepath.Join(tmpDir, hubName, warpDirName)
+	if err := os.MkdirAll(warpRepoDir, 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
-	reportPath := filepath.Join(hostRepoDir, reportFileName)
+	reportPath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.WriteFile(reportPath, []byte(`{"source": "sandbox-report", "items": []}`), 0o644); err != nil {
 		t.Fatalf("write sandbox report: %v", err)
 	}

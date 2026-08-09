@@ -48,7 +48,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	junctions := fabricengine.HostJunctions(l, slug, names)
+	junctions := fabricengine.WarpJunctions(l, slug, names)
 	for _, j := range junctions {
 		isLink, err := fslink.IsLink(j.Link)
 		if err != nil || !isLink {
@@ -92,7 +92,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 // A pathspec naming neither structural directory is a legitimate, unenforced reality (doc.go's
 // narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
 //
-// Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(hostBranch),
+// Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(warpBranch),
 // drift.go:69-72) before the junction loop, and raw CopyPairedLocal leaves the weft prime on "main"
 // (not "main-weft"), so this checks out the weft branch first — the same
 // TestHealthy_JunctionDriftShapes pattern (junction_pattern_integration_test.go:~400).

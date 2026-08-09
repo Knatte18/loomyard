@@ -22,7 +22,7 @@ import (
 func TestResolve_FromWorktreeRoot(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	hub := fix.Hub
 
 	layout, err := lyxcwd.Resolve(hub)
@@ -65,7 +65,7 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 func TestResolve_FromSubdirectory(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	hub := fix.Hub
 
 	// Create a subdirectory structure
@@ -88,7 +88,7 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyHostHub(t)
+	fix := lyxtest.CopyWarpHub(t)
 	hub := fix.Hub
 
 	// Call Resolve normally; both cwd and --show-toplevel output get normalized
