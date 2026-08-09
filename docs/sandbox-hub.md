@@ -10,13 +10,13 @@ Its purpose is **dogfooding**: running lyx against itself to catch regressions e
 
 The Hub consists of two dedicated GitHub repositories and a local working directory on disk:
 
-- **Host repo:** `https://github.com/Knatte18/lyx-test` — the source repository
+- **Warp repo:** `https://github.com/Knatte18/lyx-test` — the source repository
 - **Weft repo:** `https://github.com/Knatte18/lyx-test-weft` — the companion overlay repository
 - **Board repo:** `https://github.com/Knatte18/lyx-test-weft.wiki.git` — the task board (the weft repo's GitHub wiki)
 
 ## Hub Location and Structure
 
-The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the host basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveHostName()`).
+The Hub is cloned to `C:\Code\lyx-test-HUB` on this machine (the warp basename `lyx-test` + `-HUB` suffix, derived via `internal/fabricengine/clone.go`'s `DeriveWarpName()`).
 
 **Important:** The Hub lives **outside `C:\Code\loomyard\`**, so it is never mistaken for part of Loomyard itself and stays separate from the orchestrator codebase.
 
@@ -24,7 +24,7 @@ The Hub directory structure mirrors the lyx topology model:
 
 ```
 C:\Code\lyx-test-HUB/
-  ├── lyx-test/           (host repo worktree)
+  ├── lyx-test/           (warp repo worktree)
   ├── lyx-test-weft/      (weft repo worktree)
   └── _board/             (board repo with task store)
 ```
@@ -95,16 +95,16 @@ sandbox/core-suite.cmd
 
 This command, run from the lyx repo directory:
 
-1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
+1. Locates the Hub warp repo at `C:\Code\lyx-test-HUB\lyx-test`.
 2. Resolves the `lyx` binary under test (derived `.dev-bin/lyx` first, else PATH as a fallback) and fingerprints it (absolute path, size, modtime, SHA256 prefix,
    and a `Source: dev`/`Source: prod` marker recording which one was picked).
-3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub host repo, prepending the fingerprint block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`).
+3. Copies a fresh `SANDBOX-CORE-SUITE.md` into the Hub warp repo, prepending the fingerprint block to the embedded template (`tools/sandbox/SANDBOX-CORE-SUITE.md`).
    Any previous copy is overwritten so every session starts from a clean slate.
-4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the host repo.
-5. Launches an interactive `claude --dangerously-skip-permissions` session with the host repo as the working directory and a single instruction: `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
+4. Adds `SANDBOX-CORE-SUITE.md` to `lyx-test-HUB/lyx-test/.git/info/exclude` so the copied file does not show up as an untracked change inside the warp repo.
+5. Launches an interactive `claude --dangerously-skip-permissions` session with the warp repo as the working directory and a single instruction: `"Read ./SANDBOX-CORE-SUITE.md and follow the instructions in it exactly."`
 
 The agent works entirely as a black box: it sees only `lyx` on PATH and the copied scheme, and must not access the lyx source tree.
-Findings (WARN or FAIL verdicts) are written to `sandbox-report.json` in the host repo.
+Findings (WARN or FAIL verdicts) are written to `sandbox-report.json` in the warp repo.
 The suite subcommand only launches the agent — it does **not** fetch the report: an interactive `claude` session never self-terminates and its manual exit gives a non-zero code, so gating a fetch on a clean exit would never fire.
 Collecting the report is a separate operator step (`fetch`, below).
 
@@ -129,9 +129,9 @@ sandbox/fetch.cmd
 
 This command:
 
-1. Locates the Hub host repo at `C:\Code\lyx-test-HUB\lyx-test`.
+1. Locates the Hub warp repo at `C:\Code\lyx-test-HUB\lyx-test`.
 2. Re-fingerprints the `lyx.exe` currently on PATH (for the normal run-then-fetch flow this is the same binary the suite fingerprinted).
-3. Reads `sandbox-report.json` from the host repo, validates it against the shared sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
+3. Reads `sandbox-report.json` from the warp repo, validates it against the shared sandbox-report-json contract (millhouse#586), stamps `meta.fingerprint`, and writes a normalized copy to `<loomyard>/.scratch/sandbox-report-<fingerprint>.json`.
 
 On success it prints the fetched path and, when there are findings, the exact `/mill-report-to-tasks "<path>"` triage command to run next (nothing is written to the wiki until you approve);
 a clean run says so and points at nothing.
@@ -148,7 +148,7 @@ only the launch mechanism will differ.
 ## Running the reed suite
 
 Alongside the main suite, `sandbox/reed-suite.cmd` runs a dedicated black-box suite against `lyx reed`.
-It mirrors the main-suite flow: copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo, git-excludes it the same way, clears any stale `sandbox-report.json`, and launches the interactive agent there.
+It mirrors the main-suite flow: copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub warp repo, git-excludes it the same way, clears any stale `sandbox-report.json`, and launches the interactive agent there.
 Because it exercises live tmux panes (crash simulation, layout verification, attach), it needs a live tmux (`tmux.exe` on PATH) beyond what the main suite requires.
 Findings land in the same `sandbox-report.json`, so `sandbox/fetch.cmd` collects a reed-suite report exactly as it collects a main-suite report — the two suites share one report pipeline, one run at a time.
 
@@ -169,7 +169,7 @@ sandbox/fetch.cmd            # ... -loomyard "%~dp0..\." fetch  (collect the rep
 ## Purpose: dogfooding lyx
 
 The sandbox Hub serves as a **testbed for lyx's core agent-driven workflows**.
-Point lyx's agent-driven orchestrator at the `lyx-test` host repo and exercise the full pipeline:
+Point lyx's agent-driven orchestrator at the `lyx-test` warp repo and exercise the full pipeline:
 
 - Init, board, weft, warp, and config operations.
 - Phased runs (Setup → Discussion → Plan → Builder → Finalize).
