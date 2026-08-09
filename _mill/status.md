@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-warp-binding core
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r4  '2026-08-09T09:44:08Z'
 plan-fix-r5  '2026-08-09T09:52:55Z'
 planned  '2026-08-09T09:53:05Z'
 implementing  '2026-08-09T09:53:35Z'
+approved-warp-binding core  '2026-08-09T09:59:33Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-08-09T09:53:35Z'
 ```yaml
 batches:
   - name: warp-binding core
-    state: running
+    state: approved
     implementer_session: ca2ab51a-6492-4b38-ab93-add5f9bd9065
     start_sha: ab0a6449e9c944e416882f2687b765b0fc737eb3
+    commit_sha: 1c3a842b2687d0d50a465f2ba27f84fc51316e5a
     verify_baseline_failures: []
   - name: probe and clone flip
     state: pending
