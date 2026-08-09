@@ -37,7 +37,9 @@ batches:
     commit_sha: 3be81471cb02275fdea17b29e997ccd92b022e3c
     verify_baseline_failures: ["FAIL\t./tools/wordswap/... [setup failed]"]
   - name: pre-sweep-rewords
-    state: pending
+    state: running
+    implementer_session: 0e1cd2aa-1d75-4ca2-9157-6dc6c3184122
+    start_sha: 97c5869745a7f2f4281bceb4c2a2a3f2347cdca3
     verify_baseline_failures: []
   - name: go-sweep
     state: pending
