@@ -73,6 +73,8 @@ batches:
     commit_sha: a2bfff66d34463d4e136fbe899cdf78506954704
     verify_baseline_failures: []
   - name: constraints-and-guard
-    state: pending
+    state: running
+    implementer_session: 75b8ba39-b19c-433e-be04-c5e01f7cb97a
+    start_sha: 303d548ff8382cd3782b8cef0319dd4a8faa089f
     verify_baseline_failures: []
 ```
