@@ -28,7 +28,7 @@ Fuller design/how-to lives in godoc and `docs/`.
   See the Fabric Vocabulary Invariant below for the vocabulary rule this bullet is one instance of.
 - Geometry is structural, never config/env-overridable.
 - The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `lyxcwd`'s.
-- `AnchorRel` resolves from the recorded `.fabric-anchor` marker, not positionally from cwd;
+- `AnchorRel` resolves from the recorded `.lyx-anchor` marker, not positionally from cwd;
   cwd is a validated at-or-below gate (`ErrCwdOutsideAnchor` if violated), falling back to `"."` only when the marker is absent. `ResolveWorktree`/`ResolveWithAnchor` read the same anchor with no cwd gate.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
@@ -158,7 +158,7 @@ Pane-shell command strings — argument quoting, the call operator, and the prom
 
 **Fabric** (capital F) names the fully wired-up composite — the warp repo with junctions into weft inside it.
 Any reader meaning *the repo as a whole* says Fabric.
-**warp** and **weft** name the two sides and are used — including in CLI help text and user-visible messages — at exactly those points where the two sides genuinely must be told apart, e.g. `lyx fabric clone <warp-url> <weft-url>` and `fabric: warp/weft out of sync`.
+**warp** and **weft** name the two sides and are used — including in CLI help text and user-visible messages — at exactly those points where the two sides genuinely must be told apart, e.g. `lyx fabric clone <weft-url> [<warp-url>]` and `fabric: warp/weft out of sync`.
 "repo" alone is too vague to denote warp and is never a substitute for it.
 **`host` is retired** and is never used in any of these senses, anywhere — including inside the owner set below.
 

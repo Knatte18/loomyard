@@ -8,7 +8,6 @@
 package fabriccli
 
 import (
-	"fmt"
 	"io"
 	"path/filepath"
 
@@ -18,37 +17,37 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// runCloneWithReset executes the clone subcommand. When reset is true, it tears
-// down any existing hub before cloning (idempotent re-clone). After CloneHub
-// succeeds, it drives the wiring sequence: repo-wide fabric.yaml, weft:main
-// commits, warp junctions, and per-worktree config. On error, the clone is
-// left intact; the operator completes wiring with reconcile.
-func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string) int {
+// runCloneWithReset executes the clone subcommand. The hub teardown for an idempotent re-clone is no
+// longer performed here: it is driven through CloneOptions.Reset inside CloneHub itself, which can
+// derive the hub path in either the one- or two-argument form. After CloneHub succeeds, this handler
+// drives the wiring sequence: repo-wide fabric.yaml, weft:main commits, warp junctions, and
+// per-worktree config. On error, the clone is left intact; the operator completes wiring with
+// reconcile. The returned envelope carries "hub" and "anchor" from the resolved geometry, plus
+// "warp" (the effective warp URL, supplied or derived) and "warp_binding_recorded" (whether this
+// clone wrote the .lyx-warp record) — both always present so a consumer never has to distinguish
+// absent from false.
+func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool) int {
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	if len(args) != 2 {
-		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] <warp-url> <weft-url>")
+	if len(args) != 1 && len(args) != 2 {
+		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]")
 	}
-	warpURL := args[0]
-	weftURL := args[1]
-
-	if reset {
-		// Derive the hub path so we can remove it before cloning (idempotent re-clone).
-		// DeriveWarpName returns "" for blank/unparseable URLs; guard defensively.
-		name := fabricengine.DeriveWarpName(warpURL)
-		if name == "" {
-			return output.Err(out, fmt.Sprintf("could not derive repo name from warp URL %s", warpURL))
-		}
-		hubPath := fabricengine.HubPath(cwd, name)
-		if err := fabricengine.RemoveAll(hubPath); err != nil {
-			return output.Err(out, fmt.Sprintf("reset: remove hub at %s: %v", hubPath, err))
-		}
+	weftURL := args[0]
+	warpURL := ""
+	if len(args) == 2 {
+		warpURL = args[1]
 	}
 
-	res, err := fabricengine.CloneHub(cwd, warpURL, weftURL, subpath)
+	res, err := fabricengine.CloneHub(cwd, fabricengine.CloneOptions{
+		WeftURL:        weftURL,
+		WarpURL:        warpURL,
+		Subpath:        subpath,
+		Reset:          reset,
+		ForceBootstrap: forceBootstrap,
+	})
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -86,7 +85,9 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 	}
 
 	return output.Ok(out, map[string]any{
-		"hub":    res.HubPath,
-		"anchor": res.Anchor,
+		"hub":                   res.HubPath,
+		"anchor":                res.Anchor,
+		"warp":                  res.WarpURL,
+		"warp_binding_recorded": res.WarpBindingRecorded,
 	})
 }

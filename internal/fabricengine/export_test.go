@@ -22,3 +22,7 @@ func WarpForTest(f *Fabric) *gitrepo.Repo {
 func WeftForTest(f *Fabric) *gitrepo.Repo {
 	return f.weft
 }
+
+// WarpProbeDirPrefixForTest re-exports warpProbeDirPrefix for package fabricengine_test files that
+// assert on the probe's throwaway-clone directory naming without duplicating the literal.
+const WarpProbeDirPrefixForTest = warpProbeDirPrefix

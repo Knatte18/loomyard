@@ -186,7 +186,7 @@ Confirm it removes every fabric junction present on disk (e.g. `_lyx`, `.lyx`) �
 Confirm it preserves the weft-side `_lyx` content, explicitly including `_lyx/PATTERN.md` — `_lyx/` under the paired weft worktree should be untouched, not cleared — since `_lyx` is deliberately never touched by unwire.
 Confirm it reverts the managed `.gitignore` block's `.lyx/` entry.
 Run `lyx fabric unwire` a second time immediately after: it must be idempotent and no-op cleanly on an already-unwired worktree, not error.
-Finally, confirm the repo-wide records survive unwire — `.fabric-anchor` and `<BoardDir>/_lyx/config/fabric.yaml` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
+Finally, confirm the repo-wide records survive unwire — `.lyx-anchor`, `<BoardDir>/_lyx/config/fabric.yaml`, and `.lyx-warp` are untouched — by running `lyx fabric reconcile` afterward and confirming it re-wires the worktree's junctions from those same repo-wide records, with no re-clone needed.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
@@ -208,6 +208,23 @@ In the auto-reconciled case, inspect the JSON output: it should report which `_l
 
 ---
 
+### F7 -- Bound one-argument re-clone
+
+**Covers:** fabric
+
+**Goal:** "The dedicated fabric hub has already been cloned once with both URLs, which is what writes the warp-URL binding onto `weft:main`.
+Delete the hub directory outright, then re-clone it supplying only the weft URL, and confirm the warp side is derived rather than asked for."
+
+**Watch:** Confirm the re-clone succeeds with no warp URL on the command line at all -- the warp URL must be derived from the binding recorded on the weft side, not prompted for or defaulted some other way.
+Confirm the hub comes up at the same path and identically wired: the same `_board`-is-a-weft-worktree check and the same `main-weft` branch check F1 already makes both hold here too.
+Confirm the success envelope reports the derived warp URL, and reports that the binding was **not** re-written on this re-clone -- it already existed from the earlier two-URL clone.
+Confirm the binding record itself is present and tracked at the board root;
+the record's filename is the one the fabric module documents (`.lyx-warp`), so confirm that exact name rather than guessing at it.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -223,6 +240,7 @@ F3: <OK|WARN|FAIL> -- <one-line note if not OK>
 F4: <OK|WARN|FAIL> -- <one-line note if not OK>
 F5: <OK|WARN|FAIL> -- <one-line note if not OK>
 F6: <OK|WARN|FAIL> -- <one-line note if not OK>
+F7: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

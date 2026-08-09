@@ -202,7 +202,7 @@ or any other tool's raw stderr) — that is still a legitimate `WARN`/`FAIL` fin
 
 ### S6 -- Subpath-anchored clone
 
-**Goal:** "Clone a second hub from the same warp/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lyx fabric clone --subpath <sub> <warp-url> <weft-url>`.
+**Goal:** "Clone a second hub from the same warp/weft repos into a scratch location, anchored at a subdirectory instead of the repo root, using `lyx fabric clone --subpath <sub> <weft-url> <warp-url>`.
 From inside the anchored subpath, run `config` and `board`.
 Finally, tear the pair down with `lyx fabric unwire`."
 
