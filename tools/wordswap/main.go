@@ -6,6 +6,10 @@
 // left untouched and reported.
 // `host` + lowercase at a token start is not guessed at: it is reported as AMBIGUOUS so the
 // operator can hand-edit it or name it in `-skip`.
+// wordswap assumes ASCII-stable case folding: it locates matches via strings.ToLower and then
+// indexes into the original text using those offsets, which is only byte-length-preserving for
+// ASCII input. A rune whose lowercase mapping changes UTF-8 byte length (e.g. U+0130 İ -> "i̇")
+// desynchronizes the offsets. Run wordswap only over ASCII-only file content.
 //
 //	go run ./tools/wordswap -from host -to warp [-dry-run] [-skip <regexp>]... <path-or-glob> [...]
 //	go run ./tools/wordswap -from host -to warp -skip 'pane hosting an idle agent' internal/fabricengine/*.go
