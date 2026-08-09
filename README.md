@@ -90,7 +90,7 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 
 **In progress (design):**
 
-- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Webster → Raddle → Finalize), each producing phase gated by a `perch` review.
+- **loom** — the phased orchestrator (Preflight → Discussion → Plan → Webster → Finalize), each producing phase gated by a `perch` review.
   Preflight is built;
   Discussion, Plan, the phase-machine skeleton, Finalize, and session bootstrap are still being built out.
 

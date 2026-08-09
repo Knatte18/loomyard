@@ -1,11 +1,11 @@
 # semantic-index — semantic search over docstrings and descriptive text
 
-> **Status: Speculative, not scoped.** Inspired by [Enzyme](https://www.enzyme.garden/blog/an-lsp-for-your-notes), a semantic search system for personal note vaults. This is the "deferred idea" [scout-redesign.md](scout-redesign.md) refers to ("a semantic/conceptual index... a separate, further-out idea, not part of this proposal") and the relationship-table row from the original scout proposal ("have we written something conceptually similar, without shared vocabulary? — embeddings + temporal-decay weighting; not part of this proposal") — now named, not yet designed in depth. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning package's doc when it lands; if abandoned, this file is simply deleted.
+> **Status: Speculative, not scoped.** Inspired by [Enzyme](https://www.enzyme.garden/blog/an-lsp-for-your-notes), a semantic search system for personal note vaults. This is the "deferred idea" [`internal/scoutengine`](../../internal/scoutengine/doc.go)'s own design proposal referred to ("a semantic/conceptual index... a separate, further-out idea, not part of this proposal") and the relationship-table row from the original scout proposal ("have we written something conceptually similar, without shared vocabulary? — embeddings + temporal-decay weighting; not part of this proposal") — now named, not yet designed in depth. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning package's doc when it lands; if abandoned, this file is simply deleted.
 
 ## The problem this responds to
 
 Grep/text-search finds literal keyword matches.
-It cannot answer "find code that does X" when the code implementing X uses none of the words a caller would naturally search for — e.g. "show me the error-handling patterns in this codebase" when error handling is spelled out in prose inside docstrings and comments but never literally contains the word "error" everywhere it matters. `scout` (see [scout-redesign.md](scout-redesign.md)) doesn't solve this either — it answers "what exactly references/defines this symbol," a precise, compiler-derived question, not "what have we conceptually written that's similar to this."
+It cannot answer "find code that does X" when the code implementing X uses none of the words a caller would naturally search for — e.g. "show me the error-handling patterns in this codebase" when error handling is spelled out in prose inside docstrings and comments but never literally contains the word "error" everywhere it matters. `scout` (see [`internal/scoutengine`](../../internal/scoutengine/doc.go)) doesn't solve this either — it answers "what exactly references/defines this symbol," a precise, compiler-derived question, not "what have we conceptually written that's similar to this."
 
 ## Core mechanism, adapted from Enzyme
 
@@ -51,7 +51,7 @@ None of these three replace either of the others — different question, differe
 
 ## Related
 
-- [scout-redesign.md](scout-redesign.md) — the precise, compiler-derived sibling;
-  named this as an out-of-scope, deferred idea.
+- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — the precise, compiler-derived sibling;
+  scout's own design proposal named this as an out-of-scope, deferred idea.
 - [raddle.md](raddle.md) — the curated-narrative sibling.
 - [`internal/gitrepo`](../../internal/gitrepo/doc.go) — plausible source of the temporal-decay recency signal.

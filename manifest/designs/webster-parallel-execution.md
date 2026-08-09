@@ -51,10 +51,10 @@ Only the *executor that actually runs the width* (this entry) remains parked.
 ## Relationship to scout (Part B of the retired draft)
 
 The retired `websterv2.md` draft also had a Part B — structured impact lookup via `go/packages`/`gopls` (find-all-references as a Go verb instead of LLM-driven grep).
-That idea is superseded, not lost: it's the direct ancestor of the [scout](scout-redesign.md) proposal, which generalizes it to a multi-language, daemon-based design.
+That idea is superseded, not lost: it's the direct ancestor of [`internal/scoutengine`](../../internal/scoutengine/doc.go), which generalizes it to a multi-language, daemon-based design.
 
 ## Related
 
 - `internal/websterengine`'s package documentation — the sequential model this would extend.
 - [plan-format-v3.md](../../docs/reference/plan-format-v3.md) — already captures the cheap win (`depends-on`).
-- [scout-redesign.md](scout-redesign.md) — Part B's successor.
+- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — Part B's successor.

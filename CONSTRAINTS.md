@@ -220,6 +220,29 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   every other `fabricengine` caller remains a review obligation.
   The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
 
+## Markdown Link Integrity
+
+Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` or `docs/` resolves — both its file part and, for a `.md` target carrying one, its `#anchor`.
+
+- **The root restriction is source-side only.**
+  `manifest/` and `docs/` name which files are *scanned* for outgoing links;
+  they do not restrict where those links may *point*.
+  Every link target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, whether that target sits inside `manifest/`/`docs/` or not.
+  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `finalize.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
+- **A file-layout convenience, not an ownership claim.**
+  The enforcing test lives in `internal/lyxcwd` (`docslink_test.go`'s `TestEnforcement_MarkdownLinks`), reusing that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers.
+  That placement is a file-layout convenience, not an ownership claim on markdown links by `internal/lyxcwd` — the Cwd Resolution Invariant scopes that package to cwd resolution and nothing else, exactly the caveat the Fabric Vocabulary Invariant above already states for its own test.
+- **What the machine check does and does not reach — stated honestly, not implying full coverage.**
+  Not reached: external `http`/`https`/`mailto` URLs, never fetched;
+  reference-style links (`[text][ref]`) and `<...>` autolinks, out of grammar by decision, not by oversight;
+  link-shaped text inside fenced code blocks, deliberately skipped;
+  prose mentions of a filename that are not markdown links — `manifest/roadmap.md:98`'s `scout-redesign.md` reference is a live example this task leaves standing;
+  and `.md` files outside `manifest/` and `docs/` as **scan sources**, so `README.md`, `CLAUDE.md`, and `internal/**/*.md` have their own outgoing links checked by nobody.
+- **The allowlist's self-expiring contract.**
+  Keyed by `(file, target)`, never by line number, with every entry naming its owning task.
+  An entry whose key is not matched by any break in a scan is reported as deletable — this covers both a link that was fixed and a keyed file that was renamed or deleted away, since neither case is ever visited by the scan again.
+- **Enforced by** `internal/lyxcwd/docslink_test.go` (`TestEnforcement_MarkdownLinks`).
+
 ## Review Round Invariant
 
 One review+fix round (burler now, hardener later) follows: A-before-B (review fully written to disk before any target file is touched);
