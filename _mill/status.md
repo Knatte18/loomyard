@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-verify-logic
+phase: holistic-reviewing
 slug: plan-format-drop-v3-suffix
 branch: plan-format-drop-v3-suffix
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-override-notes-and-acceptance  '2026-08-09T13:52:13Z'
 holistic-reviewing  '2026-08-09T13:52:34Z'
 blocked  '2026-08-09T13:54:35Z'
 self-resolved-verify-logic  '2026-08-09T13:59:09Z'
+holistic-reviewing  '2026-08-09T13:59:40Z'
 ```
 
 ## Batches
