@@ -9,7 +9,7 @@ It carries *no* domain logic.
 The command *sequences* (which git calls, which lock files, which config keys) stay in the modules.
 Each shared lib also carries its own deep tests, so it is vetted plumbing, not an untested dependency.
 
-See [roadmap.md](../roadmap.md) milestones 2–3 for the extraction order.
+See [roadmap.md](../../manifest/roadmap.md) milestones 2–3 for the extraction order.
 
 ## Libraries
 
