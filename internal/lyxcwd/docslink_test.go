@@ -7,6 +7,8 @@
 package lyxcwd
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -287,4 +289,123 @@ func TestDocsLinkHeadingAnchors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// docsLinkKey identifies one (file, target) link instance for allowlisting purposes. File is the
+// repoRoot-relative, slash-normalized path of the file the link was found in; Target is the raw
+// target string exactly as written in the source.
+type docsLinkKey struct {
+	File   string
+	Target string
+}
+
+// docsLinkBreak is one unresolved markdown link found by a scan.
+type docsLinkBreak struct {
+	File   string
+	Line   int
+	Target string
+	Reason string // "missing file" or "missing anchor"
+}
+
+// docsLinkResolve resolves one split link target against the repo tree rooted at repoRoot, where
+// relPath and data identify the containing file the link was found in. It returns "missing file" or
+// "missing anchor" when the target does not resolve, or "" when it does. A same-file fragment
+// (filePart == "") resolves against data's own headings; otherwise filePart is resolved relative to
+// the containing file's directory, its existence on disk is checked, and — only when it exists,
+// ends in ".md", and fragment is non-empty — fragment is resolved against that target file's own
+// headings. A target that exists but does not end in ".md" has its existence checked and no anchor
+// check attempted.
+func docsLinkResolve(repoRoot, relPath string, data []byte, filePart, fragment string, hasFragment bool) string {
+	if filePart == "" {
+		if hasFragment && fragment != "" && !docsLinkHeadingAnchors(data)[fragment] {
+			return "missing anchor"
+		}
+		return ""
+	}
+
+	targetAbs := filepath.Clean(filepath.Join(repoRoot, filepath.Dir(filepath.FromSlash(relPath)), filepath.FromSlash(filePart)))
+	info, err := os.Stat(targetAbs)
+	if err != nil {
+		return "missing file"
+	}
+	// A target that resolves to a directory (e.g. a trailing-slash link to a directory listing)
+	// exists but is never a .md file, so no anchor check applies to it either.
+	if info.IsDir() || !strings.HasSuffix(targetAbs, ".md") || !hasFragment || fragment == "" {
+		return ""
+	}
+
+	targetData, readErr := os.ReadFile(targetAbs)
+	if readErr != nil {
+		return "missing file"
+	}
+	if !docsLinkHeadingAnchors(targetData)[fragment] {
+		return "missing anchor"
+	}
+	return ""
+}
+
+// docsLinkScan walks every ".md" file under roots (repoRoot-relative, "." for the whole tree) via
+// walkEnforcementRoots, extracts every inline link, and resolves each one against the repo tree.
+// The root restriction is source-side only: roots names which files are scanned for outgoing links
+// and never restricts where a target may point — every target is resolved wherever it lands in the
+// repo, including the #anchor of any ".md" target whether or not that target is itself inside roots.
+// breaks is every unresolved link whose docsLinkKey is not present in allow; unmatched is every
+// allow key that no break in this run — allowlisted or not — matched, which is how a stale allowlist
+// entry (its link now resolves, or its keyed file was renamed or deleted away) is reported.
+func docsLinkScan(t *testing.T, repoRoot string, roots []string, allow map[docsLinkKey]string) (breaks []docsLinkBreak, unmatched []docsLinkKey) {
+	t.Helper()
+
+	matched := make(map[docsLinkKey]bool)
+
+	walkEnforcementRoots(t, repoRoot, roots, []string{".md"}, func(relPath string, data []byte) {
+		for _, link := range docsLinkExtract(data) {
+			target := link.Target
+			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "mailto:") {
+				continue
+			}
+
+			filePart, fragment, hasFragment := strings.Cut(target, "#")
+			reason := docsLinkResolve(repoRoot, relPath, data, filePart, fragment, hasFragment)
+			if reason == "" {
+				continue
+			}
+
+			key := docsLinkKey{File: relPath, Target: target}
+			matched[key] = true
+			if _, ok := allow[key]; ok {
+				continue
+			}
+			breaks = append(breaks, docsLinkBreak{File: relPath, Line: link.Line, Target: target, Reason: reason})
+		}
+	})
+
+	for key := range allow {
+		if !matched[key] {
+			unmatched = append(unmatched, key)
+		}
+	}
+
+	return breaks, unmatched
+}
+
+// docsLinkAllowlist is the self-expiring allowlist of known-broken links this task leaves for other
+// tasks to fix, per _mill/discussion.md's allowlist-is-keyed-and-self-expiring decision. It is keyed
+// by (file, target) and never by line number; every entry names its owning task; and an entry whose
+// key is not matched by any break in a scan is reported by docsLinkScan as deletable.
+var docsLinkAllowlist = map[docsLinkKey]string{}
+
+// TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
+// every inline markdown link in a .md file under manifest/ or docs/ must resolve, both its file part
+// and its #anchor.
+func TestEnforcement_MarkdownLinks(t *testing.T) {
+	t.Run("repo", func(t *testing.T) {
+		breaks, unmatched := docsLinkScan(t, repoRootForEnforcement(t), []string{"manifest", "docs"}, docsLinkAllowlist)
+
+		for _, b := range breaks {
+			t.Errorf("broken markdown link: %s:%d  %s  %s", b.File, b.Line, b.Reason, b.Target)
+		}
+		for _, u := range unmatched {
+			t.Errorf("stale allowlist entry, delete it: %s -> %s", u.File, u.Target)
+		}
+	})
 }
