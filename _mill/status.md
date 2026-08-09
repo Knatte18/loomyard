@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -21,4 +21,25 @@ plan-review-r1  '2026-08-09T06:20:03Z'
 plan-fix-r1  '2026-08-09T06:21:12Z'
 plan-review-r2  '2026-08-09T06:29:02Z'
 planned  '2026-08-09T06:29:34Z'
+implementing  '2026-08-09T06:30:13Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: wordswap-tool
+    state: pending
+  - name: pre-sweep-rewords
+    state: pending
+  - name: go-sweep
+    state: pending
+  - name: file-renames
+    state: pending
+  - name: cli-surface-review
+    state: pending
+  - name: docs-sweep
+    state: pending
+  - name: constraints-and-guard
+    state: pending
 ```
