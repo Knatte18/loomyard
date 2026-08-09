@@ -430,13 +430,20 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 	if got := currentBranch(t, weftPrime); got != "main-weft" {
 		t.Fatalf("weft prime branch = %q; want %q", got, "main-weft")
 	}
-	if !hasNoCommits(t, weftPrime) {
-		t.Errorf("weft prime at %s has commits; want an unborn HEAD (genuinely empty weft remote)", weftPrime)
+	// The weft prime's suffixed branch must be BORN — a real ref, not merely the checked-out name.
+	// This assertion is inverted from what it was: it used to require an unborn HEAD here, which
+	// pinned a defect rather than a contract. `git checkout -b` on an unborn HEAD writes no ref, so
+	// refs/heads/main-weft did not exist, and every verb that forks a new pair from the primary died
+	// on `fatal: invalid reference: main-weft` — `lyx fabric add` included, which is the example both
+	// the parent command and `add` document. CloneHub now lands an initialising empty commit on that
+	// branch (bornWeftPrimaryBranch, clone.go).
+	if hasNoCommits(t, weftPrime) {
+		t.Errorf("weft prime at %s has an unborn HEAD; want its suffixed branch born so a pair can fork from it", weftPrime)
 	}
 
 	// _board must still be a linked worktree of the same weft repo, checked
-	// out on "main", and itself carry no commits — proving the orphan branch
-	// shares no history with main-weft.
+	// out on "main", and itself carry no commits — it is orphan-created, so it
+	// gains nothing from the weft primary's initialising commit.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 	boardPath := fabricengine.BoardDir(hubPath)
 	if !hasNoCommits(t, boardPath) {

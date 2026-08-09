@@ -6,6 +6,11 @@
 // The suffixed branch is adopted from an existing origin/<branch>-weft when the remote already
 // carries one (a re-clone of a hub with weft history) and created fresh only otherwise;
 // the freshly-cloned default branch itself remains, unclaimed.
+//
+// Against a genuinely empty weft remote the fresh branch would be UNBORN — `git checkout -b` writes
+// no ref on an unborn HEAD — so bornWeftPrimaryBranch lands an initialising empty commit on it.
+// Without that, the hub came out of clone with its weft primary on a branch that did not exist, and
+// every pair-creating verb forked from it failed.
 
 package fabricengine
 
@@ -440,7 +445,48 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 	if exitCode != 0 {
 		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d)", suffixedBranch, exitCode)
 	}
+
+	if err := bornWeftPrimaryBranch(weftPath, suffixedBranch); err != nil {
+		return "", err
+	}
 	return warpBranch, nil
+}
+
+// bornWeftPrimaryBranch gives the weft primary's suffixed branch a real commit when the clone left
+// it UNBORN, so refs/heads/<suffixed> resolves the moment CloneHub returns.
+//
+// Against a genuinely empty weft remote — the documented first-ever-setup path probeWeftBinding's
+// unborn-HEAD check and ensureBoardWorktree's orphan branch both exist to serve — `git checkout -b
+// <branch>` on an unborn HEAD succeeds but creates another unborn branch: no ref is written.
+// Nothing later fills it in either, because the clone-time commit the CLI lands through Bolt goes to
+// the _board worktree's own unsuffixed branch, not to this one.
+// The hub therefore came out of clone with its weft primary sitting on a branch that does not exist,
+// and every verb that forks a new pair from it died on `fatal: invalid reference: <branch>-weft` —
+// `lyx fabric add` included, which is the example both the parent command and `add` itself document.
+//
+// A branch that already resolves is left untouched, so the ordinary non-empty-remote clone and the
+// re-clone adopt path are unaffected.
+func bornWeftPrimaryBranch(weftPath, branch string) error {
+	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, weftPath)
+	if err != nil {
+		return fmt.Errorf("verify weft primary branch %q: %w", branch, err)
+	}
+	if exitCode == 0 {
+		return nil
+	}
+
+	_, stderr, exitCode, err := gitexec.RunGit(
+		[]string{"commit", "--allow-empty", "-m", "fabric clone: initialise weft primary branch " + branch},
+		weftPath,
+	)
+	if err != nil {
+		return fmt.Errorf("initialise unborn weft primary branch %q: %w", branch, err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("initialise unborn weft primary branch %q failed (git exit %d): %s",
+			branch, exitCode, strings.TrimSpace(stderr))
+	}
+	return nil
 }
 
 // cloneRepo clones a repository from url to dest.
