@@ -54,10 +54,10 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] <warp-url> <weft-url> [board-url]
+	// clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] <warp-url> <weft-url>",
+		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-HUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
@@ -65,7 +65,19 @@ subpath, repo-wide config, warp junctions, and per-worktree module configs —
 a single command, no follow-up activation step required. Warp junctions are
 excluded through the warp's .git/info/exclude, never a committed .gitignore.
 
-  <warp-name>            — warp prime (the main working repo)
+There are two forms. "lyx fabric clone <weft-url>" derives the warp URL from
+the binding recorded on weft:main. "lyx fabric clone <weft-url> <warp-url>"
+supplies the warp URL explicitly, which is required the first time a weft is
+bound and is a hard error when it disagrees with an existing binding.
+
+The binding itself is a plain single-line record, ` + fabricengine.WarpBindingFileName + `,
+kept at the board root and holding the warp URL only. It is committed onto
+weft:main beside the recorded lyx-anchor subpath, written the first time a
+warp URL is supplied for an unbound weft.
+
+  <warp-name>            — warp prime (the main working repo); in the
+                           one-argument form its name is derived from the
+                           recorded binding
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
@@ -75,6 +87,12 @@ repo instead of its root — e.g. --subpath backend for a monorepo where lyx
 only manages the backend/ tree. On a re-clone, the previously recorded
 subpath is adopted from weft:main; an explicit --subpath that disagrees with
 it is a hard error.
+
+Use --force-bootstrap to bypass the weft-candidate guard when bootstrapping a
+brand-new weft remote that is neither empty nor already lyx-anchored (for
+example one created with an auto-generated README), which the guard would
+otherwise refuse. It applies to exactly that situation: it is ignored in the
+one-argument form and whenever a binding is already recorded.
 
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
 "main` + weftname.Suffix + `" for default branch "main") — fabric's
@@ -92,16 +110,18 @@ Clone wires everything automatically — no follow-up command is needed to
 activate junctions or config.
 
 Example:
-  lyx fabric clone https://github.com/user/repo https://github.com/user/repo-weft
-  lyx fabric clone --subpath backend https://github.com/user/mono https://github.com/user/mono-weft`,
+  lyx fabric clone --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
+  lyx fabric clone https://github.com/user/repo-weft`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
-			return runCloneWithReset(out, args, reset, subpath)
+			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
+			return runCloneWithReset(out, args, reset, subpath, forceBootstrap)
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
 	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the warp repo")
+	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
 	// add <slug>
