@@ -30,10 +30,13 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 
 - Every fabric-sense `host` token in `internal/fabricengine/` and `internal/fabriccli/` — exported identifiers, unexported identifiers, locals, test-function names, doc comments, string literals, and the embedded `post-checkout.sh` shell hook.
 - `internal/lyxtest`'s exported test-fixture seam: `CopyHostHub` → `CopyWarpHub`, the `HostFixture` type, `buildHostHub`/`hostHubTemplate`/`hostHubOnce`/`hostHubPath`/`hostHubBarePath`, and every caller across the 8 packages that use them (`cmd/lyx`, `internal/buildercli`, `internal/idecli`, `internal/lyxcwd`, `internal/webstercli`, `internal/configcli`, `internal/fabricengine`, `internal/fabriccli`).
+- The two other owner packages the tightened guard reaches: `internal/weftname` (`weftname.go:10`, "host-worktree slug") and `internal/boardengine` (`board.go:15`, `:17`, `:25`).
+  Without these the tightening cannot compile-and-pass — see Decisions, "Enforcement guard is tightened".
+- `tools/sandbox/*.go`: `hostURL` (`main.go:27`), `fabricHostURL` (`:35`), `fabricHostDir` (`:38`), `hostRepoDir` (`:136`–`:189`), and the user-visible error strings at `:139` and `:141`.
 - Four file renames as `Moves:` pairs (see Technical context).
-- User-visible CLI surface: `fabriccli` `Short`/`Long` strings, and `post-checkout.sh`'s stderr output.
-- **All** documentation carrying fabric-sense "host": `docs/overview.md`, `docs/sandbox-hub.md`, `docs/sandbox-howto.md`, `docs/shared-libs/configengine.md`, `README.md`, `manifest/roadmap.md`, `manifest/designs/loom.md`, `manifest/designs/host-visibility.md`, and the eight `tools/sandbox/SANDBOX-*-SUITE.md` agent prompt templates.
-- `CONSTRAINTS.md`'s Fabric Vocabulary Invariant — full rewrite (see Decisions).
+- User-visible CLI surface: `fabriccli` `Short`/`Long` strings, `post-checkout.sh`'s stderr output, and `tools/sandbox/main.go`'s two error strings.
+- **All** documentation carrying fabric-sense "host": `docs/overview.md`, `docs/sandbox-hub.md`, `docs/sandbox-howto.md`, `docs/shared-libs/configengine.md`, `README.md`, `manifest/roadmap.md`, `manifest/designs/loom.md`, `manifest/designs/host-visibility.md`, the eight `tools/sandbox/SANDBOX-*-SUITE.md` agent prompt templates, and the five `.claude/agents/crucible-reviewer-{low,medium,high,max,xhigh}.md` files (each line 16, "host-repo").
+- `CONSTRAINTS.md`'s Fabric Vocabulary Invariant — full rewrite (see Decisions) — plus the Cwd Resolution Invariant's bullet citing `HostLyxLink`/`HostJunctions`, and the Fabric Git Invariant's prose.
 - `internal/lyxcwd/enforcement_test.go` — tighten the guard so fabric-sense `host` fails inside the owner dirs too.
 - A new reusable tool `tools/wordswap/`, committed with tests.
 
@@ -52,7 +55,8 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 ### Rename mechanism — one generic case-preserving word swap, not an identifier table
 
 - **Decision:** a single generic, case-preserving, whole-word `host` → `warp` substitution over the in-scope file set, applied by a script — not a hand-maintained old→new identifier table, and not per-call-site `Edit` calls.
-  The substitution handles `host`→`warp`, `Host`→`Warp`, `HOST`→`WARP` and every embedded form in one pass: `hostBranch`→`warpBranch`, `HostJunctions`→`WarpJunctions`, `HOST_BRANCH`→`WARP_BRANCH`, `hostclean.go`→`warpclean.go`.
+  The substitution handles `host`→`warp`, `Host`→`Warp`, `HOST`→`WARP` and every unambiguously-bounded embedded form in one pass: `hostBranch`→`warpBranch`, `HostJunctions`→`WarpJunctions`, `HOST_BRANCH`→`WARP_BRANCH`.
+  All-lowercase compounds (`hostclean`, `hostlayout`, `hosthub`) are **not** swapped automatically — see "Ambiguous compounds are reported, not guessed" below.
 - **Rationale:** the boundary-case survey (see Technical context) found the exclude list is **empty** after one comment reword, so there is nothing for a per-identifier table to protect against.
   A generic swap covers identifiers, comments, test names, string literals, shell variables, and markdown prose with one mechanism; a table covers only what someone remembered to list.
   `go build ./... && go test ./...` is the completeness proof.
@@ -63,6 +67,7 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 
 - **Decision:** build `tools/wordswap/` as a language-agnostic, case-preserving, whole-word token-substitution tool, committed with unit tests, modelled on the existing `tools/mdreflow/` and `tools/godocreflow/` house pattern.
   Interface: `go run ./tools/wordswap -from host -to warp [-dry-run] [-skip <regexp>] <path-or-glob>...`.
+  It exits non-zero when it reported any ambiguous compound, so an unresolved ambiguity cannot pass unnoticed in a scripted run.
 - **Rationale:** the user's rule is that one-off specialised migration scripts are not committed, but a tool general enough to be reused is.
   `mdreflow` and `godocreflow` are exactly this precedent: repo-wide codemod sweeps, committed, tested, with a `Last run:` note in the package doc.
   A vocabulary rename is a recurring shape in this repo (this is the third fabric-vocabulary pass), so the next one should reuse the tool rather than rewrite a throwaway.
@@ -80,6 +85,24 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
   Crucially it works even though the target word already occurs in the input — `warp` has 576 pre-existing occurrences in `fabricengine` — which a naive round-trip or count-based check cannot handle.
 - **Rejected:** count invariant (`count(new, out) == count(new, in) + count(old, in) - skipped`) — cheap, but blind to text moved or lost elsewhere in the file.
   No invariant at all — breaks the house pattern both existing tools follow.
+
+### Ambiguous compounds are reported, not guessed — the LLM adjudicates
+
+- **Decision:** `wordswap`'s token rule swaps automatically only where the boundary is unambiguous.
+  A token boundary after `host` exists when the next character is an uppercase letter, a digit, an underscore, or a non-identifier character;
+  the boundary before `host` is the same rule in reverse, or start-of-input.
+  Everything of the form `host` + lowercase letters at a token start — `hostclean`, `hostlayout`, `hosthub`, and equally `hostname`, `localhost`, `conhost` — is classified **AMBIGUOUS**: not swapped, and printed with file and line number.
+  The implementing agent resolves each reported occurrence by judgment.
+  `wordswap` exits non-zero if any ambiguity was reported and left unresolved.
+- **Rationale:** `hostclean` and `hostname` are character-class-identical, so no mechanical rule can separate them — only a dictionary or a pre-enumerated list can, and both are exactly the "someone must have remembered it" failure a generic tool exists to avoid.
+  Reporting rather than guessing keeps the tool correct *and* general: the next vocabulary rename discovers its own ambiguities instead of requiring the author to know them up front.
+  This is the boundary between mechanical and judgment work that the whole task is organised around — script what is mechanical, let the LLM decide what is not, and make the tool surface the difference rather than hide it.
+- **Measured for this run:** five ambiguous occurrences in the swept set — `internal/fabricengine/hostclean.go:1`, `internal/fabricengine/drift.go:3`, `internal/fabricengine/hostlayout.go:1`, `internal/fabricengine/hostjunction_test.go:1`, and `internal/lyxtest/lyxtest.go:128` (the `lyxtest-hosthub-*` temp-dir prefix).
+  All five are the fabric sense and resolve to `warp`.
+  They are listed here as the expected report, not as a pre-enumerated exclude list — the tool must surface them independently, and a sixth occurrence appearing in the report is a finding, not a failure.
+- **Rejected:** a strict rule plus a hand-edit of the five known occurrences — works this once, but depends on the survey being exhaustive and teaches the next user nothing.
+  An `-also <literal,...>` flag for explicit extra matches — pushes the judgment back onto a pre-enumerated list, the thing being avoided.
+  A permissive rule where `host` + lowercase always matches — would rewrite `hostname`, `localhost`, and `conhost`, destroying the tool for reuse.
 
 ### Exclude list is empty — reword the one verb-sense hit instead of skipping it
 
@@ -119,6 +142,21 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 - **Rejected:** hold the brief's stated two-package scope and file a follow-up — leaves the most widely-imported instance of the retired name in place.
   Rename `CopyHostHub` but not `HostFixture` — splits one seam across two tasks.
 
+### `internal/weftname`, `internal/boardengine`, and `tools/sandbox` are in scope too
+
+- **Decision:** include all three.
+  `internal/weftname/weftname.go:10` ("host-worktree slug"), `internal/boardengine/board.go:15` ("host branch"), `:17` ("host's own default branch"), `:25` ("host/warp repo", "the host repo's"), and `tools/sandbox/main.go`'s `hostURL` (`:27`), `fabricHostURL` (`:35`), `fabricHostDir` (`:38`), `hostRepoDir` (`:136`–`:189`) plus its two user-visible error strings (`:139`, `:141`).
+- **Rationale:** for `weftname` and `boardengine` this is forced, not optional — the guard tightening removes the host-half owner skip, so leaving those four comment lines makes `go test` fail.
+  Scope had to grow or the tightening had to be abandoned.
+  For `tools/sandbox`, `CONSTRAINTS.md`'s owner set already names `tools/` and `sandbox/`, the eight `SANDBOX-*-SUITE.md` templates beside it are in scope, and `:139`'s `fabric hub host repo not found at %s` is a user-visible string — renaming the prose while the Go beside it keeps the retired name would be incoherent.
+- **Two verb-sense hits must be preserved by hand:** `board.go:23` ("whichever repo **hosts** the wiki") and `:26` ("wiki-**hosting** repo"), plus `tools/sandbox/main.go:32` ("the dedicated hub **hosts** fabric's stricter …").
+  So the exclude list is **not** empty once these packages are in scope — unlike the fabric packages, where the single verb-sense hit is reworded away.
+  Reword all three the same way `coalesce.go:1` is reworded, before the `wordswap` run, keeping the exclude list empty in practice.
+- **Rejected:** exempt `weftname`/`boardengine` in the guard — leaves the retired name in two owner packages and weakens the invariant to buy nothing.
+  Abandon the host-half tightening — reverses a decision made for good reason.
+  `tools/sandbox` as a follow-up task — leaves the retired name in a user-visible error message.
+  `tools/sandbox` error strings only, identifiers untouched — half a rename, and the guard does not cover `tools/` to catch the remainder.
+
 ### Vocabulary rule — Fabric outward, warp/weft where the two sides must be distinguished
 
 - **Decision:** the rule is **not** "never warp/weft outside fabric". It is:
@@ -142,8 +180,18 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 - **Rationale:** today the owner dirs are skipped entirely, so nothing machine-proves the rename stays done and a future card can reintroduce `hostBranch` freely.
   After this task the fabric packages contain zero "host" in any sense, so the tightened rule has no false positives to accommodate.
   Without this, the rename is a one-time cleanup rather than an enforced invariant.
+- **What the tightened guard does *not* cover — state this honestly, do not overclaim.**
+  Read from `internal/lyxcwd/enforcement_test.go`, the guard's reach after tightening is still bounded three ways:
+  - `hostGeometryIdentifiers` is five exact lowercased names (`hostbranch`, `hostlayoutfor`, `hostreason`, `hostjunction`, `hostclean`).
+    `HostJunctions`, `hostPath`, `hostBare`, `CopyHostHub` and `HostFixture` are **not** matched by the identifier half — only by the phrase half, and only where they occur inside a policed phrase.
+  - `*_test.go` files are excluded from all three rules (line ~868), so no test file is scanned.
+  - The walk covers `internal/` and `cmd/` `.go` files plus `internal/**/*.md` and the embedded agent prompt templates — never `docs/`, `README.md`, `manifest/`, `tools/sandbox/*.md`, `.claude/agents/`, or `post-checkout.sh`.
+  Therefore: production Go under `internal/`+`cmd/` is machine-guarded; **test files, documentation outside `internal/`, shell, and `tools/` remain a review obligation.**
+  The `CONSTRAINTS.md` rewrite must say this rather than implying full coverage.
 - **Rejected:** leave the guard as-is — review discipline only, and this is the third pass at the same vocabulary precisely because discipline alone did not hold.
   Tighten only the identifier half — leaves prose reintroduction unguarded.
+  Broaden the guard in this task (prefix rule instead of five exact names, lift the `_test.go` exclusion, extend walk roots to `docs/`/`manifest/`/`tools/`) — a materially larger change to a shared enforcement test, with its own false-positive surface across every module's prose;
+  it belongs in its own task, not bolted onto a rename.
 
 ### `CONSTRAINTS.md` — full rewrite of the Fabric Vocabulary Invariant
 
@@ -157,10 +205,10 @@ The successor `fabric-warp-binding-in-weft` (034, slice 10) depends on this task
 ### Commit granularity — four commits
 
 - **Decision:**
-  - **(a)** Reword `coalesce.go:1`; build `tools/wordswap/` with tests; run it over the Go file set (fabric packages, `internal/lyxtest`, and all callers). Identifiers, comments, test names, string literals.
+  - **(a)** Reword the three verb-sense hits (`coalesce.go:1`, `board.go:23`/`:26`, `tools/sandbox/main.go:32`); build `tools/wordswap/` with tests; run it over the Go file set (fabric packages, `internal/lyxtest`, `internal/weftname`, `internal/boardengine`, `tools/sandbox`, and all callers); resolve the five reported ambiguous compounds by hand. Identifiers, comments, test names, string literals.
   - **(b)** File renames as `Moves:` pairs.
-  - **(c)** Non-Go surfaces: `post-checkout.sh`, `fabriccli` `Short`/`Long` help strings.
-  - **(d)** Documentation sweep, `CONSTRAINTS.md` rewrite, and the `enforcement_test.go` tightening.
+  - **(c)** Non-Go surfaces: `post-checkout.sh`, `fabriccli` `Short`/`Long` help strings, `tools/sandbox/main.go`'s two error strings.
+  - **(d)** Documentation sweep, `CONSTRAINTS.md` rewrite (Fabric Vocabulary + Cwd Resolution citation + Fabric Git prose), and the `enforcement_test.go` tightening.
 - **Rationale:** each commit is `go build ./... && go test ./...` green and has one readable nature.
   (a)–(c) are mechanical; (d) is the only one requiring judgment, so it is the only one a reviewer must read closely.
 - **Rejected:** one commit — a ~300-file diff mixing mechanical and judgment work is unreviewable.
@@ -181,9 +229,24 @@ That survey is complete and its result is recorded here, so **mill-plan does not
 
 - Machine-sense `host` inside `internal/fabricengine` / `internal/fabriccli`: **none**.
   No `conhost`, no `localhost`, no `Hostname`, no `Write-Host`.
-- Verb-sense: exactly one — `internal/fabricengine/coalesce.go:1`, handled by reword.
+- Verb-sense across the whole in-scope set: exactly three — `internal/fabricengine/coalesce.go:1`, `internal/boardengine/board.go:23` and `:26`, plus `tools/sandbox/main.go:32`.
+  All are reworded before the sweep rather than skipped, so the run takes **no `-skip` argument**.
 - `DeriveHostName(hostURL)` looks machine-sense but is not: it extracts the **warp repository basename** from a raw URL or file path (`clone.go:355–371`). It renames to `DeriveWarpName(warpURL)`.
-- Therefore the `wordswap` run over the fabric packages takes **no `-skip` argument**.
+- Ambiguous all-lowercase compounds are handled by the tool's report, not by this list — see Decisions, "Ambiguous compounds are reported, not guessed".
+
+### Merged names — the co-occurrence check is generalized, not spot-checked
+
+Two `host*` names have a pre-existing `warp*` twin they merge into, so a naive swap could in principle shadow or redeclare.
+The check was run over **every** `host<X>` identifier in `internal/`, `cmd/`, and `tools/`, not just the one found first:
+
+| Merged name | Existing twin | Files containing both |
+| --- | --- | --- |
+| `hostPath` (47) | `warpPath` (321) | none |
+| `hostBare` (29) | `warpBare` (`coalesce_integration_test.go:95`) | none |
+
+No other `host<X>` has a `warp<X>` twin.
+Zero co-occurrence in both cases, so both are safe global substitutions.
+This matters because `go build` catches package-level redeclaration but **not** a local shadowing a same-named package-level symbol — the compile alone would not have proven this.
 
 ### The ban list is not a rename target
 
@@ -193,7 +256,13 @@ Two places name the retired vocabulary *in order to forbid it* and must keep the
 - `internal/lyxcwd/enforcement_test.go` — the `hostPhrases` slice (line ~633), the `hostGeometryIdentifiers` map (line ~622), the `fabricSenseHostPhrase` predicate and its sub-tests (`host_repo_phrase_fails`, `hostBranch_identifier_fails`, `host_verb_sense_passes`, `host_machine_sense_passes`, `write_host_cmdlet_passes`).
 
 **Neither file may be passed to `wordswap`.** Both are hand-edited in commit (d).
-The rest of `CONSTRAINTS.md` — lines 175, 180, 188, 200, 214 in the Fabric Git Invariant and elsewhere — does rename.
+
+The rest of `CONSTRAINTS.md` does rename, and the list is wider than the Fabric Git Invariant alone:
+
+- The **Cwd Resolution Invariant**'s bullet "Weft-sibling paths and junction construction belong to `internal/fabricengine`, never `lyxcwd`: `WeftWorktree`/`WeftRepoRoot`/`HostLyxLink`/`HostJunctions`/portal and launcher paths …" cites two identifiers this task retires.
+  It renames.
+  The Constraints section below records this correctly — the invariant's *semantics* are unaffected, but its identifier citations are not.
+- The **Fabric Git Invariant** — lines 175, 180, 188, 200, 214.
 
 ### File renames (`Moves:` pairs)
 
@@ -229,10 +298,20 @@ Note: `HostRootLock`, `HostBare`, `HostHub`, `HostSlug`, `HostName` and `HostLay
 
 `docs/overview.md` (13), `tools/sandbox/SANDBOX-FABRIC-SUITE.md` (12), `tools/sandbox/SANDBOX-CORE-SUITE.md` (12), `docs/sandbox-hub.md` (11), `docs/sandbox-howto.md` (8), `tools/sandbox/SANDBOX-PERCH-SUITE.md` (7), `tools/sandbox/SANDBOX-BURLER-SUITE.md` (7), `tools/sandbox/SANDBOX-BUILDER-SUITE.md` (7), `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` (6), `tools/sandbox/SANDBOX-REED-SUITE.md` (6), `tools/sandbox/SANDBOX-SHUTTLE-SUITE.md` (5), `README.md` (5), `manifest/roadmap.md` (4), `manifest/designs/host-visibility.md` (4), `CONSTRAINTS.md` (4 — but see "The ban list is not a rename target"), `manifest/designs/loom.md` (2), `docs/shared-libs/configengine.md` (1).
 
+Plus `.claude/agents/crucible-reviewer-{low,medium,high,max,xhigh}.md`, each at line 16: "This is a **host-repo** commit on the crucible worktree, never a weft-repo operation."
+Five files, one identical line — it names the warp side against the weft side, so it becomes "warp-repo" per the two-sided-distinction rule.
+
 The eight `tools/sandbox/SANDBOX-*-SUITE.md` files are **agent prompt templates** shipped into the sandbox hub and read by a black-box agent, so they are consumer-facing prose: the composite is "the Fabric repo"; warp/weft appear only where the sandbox's two sides must be distinguished.
 
 Applying the vocabulary rule per file: `manifest/designs/fabric-unified-view.md` and the `fabricengine`/`fabriccli` package docs are **owner prose** and keep warp/weft freely.
 Everything else is consumer prose — "Fabric" for the composite, warp/weft only for genuine two-sided distinctions.
+
+### Deliberate documentation exclusion
+
+`docs/benchmarks/test-suite-timing.md` is **not** swept, despite carrying the retired vocabulary at lines 547, 748, 754, 854, and 936 (`CopyHostHub`, `TestRemoveHostJunctionRemoved`, `TestWeftRollbackOnPostHostCreateFailure`, `TestWeftHostPristineEnforced`).
+It is a historical benchmark record of named test runs at specific past commits;
+renaming those names would falsify the record, and the file already preserves other retired names from the same era (line 547 still says `internal/warpengine`, line 748 still says `internal/worktree`).
+Historical records keep the vocabulary that was true when they were written.
 
 ### Existing guard mechanics
 
@@ -269,7 +348,8 @@ From `CONSTRAINTS.md`:
 
 - **Fabric Vocabulary Invariant** — rewritten by this task (see Decisions). Enforced by `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`).
 - **Fabric Git Invariant (warp + weft)** — prose renames (lines 175, 180, 188, 200, 214), semantics unchanged.
-- **Cwd Resolution Invariant** — unaffected; no path, anchor, or cwd-resolution change. `internal/lyxcwd` is touched only in its enforcement test and in `anchor_test.go`'s `CopyHostHub` call sites.
+- **Cwd Resolution Invariant** — **semantics** unaffected (no path, anchor, or cwd-resolution change), but its text is not: the "Weft-sibling paths and junction construction" bullet cites `HostLyxLink`/`HostJunctions` by name and renames with them.
+  `internal/lyxcwd` code is touched only in its enforcement test and in `anchor_test.go`'s `CopyHostHub` call sites.
 - **lyxtest Leaf Invariant** — unaffected; the rename adds no imports to `internal/lyxtest`.
 - **CLI/Cobra Invariant** — `Short` must remain present on every command; the help-tree tests must stay green after the `Short`/`Long` rewording.
 - **Documentation Lifecycle** — this task changes observable CLI text and cross-cutting infrastructure, so `docs/overview.md`, the module docs, and `CONSTRAINTS.md` land in the same commits. `manifest/roadmap.md` moves only for a completed or added planned item; here it is edited for prose and the `host-visibility.md` link, not for a roadmap status change.
@@ -281,8 +361,9 @@ From this repo's `CLAUDE.md`:
 
 Discovered during discussion:
 
-- `wordswap` must never be run over `CONSTRAINTS.md` or `internal/lyxcwd/enforcement_test.go`.
-- The reword of `coalesce.go:1` must precede the `wordswap` run.
+- `wordswap` must never be run over `CONSTRAINTS.md`, `internal/lyxcwd/enforcement_test.go`, or `docs/benchmarks/test-suite-timing.md`.
+- The three verb-sense rewords (`coalesce.go:1`, `board.go:23`/`:26`, `tools/sandbox/main.go:32`) must precede the `wordswap` run.
+- The guard tightening and the `weftname`/`boardengine` fixes must land in the same commit — the tightening fails `go test` without them.
 
 ## Testing
 
@@ -291,9 +372,13 @@ Write the tests first; this tool mutates ~300 files, so its correctness is the t
 Scenarios to cover:
 
 - Case-preserving substitution: `host`→`warp`, `Host`→`Warp`, `HOST`→`WARP`; embedded forms `hostBranch`→`warpBranch`, `HostJunctions`→`WarpJunctions`, `HOST_BRANCH`→`WARP_BRANCH`.
-- Whole-word/token boundary: `ghost`, `hostname`, `localhost`, `conhost` must **not** match, while `hostBranch` and `HostJunction` must.
+- Whole-word/token boundary: `ghost` and `localhost` must **not** match (lowercase precedes), while `hostBranch`, `HostJunction`, `HOST_BRANCH` and bare `host` must.
   This is the subtle one — the boundary is camel/snake-token-aware, not merely `\b`-anchored, since `hostBranch` has no word boundary after `host`.
   Pin the exact intended rule with tests before implementing.
+- **Ambiguity classification** — the other subtle one, and the reason the tool is safe to reuse.
+  `hostclean`, `hostlayout`, `hosthub`, `hostname`, `conhost` at a token start followed by lowercase must all be classified AMBIGUOUS: not swapped, reported with file and line.
+  Assert both halves — that the file content is unchanged for them, *and* that they appear in the report.
+  Assert the non-zero exit when the report is non-empty.
 - Mixed forms in one line, and multiple occurrences on one line.
 - `-skip <regexp>`: matching occurrences are left untouched and reported; non-matching ones still swap.
 - **Reversibility invariant**: including the critical case where the target word already occurs in the input (mirroring `warp`'s 576 pre-existing occurrences), plus a deliberately-broken transform that must be caught and leave the file untouched.
@@ -302,7 +387,8 @@ Scenarios to cover:
 
 **The rename itself — verification is mechanical, not new tests.**
 `go build ./... && go test ./...` green after each of the four commits.
-A clean compile is the actual proof that no call site was missed and no identifier collided; it is cheap enough to run per commit rather than only at the end.
+A clean compile proves no call site was missed and no package-level identifier collided; it is cheap enough to run per commit rather than only at the end.
+It does **not** prove the two merged names are safe — a local shadowing a same-named package-level symbol still compiles — which is why the generalized co-occurrence check in Technical context was run separately and must be re-run if the rename table grows.
 
 **Existing tests that must stay green and will need name updates:** the ~16 renamed `Test*` functions listed in Technical context are renamed by `wordswap` in commit (a), so they must still be discovered and pass.
 `cmd/lyx/helptree_test.go`, `longlist_test.go`, and `jsonhelp_test.go` must stay green after the CLI help rewording in commit (c) — verified to contain no `host` assertions, so this should be a no-op, but it is the CLI/Cobra Invariant's check and must be confirmed rather than assumed.
@@ -315,9 +401,11 @@ After removing the host half's owner skip, add cases proving:
 - `configsync`'s narrower literal-and-comment carve-out is unaffected.
 - The existing sense-discrimination sub-tests still pass: `host_verb_sense_passes`, `host_machine_sense_passes`, `write_host_cmdlet_passes`.
 
-**Repo-wide completeness check, run manually at the end of commit (d):** grep the fabric packages for any remaining `host` in any case.
-Expect zero hits.
-This is the assertion the tightened enforcement test now encodes permanently.
+**Repo-wide completeness check, run manually at the end of commit (d):** grep for any remaining `host` in any case across the in-scope set — the fabric packages, `internal/lyxtest`, `internal/weftname`, `internal/boardengine`, `tools/sandbox`, and every swept doc.
+Expect zero hits outside the three named exclusions (the `CONSTRAINTS.md` ban list, `enforcement_test.go`'s ban list, and `docs/benchmarks/test-suite-timing.md`).
+
+This is a **manual** check, and it stays manual: as recorded in Decisions, the tightened guard covers production Go under `internal/`+`cmd/` only — not `*_test.go`, not `docs/`, not `tools/`, not shell.
+Do not describe the tightened test as encoding this check permanently; it does not.
 
 ## Q&A log
 
@@ -336,3 +424,11 @@ This is the assertion the tightened enforcement test now encodes permanently.
 - **Q:** What replaces "host repo" in non-owner docs? **A:** "Fabric" — the name of the fully wired-up composite, warp with junctions into weft inside it.
 - **Q:** How is `CONSTRAINTS.md`'s Fabric Vocabulary Invariant updated? **A:** Full rewrite — retirement of `host`, the Fabric external name, and the warp/weft CLI carve-out are three faces of one rule.
 - **Q:** Commit granularity? **A:** Four commits: (a) reword + tool + Go sweep, (b) file renames, (c) non-Go surfaces, (d) docs + CONSTRAINTS + enforcement tightening.
+
+Round 1 review gaps:
+
+- **Q:** The guard tightening reaches `internal/weftname` and `internal/boardengine`, which were out of scope — extend scope, exempt them, or drop the tightening? **A:** Extend scope. The tightening fails `go test` otherwise, so this was forced rather than optional.
+- **Q:** `CONSTRAINTS.md`'s Cwd Resolution Invariant cites `HostLyxLink`/`HostJunctions`, but the discussion claimed the invariant was "unaffected" — how is that reconciled? **A:** Corrected. Semantics unaffected, identifier citations rename.
+- **Q:** The token-boundary rule cannot both reject `hostname`/`localhost`/`conhost` and match `hostclean`/`hostlayout` — how is the ambiguity resolved? **A:** The tool reports rather than guesses. `host` + lowercase is classified AMBIGUOUS, printed with file and line, and adjudicated by the implementing LLM; the tool exits non-zero while any remain. Mechanical work is scripted, judgment work is not, and the tool surfaces the boundary instead of hiding it.
+- **Q:** Does the tightened guard really "encode permanently" the zero-host assertion? **A:** No — it covers production Go under `internal/`+`cmd/` only. The overclaim is removed and the guard's real reach is stated; broadening it is its own task.
+- **Q:** Is `tools/sandbox/*.go` in or out, given it holds `hostURL`/`hostRepoDir` and a user-visible error string? **A:** In. `tools/` and `sandbox/` are named owner dirs, and renaming the prompt templates while the Go beside them keeps the retired name would be incoherent.
