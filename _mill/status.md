@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pre-sweep-rewords
+phase: approved-go-sweep
 slug: fabric-host-to-warp-rename
 branch: fabric-host-to-warp-rename
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-09T06:29:34Z'
 implementing  '2026-08-09T06:30:13Z'
 approved-wordswap-tool  '2026-08-09T06:38:43Z'
 approved-pre-sweep-rewords  '2026-08-09T06:41:14Z'
+approved-go-sweep  '2026-08-09T06:45:47Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 5ee3045bad8521e8dfaf5fb889a3d8ac8ba29526
     verify_baseline_failures: []
   - name: go-sweep
-    state: running
+    state: approved
     implementer_session: 415260b7-642b-4ffd-b0b6-4838e87edbaf
     start_sha: f05af15cdb48055cb0ee77c665d8795e11d6eedb
+    commit_sha: d6d3e68c4d82b055a322b577f55fbf3d21a9740f
     verify_baseline_failures: []
   - name: file-renames
     state: pending
