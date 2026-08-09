@@ -336,6 +336,70 @@ Repeat the whole scenario with `--subpath backend`, since the anchor and the bra
 
 ---
 
+### F14 -- A slug is a directory name, not a path (`remove`, `add`)
+
+**Covers:** fabric
+
+**Goal:** "Hand every teardown verb a slug that is a relative path element rather than a name, and confirm nothing outside the named pair is touched."
+
+**Watch:** On a hub with one added pair, run `lyx fabric remove ..`, then `lyx fabric remove .`, then `lyx fabric remove ../evil`, `lyx fabric remove a/b`, and `lyx fabric remove ""`.
+Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_board _launchers _portals <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
+Then confirm an ordinary `lyx fabric remove <slug>` still works.
+(Historical: `.` and `..` passed every rule in the shared slug validator -- not empty, no separator, no weft suffix, no reserved hub name -- and `<hub>/_launchers/<anchor>/<slug>` then resolved to `<hub>` itself, whose `os.RemoveAll` deleted the warp clone, the weft clone, `_board`, every pair and all uncommitted work, after which the verb returned `"failed to check worktree status"` -- an error claiming nothing had happened.)
+Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` and the damage lands one level lower.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F15 -- Two verbs at once on one hub (`unwire`, `reconcile`, `add`, `remove`)
+
+**Covers:** fabric
+
+**Goal:** "Run fabric verbs simultaneously in different worktrees of one hub and confirm the shared state they all write survives the interleaving."
+
+**Watch:** On a hub with six added pairs, append a pattern of your own -- say `/my-secret-build-dir` -- to `<warp>/.git/info/exclude`, and note that the file also carries git's default six-line comment block.
+That file lives in the repo's COMMON gitdir, so it is ONE file for the whole hub, not one per worktree.
+Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lyx fabric unwire` and `lyx fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
+The count must never drop and your own pattern must be present after every round, alongside `/_board`, `/_lyx` and `/.lyx` exactly once each.
+(Historical: the count collapsed from 10 lines to 3 at round 6 and to 1 at round 9 on two independent hubs -- the operator's pattern and git's comment block destroyed, and fabric's own junction exclusions transiently lost, which makes every worktree's junctions show as untracked and a plain `git add -A` commit symlinks into the warp repo. The identical sequence run sequentially never lost a line.)
+Also run the destructive verbs against each other -- `prune --apply` alongside `checkout`, `cleanup --apply` alongside `commit`, `add` alongside `remove` -- and confirm every verb either succeeds or refuses with git's real message, and `lyx fabric pairs` afterwards reports every surviving pair `in_sync` and `junction_healthy`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F16 -- The post-checkout hook actually fires (`clone`, `add`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm the drift-warning hook is installed where git looks for it, runs, and neither clobbers nor re-enables an operator's own hook."
+
+**Watch:** After `clone`, `git checkout -b feature` in the warp worktree must print `fabric: warp/weft out of sync` naming both branches, and `lyx fabric checkout feature` must NOT leak that text into its JSON output.
+Then three variations, each on its own hub.
+(a) Put an EXECUTABLE `post-checkout` of your own in `<warp>/.git/hooks/`, run `lyx fabric add <slug>`, and confirm it was moved to `post-checkout.user`, that a real `git checkout` runs your hook first and then prints fabric's warning.
+(b) Repeat with your hook at mode 0644 -- a hook you had DISABLED. The wrapper git ends up with must be executable (fabric's warning still fires), the backup must still be 0644, and your disabled hook must not run. (Historical: `os.WriteFile` applies its perm argument only when it CREATES the file, so the wrapper inherited 0644 and git printed `hint: the hook was ignored because it's not set as executable` -- silently retiring both hooks.)
+(c) Set `core.hooksPath` to a directory outside `.git`, run `lyx fabric add <slug>`, and confirm the hook lands in THAT directory and that `git checkout` onto a diverged branch still warns. (Historical: fabric composed `<git-common-dir>/hooks`, which ignores `core.hooksPath`, wrote into a directory git no longer consults, and reported success.)
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F17 -- The portal and launcher surface is repairable (`add`, `reconcile`, `remove`)
+
+**Covers:** fabric
+
+**Goal:** "Break the hub-level `_portals`/`_launchers` artefacts and confirm the repair verb repairs them and the teardown verb owns only what it created."
+
+**Watch:** After `lyx fabric add <slug>`, confirm `<hub>/_portals/<slug>` is a link resolving through to `<hub>/<slug>-weft/_lyx` and `<hub>/_launchers/<slug>/` holds `ide` and `fabric-checkout` scripts.
+Delete both, then run `lyx fabric reconcile`: it must report `portal_restored` for that pair -- not `already_healthy` -- and both artefacts must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose portal and launchers were gone, and restored neither, leaving remove-and-re-add as the only recovery.)
+Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down. Do the same with `<hub>/_portals/<slug>` replaced by a real directory holding a file -- it too must survive.
+Finally confirm the hub's prime worktree is left alone throughout: it never had a portal or a launcher directory, and `reconcile` must not start creating them.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
