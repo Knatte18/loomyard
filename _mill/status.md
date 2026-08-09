@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: raddle-finalize-fold-and-link-repair
 branch: raddle-finalize-fold-and-link-repair
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-09T11:44:19Z'
+discussion-fix-r2  '2026-08-09T12:25:21Z'
+discussed  '2026-08-09T12:25:22Z'
 ```

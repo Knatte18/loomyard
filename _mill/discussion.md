@@ -24,8 +24,9 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
 **In:**
 
 - Fold Raddle-regeneration into `finalize.md` as a first-class part of Finalize's own contract — a dedicated section, not a `Related`-section mention.
-- Re-read `finalize.md` end to end and remove all producer-model residue found, not just the six spec-listed line items.
-- Rewrite `raddle.md`'s three surviving phase-slot references (`:3`, `:54`, `:85`), including closing its open question at `:54`.
+- Re-read **all three owned files** end to end and remove all producer-model residue found — `finalize.md`, `raddle.md`, and `self-report.md`.
+  Every line list in this document is a starting inventory, never a bound.
+- Rewrite `raddle.md`'s surviving phase-slot and always-run-step framing, including closing its open question at `:54`.
 - Repair the 5 dead links/anchors in the three owned files.
 - Repair 6 additional dead links in 3 unowned files that no task in the set claims: `manifest/designs/semantic-index.md` (x3), `manifest/designs/webster-parallel-execution.md` (x2), `docs/shared-libs/README.md` (x1).
 - Convert `finalize.md:26`'s prose invariant citation into a real markdown link, so the checker covers that break class too.
@@ -101,13 +102,23 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
 
 ### raddle-md-three-slot-references
 
-- Decision: all three are rewritten.
+- Decision: **`raddle.md` gets the same end-to-end re-read `finalize.md` gets** — the list below is a starting inventory, not a bound, and the same applies to `self-report.md`.
+  The four confirmed sites:
+  - **`:7`** — "living in `weft`: an always-run step after Webster".
+    Retired framing, and it already contradicts this file's own `## When it runs: deferred to merge-time, not mid-task` section three sections later.
+    Raddle is not a step after Webster;
+    regeneration happens inside the Finalize merge.
+    Reword to describe what Raddle *is* (codeguide's weaving-vocabulary successor, living in `weft`, generating docs over the diff a plan produced) without asserting when it runs — the dedicated section below it owns that.
+  - **`:3`**, **`:54`**, **`:85`** — as detailed below.
   - `:3` (status blockquote) — drop "Already has a reserved-but-unbuilt phase slot between Webster and Finalize"; state instead that Raddle-regeneration is folded into `Finalize`'s contract, and repoint the anchor to `loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots`.
   - `:54` — convert "**Open, not yet decided:** whether this removes raddle's reserved phase slot..." into the recorded decision, pointing at `finalize.md`'s new fold section and at `shed.md:19`/`loom.md:65-67` as where it landed.
     Repoint the same dead anchor.
   - `:85` (`Related` bullet) — "where raddle's phase slot sits in the phase machine" rewords to point at the flat producer list and the fold, since no slot exists.
     The link itself resolves (no anchor); only the prose is wrong.
 - Rationale: the spec named `:3` and `:85`, but `:54` is where the third dead anchor and the open question both live, and the fold is decided — leaving the question open would directly contradict `shed.md:19`.
+  `:7` is the case that proves the enumeration method was wrong rather than merely incomplete: it carries the retired framing without using the word "slot", so no slot-focused line list would ever have caught it.
+  An open re-read rule catches that class;
+  a closed list cannot.
 - Rejected: leaving `:85` (its prose asserts a structure that no longer exists, even though the link resolves);
   keeping `:54`'s question and noting it as decided elsewhere (contradicts the landed decision, and leaves the dead anchor).
 
@@ -217,7 +228,13 @@ Task D owns `finalize.md`, `raddle.md`, and `self-report.md`, and no other task 
      reference-style links and `<...>` autolinks (out of grammar by decision, not by oversight);
      link-shaped text inside fenced code blocks (deliberately skipped);
      prose mentions of a filename that are not markdown links (`roadmap.md:98`'s `scout-redesign.md` reference is a live example that this task leaves standing);
-     and everything outside `manifest/` and `docs/`, including `README.md`, `CLAUDE.md`, and `internal/**/*.md`.
+     and `.md` files outside `manifest/` and `docs/` as **scan sources** — `README.md`, `CLAUDE.md`, and `internal/**/*.md` have their own outgoing links checked by nobody.
+
+     **The root restriction is source-side only.**
+     `manifest/` and `docs/` name which files are *scanned* for outgoing links.
+     They do not restrict where those links may *point*: every link target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, inside those roots or not.
+     State this explicitly in `CONSTRAINTS.md`, because the two facts sit one sentence apart and an implementer could otherwise read "outside `manifest/` and `docs/` is not reached" as licence to skip anchor resolution for out-of-root targets.
+     That reading would silently un-guard `finalize.md:26`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` — the exact break class round 1 added the link to cover — and also the ten `../../internal/*/doc.go` targets this task creates or touches.
   5. **The allowlist's self-expiring contract** — keyed by `(file, target)`, each entry naming its owning task, and an entry whose key goes unmatched by a scan is reported as deletable.
 
 ## Technical context
@@ -244,8 +261,8 @@ Note that two of its line citations are already stale (see Gotchas).
 | File | Why |
 |---|---|
 | `manifest/designs/finalize.md` | fold section + full residue re-read + 2 link repairs + invariant citation converted to a checked link |
-| `manifest/designs/raddle.md` | 3 slot references, 2 of which carry dead anchors |
-| `manifest/designs/self-report.md` | 1 dead anchor at `:30` |
+| `manifest/designs/raddle.md` | end-to-end re-read; 4 confirmed residue sites (`:3`, `:7`, `:54`, `:85`), 2 of which carry dead anchors |
+| `manifest/designs/self-report.md` | end-to-end re-read; 1 confirmed dead anchor at `:30` |
 | `manifest/designs/semantic-index.md` | 3 dead `scout-redesign.md` links |
 | `manifest/designs/webster-parallel-execution.md` | 2 dead `scout-redesign.md` links |
 | `docs/shared-libs/README.md` | 1 wrong relative path at `:12` |
@@ -375,7 +392,21 @@ The natural sequence:
 4. Add a deliberately-broken link to a scratch fixture or temporarily to a real file, confirm the test catches it, then revert.
    This proves the checker is actually resolving rather than trivially passing.
 
-**Scenarios the test must cover** (as subtests or table cases, shape left to mill-plan):
+**Fixture seam — decided, because the obvious choice silently does nothing.**
+Most scenarios below (missing file, missing anchor, fenced-code skip, duplicate-heading `-1`, both stale cases) need a synthetic tree rather than the real repo.
+**Do not put that tree under `testdata/`.**
+`walkEnforcementRoots` skips any directory whose name *contains* `"testdata"` (`internal/lyxcwd/enforcement_test.go:128`), so a `testdata/` fixture walks to zero files and every subtest built on it passes **vacuously** — green, and testing nothing.
+
+The seam instead:
+
+- Factor the checker into **pure helpers** that take data rather than reading the filesystem: a slug function (`string -> string`), a heading-set extractor (`[]byte -> map[string]bool`, applying the duplicate `-1` suffixes in document order), and an inline-link extractor (`[]byte -> []link`, fence-aware).
+  Every grammar and slug scenario is a plain table test against these — no tree needed at all.
+- For the scenarios that genuinely need a tree (link resolution across files, the two stale-allowlist cases), build it under **`t.TempDir()`** and call `walkEnforcementRoots(t, tmpRoot, []string{"."}, []string{".md"}, ...)`.
+  Its `repoRoot` parameter is an ordinary path, not hardwired to the real repo root, so a temp root composes with it directly and the `testdata` skip never fires.
+- The single real-repo case — the actual `manifest/` + `docs/` walk with the live allowlist — stays as its own subtest using `repoRootForEnforcement(t)`.
+  That is the one that must report zero.
+
+**Scenarios the test must cover** (as subtests or table cases, shape otherwise left to mill-plan):
 
 - A relative link to an existing file with no fragment resolves.
 - A relative link to a missing file fails.
