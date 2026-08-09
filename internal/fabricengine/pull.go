@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
@@ -278,11 +279,11 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 // warpSHATrailerFormatRecordSep (index.go) are reused unchanged, so the split
 // can never be confused by ordinary commit content.
 //
-// RelPath-blind scope (documented limitation): the pathspec is
-// pattern.PathspecFile/PathspecDir at the weft worktree root, matching the
-// slice's relpath-is-dot-for-slice-2 precedent (the same simplification
-// Fabric.Commit already accepts). A subpath-anchored hub whose _lyx lives at
-// RelPath/_lyx in a shared weft checkout is out of scope for this slice.
+// Anchor scope: the pathspec is pattern.PathspecFile/PathspecDir joined onto the pair's recorded
+// anchor via ScopedPathspec, the same way Fabric.Commit scopes its own routing prefixes.
+// A root pathspec would report an empty residue on a subpath-anchored hub — telling a caller
+// "nothing needs review" for exactly the commits that do, since that hub's PATTERN content lives at
+// <anchor>/_lyx/PATTERN.md and never at the weft worktree root.
 //
 // If fromWeftSHA == toWeftSHA there are no post-anchor commits at all, so
 // this returns (nil, nil) without spawning git. A non-zero git exit returns a
@@ -293,9 +294,17 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 		return nil, nil
 	}
 
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: resolve anchor for %s: %w", f.warpPath, err)
+	}
+
 	format := warpSHATrailerFormatRecordSep + "%H" + warpSHATrailerFormatUnitSep
 	rangeArg := fromWeftSHA + ".." + toWeftSHA
-	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", pattern.PathspecFile, pattern.PathspecDir}
+	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--"}
+	for _, spec := range ScopedPathspec(l.AnchorRel, []string{pattern.PathspecFile, pattern.PathspecDir}) {
+		args = append(args, filepath.ToSlash(spec))
+	}
 
 	stdout, stderr, code, err := gitexec.RunGit(args, f.weftPath)
 	if err != nil {

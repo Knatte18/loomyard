@@ -20,9 +20,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -501,5 +503,62 @@ func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 
 	if got := currentSHA(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after failed Pull() = %q; want unchanged %q (warp must never be touched)", got, preWarpHEAD)
+	}
+}
+
+// TestPull_IdentifiesPatternResidueUnderSubpathAnchor is the subpath-anchored counterpart to
+// TestPull_IdentifiesPatternResidue: on a hub anchored at "backend", PATTERN content lives at
+// backend/_lyx/PATTERN.md and never at the weft worktree root, so a root-relative residue pathspec
+// reported an empty residue — telling a caller "nothing needs review" about exactly the commit that
+// does.
+func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
+	fixturesDir := t.TempDir()
+	f, warpPath, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
+
+	// Record a subpath anchor for this pair the same way a real hub does: the marker at the hub's
+	// board root, which lyxcwd.ResolveWorktree reads back for AnchorRel.
+	const anchor = "backend"
+	boardDir := BoardDir(filepath.Dir(warpPath))
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", boardDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
+		t.Fatalf("write anchor marker: %v", err)
+	}
+
+	anchoredLyxDir := filepath.Join(weftFixture.WeftPath, anchor, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(anchoredLyxDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", anchoredLyxDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(anchoredLyxDir, "PATTERN.md"), []byte("anchored pattern content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "anchored pattern residue commit")
+	anchoredPatternSHA := currentSHA(t, weftFixture.WeftPath)
+
+	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
+
+	result, err := f.Pull(SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	if !result.Reconciled {
+		t.Fatalf("Pull() Reconciled = false; want true")
+	}
+
+	var found *PatternResidueEntry
+	for i := range result.PatternResidue {
+		if result.PatternResidue[i].WeftSHA == anchoredPatternSHA {
+			found = &result.PatternResidue[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("Pull() PatternResidue = %+v; want an entry for the anchored PATTERN.md commit %q",
+			result.PatternResidue, anchoredPatternSHA)
+	}
+	wantPath := anchor + "/" + pattern.PathspecFile
+	if !slices.Contains(found.Paths, wantPath) {
+		t.Errorf("PatternResidue entry Paths = %v; want it to contain %q", found.Paths, wantPath)
 	}
 }

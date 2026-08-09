@@ -28,6 +28,8 @@
 // touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
 // written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` weft-succeeded/warp-failed contract.
+// Those paths are scoped through the pair's recorded anchor, so a subpath-anchored hub's residue is
+// found at `<anchor>/_lyx/PATTERN.md` rather than silently reported as empty.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
