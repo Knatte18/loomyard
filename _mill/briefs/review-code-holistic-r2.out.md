@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: builder: delete internal/builderengine and internal/buildercli, retire builder-contract.md as a reference — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-09
+```
+
+## Findings
+
+### [NIT:consistency] Confusing v2-retirement sentence in plan-format-v3.md banner
+**Location:** `docs/reference/plan-format-v3.md:5`
+**Issue:** "[plan-format.md v2](plan-format.md) is retired now that its predecessor is gone" inverts the intended causality — v2 has no "predecessor" being retired here; the actual reason v2 is retired is that its *consumer* (builder) is deleted, or simply that v3 supersedes it. The sentence reads backward and is momentarily confusing on a pinned-contract doc.
+**Fix:** Reword to something like "v2 is retired now that builder, its sole consumer, is gone" or simply "v2 is retired; v3 is its sole successor."
+
+## Verdict
+
+APPROVE
+All five batches are fully realized, cross-batch contracts hold, the acceptance bare-word/package-name sweep is clean, and only one cosmetic wording nit remains.
+MILL_REVIEW_END
