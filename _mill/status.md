@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: _mill/plan
@@ -28,4 +28,23 @@ plan-review-r4  '2026-08-09T09:44:08Z'
 plan-fix-r4  '2026-08-09T09:44:08Z'
 plan-fix-r5  '2026-08-09T09:52:55Z'
 planned  '2026-08-09T09:53:05Z'
+implementing  '2026-08-09T09:53:35Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: warp-binding core
+    state: pending
+  - name: probe and clone flip
+    state: pending
+  - name: cli surface
+    state: pending
+  - name: clone integration tests
+    state: pending
+  - name: reconcile backfill
+    state: pending
+  - name: docs and sandbox suites
+    state: pending
 ```
