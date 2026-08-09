@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-warp-binding-in-weft
 branch: fabric-warp-binding-in-weft
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-09T07:56:53Z'
+discussion-fix-r5  '2026-08-09T08:43:44Z'
+discussed  '2026-08-09T08:43:44Z'
 ```
