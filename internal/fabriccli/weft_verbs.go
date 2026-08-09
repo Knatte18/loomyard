@@ -194,7 +194,9 @@ Related commands:
 		Use:   "pull",
 		Short: "pull warp and weft, reconciling a rebased warp",
 		Long: `Pulls both sides of the pair. Weft is fast-forwarded first via a plain
-git pull. Warp is then fetched and inspected against its upstream tracking ref:
+git pull — skipped as a no-op on a freshly bootstrapped hub whose weft branch
+has no upstream yet. Warp is then fetched and inspected against its upstream
+tracking ref:
 
   - A clean fast-forward (local warp HEAD is still an ancestor of the fetched
     upstream tip) simply advances warp — no reconcile needed.

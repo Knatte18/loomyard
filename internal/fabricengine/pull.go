@@ -25,7 +25,11 @@ import (
 // treat as PATTERN-residue (potentially replayed against the wrong warp baseline).
 type PullResult struct {
 	// WeftPulled reports whether the weft ff-pull (PullWeft) ran and
-	// succeeded. Every field below is only ever populated once this is true —
+	// succeeded — or was skipped as a vacuous no-op because the weft branch
+	// has no upstream yet (a freshly bootstrapped hub whose suffixed primary
+	// branch exists only locally until the first push lands; there is nothing
+	// to fast-forward from, so skipping is success, not failure).
+	// Every field below is only ever populated once this is true —
 	// see Fabric.Pull's weft-first ordering.
 	WeftPulled bool
 	// WarpFetched reports whether the warp fetch (f.warp.Fetch) ran and
@@ -119,6 +123,18 @@ var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and 
 // The weft side has already been fast-forwarded when this is returned; warp is untouched.
 var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted changes; commit or stash them, then re-run pull; aborting, no warp changes")
 
+// weftHasUpstream reports whether the weft worktree's current branch has a configured upstream
+// tracking ref.
+// A nonzero exit from rev-parse @{u} means no upstream (or a detached HEAD), which for Pull's weft
+// step is the nothing-to-pull-from case, never an error.
+func (f *Fabric) weftHasUpstream() (bool, error) {
+	_, _, code, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, f.weftPath)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: resolve weft upstream in %s: %w", f.weftPath, err)
+	}
+	return code == 0, nil
+}
+
 // warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
 // state ResetHard would silently destroy.
 // Untracked files are deliberately excluded: reset --hard leaves them alone, so they are no reason
@@ -162,8 +178,17 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 
 	var result PullResult
 
-	if err := f.PullWeft(opts); err != nil {
+	// A weft branch with no upstream has nothing to fast-forward from — the freshly bootstrapped
+	// hub's suffixed primary exists only locally until the first push lands — so the weft pull is
+	// skipped as a vacuous success rather than surfacing git's "no tracking information" failure.
+	weftHasUpstream, err := f.weftHasUpstream()
+	if err != nil {
 		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
+	}
+	if weftHasUpstream {
+		if err := f.PullWeft(opts); err != nil {
+			return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
+		}
 	}
 	result.WeftPulled = true
 	hadUnpushed, err := f.warp.HasUnpushed()

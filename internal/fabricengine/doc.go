@@ -7,7 +7,9 @@
 // (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
 // `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
-// `PullWeft`, then warp is fetched and inspected against its upstream tracking ref.
+// `PullWeft` — skipped as a vacuous success when the weft branch has no upstream yet, the freshly
+// bootstrapped hub's ordinary state until its first push lands — then warp is fetched and inspected
+// against its upstream tracking ref.
 // A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply
 // advances warp.
 // A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an

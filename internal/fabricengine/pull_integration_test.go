@@ -435,6 +435,49 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	}
 }
 
+// TestPull_NoWeftUpstreamIsACleanNoOp guards the freshly-bootstrapped-hub case: the suffixed weft
+// primary is created locally at clone time and gains an upstream only when the first push lands, so
+// until then Pull's weft step must skip as a vacuous success — not surface git's "no tracking
+// information" exit — and the warp side must still be processed.
+func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
+	fixturesDir := t.TempDir()
+	warpPath := newPlainWarpRepo(t)
+	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
+	lyxtest.MustRun(t, warpPath, "git", "push", "origin", "main")
+
+	// A weft repo whose branch has no upstream at all — the post-bootstrap state before any push.
+	weftPath := t.TempDir()
+	lyxtest.MustRun(t, weftPath, "git", "init", "-q", "-b", "main-weft")
+	lyxtest.MustRun(t, weftPath, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, weftPath, "git", "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(weftPath, "seed.txt"), []byte("weft"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	lyxtest.MustRun(t, weftPath, "git", "add", ".")
+	lyxtest.MustRun(t, weftPath, "git", "commit", "-q", "-m", "init")
+
+	f := newFabric(t, warpPath, weftPath)
+
+	// Advance the warp remote so the warp half has real work to do.
+	clone := filepath.Join(fixturesDir, "warp-clone-noupstream")
+	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
+	lyxtest.MustRun(t, clone, "git", "push")
+
+	result, err := f.Pull(SyncOptions{})
+	if err != nil {
+		t.Fatalf("Pull() error = %v; want a clean no-op weft skip", err)
+	}
+	if !result.WeftPulled {
+		t.Errorf("Pull() WeftPulled = false; want true (vacuous no-op success)")
+	}
+	if !result.WarpAdvanced || result.NewWarpHEAD != ffSHA {
+		t.Errorf("Pull() WarpAdvanced=%v NewWarpHEAD=%q; want warp advanced to %q", result.WarpAdvanced, result.NewWarpHEAD, ffSHA)
+	}
+}
+
 // TestPull_StaleIndexRebuiltBeforeAnchorWalk guards the false ErrNoSurvivingAnchor a stale
 // correspondence index produced: a re-cloned hub's per-pair index can be empty (or missing older
 // entries) while the adopted weft trailer history — the sole source of truth — still carries a
