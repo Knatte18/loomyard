@@ -6,17 +6,22 @@
 // The suffixed branch is adopted from an existing origin/<branch>-weft when the remote already
 // carries one (a re-clone of a hub with weft history) and created fresh only otherwise;
 // the freshly-cloned default branch itself remains, unclaimed.
+//
+// Against a genuinely empty weft remote the fresh branch would be UNBORN — `git checkout -b` writes
+// no ref on an unborn HEAD — so bornWeftPrimaryBranch lands an initialising empty commit on it.
+// Without that, the hub came out of clone with its weft primary on a branch that did not exist, and
+// every pair-creating verb forked from it failed.
 
 package fabricengine
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -26,12 +31,13 @@ import (
 // fabric's own clone-orchestration teardown path.
 var RemoveAll = os.RemoveAll
 
-// staleFabricAnchorName is the pre-rename lyx-anchor marker filename. It has
-// no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
-// it exists here only so CloneHub can detect an old clone's leftover marker
-// and hard-error with re-clone as the remedy, rather than silently
-// re-anchoring at the wrong subpath.
-const staleFabricAnchorName = ".fabric-anchor"
+// staleFabricAnchorName is the pre-rename lyx-anchor marker filename, aliased from its single
+// declarer in internal/lyxcwd so clone's guard and lyxcwd's own read-time guard can never drift
+// apart.
+// It has no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
+// it is named here only so CloneHub can detect an old clone's leftover marker and hard-error rather
+// than silently re-anchoring at the wrong subpath.
+const staleFabricAnchorName = lyxcwd.StaleAnchorFileName
 
 // CloneOptions carries CloneHub's parameters as named fields rather than positionals.
 // This is a struct and not five positionals because two adjacent optional URL strings are exactly the
@@ -127,6 +133,17 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		return CloneResult{}, fmt.Errorf("weft URL is required")
 	}
 
+	// Validate the requested subpath before anything is created or fetched, so a structurally
+	// impossible anchor never reaches the point where teardown is the only way out. An absolute or
+	// escaping subpath used to pass the later "does it exist in the cloned warp" probe, because
+	// filepath.Join swallows a leading separator and ".." lands on a directory that certainly
+	// exists.
+	requestedAnchor, err := lyxcwd.ValidateAnchorRel(opts.Subpath)
+	if err != nil {
+		return CloneResult{}, err
+	}
+	subpathRequestedExplicitly := strings.TrimSpace(opts.Subpath) != ""
+
 	var name, hubPath, effective string
 	var writeRecord, derivedFromRecord bool
 
@@ -139,8 +156,8 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		}
 		hubPath = HubPath(cwd, name)
 		if opts.Reset {
-			if err := RemoveAll(hubPath); err != nil {
-				return CloneResult{}, fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+			if err := resetHub(hubPath); err != nil {
+				return CloneResult{}, err
 			}
 		}
 		if _, err := os.Stat(hubPath); err == nil {
@@ -184,8 +201,8 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		}
 		hubPath = HubPath(cwd, name)
 		if opts.Reset {
-			if err := RemoveAll(hubPath); err != nil {
-				return CloneResult{}, fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+			if err := resetHub(hubPath); err != nil {
+				return CloneResult{}, err
 			}
 		}
 		// The asymmetry with the two-argument form is deliberate: an offline two-argument re-clone
@@ -242,7 +259,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// would always have succeeded — there is no failure path left to log.
 	hookLocation := &lyxcwd.Location{HubPath: hubPath, WorktreeName: name}
 	if hookErr := InstallPostCheckoutHook(hookLocation); hookErr != nil {
-		log.Printf("fabric clone: post-checkout hook install (non-fatal): %v", hookErr)
+		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", hookErr)
 	}
 
 	// Step 6: Clone weft repo
@@ -284,9 +301,14 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// for a subpath-anchored repo.
 	if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
 		if _, newErr := os.Stat(filepath.Join(boardDir, lyxcwd.AnchorFileName)); os.IsNotExist(newErr) {
+			// The remedy names the marker rename, never "re-clone": this error is emitted BY a
+			// clone, so telling the operator to clone again just reproduces it. The record lives on
+			// weft:main, so migrating it is a rename plus a commit in an existing hub's board
+			// worktree, after which this clone succeeds.
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
-				"found stale %s marker with no %s beside it at %s; re-clone this hub to migrate to the renamed marker",
-				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir))
+				"found stale %s marker with no %s beside it at %s; in an existing hub's %s worktree run `git mv %s %s` and commit, then retry this clone",
+				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir,
+				BoardDirName, staleFabricAnchorName, lyxcwd.AnchorFileName))
 		}
 	}
 
@@ -295,12 +317,23 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	if data, statErr := os.ReadFile(markerPath); statErr == nil {
 		// Adopt path: ensureBoardWorktree checked out weft:main, which already
 		// carries a committed marker from a prior clone — this is a re-clone.
-		recorded := strings.TrimSpace(string(data))
-		if requested := filepath.Clean(opts.Subpath); opts.Subpath != "" && requested != "." && requested != recorded {
-			// A non-default requested subpath disagrees with the recorded
-			// anchor: never silently re-anchor, the record is authoritative.
+		// The recorded value is validated too, not trusted: an older binary could have recorded an
+		// absolute or escaping anchor, and adopting one produces a hub whose every weft commit
+		// fails.
+		recorded, recordedErr := lyxcwd.ValidateAnchorRel(strings.TrimSpace(string(data)))
+		if recordedErr != nil {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("recorded anchor in %s on weft:main is unusable: %w", lyxcwd.AnchorFileName, recordedErr))
+		}
+		if subpathRequestedExplicitly && requestedAnchor != recorded {
+			// An explicitly requested subpath disagrees with the recorded anchor: never silently
+			// re-anchor, the record is authoritative.
+			// "." is not exempted. It used to be, because the CLI's own flag default was "." and the
+			// two cases were indistinguishable — so `--subpath .` against a hub recorded at a real
+			// subpath was silently adopted, the one value that escaped the never-silently-re-anchor
+			// rule. The flag now defaults to the empty string, which normalises to "." with
+			// subpathRequestedExplicitly false, so an explicit "." can be honoured as explicit here.
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf(
-				"requested --subpath %q does not match the recorded anchor %q for this hub", requested, recorded))
+				"requested --subpath %q does not match the recorded anchor %q for this hub", requestedAnchor, recorded))
 		}
 		anchor = recorded
 	} else {
@@ -308,12 +341,9 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		// Validate the requested subpath exists in the warp worktree before
 		// recording it, so a typo like "backedn" fails loudly instead of
 		// silently anchoring to a directory that was never there.
-		anchor = filepath.Clean(opts.Subpath)
-		if opts.Subpath == "" {
-			anchor = "."
-		}
+		anchor = requestedAnchor
 		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
-			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned warp repo", anchor))
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist as a directory in the cloned warp repo", anchor))
 		}
 		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("write %s: %w", markerPath, err))
@@ -379,12 +409,13 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 // git branch --show-current at weftPath after this function returns would
 // incorrectly see the already-renamed <warpBranch>-weft, not warpBranch.
 func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
+	stdout, showStderr, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
 	if err != nil {
 		return "", fmt.Errorf("resolve weft primary branch: %w", err)
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("git branch --show-current in weft primary failed (git exit %d)", exitCode)
+		return "", fmt.Errorf("git branch --show-current in weft primary failed (git exit %d): %s",
+			exitCode, strings.TrimSpace(showStderr))
 	}
 	warpBranch = strings.TrimSpace(stdout)
 	if warpBranch == "" {
@@ -408,14 +439,56 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 		checkoutArgs = append(checkoutArgs, "origin/"+suffixedBranch)
 	}
 
-	_, _, exitCode, err = gitexec.RunGit(checkoutArgs, weftPath)
+	_, checkoutStderr, exitCode, err := gitexec.RunGit(checkoutArgs, weftPath)
 	if err != nil {
 		return "", fmt.Errorf("create weft primary branch %q: %w", suffixedBranch, err)
 	}
 	if exitCode != 0 {
-		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d)", suffixedBranch, exitCode)
+		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d): %s",
+			suffixedBranch, exitCode, strings.TrimSpace(checkoutStderr))
+	}
+
+	if err := bornWeftPrimaryBranch(weftPath, suffixedBranch); err != nil {
+		return "", err
 	}
 	return warpBranch, nil
+}
+
+// bornWeftPrimaryBranch gives the weft primary's suffixed branch a real commit when the clone left
+// it UNBORN, so refs/heads/<suffixed> resolves the moment CloneHub returns.
+//
+// Against a genuinely empty weft remote — the documented first-ever-setup path probeWeftBinding's
+// unborn-HEAD check and ensureBoardWorktree's orphan branch both exist to serve — `git checkout -b
+// <branch>` on an unborn HEAD succeeds but creates another unborn branch: no ref is written.
+// Nothing later fills it in either, because the clone-time commit the CLI lands through Bolt goes to
+// the _board worktree's own unsuffixed branch, not to this one.
+// The hub therefore came out of clone with its weft primary sitting on a branch that does not exist,
+// and every verb that forks a new pair from it died on `fatal: invalid reference: <branch>-weft` —
+// `lyx fabric add` included, which is the example both the parent command and `add` itself document.
+//
+// A branch that already resolves is left untouched, so the ordinary non-empty-remote clone and the
+// re-clone adopt path are unaffected.
+func bornWeftPrimaryBranch(weftPath, branch string) error {
+	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, weftPath)
+	if err != nil {
+		return fmt.Errorf("verify weft primary branch %q: %w", branch, err)
+	}
+	if exitCode == 0 {
+		return nil
+	}
+
+	_, stderr, exitCode, err := gitexec.RunGit(
+		[]string{"commit", "--allow-empty", "-m", "fabric clone: initialise weft primary branch " + branch},
+		weftPath,
+	)
+	if err != nil {
+		return fmt.Errorf("initialise unborn weft primary branch %q: %w", branch, err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("initialise unborn weft primary branch %q failed (git exit %d): %s",
+			branch, exitCode, strings.TrimSpace(stderr))
+	}
+	return nil
 }
 
 // cloneRepo clones a repository from url to dest.
@@ -445,18 +518,82 @@ func cloneRepo(url, dest string) error {
 	gitURL := filepath.ToSlash(url)
 	gitDest := filepath.ToSlash(destName)
 
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
+	stdout, cloneStderr, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
 	if err != nil {
 		return fmt.Errorf("clone failed: %w", err)
 	}
 
 	if exitCode != 0 {
-		return fmt.Errorf("clone %q to %q failed (git exit %d)", url, dest, exitCode)
+		return fmt.Errorf("clone %q to %q failed (git exit %d): %s",
+			url, dest, exitCode, strings.TrimSpace(cloneStderr))
 	}
 
 	_ = stdout // stdout is not used; we only check for errors
 
 	return nil
+}
+
+// resetHub implements --reset: it removes an existing hub at hubPath, but only once it has
+// established that hubPath IS one.
+//
+// The hub name is derived, never typed — from the warp URL in the two-argument form, and from the
+// warp URL recorded on the weft's own `.lyx-warp` binding in the one-argument form, where the
+// operator never sees the name of the directory being deleted at all.
+// An unconditional RemoveAll on a derived path therefore destroyed any directory that merely
+// happened to be called `<name>-HUB`, user content and all, on a flag whose help promises to
+// "remove an existing hub".
+//
+// The hub predicate is structural and cheap: a fabric hub always holds `<hub>/_board`, and always
+// holds at least one `*-weft` sibling.
+// Either is enough — a hub whose `_board` worktree was hand-deleted is still recognisably a hub, and
+// so is one mid-clone whose board has not been materialised yet.
+// An absent path stays a silent no-op, so --reset remains idempotent.
+func resetHub(hubPath string) error {
+	info, statErr := os.Stat(hubPath)
+	if os.IsNotExist(statErr) {
+		return nil
+	}
+	if statErr != nil {
+		return fmt.Errorf("reset: inspect %s: %w", hubPath, statErr)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("reset: refusing to remove %s: it is not a directory, so it is not a hub", hubPath)
+	}
+
+	if !looksLikeHub(hubPath) {
+		return fmt.Errorf(
+			"reset: refusing to remove %s: it has no %s and no %q sibling, so it is not a fabric hub — remove it yourself if that is really what you meant",
+			hubPath, BoardDirName, "*"+weftname.Suffix)
+	}
+
+	if err := RemoveAll(hubPath); err != nil {
+		return fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
+	}
+	return nil
+}
+
+// looksLikeHub reports whether hubPath carries the structural marks of a fabric hub: a `_board`
+// entry, or at least one weft sibling directory.
+// An unreadable directory answers false, the conservative direction — a directory fabric cannot
+// enumerate is exactly where an unconditional recursive removal is least defensible.
+func looksLikeHub(hubPath string) bool {
+	if _, err := os.Stat(filepath.Join(hubPath, BoardDirName)); err == nil {
+		return true
+	}
+
+	entries, err := os.ReadDir(hubPath)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, ok := WeftWarpSlug(entry.Name()); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // teardownHub removes the Hub directory and returns an error combining the cause with

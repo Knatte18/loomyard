@@ -71,18 +71,11 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			Failures: []Failure{{Check: CheckGeometry, Reason: "no main worktree resolved"}},
 		}, nil
 	}
-	// At-worktree-root: Preflight only validates a worktree from its own root,
-	// since checks 2-4 all read state anchored at WorktreeRoot. A subdirectory
-	// invocation is reported distinctly (and short-circuits) rather than
-	// silently validating the wrong scope.
-	if l.AnchorRel != "." {
-		return Report{
-			OK: false,
-			Failures: []Failure{
-				{Check: CheckWorktreeRoot, Reason: fmt.Sprintf("invoked from subdirectory %q, not the worktree root", l.AnchorRel)},
-			},
-		}, nil
-	}
+	// There is deliberately no at-the-anchor check here. lyxcwd.Resolve applies a strict cwd gate,
+	// so a successful resolve already proves cwd equals AnchorPath() exactly;
+	// a non-"." AnchorRel therefore means "this repo is subpath-anchored", never "the caller stood
+	// in a subdirectory", and rejecting it failed every subpath-anchored hub unconditionally.
+	// Checks 2-4 below are all Location-based and anchor-aware in their own right.
 
 	var report Report
 

@@ -11,6 +11,7 @@ package fabricengine
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -20,7 +21,7 @@ import (
 // worktree adopts it. Otherwise (genuinely empty weft remote), the worktree is created
 // as an orphan. Returns any git error.
 func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
-	_, _, exitCode, err := gitexec.RunGit(
+	_, stderr, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + warpBranch},
 		weftRepoRoot,
 	)
@@ -29,7 +30,7 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 	}
 
 	if exitCode == 0 {
-		_, _, exitCode, err := gitexec.RunGit(
+		_, adoptStderr, exitCode, err := gitexec.RunGit(
 			[]string{"worktree", "add", boardPath, warpBranch},
 			weftRepoRoot,
 		)
@@ -37,12 +38,13 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 			return fmt.Errorf("add _board worktree on existing branch %q: %w", warpBranch, err)
 		}
 		if exitCode != 0 {
-			return fmt.Errorf("git worktree add %q %q failed (git exit %d)", boardPath, warpBranch, exitCode)
+			return fmt.Errorf("git worktree add %q %q failed (git exit %d): %s",
+				boardPath, warpBranch, exitCode, strings.TrimSpace(adoptStderr))
 		}
 		return nil
 	}
 
-	_, _, exitCode, err = gitexec.RunGit(
+	_, stderr, exitCode, err = gitexec.RunGit(
 		[]string{"worktree", "add", "--orphan", "-b", warpBranch, boardPath},
 		weftRepoRoot,
 	)
@@ -50,7 +52,8 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 		return fmt.Errorf("add orphan _board worktree on branch %q: %w", warpBranch, err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("git worktree add --orphan -b %q %q failed (git exit %d)", warpBranch, boardPath, exitCode)
+		return fmt.Errorf("git worktree add --orphan -b %q %q failed (git exit %d): %s",
+			warpBranch, boardPath, exitCode, strings.TrimSpace(stderr))
 	}
 	return nil
 }

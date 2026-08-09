@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -50,8 +51,9 @@ clone-time primary.
 fabric is the sole warp↔weft git-coordination module. See docs/overview.md.
 
 Example:
+  lyx fabric clone https://github.com/user/repo-weft
   lyx fabric add my-task
-  lyx fabric checkout my-task`,
+  lyx fabric remove my-task`,
 		RunE: clihelp.GroupRunE,
 	}
 
@@ -82,10 +84,16 @@ warp URL is supplied for an unbound weft.
   <warp-name>` + weftname.Suffix + `       — weft prime (lyx artefacts: config, raddle, weft commits)
 
 Use --reset to tear down an existing hub before cloning (idempotent re-clone).
+The teardown is refused unless the target really is a fabric hub — it must hold
+a _board entry or a weft sibling. The hub name is derived rather than typed (in
+the one-argument form, from the binding recorded on the weft), so a directory
+that merely happens to be named <name>-HUB is reported and left alone.
 
 Use --subpath <rel> (default ".") to anchor lyx at a subdirectory of the warp
 repo instead of its root — e.g. --subpath backend for a monorepo where lyx
-only manages the backend/ tree. On a re-clone, the previously recorded
+only manages the backend/ tree. It must be a path relative to the warp repo
+root that stays inside it: an absolute path, or one escaping via "..", is
+refused before anything is cloned. On a re-clone, the previously recorded
 subpath is adopted from weft:main; an explicit --subpath that disagrees with
 it is a hard error.
 
@@ -121,7 +129,12 @@ Example:
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
-	cloneCmd.Flags().String("subpath", ".", "anchor lyx at this subdirectory of the warp repo")
+	// The default is the EMPTY string, not "." — CloneHub normalises empty to the "." root anchor
+	// anyway, and only an empty default lets it tell "the operator typed nothing" apart from "the
+	// operator typed --subpath .". With "." as the cobra default the two were identical, so an
+	// explicit --subpath . against a hub recorded at a real subpath was silently adopted instead of
+	// refused like every other disagreeing value.
+	cloneCmd.Flags().String("subpath", "", `anchor lyx at this subdirectory of the warp repo (default ".", the repo root)`)
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
@@ -163,10 +176,18 @@ use "lyx fabric pairs".`,
 		Use:   "remove [--force] <slug>",
 		Short: "destroy a dual warp+weft worktree pair",
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
-(_lyx and .lyx), portal junctions, and launchers.
+(_lyx, .lyx, and the _board convenience link), portal junctions, and
+launchers.
 
 By default the command refuses to remove a worktree with uncommitted changes
 on either the warp or weft side. Use --force to remove anyway.
+
+<slug> must name a worktree pair, never hub geometry. The hub's prime
+worktree (the warp repository itself), the reserved hub entries (_board,
+_portals, _launchers, _lyx, .lyx), and any name ending in the weft suffix
+are all refused — the same set "lyx fabric add" refuses. When git itself
+declines to remove the worktree, fabric reports git's own reason and deletes
+nothing unless the target is a registered linked worktree of this repo.
 
 Example:
   lyx fabric remove my-task
@@ -190,6 +211,12 @@ When no branch is given, the current warp branch is re-resolved and used as
 the target — this performs an in-place re-checkout that re-points junctions
 and re-syncs the weft side, which is how the fabric-checkout launcher
 shortcut invokes this command.
+
+The command refuses before switching anything if the WEFT worktree has
+uncommitted tracked changes: a half-switched pair is the one state this verb
+must never produce, so commit or stash the weft side first. A dirty WARP
+worktree is not refused — git carries those changes across the switch, as it
+would for a plain "git switch".
 
 The switch is all-or-nothing: on any weft-side or junction failure the warp
 switch is rolled back so the pair is never left half-switched.
@@ -227,21 +254,59 @@ report an unmanaged branch untouched.
 Junction repair covers BOTH warp junctions (_lyx and .lyx): if either is
 missing, not a link, or points elsewhere, this re-wires every junction for
 that pair in one call — a pair with only one junction broken is repaired,
-not reported already-healthy.`,
+not reported already-healthy.
+
+It also restores a pair's hub-level portal junction (_portals/<slug>) and
+launcher directory (_launchers/<slug>) when either has gone missing, reporting
+portal_restored rather than already_healthy. The hub's prime worktree is
+skipped: it never had either, so there is nothing there to repair.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runReconcile(out, args) }),
 	})
 
 	// prune [--apply]
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
-		Use:   "prune [--apply]",
+		Use:   "prune [--apply] [--force]",
 		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
+		Long: `Prune scans for on-disk pair debris in two passes: a registered pair whose
+warp worktree directory is gone (stale), and a weft worktree with no warp
+sibling at all (orphaned).
+
+By default this is a dry run: every stale or orphaned pair is reported and
+nothing is removed. With --apply, each entry's weft worktree is removed, the
+dead slug's portal junction and launcher directory are torn down, and stale
+worktree registrations are pruned on both repos. Branches are never deleted
+here — orphaned weft branches are "lyx fabric cleanup"'s job.
+
+The weft worktree is removed forcefully, so an entry whose weft worktree
+still carries uncommitted tracked changes is reported "protected": true and
+skipped. Use --force to remove it anyway, discarding those changes. Untracked
+files are not a reason to protect an entry — they are the ordinary residue of
+an abandoned pair — and they go with the worktree when it is removed.
+
+The orphan pass enumerates by directory NAME alone, so an ordinary directory —
+or a wholly unrelated git clone — parked in the hub under a name ending in the
+weft suffix is reported too. Such an entry is flagged "unowned": true and is
+never removed, in any mode: --force does not apply to it, because the question
+it answers is not "is this work worth keeping" but "is this fabric's at all".
+Only a path the hub's weft repo registers as a linked worktree is removable.
+
+A dry run computes the same protected and unowned verdicts the matching --apply
+run would act on, so "protected": false with no "unowned" in a dry run means
+"--apply would remove this".
+
+Example:
+  lyx fabric prune
+  lyx fabric prune --apply
+  lyx fabric prune --apply --force`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := pruneCmd.Flags().GetBool("apply")
-			return runPruneWithFlag(out, apply)
+			force, _ := pruneCmd.Flags().GetBool("force")
+			return runPruneWithFlags(out, apply, force)
 		}),
 	}
 	pruneCmd.Flags().Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
+	pruneCmd.Flags().Bool("force", false, "also remove a weft worktree with uncommitted tracked changes")
 	cmd.AddCommand(pruneCmd)
 
 	var cleanupCmd *cobra.Command
@@ -256,13 +321,27 @@ Flag matrix:
   --apply --force     also delete gate-protected task branches.
   --force (alone)     report only; --force does not imply --apply.
 
+A dry run reports the same protected verdict the matching --apply run would
+act on, so "protected: false" in a dry run means "--apply would delete this".
+
 A weft branch currently checked out at a worktree is always reported as
 protected and never deleted, in every mode — git cannot delete a checked-out
 branch, and its being checked out means the pair is still on disk.
 
+The repo's primary weft branch (the weft pairing of the branch the hub's
+_board worktree is on, e.g. "main-weft") is likewise always protected, in
+every mode. It stays the durable weft line however the prime worktree happens
+to be checked out, so a coordinated checkout onto another branch must not
+promote it to a deletable orphan. If that primary cannot be determined —
+a hub with no readable _board worktree — cleanup refuses to enumerate
+orphans at all rather than sweep on a guess.
+
 The weft repo may also hold weft branches without the fabric suffix (e.g.
 inherited from history predating fabric's uniform naming scheme); those are
-reported but never deleted here, since they are not fabric-managed.`,
+reported but never deleted here, since they are not fabric-managed.
+
+Deletion is local to the hub's weft repo: a deleted branch's copy on the
+weft remote, if it was ever pushed, is left untouched.`,
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
@@ -277,14 +356,14 @@ reported but never deleted here, since they are not fabric-managed.`,
 		Use:   "unwire",
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
-junction present (_lyx and .lyx) and their warp .git/info/exclude
-entries. It leaves every weft-side directory intact — weft-side content is
-never deleted by unwire.
+junction present (_lyx, .lyx, and the _board convenience link) and their
+warp .git/info/exclude entries. It leaves every weft-side directory intact —
+weft-side content is never deleted by unwire.
 
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
-always tears wiring down. It leaves the repo's anchor and repo-wide config
-(.lyx-anchor, fabric.yaml on weft:main) intact, so a later
+always tears wiring down. It leaves the repo-wide weft:main records intact
+(.lyx-anchor, the .lyx-warp binding, and fabric.yaml), so a later
 "lyx fabric reconcile" can re-wire this worktree.
 
 Example:
@@ -306,14 +385,44 @@ func RunCLI(out io.Writer, args []string) int {
 	return clihelp.Execute(Command(), out, args)
 }
 
-// runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
-func runAdd(out io.Writer, args []string) int {
-	cwd, err := lyxcwd.Getwd()
+// resolveWarpLocation resolves the process's cwd into the acting Location, refusing any cwd that
+// resolves onto something other than a warp worktree.
+//
+// Every topology verb goes through it rather than calling lyxcwd.Resolve directly, because
+// lyxcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a
+// weft sibling, or inside the `_board` link fabric wires at every anchor, otherwise resolves
+// cleanly and drives the verb against geometry that does not exist.
+// It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
+func resolveWarpLocation() (cwd string, l *lyxcwd.Location, err error) {
+	cwd, err = lyxcwd.Getwd()
 	if err != nil {
-		return output.Err(out, err.Error())
+		return "", nil, err
 	}
 
-	l, err := lyxcwd.Resolve(cwd)
+	l, err = lyxcwd.Resolve(cwd)
+	if err != nil {
+		// On a gate failure the generic error can actively misdirect: from a weft sibling's
+		// NON-anchored directory it names the weft's own anchored directory as the place to stand,
+		// where RequireWarpWorktree then refuses anyway.
+		// Classify the worktree ungated and prefer the specific weft/board refusal when it applies.
+		if worktreeLocation, worktreeErr := lyxcwd.ResolveWorktree(cwd); worktreeErr == nil {
+			if refusal := fabricengine.RequireWarpWorktree(worktreeLocation); refusal != nil {
+				return "", nil, refusal
+			}
+		}
+		return "", nil, err
+	}
+
+	if err := fabricengine.RequireWarpWorktree(l); err != nil {
+		return "", nil, err
+	}
+
+	return cwd, l, nil
+}
+
+// runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
+func runAdd(out io.Writer, args []string) int {
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -345,12 +454,7 @@ func runAdd(out io.Writer, args []string) int {
 
 // runList parses and executes the fabric list subcommand.
 func runList(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	cwd, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -375,12 +479,7 @@ func runList(out io.Writer, _ []string) int {
 // supplied, it resolves the current warp branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -426,12 +525,7 @@ func runCheckout(out io.Writer, args []string) int {
 // runPairs executes the fabric pairs subcommand, enumerating all warp↔weft
 // pairs with drift and pollution data.
 func runPairs(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -462,13 +556,16 @@ func runPairs(out io.Writer, _ []string) int {
 // is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
 // downgrade a reconcile verdict.
 func runReconcile(out io.Writer, _ []string) int {
-	cwd, err := lyxcwd.Getwd()
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
-	l, err := lyxcwd.Resolve(cwd)
-	if err != nil {
+	// Reconcile is the repair verb, so a missing repo-wide fabric config is healed here rather
+	// than reported: without this, LoadConfig's "not initialized here; run \"lyx fabric
+	// reconcile\"" remedy was circular when reconcile itself emitted it.
+	// ReconcileFabricAt only adds absent keys and never rewrites a recorded pathspec.
+	if _, err := configsync.ReconcileFabricAt(fabricengine.BoardDir(l.HubPath), true); err != nil {
 		return output.Err(out, err.Error())
 	}
 
@@ -534,14 +631,9 @@ func runReconcile(out io.Writer, _ []string) int {
 	return output.Ok(out, envelope)
 }
 
-// runPruneWithFlag executes the prune logic with the resolved apply flag.
-func runPruneWithFlag(out io.Writer, apply bool) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+// runPruneWithFlags executes the prune logic with the resolved apply and force flags.
+func runPruneWithFlags(out io.Writer, apply, force bool) int {
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -553,7 +645,7 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 
 	top := fabricengine.NewTopology(cfg)
 
-	r, err := top.Prune(l, apply)
+	r, err := top.Prune(l, apply, force)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -565,12 +657,7 @@ func runPruneWithFlag(out io.Writer, apply bool) int {
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and
 // force flags.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -593,12 +680,7 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
-
-	l, err := lyxcwd.Resolve(cwd)
+	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

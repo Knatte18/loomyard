@@ -204,11 +204,13 @@ func TestPreflight_NotAGitRepo(t *testing.T) {
 	assertCheckSet(t, report, CheckGeometry)
 }
 
-// TestPreflight_SubdirectoryInvocation asserts that Preflight() invoked from a subdirectory of the
-// worktree (RelPath != ".")
-// short-circuits with a single worktree-root failure.
+// TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor asserts that a legitimately
+// subpath-anchored repo is validated on its merits rather than short-circuited.
+// Preflight used to reject any AnchorRel != "." as "invoked from a subdirectory", which the strict
+// cwd gate had already made impossible: a successful Resolve proves cwd equals AnchorPath(), so a
+// non-"." anchor describes the repo's geometry, not where the caller stood.
 // Exercises the public Preflight() for the same reason as TestPreflight_NotAGitRepo.
-func TestPreflight_SubdirectoryInvocation(t *testing.T) {
+func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 	// setupPreflightFixture's t.TempDir()-backed fixture must be created before
 	// restoreCwd registers its cleanup — see restoreCwd's doc comment: on
 	// Windows, cleanup must chdir back out of the fixture before Go tries to
@@ -221,10 +223,8 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 		t.Fatalf("mkdir %s: %v", sub, err)
 	}
 
-	// Record "sub" as the recognized anchor so Resolve(sub) succeeds under the
-	// strict cwd gate with AnchorRel == "sub" -- an unrecorded subdirectory
-	// invocation is now ErrCwdOutsideAnchor, a hard error, not the soft
-	// CheckWorktreeRoot report this test exists to prove.
+	// Record "sub" as the recognized anchor so Resolve(sub) succeeds under the strict cwd gate
+	// with AnchorRel == "sub" -- exactly the shape `lyx fabric clone --subpath sub` produces.
 	anchorPath := filepath.Join(fabricengine.BoardDir(f.Layout.HubPath), lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
@@ -238,7 +238,12 @@ func TestPreflight_SubdirectoryInvocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}
-	assertCheckSet(t, report, CheckWorktreeRoot)
+	for _, failure := range report.Failures {
+		if failure.Check == CheckGeometry {
+			t.Errorf("Preflight() on a subpath-anchored hub reported %q: %s; want the anchor treated as legal geometry",
+				failure.Check, failure.Reason)
+		}
+	}
 }
 
 // TestPreflight_WarpDirty covers all three ways Clean can observe a dirty repo (a

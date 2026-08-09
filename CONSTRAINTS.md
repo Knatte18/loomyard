@@ -29,7 +29,10 @@ Fuller design/how-to lives in godoc and `docs/`.
 - Geometry is structural, never config/env-overridable.
 - The weft-backed junction name-set is injected from fabric config (`fabric.yaml`'s `pathspec`, read at `<Hub>/_board/_lyx/config/fabric.yaml`) — `fabricengine`'s concern, not `lyxcwd`'s.
 - `AnchorRel` resolves from the recorded `.lyx-anchor` marker, not positionally from cwd;
-  cwd is a validated at-or-below gate (`ErrCwdOutsideAnchor` if violated), falling back to `"."` only when the marker is absent. `ResolveWorktree`/`ResolveWithAnchor` read the same anchor with no cwd gate.
+  cwd is a validated exact-equality gate (`ErrCwdOutsideAnchor` if violated), falling back to `"."` only when the marker is absent. `ResolveWorktree`/`ResolveWithAnchor` read the same anchor with no cwd gate.
+- The `"."` fallback applies to an ABSENT anchor only, never a stale one: a board carrying the pre-rename `.lyx-anchor` spelling (`lyxcwd.StaleAnchorFileName`) with no renamed marker beside it returns `ErrStaleAnchorMarker` from every resolver.
+  `lyxcwd` is the single declarer of both marker names;
+  fabric's clone-time guard aliases them rather than re-declaring the literals.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
 
@@ -205,12 +208,15 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 - **Cross-module exclusions.**
   The `_lyx` tree is shared by every round-loop module, so every weft-commit caller passes a **positive-only** file list — no `:(exclude)` pathspec magic — built via `fabricengine.ScopedPathspec`.
   Machine-local artifacts (pause flags, fork prompts, module `*.lock` files) live under `.lyx` (see Durable-vs-Ephemeral State Invariant), never reaching a weft-commit pathspec.
-  `fabricengine.seedWeftArtifactExcludes` covers only fabric's own `.weft/` lock directory and gitrepo's push-lock file.
+  `fabricengine.seedWeftArtifactExcludes` covers the weft repo's never-tracked operational artifacts: fabric's own `.weft/` lock directory, gitrepo's push-lock file, `.lyx/`, and every module's `*.lock`/`*.swaplock` write- and swap-lock files.
   **Known limitation:** does not untrack an artifact a pre-fix sync already committed — `git rm --cached <path>` is the manual remedy.
 - **Never-committed routing.** `structuralNeverCommittedDirs` membership makes a path uncommittable, filtered only where the pathspec is constructed (`ScopedPathspec` callers, via `pathspecNames`) — never in `Config.Dirs()`, `WiredNames`, or the slug-reservation union.
   `classifyPaths` routes such a path to a third bucket; `Commit` hard-errors on a non-empty third bucket rather than dropping silently.
   `weftPathspecFilter`'s `git ls-files` probe passes `--exclude-standard`.
 - **Junction exclusion** goes through `.git/info/exclude` on both sides (warp: `WireJunctions`; weft: `seedWeftArtifactExcludes`), never a tracked `.gitignore`.
+  That file lives in the repo's COMMON gitdir, so it is one repo-wide file, never per-worktree: an exclude entry is removed only once NO warp worktree in the hub still wires a junction of that name (`namesWiredInSiblingWorktrees`).
+  Because it is repo-wide, every read-modify-write of it — warp and weft alike — goes through `fabricengine.mutateGitExclude`, which holds a repo-wide flock across read, rewrite and write and replaces the file by same-directory rename.
+  No caller may read or write `info/exclude` directly: an unsynchronised `os.ReadFile`/`os.WriteFile` pair loses a sibling worktree's update, and `os.WriteFile`'s truncate-then-write lets a concurrent reader observe an empty file and write that emptiness back, destroying the operator's own exclude patterns along with fabric's junction exclusions.
 - **Unwire** removes warp junctions and their warp `.git/info/exclude` entries only — weft-side `_lyx`/`.lyx` content is always preserved.
   Downgrade (a pre-fix binary's `applyStaleRemoval` against this change's output) is unsupported.
 - **Enforced by** review obligation: agent prompt templates never mention the two-repo structure at all, per `templates-describe-one-repo` — stronger than merely never instructing a weft git op.

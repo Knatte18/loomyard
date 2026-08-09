@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -473,141 +472,162 @@ func unseedJunctionRecords(junctions []WarpJunction) (removed []string, err erro
 //
 // It resolves the exclude path exactly as seedGitExclude does (git rev-parse
 // --git-path info/exclude, joined with the worktree path if relative), then for
-// each junction in WarpJunctions(l, slug, names) removes any line that trims to
-// exactly that junction's Name (the same line-exact comparison seedGitExclude
-// uses to detect presence). The remaining lines are rewritten in their original
+// each junction in WarpJunctions(l, slug, names) removes any line that trims to exactly that
+// junction's anchored exclude pattern, or to its legacy bare name (the same line-exact comparison
+// seedGitExclude uses to detect presence). The remaining lines are rewritten in their original
 // order.
+//
+// A name another warp worktree in the same hub still has wired is deliberately KEPT, even though
+// this call was made against a worktree that no longer wires it.
+// git resolves info/exclude to the repo's COMMON gitdir, so there is exactly one exclude file per
+// repo, not one per worktree: removing an entry here used to make every sibling worktree's
+// still-live junctions show up as untracked dirt in git status, which in turn tripped Remove's
+// no-force dirty gate on worktrees the caller never touched.
 //
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
 func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
-	worktreePath := WorktreePath(l, slug)
-
-	stdout, stderr, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--git-path", "info/exclude"},
-		worktreePath,
-	)
-	if err != nil {
-		return false, fmt.Errorf("failed to get git-path for info/exclude: %w", err)
-	}
-	if exitCode != 0 {
-		return false, fmt.Errorf("git rev-parse --git-path failed: %s", stderr)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// Nothing was ever seeded; nothing to revert.
-			return false, nil
+	return mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+		// The sibling census runs INSIDE the lock, so the answer it gives cannot be invalidated by a
+		// concurrent wire in another worktree between the census and the write it feeds.
+		keep := namesWiredInSiblingWorktrees(l, slug, names)
+		stripSet := make(map[string]bool)
+		for _, j := range WarpJunctions(l, slug, names) {
+			if keep[j.Name] {
+				continue
+			}
+			// Both spellings are stripped: the anchored pattern this binary writes, and the legacy
+			// bare name an earlier one wrote, so unwiring a hub wired before the narrowing still
+			// reverts cleanly.
+			stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
+			stripSet[j.Name] = true
 		}
-		return false, fmt.Errorf("read exclude file: %w", err)
+		if len(stripSet) == 0 {
+			return content, nil
+		}
+
+		lines := strings.Split(content, "\n")
+		kept := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if stripSet[strings.TrimSpace(line)] {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		return strings.Join(kept, "\n"), nil
+	})
+}
+
+// namesWiredInSiblingWorktrees reports, per name, whether some OTHER warp worktree registered in
+// this repo still has a link of that name at its own anchored directory.
+// It is what keeps one worktree's unwire from dirtying every sibling: the exclude file it would
+// edit is repo-wide, so an entry is only genuinely dead once no worktree wires it any more.
+//
+// A failure to enumerate worktrees is answered conservatively — every name is reported as still
+// wired — because the cost of keeping a dead exclude line is a stale line in a file only lyx
+// writes, while the cost of removing a live one is untracked-junction noise in a working tree the
+// caller never asked to touch.
+func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []string) map[string]bool {
+	wired := make(map[string]bool, len(names))
+
+	entries, err := List(WorktreePath(l, slug))
+	if err != nil {
+		entries, err = List(l.WorktreePath())
+	}
+	if err != nil {
+		for _, name := range names {
+			wired[name] = true
+		}
+		return wired
 	}
 
-	// Build the set of junction names to strip from the caller-supplied names,
-	// iterating WarpJunctions(l, slug, names) for parity with seedGitExclude.
-	stripSet := make(map[string]bool)
-	for _, j := range WarpJunctions(l, slug, names) {
-		stripSet[j.Name] = true
-	}
-
-	lines := strings.Split(string(content), "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if stripSet[strings.TrimSpace(line)] {
-			changed = true
+	ownPath := filepath.Clean(WorktreePath(l, slug))
+	for _, entry := range entries {
+		entryPath := filepath.Clean(filepath.FromSlash(entry.Path))
+		if entryPath == ownPath {
 			continue
 		}
-		kept = append(kept, line)
+		for _, name := range names {
+			if wired[name] {
+				continue
+			}
+			isLink, linkErr := fslink.IsLink(filepath.Join(entryPath, l.AnchorRel, name))
+			if linkErr == nil && isLink {
+				wired[name] = true
+			}
+		}
 	}
+	return wired
+}
 
-	if !changed {
-		return false, nil
-	}
-
-	if err := os.WriteFile(excludePath, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
-		return false, fmt.Errorf("write exclude file: %w", err)
-	}
-	return true, nil
+// excludePatternFor returns the gitignore pattern that excludes exactly the junction named name at
+// the anchored directory, and nothing else.
+//
+// A bare name is what fabric used to write, and gitignore treats a pattern containing no slash as
+// matching at ANY depth: on a subpath-anchored monorepo that silently untracked every same-named
+// directory elsewhere in the repo (a `frontend/_lyx/` the operator genuinely tracks, say), even
+// though fabric only ever wires one junction, at one known path.
+// The leading slash anchors the pattern to the repo root, which is where .git/info/exclude is
+// evaluated from.
+// There is deliberately no trailing slash: a directory junction is a symlink, and git matches a
+// symlink as a file, so a directory-only pattern would not exclude it at all.
+func excludePatternFor(anchorRel, name string) string {
+	return "/" + filepath.ToSlash(filepath.Join(anchorRel, name))
 }
 
 // seedGitExclude adds junction names to the warp worktree's .git/info/exclude file if not already present.
 //
 // It iterates over the junctions returned by WarpJunctions(l, slug, names) and
-// appends each junction's Name to the exclude file if not already present.
+// appends each junction's anchored exclude pattern (see excludePatternFor) if not already present.
 // Resolves the exclude path via git rev-parse --git-path info/exclude. If the
 // path is relative, joins it with the worktree path. Preserves line-exact
 // idempotency per name.
-// Idempotent: re-running when all junction names are already present is a no-op.
+// A legacy bare-name line left by an earlier binary is REPLACED by the anchored pattern rather than
+// left beside it, so an existing hub converges on the narrower exclusion the first time anything
+// re-wires it.
+// Idempotent: re-running when all junction patterns are already present is a no-op.
 func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
-	worktreePath := WorktreePath(l, slug)
-
-	// Get the exclude path via git rev-parse --git-path
-	stdout, _, exitCode, err := gitexec.RunGit(
-		[]string{"rev-parse", "--git-path", "info/exclude"},
-		worktreePath,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to get git-path for info/exclude: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("resolve git exclude path for %q failed (git exit %d)", worktreePath, exitCode)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-
-	// If path is relative, join with worktree path
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	// Create parent directories if needed
-	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
-		return fmt.Errorf("mkdir for exclude file: %w", err)
-	}
-
-	// Read the file
-	content, err := os.ReadFile(excludePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read exclude file: %w", err)
-	}
-
-	contentStr := string(content)
-
-	// Iterate over junction names and append each if not already present.
-	junctions := WarpJunctions(l, slug, names)
-	for _, j := range junctions {
-		name := j.Name
-
-		// Check if name is already present as a line-exact match
-		found := false
-		for _, line := range strings.Split(contentStr, "\n") {
-			if strings.TrimSpace(line) == name {
-				found = true
-				break
+	_, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+		// Drop any legacy bare-name line for a junction being seeded, so the anchored pattern
+		// replaces it rather than accumulating beside it.
+		legacy := make(map[string]bool, len(names))
+		for _, j := range WarpJunctions(l, slug, names) {
+			legacy[j.Name] = true
+		}
+		kept := make([]string, 0)
+		dropped := false
+		for _, line := range strings.Split(content, "\n") {
+			if legacy[strings.TrimSpace(line)] {
+				dropped = true
+				continue
 			}
+			kept = append(kept, line)
+		}
+		if dropped {
+			content = strings.Join(kept, "\n")
 		}
 
-		if found {
-			// Already present, skip to next junction
-			continue
+		for _, j := range WarpJunctions(l, slug, names) {
+			pattern := excludePatternFor(l.AnchorRel, j.Name)
+
+			found := false
+			for _, line := range strings.Split(content, "\n") {
+				if strings.TrimSpace(line) == pattern {
+					found = true
+					break
+				}
+			}
+			if found {
+				continue
+			}
+
+			if content != "" && !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			content += pattern + "\n"
 		}
 
-		// Append name with newline
-		if contentStr != "" && !strings.HasSuffix(contentStr, "\n") {
-			contentStr += "\n"
-		}
-		contentStr += name + "\n"
-	}
-
-	// Write back
-	if err := os.WriteFile(excludePath, []byte(contentStr), 0o644); err != nil {
-		return fmt.Errorf("write exclude file: %w", err)
-	}
-
-	return nil
+		return content, nil
+	})
+	return err
 }

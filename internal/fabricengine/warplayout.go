@@ -26,8 +26,12 @@ func warpLayoutFor(l *lyxcwd.Location, worktreeRoot string) (*lyxcwd.Location, e
 	}
 
 	// A hub sibling shares the hub-wide recorded anchor with l, so AnchorRel is
-	// reused directly rather than re-read from the marker.
+	// reused directly rather than re-read from the marker. RepoName is carried over for the same
+	// reason — it derives from the hub directory name, which is identical for every sibling — and
+	// omitting it would leave this branch returning a Location the ResolveWorktree branch below
+	// would have filled in, making the two "equivalent" paths quietly disagree.
 	return &lyxcwd.Location{
+		RepoName:     l.RepoName,
 		HubPath:      l.HubPath,
 		WorktreeName: filepath.Base(filepath.Clean(worktreeRoot)),
 		AnchorRel:    l.AnchorRel,

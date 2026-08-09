@@ -443,3 +443,102 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 		t.Errorf("_extra junction %s still exists after Remove", extraLink)
 	}
 }
+
+// TestReconcile_PreservesUserSymlinkAtAnchor proves stale-removal claims only links fabric itself
+// could have created. A hand-authored symlink checked into the warp repo sits in the same anchored
+// directory as fabric's junctions and is absent from the repo-wide pathspec, so a link-ness-only
+// sweep deleted it out of the user's working tree; ownership is decided by the resolved target
+// instead, and a link pointing inside the warp worktree is never fabric's.
+func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
+	t.Parallel()
+
+	const slug = "stale-removal-user-symlink"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+	}
+	anchorDir := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel)
+
+	// A real directory in the user's own repo, plus a hand-authored symlink beside fabric's
+	// junctions pointing at it — the shape a checked-in "latest -> v2" link has.
+	userTargetDir := filepath.Join(anchorDir, "versions")
+	if err := os.MkdirAll(userTargetDir, 0o755); err != nil {
+		t.Fatalf("create user target dir: %v", err)
+	}
+	userLink := filepath.Join(anchorDir, "latest")
+	if err := fslink.CreateDirLink(userLink, userTargetDir); err != nil {
+		t.Fatalf("create user symlink: %v", err)
+	}
+
+	// A genuine stale fabric junction alongside it, so the sweep is provably still running and
+	// this test cannot pass merely because stale-removal did nothing at all.
+	if err := fabricengine.WireJunctions(warpLayout, slug, []string{"_lyx", "_other"}); err != nil {
+		t.Fatalf("setup WireJunctions: %v", err)
+	}
+
+	if _, err := topology.Reconcile(l); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	if _, statErr := os.Lstat(userLink); statErr != nil {
+		t.Errorf("Reconcile removed the hand-authored symlink %s: %v; want it preserved", userLink, statErr)
+	}
+	staleLink := filepath.Join(anchorDir, "_other")
+	if _, statErr := os.Lstat(staleLink); !os.IsNotExist(statErr) {
+		t.Errorf("stale fabric junction %s not removed by Reconcile; the sweep did not run", staleLink)
+	}
+}
+
+// TestUnwire_PreservesUserSymlinkAtAnchor is the Unwire half of
+// TestReconcile_PreservesUserSymlinkAtAnchor: Unwire enumerates the same on-disk scan, so a
+// hand-authored symlink must survive a full deactivation too.
+func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
+	t.Parallel()
+
+	const slug = "unwire-user-symlink"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+	}
+	anchorDir := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel)
+
+	userTargetDir := filepath.Join(anchorDir, "versions")
+	if err := os.MkdirAll(userTargetDir, 0o755); err != nil {
+		t.Fatalf("create user target dir: %v", err)
+	}
+	userLink := filepath.Join(anchorDir, "latest")
+	if err := fslink.CreateDirLink(userLink, userTargetDir); err != nil {
+		t.Fatalf("create user symlink: %v", err)
+	}
+
+	result, err := fabricengine.Unwire(anchorDir)
+	if err != nil {
+		t.Fatalf("Unwire: %v", err)
+	}
+
+	if _, statErr := os.Lstat(userLink); statErr != nil {
+		t.Errorf("Unwire removed the hand-authored symlink %s: %v; want it preserved", userLink, statErr)
+	}
+	for _, name := range result.JunctionsRemoved {
+		if name == "latest" {
+			t.Errorf("JunctionsRemoved names the hand-authored symlink %q; want fabric junctions only", name)
+		}
+	}
+	if len(result.JunctionsRemoved) == 0 {
+		t.Errorf("JunctionsRemoved is empty; Unwire removed no fabric junction, so this test proves nothing")
+	}
+}

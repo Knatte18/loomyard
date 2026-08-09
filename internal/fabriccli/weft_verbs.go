@@ -73,14 +73,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 			return nil
 		}
 
-		cwd, err := lyxcwd.Getwd()
-		if err != nil {
-			output.Err(out, err.Error())
-			clihelp.Abort(ctx, 1)
-			return nil
-		}
-
-		resolved, err := lyxcwd.Resolve(cwd)
+		_, resolved, err := resolveWarpLocation()
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)
@@ -144,8 +137,10 @@ Every fabric weft commit carries a trailing "Warp-SHA: <sha>" trailer naming the
 paired warp repo's current HEAD, recorded into the correspondence index immediately
 after the commit lands.
 
-Staging is scoped to the structural directories (_lyx, .lyx -- code-injected, never listed in
-the fabric config) plus whatever the fabric config's optional pathspec adds (default: none).
+Staging is scoped to the durable structural directory (_lyx -- code-injected, never listed
+in the fabric config) plus whatever the fabric config's optional pathspec adds (default:
+none). The machine-local scratch directory (.lyx) is NEVER staged or committed -- a path
+under it in a commit request is refused, not silently dropped.
 
 Related commands:
   lyx fabric push   — commit then push in the same process
@@ -168,6 +163,12 @@ Related commands:
 	pushCmd := &cobra.Command{
 		Use:   "push",
 		Short: "commit and push weft changes",
+		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the weft
+branch's unpushed commits in the same process.
+
+Related commands:
+  lyx fabric commit — commit only
+  lyx fabric sync   — commit then async-push (detached child process)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -201,7 +202,9 @@ Related commands:
 		Use:   "pull",
 		Short: "pull warp and weft, reconciling a rebased warp",
 		Long: `Pulls both sides of the pair. Weft is fast-forwarded first via a plain
-git pull. Warp is then fetched and inspected against its upstream tracking ref:
+git pull — skipped as a no-op on a freshly bootstrapped hub whose weft branch
+has no upstream yet. Warp is then fetched and inspected against its upstream
+tracking ref:
 
   - A clean fast-forward (local warp HEAD is still an ancestor of the fetched
     upstream tip) simply advances warp — no reconcile needed.
@@ -217,7 +220,10 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
     already carries unpushed commits of its own AND the remote diverged (the
     double-conflict case pull refuses to resolve unattended), or the warp
     rewrite is so thorough that no recorded correspondence survives (no safe
-    baseline to re-anchor against).`,
+    baseline to re-anchor against).
+  - A warp worktree with uncommitted tracked changes is refused before warp
+    is moved at all — commit or stash, then re-run. Advancing warp goes
+    through a hard reset that would silently discard those changes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -236,6 +242,13 @@ git pull. Warp is then fetched and inspected against its upstream tracking ref:
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "commit and async-push weft changes",
+		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
+to a detached child process and return immediately — the push happens in the
+background, coalesced under fabric's push lock.
+
+Related commands:
+  lyx fabric commit — commit only
+  lyx fabric push   — commit then push in the same process`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

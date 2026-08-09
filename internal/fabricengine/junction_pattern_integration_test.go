@@ -203,11 +203,11 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, lyxdirs.LyxDirName) {
-		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", lyxdirs.LyxDirName, lines)
-	}
-	if lines := readExcludeLines(t, l, slug); !containsLine(lines, "_extra") {
-		t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", "_extra", lines)
+	for _, name := range []string{lyxdirs.LyxDirName, "_extra"} {
+		pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, name)
+		if lines := readExcludeLines(t, l, slug); !containsLine(lines, pattern) {
+			t.Fatalf(".git/info/exclude does not contain %q after WireJunctions: %v", pattern, lines)
+		}
 	}
 
 	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_extra"})
@@ -727,4 +727,77 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions (idempotent re-run): %v", err)
 	}
+}
+
+// TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName proves the exclude entry names exactly
+// the one junction path fabric wires, not every same-named directory in the repo.
+// A gitignore pattern with no slash matches at ANY depth, so the bare "_lyx" fabric used to write
+// silently untracked a monorepo's own frontend/_lyx/ on a subpath-anchored hub; and a hub wired by
+// an earlier binary must converge on the narrower pattern rather than keep both.
+func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyPairedLocal(t)
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+
+	l := fixture.Layout
+	slug := filepath.Base(fixture.Hub)
+
+	// Stand in for a hub wired before the narrowing: a legacy bare-name line already in the file.
+	excludePath := excludeFilePath(t, l, slug)
+	if err := os.WriteFile(excludePath, []byte(lyxdirs.LyxDirName+"\n"), 0o644); err != nil {
+		t.Fatalf("seed legacy exclude line: %v", err)
+	}
+
+	if err := fabricengine.WireJunctions(l, slug, []string{lyxdirs.LyxDirName}); err != nil {
+		t.Fatalf("WireJunctions: %v", err)
+	}
+
+	lines := readExcludeLines(t, l, slug)
+	pattern := fabricengine.ExcludePatternForTest(l.AnchorRel, lyxdirs.LyxDirName)
+	if !containsLine(lines, pattern) {
+		t.Errorf(".git/info/exclude = %v; want it to contain the anchored pattern %q", lines, pattern)
+	}
+	if containsLine(lines, lyxdirs.LyxDirName) {
+		t.Errorf(".git/info/exclude = %v; want the legacy bare %q line replaced, not kept beside the anchored pattern",
+			lines, lyxdirs.LyxDirName)
+	}
+
+	// The anchored pattern must not reach a same-named directory elsewhere in the repo.
+	elsewhere := filepath.Join(l.WorktreePath(), "frontend", lyxdirs.LyxDirName)
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatalf("create same-named directory elsewhere: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "note.md"), []byte("tracked by the user\n"), 0o644); err != nil {
+		t.Fatalf("write file under the same-named directory: %v", err)
+	}
+	stdout, stderr, exitCode, err := gitexec.RunGit(
+		[]string{"status", "--porcelain", "--untracked-files=all", "--", "frontend"},
+		l.WorktreePath(),
+	)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("git status: err=%v exit=%d stderr=%s", err, exitCode, stderr)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		t.Errorf("git sees nothing under frontend/%s; the exclude pattern reached a directory fabric never wired", lyxdirs.LyxDirName)
+	}
+}
+
+// excludeFilePath resolves the repo's .git/info/exclude path for the worktree named slug, the same
+// way seedGitExclude does.
+func excludeFilePath(t *testing.T, l *lyxcwd.Location, slug string) string {
+	t.Helper()
+	worktreePath := fabricengine.WorktreePath(l, slug)
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
+	if err != nil || exitCode != 0 {
+		t.Fatalf("resolve exclude path: err=%v exit=%d stderr=%s", err, exitCode, stderr)
+	}
+	excludePath := strings.TrimSpace(stdout)
+	if !filepath.IsAbs(excludePath) {
+		excludePath = filepath.Join(worktreePath, excludePath)
+	}
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0o755); err != nil {
+		t.Fatalf("mkdir exclude dir: %v", err)
+	}
+	return excludePath
 }

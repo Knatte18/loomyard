@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
@@ -24,7 +25,11 @@ import (
 // treat as PATTERN-residue (potentially replayed against the wrong warp baseline).
 type PullResult struct {
 	// WeftPulled reports whether the weft ff-pull (PullWeft) ran and
-	// succeeded. Every field below is only ever populated once this is true —
+	// succeeded — or was skipped as a vacuous no-op because the weft branch
+	// has no upstream yet (a freshly bootstrapped hub whose suffixed primary
+	// branch exists only locally until the first push lands; there is nothing
+	// to fast-forward from, so skipping is success, not failure).
+	// Every field below is only ever populated once this is true —
 	// see Fabric.Pull's weft-first ordering.
 	WeftPulled bool
 	// WarpFetched reports whether the warp fetch (f.warp.Fetch) ran and
@@ -110,6 +115,41 @@ var ErrWarpDivergedUnpushed = errors.New("fabricengine: warp remote diverged and
 // Fabric.Pull makes no change to either repo when this is returned.
 var ErrNoSurvivingAnchor = errors.New("fabricengine: warp history rewritten and no recorded correspondence survives; aborting, no changes")
 
+// ErrWarpDirty is returned by Fabric.Pull when warp would have to move (fast-forward or reconcile)
+// while the warp worktree carries uncommitted tracked changes.
+// Every warp advance goes through ResetHard, which silently discards uncommitted tracked
+// modifications — strictly more destructive than the plain `git pull` an external actor would run —
+// so Pull refuses before mutating warp instead, mirroring Checkout's dirty-weft refusal.
+// The weft side has already been fast-forwarded when this is returned; warp is untouched.
+var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted changes; commit or stash them, then re-run pull; aborting, no warp changes")
+
+// weftHasUpstream reports whether the weft worktree's current branch has a configured upstream
+// tracking ref.
+// A nonzero exit from rev-parse @{u} means no upstream (or a detached HEAD), which for Pull's weft
+// step is the nothing-to-pull-from case, never an error.
+func (f *Fabric) weftHasUpstream() (bool, error) {
+	_, _, code, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, f.weftPath)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: resolve weft upstream in %s: %w", f.weftPath, err)
+	}
+	return code == 0, nil
+}
+
+// warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
+// state ResetHard would silently destroy.
+// Untracked files are deliberately excluded: reset --hard leaves them alone, so they are no reason
+// to refuse a pull.
+func (f *Fabric) warpWorktreeDirty() (bool, error) {
+	stdout, stderr, code, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, f.warpPath)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: git status in %s: %w", f.warpPath, err)
+	}
+	if code != 0 {
+		return false, fmt.Errorf("fabricengine: git status in %s: %s", f.warpPath, stderr)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
 // ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
 // Fabric.Pull calls this AFTER f.warp.Fetch has refreshed the remote-tracking
@@ -138,8 +178,17 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 
 	var result PullResult
 
-	if err := f.PullWeft(opts); err != nil {
+	// A weft branch with no upstream has nothing to fast-forward from — the freshly bootstrapped
+	// hub's suffixed primary exists only locally until the first push lands — so the weft pull is
+	// skipped as a vacuous success rather than surfacing git's "no tracking information" failure.
+	weftHasUpstream, err := f.weftHasUpstream()
+	if err != nil {
 		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
+	}
+	if weftHasUpstream {
+		if err := f.PullWeft(opts); err != nil {
+			return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
+		}
 	}
 	result.WeftPulled = true
 	hadUnpushed, err := f.warp.HasUnpushed()
@@ -165,6 +214,16 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, nil
 	}
 
+	// Every remaining branch moves warp via ResetHard, which discards uncommitted tracked changes
+	// without a trace — so a dirty warp worktree is refused here, before anything mutates warp.
+	dirty, err := f.warpWorktreeDirty()
+	if err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "dirty-check", Err: err}
+	}
+	if dirty {
+		return result, ErrWarpDirty
+	}
+
 	isFF, err := f.warp.IsAncestor(localHEAD, upstreamSHA)
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "classify", Err: err}
@@ -185,6 +244,15 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 		return result, ErrWarpDivergedUnpushed
 	}
 
+	// The index is a rebuildable cache, never authoritative on its own — and here it decides whether
+	// the pair can recover at all, so it must be rebuilt from the weft trailer history (the sole
+	// source of truth, already fast-forwarded above) before the anchor walk.
+	// A re-cloned hub starts with an empty per-pair index while its adopted weft history carries
+	// every recorded anchor; without the rebuild, the walk missed those surviving anchors and
+	// returned a false ErrNoSurvivingAnchor that no later call could ever clear.
+	if err := f.RebuildIndex(); err != nil {
+		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
+	}
 	path, err := f.corrIndexPath()
 	if err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "load-index", Err: err}
@@ -278,11 +346,11 @@ func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
 // warpSHATrailerFormatRecordSep (index.go) are reused unchanged, so the split
 // can never be confused by ordinary commit content.
 //
-// RelPath-blind scope (documented limitation): the pathspec is
-// pattern.PathspecFile/PathspecDir at the weft worktree root, matching the
-// slice's relpath-is-dot-for-slice-2 precedent (the same simplification
-// Fabric.Commit already accepts). A subpath-anchored hub whose _lyx lives at
-// RelPath/_lyx in a shared weft checkout is out of scope for this slice.
+// Anchor scope: the pathspec is pattern.PathspecFile/PathspecDir joined onto the pair's recorded
+// anchor via ScopedPathspec, the same way Fabric.Commit scopes its own routing prefixes.
+// A root pathspec would report an empty residue on a subpath-anchored hub — telling a caller
+// "nothing needs review" for exactly the commits that do, since that hub's PATTERN content lives at
+// <anchor>/_lyx/PATTERN.md and never at the weft worktree root.
 //
 // If fromWeftSHA == toWeftSHA there are no post-anchor commits at all, so
 // this returns (nil, nil) without spawning git. A non-zero git exit returns a
@@ -293,9 +361,17 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 		return nil, nil
 	}
 
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: resolve anchor for %s: %w", f.warpPath, err)
+	}
+
 	format := warpSHATrailerFormatRecordSep + "%H" + warpSHATrailerFormatUnitSep
 	rangeArg := fromWeftSHA + ".." + toWeftSHA
-	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--", pattern.PathspecFile, pattern.PathspecDir}
+	args := []string{"log", "--name-only", "--format=" + format, rangeArg, "--"}
+	for _, spec := range ScopedPathspec(l.AnchorRel, []string{pattern.PathspecFile, pattern.PathspecDir}) {
+		args = append(args, filepath.ToSlash(spec))
+	}
 
 	stdout, stderr, code, err := gitexec.RunGit(args, f.weftPath)
 	if err != nil {

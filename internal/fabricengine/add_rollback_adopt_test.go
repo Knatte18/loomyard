@@ -257,3 +257,40 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 		t.Errorf("warp branch %q still exists", slug)
 	}
 }
+
+// TestAdd_GitFailureCarriesGitsOwnReason pins that a git failure inside Add reaches the operator
+// with git's explanation attached, not a bare exit code and not a claim about cwd.
+//
+// Six paths in Add used to answer every RunGit failure with "cwd is not a valid git worktree" — a
+// claim Add's own first status probe had already disproved — and the paths that did name the
+// operation reported only "(git exit %d)". A live round watched two simultaneous `lyx fabric add`
+// calls for one slug report "failed (git exit 255)" with git's actual reason discarded.
+func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
+	t.Parallel()
+
+	fixture := lyxtest.CopyPairedLocal(t)
+	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+		"fabric": fabricengine.ConfigTemplate(),
+	})
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	l := fixture.Layout
+
+	// Point origin at a path that does not exist, so the push at the end of Add fails for a reason
+	// only git can state while every fabric-side precondition still passes.
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin",
+		filepath.Join(t.TempDir(), "no-such-remote.git"))
+
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	_, err := topology.Add(l, "push-fail", fabricengine.AddOptions{})
+	if err == nil {
+		t.Fatal("Add() error = nil; want a push failure against a nonexistent remote")
+	}
+	if strings.Contains(err.Error(), "cwd is not a valid git worktree") {
+		t.Errorf("Add() error = %q; want the real cause, not a claim about cwd", err.Error())
+	}
+	if !strings.Contains(err.Error(), "does not appear to be a git repository") &&
+		!strings.Contains(err.Error(), "fatal:") {
+		t.Errorf("Add() error = %q; want git's own explanation included, not just an exit code", err.Error())
+	}
+}

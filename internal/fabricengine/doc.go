@@ -7,19 +7,29 @@
 // (`Commit`, `Pull`, `Diff`, `Status`) on top of what gitrepo deliberately doesn't know about.
 //
 // `Fabric.Pull` (pull.go) is the unified read path: weft is fast-forwarded first via a plain
-// `PullWeft`, then warp is fetched and inspected against its upstream tracking ref.
+// `PullWeft` — skipped as a vacuous success when the weft branch has no upstream yet, the freshly
+// bootstrapped hub's ordinary state until its first push lands — then warp is fetched and inspected
+// against its upstream tracking ref.
 // A clean fast-forward (local warp HEAD still an ancestor of the fetched upstream tip) simply
 // advances warp.
 // A detected warp history rewrite (rebase or force-push upstream — local warp HEAD is no longer an
 // ancestor of the fetched tip) is auto-reconciled whenever it is safe to do so: when local warp
-// carries no unpushed commits of its own, weft's correspondence is re-anchored to the nearest
-// surviving `Warp-SHA` — via the same empty-commit-with-trailer mechanism `commitWeftLocked`'s
-// snapshot rule already uses (see below) — warp is reset to the new tip, and the fresh
-// correspondence is recorded.
+// carries no unpushed commits of its own, the correspondence index is first rebuilt from the weft
+// trailer history (the sole source of truth — a re-cloned hub's per-pair index cache starts empty
+// while its adopted weft history carries every recorded anchor, and a verdict as final as
+// `ErrNoSurvivingAnchor` must never rest on a stale cache), then weft's correspondence is
+// re-anchored to the nearest surviving `Warp-SHA` — via the same empty-commit-with-trailer
+// mechanism `commitWeftLocked`'s snapshot rule already uses (see below) — warp is reset to the new
+// tip, and the fresh correspondence is recorded.
 // Two cases abort loudly and make no change to either repo: local warp already has unpushed commits
 // AND the remote diverged (the double-conflict case `Pull` refuses to resolve unattended,
 // `ErrWarpDivergedUnpushed`), or the rewrite is so thorough that no recorded correspondence
 // survives it at all (`ErrNoSurvivingAnchor`).
+// A third refusal guards the working tree rather than history: whenever warp would have to move at
+// all — fast-forward or reconcile — a warp worktree carrying uncommitted tracked changes aborts
+// with `ErrWarpDirty` before anything mutates warp, because every warp advance goes through a
+// `reset --hard` that would silently destroy those changes (weft has already been fast-forwarded
+// when this fires; warp is untouched).
 // Every rewrite/anchor determination is ancestry-based — `f.warp.IsAncestor`, via `git merge-base
 // --is-ancestor` — never `f.warp.SHAExists`: `git fetch` never prunes objects, so a rebased-away
 // commit's object survives fetch and `SHAExists` would report true post-fetch, meaning detection
@@ -28,6 +38,8 @@
 // touch the `_lyx/PATTERN.md`/`_lyx/pattern/` paths and therefore need review, since they were
 // written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` weft-succeeded/warp-failed contract.
+// Those paths are scoped through the pair's recorded anchor, so a subpath-anchored hub's residue is
+// found at `<anchor>/_lyx/PATTERN.md` rather than silently reported as empty.
 //
 // fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
 // always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
@@ -361,7 +373,33 @@
 // `weft:main`, creates every warp junction (`_lyx`, `.lyx`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
 // every config materialized without a second command. Every junction is excluded through the warp's
-// own `.git/info/exclude`, never a committed `.gitignore` in the user's repo.
+// own `.git/info/exclude`, never a committed `.gitignore` in the user's repo, and the entry written
+// there is the junction's own anchored path (`/backend/_lyx`, or `/_lyx` at a root anchor) rather
+// than a bare name, since a slash-free gitignore pattern matches at every depth and would untrack
+// same-named directories fabric never wired.
+// git resolves `info/exclude` to the repo's COMMON gitdir, so the file is shared by every worktree
+// in the hub and two verbs running side by side edit the same bytes;
+// every mutation of it therefore goes through `mutateGitExclude` (gitexclude.go), which holds a
+// repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
+// a concurrent reader sees either the whole old file or the whole new one.
+//
+// # The `_board` convenience junction
+//
+// Alongside the pathspec junctions, fabric wires one more link at every anchor: `<anchor>/_board`,
+// pointing at `<Hub>/_board` (`wireBoardLink`, junction.go). It exists so the shared board data is
+// reachable from inside an ordinary worktree, on the same model as millhouse's `.wiki` link, and it
+// carries three properties a later caller may not quietly opt out of.
+// It is **wire-only and unmonitored** — `Healthy`, `checkJunctionHealth` and `junctionRepointedDetail`
+// never inspect it, so a broken `_board` link can never block loom preflight.
+// It is **unconditionally re-wired** on clone, add, and every reconcile pass, precisely because
+// nothing diagnoses its breakage, so the repair cannot be conditioned on detection.
+// And it is **read by no lyx code path** — every `BoardDir` consumer resolves `<Hub>/_board`
+// directly, and board mutation continues through `internal/boardengine`.
+// It is deliberately absent from `fabric.yaml`'s `pathspec`: that key is dual-purpose (it also feeds
+// the weft commit pathspec), and `_board` is itself a weft worktree, never committable content from
+// the warp side.
+// `Unwire` removes it as an explicitly named case, since `scanOnDiskJunctionNames` skips every
+// `HubReservedNames()` entry and so can never see it.
 //
 // The lyx-anchor subpath (e.g. `backend` or `.`) is recorded once, on `weft:main`, as the plain
 // `.lyx-anchor` marker at `BoardDir(Hub)` (see `internal/lyxcwd/anchor.go`);
@@ -369,6 +407,20 @@
 // `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory
 // exactly — and falls back to `AnchorRel` `"."` only when no marker is recorded yet (mid-clone, a
 // lyxtest synthetic hub, or a non-fabric git repo).
+// A hub still carrying the pre-rename marker spelling (`lyxcwd.StaleAnchorFileName`) with no
+// renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old
+// name, so every resolver returns `lyxcwd.ErrStaleAnchorMarker` rather than answering `"."` — which
+// would re-anchor the repo at its root and let `lyx fabric reconcile` wire a second junction set
+// there. `CloneHub` refuses the same state at clone time, naming the same literal from the same
+// single declarer.
+//
+// A marker that is PRESENT but empty after trimming is a third state, and it is fabric's to refuse
+// rather than lyxcwd's: `lyxcwd` deliberately treats it as absent and falls back to `"."`, which is
+// exactly right for a hub that never recorded an anchor and exactly wrong for one whose marker was
+// truncated.
+// Since `Reconcile` is the only verb that wires junctions, it is the only verb that can turn that
+// fallback into the second-junction-set damage above, so it reads the marker directly (see
+// `refuseEmptyAnchorMarker`) and aborts the pass, leaving `lyxcwd`'s documented fallback untouched.
 //
 // The warp binding is a fourth repo-wide record beside the anchor and the repo-wide `fabric.yaml`
 // config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,
@@ -403,6 +455,16 @@
 // `weft:main` records, which survive so a later `lyx fabric reconcile` re-wires the worktree from the
 // same anchor and pathspec.
 //
+// `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
+// to remove unless that directory is a registered LINKED worktree of the warp repo.
+// The rule is load-bearing rather than defensive: `git worktree remove` refuses a main working
+// tree, a path belonging to another repo (`<Hub>/_board` is a worktree of the WEFT repo), and a
+// worktree carrying state it will not discard — and treating every one of those refusals as licence
+// to delete the directory turned an ordinary typo into the loss of a whole git clone, gitdir
+// included, reported as success.
+// The hub's prime worktree is refused by name before any teardown begins, since it is the warp
+// repository rather than a pair.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx
@@ -433,9 +495,12 @@
 // `internal/weftname` (the `-weft` suffix leaf), `internal/lyxtest` (the test-fixture leaf that
 // builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
 // board lives at `weft:main`), `internal/configsync` (string literals and comments, never
-// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`), and
-// `tools/`/`sandbox/` (the black-box harness naming
-// the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos).
+// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
+// `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
+// `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
+// their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
+// review obligation instead. See CONSTRAINTS.md's Fabric Vocabulary Invariant for the authoritative
+// list.
 // `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;

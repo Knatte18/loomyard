@@ -8,16 +8,15 @@ package loomengine
 type CheckID string
 
 // The closed set of checks Preflight can report a failure against, per report-shape.
-// Each corresponds to one of the four checks described in Preflight's godoc (geometry/worktree-root
-// fold into check 1, worktree-clean is check 2, fabric-ready/fabric-sync/junction are check 3, and
+// Each corresponds to one of the four checks described in Preflight's godoc (geometry is check 1,
+// worktree-clean is check 2, fabric-ready/fabric-sync/junction are check 3, and
 // seed-missing/seed-unreadable/seed-incoherent/half-finished are check 4).
+// There is deliberately no at-the-anchor check: the cwd gate in lyxcwd.Resolve already guarantees
+// the property, so a repo anchored at a subpath is a legal geometry rather than a misinvocation.
 const (
 	// CheckGeometry fails when the cwd is not inside a git repository,
 	// or the resolved Layout has no Prime (main worktree).
 	CheckGeometry CheckID = "geometry"
-	// CheckWorktreeRoot fails when Preflight is invoked from a subdirectory of the worktree rather
-	// than its root.
-	CheckWorktreeRoot CheckID = "worktree-root"
 	// CheckWorktreeClean fails when the worktree has any dirty (tracked or untracked) paths.
 	CheckWorktreeClean CheckID = "worktree-clean"
 	// CheckFabricReady fails when fabric is not usable in this worktree.

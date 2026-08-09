@@ -46,8 +46,10 @@ type UnwireVerbResult struct {
 
 // Unwire reverses every warp junction wired for the worktree at cwd and their warp
 // `.git/info/exclude` entries — a full per-warp-worktree deactivation.
-// The junction name-set is enumerated from a full on-disk scan, removing every fabric junction
-// present on disk, including stale ones absent from the repo-wide pathspec.
+// The junction name-set is enumerated from a full on-disk scan, removing every fabric-owned
+// junction present on disk, including stale ones absent from the repo-wide pathspec.
+// Ownership is decided by where a link resolves (see scanOnDiskJunctionNames): a hand-authored
+// symlink checked into the warp repo beside the junctions is never claimed or removed.
 // It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
 // Unwire never touches the repo-wide weft:main records;
 // a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring.
@@ -59,7 +61,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 
 	slug := filepath.Base(l.WorktreePath())
 
-	names, err := scanOnDiskJunctionNames(l.WorktreePath(), l.AnchorRel)
+	names, err := scanOnDiskJunctionNames(l, slug)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}

@@ -172,7 +172,8 @@ func nonEmptyExcludeLines(content string) []string {
 
 // TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent proves
 // seedWeftArtifactExcludes' shape: it seeds exactly fabric's own .weft/ lock
-// directory, gitrepo's push-lock filename, and lyxdirs.DotLyxDirName + "/"
+// directory, gitrepo's push-lock filename, lyxdirs.DotLyxDirName + "/", and the
+// *.lock / *.swaplock write- and swap-lock patterns every module's lock artifacts land under
 // into the weft repo's info/exclude, none of the retired cross-module
 // machine-local patterns, and re-seeding via a second commit leaves the file
 // byte-identical.
@@ -190,7 +191,7 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 		t.Fatalf("read info/exclude: %v", err)
 	}
 
-	wantLines := []string{".weft/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/"}
+	wantLines := []string{".weft/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", "*.lock", "*.swaplock"}
 	gotLines := nonEmptyExcludeLines(string(first))
 	if len(gotLines) != len(wantLines) {
 		t.Fatalf("info/exclude entries = %v; want exactly %v", gotLines, wantLines)

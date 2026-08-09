@@ -11,28 +11,31 @@ import "fmt"
 
 // Pull fast-forwards the current branch from upstream via `git pull --ff-only`, refusing a diverged
 // branch.
-// Errors name the repo path and git's exit code.
+// Errors name the repo path and git's exit code, and tell the operator the exact command that
+// reproduces git's own diagnosis — raw stderr is deliberately NOT folded into the error
+// (pull_test.go pins that contract), so the reproduction pointer is what keeps a nonzero exit
+// diagnosable instead of a bare number.
 func (r *Repo) Pull() error {
 	_, _, code, err := r.run("pull", "--ff-only")
 	if err != nil {
 		return fmt.Errorf("gitrepo: pull --ff-only in %s: %w", r.path, err)
 	}
 	if code != 0 {
-		return fmt.Errorf("gitrepo: pull --ff-only in %s: git exited %d", r.path, code)
+		return fmt.Errorf("gitrepo: pull --ff-only in %s: git exited %d (run `git -C %s pull --ff-only` for git's own diagnosis)", r.path, code, r.path)
 	}
 	return nil
 }
 
 // Fetch refreshes remote-tracking refs via `git fetch` without moving the local branch, unlike
 // Pull.
-// Errors name the repo path and git's exit code.
+// Errors follow Pull's style: repo path, exit code, and the reproducing command, never raw stderr.
 func (r *Repo) Fetch() error {
 	_, _, code, err := r.run("fetch")
 	if err != nil {
 		return fmt.Errorf("gitrepo: fetch in %s: %w", r.path, err)
 	}
 	if code != 0 {
-		return fmt.Errorf("gitrepo: fetch in %s: git exited %d", r.path, code)
+		return fmt.Errorf("gitrepo: fetch in %s: git exited %d (run `git -C %s fetch` for git's own diagnosis)", r.path, code, r.path)
 	}
 	return nil
 }

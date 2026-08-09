@@ -51,6 +51,9 @@ func createPortal(l *lyxcwd.Location, slug string) error {
 // target), and prunes empty ancestors. Returns nil if the link does not exist.
 func removePortal(l *lyxcwd.Location, slug string) error {
 	link := PortalLink(l, slug)
+	if err := refuseUncontainedPath(PortalsDir(l), link, "portal"); err != nil {
+		return err
+	}
 	if err := fslink.Remove(link); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)
 	}

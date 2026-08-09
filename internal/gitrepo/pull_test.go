@@ -87,6 +87,9 @@ func TestPull_LocalDiverged_ReturnsError(t *testing.T) {
 	if strings.Contains(err.Error(), "fatal:") {
 		t.Errorf("Pull() error = %q; must not leak raw git stderr", err)
 	}
+	if !strings.Contains(err.Error(), "git -C") {
+		t.Errorf("Pull() error = %q; want it to name the reproducing `git -C ... pull` command so a nonzero exit stays diagnosable", err)
+	}
 
 	headAfter, err := repoA.CurrentSHA()
 	if err != nil {

@@ -26,3 +26,7 @@ func WeftForTest(f *Fabric) *gitrepo.Repo {
 // WarpProbeDirPrefixForTest re-exports warpProbeDirPrefix for package fabricengine_test files that
 // assert on the probe's throwaway-clone directory naming without duplicating the literal.
 const WarpProbeDirPrefixForTest = warpProbeDirPrefix
+
+// ExcludePatternForTest re-exports excludePatternFor for package fabricengine_test files that
+// assert on the anchored .git/info/exclude pattern without duplicating its spelling.
+var ExcludePatternForTest = excludePatternFor

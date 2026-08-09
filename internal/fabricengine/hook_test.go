@@ -267,3 +267,101 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 		t.Error("expected fabric drift warning for child worktree; got none")
 	}
 }
+
+// TestInstallPostCheckoutHook_ChainedWrapperIsExecutable pins the executable bit on the chained
+// wrapper.
+// os.WriteFile applies its perm argument only when it CREATES the file, so chaining around an
+// existing non-executable user hook used to leave the wrapper non-executable, and git then ignored
+// the hook entirely — silently retiring both the operator's hook and fabric's drift warning.
+func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
+	t.Parallel()
+
+	f := lyxtest.CopyWarpHub(t)
+	l, err := lyxcwd.Resolve(f.Hub)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
+	}
+
+	hooksDir := resolveCommonHooksDir(t, l.WorktreePath())
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatalf("mkdir hooks dir: %v", err)
+	}
+	hookPath := filepath.Join(hooksDir, "post-checkout")
+
+	// A user hook the operator had DISABLED with chmod -x.
+	const disabledUserHook = "#!/bin/sh\necho user hook\n"
+	if err := os.WriteFile(hookPath, []byte(disabledUserHook), 0o644); err != nil {
+		t.Fatalf("seed non-executable user hook: %v", err)
+	}
+	if err := os.Chmod(hookPath, 0o644); err != nil {
+		t.Fatalf("chmod seeded user hook: %v", err)
+	}
+
+	if err := InstallPostCheckoutHook(l); err != nil {
+		t.Fatalf("InstallPostCheckoutHook: %v", err)
+	}
+
+	wrapperInfo, err := os.Stat(hookPath)
+	if err != nil {
+		t.Fatalf("stat chained wrapper: %v", err)
+	}
+	if wrapperInfo.Mode().Perm()&0o111 == 0 {
+		t.Errorf("chained wrapper mode = %04o; want an executable mode — git ignores a non-executable hook",
+			wrapperInfo.Mode().Perm())
+	}
+
+	// The operator's own disable decision must survive: the backup keeps its non-executable mode,
+	// and the wrapper guards the call with an executable test so nothing runs it anyway.
+	backupInfo, err := os.Stat(hookPath + ".user")
+	if err != nil {
+		t.Fatalf("stat user hook backup: %v", err)
+	}
+	if backupInfo.Mode().Perm()&0o111 != 0 {
+		t.Errorf("user hook backup mode = %04o; want the original non-executable mode preserved",
+			backupInfo.Mode().Perm())
+	}
+
+	wrapper, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatalf("read chained wrapper: %v", err)
+	}
+	if !strings.Contains(string(wrapper), `if [ -x "$SCRIPT_DIR/post-checkout.user" ]; then`) {
+		t.Errorf("chained wrapper does not guard the user hook with an executable test; content:\n%s", wrapper)
+	}
+}
+
+// TestInstallPostCheckoutHook_HonoursCoreHooksPath pins that the hook lands where git will actually
+// look for it.
+// Composing <git-common-dir>/hooks ignores core.hooksPath, so on a repo that sets it fabric wrote
+// the hook into a directory git no longer consults and reported success.
+func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
+	t.Parallel()
+
+	f := lyxtest.CopyWarpHub(t)
+	l, err := lyxcwd.Resolve(f.Hub)
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
+	}
+
+	customHooksDir := filepath.Join(t.TempDir(), "custom-hooks")
+	if err := os.MkdirAll(customHooksDir, 0o755); err != nil {
+		t.Fatalf("mkdir custom hooks dir: %v", err)
+	}
+	cmd := exec.Command("git", "config", "core.hooksPath", customHooksDir)
+	cmd.Dir = l.WorktreePath()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config core.hooksPath: %v (%s)", err, out)
+	}
+
+	if err := InstallPostCheckoutHook(l); err != nil {
+		t.Fatalf("InstallPostCheckoutHook: %v", err)
+	}
+
+	installed, err := os.ReadFile(filepath.Join(customHooksDir, "post-checkout"))
+	if err != nil {
+		t.Fatalf("hook not installed into core.hooksPath dir %q: %v", customHooksDir, err)
+	}
+	if !strings.Contains(string(installed), hookSentinel) {
+		t.Errorf("hook installed into core.hooksPath dir lacks the fabric sentinel; content:\n%s", installed)
+	}
+}

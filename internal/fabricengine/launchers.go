@@ -51,18 +51,31 @@ func menuLauncherName() string {
 
 // launcherSpawnRel returns the relative path from a launcher directory to
 // the target worktree's subpath for spawning.
-func launcherSpawnRel(l *lyxcwd.Location, slug string) string {
-	rel, _ := filepath.Rel(LauncherDir(l, slug), filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel))
-	return rel
+// The error is propagated rather than collapsed into an empty string: both paths are absolute and
+// hub-rooted so filepath.Rel cannot fail today, but an empty result would be written into a launcher
+// script that then spawns in the wrong directory, which is worse than a failed write.
+func launcherSpawnRel(l *lyxcwd.Location, slug string) (string, error) {
+	launcherDir := LauncherDir(l, slug)
+	target := filepath.Join(filepath.Join(l.HubPath, slug), l.AnchorRel)
+	rel, err := filepath.Rel(launcherDir, target)
+	if err != nil {
+		return "", fmt.Errorf("relate launcher dir %s to worktree subpath %s: %w", launcherDir, target, err)
+	}
+	return rel, nil
 }
 
 // menuLauncherRel returns the relative path from the menu launcher directory
 // to the primeName worktree's subpath for menu spawning. primeName is the
 // main worktree's base name, sourced by the caller via the package-local
 // PrimeName(l).
-func menuLauncherRel(l *lyxcwd.Location, primeName string) string {
-	rel, _ := filepath.Rel(filepath.Dir(menuLauncherPath(l)), filepath.Join(l.HubPath, primeName, l.AnchorRel))
-	return rel
+func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
+	menuDir := filepath.Dir(menuLauncherPath(l))
+	target := filepath.Join(l.HubPath, primeName, l.AnchorRel)
+	rel, err := filepath.Rel(menuDir, target)
+	if err != nil {
+		return "", fmt.Errorf("relate menu launcher dir %s to prime subpath %s: %w", menuDir, target, err)
+	}
+	return rel, nil
 }
 
 // writeLaunchers writes per-worktree launcher scripts (ide and fabric-checkout)
@@ -78,7 +91,10 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	}
 
 	// Build and write the ide launcher from launcherSpawnRel
-	spawnRel := launcherSpawnRel(l, slug)
+	spawnRel, err := launcherSpawnRel(l, slug)
+	if err != nil {
+		return err
+	}
 	ideContent, ideMode := launcherScript(runtime.GOOS, spawnRel, "ide spawn "+slug)
 	idePath := filepath.Join(launcherDir, "ide"+ext)
 	if err := os.WriteFile(idePath, ideContent, ideMode); err != nil {
@@ -117,7 +133,11 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	if err != nil {
 		return fmt.Errorf("resolve prime worktree name: %w", err)
 	}
-	menuContent, menuMode := launcherScript(runtime.GOOS, menuLauncherRel(l, primeName), "ide menu")
+	menuRel, err := menuLauncherRel(l, primeName)
+	if err != nil {
+		return err
+	}
+	menuContent, menuMode := launcherScript(runtime.GOOS, menuRel, "ide menu")
 	if err := os.WriteFile(menuPath, menuContent, menuMode); err != nil {
 		return fmt.Errorf("write menu launcher: %w", err)
 	}
@@ -125,14 +145,32 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	return nil
 }
 
-// removeLaunchers removes the launcher directory for the given slug, pruning
-// empty ancestors. The menu launcher is left in place. Returns nil if the
-// directory does not exist.
+// removeLaunchers removes the launcher scripts fabric wrote for the given slug and then the
+// directory itself, pruning empty ancestors.
+// The menu launcher is left in place. Returns nil if the directory does not exist.
+//
+// It deletes the named scripts rather than the whole tree so anything else under the directory
+// survives: an os.RemoveAll there destroyed whatever the operator had put beside the launchers,
+// while the portal half of the same teardown (fslink.Remove) correctly declines to delete a
+// non-empty real directory. A leftover file is reported by the directory removal below, never
+// silently swept.
 func removeLaunchers(l *lyxcwd.Location, slug string) error {
 	launcherDir := LauncherDir(l, slug)
-	if err := os.RemoveAll(launcherDir); err != nil {
+	if err := refuseUncontainedPath(launchersDir(l), launcherDir, "launcher dir"); err != nil {
+		return err
+	}
+
+	ext := launcherExt(runtime.GOOS)
+	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
+		if err := os.Remove(filepath.Join(launcherDir, name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove launcher script %s: %w", filepath.Join(launcherDir, name), err)
+		}
+	}
+
+	if err := os.Remove(launcherDir); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
+
 	// Prune empty ancestors up to but not including launchersDir
 	pruneEmptyAncestors(filepath.Dir(launcherDir), launchersDir(l))
 	return nil

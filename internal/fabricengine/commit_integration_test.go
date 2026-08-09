@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -80,21 +81,47 @@ type pushCall struct {
 	weftPath string
 }
 
+// pushRecorder collects spawnDetachedPushFn invocations under a mutex.
+//
+// The mutex is not decoration: Fabric.Commit fires the push seam AFTER releasing the commit lock,
+// deliberately, so a test driving concurrent Commit calls (commit_lock_integration_test.go) reaches
+// the recorder from several goroutines at once. An unguarded slice append there is a real data race
+// that fails the whole package under -race.
+type pushRecorder struct {
+	mu    sync.Mutex
+	calls []pushCall
+}
+
+// record appends one invocation.
+func (r *pushRecorder) record(warpPath, weftPath string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, pushCall{warpPath: warpPath, weftPath: weftPath})
+}
+
+// Calls returns a copy of everything recorded so far, safe to read while other goroutines are still
+// recording.
+func (r *pushRecorder) Calls() []pushCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]pushCall(nil), r.calls...)
+}
+
 // swapPushRecorder replaces spawnDetachedPushFn with a no-op recorder for
 // the duration of the test, restoring the original on cleanup — the
 // push-invocation-seam-for-tests Shared Decision. Callers of this helper
 // must not use t.Parallel().
-func swapPushRecorder(t *testing.T) *[]pushCall {
+func swapPushRecorder(t *testing.T) *pushRecorder {
 	t.Helper()
 
-	calls := &[]pushCall{}
+	recorder := &pushRecorder{}
 	original := spawnDetachedPushFn
 	spawnDetachedPushFn = func(warpPath, weftPath string) error {
-		*calls = append(*calls, pushCall{warpPath: warpPath, weftPath: weftPath})
+		recorder.record(warpPath, weftPath)
 		return nil
 	}
 	t.Cleanup(func() { spawnDetachedPushFn = original })
-	return calls
+	return recorder
 }
 
 // newCommitFixture builds a fresh warp/weft pair with the fabric config
@@ -306,7 +333,7 @@ func TestCommit_MessageHandling(t *testing.T) {
 // spawnDetachedPushFn exactly once with (warpPath, weftPath).
 func TestCommit_InvokesPushRecorder(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp change")
 	writeWeftConfigContent(t, weftPath, "weft change")
@@ -315,11 +342,11 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 		t.Fatalf("Commit() error = %v", err)
 	}
 
-	if len(*calls) != 1 {
-		t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(*calls), *calls)
+	if len(recorder.Calls()) != 1 {
+		t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(recorder.Calls()), recorder.Calls())
 	}
-	if (*calls)[0].warpPath != warpPath || (*calls)[0].weftPath != weftPath {
-		t.Errorf("push recorder called with (%q, %q); want (%q, %q)", (*calls)[0].warpPath, (*calls)[0].weftPath, warpPath, weftPath)
+	if (recorder.Calls())[0].warpPath != warpPath || (recorder.Calls())[0].weftPath != weftPath {
+		t.Errorf("push recorder called with (%q, %q); want (%q, %q)", (recorder.Calls())[0].warpPath, (recorder.Calls())[0].weftPath, warpPath, weftPath)
 	}
 }
 
@@ -329,7 +356,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 	t.Run("EmptyFiles", func(t *testing.T) {
 		f, _, _ := newCommitFixture(t)
-		calls := swapPushRecorder(t)
+		recorder := swapPushRecorder(t)
 
 		result, err := f.Commit(nil, "no-op commit", nil, SyncOptions{})
 		if err != nil {
@@ -338,14 +365,14 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 		if result.WarpCommitted || result.WeftCommitted {
 			t.Fatalf("Commit() = %+v; want a full no-op", result)
 		}
-		if len(*calls) != 0 {
-			t.Errorf("push recorder invocation count = %d; want 0 (calls: %+v)", len(*calls), *calls)
+		if len(recorder.Calls()) != 0 {
+			t.Errorf("push recorder invocation count = %d; want 0 (calls: %+v)", len(recorder.Calls()), recorder.Calls())
 		}
 	})
 
 	t.Run("WarpOnlyUnchanged", func(t *testing.T) {
 		f, warpPath, _ := newCommitFixture(t)
-		calls := swapPushRecorder(t)
+		recorder := swapPushRecorder(t)
 
 		// newPlainWarpRepo already committed README with content "warp";
 		// writing the identical content again leaves nothing staged.
@@ -358,8 +385,8 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 		if result.WarpCommitted || result.WeftCommitted {
 			t.Fatalf("Commit() = %+v; want a full no-op (unchanged content)", result)
 		}
-		if len(*calls) != 0 {
-			t.Errorf("push recorder invocation count = %d; want 0 (calls: %+v)", len(*calls), *calls)
+		if len(recorder.Calls()) != 0 {
+			t.Errorf("push recorder invocation count = %d; want 0 (calls: %+v)", len(recorder.Calls()), recorder.Calls())
 		}
 	})
 }
@@ -783,7 +810,7 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 // and the snapshot trailer must reach the remote for cross-clone sharing.
 func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
 	f, warpPath, _ := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp only tagged change")
 
@@ -794,8 +821,8 @@ func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
 	if !result.WeftCommitted || result.WeftSHA == "" {
 		t.Fatalf("Commit() = %+v; want WeftCommitted=true and a populated WeftSHA", result)
 	}
-	if len(*calls) != 1 {
-		t.Fatalf("push recorder invocation count = %d; want 1", len(*calls))
+	if len(recorder.Calls()) != 1 {
+		t.Fatalf("push recorder invocation count = %d; want 1", len(recorder.Calls()))
 	}
 }
 
@@ -843,7 +870,7 @@ func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 // stands and is still pushed.
 func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError(t *testing.T) {
 	f, warpPath, weftPath := newCommitFixture(t)
-	calls := swapPushRecorder(t)
+	recorder := swapPushRecorder(t)
 
 	writeWarpFile(t, warpPath, "README", "warp change")
 
@@ -881,8 +908,8 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 		t.Errorf("Commit() = %+v; want WeftCommitted=false", result)
 	}
 
-	if len(*calls) != 1 {
-		t.Errorf("push recorder invocation count = %d; want 1 (the durable warp commit should still be pushed)", len(*calls))
+	if len(recorder.Calls()) != 1 {
+		t.Errorf("push recorder invocation count = %d; want 1 (the durable warp commit should still be pushed)", len(recorder.Calls()))
 	}
 }
 
