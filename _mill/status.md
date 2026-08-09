@@ -44,7 +44,9 @@ batches:
     commit_sha: 5ee3045bad8521e8dfaf5fb889a3d8ac8ba29526
     verify_baseline_failures: []
   - name: go-sweep
-    state: pending
+    state: running
+    implementer_session: 415260b7-642b-4ffd-b0b6-4838e87edbaf
+    start_sha: f05af15cdb48055cb0ee77c665d8795e11d6eedb
     verify_baseline_failures: []
   - name: file-renames
     state: pending
