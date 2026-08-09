@@ -30,5 +30,8 @@ implementing  '2026-08-09T13:18:14Z'
 ```yaml
 batches:
   - name: raddle-fold-and-link-guard
-    state: pending
+    state: running
+    implementer_session: 661af0a9-b15b-4035-841c-5728b2987cbf
+    start_sha: e2b51b8c83747be0ca743d2997f8c60edf1b7469
+    verify_baseline_failures: []
 ```
