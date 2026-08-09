@@ -2,9 +2,9 @@
 
 // checkout_rollback_test.go proves Checkout's all-or-nothing contract holds even
 // when junction wiring (step 5) fails AFTER the weft branch was already switched
-// (step 4). Pre-fix, the rollback reverted only the host, stranding the weft on
+// (step 4). Pre-fix, the rollback reverted only the warp, stranding the weft on
 // the new branch — a half-switched pair, the exact state Checkout promises never
-// to produce (a live review round reproduced this by making the host _lyx a real
+// to produce (a live review round reproduced this by making the warp _lyx a real
 // directory so seedLyxJunction refuses). Checkout now rolls back BOTH sides.
 //
 // Package fabricengine_test to reuse newFabricFixture/currentBranchOf/
@@ -23,9 +23,9 @@ import (
 )
 
 // TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair, then corrupts the
-// host _lyx into a real (non-junction) directory so the junction-wiring step of Checkout fails
+// warp _lyx into a real (non-junction) directory so the junction-wiring step of Checkout fails
 // after the weft has already switched.
-// It asserts Checkout errors AND leaves both the host and the weft on their original branches —
+// It asserts Checkout errors AND leaves both the warp and the weft on their original branches —
 // never a half-switched pair.
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	t.Parallel()
@@ -37,7 +37,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	const targetBranch = "checkout-rollback-target"
 
 	// Establish the healthy primary junction and the target branch on both sides
-	// so Checkout's steps 3 (host switch) and 4 (weft switch) can succeed and the
+	// so Checkout's steps 3 (warp switch) and 4 (weft switch) can succeed and the
 	// failure is isolated to step 5 (junction wiring).
 	// Checkout derives the slug the same way (filepath.Base of the worktree root).
 	slug := filepath.Base(l.WorktreePath())
@@ -47,17 +47,17 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	originalHostBranch := currentBranchOf(t, l.WorktreePath())
+	originalWarpBranch := currentBranchOf(t, l.WorktreePath())
 	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
-	// Corrupt the host _lyx into a real directory: WireJunctions -> seedLyxJunction
+	// Corrupt the warp _lyx into a real directory: WireJunctions -> seedLyxJunction
 	// refuses a real (non-link) _lyx, so Checkout's step 5 fails after step 4 has
 	// already moved the weft.
-	hostLyx := fabricengine.HostLyxLinkHere(l)
-	if err := os.Remove(hostLyx); err != nil {
-		t.Fatalf("remove host junction to corrupt it: %v", err)
+	warpLyx := fabricengine.WarpLyxLinkHere(l)
+	if err := os.Remove(warpLyx); err != nil {
+		t.Fatalf("remove warp junction to corrupt it: %v", err)
 	}
-	if err := os.MkdirAll(hostLyx, 0o755); err != nil {
+	if err := os.MkdirAll(warpLyx, 0o755); err != nil {
 		t.Fatalf("create real _lyx dir: %v", err)
 	}
 
@@ -67,9 +67,9 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	}
 
 	// The all-or-nothing contract: both sides restored to their originals, never
-	// a half-switched pair (host rolled back but weft stranded on the new branch).
-	if got := currentBranchOf(t, l.WorktreePath()); got != originalHostBranch {
-		t.Errorf("host branch after failed Checkout = %q; want %q (original)", got, originalHostBranch)
+	// a half-switched pair (warp rolled back but weft stranded on the new branch).
+	if got := currentBranchOf(t, l.WorktreePath()); got != originalWarpBranch {
+		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
 	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)
@@ -100,18 +100,18 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
-	// Only the host branch exists: the weft side must be forked by Checkout.
+	// Only the warp branch exists: the weft side must be forked by Checkout.
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 
-	originalHostBranch := currentBranchOf(t, l.WorktreePath())
+	originalWarpBranch := currentBranchOf(t, l.WorktreePath())
 	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
 
-	// Corrupt the host _lyx into a real directory so step 5 fails after the fork.
-	hostLyx := fabricengine.HostLyxLinkHere(l)
-	if err := os.Remove(hostLyx); err != nil {
-		t.Fatalf("remove host junction to corrupt it: %v", err)
+	// Corrupt the warp _lyx into a real directory so step 5 fails after the fork.
+	warpLyx := fabricengine.WarpLyxLinkHere(l)
+	if err := os.Remove(warpLyx); err != nil {
+		t.Fatalf("remove warp junction to corrupt it: %v", err)
 	}
-	if err := os.MkdirAll(hostLyx, 0o755); err != nil {
+	if err := os.MkdirAll(warpLyx, 0o755); err != nil {
 		t.Fatalf("create real _lyx dir: %v", err)
 	}
 
@@ -120,8 +120,8 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 		t.Fatalf("Checkout(%q) error = nil; want a junction-wiring failure (res=%+v)", targetBranch, res)
 	}
 
-	if got := currentBranchOf(t, l.WorktreePath()); got != originalHostBranch {
-		t.Errorf("host branch after failed Checkout = %q; want %q (original)", got, originalHostBranch)
+	if got := currentBranchOf(t, l.WorktreePath()); got != originalWarpBranch {
+		t.Errorf("warp branch after failed Checkout = %q; want %q (original)", got, originalWarpBranch)
 	}
 	if got := currentBranchOf(t, fabricengine.WeftWorktree(l)); got != originalWeftBranch {
 		t.Errorf("weft branch after failed Checkout = %q; want %q (original) — half-switched pair", got, originalWeftBranch)

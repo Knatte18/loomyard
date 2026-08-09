@@ -54,7 +54,7 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 func TestTemplateQuietConfig(t *testing.T) {
 	t.Parallel()
 
-	fixture := CopyHostHub(t)
+	fixture := CopyWarpHub(t)
 
 	cmd := exec.Command("git", "config", "--local", "core.fsmonitor")
 	cmd.Dir = fixture.Hub
@@ -67,11 +67,11 @@ func TestTemplateQuietConfig(t *testing.T) {
 	}
 }
 
-// TestCopyHostHub verifies that CopyHostHub returns valid independent git repos.
-func TestCopyHostHub(t *testing.T) {
+// TestCopyWarpHub verifies that CopyWarpHub returns valid independent git repos.
+func TestCopyWarpHub(t *testing.T) {
 	t.Parallel()
 
-	fixture := CopyHostHub(t)
+	fixture := CopyWarpHub(t)
 
 	// Verify the copied hub is a valid git repo
 	cmd := exec.Command("git", "rev-parse", "HEAD")
@@ -95,12 +95,12 @@ func TestCopyHostHub(t *testing.T) {
 	}
 }
 
-// TestCopyHostHub_Isolation verifies that fixture copies are isolated.
-func TestCopyHostHub_Isolation(t *testing.T) {
+// TestCopyWarpHub_Isolation verifies that fixture copies are isolated.
+func TestCopyWarpHub_Isolation(t *testing.T) {
 	t.Parallel()
 
-	fixture1 := CopyHostHub(t)
-	fixture2 := CopyHostHub(t)
+	fixture1 := CopyWarpHub(t)
+	fixture2 := CopyWarpHub(t)
 
 	// Mutate fixture1: add and commit a file
 	testFile := filepath.Join(fixture1.Hub, "test.txt")
@@ -264,7 +264,7 @@ func TestCopyWeft_Isolation(t *testing.T) {
 func TestMustRun(t *testing.T) {
 	t.Parallel()
 
-	fixture := CopyHostHub(t)
+	fixture := CopyWarpHub(t)
 
 	// MustRun should succeed when the command succeeds
 	MustRun(t, fixture.Hub, "git", "rev-parse", "HEAD")
@@ -284,7 +284,7 @@ func TestMustRun_Failure(t *testing.T) {
 	}
 
 	// Build a fixture so the subprocess has a valid git repo to run against.
-	fixture := CopyHostHub(t)
+	fixture := CopyWarpHub(t)
 
 	// Re-invoke this test as a subprocess; the -tags flag must match the current build.
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMustRun_Failure$", "-test.v")

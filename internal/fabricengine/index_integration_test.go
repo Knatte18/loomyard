@@ -6,7 +6,7 @@
 // trailer scan. Package-internal (not fabricengine_test) because it asserts
 // on weftGitDir, an unexported method. Uses lyxtest.CopyWeft for the weft
 // side and a minimal, locally-built plain git repo for the warp side —
-// fabric's warp is just an ordinary host repo, so these tests need none of
+// fabric's warp is just an ordinary warp repo, so these tests need none of
 // CopyWeft's upstream-tracking setup or CopyPaired's junction/portal wiring
 // on the warp side.
 

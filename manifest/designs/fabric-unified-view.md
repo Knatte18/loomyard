@@ -83,7 +83,7 @@ Moving it out also removes the wasted subprocess spawn from the hot consumer-fac
 This is not new plumbing — the junction (`_lyx`) these subdirectories live under is already config-driven (slice 1);
 what changes is only that a module no longer needs a `hubgeometry` code change to add its own subdirectory under an already-wired junction.
 
-**`Weft*`/`Host*Link`/junction-construction methods** (`WeftWorktree`, `WeftRepoRoot`, `HostLyxLink`, `HostJunctions`, `PortalLink`, `LauncherDir`, etc.) move into `fabricengine`, private — they are Fabric's own illusion-maintenance plumbing, never part of the public "ask Fabric for cwd" contract.
+**`Weft*`/`Warp*Link`/junction-construction methods** (`WeftWorktree`, `WeftRepoRoot`, `WarpLyxLink`, `WarpJunctions`, `PortalLink`, `LauncherDir`, etc.) move into `fabricengine`, private — they are Fabric's own illusion-maintenance plumbing, never part of the public "ask Fabric for cwd" contract.
 
 **Keep the name `_board` — renaming was considered (2026-08-05) and dropped as unnecessary churn.** `hubgeometry.BoardDir` (`<Hub>/_board`, a real `git worktree add` of weft on branch `main` — not a junction) hosts more than board's own data: `.fabric-anchor` lives there,
 and the repo-wide `fabric.yaml` lives there (`<BoardDir>/_lyx/config/fabric.yaml`, via the same generic `configengine.Load(baseDir, module, …)`/`<baseDir>/_lyx/config/<module>.yaml` convention every module's config uses — `fabricengine.LoadConfig` is just the one caller that fixes `baseDir = BoardDir(hub)` instead of the usual per-worktree cwd, because fabric's junction pathspec must be one repo-wide fact, not a per-worktree copy;
@@ -159,7 +159,7 @@ lyx fabric clone <weft-url>                 # binding already exists on weft:mai
 lyx fabric clone <weft-url> <warp-url>      # bootstrap — weft has no binding yet, warp given explicitly
 ```
 
-**Breaking change: `clone`'s argument order flips to weft-first** (today warp-first: `internal/fabriccli/clone.go` reads `hostURL := args[0]; weftURL := args[1]`).
+**Breaking change: `clone`'s argument order flips to weft-first** (today warp-first: `internal/fabriccli/clone.go` reads `warpURL := args[0]; weftURL := args[1]`).
 Update `runCloneWithReset`'s arg parsing, `fabricengine.CloneHub`'s parameter order, every call site/help text/test, and `docs/`/this file's own examples above (which still show today's order and must be corrected in the same commit as the flip).
 
 **Conflict rule**: if `<warp-url>` is supplied and a binding already exists — matches: no-op, proceed.
@@ -200,7 +200,7 @@ Read-only verbs the caller can run directly.
 - [finalize.md](finalize.md) — the document-driven weft-conflict mechanism slice 6's orchestration half will reuse.
 - [raddle.md](raddle.md) — the regenerate-don't-merge property bounding rebase recovery;
   the snapshot-staleness consumer slice 4 serves.
-- [host-visibility.md](host-visibility.md) — the narrower sibling illusion (`CLAUDE.local.md`), same junction mechanism slice 1 generalized.
+- [warp-visibility.md](warp-visibility.md) — the narrower sibling illusion (`CLAUDE.local.md`), same junction mechanism slice 1 generalized.
 - [internal/pattern](../../internal/pattern/doc.go) — hand-authored weft content;
   a `_pattern` junction consumer of the slice-1 config-driven list;
   also the residue of rebase re-alignment.

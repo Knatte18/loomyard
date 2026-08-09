@@ -1,5 +1,5 @@
 // cleanup.go implements the Cleanup verb: it finds weft branches that have no
-// corresponding host worktree sibling and deletes them according to a flag matrix.
+// corresponding warp worktree sibling and deletes them according to a flag matrix.
 //
 // Flag matrix:
 //   - apply == false                → dry-run/report only; nothing is deleted.
@@ -8,39 +8,39 @@
 //   - apply == true && force == true → also delete gate-protected task branches.
 //   - force == true && !apply       → report only; force does not imply apply.
 //
-// A weft branch's host sibling is recovered via WeftHostSlug(branch) —
+// A weft branch's warp sibling is recovered via WeftWarpSlug(branch) —
 // inverting WeftBranchName's suffix. The weft repo may also hold non-suffixed weft
 // branches inherited from history predating fabric's uniform naming scheme;
-// WeftHostSlug rejects those (ok == false), and by definition a non-suffixed weft
+// WeftWarpSlug rejects those (ok == false), and by definition a non-suffixed weft
 // branch is not fabric-managed — it is reported but never deleted, matching the
 // report-but-don't-touch rule Reconcile applies to unmanaged branches, rather than
 // the raddle-fold-back gate.
 //
 // Liveness is judged in BRANCH space, not against worktree directory names: a weft
-// branch <hostBranch>-weft is a live pair iff some host worktree is currently checked
-// out on <hostBranch>. A weft branch that is itself checked out at some worktree is
+// branch <warpBranch>-weft is a live pair iff some warp worktree is currently checked
+// out on <warpBranch>. A weft branch that is itself checked out at some worktree is
 // additionally always protected, whatever the liveness verdict says: git branch -D
 // can never delete a checked-out branch, and a checked-out weft branch means the pair
-// is still materialized on disk — e.g. a live pair whose host worktree sits on a
+// is still materialized on disk — e.g. a live pair whose warp worktree sits on a
 // detached HEAD, which branch-space liveness cannot see. Liveness-in-branch-space is
-// the one point where fabric must diverge from warp's original logic. warp compared the weft branch's stripped slug against host worktree
-// *directory* base names; that comparison is wrong for the primary pair, whose host
+// the one point where fabric must diverge from warp's original logic. warp compared the weft branch's stripped slug against warp worktree
+// *directory* base names; that comparison is wrong for the primary pair, whose warp
 // worktree directory is the repo name (e.g. "lyx-fabric-test") while its branch is
 // "main". Under warp the mistake is harmless because warp's primary weft branch is the
-// unsuffixed "main" (WeftHostSlug rejects it → protected as unmanaged). Under fabric's
-// uniform suffix scheme the primary weft branch is "main-weft", which WeftHostSlug
+// unsuffixed "main" (WeftWarpSlug rejects it → protected as unmanaged). Under fabric's
+// uniform suffix scheme the primary weft branch is "main-weft", which WeftWarpSlug
 // accepts — so a directory-name comparison would misclassify it as a deletable orphan
 // and delete the very branch board's reserved weft:main branch requires to stay
 // permanent, distinct from it. Comparing
-// against live host *branches* protects "main-weft" (the primary host worktree is on
+// against live warp *branches* protects "main-weft" (the primary warp worktree is on
 // "main") and every task pair, with no BranchPrefix juggling.
 //
-// Board needs no explicit exclusion: its weft:main branch is the host's own
+// Board needs no explicit exclusion: its weft:main branch is the warp's own
 // unsuffixed default branch (e.g. "main"), which never matches the
-// -weft-suffixed pattern WeftHostSlug looks for, so it is never enumerated
+// -weft-suffixed pattern WeftWarpSlug looks for, so it is never enumerated
 // as a Cleanup candidate in the first place — not because of any
 // repo-level carve-out, but because Cleanup only ever walks weft branches
-// and compares them against the set of known host worktree slugs.
+// and compares them against the set of known warp worktree slugs.
 
 package fabricengine
 
@@ -84,25 +84,25 @@ func raddleFoldedBack(_ string) bool {
 	return false
 }
 
-// Cleanup finds weft branches with no corresponding host worktree sibling and reports or deletes
+// Cleanup finds weft branches with no corresponding warp worktree sibling and reports or deletes
 // them per the flag matrix: apply gates whether any deletion happens, force bypasses the
 // _lyx/raddle/ merge-back gate, checked-out branches are always protected.
 func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
-	// Enumerate host worktrees using git-registered entries only.
+	// Enumerate warp worktrees using git-registered entries only.
 	entries, err := List(l.WorktreePath())
 	if err != nil {
-		return CleanupResult{}, fmt.Errorf("list host worktrees: %w", err)
+		return CleanupResult{}, fmt.Errorf("list warp worktrees: %w", err)
 	}
 
-	// Build the set of live host branches; unreadable branches (stale registrations) skip.
-	liveHostBranches := make(map[string]bool, len(entries))
+	// Build the set of live warp branches; unreadable branches (stale registrations) skip.
+	liveWarpBranches := make(map[string]bool, len(entries))
 	for _, entry := range entries {
-		hostPath := filepath.Clean(filepath.FromSlash(entry.Path))
-		branch, branchErr := readBranch(hostPath)
+		warpPath := filepath.Clean(filepath.FromSlash(entry.Path))
+		branch, branchErr := readBranch(warpPath)
 		if branchErr != nil {
 			continue
 		}
-		liveHostBranches[branch] = true
+		liveWarpBranches[branch] = true
 	}
 
 	// Enumerate all branches in the weft repo to find orphans.
@@ -116,9 +116,9 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 	for _, weftBranch := range weftBranches {
 		branch := weftBranch.Branch
 
-		// Recover the host branch by inverting WeftBranchName's suffix.
+		// Recover the warp branch by inverting WeftBranchName's suffix.
 		// Non-fabric-managed branches are reported but never deleted.
-		hostBranch, ok := WeftHostSlug(branch)
+		warpBranch, ok := WeftWarpSlug(branch)
 		if !ok {
 			result.Entries = append(result.Entries, CleanupBranchEntry{
 				Branch:    branch,
@@ -127,8 +127,8 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 			continue
 		}
 
-		if liveHostBranches[hostBranch] {
-			// Live pair: a host worktree is on this weft branch's paired host branch.
+		if liveWarpBranches[warpBranch] {
+			// Live pair: a warp worktree is on this weft branch's paired warp branch.
 			continue
 		}
 

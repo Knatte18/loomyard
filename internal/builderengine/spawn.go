@@ -443,7 +443,7 @@ func SpawnBatch(deps SpawnDeps, opts SpawnBatchOptions) (*SpawnResult, error) {
 			deps.State.ChainStartSHAs = map[int]string{}
 		}
 		if _, recorded := deps.State.ChainStartSHAs[chainEnd]; !recorded {
-			// The anchor is this HEAD: the host commit immediately before
+			// The anchor is this HEAD: the commit immediately before
 			// the lowest-numbered chain member's first card commit, per the
 			// discussion's chain-anchor decision. Recorded once, at whichever
 			// member spawns first — never overwritten by a later member's

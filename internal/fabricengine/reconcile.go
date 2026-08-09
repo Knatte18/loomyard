@@ -1,12 +1,12 @@
-// reconcile.go implements the fabric repair-and-adopt sweep for paired host↔weft worktrees.
+// reconcile.go implements the fabric repair-and-adopt sweep for paired warp↔weft worktrees.
 //
-// Reconcile walks all host worktrees (never the branch namespace directly) and applies the minimal
+// Reconcile walks all warp worktrees (never the branch namespace directly) and applies the minimal
 // corrective action needed to restore a valid paired topology: it recreates a missing weft worktree
-// when the branch still exists, re-points a broken junction, adopts a raw (non-lyx) host worktree
-// by creating the weft side dormant, and reports (but does not touch) a host worktree on an
+// when the branch still exists, re-points a broken junction, adopts a raw (non-lyx) warp worktree
+// by creating the weft side dormant, and reports (but does not touch) a warp worktree on an
 // unmanaged branch.
-// Wherever a host branch name needs a weft counterpart, fabric derives it via
-// WeftBranchName(hostBranch).
+// Wherever a warp branch name needs a weft counterpart, fabric derives it via
+// WeftBranchName(warpBranch).
 //
 // readBranch and checkJunctionHealth are also used by Status;
 // they live here because Reconcile needs them first and both verbs share the same package.
@@ -30,7 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// ReconcileAction describes the corrective action applied to one host↔weft pair.
+// ReconcileAction describes the corrective action applied to one warp↔weft pair.
 type ReconcileAction string
 
 const (
@@ -38,19 +38,19 @@ const (
 	// branch.
 	ReconcileActionWeftRecreated ReconcileAction = "weft_recreated"
 
-	// ReconcileActionJunctionRepointed means at least one broken or dangling host junction was
+	// ReconcileActionJunctionRepointed means at least one broken or dangling warp junction was
 	// re-pointed to its correct weft directory.
 	// WireJunctions repairs every junction in one call, so the outcome's Detail (via
 	// junctionRepointedDetail) names all of them, not just the one that failed checkJunctionHealth.
 	ReconcileActionJunctionRepointed ReconcileAction = "junction_repointed"
 
-	// ReconcileActionRawAdopted means a host worktree created outside lyx had its weft side created
+	// ReconcileActionRawAdopted means a warp worktree created outside lyx had its weft side created
 	// (branch + worktree) as a dormant counterpart.
 	// No junction is wired;
 	// re-running Reconcile is what wires it once the pair exists.
 	ReconcileActionRawAdopted ReconcileAction = "raw_adopted"
 
-	// ReconcileActionUnmanagedReported means a host worktree is on an unmanaged branch with no weft
+	// ReconcileActionUnmanagedReported means a warp worktree is on an unmanaged branch with no weft
 	// sibling;
 	// it was reported but left untouched.
 	ReconcileActionUnmanagedReported ReconcileAction = "unmanaged_reported"
@@ -67,10 +67,10 @@ const (
 	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
 )
 
-// ReconcilePairResult describes the outcome for one host↔weft pair.
+// ReconcilePairResult describes the outcome for one warp↔weft pair.
 type ReconcilePairResult struct {
-	// HostWorktree is the absolute path to the host worktree.
-	HostWorktree string `json:"host_worktree"`
+	// WarpWorktree is the absolute path to the warp worktree.
+	WarpWorktree string `json:"warp_worktree"`
 	// WeftWorktree is the absolute path to the expected weft sibling.
 	WeftWorktree string `json:"weft_worktree"`
 	// Action is the corrective action taken (or reported).
@@ -87,9 +87,9 @@ type ReconcileResult struct {
 	Pairs []ReconcilePairResult `json:"pairs"`
 }
 
-// Reconcile walks all host worktrees reachable from layout l and applies corrective actions to
-// restore a valid paired host↔weft topology.
-// For each host worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
+// Reconcile walks all warp worktrees reachable from layout l and applies corrective actions to
+// restore a valid paired warp↔weft topology.
+// For each warp worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
@@ -101,18 +101,18 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 	var result ReconcileResult
 
 	for _, entry := range entries {
-		hostPath := filepath.FromSlash(entry.Path)
-		hostPath = filepath.Clean(hostPath)
+		warpPath := filepath.FromSlash(entry.Path)
+		warpPath = filepath.Clean(warpPath)
 
-		slug := filepath.Base(hostPath)
+		slug := filepath.Base(warpPath)
 		weftPath := WeftWorktreePath(l, slug)
 
 		pr := ReconcilePairResult{
-			HostWorktree: filepath.ToSlash(hostPath),
+			WarpWorktree: filepath.ToSlash(warpPath),
 			WeftWorktree: filepath.ToSlash(weftPath),
 		}
 
-		hostLayout, layoutErr := hostLayoutFor(l, hostPath)
+		warpLayout, layoutErr := warpLayoutFor(l, warpPath)
 		if layoutErr != nil {
 			pr.Error = fmt.Sprintf("resolve layout: %v", layoutErr)
 			pr.Action = ReconcileActionUnmanagedReported
@@ -123,31 +123,31 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		weftStat, weftStatErr := os.Stat(weftPath)
 		weftWorktreeExists := weftStatErr == nil && weftStat.IsDir()
 
-		hostBranch, branchErr := readBranch(hostPath)
+		warpBranch, branchErr := readBranch(warpPath)
 		if branchErr != nil {
-			pr.Error = fmt.Sprintf("read host branch: %v", branchErr)
+			pr.Error = fmt.Sprintf("read warp branch: %v", branchErr)
 			pr.Action = ReconcileActionUnmanagedReported
 			result.Pairs = append(result.Pairs, pr)
 			continue
 		}
 
 		if !weftWorktreeExists {
-			pairedAction := t.reconcileMissingWeft(hostLayout, hostPath, weftPath, slug, hostBranch, &pr)
+			pairedAction := t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
 			pr.Action = pairedAction
 		} else {
-			junctionHealthy, _ := checkJunctionHealth(hostLayout)
+			junctionHealthy, _ := checkJunctionHealth(warpLayout)
 
 			if !junctionHealthy {
-				names, namesErr := RepoWiredNames(hostLayout)
+				names, namesErr := RepoWiredNames(warpLayout)
 				if namesErr != nil {
 					pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
 					pr.Action = ReconcileActionJunctionRepointed
-				} else if wireErr := WireJunctions(hostLayout, slug, names); wireErr != nil {
+				} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
 					pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
 					pr.Action = ReconcileActionJunctionRepointed
 				} else {
 					pr.Action = ReconcileActionJunctionRepointed
-					pr.Detail = junctionRepointedDetail(hostLayout)
+					pr.Detail = junctionRepointedDetail(warpLayout)
 				}
 			} else {
 				pr.Action = ReconcileActionAlreadyHealthy
@@ -162,11 +162,11 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 			// wiring failure is surfaced as a Detail note, never as an Error
 			// or a changed Action — this convenience link must never be able
 			// to downgrade a reconcile verdict.
-			if boardErr := wireBoardLink(hostLayout, slug); boardErr != nil {
+			if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
 				appendPrDetail(&pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
 			}
 
-			applyStaleRemoval(hostLayout, slug, &pr)
+			applyStaleRemoval(warpLayout, slug, &pr)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -176,21 +176,21 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 }
 
 // reconcileMissingWeft determines and applies the corrective action when a weft worktree
-// does not exist for the given host worktree: recreate from the existing branch,
+// does not exist for the given warp worktree: recreate from the existing branch,
 // adopt a raw worktree, or report unmanaged.
 func (t *Topology) reconcileMissingWeft(
-	hostLayout *lyxcwd.Location,
-	hostPath, weftPath, slug, hostBranch string,
+	warpLayout *lyxcwd.Location,
+	warpPath, weftPath, slug, warpBranch string,
 	pr *ReconcilePairResult,
 ) ReconcileAction {
-	weftBranch := WeftBranchName(hostBranch)
+	weftBranch := WeftBranchName(warpBranch)
 
-	if weftBranchExists(hostLayout, weftBranch) {
-		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(hostLayout); weftRepoRootErr == nil {
+	if weftBranchExists(warpLayout, weftBranch) {
+		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout); weftRepoRootErr == nil {
 			_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)
 		}
 
-		if err := adoptWeftWorktree(hostLayout, weftPath, weftBranch); err != nil {
+		if err := adoptWeftWorktree(warpLayout, weftPath, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("recreate weft worktree: %v", err)
 			return ReconcileActionWeftRecreated
 		}
@@ -198,27 +198,27 @@ func (t *Topology) reconcileMissingWeft(
 		return ReconcileActionWeftRecreated
 	}
 
-	isRaw := isRawHostWorktree(hostPath)
+	isRaw := isRawWarpWorktree(warpPath)
 	if isRaw {
-		if err := createDormantWeftForRawHost(hostLayout, slug, weftBranch); err != nil {
-			pr.Error = fmt.Sprintf("adopt raw host worktree: %v", err)
+		if err := createDormantWeftForRawWarp(warpLayout, slug, weftBranch); err != nil {
+			pr.Error = fmt.Sprintf("adopt raw warp worktree: %v", err)
 			return ReconcileActionRawAdopted
 		}
-		pr.Detail = fmt.Sprintf("adopted raw host worktree at %s; weft branch %s created dormant (re-run lyx fabric reconcile to wire it)", hostPath, weftBranch)
+		pr.Detail = fmt.Sprintf("adopted raw warp worktree at %s; weft branch %s created dormant (re-run lyx fabric reconcile to wire it)", warpPath, weftBranch)
 		return ReconcileActionRawAdopted
 	}
 
 	pr.Detail = fmt.Sprintf(
-		"host worktree %s is on branch %s with no weft sibling; run `lyx fabric add` or `lyx fabric reconcile`",
-		hostPath, hostBranch,
+		"warp worktree %s is on branch %s with no weft sibling; run `lyx fabric add` or `lyx fabric reconcile`",
+		warpPath, warpBranch,
 	)
 	return ReconcileActionUnmanagedReported
 }
 
 // adoptWeftWorktree creates a git worktree at weftPath for the existing branch in
 // the weft repo. The branch already exists, so no -b flag is used.
-func adoptWeftWorktree(hostLayout *lyxcwd.Location, weftPath, branch string) error {
-	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(hostLayout)
+func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) error {
+	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout)
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
@@ -235,19 +235,19 @@ func adoptWeftWorktree(hostLayout *lyxcwd.Location, weftPath, branch string) err
 	return nil
 }
 
-// isRawHostWorktree reports whether the worktree at hostPath lacks any lyx management
+// isRawWarpWorktree reports whether the worktree at warpPath lacks any lyx management
 // markers. A worktree is raw when it has no _lyx junction or directory.
-func isRawHostWorktree(hostPath string) bool {
-	lyxPath := filepath.Join(hostPath, lyxdirs.LyxDirName)
+func isRawWarpWorktree(warpPath string) bool {
+	lyxPath := filepath.Join(warpPath, lyxdirs.LyxDirName)
 	_, err := os.Lstat(lyxPath)
 	return os.IsNotExist(err)
 }
 
-// createDormantWeftForRawHost creates a weft branch and worktree for a raw host
+// createDormantWeftForRawWarp creates a weft branch and worktree for a raw warp
 // worktree, leaving it dormant (no junction wiring). The weft branch forks from
 // the current weft HEAD.
-func createDormantWeftForRawHost(hostLayout *lyxcwd.Location, slug, weftBranch string) error {
-	weftRoot, err := WeftRepoRoot(hostLayout)
+func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch string) error {
+	weftRoot, err := WeftRepoRoot(warpLayout)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
@@ -264,7 +264,7 @@ func createDormantWeftForRawHost(hostLayout *lyxcwd.Location, slug, weftBranch s
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 
-	if err := createWeftWorktree(hostLayout, slug, weftBranch, parentWeftBranch); err != nil {
+	if err := createWeftWorktree(warpLayout, slug, weftBranch, parentWeftBranch); err != nil {
 		return fmt.Errorf("create dormant weft worktree: %w", err)
 	}
 
@@ -286,32 +286,32 @@ func readBranch(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
-// checkJunctionHealth verifies that every junction in HostJunctionsHere(hostLayout, names)
+// checkJunctionHealth verifies that every junction in WarpJunctionsHere(warpLayout, names)
 // is a link resolving to its Target, reporting the first unhealthy one found.
 // Returns (ok, reason) where ok is true only if every junction is correctly configured.
-func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
-	names, err := RepoWiredNames(hostLayout)
+func checkJunctionHealth(warpLayout *lyxcwd.Location) (bool, string) {
+	names, err := RepoWiredNames(warpLayout)
 	if err != nil {
-		return false, fmt.Sprintf("host junction check unavailable: cannot load fabric.yaml: %v", err)
+		return false, fmt.Sprintf("warp junction check unavailable: cannot load fabric.yaml: %v", err)
 	}
 
-	for _, j := range HostJunctionsHere(hostLayout, names) {
+	for _, j := range WarpJunctionsHere(warpLayout, names) {
 		_, err := os.Lstat(j.Link)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return false, fmt.Sprintf("host %s junction missing", j.Name)
+				return false, fmt.Sprintf("warp %s junction missing", j.Name)
 			}
 			return false, fmt.Sprintf("lstat error: %v", err)
 		}
 
 		isLink, err := fslink.IsLink(j.Link)
 		if err != nil || !isLink {
-			return false, fmt.Sprintf("host %s is not a junction", j.Name)
+			return false, fmt.Sprintf("warp %s is not a junction", j.Name)
 		}
 
-		hostResolved, err := fslink.PointsTo(j.Link)
+		warpResolved, err := fslink.PointsTo(j.Link)
 		if err != nil {
-			return false, fmt.Sprintf("resolve host link: %v", err)
+			return false, fmt.Sprintf("resolve warp link: %v", err)
 		}
 
 		weftResolved, err := filepath.EvalSymlinks(filepath.Clean(j.Target))
@@ -319,8 +319,8 @@ func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
 			return false, fmt.Sprintf("resolve weft target: %v", err)
 		}
 
-		if filepath.Clean(hostResolved) != filepath.Clean(weftResolved) {
-			return false, fmt.Sprintf("host %s junction points elsewhere", j.Name)
+		if filepath.Clean(warpResolved) != filepath.Clean(weftResolved) {
+			return false, fmt.Sprintf("warp %s junction points elsewhere", j.Name)
 		}
 	}
 
@@ -328,14 +328,14 @@ func checkJunctionHealth(hostLayout *lyxcwd.Location) (bool, string) {
 }
 
 // junctionRepointedDetail formats ReconcileActionJunctionRepointed's Detail string,
-// naming every junction in HostJunctionsHere(hostLayout, names) as "Link → Target".
-func junctionRepointedDetail(hostLayout *lyxcwd.Location) string {
-	names, err := RepoWiredNames(hostLayout)
+// naming every junction in WarpJunctionsHere(warpLayout, names) as "Link → Target".
+func junctionRepointedDetail(warpLayout *lyxcwd.Location) string {
+	names, err := RepoWiredNames(warpLayout)
 	if err != nil {
 		return "junction re-pointed: cannot load fabric.yaml: " + err.Error()
 	}
 
-	junctions := HostJunctionsHere(hostLayout, names)
+	junctions := WarpJunctionsHere(warpLayout, names)
 	parts := make([]string, len(junctions))
 	for i, j := range junctions {
 		parts[i] = fmt.Sprintf("%s → %s", j.Link, j.Target)
@@ -388,17 +388,17 @@ func appendPrDetail(pr *ReconcilePairResult, text string) {
 	}
 }
 
-// applyStaleRemoval converges hostLayout's on-disk junctions to the repo-wide pathspec
+// applyStaleRemoval converges warpLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
-func applyStaleRemoval(hostLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
-	desired, err := RepoWiredNames(hostLayout)
+func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
+	desired, err := RepoWiredNames(warpLayout)
 	if err != nil {
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
 		return
 	}
 
-	onDisk, err := scanOnDiskJunctionNames(hostLayout.WorktreePath(), hostLayout.AnchorRel)
+	onDisk, err := scanOnDiskJunctionNames(warpLayout.WorktreePath(), warpLayout.AnchorRel)
 	if err != nil {
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot scan on-disk junctions: %v", err))
 		return
@@ -421,8 +421,8 @@ func applyStaleRemoval(hostLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 
 	var removed []string
 	for _, name := range stale {
-		_ = removeHostJunction(hostLayout, slug, []string{name})
-		_, _ = unseedGitExclude(hostLayout, slug, []string{name})
+		_ = removeWarpJunction(warpLayout, slug, []string{name})
+		_, _ = unseedGitExclude(warpLayout, slug, []string{name})
 		removed = append(removed, name)
 	}
 

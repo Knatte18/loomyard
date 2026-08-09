@@ -1,7 +1,7 @@
 // suite.go implements the "sandbox suite", "sandbox reed-suite", "sandbox shuttle-suite", "sandbox
 // burler-suite", "sandbox perch-suite", "sandbox builder-suite", and "sandbox webster-suite"
 // subcommands: copies one of the embedded suite templates (main, reed, shuttle, burler, perch,
-// builder, or webster) into the Hub host repo, stamps a lyx binary fingerprint, registers the file
+// builder, or webster) into the Hub warp repo, stamps a lyx binary fingerprint, registers the file
 // as a git exclude entry, and launches an interactive Claude session to execute it.
 // The seven suites share every mechanic (fingerprinting, git-exclude, stale-report cleanup, agent
 // launch, post-session reed teardown) via the suiteSpec parameterization of runSuite;
@@ -24,9 +24,9 @@ import (
 
 // Suite-specific constants.
 const (
-	// hostDirName is the subdirectory under the Hub (lyx-test-HUB) that holds
-	// the host repo clone. The Hub layout is <parent>/<hubName>/<hostDirName>.
-	hostDirName = "lyx-test"
+	// warpDirName is the subdirectory under the Hub (lyx-test-HUB) that holds
+	// the warp repo clone. The Hub layout is <parent>/<hubName>/<warpDirName>.
+	warpDirName = "lyx-test"
 )
 
 //go:embed SANDBOX-CORE-SUITE.md
@@ -52,13 +52,13 @@ var websterSandboxSuiteMD string
 
 // suiteSpec parameterizes runSuite over the seven supported suites (main,
 // reed, shuttle, burler, perch, builder, and webster): the file written into
-// the Hub host repo, the embedded doc body rendered into it, the default
+// the Hub warp repo, the embedded doc body rendered into it, the default
 // prompt handed to claude when the operator supplies no -prompt override, and
 // whether the suite boots a live reed substrate that must be torn down after
 // the session. Every other mechanic (fingerprinting, git-exclude,
 // stale-report cleanup, agent launch) is shared across specs.
 type suiteSpec struct {
-	// fileName is the name of the suite scheme file written into the Hub host
+	// fileName is the name of the suite scheme file written into the Hub warp
 	// repo at each suite run. It is intentionally kept out of git via
 	// .git/info/exclude (see ensureGitExclude).
 	fileName string
@@ -69,7 +69,7 @@ type suiteSpec struct {
 	// its sole argument when no -prompt override is supplied.
 	instruction string
 	// reedTeardown marks suites whose scenarios boot a live tmux substrate
-	// (lyx reed up). For those, runSuite runs `lyx reed down` in the host repo
+	// (lyx reed up). For those, runSuite runs `lyx reed down` in the warp repo
 	// after the agent session ends, whatever the agent did: an orphaned tmux
 	// server holds open handles inside the Hub and blocks the next
 	// sandbox/build.cmd -reset.
@@ -166,17 +166,17 @@ const nonInteractiveWarning = "sandbox: warning: stdin/stdout is not an attached
 	"the agent session cannot idle for notifications and may end early, abandoning scenarios. " +
 	"Run the suite launcher in a real interactive terminal (do not redirect or background it).\n"
 
-// launchAgent runs an interactive claude session inside hostRepoDir. It passes
+// launchAgent runs an interactive claude session inside warpRepoDir. It passes
 // instruction as the sole positional argument and --dangerously-skip-permissions
 // to skip per-action confirmation. binDir (when non-empty) is prepended to PATH.
-var launchAgent = func(hostRepoDir, claudePath, instruction, binDir string) int {
+var launchAgent = func(warpRepoDir, claudePath, instruction, binDir string) int {
 	// An interactive claude session is only reliable on an attached console;
 	// warn (not fail) so a knowingly-detached run can still proceed.
 	if !interactiveStdio() {
 		fmt.Fprint(os.Stderr, nonInteractiveWarning)
 	}
 	cmd := exec.Command(claudePath, "--dangerously-skip-permissions", instruction)
-	cmd.Dir = hostRepoDir
+	cmd.Dir = warpRepoDir
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -199,10 +199,10 @@ var launchAgent = func(hostRepoDir, claudePath, instruction, binDir string) int 
 }
 
 // reedDown is a testability seam that tears down the reed substrate by running
-// `lyx reed down` inside hostRepoDir.
-var reedDown = func(hostRepoDir, lyxPath string) error {
+// `lyx reed down` inside warpRepoDir.
+var reedDown = func(warpRepoDir, lyxPath string) error {
 	cmd := exec.Command(lyxPath, "reed", "down")
-	cmd.Dir = hostRepoDir
+	cmd.Dir = warpRepoDir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("lyx reed down: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
@@ -317,12 +317,12 @@ func ensureGitExclude(repoDir, entry string) error {
 // an interactive Claude session. For specs flagged reedTeardown, it runs
 // `lyx reed down` after the session ends.
 func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) error {
-	hostRepoDir := filepath.Join(parentDir, hubName, hostDirName)
+	warpRepoDir := filepath.Join(parentDir, hubName, warpDirName)
 
-	if _, err := os.Stat(hostRepoDir); os.IsNotExist(err) {
-		return fmt.Errorf("hub host repo not found at %s -- run sandbox/build.cmd first", hostRepoDir)
+	if _, err := os.Stat(warpRepoDir); os.IsNotExist(err) {
+		return fmt.Errorf("hub warp repo not found at %s -- run sandbox/build.cmd first", warpRepoDir)
 	} else if err != nil {
-		return fmt.Errorf("stat host repo %s: %w", hostRepoDir, err)
+		return fmt.Errorf("stat warp repo %s: %w", warpRepoDir, err)
 	}
 
 	lyxPath, source, err := resolveLyx()
@@ -335,21 +335,21 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		return fmt.Errorf("fingerprint lyx binary: %w", err)
 	}
 
-	suitePath := filepath.Join(hostRepoDir, spec.fileName)
+	suitePath := filepath.Join(warpRepoDir, spec.fileName)
 	if err := os.WriteFile(suitePath, []byte(renderScheme(info, spec.doc)), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", spec.fileName, err)
 	}
 
-	if err := ensureGitExclude(hostRepoDir, spec.fileName); err != nil {
+	if err := ensureGitExclude(warpRepoDir, spec.fileName); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
-	reportPath := filepath.Join(hostRepoDir, reportFileName)
+	reportPath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.Remove(reportPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove stale %s: %w", reportFileName, err)
 	}
 
-	if err := ensureGitExclude(hostRepoDir, reportFileName); err != nil {
+	if err := ensureGitExclude(warpRepoDir, reportFileName); err != nil {
 		return fmt.Errorf("ensure git exclude: %w", err)
 	}
 
@@ -371,13 +371,13 @@ func runSuite(parentDir, claudeOverride, promptOverride string, spec suiteSpec) 
 		binDir = filepath.Dir(lyxPath)
 	}
 
-	code := launchAgent(hostRepoDir, claudePath, instruction, binDir)
+	code := launchAgent(warpRepoDir, claudePath, instruction, binDir)
 	fmt.Fprintf(os.Stderr,
 		"sandbox: agent session ended (exit code %d). Run sandbox/fetch.cmd to collect findings into .scratch.\n",
 		code)
 
 	if spec.reedTeardown {
-		if err := reedDown(hostRepoDir, lyxPath); err != nil {
+		if err := reedDown(warpRepoDir, lyxPath); err != nil {
 			fmt.Fprintf(os.Stderr, "sandbox: reed teardown: %v\n", err)
 		} else {
 			fmt.Fprintln(os.Stderr, "sandbox: reed substrate torn down (lyx reed down).")

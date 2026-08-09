@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-func TestDeriveHostName(t *testing.T) {
+func TestDeriveWarpName(t *testing.T) {
 	tests := []struct {
 		name string
 		url  string
@@ -55,9 +55,9 @@ func TestDeriveHostName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := DeriveHostName(tt.url)
+			got := DeriveWarpName(tt.url)
 			if got != tt.want {
-				t.Errorf("DeriveHostName(%q) = %q; want %q", tt.url, got, tt.want)
+				t.Errorf("DeriveWarpName(%q) = %q; want %q", tt.url, got, tt.want)
 			}
 		})
 	}
@@ -114,13 +114,13 @@ func initTinyRepo(t *testing.T, dir string) {
 // at.
 func TestCloneHub_CreatesHubDotLyx(t *testing.T) {
 	fixtures := t.TempDir()
-	hostSrc := filepath.Join(fixtures, "host-src")
+	warpSrc := filepath.Join(fixtures, "warp-src")
 	weftSrc := filepath.Join(fixtures, "weft-src")
-	initTinyRepo(t, hostSrc)
+	initTinyRepo(t, warpSrc)
 	initTinyRepo(t, weftSrc)
 
 	cloneParent := t.TempDir()
-	res, err := CloneHub(cloneParent, filepath.ToSlash(hostSrc), filepath.ToSlash(weftSrc), ".")
+	res, err := CloneHub(cloneParent, filepath.ToSlash(warpSrc), filepath.ToSlash(weftSrc), ".")
 	if err != nil {
 		t.Fatalf("CloneHub() error = %v; want nil", err)
 	}

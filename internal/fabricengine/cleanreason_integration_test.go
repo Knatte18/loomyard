@@ -24,7 +24,7 @@ func TestClean_ReasonWording(t *testing.T) {
 		fixture := lyxtest.CopyPairedLocal(t)
 		untracked := filepath.Join(fixture.Hub, "untracked.txt")
 		if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
-			t.Fatalf("write untracked host file: %v", err)
+			t.Fatalf("write untracked warp file: %v", err)
 		}
 
 		ok, reason, err := fabricengine.Clean(fixture.Layout)
@@ -66,9 +66,9 @@ func TestClean_ReasonWording(t *testing.T) {
 		t.Parallel()
 
 		fixture := lyxtest.CopyPairedLocal(t)
-		hostUntracked := filepath.Join(fixture.Hub, "untracked.txt")
-		if err := os.WriteFile(hostUntracked, []byte("new"), 0o644); err != nil {
-			t.Fatalf("write untracked host file: %v", err)
+		warpUntracked := filepath.Join(fixture.Hub, "untracked.txt")
+		if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
+			t.Fatalf("write untracked warp file: %v", err)
 		}
 		weftUntracked := filepath.Join(fixture.WeftPrime, "untracked.txt")
 		if err := os.WriteFile(weftUntracked, []byte("new"), 0o644); err != nil {

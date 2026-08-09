@@ -674,16 +674,16 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	}
 }
 
-// seedPersistentPreRunFixture returns a fresh host-hub git fixture with
+// seedPersistentPreRunFixture returns a fresh warp-hub git fixture with
 // shuttle/reed/webster config seeded (webster.yaml's raw content is
 // caller-supplied, so a test can override its batcher: key) and chdir'd
-// into the host hub -- unlike every other test in this file, this one
+// into the warp hub -- unlike every other test in this file, this one
 // drives Command()'s real PersistentPreRunE (never bypassing it with a
 // hand-built *websterCLI literal), since load-time batcher selection is
 // wired there.
-func seedPersistentPreRunFixture(t *testing.T, websterConfig string) lyxtest.HostFixture {
+func seedPersistentPreRunFixture(t *testing.T, websterConfig string) lyxtest.WarpFixture {
 	t.Helper()
-	fixture := lyxtest.CopyHostHub(t)
+	fixture := lyxtest.CopyWarpHub(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),

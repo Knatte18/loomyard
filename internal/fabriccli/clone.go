@@ -21,7 +21,7 @@ import (
 // runCloneWithReset executes the clone subcommand. When reset is true, it tears
 // down any existing hub before cloning (idempotent re-clone). After CloneHub
 // succeeds, it drives the wiring sequence: repo-wide fabric.yaml, weft:main
-// commits, host junctions, and per-worktree config. On error, the clone is
+// commits, warp junctions, and per-worktree config. On error, the clone is
 // left intact; the operator completes wiring with reconcile.
 func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string) int {
 	cwd, err := lyxcwd.Getwd()
@@ -30,17 +30,17 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 	}
 
 	if len(args) != 2 {
-		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] <host-url> <weft-url>")
+		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] <warp-url> <weft-url>")
 	}
-	hostURL := args[0]
+	warpURL := args[0]
 	weftURL := args[1]
 
 	if reset {
 		// Derive the hub path so we can remove it before cloning (idempotent re-clone).
-		// DeriveHostName returns "" for blank/unparseable URLs; guard defensively.
-		name := fabricengine.DeriveHostName(hostURL)
+		// DeriveWarpName returns "" for blank/unparseable URLs; guard defensively.
+		name := fabricengine.DeriveWarpName(warpURL)
 		if name == "" {
-			return output.Err(out, fmt.Sprintf("could not derive repo name from host URL %s", hostURL))
+			return output.Err(out, fmt.Sprintf("could not derive repo name from warp URL %s", warpURL))
 		}
 		hubPath := fabricengine.HubPath(cwd, name)
 		if err := fabricengine.RemoveAll(hubPath); err != nil {
@@ -48,7 +48,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 		}
 	}
 
-	res, err := fabricengine.CloneHub(cwd, hostURL, weftURL, subpath)
+	res, err := fabricengine.CloneHub(cwd, warpURL, weftURL, subpath)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -79,7 +79,7 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string)
 
 	// .lyx is excluded through the warp's .git/info/exclude by WireJunctions above,
 	// not through a tracked .gitignore entry in the user's own repo: a committed
-	// entry would advertise that LYX is in use, and a host→weft junction must never
+	// entry would advertise that LYX is in use, and a warp→weft junction must never
 	// leave a tracked artifact behind in the user's repo.
 	if _, err := configsync.ReconcileAll(res.WeftBase, true); err != nil {
 		return output.Err(out, err.Error())

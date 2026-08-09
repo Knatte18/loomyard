@@ -15,9 +15,9 @@ The launcher prints a warning when it detects non-console stdio.
 
 ## What the suite does
 
-`sandbox/core-suite.cmd` resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub host repo, and launches an interactive black-box agent there.
+`sandbox/core-suite.cmd` resolves the `lyx` binary to test — the derived `.dev-bin/lyx.exe` when it exists, else the binary on PATH as a prod fallback — fingerprints it, drops a fresh `SANDBOX-CORE-SUITE.md` (stamped with the fingerprint and a `Source: dev` / `Source: prod` marker) into the Hub warp repo, and launches an interactive black-box agent there.
 When the resolved binary is the dev build, the suite prepends `.dev-bin` to the agent's own child-process PATH, so its bare `lyx` invocations resolve to it — the agent still drives `lyx` from PATH only (never the source tree), just scoped to its own session, not your shell.
-The agent writes WARN/FAIL findings to `sandbox-report.json` in the host repo.
+The agent writes WARN/FAIL findings to `sandbox-report.json` in the warp repo.
 The suite only launches the agent;
 collecting the report is a separate step — after the session ends, run `sandbox/fetch.cmd` to fetch a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 
@@ -86,7 +86,7 @@ Reset when the Hub topology may be stale (e.g. after a warp/weft change) or when
 sandbox/core-suite.cmd
 ```
 
-This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub host repo and launches the interactive agent there.
+This copies a fresh `SANDBOX-CORE-SUITE.md` (fingerprint + embedded scheme) into the Hub warp repo and launches the interactive agent there.
 Let it run;
 it records findings to `sandbox-report.json` itself.
 Exit the agent session when it is done — the suite treats any exit code as normal and does not fetch the report itself.
@@ -104,7 +104,7 @@ sandbox/core-suite.cmd -prompt <text>   # override the instruction string
 sandbox/reed-suite.cmd
 ```
 
-This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub host repo and launches the interactive agent there, same as step 4 but for `lyx reed`'s scenarios.
+This copies a fingerprinted `SANDBOX-REED-SUITE.md` into the Hub warp repo and launches the interactive agent there, same as step 4 but for `lyx reed`'s scenarios.
 It needs a live tmux (`tmux.exe` on PATH) and PowerShell 7.
 The attach scenario (M7) pauses for the operator to run `lyx reed attach` in a second terminal and confirm visually.
 Findings go to the same `sandbox-report.json`, so steps 5 (fetch) and 6 (triage) apply unchanged — fetch between sessions, don't run both suites and fetch once.
@@ -125,9 +125,9 @@ sandbox/burler-suite.cmd
 
 Same operating model as 4b, for `lyx shuttle`'s and `lyx burler`'s scenarios respectively;
 both need a live tmux, PowerShell 7, a logged-in `claude`,
-and an `lyx init`-ed host repo.
+and an `lyx init`-ed warp repo.
 Same `-claude`/`-prompt` overrides.
-After the session ends, the launcher runs `lyx reed down` in the host repo (for the reed, shuttle, burler, and perch suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/build.cmd -reset`.
+After the session ends, the launcher runs `lyx reed down` in the warp repo (for the reed, shuttle, burler, and perch suites) so no tmux server outlives the run — an orphaned one holds handles inside the Hub and blocks the next `sandbox/build.cmd -reset`.
 
 ### 4d. Run the perch suite (optional, needs live tmux + logged-in claude)
 
@@ -153,14 +153,14 @@ Same `-claude`/`-prompt` overrides.
 sandbox/fetch.cmd
 ```
 
-Reads `sandbox-report.json` from the Hub host repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
+Reads `sandbox-report.json` from the Hub warp repo, validates and stamps it, and writes a normalized copy into this repo's `.scratch/sandbox-report-<fingerprint>.json`.
 Run this after the suite session ends;
 if the agent wrote no report, this fails with a distinct "not found" error.
 
 ### 6. Triage findings
 
 The agent no longer files GitHub issues itself.
-Instead: the suite emits `sandbox-report.json` in the Hub host repo → `sandbox/fetch.cmd` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
+Instead: the suite emits `sandbox-report.json` in the Hub warp repo → `sandbox/fetch.cmd` fetches it into this repo's `.scratch/sandbox-report-<fingerprint>.json` → run the report-to-tasks triage skill against that file:
 
 ```
 /mill-report-to-tasks "<path-to-fetched-json>"

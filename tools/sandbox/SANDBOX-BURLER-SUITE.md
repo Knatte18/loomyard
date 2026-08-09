@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx burler` against a **live tmux server and a logged-in claude** in the sandbox Hub host repo.
+A structured test-loop for exercising `lyx burler` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-SHUTTLE-SUITE.md`, the value here is partly **visual**: a burler round doing real review+fix work in a pane, a verdict coming back.
 Not an automated suite -- an agent drives it, an operator watches.
 
@@ -19,7 +19,7 @@ Before starting a session:
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
-   the session cwd is the Hub host repo root, the same operating model as the main suite.
+   the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a burler defect** -- the `**Covers:** burler` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
@@ -32,7 +32,7 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-HUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
@@ -43,7 +43,7 @@ each command's `--help` example profile is the reference for the file's shape.
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub host repo.
+The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
 The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
@@ -72,7 +72,7 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the Fabric-repo cwd) on this exact schema.
 **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
@@ -105,7 +105,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 
 **Goal:** "Create a fixture text file describing a chair and a table whose colors DO NOT match, write a profile YAML that reviews it against the rule 'the chair's color must match the table's color', run `lyx burler run --profile <file>`, and confirm the round finds the mismatch, fixes it, and reports the fix."
 
-**Watch:** Create a small fixture file in the Hub host repo (e.g. `chair-table.txt`) whose text states a chair color and a table color that disagree (e.g. "The chair is red.
+**Watch:** Create a small fixture file in the Hub's Fabric repo (e.g. `chair-table.txt`) whose text states a chair color and a table color that disagree (e.g. "The chair is red.
 The table is blue.").
 Write a profile YAML naming that file as `target`, an inline `fasit.instructions` stating the rule "the chair's color must match the table's color" (no fasit paths needed -- the rule itself is the source of truth here), a short `rubric` mapping a color mismatch to a BLOCKING finding, `fix-scope: overlay`, `tool-use: false`, `cluster-fan` omitted (empty -- a solo round, since naming a fan is what activates clustering), and fresh `review-path` / `fixer-report-path` (files that do not already exist).
 Run `lyx burler run --profile <file>`.
@@ -176,11 +176,11 @@ sandbox-report.json written: <count of WARN/FAIL items>
 ## Teardown
 
 After the session summary is recorded and `./sandbox-report.json` is written, run `lyx reed down` to tear down the tmux session/server the scenarios booted with `lyx reed up`.
-An orphaned tmux server holds open handles inside the Hub host repo and blocks the next `sandbox/build.cmd -reset`.
+An orphaned tmux server holds open handles inside the Hub's Fabric repo and blocks the next `sandbox/build.cmd -reset`.
 The launcher also runs `lyx reed down` itself after the session ends (deterministic backstop), but run it here anyway -- defense-in-depth,
 and it keeps the Hub clean while the session is still open for inspection.
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, perch gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`, shuttle black-box agent scenarios stay in `SANDBOX-SHUTTLE-SUITE.md`, perch gate-loop scenarios stay in `SANDBOX-PERCH-SUITE.md`;
   this suite holds only burler's own review+fix round scenarios -- add `S` scenarios here, not in any other suite.

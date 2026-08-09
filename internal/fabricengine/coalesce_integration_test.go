@@ -2,7 +2,7 @@
 
 // coalesce_integration_test.go — integration coverage for CoalescePushBothAt
 // against real warp+weft repos with bare origins: the two-sided-advance case
-// (including the no-host-root-.gitrepo-push.lock assertion), and the
+// (including the no-warp-root-.gitrepo-push.lock assertion), and the
 // diverged-warp-remote case that must return nil (not an error) without
 // spinning. Package fabricengine (internal), reusing this package's existing
 // fixture helpers (newPlainWarpRepo, currentSHA, newFabric from
@@ -84,11 +84,11 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 	}
 }
 
-// TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoHostRootLock covers the straightforward
+// TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock covers the straightforward
 // two-sided case: an unpushed commit on each side,
-// and the no-host-root-gitrepo-push-lock Shared Decision's assertion that the warp-via-fabric path
+// and the no-warp-root-gitrepo-push-lock Shared Decision's assertion that the warp-via-fabric path
 // never leaves a .gitrepo-push.lock at the warp worktree root.
-func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoHostRootLock(t *testing.T) {
+func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.T) {
 	fixtures := t.TempDir()
 
 	warpPath := newPlainWarpRepo(t)

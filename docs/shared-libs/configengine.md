@@ -90,8 +90,8 @@ Callers never see raw YAML or unexpanded tokens.
 ## Migration from old format
 
 Existing config files in the old commented format (all lines commented out) are treated as empty by `Reconcile`.
-Running `lyx config reconcile --apply` from the host worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
-Because the host `_lyx` is a directory junction into the weft worktree's `_lyx`, a single host `lyx config reconcile` reaches all config files (board, worktree, and weft).
+Running `lyx config reconcile --apply` from the warp worktree reconciles all module configs against their templates, rewriting old-format files to live templates with all keys present.
+Because the warp `_lyx` is a directory junction into the weft worktree's `_lyx`, a single warp `lyx config reconcile` reaches all config files (board, worktree, and weft).
 No separate command in the weft sibling is needed.
 
 ## Exported functions

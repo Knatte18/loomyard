@@ -44,7 +44,7 @@ func (e *ErrMissingPath) Error() string {
 	return fmt.Sprintf("fabricengine: path does not exist or is not a directory: %s", e.Path)
 }
 
-// Fabric is the cross-repo coordination handle over paired warp (host) and weft checkouts.
+// Fabric is the cross-repo coordination handle over paired warp (warp) and weft checkouts.
 // warp and weft are unexported for uncoordinated, repo-specific operations reached only from
 // inside this package;
 // cross-repo operations get their own Fabric methods, and a single-sided operation earns a named
@@ -106,7 +106,7 @@ func EnvSyncOptions() SyncOptions {
 	}
 }
 
-// WeftWorktree returns the path to the weft worktree paired with l's host worktree.
+// WeftWorktree returns the path to the weft worktree paired with l's warp worktree.
 // It is the read-only accessor every non-fabric caller that needs to know the weft sibling's
 // location goes through, closing the weft-visibility leak where those callers used to reach
 // lyxcwd.Location directly for a fabric-owned path.

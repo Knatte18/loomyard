@@ -1,8 +1,8 @@
 //go:build integration
 
 // dotlyxjunction_integration_test.go covers the .lyx junction lifecycle this batch introduces: wiring
-// creates a real host↔weft junction and seeds both sides' git-exclude, unwiring reverses only the
-// warp-side wiring, and a pre-existing real host-side .lyx is adopted into the weft target rather
+// creates a real warp↔weft junction and seeds both sides' git-exclude, unwiring reverses only the
+// warp-side wiring, and a pre-existing real warp-side .lyx is adopted into the weft target rather
 // than hard-erroring — the branch that makes the very first `reconcile` after this change survive
 // against every worktree that predates it.
 //
@@ -77,20 +77,20 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	junctions := fabricengine.HostJunctions(l, slug, names)
-	var dotLyx fabricengine.HostJunction
+	junctions := fabricengine.WarpJunctions(l, slug, names)
+	var dotLyx fabricengine.WarpJunction
 	for _, j := range junctions {
 		if j.Name == lyxdirs.DotLyxDirName {
 			dotLyx = j
 		}
 	}
 	if dotLyx.Name == "" {
-		t.Fatalf("HostJunctions(%v) has no %q entry: %+v", names, lyxdirs.DotLyxDirName, junctions)
+		t.Fatalf("WarpJunctions(%v) has no %q entry: %+v", names, lyxdirs.DotLyxDirName, junctions)
 	}
 
 	wantTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
 	if dotLyx.Target != wantTarget {
-		t.Errorf("HostJunction(.lyx).Target = %q; want %q", dotLyx.Target, wantTarget)
+		t.Errorf("WarpJunction(.lyx).Target = %q; want %q", dotLyx.Target, wantTarget)
 	}
 
 	isLink, err := fslink.IsLink(dotLyx.Link)
@@ -134,7 +134,7 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 }
 
 // TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite covers (b), the regression test for the
-// ordering hole: after wiring and before any weft-git verb runs, writing a file into the host-side
+// ordering hole: after wiring and before any weft-git verb runs, writing a file into the warp-side
 // .lyx leaves `git status --porcelain` in the weft worktree clean. Seeding the weft-side exclude only
 // from ensureWeftLockDir would pass every other test in this file while leaving scratch as untracked
 // dirt during the window that trips Remove's no-force dirty gate.
@@ -153,9 +153,9 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
-	hostDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
-	if err := os.WriteFile(filepath.Join(hostDotLyx, "scratch.txt"), []byte("scratch"), 0o644); err != nil {
-		t.Fatalf("write into host .lyx: %v", err)
+	warpDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	if err := os.WriteFile(filepath.Join(warpDotLyx, "scratch.txt"), []byte("scratch"), 0o644); err != nil {
+		t.Fatalf("write into warp .lyx: %v", err)
 	}
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
@@ -179,11 +179,11 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 	slug := filepath.Base(fixture.Hub)
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
 
-	hostDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
-	if err := os.MkdirAll(filepath.Join(hostDotLyx, "webster"), 0o755); err != nil {
+	warpDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	if err := os.MkdirAll(filepath.Join(warpDotLyx, "webster"), 0o755); err != nil {
 		t.Fatalf("mkdir pre-existing real .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(hostDotLyx, "webster", "state.json.lock"), []byte("lock"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(warpDotLyx, "webster", "state.json.lock"), []byte("lock"), 0o644); err != nil {
 		t.Fatalf("seed pre-existing .lyx content: %v", err)
 	}
 
@@ -191,9 +191,9 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 		t.Fatalf("WireJunctions (adoption): %v", err)
 	}
 
-	isLink, err := fslink.IsLink(hostDotLyx)
+	isLink, err := fslink.IsLink(warpDotLyx)
 	if err != nil || !isLink {
-		t.Fatalf(".lyx at %s is not a junction after adoption: isLink=%v err=%v", hostDotLyx, isLink, err)
+		t.Fatalf(".lyx at %s is not a junction after adoption: isLink=%v err=%v", warpDotLyx, isLink, err)
 	}
 
 	weftDotLyx := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
@@ -222,7 +222,7 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 
 // TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched covers (d): an entry already
 // present in the weft-side target aborts adoption with an error naming the colliding path and leaves
-// both sides untouched — the host directory remains a real directory.
+// both sides untouched — the warp directory remains a real directory.
 func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *testing.T) {
 	fixture := lyxtest.CopyPaired(t)
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
@@ -234,13 +234,13 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 	slug := filepath.Base(fixture.Hub)
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
 
-	hostDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
-	if err := os.MkdirAll(hostDotLyx, 0o755); err != nil {
+	warpDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	if err := os.MkdirAll(warpDotLyx, 0o755); err != nil {
 		t.Fatalf("mkdir pre-existing real .lyx: %v", err)
 	}
 	const collidingName = "conflict.txt"
-	if err := os.WriteFile(filepath.Join(hostDotLyx, collidingName), []byte("host copy"), 0o644); err != nil {
-		t.Fatalf("seed host-side colliding entry: %v", err)
+	if err := os.WriteFile(filepath.Join(warpDotLyx, collidingName), []byte("warp copy"), 0o644); err != nil {
+		t.Fatalf("seed warp-side colliding entry: %v", err)
 	}
 
 	// Materialise the weft target ahead of time with a same-named entry — the
@@ -261,20 +261,20 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 		t.Errorf("error %q does not name the colliding entry %q", err.Error(), collidingName)
 	}
 
-	// Both sides untouched: the host directory is still a real, non-link directory...
-	isLink, linkErr := fslink.IsLink(hostDotLyx)
+	// Both sides untouched: the warp directory is still a real, non-link directory...
+	isLink, linkErr := fslink.IsLink(warpDotLyx)
 	if linkErr != nil {
-		t.Fatalf("IsLink(%s): %v", hostDotLyx, linkErr)
+		t.Fatalf("IsLink(%s): %v", warpDotLyx, linkErr)
 	}
 	if isLink {
-		t.Errorf("%s became a junction despite the aborted collision; want it to remain a real directory", hostDotLyx)
+		t.Errorf("%s became a junction despite the aborted collision; want it to remain a real directory", warpDotLyx)
 	}
-	hostContent, readErr := os.ReadFile(filepath.Join(hostDotLyx, collidingName))
+	warpContent, readErr := os.ReadFile(filepath.Join(warpDotLyx, collidingName))
 	if readErr != nil {
-		t.Fatalf("read host-side colliding entry after abort: %v", readErr)
+		t.Fatalf("read warp-side colliding entry after abort: %v", readErr)
 	}
-	if string(hostContent) != "host copy" {
-		t.Errorf("host-side colliding entry content changed: %q", string(hostContent))
+	if string(warpContent) != "warp copy" {
+		t.Errorf("warp-side colliding entry content changed: %q", string(warpContent))
 	}
 
 	// ...and the weft-side copy is untouched too.
@@ -317,7 +317,7 @@ func TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern(t *testing.T) {
 				t.Fatalf("remove pre-seeded %s before test setup: %v", tt.dirName, err)
 			}
 			if err := os.MkdirAll(link, 0o755); err != nil {
-				t.Fatalf("mkdir real host dir %s: %v", link, err)
+				t.Fatalf("mkdir real warp dir %s: %v", link, err)
 			}
 			marker := filepath.Join(link, "marker.txt")
 			if err := os.WriteFile(marker, []byte("hand-authored content"), 0o644); err != nil {

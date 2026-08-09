@@ -20,7 +20,7 @@ import (
 // newScratchRepo initializes a fresh git repo in a t.TempDir() and
 // configures a throwaway committer identity, returning its path. Every
 // gitquery/chain test needing real git history builds on this rather than
-// lyxtest's weft/host fixtures, since these helpers exercise a plain
+// lyxtest's weft/warp fixtures, since these helpers exercise a plain
 // worktree path, not lyx's junction-paired geometry.
 func newScratchRepo(t *testing.T) string {
 	t.Helper()

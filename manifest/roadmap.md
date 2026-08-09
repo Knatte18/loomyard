@@ -41,7 +41,7 @@ Committed to, in this order, next.
    A weft-backed `_lyx/PATTERN.md` file plus `_lyx/pattern/` folder whose invariants are injected as a pointer into every code-touching agent prompt.
    **The wiring has landed**: the `hubgeometry`/`fabricengine`/`initengine` junction plumbing, the `internal/pattern` active-check leaf, the `stencil` optional-marker extension, and the `{{.pattern_directive}}` marker in all five code-touching templates (builder implementer, burler round, webster fork, webster Master, loom plan) are built and merged.
    **The content migration** out of `CONSTRAINTS.md` into `_lyx/PATTERN.md` + detail docs remains outstanding and still happens only at loomyard-init-via-lyx — `CONSTRAINTS.md` stays the single live invariants doc until that cutover.
-   Also supersedes the constraints-hiding half of Someday's `host-visibility`.
+   Also supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See [internal/pattern](../internal/pattern/doc.go).
 
 ## Someday
@@ -78,10 +78,10 @@ No build order is implied between these items.
    Both stay Someday — neither is needed to get `loom` running, unlike the Planned `Treadle`/`Shed`/perch-rewrite work they build on once scheduled.
    See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
-1. **host-visibility: CLAUDE.local.md invisible in host's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in host's own git history.
-   The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the host repo, so no junction-to-hide-a-constraints-dir is needed;
+1. **warp-visibility: CLAUDE.local.md invisible in the Fabric repo's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in the Fabric repo's own git history.
+   The `CONSTRAINTS.md`-equivalent half is **superseded by the Planned `PATTERN.md`** — it lives in `weft`, already invisible to the Fabric repo, so no junction-to-hide-a-constraints-dir is needed;
    only `CLAUDE.local.md` remains.
-   See [designs/host-visibility.md](designs/host-visibility.md).
+   See [designs/warp-visibility.md](designs/warp-visibility.md).
 
 1. **reed daemon: foreign-pane self-heal** — extends the **reed: daemon → Slack relay** item.
    Today reed is one-shot, so an operator-split or stray "faux" pane is only reaped on the *next* reed verb;
@@ -138,7 +138,7 @@ No build order is implied between these items.
 
 ## Done
 
-1. **fabric** — unified host↔weft git-coordination module replacing warp/weft;
+1. **fabric** — unified warp↔weft git-coordination module replacing warp/weft;
    cut over and old modules deleted.
    Warp-rebase / remote-reconcile recovery landed via `Fabric.Pull` (`internal/fabricengine/pull.go`): fabric-layer detection (ancestry, never `SHAExists`) + safe re-anchor + a `PullResult` PATTERN-residue document, driven by `lyx fabric pull`.
 
@@ -162,7 +162,7 @@ No build order is implied between these items.
 
 1. **board: use `gitrepo` as its git operator** — board's detached sync (`internal/boardengine`) talks to git exclusively through a single `gitrepo.Repo` (`StageAllAndCommit` + `PushCoalesced`) under board's own write and push locks, replacing its former hand-rolled `gitexec` calls.
 
-1. **board: move storage to `weft:main`** — replaces board's separate remote repo with a reserved `weft:main` branch: a second weft worktree at `<hub>/_board` on the host's own unsuffixed default branch (never a separate clone, never `<branch>-weft`);
+1. **board: move storage to `weft:main`** — replaces board's separate remote repo with a reserved `weft:main` branch: a second weft worktree at `<hub>/_board` on the warp's own unsuffixed default branch (never a separate clone, never `<branch>-weft`);
    board's git routes through `internal/fabricengine`'s `CommitWeftAt`/`PushWeftAt` (a new warp-untethered primitive) instead of a direct `gitrepo.Repo` handle, preserving board's existing detached-sync architecture unchanged;
    a new `notes.json` store for not-yet-claimable manifest entries, sharing `tasks.json`'s exact schema;
    a `promote-note` cross-store move command;
@@ -177,11 +177,11 @@ No build order is implied between these items.
 
 1. **worktree + ide** — worktree/portal management, VS Code launcher (worktree itself superseded by `warp`).
 
-1. **weft** — companion weft repo, paired host+weft spawn/teardown (superseded by the `fabric` module).
+1. **weft** — companion weft repo, paired warp+weft spawn/teardown (superseded by the `fabric` module).
 
 1. **config TUI** — `lyx config` interactive menu + `reconcile`.
 
-1. **warp** — host↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup) (superseded by the `fabric` module).
+1. **warp** — warp↔weft-coordinated git topology (clone, add/remove, checkout, reconcile, cleanup) (superseded by the `fabric` module).
 
 1. **proc** — cross-OS process spawn.
 
@@ -237,7 +237,7 @@ No build order is implied between these items.
   Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's `scout` item") — every reference elsewhere in this file and in `designs/*.md` already does this.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
 - Delete a module's doc under `designs/` once it ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — that's why Done entries above don't link anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout`, `raddle`, `webster: parallel card execution`, `hardener`, `host-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout`, `raddle`, `webster: parallel card execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
 - This file is the single home for everything not scheduled, whether firmly committed to (`scout`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.

@@ -32,7 +32,7 @@ func TestWiredNames_ContainsLyxEvenForAConfigNamingNeitherStructuralDirectory(t 
 // TestDeployedLyxPathspec_YieldsNoDuplicateLyx asserts that a deployed `pathspec: "_lyx _pattern"`
 // Config — `_lyx` arriving from both the structural set and cfg.Dirs() in the same call — yields no
 // duplicate `_lyx` in the wired set, the routing set, or the slug-reservation set. Without dedup,
-// duplicate names would reach HostJunctions, ScopedPathspec, and status output.
+// duplicate names would reach WarpJunctions, ScopedPathspec, and status output.
 // The `"_lyx _pattern"` value is deliberate and is not retargeted to `_extra` like this batch's other
 // exemplar Config values: per the no-migration decision (see the plan's Shared Decisions), a deployed
 // repo's pathspec naming `_pattern` is exactly what an already-deployed fabric.yaml keeps indefinitely

@@ -11,7 +11,7 @@
 // Weft branch model: each weft branch forks from its parent's weft branch (non-orphan, shared
 // merge-base), preserving history for future _lyx/raddle/ squash-merge-back. _lyx is isolated by
 // pathspec (never merges back), not by orphan topology.
-// A detached or unborn host HEAD aborts the spawn before any creation, ensuring no partial state.
+// A detached or unborn warp HEAD aborts the spawn before any creation, ensuring no partial state.
 //
 // Push honors SkipGit/SkipPush via fabricengine.SyncOptions, fabric's own options type.
 
@@ -37,14 +37,14 @@ func WeftWorktreePath(l *lyxcwd.Location, slug string) string {
 }
 
 // WeftLyxDirFor returns the path to the _lyx directory within a named slug's weft worktree.
-// It is the junction target paired by spawn seeds and pairs with HostLyxLink(slug).
+// It is the junction target paired by spawn seeds and pairs with WarpLyxLink(slug).
 func WeftLyxDirFor(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.LyxDirName)
 }
 
-// WeftHostSlug parses a weft sibling directory name and returns the host slug it corresponds to.
+// WeftWarpSlug parses a weft sibling directory name and returns the warp slug it corresponds to.
 // It reports whether name ends with weftname.Suffix AND the stripped prefix is non-empty.
-func WeftHostSlug(name string) (slug string, ok bool) {
+func WeftWarpSlug(name string) (slug string, ok bool) {
 	if !strings.HasSuffix(name, weftname.Suffix) {
 		return "", false
 	}
@@ -138,21 +138,21 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 	return nil
 }
 
-// removeHostJunction removes every host junction for slug via fslink.Remove.
+// removeWarpJunction removes every warp junction for slug via fslink.Remove.
 // Returns nil if all are absent (idempotent).
-func removeHostJunction(l *lyxcwd.Location, slug string, names []string) error {
-	return removeJunctionRecords(HostJunctions(l, slug, names))
+func removeWarpJunction(l *lyxcwd.Location, slug string, names []string) error {
+	return removeJunctionRecords(WarpJunctions(l, slug, names))
 }
 
 // removeJunctionRecords removes each junction via fslink.Remove in a
 // best-effort loop, continuing past per-junction failures and accumulating
 // errors. Returns nil if empty or all absent (idempotent); non-nil error does
 // not mean no junction was removed.
-func removeJunctionRecords(junctions []HostJunction) error {
+func removeJunctionRecords(junctions []WarpJunction) error {
 	var errs []error
 	for _, j := range junctions {
 		if err := fslink.Remove(j.Link); err != nil {
-			errs = append(errs, fmt.Errorf("remove host junction %s: %w", j.Link, err))
+			errs = append(errs, fmt.Errorf("remove warp junction %s: %w", j.Link, err))
 		}
 	}
 	return errors.Join(errs...)

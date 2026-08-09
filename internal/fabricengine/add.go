@@ -1,4 +1,4 @@
-// add.go implements the transactional Add: it creates the host worktree, portal, and launchers,
+// add.go implements the transactional Add: it creates the warp worktree, portal, and launchers,
 // then pushes last, performing a best-effort full rollback on any post-creation failure so a
 // partial worktree pair is never left behind.
 // The weft side always uses the suffixed branch produced by WeftBranchName.
@@ -32,12 +32,12 @@ type AddResult struct {
 	Pushed bool   `json:"pushed"`
 }
 
-// Add creates a new paired host and weft git worktree with the given slug.
+// Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, and pushes branches, rolling back
 // all changes on any failure.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
 	// (0) Slug validation. A slug is by contract a single path component:
-	// every consumer re-derives it from the host worktree path via
+	// every consumer re-derives it from the warp worktree path via
 	// filepath.Base (status, reconcile, prune) and the hub scan only looks at
 	// the hub's top level, so a separator-containing slug would create a pair
 	// the rest of the module cannot re-identify. Reject both separators on
@@ -71,21 +71,21 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		return AddResult{}, fmt.Errorf("source worktree has uncommitted changes")
 	}
 
-	hostBranch := t.cfg.BranchPrefix + slug
-	weftBranch := WeftBranchName(hostBranch)
+	warpBranch := t.cfg.BranchPrefix + slug
+	weftBranch := WeftBranchName(warpBranch)
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + hostBranch}, l.WorktreePath())
+	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
 	if exitCode == 0 {
-		// Name the way forward: Remove deliberately leaves the host branch
+		// Name the way forward: Remove deliberately leaves the warp branch
 		// behind (it may carry unmerged work), so remove-then-re-add of the
 		// same slug lands here — a bare "already exists" gives the operator no
 		// path out of that everyday cycle.
 		return AddResult{}, fmt.Errorf(
 			"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair",
-			hostBranch, hostBranch, hostBranch,
+			warpBranch, warpBranch, warpBranch,
 		)
 	}
 
@@ -120,26 +120,26 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
-	// Resolve parent host branch before worktree creation to avoid partial state on failure.
+	// Resolve parent warp branch before worktree creation to avoid partial state on failure.
 	stdout, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
 	}
 	if exitCode != 0 || strings.TrimSpace(stdout) == "HEAD" {
-		return AddResult{}, fmt.Errorf("cannot spawn weft branch: host worktree is on a detached HEAD or unborn branch")
+		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
 	}
 	parentBranch := strings.TrimSpace(stdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", hostBranch, target}, l.WorktreePath())
+	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "add", "-b", warpBranch, target}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("cwd is not a valid git worktree")
 	}
 	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d)", target, hostBranch, exitCode)
+		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d)", target, warpBranch, exitCode)
 	}
 
-	// Install the post-checkout hook now that the host worktree exists.
+	// Install the post-checkout hook now that the warp worktree exists.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// Add or trigger the all-or-nothing rollback (the hook is belt-and-suspenders).
 	if hookErr := InstallPostCheckoutHook(l); hookErr != nil {
@@ -158,32 +158,32 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 			weftRepoRoot,
 		)
 		if err != nil {
-			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+			_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 			return AddResult{}, fmt.Errorf("failed to adopt weft worktree: %w", err)
 		}
 		if exitCode != 0 {
-			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+			_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d)", weftBranch, exitCode)
 		}
 	} else {
 		// Create: git worktree add -b <weftBranch> <path> <parentWeftBranch> (fork from parent's weft branch)
 		if err := createWeftWorktree(l, slug, weftBranch, parentWeftBranch); err != nil {
-			_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+			_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 			return AddResult{}, err
 		}
 	}
 
 	if err := createPortal(l, slug); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
 	if err := writeLaunchers(l, slug); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
-	// (10b) Wire the new worktree's host junctions eagerly, sourcing the wired
+	// (10b) Wire the new worktree's warp junctions eagerly, sourcing the wired
 	// name-set from the repo-wide BoardDir base (not any per-pair weft base or
 	// acting-worktree config) — every worktree must converge to the same
 	// repo-wide pathspec, matching Checkout's re-point call. The weft worktree
@@ -191,11 +191,11 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 	// back the whole pair via the existing post-step-7 path.
 	names, err := RepoWiredNames(l)
 	if err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("wire junctions: load fabric config: %w", err)
 	}
 	if err := WireJunctions(l, slug, names); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
@@ -204,30 +204,30 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 	// wireBoardLink doc for why it is wired unconditionally rather than
 	// folded into names.
 	if err := wireBoardLink(l, slug); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("wire board junction: %w", err)
 	}
 
-	// (11) Push host branch (LAST step for host)
-	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", hostBranch}, l.WorktreePath())
+	// (11) Push warp branch (LAST step for warp)
+	_, _, exitCode, err = gitexec.RunGit([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath())
 	if err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, fmt.Errorf("push: %w", err)
 	}
 	if exitCode != 0 {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
-		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d)", hostBranch, exitCode)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
+		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d)", warpBranch, exitCode)
 	}
 
 	// (12) Push weft branch
 	if err := pushWeftBranch(l, slug, weftBranch, opts); err != nil {
-		_ = t.rollbackAdd(l, slug, hostBranch, weftBranch, target, weftBranchAlreadyExists)
+		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists)
 		return AddResult{}, err
 	}
 
 	return AddResult{
 		Slug:   slug,
-		Branch: hostBranch,
+		Branch: warpBranch,
 		Path:   target,
 		// Pushed reflects whether the weft branch was actually pushed to the remote.
 		// It is false when either SkipPush or SkipGit suppresses the push.
@@ -237,7 +237,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 
 // rollbackAdd performs best-effort paired cleanup on Add failure, unwiring junctions,
 // removing worktrees and branches, preserving pre-existing adopted weft branches.
-func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, hostBranch, weftBranch, target string, weftBranchAdopted bool) error {
+func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, warpBranch, weftBranch, target string, weftBranchAdopted bool) error {
 	var firstErr error
 
 	// (1) Remove the weft worktree; delete the weft branch only when this Add
@@ -248,7 +248,7 @@ func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, hostBranch, weftBranch,
 		}
 	}
 
-	// (1b) Remove host junctions wired by step 10b, best-effort. Source names
+	// (1b) Remove warp junctions wired by step 10b, best-effort. Source names
 	// from the repo-wide BoardDir base, mirroring Remove's step 5: a rollback
 	// must not hard-fail when the repo-wide config is unreadable (Add is
 	// failing already), so a load error falls back to names == nil, which
@@ -257,27 +257,27 @@ func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, hostBranch, weftBranch,
 	if namesErr != nil {
 		names = nil
 	}
-	if err := removeHostJunction(l, slug, names); err != nil {
+	if err := removeWarpJunction(l, slug, names); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// (2) Remove host portal
+	// (2) Remove warp portal
 	if err := removePortal(l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// (3) Remove host launchers
+	// (3) Remove warp launchers
 	if err := removeLaunchers(l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	// (4) Remove host worktree
+	// (4) Remove warp worktree
 	_, _, exitCode, err := gitexec.RunGit([]string{"worktree", "remove", "--force", target}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
@@ -289,8 +289,8 @@ func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, hostBranch, weftBranch,
 		}
 	}
 
-	// (5) Delete host branch
-	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", hostBranch}, l.WorktreePath())
+	// (5) Delete warp branch
+	_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", warpBranch}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -301,7 +301,7 @@ func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, hostBranch, weftBranch,
 		}
 	}
 
-	// (6) Prune host worktrees
+	// (6) Prune warp worktrees
 	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {

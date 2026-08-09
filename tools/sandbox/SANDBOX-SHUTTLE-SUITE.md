@@ -2,7 +2,7 @@
 
 ## What this is
 
-A structured test-loop for exercising `lyx shuttle` against a **live tmux server and a logged-in claude** in the sandbox Hub host repo.
+A structured test-loop for exercising `lyx shuttle` against a **live tmux server and a logged-in claude** in the sandbox Hub's Fabric repo.
 Like `SANDBOX-REED-SUITE.md`, the value here is partly **visual**: a strand's pane doing real agent work, an outcome coming back.
 Not an automated suite -- an agent drives it, an operator watches.
 
@@ -16,7 +16,7 @@ Before starting a session:
    The deployed binary is a snapshot -- re-deploy after any source change you want to test.
 2. **Materialize the hub.**
    Run `sandbox/build.cmd` (or `sandbox/build.cmd -reset` to start clean);
-   the session cwd is the Hub host repo root, the same operating model as the main suite.
+   the session cwd is the Hub's Fabric repo root, the same operating model as the main suite.
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a shuttle defect** -- the `**Covers:** shuttle` tag on S1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
@@ -24,7 +24,7 @@ Before starting a session:
 
 ## Black-box rule
 
-**The agent under test works exclusively inside the Hub host repo (`lyx-test-HUB/lyx-test`).
+**The agent under test works exclusively inside the Hub's Fabric repo (`lyx-test-HUB/lyx-test`).
 It tests `lyx.exe` as a black box -- exactly as a real user with only the binary on PATH.
 It must not look for, read, or reason about the lyx source tree.
 No peeking at `C:\Code\loomyard\` or any other path outside the Hub.**
@@ -40,7 +40,7 @@ One sanctioned deviation from the pure black-box rule, mirroring the reed suite'
 
 ## Fingerprint header
 
-The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub host repo.
+The launcher prepends a "binary under test" fingerprint block to this file when it copies it into the Hub's Fabric repo.
 The fingerprint records the absolute path, file size, modification time, and a short SHA-256 of the `lyx.exe` binary at launch time.
 
 The same fingerprint identifies the binary for the report's provenance: a separate fetch step (run after this session) stamps it into `meta.fingerprint` of the fetched `sandbox-report.json` so a maintainer can reproduce the exact binary that produced each finding.
@@ -65,7 +65,7 @@ For each scenario below:
 
 ## Capturing findings
 
-After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the host-repo cwd) on this exact schema.
+After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-report.json` (in the Fabric-repo cwd) on this exact schema.
 **Always write the file, even when there are zero `WARN`/`FAIL` findings** -- in that case `items` is an empty array.
 
 ```json
@@ -157,5 +157,5 @@ sandbox-report.json written: <count of WARN/FAIL items>
 
 ## Notes
 
-- Host/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`;
+- Warp/weft scenarios stay in `SANDBOX-CORE-SUITE.md`, reed/tmux scenarios stay in `SANDBOX-REED-SUITE.md`;
   this suite grows with shuttle (a second engine, cluster reviews) -- add `S` scenarios here, not in either other suite.

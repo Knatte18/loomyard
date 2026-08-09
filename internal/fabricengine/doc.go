@@ -1,5 +1,5 @@
-// Package fabricengine is lyx's sole host↔weft git-coordination module, built on two
-// `internal/gitrepo.Repo` instances covering host↔weft topology and commit/push/pull into the
+// Package fabricengine is lyx's sole warp↔weft git-coordination module, built on two
+// `internal/gitrepo.Repo` instances covering warp↔weft topology and commit/push/pull into the
 // paired weft repo.
 // fabric is the only module that knows both repos exist: the `Fabric` handle holds unexported `warp
 // *gitrepo.Repo` and `weft *gitrepo.Repo` fields for anything repo-specific and uncoordinated,
@@ -29,8 +29,8 @@
 // written against a warp baseline that no longer exists upstream — see pull.go's own doc comment for
 // the full flow and the `*PartialPullError` weft-succeeded/warp-failed contract.
 //
-// fabric enforces one uniform branch-naming scheme, with no exceptions: a host branch `<branch>` is
-// always paired with weft branch `<branch>-weft`, including the primary worktree (host `main` ↔
+// fabric enforces one uniform branch-naming scheme, with no exceptions: a warp branch `<branch>` is
+// always paired with weft branch `<branch>-weft`, including the primary worktree (warp `main` ↔
 // weft `main-weft`).
 //
 // Every weft commit fabric makes carries a `Warp-SHA: <sha>` trailer recording the warp SHA it
@@ -39,7 +39,7 @@
 // history, never authoritative on its own.
 // The one exception is a commit made while the warp repo itself has no commits yet (an unborn HEAD,
 // e.g.
-// a fresh `git init` before the operator's first host commit): that commit carries no trailer and
+// a fresh `git init` before the operator's first warp commit): that commit carries no trailer and
 // no correspondence entry, since there is no warp SHA yet to name — see commitWeft's warpHeadSHA.
 // Normal trailer/record behavior resumes on the first weft commit made after warp's own first
 // commit.
@@ -108,7 +108,7 @@
 //
 // The junction side of that asymmetry has a concrete blast radius worth naming rather than leaving
 // an operator to meet as a surprise: every worktree wired before a new name is added to
-// `HostJunctions` lacks that junction, full stop, until `lyx fabric reconcile` re-runs against it —
+// `WarpJunctions` lacks that junction, full stop, until `lyx fabric reconcile` re-runs against it —
 // `_pattern`'s own now-superseded rollout was one such case, and any future optional-module addition
 // would hit the same gap.
 // Until re-run, `lyx fabric status` reports that pair not in sync, with `JunctionReason` naming the
@@ -193,7 +193,7 @@
 // correspondence anchor involved at all.
 //
 // fabric now exposes two distinct status-shaped surfaces, deliberately not variations of one
-// another: `Topology.Status` reports paired host↔weft topology (branch pairing, junction health),
+// another: `Topology.Status` reports paired warp↔weft topology (branch pairing, junction health),
 // reachable via `lyx fabric pairs`;
 // and the unified `Fabric.Status` merges each side's currently-uncommitted worktree changes into
 // one side-labelled view, reachable via `lyx fabric status`.
@@ -201,20 +201,20 @@
 // A known asymmetry in `Fabric.Status` is worth recording rather than leaving as a surprise: it may
 // surface gitrepo's `.gitrepo-push.lock` operational artifact (`PushCoalesced`'s single-pusher lock
 // file, left behind in a repo's worktree root because `lock.FileLock.Release` unlocks without
-// deleting it) as an uncommitted change on the warp/host side but never on the weft side, because
+// deleting it) as an uncommitted change on the warp/warp side but never on the weft side, because
 // fabric seeds a `.git/info/exclude` entry for it only on the weft worktree it owns
-// (`seedWeftArtifactExcludes`) and deliberately does not manage the host repo's own git
+// (`seedWeftArtifactExcludes`) and deliberately does not manage the warp repo's own git
 // configuration.
 // This asymmetry is now narrower than it was: the warp-via-fabric async push described above uses
 // the lock-free, rebase-free `PushRebaseFree` for both sides (per the
-// no-host-root-gitrepo-push-lock Shared Decision), so that path never creates a
-// `.gitrepo-push.lock` at the pristine host worktree root at all anymore — `Fabric.Status`'s own
-// behavior of not suppressing a host-side artifact is unchanged, but there is normally nothing
+// no-warp-root-gitrepo-push-lock Shared Decision), so that path never creates a
+// `.gitrepo-push.lock` at the pristine warp worktree root at all anymore — `Fabric.Status`'s own
+// behavior of not suppressing a warp-side artifact is unchanged, but there is normally nothing
 // there left for it to surface.
-// A host-side `.gitrepo-push.lock` can still appear only from a non-fabric caller of
-// `gitrepo.PushCoalesced` running directly against the host repo (e.g.
-// a manual host-side push outside fabric) — a lingering lock from that path is still reported by
-// `Fabric.Status` like any other untracked host file, not specially suppressed.
+// A warp-side `.gitrepo-push.lock` can still appear only from a non-fabric caller of
+// `gitrepo.PushCoalesced` running directly against the warp repo (e.g.
+// a manual warp-side push outside fabric) — a lingering lock from that path is still reported by
+// `Fabric.Status` like any other untracked warp file, not specially suppressed.
 //
 // The read half of the same `Snapshot:` trailer mechanism exposes `Fabric.snapshotWarpSHA(tag
 // string) (string, error)`, resolving a caller-supplied snapshot tag to the warp SHA recorded under
@@ -355,10 +355,10 @@
 //
 // Slice 5 (the `fabric-clone-subpath` task) landed clone-does-everything, a subpath-in-weft anchor,
 // and the dissolution of `lyx init`, replacing the earlier two-step "clone, then `lyx init`" flow
-// with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives host+weft
+// with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives warp+weft
 // clone, `_board` worktree materialization, and lyx-anchor resolution in one call;
 // the CLI layer (`internal/fabriccli`) then records the anchor and the repo-wide `fabric.yaml` onto
-// `weft:main`, creates every host junction (`_lyx`, `.lyx`), and runs
+// `weft:main`, creates every warp junction (`_lyx`, `.lyx`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
 // every config materialized without a second command. Every junction is excluded through the warp's
 // own `.git/info/exclude`, never a committed `.gitignore` in the user's repo.
@@ -408,8 +408,8 @@
 //
 // # The fabric vocabulary rule
 //
-// In production code, the tokens `weft`, `warp`, and the fabric-sense phrase form of `host` (`host
-// repo`, `host worktree`, `hostBranch`, …
+// In production code, the tokens `weft`, `warp`, and the fabric-sense phrase form of `warp` (`warp
+// repo`, `warp worktree`, `warpBranch`, …
 // — never the bare word, which is ordinary English elsewhere in the repo) may appear only in the
 // owner set: `internal/fabricengine` (this package, which implements the illusion),
 // `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
@@ -423,7 +423,7 @@
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;
 // `CONSTRAINTS.md`'s Fabric Vocabulary Invariant records the rule in full, including the phrase-based
-// `host` predicate and the review-only prose-doc split between a doc explaining fabric's own
+// `warp` predicate and the review-only prose-doc split between a doc explaining fabric's own
 // mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
 // rewords).
 // As an owner file, this doc comment — and every other file in this package — keeps `warp`/`weft`

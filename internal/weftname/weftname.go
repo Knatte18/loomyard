@@ -7,7 +7,7 @@ package weftname
 
 import "path/filepath"
 
-// Suffix is the suffix appended to a host-worktree slug to form the weft sibling directory name
+// Suffix is the suffix appended to a warp-worktree slug to form the weft sibling directory name
 // (e.g. "feat" -> "feat-weft").
 // It is the single declarer of this token;
 // use SiblingPath/BareSiblingPath rather than this constant directly wherever a full path is

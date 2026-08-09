@@ -1,14 +1,14 @@
-// status.go implements the paired host↔weft status view and host-pollution detection for fabric.
+// status.go implements the paired warp↔weft status view and warp-pollution detection for fabric.
 //
-// Status enumerates all host worktrees via List, pairs each with its weft sibling, reports branch,
-// in-sync verdict, junction health, and scans the host index for any _lyx
-// paths that have been accidentally git-tracked (host pollution).
-// A pair is InSync when weftBranch == WeftBranchName(hostBranch),
+// Status enumerates all warp worktrees via List, pairs each with its weft sibling, reports branch,
+// in-sync verdict, junction health, and scans the warp index for any _lyx
+// paths that have been accidentally git-tracked (warp pollution).
+// A pair is InSync when weftBranch == WeftBranchName(warpBranch),
 // and DriftReason states the expected suffixed branch rather than a bare mismatch.
 //
 // Status computes its in-sync verdict inline (branch correspondence via WeftBranchName, then
 // junction health via checkJunctionHealth, both already defined in reconcile.go) rather than
-// calling the shared Healthy helper (drift.go) — Status already has hostBranch/weftBranch in hand
+// calling the shared Healthy helper (drift.go) — Status already has warpBranch/weftBranch in hand
 // from readBranch, so there is nothing to gain from a second rev-parse round trip through a shared
 // helper.
 
@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// PollutionEntry describes a single tracked path in the host index that should never be committed
+// PollutionEntry describes a single tracked path in the warp index that should never be committed
 // there (e.g. _lyx, which belongs exclusively in the weft).
 type PollutionEntry struct {
 	// Path is the relative path reported by git ls-files.
@@ -34,40 +34,40 @@ type PollutionEntry struct {
 	Remedy string `json:"remedy,omitempty"`
 }
 
-// PairStatus describes the relationship between one host worktree and its paired weft sibling.
+// PairStatus describes the relationship between one warp worktree and its paired weft sibling.
 type PairStatus struct {
-	// HostWorktree is the absolute path to the host worktree.
-	HostWorktree string `json:"host_worktree"`
+	// WarpWorktree is the absolute path to the warp worktree.
+	WarpWorktree string `json:"warp_worktree"`
 	// WeftWorktree is the absolute path to the expected weft sibling worktree.
 	WeftWorktree string `json:"weft_worktree"`
-	// HostBranch is the current branch of the host worktree (empty if undetermined).
-	HostBranch string `json:"host_branch"`
+	// WarpBranch is the current branch of the warp worktree (empty if undetermined).
+	WarpBranch string `json:"warp_branch"`
 	// WeftBranch is the current branch of the weft worktree (empty if missing or undetermined).
 	WeftBranch string `json:"weft_branch"`
 	// InSync reports whether the pair is branch-synchronized (weftBranch ==
-	// WeftBranchName(hostBranch)) and the junction is healthy.
+	// WeftBranchName(warpBranch)) and the junction is healthy.
 	InSync bool `json:"in_sync"`
 	// DriftReason describes why the pair is out of sync. Empty when InSync is true.
 	DriftReason string `json:"drift_reason,omitempty"`
-	// JunctionHealthy reports whether the host _lyx junction exists and points to the weft.
+	// JunctionHealthy reports whether the warp _lyx junction exists and points to the weft.
 	JunctionHealthy bool `json:"junction_healthy"`
 	// JunctionReason describes the junction problem. Empty when JunctionHealthy is true.
 	JunctionReason string `json:"junction_reason,omitempty"`
-	// Pollution lists host-index paths that should not be tracked there.
+	// Pollution lists warp-index paths that should not be tracked there.
 	Pollution []PollutionEntry `json:"pollution,omitempty"`
 }
 
 // StatusResult is the top-level result type returned by Status.
-// It contains one PairStatus entry per discovered host worktree.
+// It contains one PairStatus entry per discovered warp worktree.
 type StatusResult struct {
-	// Pairs is the ordered list of host↔weft pair reports.
+	// Pairs is the ordered list of warp↔weft pair reports.
 	Pairs []PairStatus `json:"pairs"`
 }
 
-// Status returns the paired host↔weft status view for all worktrees reachable from the given
-// layout, plus host-pollution detection on the host index.
-// For each host worktree, it reports branch status, in-sync verdict, junction health, and
-// host-tracked _lyx paths.
+// Status returns the paired warp↔weft status view for all worktrees reachable from the given
+// layout, plus warp-pollution detection on the warp index.
+// For each warp worktree, it reports branch status, in-sync verdict, junction health, and
+// warp-tracked _lyx paths.
 // Per-worktree errors are recorded inline in PairStatus.DriftReason / PairStatus.JunctionReason.
 func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	entries, err := List(l.WorktreePath())
@@ -78,23 +78,23 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	var result StatusResult
 
 	for _, entry := range entries {
-		hostPath := filepath.FromSlash(entry.Path)
-		hostPath = filepath.Clean(hostPath)
+		warpPath := filepath.FromSlash(entry.Path)
+		warpPath = filepath.Clean(warpPath)
 
-		weftPath := WeftWorktreePath(l, filepath.Base(hostPath))
+		weftPath := WeftWorktreePath(l, filepath.Base(warpPath))
 
 		pair := PairStatus{
-			HostWorktree: filepath.ToSlash(hostPath),
+			WarpWorktree: filepath.ToSlash(warpPath),
 			WeftWorktree: filepath.ToSlash(weftPath),
 		}
 
-		hostBranch, hostBranchErr := readBranch(hostPath)
-		if hostBranchErr != nil {
-			pair.DriftReason = fmt.Sprintf("read host branch: %v", hostBranchErr)
+		warpBranch, warpBranchErr := readBranch(warpPath)
+		if warpBranchErr != nil {
+			pair.DriftReason = fmt.Sprintf("read warp branch: %v", warpBranchErr)
 			result.Pairs = append(result.Pairs, pair)
 			continue
 		}
-		pair.HostBranch = hostBranch
+		pair.WarpBranch = warpBranch
 
 		weftStat, err := os.Stat(weftPath)
 		if err != nil || !weftStat.IsDir() {
@@ -112,14 +112,14 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 		}
 		pair.WeftBranch = weftBranch
 
-		hostLayout, layoutErr := hostLayoutFor(l, hostPath)
+		warpLayout, layoutErr := warpLayoutFor(l, warpPath)
 		if layoutErr != nil {
-			pair.DriftReason = fmt.Sprintf("resolve host layout: %v", layoutErr)
+			pair.DriftReason = fmt.Sprintf("resolve warp layout: %v", layoutErr)
 			result.Pairs = append(result.Pairs, pair)
 			continue
 		}
 
-		junctionHealthy, junctionReason := checkJunctionHealth(hostLayout)
+		junctionHealthy, junctionReason := checkJunctionHealth(warpLayout)
 		pair.JunctionHealthy = junctionHealthy
 		pair.JunctionReason = junctionReason
 
@@ -127,11 +127,11 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 		// (fabric's suffixed pairing) rather than warp's equal-name requirement, folded
 		// together with junction health exactly as warp's pair-in-sync check (fabric's
 		// Healthy) folds both checks into one verdict.
-		expectedWeftBranch := WeftBranchName(hostBranch)
+		expectedWeftBranch := WeftBranchName(warpBranch)
 		switch {
 		case weftBranch != expectedWeftBranch:
 			pair.InSync = false
-			pair.DriftReason = fmt.Sprintf("host on %s, weft on %s (want %s)", hostBranch, weftBranch, expectedWeftBranch)
+			pair.DriftReason = fmt.Sprintf("warp on %s, weft on %s (want %s)", warpBranch, weftBranch, expectedWeftBranch)
 		case !junctionHealthy:
 			pair.InSync = false
 			pair.DriftReason = junctionReason
@@ -139,8 +139,8 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 			pair.InSync = true
 		}
 
-		// Scan the host index for _lyx paths that must never be tracked there.
-		pollution, pollErr := detectHostPollution(hostPath)
+		// Scan the warp index for _lyx paths that must never be tracked there.
+		pollution, pollErr := detectWarpPollution(warpPath)
 		if pollErr != nil {
 			// Non-fatal: record the error inline and continue. Remedy stays
 			// empty since no automated remedy applies to a scan failure.
@@ -157,8 +157,8 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 	return result, nil
 }
 
-// detectHostPollution scans the host worktree index for _lyx paths that should
-// never be tracked in the host repo.
+// detectWarpPollution scans the warp worktree index for _lyx paths that should
+// never be tracked in the warp repo.
 //
 // Every match under _lyx has a junction wired to restore, so the remedy is
 // always the git rm --cached command that removes the file from the index
@@ -166,12 +166,12 @@ func (t *Topology) Status(l *lyxcwd.Location) (StatusResult, error) {
 // junction/exclude entry. No pollution class in this scan lacks an automated
 // remedy, which is why PollutionEntry has no report-only signal beyond an
 // empty Remedy.
-func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
+func detectWarpPollution(warpPath string) ([]PollutionEntry, error) {
 	// git ls-files lists only tracked (index) files matching the given pathspecs.
 	// Using -- prevents ambiguity when the pathspec looks like a branch name.
 	out, _, exitCode, err := gitexec.RunGit(
 		[]string{"ls-files", "--", lyxdirs.LyxDirName},
-		hostPath,
+		warpPath,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("ls-files: %w", err)
@@ -201,7 +201,7 @@ func detectHostPollution(hostPath string) ([]PollutionEntry, error) {
 			// junction and exclude entry so lyx topology is intact afterwards.
 			remedy := fmt.Sprintf(
 				"git -C %s rm --cached -- %s  # then restore junction and git-exclude entry",
-				hostPath, tracked,
+				warpPath, tracked,
 			)
 			entries = append(entries, PollutionEntry{
 				Path:   tracked,

@@ -266,7 +266,7 @@ func gitLsFiles(t *testing.T, repoPath string) string {
 // caught by a git-exclude pattern.
 //
 // Exercised at the weft worktree root AND at two nested RelPath depths in the SAME weft checkout
-// (multiple host hubs share one weft worktree at different RelPath offsets) — proving the
+// (multiple warp hubs share one weft worktree at different RelPath offsets) — proving the
 // exclusion holds at every depth, not just the root. A durable per-module state file is written
 // under _lyx and committed alongside the .lyx artifacts at every depth, proving the property is
 // exact and does not over-match real state.

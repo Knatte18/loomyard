@@ -45,51 +45,51 @@ type CloneResult struct {
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
 	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
-	PrimeCwd string // PrimeCwd is the resolved prime host worktree path at Anchor.
+	PrimeCwd string // PrimeCwd is the resolved prime warp worktree path at Anchor.
 }
 
-// CloneHub orchestrates the cloning of host and weft repositories, then
+// CloneHub orchestrates the cloning of warp and weft repositories, then
 // materializes <Hub>/_board as a second weft worktree, into a Hub directory.
 // It clones + checks out + materializes the board worktree + resolves/records
 // the lyx-anchor subpath, and returns the resolved geometry for the CLI layer
 // to drive config materialization and wiring — CloneHub deliberately does NOT
 // do that itself, to avoid the fabricengine → configsync import cycle.
 //
-// It takes cwd (current working directory), two repository URLs (hostURL and
+// It takes cwd (current working directory), two repository URLs (warpURL and
 // weftURL), and subpath (the lyx-anchor subpath to resolve; see the anchor
 // resolution step below). It returns the resolved CloneResult and any error
 // encountered.
 //
 // The operation proceeds in phases:
-//  1. Derive the host repo name; if derivation fails, return an error without cleanup.
+//  1. Derive the warp repo name; if derivation fails, return an error without cleanup.
 //  2. Compute the Hub path as <cwd>/<name>-HUB.
 //  3. Check if the Hub path exists; if so, return an error without removing it (we did not create it).
 //  4. Create the Hub directory; if it fails, return the wrapped error (no teardown yet).
-//  5. Clone host repo to <Hub>/<name>; on failure, teardown and return the error.
+//  5. Clone warp repo to <Hub>/<name>; on failure, teardown and return the error.
 //  6. Clone weft repo to <Hub>/<name>-weft; on failure, teardown and return the error.
 //     6b. Read the weft primary's checked-out branch and check out its
-//     WeftBranchName-suffixed pairing at the same HEAD, capturing the host
+//     WeftBranchName-suffixed pairing at the same HEAD, capturing the warp
 //     branch name it read; on failure, teardown and return the error.
 //  7. Materialize <Hub>/_board as a second weft worktree via ensureBoardWorktree,
-//     adopted onto the captured host branch if it already exists locally from
+//     adopted onto the captured warp branch if it already exists locally from
 //     step 6's clone, freshly orphan-created otherwise; on failure, teardown
 //     and return the error.
 //  8. Resolve the lyx-anchor subpath adopt-or-create (adopt: read the marker
 //     already committed on weft:main; create: validate subpath exists in the
-//     host worktree, then write the marker to the board worktree on disk —
+//     warp worktree, then write the marker to the board worktree on disk —
 //     the CLI commits it), and return the resolved CloneResult.
 //
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
 // original failure and the residual Hub path.
-func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
+func CloneHub(cwd, warpURL, weftURL, subpath string) (CloneResult, error) {
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
-	// Step 1: Derive host repo name
-	name := DeriveHostName(hostURL)
+	// Step 1: Derive warp repo name
+	name := DeriveWarpName(warpURL)
 	if name == "" {
-		return CloneResult{}, fmt.Errorf("could not derive repo name from host URL %s", hostURL)
+		return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", warpURL)
 	}
 
 	// Step 2: Compute Hub path
@@ -118,13 +118,13 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 		return CloneResult{}, err
 	}
 
-	// Step 5: Clone host repo
-	hostWorktreePath := filepath.Join(hubPath, name)
-	if err := cloneRepo(hostURL, hostWorktreePath); err != nil {
+	// Step 5: Clone warp repo
+	warpWorktreePath := filepath.Join(hubPath, name)
+	if err := cloneRepo(warpURL, warpWorktreePath); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
-	// Install the post-checkout hook after the host worktree exists so drift
+	// Install the post-checkout hook after the warp worktree exists so drift
 	// warnings fire on every subsequent git checkout within this repo.
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// the clone (the hook is belt-and-suspenders for usability, not correctness).
@@ -149,21 +149,21 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 
 	// Step 6b: Rename the weft primary's freshly-cloned branch onto its
 	// WeftBranchName-suffixed pairing, so weft:<branch> is never claimed
-	// directly under fabric's uniform branch scheme. Capture hostBranch (the
+	// directly under fabric's uniform branch scheme. Capture warpBranch (the
 	// branch read before the rename) so step 7's _board worktree-add can reuse
 	// it directly, rather than re-reading git branch --show-current at weftPath
 	// after the rename (which would incorrectly see the suffixed branch).
-	hostBranch, err := suffixWeftPrimaryBranch(weftPath)
+	warpBranch, err := suffixWeftPrimaryBranch(weftPath)
 	if err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
 	// Step 7: Materialize <Hub>/_board as a second weft worktree, checked out
-	// on hostBranch — adopted if that branch already exists locally from
+	// on warpBranch — adopted if that branch already exists locally from
 	// step 6's clone, freshly orphan-created otherwise (a genuinely empty
 	// weft remote).
 	boardDir := BoardDir(hubPath)
-	if err := ensureBoardWorktree(weftPath, hostBranch, boardDir); err != nil {
+	if err := ensureBoardWorktree(weftPath, warpBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(hubPath, err)
 	}
 
@@ -201,15 +201,15 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 		anchor = recorded
 	} else {
 		// Create path: first-ever clone of this weft, no marker committed yet.
-		// Validate the requested subpath exists in the host worktree before
+		// Validate the requested subpath exists in the warp worktree before
 		// recording it, so a typo like "backedn" fails loudly instead of
 		// silently anchoring to a directory that was never there.
 		anchor = filepath.Clean(subpath)
 		if subpath == "" {
 			anchor = "."
 		}
-		if info, statErr := os.Stat(filepath.Join(hostWorktreePath, anchor)); statErr != nil || !info.IsDir() {
-			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned host repo", anchor))
+		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
+			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("subpath %q does not exist in the cloned warp repo", anchor))
 		}
 		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
 			return CloneResult{}, teardownHub(hubPath, fmt.Errorf("write %s: %w", markerPath, err))
@@ -218,7 +218,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 
 	// Resolve the prime layout now that the marker exists on disk, so
 	// RelPath — and therefore WeftBase — reflects the resolved anchor.
-	primeCwd := filepath.Join(hostWorktreePath, anchor)
+	primeCwd := filepath.Join(warpWorktreePath, anchor)
 	l, err := lyxcwd.Resolve(primeCwd)
 	if err != nil {
 		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
@@ -228,7 +228,7 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 	// the same point pathspec junctions are wired at the CLI layer (see
 	// internal/fabriccli/clone.go) — but here directly, since _board needs no
 	// fabric.yaml load and CloneHub must not import configsync.
-	if err := wireBoardLink(l, filepath.Base(hostWorktreePath)); err != nil {
+	if err := wireBoardLink(l, filepath.Base(warpWorktreePath)); err != nil {
 		return CloneResult{}, teardownHub(hubPath, fmt.Errorf("wire board junction: %w", err))
 	}
 
@@ -255,11 +255,11 @@ func CloneHub(cwd, hostURL, weftURL, subpath string) (CloneResult, error) {
 // current HEAD. Returns an error if the weft primary is on a detached HEAD (no
 // branch to read) or if any git call fails.
 //
-// Returns the host branch name it read (before the rename) so CloneHub's
+// Returns the warp branch name it read (before the rename) so CloneHub's
 // _board-worktree-add step can reuse it directly — re-reading
 // git branch --show-current at weftPath after this function returns would
-// incorrectly see the already-renamed <hostBranch>-weft, not hostBranch.
-func suffixWeftPrimaryBranch(weftPath string) (hostBranch string, err error) {
+// incorrectly see the already-renamed <warpBranch>-weft, not warpBranch.
+func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
 	if err != nil {
 		return "", fmt.Errorf("resolve weft primary branch: %w", err)
@@ -267,12 +267,12 @@ func suffixWeftPrimaryBranch(weftPath string) (hostBranch string, err error) {
 	if exitCode != 0 {
 		return "", fmt.Errorf("git branch --show-current in weft primary failed (git exit %d)", exitCode)
 	}
-	hostBranch = strings.TrimSpace(stdout)
-	if hostBranch == "" {
+	warpBranch = strings.TrimSpace(stdout)
+	if warpBranch == "" {
 		return "", fmt.Errorf("weft primary at %s is on a detached HEAD after clone; cannot derive its weft branch", weftPath)
 	}
 
-	suffixedBranch := WeftBranchName(hostBranch)
+	suffixedBranch := WeftBranchName(warpBranch)
 
 	// Adopt path: the remote already carries the suffixed branch (this is a
 	// re-clone of a hub with existing weft history). Starting the local branch
@@ -296,7 +296,7 @@ func suffixWeftPrimaryBranch(weftPath string) (hostBranch string, err error) {
 	if exitCode != 0 {
 		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d)", suffixedBranch, exitCode)
 	}
-	return hostBranch, nil
+	return warpBranch, nil
 }
 
 // cloneRepo clones a repository from url to dest.
@@ -352,7 +352,7 @@ func teardownHub(hubPath string, cause error) error {
 	return cause
 }
 
-// DeriveHostName extracts the host repository basename from a raw URL or file path.
+// DeriveWarpName extracts the warp repository basename from a raw URL or file path.
 //
 // It trims any trailing slash or backslash, then takes the final path segment of rawURL
 // after splitting on forward slash, backslash, and colon (for HTTPS URLs, file paths,
@@ -368,7 +368,7 @@ func teardownHub(hubPath string, cause error) error {
 //   - "https://github.com/u/repo/" → "repo"
 //   - "C:\path\to\repo.git" → "repo"
 //   - "" → ""
-func DeriveHostName(rawURL string) string {
+func DeriveWarpName(rawURL string) string {
 	// Trim trailing slashes (both forward and back)
 	rawURL = strings.TrimSuffix(rawURL, "/")
 	rawURL = strings.TrimSuffix(rawURL, "\\")

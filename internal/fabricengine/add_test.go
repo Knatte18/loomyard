@@ -80,10 +80,10 @@ func TestAdd_RejectsEmptySlug(t *testing.T) {
 
 // TestAdd_RejectsWeftSuffixSlug asserts that Add refuses a slug ending in the weft suffix before
 // touching git or the filesystem.
-// Such a slug names a host worktree directory (fabricengine.WorktreePath(l, slug)) that is
-// indistinguishable from a weft worktree directory: lyxcwd.WeftHostSlug accepts it, so prune's hub
-// scan misclassifies the host worktree as an orphaned weft and — under --apply — os.RemoveAll's it,
-// destroying the host worktree and any uncommitted work.
+// Such a slug names a warp worktree directory (fabricengine.WorktreePath(l, slug)) that is
+// indistinguishable from a weft worktree directory: lyxcwd.WeftWarpSlug accepts it, so prune's hub
+// scan misclassifies the warp worktree as an orphaned weft and — under --apply — os.RemoveAll's it,
+// destroying the warp worktree and any uncommitted work.
 // Rejecting the collision at the source is fabric's job (it owns the weft suffix namespace).
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
@@ -116,7 +116,7 @@ func TestAdd_RejectsWeftSuffixSlug(t *testing.T) {
 
 // TestAdd_RejectsReservedHubNameSlug asserts that Add refuses a slug naming a reserved hub-level
 // geometry entry before touching git or the filesystem.
-// A host worktree directory named after a geometry token collides with the paths lyx composes at
+// A warp worktree directory named after a geometry token collides with the paths lyx composes at
 // the hub level — a "_portals" worktree on a fresh hub would have portal junctions created inside
 // it,
 // and a hub-level "_lyx" worktree shadows the config-dir token.

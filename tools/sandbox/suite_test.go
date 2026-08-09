@@ -227,7 +227,7 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 		}
 	}
 	launchAgent = launchFn
-	reedDown = func(hostRepoDir, lyxPath string) error { return nil }
+	reedDown = func(warpRepoDir, lyxPath string) error { return nil }
 	return func() {
 		devBinPath = oldDevBinPath
 		lookPath = oldLookPath
@@ -240,7 +240,7 @@ func stubSuiteSeams(t *testing.T, fakeLyx, fakeClaude string, launchFn func(dir,
 func stubReedDownNoop(t *testing.T) {
 	t.Helper()
 	old := reedDown
-	reedDown = func(hostRepoDir, lyxPath string) error { return nil }
+	reedDown = func(warpRepoDir, lyxPath string) error { return nil }
 	t.Cleanup(func() { reedDown = old })
 }
 
@@ -266,16 +266,16 @@ func captureStderr(t *testing.T, fn func()) string {
 	return string(data)
 }
 
-// makeHostRepo creates the full Hub/host-repo directory structure under a
-// temp dir and returns both the temp dir and the host repo path.
-func makeHostRepo(t *testing.T) (parentDir, hostRepoDir string) {
+// makeWarpRepo creates the full Hub/warp-repo directory structure under a
+// temp dir and returns both the temp dir and the warp repo path.
+func makeWarpRepo(t *testing.T) (parentDir, warpRepoDir string) {
 	t.Helper()
 	parentDir = t.TempDir()
-	hostRepoDir = filepath.Join(parentDir, hubName, hostDirName)
-	if err := os.MkdirAll(filepath.Join(hostRepoDir, ".git", "info"), 0o755); err != nil {
-		t.Fatalf("create host repo dir: %v", err)
+	warpRepoDir = filepath.Join(parentDir, hubName, warpDirName)
+	if err := os.MkdirAll(filepath.Join(warpRepoDir, ".git", "info"), 0o755); err != nil {
+		t.Fatalf("create warp repo dir: %v", err)
 	}
-	return parentDir, hostRepoDir
+	return parentDir, warpRepoDir
 }
 
 // makeFakeLyx writes a small binary file to tmpDir and returns its path.
@@ -288,7 +288,7 @@ func makeFakeLyx(t *testing.T, tmpDir string) string {
 	return fakeLyx
 }
 
-// TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub host subdirectory
+// TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub warp subdirectory
 // does not exist.
 func TestRunSuite_HubAbsent(t *testing.T) {
 	parentDir := t.TempDir()
@@ -301,7 +301,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 
 	err := runSuite(parentDir, "", "", mainSuite)
 	if err == nil {
-		t.Fatal("runSuite should return error when Hub host subdir is absent")
+		t.Fatal("runSuite should return error when Hub warp subdir is absent")
 	}
 	if !strings.Contains(err.Error(), "sandbox/build.cmd") {
 		t.Errorf("error should mention 'sandbox/build.cmd'; got %q", err.Error())
@@ -311,7 +311,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 // TestRunSuite_LaunchInvocation verifies that runSuite calls launchAgent with the correct
 // arguments.
 func TestRunSuite_LaunchInvocation(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -328,8 +328,8 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 	if err := runSuite(parentDir, "", "", mainSuite); err != nil {
 		t.Fatalf("runSuite error: %v", err)
 	}
-	if gotDir != hostRepoDir {
-		t.Errorf("launchAgent dir = %q; want %q", gotDir, hostRepoDir)
+	if gotDir != warpRepoDir {
+		t.Errorf("launchAgent dir = %q; want %q", gotDir, warpRepoDir)
 	}
 	if gotClaude != fakeClaude {
 		t.Errorf("launchAgent claude = %q; want %q", gotClaude, fakeClaude)
@@ -345,7 +345,7 @@ func TestRunSuite_LaunchInvocation(t *testing.T) {
 // TestRunSuite_DevBinaryPrependsBinDir verifies that runSuite passes the dev binary's directory as
 // launchAgent's binDir when a dev binary exists.
 func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	devBinDir := filepath.Join(parentDir, ".dev-bin")
@@ -390,7 +390,7 @@ func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 
 // TestRunSuite_Overrides verifies that runSuite honours -claude and -prompt override arguments.
 func TestRunSuite_Overrides(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 
 	customClaude := filepath.Join(parentDir, "custom-claude.exe")
@@ -433,7 +433,7 @@ func TestRunSuite_Overrides(t *testing.T) {
 // TestRunSuite_NonZeroLaunchTolerated verifies that a non-zero exit code from launchAgent is
 // tolerated (interactive sessions are expected to exit manually).
 func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -453,7 +453,7 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 // TestRunSuite_ClaudeNotFound verifies that runSuite returns an error when claude cannot be
 // resolved from PATH.
 func TestRunSuite_ClaudeNotFound(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 
 	oldDevBinPath := devBinPath
@@ -488,12 +488,12 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 // TestRunSuite_StaleReportRemoved verifies that runSuite removes a prior sandbox-report.json before
 // launching the agent.
 func TestRunSuite_StaleReportRemoved(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
 	// Pre-create a stale report from a prior run.
-	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	stalePath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "S0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
 		t.Fatalf("write stale report: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestRunSuite_StaleReportRemoved(t *testing.T) {
 // TestRunSuite_ExcludesReport verifies that runSuite registers sandbox-report.json in
 // .git/info/exclude.
 func TestRunSuite_ExcludesReport(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -530,7 +530,7 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	excludePath := filepath.Join(warpRepoDir, ".git", "info", "exclude")
 	content, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read .git/info/exclude: %v", err)
@@ -545,7 +545,7 @@ func TestRunSuite_ExcludesReport(t *testing.T) {
 // TestRunSuite_ReedSpec_WritesReedFile verifies that runSuite(..., reedSuite) writes
 // SANDBOX-REED-SUITE.md with the fingerprint header.
 func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -558,7 +558,7 @@ func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	reedPath := filepath.Join(hostRepoDir, reedSuite.fileName)
+	reedPath := filepath.Join(warpRepoDir, reedSuite.fileName)
 	content, err := os.ReadFile(reedPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", reedSuite.fileName, err)
@@ -570,7 +570,7 @@ func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
 		t.Errorf("%s does not contain the embedded reed doc body", reedSuite.fileName)
 	}
 
-	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(warpRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
 		t.Errorf("%s should not be written by a reedSuite run; stat err = %v", mainSuite.fileName, err)
 	}
 }
@@ -578,7 +578,7 @@ func TestRunSuite_ReedSpec_WritesReedFile(t *testing.T) {
 // TestRunSuite_ReedSpec_ExcludesFiles verifies that a reedSuite run registers its files in
 // .git/info/exclude.
 func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -591,7 +591,7 @@ func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	excludePath := filepath.Join(warpRepoDir, ".git", "info", "exclude")
 	content, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read .git/info/exclude: %v", err)
@@ -606,11 +606,11 @@ func TestRunSuite_ReedSpec_ExcludesFiles(t *testing.T) {
 // TestRunSuite_ReedSpec_DeletesStaleReport verifies that a reedSuite run deletes stale
 // sandbox-report.json before launching the agent.
 func TestRunSuite_ReedSpec_DeletesStaleReport(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	stalePath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "M0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
 		t.Fatalf("write stale report: %v", err)
 	}
@@ -634,7 +634,7 @@ func TestRunSuite_ReedSpec_DeletesStaleReport(t *testing.T) {
 // TestRunSuite_ReedSpec_DefaultInstruction verifies that a reedSuite run passes the reed default
 // instruction to launchAgent.
 func TestRunSuite_ReedSpec_DefaultInstruction(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -659,7 +659,7 @@ func TestRunSuite_ReedSpec_DefaultInstruction(t *testing.T) {
 // TestRunSuite_ReedSpec_PromptOverride verifies that a -prompt override reaches launchAgent
 // verbatim for a reedSuite run.
 func TestRunSuite_ReedSpec_PromptOverride(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 	customPrompt := "Do the reed thing entirely differently."
@@ -682,7 +682,7 @@ func TestRunSuite_ReedSpec_PromptOverride(t *testing.T) {
 // TestRunSuite_ShuttleSpec_WritesShuttleFile verifies that runSuite writes SANDBOX-SHUTTLE-SUITE.md
 // with the fingerprint header.
 func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -695,7 +695,7 @@ func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	shuttlePath := filepath.Join(hostRepoDir, shuttleSuite.fileName)
+	shuttlePath := filepath.Join(warpRepoDir, shuttleSuite.fileName)
 	content, err := os.ReadFile(shuttlePath)
 	if err != nil {
 		t.Fatalf("read %s: %v", shuttleSuite.fileName, err)
@@ -707,10 +707,10 @@ func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 		t.Errorf("%s does not contain the embedded shuttle doc body", shuttleSuite.fileName)
 	}
 
-	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(warpRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
 		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", mainSuite.fileName, err)
 	}
-	if _, err := os.Stat(filepath.Join(hostRepoDir, reedSuite.fileName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(warpRepoDir, reedSuite.fileName)); !os.IsNotExist(err) {
 		t.Errorf("%s should not be written by a shuttleSuite run; stat err = %v", reedSuite.fileName, err)
 	}
 }
@@ -718,7 +718,7 @@ func TestRunSuite_ShuttleSpec_WritesShuttleFile(t *testing.T) {
 // TestRunSuite_ShuttleSpec_ExcludesFiles verifies that a shuttleSuite run registers its files in
 // .git/info/exclude.
 func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -731,7 +731,7 @@ func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	excludePath := filepath.Join(warpRepoDir, ".git", "info", "exclude")
 	content, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read .git/info/exclude: %v", err)
@@ -746,11 +746,11 @@ func TestRunSuite_ShuttleSpec_ExcludesFiles(t *testing.T) {
 // TestRunSuite_ShuttleSpec_DeletesStaleReport verifies that a shuttleSuite run deletes stale
 // sandbox-report.json before launching the agent.
 func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	stalePath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "SH0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
 		t.Fatalf("write stale report: %v", err)
 	}
@@ -774,7 +774,7 @@ func TestRunSuite_ShuttleSpec_DeletesStaleReport(t *testing.T) {
 // TestRunSuite_ShuttleSpec_DefaultInstruction verifies that a shuttleSuite run passes the shuttle
 // default instruction to launchAgent.
 func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -799,7 +799,7 @@ func TestRunSuite_ShuttleSpec_DefaultInstruction(t *testing.T) {
 // TestRunSuite_ShuttleSpec_PromptOverride verifies that a -prompt override reaches launchAgent
 // verbatim for a shuttleSuite run.
 func TestRunSuite_ShuttleSpec_PromptOverride(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 	customPrompt := "Do the shuttle thing entirely differently."
@@ -834,7 +834,7 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 // TestRunSuite_BurlerSpec_ReedTeardownAfterAgent verifies that a burlerSuite run calls reedDown
 // exactly once, after the agent session ends.
 func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -862,8 +862,8 @@ func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
 	if teardownCalls != 1 {
 		t.Fatalf("reedDown called %d times; want exactly 1", teardownCalls)
 	}
-	if gotDir != hostRepoDir {
-		t.Errorf("reedDown dir = %q; want %q", gotDir, hostRepoDir)
+	if gotDir != warpRepoDir {
+		t.Errorf("reedDown dir = %q; want %q", gotDir, warpRepoDir)
 	}
 	if gotLyx != fakeLyx {
 		t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)
@@ -872,7 +872,7 @@ func TestRunSuite_BurlerSpec_ReedTeardownAfterAgent(t *testing.T) {
 
 // TestRunSuite_MainSpec_NoReedTeardown verifies that a mainSuite run never calls reedDown.
 func TestRunSuite_MainSpec_NoReedTeardown(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -894,7 +894,7 @@ func TestRunSuite_MainSpec_NoReedTeardown(t *testing.T) {
 // TestRunSuite_ReedTeardownFailureTolerated verifies that a reedDown error does not turn a
 // completed session into a launcher failure.
 func TestRunSuite_ReedTeardownFailureTolerated(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -915,7 +915,7 @@ func TestRunSuite_ReedTeardownFailureTolerated(t *testing.T) {
 // TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit verifies that teardown runs regardless of the
 // agent's exit code.
 func TestRunSuite_ReedTeardownRunsOnNonZeroAgentExit(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -984,7 +984,7 @@ func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
 // TestRunSuite_PerchSpec_WritesPerchFile verifies that runSuite writes SANDBOX-PERCH-SUITE.md with
 // the fingerprint header.
 func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -997,7 +997,7 @@ func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	perchPath := filepath.Join(hostRepoDir, perchSuite.fileName)
+	perchPath := filepath.Join(warpRepoDir, perchSuite.fileName)
 	content, err := os.ReadFile(perchPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", perchSuite.fileName, err)
@@ -1009,10 +1009,10 @@ func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
 		t.Errorf("%s does not contain the embedded perch doc body", perchSuite.fileName)
 	}
 
-	if _, err := os.Stat(filepath.Join(hostRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(warpRepoDir, mainSuite.fileName)); !os.IsNotExist(err) {
 		t.Errorf("%s should not be written by a perchSuite run; stat err = %v", mainSuite.fileName, err)
 	}
-	if _, err := os.Stat(filepath.Join(hostRepoDir, burlerSuite.fileName)); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(warpRepoDir, burlerSuite.fileName)); !os.IsNotExist(err) {
 		t.Errorf("%s should not be written by a perchSuite run; stat err = %v", burlerSuite.fileName, err)
 	}
 }
@@ -1020,7 +1020,7 @@ func TestRunSuite_PerchSpec_WritesPerchFile(t *testing.T) {
 // TestRunSuite_PerchSpec_ExcludesFiles verifies that a perchSuite run registers its files in
 // .git/info/exclude.
 func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -1033,7 +1033,7 @@ func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
 		t.Fatalf("runSuite error: %v", err)
 	}
 
-	excludePath := filepath.Join(hostRepoDir, ".git", "info", "exclude")
+	excludePath := filepath.Join(warpRepoDir, ".git", "info", "exclude")
 	content, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read .git/info/exclude: %v", err)
@@ -1048,11 +1048,11 @@ func TestRunSuite_PerchSpec_ExcludesFiles(t *testing.T) {
 // TestRunSuite_PerchSpec_DeletesStaleReport verifies that a perchSuite run deletes stale
 // sandbox-report.json before launching the agent.
 func TestRunSuite_PerchSpec_DeletesStaleReport(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
-	stalePath := filepath.Join(hostRepoDir, reportFileName)
+	stalePath := filepath.Join(warpRepoDir, reportFileName)
 	if err := os.WriteFile(stalePath, []byte(`{"source": "sandbox-report", "items": [{"ref": "SP0", "title": "stale", "body": "stale"}]}`), 0o644); err != nil {
 		t.Fatalf("write stale report: %v", err)
 	}
@@ -1076,7 +1076,7 @@ func TestRunSuite_PerchSpec_DeletesStaleReport(t *testing.T) {
 // TestRunSuite_PerchSpec_DefaultInstruction verifies that a perchSuite run passes the perch default
 // instruction to launchAgent.
 func TestRunSuite_PerchSpec_DefaultInstruction(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -1101,7 +1101,7 @@ func TestRunSuite_PerchSpec_DefaultInstruction(t *testing.T) {
 // TestRunSuite_PerchSpec_PromptOverride verifies that a -prompt override reaches launchAgent
 // verbatim for a perchSuite run.
 func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
-	parentDir, _ := makeHostRepo(t)
+	parentDir, _ := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 	customPrompt := "Do the perch thing entirely differently."
@@ -1124,7 +1124,7 @@ func TestRunSuite_PerchSpec_PromptOverride(t *testing.T) {
 // TestRunSuite_PerchSpec_ReedTeardownAfterAgent verifies that a perchSuite run calls reedDown
 // exactly once, after the agent session ends.
 func TestRunSuite_PerchSpec_ReedTeardownAfterAgent(t *testing.T) {
-	parentDir, hostRepoDir := makeHostRepo(t)
+	parentDir, warpRepoDir := makeWarpRepo(t)
 	fakeLyx := makeFakeLyx(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -1152,8 +1152,8 @@ func TestRunSuite_PerchSpec_ReedTeardownAfterAgent(t *testing.T) {
 	if teardownCalls != 1 {
 		t.Fatalf("reedDown called %d times; want exactly 1", teardownCalls)
 	}
-	if gotDir != hostRepoDir {
-		t.Errorf("reedDown dir = %q; want %q", gotDir, hostRepoDir)
+	if gotDir != warpRepoDir {
+		t.Errorf("reedDown dir = %q; want %q", gotDir, warpRepoDir)
 	}
 	if gotLyx != fakeLyx {
 		t.Errorf("reedDown lyx = %q; want %q", gotLyx, fakeLyx)

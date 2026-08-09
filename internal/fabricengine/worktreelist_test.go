@@ -99,7 +99,7 @@ func TestList(t *testing.T) {
 				return
 			}
 
-			fix := lyxtest.CopyHostHub(t)
+			fix := lyxtest.CopyWarpHub(t)
 			hub := fix.Hub
 
 			for i := 0; i < tt.extraWorktrees; i++ {

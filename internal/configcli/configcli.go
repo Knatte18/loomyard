@@ -266,7 +266,7 @@ func runReconcile(out io.Writer, apply bool) int {
 		return output.Err(out, err.Error())
 	}
 
-	// Compute baseDir as the host _lyx parent: the worktree root joined with the relative path.
+	// Compute baseDir as the enclosing _lyx parent: the worktree root joined with the relative path.
 	baseDir := filepath.Join(l.WorktreePath(), l.AnchorRel)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.

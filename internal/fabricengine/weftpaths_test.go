@@ -15,7 +15,7 @@ import (
 )
 
 // TestWeftPathAccessors covers WeftWorktree, WeftWorktreePath, WeftLyxDir and WeftLyxDirFor,
-// verifying AnchorRel-mirroring and junction pairing against the host-side worktree.
+// verifying AnchorRel-mirroring and junction pairing against the warp-side worktree.
 func TestWeftPathAccessors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -84,13 +84,13 @@ func TestWeftPathAccessors(t *testing.T) {
 				t.Errorf("WeftLyxDirFor(l, %q) = %q; want %q", tt.slug, got, tt.wantWeftLyxDirFor)
 			}
 
-			// Verify junction pairing: the host and weft worktree bases differ
+			// Verify junction pairing: the warp and weft worktree bases differ
 			// only by the -weft suffix on the worktree dir.
-			hostWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
+			warpWtName := filepath.Base(filepath.Join(loc.HubPath, tt.slug))
 			weftWtName := filepath.Base(WeftWorktreePath(loc, tt.slug))
 
-			if hostWtName != tt.slug {
-				t.Errorf("WorktreePath(%q) base = %q; want %q", tt.slug, hostWtName, tt.slug)
+			if warpWtName != tt.slug {
+				t.Errorf("WorktreePath(%q) base = %q; want %q", tt.slug, warpWtName, tt.slug)
 			}
 			if weftWtName != tt.slug+"-weft" {
 				t.Errorf("WeftWorktreePath(%q) base = %q; want %q", tt.slug, weftWtName, tt.slug+"-weft")
@@ -99,9 +99,9 @@ func TestWeftPathAccessors(t *testing.T) {
 	}
 }
 
-// TestWeftHostSlug covers WeftHostSlug's round-trip against a weft sibling directory name,
+// TestWeftWarpSlug covers WeftWarpSlug's round-trip against a weft sibling directory name,
 // and rejects names that do not carry the weftname.Suffix tail or whose stripped prefix is empty.
-func TestWeftHostSlug(t *testing.T) {
+func TestWeftWarpSlug(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -115,12 +115,12 @@ func TestWeftHostSlug(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotSlug, gotOK := WeftHostSlug(tt.input)
+			gotSlug, gotOK := WeftWarpSlug(tt.input)
 			if gotOK != tt.wantOK {
-				t.Errorf("WeftHostSlug(%q) ok = %v; want %v", tt.input, gotOK, tt.wantOK)
+				t.Errorf("WeftWarpSlug(%q) ok = %v; want %v", tt.input, gotOK, tt.wantOK)
 			}
 			if gotSlug != tt.wantSlug {
-				t.Errorf("WeftHostSlug(%q) = %q; want %q", tt.input, gotSlug, tt.wantSlug)
+				t.Errorf("WeftWarpSlug(%q) = %q; want %q", tt.input, gotSlug, tt.wantSlug)
 			}
 		})
 	}

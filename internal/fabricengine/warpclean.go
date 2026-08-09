@@ -1,5 +1,5 @@
-// hostclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
-// by loomengine.Preflight to determine whether both sides of a host/weft pair have any dirty
+// warpclean.go implements a standalone worktree-pair cleanliness check, a package-level Clean used
+// by loomengine.Preflight to determine whether both sides of a warp/weft pair have any dirty
 // (uncommitted or untracked) paths before a loom phase transition proceeds.
 
 package fabricengine
@@ -13,13 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// Clean reports whether both the host and weft worktrees have no dirty paths, including untracked
+// Clean reports whether both the warp and weft worktrees have no dirty paths, including untracked
 // files.
 // It is package-level for use by loomengine.Preflight.
 // The weft-side check is skipped when the weft worktree does not exist.
 // Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
 func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
-	hostReason, err := dirtyReason("git status --porcelain", l.WorktreePath())
+	warpReason, err := dirtyReason("git status --porcelain", l.WorktreePath())
 	if err != nil {
 		return false, "", err
 	}
@@ -35,8 +35,8 @@ func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
 	}
 
 	var reasons []string
-	if hostReason != "" {
-		reasons = append(reasons, fmt.Sprintf("uncommitted code changes: %s", hostReason))
+	if warpReason != "" {
+		reasons = append(reasons, fmt.Sprintf("uncommitted code changes: %s", warpReason))
 	}
 	if weftReason != "" {
 		reasons = append(reasons, fmt.Sprintf("uncommitted state changes under `_lyx`: %s", weftReason))
@@ -49,7 +49,7 @@ func Clean(l *lyxcwd.Location) (clean bool, reason string, err error) {
 
 // dirtyReason runs `git status --porcelain` at dir and returns its trimmed
 // output — empty when clean, non-empty when dirty. label names the command
-// in wrapped errors so a host-vs-weft spawn failure is distinguishable.
+// in wrapped errors so a warp-vs-weft spawn failure is distinguishable.
 func dirtyReason(label, dir string) (string, error) {
 	stdout, _, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, dir)
 	if err != nil {

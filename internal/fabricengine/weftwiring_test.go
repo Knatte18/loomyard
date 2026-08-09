@@ -1,7 +1,7 @@
-// weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic HostJunction
+// weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic WarpJunction
 // slices — no build tag, since it touches only plain directories and fslink, never git.
-// It exists because HostJunctions(l, slug) still returns exactly one entry in this batch (a second
-// entry is batch 5's job), so removeHostJunction's best-effort, continue-past-failure contract
+// It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second
+// entry is batch 5's job), so removeWarpJunction's best-effort, continue-past-failure contract
 // cannot be driven through the exported (l, slug) surface with more than one junction;
 // this file drives the extracted loop directly instead.
 
@@ -36,7 +36,7 @@ func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 	lastTarget := filepath.Join(root, "last-target")
 	wireTestJunction(t, lastLink, lastTarget)
 
-	junctions := []HostJunction{
+	junctions := []WarpJunction{
 		{Name: "first", Link: firstLink, Target: firstTarget},
 		{Name: "middle", Link: middleLink, Target: filepath.Join(root, "middle-target")},
 		{Name: "last", Link: lastLink, Target: lastTarget},
@@ -55,7 +55,7 @@ func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 	}
 
 	if info, statErr := os.Stat(middleLink); statErr != nil || !info.IsDir() {
-		t.Errorf("middle host dir %s not left in place: stat err=%v", middleLink, statErr)
+		t.Errorf("middle warp dir %s not left in place: stat err=%v", middleLink, statErr)
 	}
 }
 

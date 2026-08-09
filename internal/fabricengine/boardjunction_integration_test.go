@@ -31,13 +31,13 @@ import (
 // add" requirement.
 func TestBoardJunction_WiredAtClone(t *testing.T) {
 	fixtures := t.TempDir()
-	hostBare := makeBareRemote(t, fixtures, "board-clone-host")
+	warpBare := makeBareRemote(t, fixtures, "board-clone-warp")
 	weftBare := makeBareRemote(t, fixtures, "board-clone-weft")
 
 	cloneParent := t.TempDir()
 	res, err := fabricengine.CloneHub(
 		cloneParent,
-		filepath.ToSlash(hostBare),
+		filepath.ToSlash(warpBare),
 		filepath.ToSlash(weftBare),
 		".",
 	)
@@ -81,11 +81,11 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 		t.Fatalf("Add: %v", err)
 	}
 
-	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
 	}
-	boardLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, fabricengine.BoardDirName)
+	boardLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, fabricengine.BoardDirName)
 
 	isLink, err := fslink.IsLink(boardLink)
 	if err != nil || !isLink {
@@ -118,7 +118,7 @@ func TestBoardJunction_WiredAtAddAndSurvivesReconcileThenUnwireRemoves(t *testin
 		t.Errorf("board link removed by an immediately-following Reconcile pass: isLink=%v err=%v", isLink, err)
 	}
 
-	if _, err := fabricengine.Unwire(hostLayout.WorktreePath()); err != nil {
+	if _, err := fabricengine.Unwire(warpLayout.WorktreePath()); err != nil {
 		t.Fatalf("Unwire: %v", err)
 	}
 	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
@@ -149,17 +149,17 @@ func TestBoardJunction_ReconcileRepairsOutsideHealthCheck(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
 	}
-	boardLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, fabricengine.BoardDirName)
+	boardLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, fabricengine.BoardDirName)
 
 	if err := os.Remove(boardLink); err != nil {
 		t.Fatalf("break board link: %v", err)
 	}
 
-	ok, reason, err := fabricengine.Healthy(hostLayout)
+	ok, reason, err := fabricengine.Healthy(warpLayout)
 	if err != nil {
 		t.Fatalf("Healthy: %v", err)
 	}
@@ -198,11 +198,11 @@ func TestBoardJunction_ReconcileRepointsWrongTarget(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	hostLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
 	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(host): %v", err)
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
 	}
-	boardLink := filepath.Join(hostLayout.WorktreePath(), hostLayout.AnchorRel, fabricengine.BoardDirName)
+	boardLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, fabricengine.BoardDirName)
 
 	if err := fslink.Remove(boardLink); err != nil {
 		t.Fatalf("remove board link: %v", err)
@@ -234,7 +234,7 @@ func TestBoardJunction_ReconcileRepointsWrongTarget(t *testing.T) {
 	}
 }
 
-// TestBoardJunction_AbsentUntilPairFullyWired covers the missing-weft deferral: a raw host worktree
+// TestBoardJunction_AbsentUntilPairFullyWired covers the missing-weft deferral: a raw warp worktree
 // created directly via `git worktree add` (bypassing topology.Add entirely) has no junction wired
 // at all, including _board.
 // The first Reconcile pass adopts it (ReconcileActionRawAdopted), creating only a dormant weft

@@ -1,7 +1,7 @@
 //go:build integration
 
 // junction_repoint_test.go proves WireJunctions (via seedLyxJunction) repairs
-// a corrupted host _lyx junction — one that dangles, or resolves to the wrong
+// a corrupted warp _lyx junction — one that dangles, or resolves to the wrong
 // target — instead of refusing it as a real pre-existing directory. A live
 // review round found the pre-fix code fell through the "predates weft"
 // refusal for both drift shapes, and Reconcile's documented contract
@@ -34,7 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestWireJunctions_RepointsWrongTargetJunction points the host _lyx junction at an unrelated (but
+// TestWireJunctions_RepointsWrongTargetJunction points the warp _lyx junction at an unrelated (but
 // real) directory instead of the weft _lyx dir, then asserts WireJunctions removes and recreates it
 // at the correct target instead of refusing it as pre-existing user content.
 func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
@@ -48,7 +48,7 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := fabricengine.HostLyxLink(l, slug)
+	link := fabricengine.WarpLyxLink(l, slug)
 	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
 	// Point the junction at an unrelated real directory instead.
@@ -85,7 +85,7 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 }
 
 // TestWireJunctions_RepointsWrongTargetJunction_Extra is the non-_lyx counterpart of
-// TestWireJunctions_RepointsWrongTargetJunction: the host non-_lyx junction, not _lyx, is pointed
+// TestWireJunctions_RepointsWrongTargetJunction: the warp non-_lyx junction, not _lyx, is pointed
 // at an unrelated real directory, and WireJunctions must re-point it at the correct weft non-_lyx
 // target — the same per-junction repair behaviour, exercised against the second junction.
 func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
@@ -135,7 +135,7 @@ func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
 	}
 }
 
-// TestWireJunctions_RepointsDanglingJunction points the host _lyx junction at a target that does
+// TestWireJunctions_RepointsDanglingJunction points the warp _lyx junction at a target that does
 // not exist, then asserts WireJunctions removes and recreates it at the correct target instead of
 // refusing it.
 func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
@@ -149,7 +149,7 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
-	link := fabricengine.HostLyxLink(l, slug)
+	link := fabricengine.WarpLyxLink(l, slug)
 	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
 	danglingTarget := filepath.Join(t.TempDir(), "does-not-exist")
@@ -182,7 +182,7 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 }
 
 // TestWireJunctions_RepointsDanglingJunction_Extra is the non-_lyx counterpart of
-// TestWireJunctions_RepointsDanglingJunction: the host non-_lyx junction, not _lyx, dangles (points
+// TestWireJunctions_RepointsDanglingJunction: the warp non-_lyx junction, not _lyx, dangles (points
 // at a nonexistent target), and WireJunctions must re-point it at the correct weft non-_lyx target
 // rather than refusing it — the same per-junction repair behaviour, exercised against the second
 // junction.

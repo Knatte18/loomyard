@@ -2,7 +2,7 @@
 
 // weftgit_unborn_warp_test.go — integration coverage for the O4 fix: a warp
 // repo with zero commits (a fresh `git init` -> `lyx init` -> `lyx config`
-// first-run path, before the operator's first host commit) must not fail
+// first-run path, before the operator's first warp commit) must not fail
 // every weft commit just because CommitWeft now reads warp HEAD for the
 // Warp-SHA trailer. Package fabricengine (internal), reusing
 // index_integration_test.go's newFabric/currentSHA/commitWarp helpers, which

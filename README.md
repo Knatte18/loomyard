@@ -47,18 +47,18 @@ Convenience alias: **`lyx run` → `lyx loom run`** (the everyday autonomous cal
 
 ## Weft overlay model
 
-LoomYard keeps the host repo pristine by routing all its own artifacts into a companion **weft repo** — a separate git repository that `lyx` controls.
+LoomYard keeps the Fabric repo pristine by routing all its own artifacts into a companion **weft repo** — a separate git repository that `lyx` controls.
 
 ```
 <hub>/                              (top-level Hub, NOT a git repo)
-  ├── <prime>/                      (host worktree, main branch)
+  ├── <prime>/                      (warp worktree, main branch)
   ├── <prime>-weft/                 (weft Prime worktree)
-  ├── <slug>/                       (additional host worktree)
+  ├── <slug>/                       (additional warp worktree)
   ├── <slug>-weft/                  (weft worktree for <slug>)
   └── _board/                       (weft:main worktree; the task store)
 ```
 
-Each host worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection.
+Each warp worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection.
 Two state roots with opposite lifecycles: **`_lyx/`** is durable and fabric-synced (config, board, orchestration status — resume works across machines);
 **`.lyx/`** is ephemeral and machine-bound (live tmux runtime state, never synced).
 
@@ -78,7 +78,7 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
 - **config** — view/edit module configs;
   `lyx config reconcile` reconciles all configs against their templates;
   `lyx config <module> --set key=value` writes values non-interactively.
-- **fabric** — the sole host↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup) and weft content-sync (`status|commit|push|pull|sync`) in one command tree.
+- **fabric** — the sole warp↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup) and weft content-sync (`status|commit|push|pull|sync`) in one command tree.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).

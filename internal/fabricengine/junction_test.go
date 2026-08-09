@@ -1,6 +1,6 @@
-// junction_test.go unit-tests unseedJunctionRecords directly against synthetic HostJunction slices
+// junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices
 // — no build tag, since it touches only plain directories and fslink, never git.
-// It exists because HostJunctions(l, slug) still returns exactly one entry in this batch (a second
+// It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second
 // entry is batch 5's job), so the abort-and-accumulate contract this card gives unseedLyxJunction
 // cannot be driven through the exported (l, slug) surface with more than one junction;
 // this file drives the extracted loop directly instead.
@@ -63,7 +63,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 	firstTarget := filepath.Join(root, "first-target")
 	wireTestJunction(t, firstLink, firstTarget)
 
-	// The second junction's host path is a real, non-link directory —
+	// The second junction's warp path is a real, non-link directory —
 	// exactly the "not a junction" refusal unseedJunctionRecords must abort
 	// on, without having touched anything past the first junction.
 	secondLink := filepath.Join(root, "second-link")
@@ -71,7 +71,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 		t.Fatalf("mkdir real second-link dir: %v", err)
 	}
 
-	junctions := []HostJunction{
+	junctions := []WarpJunction{
 		{Name: "first", Link: firstLink, Target: firstTarget},
 		{Name: "second", Link: secondLink, Target: filepath.Join(root, "second-target")},
 	}
@@ -89,12 +89,12 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 		t.Errorf("first junction %s still exists after removal", firstLink)
 	}
 	if info, statErr := os.Stat(secondLink); statErr != nil || !info.IsDir() {
-		t.Errorf("second host dir %s not left untouched: stat err=%v", secondLink, statErr)
+		t.Errorf("second warp dir %s not left untouched: stat err=%v", secondLink, statErr)
 	}
 }
 
 // TestUnseedJunctionRecords_EmptyIsNoOp asserts that an empty junctions slice (matching
-// HostJunctions(l, slug) before any junction has ever been wired) is a legitimate no-op: (nil,
+// WarpJunctions(l, slug) before any junction has ever been wired) is a legitimate no-op: (nil,
 // nil), not an error.
 func TestUnseedJunctionRecords_EmptyIsNoOp(t *testing.T) {
 	t.Parallel()
@@ -125,7 +125,7 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 	secondTarget := filepath.Join(root, "second-target")
 	wireTestJunction(t, secondLink, secondTarget)
 
-	junctions := []HostJunction{
+	junctions := []WarpJunction{
 		{Name: "first", Link: firstLink, Target: firstTarget},
 		{Name: "second", Link: secondLink, Target: secondTarget},
 	}
