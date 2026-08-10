@@ -155,6 +155,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/cleanup.go`
   - `internal/fabricengine/portals.go`
+  - `internal/fabricengine/clone.go`
   - `_mill/discussion.md`
 - **Edits:**
   - `internal/fabricengine/destroy.go`
@@ -163,7 +164,8 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:** add one executor per destructive primitive.
   Each runs its request through card 7's pipeline first and performs the act only if the pipeline returns nil, which is what makes the gate execute rather than approve.
-  `removePath(req pathRequest) error` calls the package's `RemoveAll` seam for a directory and `os.Remove` for a non-directory target, tolerating `os.IsNotExist` on both;
+  `removePath(req pathRequest) error` calls the package's `RemoveAll` seam for a directory and `os.Remove` for a non-directory target, tolerating `os.IsNotExist` on both.
+  The seam is still declared in `internal/fabricengine/clone.go` when this card runs — card 10 relocates it into this batch's new file afterwards — so call it by its bare identifier and do not qualify it with a package or move it here;
   it is named `removePath` and not `removeDir` because `removeLaunchers` deletes script files as well as their directory.
   `removeGitWorktree(req pathRequest, repoDir string) (exitCode int, stderr string, err error)` runs `git worktree remove`, appending `--force` when `req.force` is true, from `repoDir`;
   it returns git's own exit code and stderr rather than swallowing them, because three of its four call sites build distinct error messages from both.
