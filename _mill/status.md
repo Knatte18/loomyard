@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
-plan: null
+plan: _mill/plan
 parent: main
 task: 'fabric: one ownership-and-dirtiness gate for all destruction (slice 12)'
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-10T10:16:14Z'
 discussed  '2026-08-10T12:41:06Z'
+planning  '2026-08-10T12:59:08Z'
 ```
