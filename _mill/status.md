@@ -50,7 +50,9 @@ batches:
     commit_sha: ba49173d15ac92961578bc2a683c8bf3133447bf
     verify_baseline_failures: []
   - name: path-callsites
-    state: pending
+    state: running
+    implementer_session: 887460a1-bf7c-4879-84a9-c4b13bf87dec
+    start_sha: 44a55010ad28ca8198d781b96900f231453d6b6d
     verify_baseline_failures: []
   - name: clone-callsites
     state: pending
