@@ -246,16 +246,30 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 		return false
 	}
 
-	_ = removePortal(l, slug)
-	_ = removeLaunchers(l, slug)
+	// The portal and launcher teardown here is keyed on a slug the orphan pass derived from a
+	// directory name — precisely the input a refusal is most likely to be about — so a refusal must
+	// be recorded rather than swallowed alongside an ordinary operational failure.
+	if err := surfaceRefusal(removePortal(l, slug)); err != nil {
+		pe.Error = err.Error()
+		return false
+	}
+	if err := surfaceRefusal(removeLaunchers(l, slug)); err != nil {
+		pe.Error = err.Error()
+		return false
+	}
 
 	removed := false
 
 	if _, statErr := os.Stat(weftPath); statErr == nil {
-		_, stderr, exitCode, err := gitexec.RunGit(
-			[]string{"worktree", "remove", "--force", weftPath},
-			weftRepoRoot,
-		)
+		req := pathRequest{
+			what:      "remove weft worktree",
+			container: l.HubPath,
+			target:    weftPath,
+			ownership: ownedRegisteredLinkedWorktree(weftRepoRoot),
+			dirtiness: dirtyScopeTracked(),
+			force:     true,
+		}
+		exitCode, stderr, err := removeGitWorktree(req, weftRepoRoot)
 		if err != nil {
 			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
 			return false
@@ -270,7 +284,14 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 					weftPath, exitCode, strings.TrimSpace(stderr), weftRepoRoot)
 				return false
 			}
-			if removeErr := os.RemoveAll(weftPath); removeErr != nil {
+			fallbackReq := pathRequest{
+				what:      "remove weft worktree",
+				container: l.HubPath,
+				target:    weftPath,
+				ownership: ownedRegisteredLinkedWorktree(weftRepoRoot),
+				dirtiness: dirtyScopeTracked(),
+			}
+			if removeErr := removePath(fallbackReq); removeErr != nil {
 				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
 				return false
 			}
