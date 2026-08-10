@@ -162,12 +162,31 @@ func removeLaunchers(l *lyxcwd.Location, slug string) error {
 
 	ext := launcherExt(runtime.GOOS)
 	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
-		if err := os.Remove(filepath.Join(launcherDir, name)); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove launcher script %s: %w", filepath.Join(launcherDir, name), err)
+		target := filepath.Join(launcherDir, name)
+		req := pathRequest{
+			what:      "remove launcher script",
+			container: launchersDir(l),
+			target:    target,
+			slug:      nil,
+			ownership: ownedUnderGeometryRoot(launchersDir(l)),
+			dirtiness: dirtinessNA("launcher scripts are generated artifacts, never edited content"),
+			force:     false,
+		}
+		if err := removePath(req); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove launcher script %s: %w", target, err)
 		}
 	}
 
-	if err := os.Remove(launcherDir); err != nil && !os.IsNotExist(err) {
+	dirReq := pathRequest{
+		what:      "remove launcher dir",
+		container: launchersDir(l),
+		target:    launcherDir,
+		slug:      nil,
+		ownership: ownedUnderGeometryRoot(launchersDir(l)),
+		dirtiness: dirtinessNA("launcher scripts are generated artifacts, never edited content"),
+		force:     false,
+	}
+	if err := removePath(dirReq); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
 
