@@ -166,6 +166,7 @@ Batch-local decisions live in each batch file._
 - `internal/fabricengine/unwire.go`
 - `internal/fabricengine/warpclean.go`
 - `internal/fabricengine/warpforward.go`
+- `internal/fabricengine/warpforward_integration_test.go`
 - `internal/fabricengine/weftwiring.go`
 - `manifest/designs/fabric-crucible-followups.md`
 - `manifest/roadmap.md`

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-the-gate
+phase: self-resolved-verify-logic
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-08-10T17:32:03Z'
 implementing  '2026-08-10T17:43:28Z'
 approved-dirtiness-probe  '2026-08-10T17:53:36Z'
 approved-the-gate  '2026-08-10T18:06:18Z'
+self-resolved-verify-logic  '2026-08-10T18:36:09Z'
 ```
 
 ## Batches

@@ -9,6 +9,21 @@ verify: go test ./internal/fabricengine/... && go test -tags integration ./inter
 depends-on: [2]
 ```
 
+## Prior failure
+
+- Round 1: verify failed with `--- FAIL: TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges (0.24s)\n    warpforward_integration_test.go:137: ResetHard("cffc7dfb02c9afd0d0aee341e798f9280c416ad4"): refusing to reset warp checkout: dirtiness check failed for /tmp/TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges2456340768/001/hub: worktree has uncommitted changes; use --force`.
+
+## Plan-gap fix: `warpforward_integration_test.go` was omitted from batch 2's file scope
+
+- **Root cause:** batch 2's card 11 deliberately hardens `Fabric.ResetHard` to refuse a dirty warp checkout (`dirtiness: dirtyScopeTracked()`, `force` hardcoded false) — see card 11's own requirements text and discussion.md's `resetHardTo`/`force` decisions (both reference R2's historical defect as the rationale for this exported-method-level hardening, independent of `Pull`'s own pre-existing `ErrWarpDirty` check, which card 11 explicitly leaves untouched as a separate floor).
+  This is a genuine, deliberate, reviewed behaviour change to `Fabric.ResetHard`'s contract — it no longer unconditionally discards.
+  The plan never assigned the one existing test that calls `Fabric.ResetHard` directly, unwrapped by `Pull`'s own guard — `internal/fabricengine/warpforward_integration_test.go`'s `TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges` — to any card's `Edits:` list, so no card updated it, and batch 2's own `verify:` never runs the integration tier that would have caught this.
+- **Resolution, in scope for this batch's retry:** `internal/fabricengine/warpforward_integration_test.go` is added to this batch's edit scope (also added to `00-overview.md`'s `All Files Touched`).
+  Update `TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges` to assert the new, intentional contract: a dirty tracked warp checkout causes `ResetHard` to return a refusal (test via `errors.As` against `*destructiveRefusal`, or the wrapping error `ResetHard` already produces) and leave the worktree's uncommitted changes on disk, rather than asserting the changes are discarded.
+  Keep (or add, if not already covered) a companion assertion that `ResetHard` still discards *committed* history it is pointed away from on a clean tracked worktree — that half of the test's original name/intent is unaffected by this batch's changes and must keep passing.
+  Rename the test if its name no longer matches its assertion (e.g. `TestFabricWarp_ResetHardRefusesDirtyWarpCheckout` for the refusal half, keeping a `..._DiscardsCommitsOnCleanWorktree`-style name for the unaffected half if split into two tests) — a clearer name here is preferred over preserving a now-inaccurate one.
+  This is not the `regression posture` stop: that decision protects tests against *silent* edits for changes the plan does not sanction; this change is sanctioned and documented at length in card 11 and discussion.md, and the gap is only that this one call site was missed when the plan named which files carry the required companion test update.
+
 ## Batch Scope
 
 This batch routes every path-shaped and link-shaped destructive call site in `internal/fabricengine` onto batch 2's executors, except the two inside `clone.go` (batch 4) and the four `git branch -D` sites (batch 5).
