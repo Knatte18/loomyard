@@ -6,6 +6,7 @@ slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: one ownership-and-dirtiness gate for all destruction (slice 12)'
 task_description: |
   fabric: one ownership-and-dirtiness gate for all destruction (slice 12)
@@ -35,17 +36,26 @@ implementing  '2026-08-10T17:43:28Z'
 ```yaml
 batches:
   - name: dirtiness-probe
-    state: pending
+    state: running
+    implementer_session: 2c58d66a-c805-4f7d-b687-de9606e95776
+    start_sha: bb9aa21012d0c08cc19d94e5d03eadefe53335ef
+    verify_baseline_failures: []
   - name: the-gate
     state: pending
+    verify_baseline_failures: []
   - name: path-callsites
     state: pending
+    verify_baseline_failures: []
   - name: clone-callsites
     state: pending
+    verify_baseline_failures: []
   - name: branch-callsites
     state: pending
+    verify_baseline_failures: []
   - name: guard-and-docs
     state: pending
+    verify_baseline_failures: []
   - name: gap-integration-tests
     state: pending
+    verify_baseline_failures: []
 ```
