@@ -123,6 +123,9 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/ancestors.go`
 - **Edits:**
   - `internal/fabricengine/portals.go`
+  - `internal/fabricengine/destroy.go`
+  - `internal/fslink/fslink_linux.go`
+  - `internal/fslink/fslink_windows.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
