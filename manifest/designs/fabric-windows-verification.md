@@ -31,7 +31,7 @@ Beyond the named four: the entire anchor/subpath mechanism — the campaign's nu
 ## Why this is worse than a normal coverage gap
 
 The campaign's eight data-loss defects were **all** found by driving real git against a real filesystem with hostile or dirty state;
-the hermetic suite was green throughout and found none of them (see [fabric-crucible-followups.md](fabric-crucible-followups.md)'s slice 12).
+the hermetic suite was green throughout and found none of them (see [fabric-crucible-followups.md](fabric-crucible-followups.md)'s slice 13).
 That is direct evidence that fabric's defects live exactly where platform behaviour lives: in path composition, link creation, and filesystem semantics.
 
 Windows is where all three differ.
@@ -60,8 +60,8 @@ Beyond the suite, the scenarios worth driving by hand on Windows are the ones th
 - `add`/`remove` slug hygiene;
 - `prune` / `clone --reset` ownership refusals.
 
-Slice 12's live-state harness is the natural vehicle: once it exists, closing this item is largely a matter of running it on Windows rather than writing anything new.
-That makes this item cheaper *after* slice 12, which is one reason it sits in Someday rather than ahead of it.
+Slice 13's live-state harness is the natural vehicle: once it exists, closing this item is largely a matter of running it on Windows rather than writing anything new.
+That makes this item cheaper *after* slice 13, which is one reason it sits in Someday rather than ahead of it.
 
 ## The legitimate alternative answer
 
@@ -71,6 +71,6 @@ Deciding to drop Windows means retiring that claim too, not just skipping the te
 ## Related
 
 - [fabric-crucible-followups.md](fabric-crucible-followups.md) — the four Planned slices from the same campaign;
-  slice 12's harness inherits this gap honestly rather than closing it.
+  slice 13's harness inherits this gap honestly rather than closing it.
 - [warp-visibility.md](warp-visibility.md) — the other open item carrying a Windows-specific caveat (Developer Mode for symlinks, with a copy fallback).
 - `internal/fslink` package documentation — the junction-vs-symlink contract this item would verify.

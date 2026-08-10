@@ -1,7 +1,7 @@
 # lyxtest builds real fabric hubs — invert the dependency
 
 > **Status: not built.**
-> Depends on `fabric-live-state-harness` (slice 12), which creates the `fabrictest` package this task needs as a landing zone.
+> Depends on `fabric-live-state-harness` (slice 13), which creates the `fabrictest` package this task needs as a landing zone.
 > Deleted once landed, per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle);
 > the durable half becomes the rewritten lyxtest invariant in `CONSTRAINTS.md` and `internal/lyxtest`'s own package doc.
 
@@ -14,7 +14,7 @@ Neither has `_board`, `_portals`, `_launchers`, a hub-level `.lyx`, junctions, a
 
 Every test built on those fixtures therefore asserts against **a shape someone wrote down**, not the shape fabric produces.
 Nothing detects drift between the two.
-That is the same class of blindness the fabric v2 crucible campaign found at the tier level — see [fabric-crucible-followups.md](fabric-crucible-followups.md)'s slice 12, where the hermetic suite stayed green through eight data-loss defects because it could not express the state that exposed them.
+That is the same class of blindness the fabric v2 crucible campaign found at the tier level — see [fabric-crucible-followups.md](fabric-crucible-followups.md)'s slice 13, where the hermetic suite stayed green through eight data-loss defects because it could not express the state that exposed them.
 
 The fix is to invert the dependency: `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning.
 Every fixture in the repo then *is* a hub, and drift becomes impossible by construction rather than by discipline.
@@ -38,7 +38,7 @@ Everything else — `reedcli` (8), `cmd/lyx` (5), `shuttlecli` (4), `treadleengi
 The 44 external (`*_test` package) files are safe regardless: Go compiles external test packages separately, so `fabricengine_test` → `lyxtest` → `fabricengine` is a legal chain.
 
 So the collateral is two files needing only `MustRun`, a ~15-line "run git or fail the test" helper.
-`fabricengine`'s own 14 move to `fabrictest`, which slice 12 creates anyway.
+`fabricengine`'s own 14 move to `fabrictest`, which slice 13 creates anyway.
 
 ### The performance cost is ~2-3%, measured
 
@@ -108,7 +108,7 @@ Every one of those breaks is worth reading rather than silencing: it marks a pla
 ## What needs to happen
 
 1. **Extract the shared primitive.** Move `MustRun` (and `SeedConfig` if it proves equally load-bearing) into a zero-import leaf both `lyxtest` and low-level packages can use, freeing `gitrepo`'s `gogit_test.go` and `lyxcwd`'s `gate_test.go`.
-2. **Move `fabricengine`'s 14 in-package lyxtest callers** into `fabrictest` (created by slice 12). `clone_test.go` keeps its own setup if it needs unexported access.
+2. **Move `fabricengine`'s 14 in-package lyxtest callers** into `fabrictest` (created by slice 13). `clone_test.go` keeps its own setup if it needs unexported access.
 3. **Invert the import.** `lyxtest` imports `fabricengine`;
    hub fixtures are built by copying prebuilt bares and calling `CloneHub` plus the wiring the CLI layer performs.
 4. **Migrate the assertions** that break on the real hub shape.

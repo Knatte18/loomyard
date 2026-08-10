@@ -14,10 +14,14 @@ Committed to, in this order, next.
    Every individual defect is fixed;
    the shapes that keep producing them are not.
    Slice numbers are assigned in build order.
-   **Slice 12** (a live-state integration harness against real git in dirty and hostile state) comes first only because **slice 13** — the root-cause fix, one containment/ownership/dirtiness/force gate every destructive operation routes through, with a `CONSTRAINTS.md` invariant and a static bypass guard in the same commit — is a consolidating refactor of the exact code paths that destroyed something eight times, and the only test tier that can observe destruction is the one slice 12 builds.
-   Slice 12 is therefore scoped small on purpose: cover the destructive verbs, then grow to the full cross product after slice 13 lands.
-   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is third, because it is truthfulness rather than safety: slice 13's steps 1-4 are what stop destruction, and its step 5 may land in each verb's existing error shape and be generalised here, a bounded churn cost paid to get the safety fix in a slice earlier.
+   **Slice 12 is the root-cause fix and goes first**: one containment/ownership/dirtiness/force gate every destructive operation routes through, with a `CONSTRAINTS.md` invariant and a static bypass guard in the same commit.
+   It is the only slice that stops anything being destroyed;
+   the rest are instrumentation, truthfulness, and a self-healing race.
+   An earlier draft put the harness first on the grounds that the gate is a consolidating refactor with no tier able to observe destruction — **that was wrong**, and the design doc records why rather than deleting it: the campaign left a named, sabotage-proved regression test for every one of the eight defects across ~29 destructive-verb integration files, which is exactly the cover a consolidating refactor needs, and the gate's own completeness proof is a static tree walk needing no fixtures at all.
+   **Slice 13** (the live-state integration harness against real git in dirty and hostile state) is second: its first job is to validate the gate, its second to find instance number nine.
+   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is third, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction, and its step 5 may land in each verb's existing error shape and be generalised here.
    **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last, independent of the other three.
+   Slices 12 and 13 may run in parallel if two agents are available — the gate is production code, the harness is test-tier.
    Placed ahead of `Shed` because fabric is the module every other worktree's work stands on, and this is a data-loss class in it — not because `Shed` slipped;
    `Shed` → `loom` keeps its own order below.
    Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
@@ -25,12 +29,12 @@ Committed to, in this order, next.
 1. **lyxtest builds real fabric hubs — invert the dependency** — `internal/lyxtest`'s fixtures are hand-assembled approximations of a fabric hub, never produced by `CloneHub`: no `_board`, no junctions, no `.lyx-anchor`, no warp binding.
    Every test built on them asserts against a shape someone wrote down rather than the shape fabric produces, and nothing detects drift between the two.
    Invert it — `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning — so drift becomes impossible by construction instead of by discipline.
-   Both objections were measured and both failed: the import cycle touches 14 `fabricengine` files (which move to `fabrictest`, created by slice 12) plus two files needing only `MustRun`, and the runtime cost is **+3.6 s on Tier 2's ~132 s, about 2.7 %** — 167 `Copy*` call sites at a measured 24 ms per full fixture against today's 2.3 ms.
+   Both objections were measured and both failed: the import cycle touches 14 `fabricengine` files (which move to `fabrictest`, created by slice 13) plus two files needing only `MustRun`, and the runtime cost is **+3.6 s on Tier 2's ~132 s, about 2.7 %** — 167 `Copy*` call sites at a measured 24 ms per full fixture against today's 2.3 ms.
    The template-and-copy model is not discarded but moves one level down: **copy the two bares** (zero symlinks, ~2 ms) and **clone the hub** (~22 ms, unavoidable since its junctions carry absolute targets).
    Local bare repos are real remotes, so `push`/`pull`/`sync` need no GitHub — the repo already tests force-pushed upstreams and genuine non-fast-forwards this way.
    The real cost is migrating whichever assertions break on the true hub shape, and each such break marks a test currently asserting against an invented one.
    Windows is unmeasured and is the one open question.
-   Builds on the fabric campaign's slice 12 below.
+   Builds on the fabric campaign's slice 13 above, which creates the `fabrictest` package this needs as a landing zone.
    See [designs/lyxtest-real-hubs.md](designs/lyxtest-real-hubs.md).
 
 1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
@@ -88,7 +92,7 @@ No build order is implied between these items.
 
 1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of `Real-Linux validation` above.
    All six crucible rounds ran on Linux, so `lyxcwd.ValidateAnchorRel`'s volume-rooted rejection, `excludePatternFor`'s separator handling, `lyxcwd.samePath`'s case-insensitive branch and every line of `internal/fslink`'s junction path have never executed — and the campaign's eight data-loss defects all lived exactly where platform behaviour lives (path composition, link creation, filesystem semantics).
-   Someday rather than Planned because closing it needs a Windows host rather than a design, and because it gets much cheaper once Planned slice 12's live-state harness exists: at that point it is largely a matter of running the harness there.
+   Someday rather than Planned because closing it needs a Windows host rather than a design, and because it gets much cheaper once Planned slice 13's live-state harness exists: at that point it is largely a matter of running the harness there.
    Deciding that Windows is not a goal is a legitimate resolution — but then `internal/fslink`'s existence and CLAUDE.md's "junctions are the only link type guaranteed everywhere" claim must be retired in the same breath.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
 
