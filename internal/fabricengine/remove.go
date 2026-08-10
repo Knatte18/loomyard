@@ -10,6 +10,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -155,8 +156,9 @@ func refusePrimeSlug(l *lyxcwd.Location, slug string) error {
 		slug)
 }
 
-// removeWarpWorktreeDir removes the warp worktree at target via git, falling back to a direct
-// directory removal ONLY when target is a registered LINKED worktree of this repo.
+// removeWarpWorktreeDir removes the warp worktree at target via the gate's removeGitWorktree
+// executor, falling back to a second gated call ONLY when target is a registered LINKED worktree of
+// this repo.
 //
 // The narrow fallback is the whole point of this helper.
 // `git worktree remove` refuses a main working tree, a path that is not a worktree of this repo at
@@ -165,14 +167,22 @@ func refusePrimeSlug(l *lyxcwd.Location, slug string) error {
 // (`lyx fabric remove <prime>`, `lyx fabric remove _board`) into the loss of a whole git clone.
 // A registered linked worktree is fabric's own pair member and nothing else, so deleting it after a
 // git refusal is recoverable bookkeeping rather than data loss.
+//
+// The fallback is itself gated because it fires on ANY nonzero exit from `git worktree remove`, and
+// `git worktree remove` without `--force` refuses on untracked files — an ungated fallback would
+// therefore delete exactly the untracked files git had just declined to discard.
 func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error {
-	args := []string{"worktree", "remove"}
-	if force {
-		args = append(args, "--force")
+	req := pathRequest{
+		what:      "remove warp worktree",
+		container: l.HubPath,
+		target:    target,
+		slug:      nil,
+		ownership: ownedRegisteredLinkedWorktree(l.WorktreePath()),
+		dirtiness: dirtyScopeAll(),
+		force:     force,
 	}
-	args = append(args, target)
 
-	_, stderr, exitCode, err := gitexec.RunGit(args, l.WorktreePath())
+	exitCode, stderr, err := removeGitWorktree(req, l.WorktreePath())
 	if err != nil {
 		return fmt.Errorf("run git worktree remove for %s: %w", target, err)
 	}
@@ -186,7 +196,20 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 			target, exitCode, strings.TrimSpace(stderr))
 	}
 
-	if removeErr := os.RemoveAll(target); removeErr != nil {
+	fallbackReq := pathRequest{
+		what:      "remove warp worktree",
+		container: l.HubPath,
+		target:    target,
+		ownership: ownedRegisteredLinkedWorktree(l.WorktreePath()),
+		dirtiness: dirtyScopeAll(),
+	}
+	if removeErr := removePath(fallbackReq); removeErr != nil {
+		// A *destructiveRefusal propagates unwrapped so errors.As still works at the caller; only an
+		// operational failure gets the "fallback removal failed" wrapper.
+		var refusal *destructiveRefusal
+		if errors.As(removeErr, &refusal) {
+			return removeErr
+		}
 		return fmt.Errorf("fallback removal failed: %w", removeErr)
 	}
 	// Bookkeeping only: a failed prune leaves a stale registration the next reconcile or prune
