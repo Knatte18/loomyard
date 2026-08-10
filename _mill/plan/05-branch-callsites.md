@@ -102,12 +102,16 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/cleanup.go`
 - **Edits:**
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/remove.go`
+  - `internal/fabricengine/add.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** convert `removeWeftWorktree`'s `git branch -D` call — reached from `Remove` with the removed pair's weft branch and from `rollbackAdd` with the delete-branch flag set only when this `Add` created it — onto `deleteBranch`, with a `branchRequest` carrying `repoDir` the resolved weft repo root, `branch` the branch parameter, ownership `ownedManagedBranch(l, branchPrefix)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
   `removeWeftWorktree` has no config in scope;
   add a parameter for the branch prefix rather than reaching for a package-level default, and pass it from both call sites.
+  Those two call sites are in `internal/fabricengine/remove.go` and `internal/fabricengine/add.go`, both inside `Topology` methods, so both pass their receiver's configured branch prefix.
+  Update both in this card — the signature change leaves the package non-compiling until they are, so they are this card's own work rather than a side effect of the cards that touch those files for other reasons.
   Preserve the existing `firstErr` shape and the existing "git branch -D failed with exit code %d" message.
   Do not change the `deleteBranch` boolean parameter's meaning or its callers' existing carve-out: the flag decides whether a deletion is attempted at all, and the gate decides whether an attempted one is permitted.
   Note that the executor and this function's boolean parameter now share a name;

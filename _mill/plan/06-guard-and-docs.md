@@ -145,7 +145,10 @@ Batch-local decision beyond `## Shared Decisions`: the guard's banned-token set 
   That over-generalised one verb's comment to the whole package and is contradicted by the verified split — four of the eight probe sites are tracked-only and four are untracked-inclusive.
   Replace it with the decision actually taken: scope is a caller-declared member of a closed sum type, every site keeps its current scope, and normalising to tracked-only would have opened a new data-loss path where git's untracked refusal routes into a directory-removal fallback.
   Resolve the section's other two open questions in place as well, since this slice answers both: the gate lives in the package rather than lower, and enforcement is the existing grep-the-tree pattern with the broader consolidation question noted rather than resolved.
-  In `manifest/roadmap.md`, move slice 12 to completed in whatever form that file already uses for a landed item, leaving the slice 13 and slice 14 dependency statements intact.
+  In `manifest/roadmap.md`, the four slices share one Planned bullet that narrates all of them together, so landing one slice means splitting that bullet rather than moving it.
+  Split it: add a new short bullet to the Done section for slice 12 in the concise register the existing Done entries use — what landed, in a sentence or two, not the Planned bullet's build-order argument — and edit the Planned bullet to describe slices 13, 14 and 15 only.
+  Keep the statements that 13 and 14 both depend on 12 and that 15 is independent, rewording them from "depends on the slice that goes first" to "depends on the slice that has landed".
+  Drop from the Planned bullet only the text whose subject is slice 12 itself, including the why-12-goes-first argument and the superseded-earlier-draft paragraph, both of which are build-order history the design doc already records.
   Every inline markdown link either file gains or touches must resolve, including its anchor for a markdown target — both files are scan sources for the repo's markdown-link enforcement test, and that test resolves anchors for targets outside the scanned roots too.
 - **Commit:** `docs(manifest): mark slice 12 landed and correct its stale probe-scope claim`
 
