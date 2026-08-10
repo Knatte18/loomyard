@@ -219,7 +219,35 @@ Nothing is lost by starting in-package.
 Enforcement does not need a package boundary: `internal/scoutengine/lspclient_guard_test.go` already polices a **single file**, so "the only file allowed to call `os.RemoveAll`" is exactly as machine-checkable as "the only package".
 Extract to a told-everything leaf later if a non-fabric caller appears — which is the open question below, and the reason this slice does not settle it up front.
 
-Then **prove no call site bypasses it**.
+### Where the gate lives vs where the primitives live
+
+**The gate is fabric's, and that follows from its own checks rather than from habit.**
+Of the four, two are irreducibly fabric-domain: *ownership* ("fabric created this and this hub owns it" — hub geometry, the weft suffix, registered linked worktrees, `looksLikeHub`) and *force semantics* (whose whole content is "never delete something that was never fabric's").
+`gitrepo.Repo` has no concept of a hub, a pair, a weft sibling or a prime, and must not acquire one.
+Moving the gate down would drag fabric's domain model with it, which is not a move.
+
+The **primitives** it fronts split three ways, and only the middle row is an open call:
+
+| primitive | home | why |
+|---|---|---|
+| `ResetHard` | **already `gitrepo`** | `gitrepo/reset.go`, SHA-validated, with its data-loss surface documented at `gitrepo/doc.go:227`; `fabricengine.ResetHard` is thin delegation. The precedent that makes this question worth asking. |
+| tracked-only dirtiness probe | **candidate for `gitrepo`** | see below |
+| `git worktree remove --force`, `git branch -D` | **stays in `fabricengine`** | `gitrepo.Repo` models *one local checkout*; both act on a path other than the repo they run from, so they are topology, not checkout, operations. Pushing them down grows gitrepo a worktree-topology surface for a single consumer, against its own documented boundary. |
+| `os.RemoveAll` / `os.Remove` | **`fabricengine`** | not a git operation at all. |
+
+**The one deferred decision, with its criterion stated so the implementing agent applies a rule rather than a preference.**
+`gitrepo` nearly has the dirtiness probe already: `WorktreeChangedFiles()` (`gitrepo/worktree.go`) returns every uncommitted change but **includes untracked files**, while this gate's probe is deliberately tracked-only.
+A tracked-only variant is trivial in go-git — skip `git.Untracked` entries — so it needs no `gitexec` call and therefore no update to the [gitrepo Client Boundary Invariant](../../CONSTRAINTS.md#gitrepo-client-boundary-invariant)'s pinned list.
+
+Meanwhile `fabricengine` hand-rolls `git status --porcelain` at **eight** sites — `add.go`, `checkout.go`, `prune.go`, `pull.go`, `remove.go` (twice), `warpclean.go`, `reconcile.go` — four of them with `--untracked-files=no`.
+That is the same "every call site rolls its own check" disease this slice exists to cure, one layer down.
+
+Promote the probe into `gitrepo` **if** the gate ends up needing it against both warp and weft through a `Repo` handle it already holds;
+keep it fabric-local **if** the gate only ever probes paths it resolves itself, since a `gitrepo` method would then need a `Repo` constructed solely to answer one question.
+Either way the eight hand-rolled probes collapse to one implementation — that part is not optional, and is the smaller half of this slice.
+
+### Prove no call site bypasses it
+
 That is the part that turns this from another fix into a closed class:
 
 - A graded sweep (the crucible's form) showing every one of R4's enumerated destructive sites routes through the gate.
