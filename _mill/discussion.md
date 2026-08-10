@@ -96,7 +96,7 @@ The verdict is written down, the implementation is filed as its own task, and th
 ### gitrepo-run-is-covered
 
 - **Decision:** The verdict binds `internal/gitrepo.run` as well as `internal/gitexec.RunGit`. `gitrepo` gains the same pair — the existing `run` stays as the raw predicate form, and a checked sibling is added that returns stdout plus a wrapped `*GitError`.
-- **Rationale:** `gitrepo.run` (`internal/gitrepo/gitrepo.go:60`) is a straight re-export of the identical 4-value shape and is the same footgun with **21 production call sites of its own**, six of which discard stderr. Deciding it separately guarantees the two drift apart. Both raw forms are pinned by the same guard test.
+- **Rationale:** `gitrepo.run` (`internal/gitrepo/gitrepo.go:60`) is a straight re-export of the identical 4-value shape and is the same footgun with **21 production call sites of its own**, five of which discard stderr. Deciding it separately guarantees the two drift apart. Both raw forms are pinned by the same guard test.
 - **Rejected:**
   - Scoping the verdict to `gitexec` only and filing `gitrepo` as a follow-up — two decisions about one shape, taken at different times, by different sessions.
   - Deleting `gitrepo.run` in favour of calling `gitexec.Run` directly at all 21 sites — it removes the duplicate shape entirely, which is attractive, but `run` binds `r.path` and its removal churns the gitrepo Client Boundary Invariant's pinned method list for no gain the paired form does not already deliver.
@@ -164,7 +164,8 @@ The verdict is written down, the implementation is filed as its own task, and th
 ### verdict-doc-lifecycle
 
 - **Decision:** `manifest/designs/gitexec-error-shape.md` is rewritten *in place* as the verdict by this task. The implementation task deletes it when it lands and moves the durable rationale into `internal/gitexec`'s package header comment.
-- **Rationale:** This is the Documentation Lifecycle rule for module-design docs verbatim — deleted when the work lands, with purpose and key rationale moving into the Go package header next to the code. The doc's own status block already says "Deleted once the verdict is recorded, wherever it lands."
+- **Rationale:** This is the Documentation Lifecycle rule for module-design docs verbatim — deleted when the work lands, with purpose and key rationale moving into the Go package header next to the code.
+  The doc's current status line (`manifest/designs/gitexec-error-shape.md:5`) says "Deleted once the verdict is recorded, wherever it lands", which on its face means delete *now*. That line is **amended by this task**, not cited in support: the verdict is recorded *in* the doc, and the doc survives until the implementation lands, at which point it is deleted under the lifecycle rule. The retention rests on the lifecycle rule alone.
 - **Rejected:**
   - Promoting it to `docs/reference/` as a durable contract doc — it documents one package's error shape, not a cross-module *file* contract honoured by a real consumer, so it does not meet that bar.
   - Recording the verdict directly in the package comment now and deleting the doc — the package comment would describe a shape the code does not have.
@@ -228,6 +229,17 @@ The concrete outside-fabric sites:
 - `internal/lyxcwd/lyxcwd.go:147` — `rev-parse --show-toplevel`.
 - `internal/fabriccli/fabric.go:491` — branch read.
 
+### The four outside-fabric sites — raw vs checked
+
+Each is decided here rather than left to the implementer, since there are only four and each turns on something local:
+
+| site | disposition | why |
+|---|---|---|
+| `internal/lyxcwd/lyxcwd.go:147` | **raw** | It is a predicate ("is cwd inside a git repo?") whose exit path returns the bare `ErrNotAGitRepo` sentinel. `preflight.go:46` does `errors.Is` on it and four CLI tests pin the bare-sentinel string. Gets a `//gitexec:raw` marker. |
+| `internal/fabriccli/fabric.go:491` | **raw** | `branch --show-current`; a non-zero exit means "no current branch", and the path prints a usage string, not a diagnostic. Predicate. |
+| `internal/websterengine/gitwrap.go:31` | **checked** | `status --porcelain`; both branches are genuine failures with real messages — a clean two-message merge. **Note:** `cmd/lyx/rawgitmutation_test.go:46` grandfathers this file by name with an exemption text naming `gitexec.RunGit`; that exemption must be updated in the same commit. |
+| `internal/gitrepo/gitrepo.go:60` | **both** | The `run` helper gains a checked sibling; see below. |
+
 ### `gitrepo.run` — the second copy of the shape
 
 ```go
@@ -238,8 +250,9 @@ func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) 
 ```
 
 **21 production `r.run(...)` call sites** across `gitrepo.go`, `push.go`, `pull.go`, `reset.go`, `ancestry.go`.
-**Regeneration query:** `grep -rn 'r\.run(' --include='*.go' internal/gitrepo | grep -v _test` for the total, and `grep -c '_, _, .*= r\.run('` for the discard subset — the discard shape is a `_` in the second (stderr) binding position.
-Six discard stderr (`reset.go:18`, `pull.go:19`, `pull.go:33`, `push.go:133`, `ancestry.go:26`, and one more in the same `_, _, code, err` form). The remaining fifteen bind it and thread it into an error message.
+**Regeneration query:** `grep -rn 'r\.run(' --include='*.go' internal/gitrepo | grep -v _test` for the total, and for the discard subset match **any `_` in the second (stderr) binding position** — `^\s*\S+,\s*_,\s*\S+,\s*\S+\s*:?=\s*r\.run\(`.
+Do not use `_, _, .*= r\.run(`: it returns four, missing `push.go:133` (`stdout, _, code, err`), which discards stderr while binding stdout.
+**Five discard stderr** — `reset.go:18`, `pull.go:19`, `pull.go:33`, `push.go:133`, `ancestry.go:26`. The remaining **sixteen** bind it and thread it into an error message.
 This is why the "5 sites outside fabric" figure understates the shape's reach — behind one of those five sits a second fan-out of 21.
 
 ### The predicate-site inventory — non-zero exit as an answer
@@ -257,19 +270,26 @@ Two traps, both hit in practice:
 Current result: 63 total, ~51 error-returning, ~12 predicate.
 **Treat this as approximate.** The classifier cannot see every error-constructing helper, and the decision does not rest on it — the shape list below does.
 
-`rev-parse --verify [--quiet] <ref>` used as a ref-existence check — 6 sites:
+**Every entry below is keyed to the `RunGit` call site**, with its comparison line given as `→ :<n>`. Keying to one line-kind is deliberate: an earlier draft listed some entries by call line and others by comparison line, which turned `warpprobe.go:77`/`:81` and `weftwiring.go:90`/`:96` into four sites when they are two.
 
-- `internal/fabricengine/add.go:58` → `if exitCode == 0 { /* branch already exists */ }`
-- `internal/fabricengine/boardweft.go:25` → `if exitCode == 0 { /* adopt local weft branch */ }`
-- `internal/fabricengine/weftwiring.go:90` → `return exitCode == 0` (the whole function *is* the predicate)
-- `internal/fabricengine/clone.go:433`
-- `internal/fabricengine/clone.go:472` → `if exitCode == 0`
-- `internal/fabricengine/warpprobe.go:77` → `if exitCode != 0 { return warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil }`
+**`rev-parse` existence and state probes — 8 call sites:**
 
-`internal/fabricengine/warpprobe.go:81` — the unborn-HEAD check, where non-zero means "this weft candidate has no commits", returned as `warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil`.
-**This is the only predicate in the file.** Lines 71, 95 and 136 look similar but return `wrapProbeError(...)` — they are error paths, and an earlier pass of this document misfiled all three as predicates because its classifier only recognised `fmt.Errorf` / `errors.New`.
+| call site | command | comparison |
+|---|---|---|
+| `fabricengine/add.go:58` | `rev-parse --verify refs/heads/<warp>` | `→ :62` — `if exitCode == 0`, branch already exists |
+| `fabricengine/boardweft.go:25` | `rev-parse --verify --quiet refs/heads/<warp>` | `→ :32` — `if exitCode == 0`, adopt local weft branch |
+| `fabricengine/weftwiring.go:90` | `rev-parse --verify refs/heads/<branch>` | `→ :96` — `return exitCode == 0`; the function *is* `weftBranchExists` |
+| `fabricengine/weftwiring.go:73` | `rev-parse --is-inside-work-tree` | `→ :78` — `return exitCode == 0` |
+| `fabricengine/clone.go:433` | `rev-parse --verify --quiet <remoteRef>` | remote primary-branch probe |
+| `fabricengine/clone.go:472` | `rev-parse --verify --quiet refs/heads/<branch>` | `→ :476` — `if exitCode == 0` |
+| `fabricengine/warpprobe.go:77` | `rev-parse --verify --quiet HEAD` | `→ :81` — unborn HEAD; returns `warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil` |
+| `fabricengine/pull.go:131` | `rev-parse --abbrev-ref --symbolic-full-name @{u}` | `→ :135` — `return code == 0, nil`; the godoc states non-zero "is the nothing-to-pull-from case, never an error" |
 
-`internal/gitrepo/ancestry.go:26` — `merge-base --is-ancestor` with an explicit tri-state, documented in the method's own godoc as "true if an ancestor, false if not (both with nil error), or an error on failure":
+`warpprobe.go:77` is **the only predicate in `warpprobe.go`.** The comparisons at `:71`, `:95` and `:136` look identical but return `wrapProbeError(...)` — they are error paths, misfiled as predicates by an earlier classifier that recognised only `fmt.Errorf` / `errors.New`.
+
+**`gitrepo` tri-states and quiet probes — 3 call sites:**
+
+`internal/gitrepo/ancestry.go:26` — `merge-base --is-ancestor`, with the tri-state stated in the method's own godoc ("true if an ancestor, false if not (both with nil error), or an error on failure"):
 
 ```go
 switch code {
@@ -279,12 +299,11 @@ default: return false, fmt.Errorf(...)
 }
 ```
 
-`diff --cached --quiet` where exit 1 means "index is dirty" — `internal/gitrepo/gitrepo.go:140` (mapped to `ErrIndexNotEmpty`) and `internal/gitrepo/gitrepo.go:193`.
+`internal/gitrepo/gitrepo.go:140` and `:193` — `diff --cached --quiet`, where exit 1 means "index is dirty" and maps to `ErrIndexNotEmpty`.
 
-**Bare `return <code> == 0` predicate functions** — the whole function *is* the predicate, so there is no error to construct and nothing for the checked form to give them: `internal/fabricengine/weftwiring.go:78`, `weftwiring.go:96`, `internal/fabricengine/pull.go:135` (`return code == 0, nil`), plus `internal/fabricengine/checkout.go:77` (`); werr == nil && code == 0 {`, a multi-line `if` continuation).
-These four are the comparisons the first classification pass skipped (see the note under [predicate-sites-are-real-and-must-stay-expressible](#predicate-sites-are-real-and-must-stay-expressible)).
+**`internal/lyxcwd/lyxcwd.go:147`** — `rev-parse --show-toplevel`; `→ :151` returns the bare `ErrNotAGitRepo` sentinel. See [outside-fabric-dispositions](#the-four-outside-fabric-sites--raw-vs-checked) for why this one is load-bearing.
 
-Other non-error-constructing branches surfaced by the classification, to be re-read when the inventory is regenerated: `cleanup.go:280`, `reconcile.go:271`, `reconcile.go:300`, `reconcile.go:534`, `prune.go:218`, `prune.go:266`.
+**Unclassified, to be re-read when the inventory is regenerated:** `cleanup.go:280`, `reconcile.go:271`, `reconcile.go:300`, `reconcile.go:534`, `prune.go:218`, `prune.go:266`, `checkout.go:77`. The classifier put them in the non-error-returning column; none has been read individually.
 
 ### Full-discard sites — seven, in two classes
 
@@ -328,6 +347,26 @@ If deliberate discard is meant to be *visible*, the **guard test is the mechanis
   ```
 
   Deviate only where the exec-path message carries information the exit-path one lacks, and note each deviation.
+
+  **The `(git exit %d)` fragment is dropped along with its argument.** This is not optional and it is not covered by "`%s`-of-stderr becomes `%w`-of-error": ~30 production exit-path messages embed the code as well as the stderr, e.g.
+
+  ```go
+  // internal/fabricengine/checkout.go:95 — same shape at remove.go:67, add.go:203, clone.go:528,
+  // weftwiring.go:116, reconcile.go:470, status.go:190, cleanup.go:243, cleanup.go:282
+  return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed (git exit %d): %s",
+      branch, exitCode, strings.TrimSpace(switchStderr))
+  ```
+
+  `gitexec.Run` deletes the `exitCode` binding the `%d` consumes, so leaving the fragment in place is both unfillable and a duplicate of what `GitError.Error()` already renders. The merged form is `fmt.Errorf("warp switch to branch %q failed: %w", branch, err)`.
+
+  **Sentinel-returning exit paths keep their sentinel identity.** The rule above assumes both branches carry a *message*; some carry a sentinel error instead, and `%w`-wrapping the `GitError` over the top of one would break `errors.Is` at its consumers. The clause: **the sentinel stays the `%w` verb**, and the `GitError` goes in as `%v` — which is a shape the tree already uses:
+
+  ```go
+  // internal/lyxcwd/lyxcwd.go:149 — already exactly this, for the exec-path error
+  return "", fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
+  ```
+
+  A bare `return "", Sentinel` (`lyxcwd.go:152`) may also stay bare. Both preserve `errors.Is(err, Sentinel)` for `internal/loomengine/preflight.go:46`, and the exact-string assertions in `internal/lyxcwd/lyxcwd_test.go:127`, `internal/configcli/reconcile_test.go`, `internal/reedcli/cli_test.go` and `internal/idecli/cli_test.go`, all of which pin the bare-sentinel surface.
 
   **Regeneration query for the merge count.** For each `gitexec.RunGit(` call in a non-test file under `internal/fabricengine`, inspect the following window (~20 lines, to the next call or function end) and count it as a merge site when the window contains **both** an `err != nil` guard and an exit-code comparison. A coarse 22-line window returns 63 of 70; the careful count that respects block boundaries returns ~51. Re-derive before quoting.
 
@@ -409,7 +448,7 @@ Resolved in discussion review (orchestrator review, 2026-08-10):
 - **Q:** Can the verdict promise a file:line inventory that is "executable from the doc alone"? **A:** No — the implementation sits behind the whole fabric chain, and slice 14 rewrites every verb's result path, which is exactly the code the inventory points at. `checkout.go:193` is already a live instance: the chokepoint slice routes its `branch -D` through an executing gate, after which the current `_, _, _, _ =` swallows a refusal. Inventories are now recorded as shapes plus regeneration queries, and the acceptance bar is **re-derivable** from the doc alone.
 - **Q:** How many deliberate-discard sites are there? **A:** Seven, not two — the document counted only the two bare `prune.go` calls and never connected the five `_, _, _, _` sites to the section answering the inherited open question. They split into two classes: four best-effort `worktree prune` (stay discards) and three `checkout.go` rollback sites that must be hand-read.
 - **Q:** What is the first return value of `gitexec.Run` when it returns a `*GitError`? **A:** Captured stdout, always — never blanked. This is what makes rejecting a `Stdout` field on `GitError` coherent, and blanking it would discard data the process already has.
-- **Q:** 59 or 63 exit-code comparisons? **A:** 63. The 59 came from a classifier that only looked at lines containing `if` or `switch`; the four it missed (`weftwiring.go:78`, `weftwiring.go:96`, `pull.go:135`, `checkout.go:77`) are all `return <code> == 0`-shaped **predicate** sites, so the correction is 48 error-constructing / 15 predicate and it strengthens the inventory.
+- **Q:** 59 or 63 exit-code comparisons? **A:** 63. The 59 came from a classifier that only looked at lines containing `if` or `switch`; the four it missed (`weftwiring.go:78`, `weftwiring.go:96`, `pull.go:135`, `checkout.go:77`) are all `return <code> == 0`-shaped **predicate** sites, so the correction moved them into the predicate column. **Superseded:** the 48/15 pair recorded here was itself corrected to ~51/12 in round 1 once helper-constructed errors (`wrapProbeError`) were accounted for — see the round-1 entry below and treat the figure as approximate either way.
 - **Q:** Does `//nolint:errcheck` express deliberate discard? **A:** No — this repo has no `golangci-lint`, so the comment enforces nothing and "it reads the same as today" is true but hollow. The guard test's justification-comment requirement is the mechanism.
 - **Q:** How do the two set-equality guards on `gitrepo` compose? **A:** Client Boundary is keyed by **method name** (which methods may reach the CLI); Checked-Call is keyed by **call site** (which sites may use the raw form). A new call inside a pinned method trips only the second; a new method reaching the CLI trips both. Each `CONSTRAINTS.md` entry cross-references the other.
 Resolved in discussion review round 1:
@@ -422,3 +461,12 @@ Resolved in discussion review round 1:
 - **Q:** 75 call sites or 74? **A:** 74. `internal/gitrepo` has one production `gitexec.RunGit` call (`gitrepo.go:60`), not two, so it is **four** sites outside fabric, not five. The 75/2 figures came from the task body and did not survive re-measurement.
 
 - **Q:** Can `GitError.Args` leak credentials? **A:** Not today — no path in the repo builds a URL with embedded `userinfo`. The spec now states args are rendered **verbatim** and callers must not pass credentials in them, chosen over a `userinfo` redaction rule because redaction invites reliance and covers only the URL-shaped case.
+
+Resolved in discussion review round 2:
+
+- **Q:** Does the merge rule handle the `(git exit %d)` fragment? **A:** It did not, and ~30 production exit-path messages embed it (`checkout.go:95`, `remove.go:67`, `add.go:203`, `clone.go:528`, `weftwiring.go:116`, `reconcile.go:470`, `status.go:190`, `cleanup.go:243/282`, and more). `gitexec.Run` deletes the `exitCode` binding the `%d` consumes, so the rule now states the fragment is dropped **with its argument** — `GitError.Error()` already renders the code, and keeping it would duplicate it.
+- **Q:** What about exit paths that return a sentinel rather than a message? **A:** New clause: the **sentinel keeps the `%w` verb** and the `GitError` goes in as `%v`. `lyxcwd.go:149` already uses exactly that shape. Blindly `%w`-wrapping the `GitError` would break `errors.Is(err, lyxcwd.ErrNotAGitRepo)` at `loomengine/preflight.go:46` and four CLI tests that pin the bare-sentinel string.
+- **Q:** Raw or checked for each of the four outside-fabric sites? **A:** Decided per site rather than deferred — `lyxcwd.go:147` raw (predicate returning a sentinel), `fabriccli/fabric.go:491` raw (`branch --show-current`, non-zero means no current branch), `websterengine/gitwrap.go:31` checked (both branches are real failures; its `rawgitmutation_test.go:46` grandfather exemption must be updated), `gitrepo.go:60` gets the pair.
+- **Q:** Did the predicate inventory double-count? **A:** Yes — `warpprobe.go:77`/`:81` and `weftwiring.go:90`/`:96` are two sites listed as four, because some entries were keyed to the call line and others to the comparison line. The inventory is now a table keyed **to the call site** throughout, with the comparison as a column. `weftwiring.go:73` and `pull.go:131` were added as call sites for comparisons previously listed bare.
+- **Q:** gitrepo discard count? **A:** Five, not six — `reset.go:18`, `pull.go:19`, `pull.go:33`, `push.go:133`, `ancestry.go:26` — so sixteen bind stderr, not fifteen. The stated query was also wrong: `_, _, .*= r\.run(` returns four because `push.go:133` is `stdout, _, code, err`. Widened to match any `_` in the second binding position.
+- **Q:** Does the design doc's own status line support keeping it? **A:** No — "Deleted once the verdict is recorded" reads as delete *now*. The retention rests on the Documentation Lifecycle rule alone, and this task **amends** that status line rather than citing it.
