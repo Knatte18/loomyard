@@ -58,7 +58,9 @@ batches:
     commit_sha: 4f5b147fa36c28e207494ca2801c0180a2209902
     verify_baseline_failures: []
   - name: clone-callsites
-    state: pending
+    state: running
+    implementer_session: a6c1879f-ec2c-4f1b-b7b0-feeaab4a533b
+    start_sha: e3db011360e6a786f1c0ab6caab31bc11ac4cd3f
     verify_baseline_failures: []
   - name: branch-callsites
     state: pending
