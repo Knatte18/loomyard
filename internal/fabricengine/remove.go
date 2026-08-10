@@ -55,8 +55,15 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
 	}
 
-	_ = removePortal(l, slug)
-	_ = removeLaunchers(l, slug)
+	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
+	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
+	// came from.
+	if err := surfaceRefusal(removePortal(l, slug)); err != nil {
+		return RemoveResult{}, err
+	}
+	if err := surfaceRefusal(removeLaunchers(l, slug)); err != nil {
+		return RemoveResult{}, err
+	}
 
 	if !force {
 		dirty, _, err := worktreeDirty(scopeAll, target)
@@ -81,11 +88,19 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	// user's own checked-in symlinks alongside fabric's.
 	linksRemoved := 0
 	if ownedNames, scanErr := scanOnDiskJunctionNames(l, slug); scanErr == nil {
-		if removeErr := removeWarpJunction(l, slug, ownedNames); removeErr == nil {
+		removeErr := removeWarpJunction(l, slug, ownedNames)
+		if err := surfaceRefusal(removeErr); err != nil {
+			return RemoveResult{}, err
+		}
+		if removeErr == nil {
 			linksRemoved = len(ownedNames)
 		}
 	}
-	if boardRemoved, boardErr := unwireBoardLink(l, slug); boardErr == nil && boardRemoved {
+	boardRemoved, boardErr := unwireBoardLink(l, slug)
+	if err := surfaceRefusal(boardErr); err != nil {
+		return RemoveResult{}, err
+	}
+	if boardErr == nil && boardRemoved {
 		linksRemoved++
 	}
 
