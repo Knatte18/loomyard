@@ -199,6 +199,17 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 
 	exitCode, stderr, err := removeGitWorktree(req, l.WorktreePath())
 	if err != nil {
+		var refusal *destructiveRefusal
+		if errors.As(err, &refusal) && !isRegisteredLinkedWorktree(l, target) {
+			// The gate refused before git ever ran: target fails the exact same
+			// isRegisteredLinkedWorktree predicate the post-git-failure branch below would have
+			// applied, just evaluated earlier. Report the identical, pre-existing message rather
+			// than a gate-internal one — git's own exit code and stderr are unavailable here
+			// because git was never invoked.
+			return fmt.Errorf(
+				"refusing to remove worktree %s: %s; it is not a linked worktree of this repo, so fabric will not delete the directory itself",
+				target, refusal.Reason)
+		}
 		return fmt.Errorf("run git worktree remove for %s: %w", target, err)
 	}
 	if exitCode == 0 {

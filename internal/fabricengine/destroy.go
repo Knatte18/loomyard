@@ -381,12 +381,18 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		if err != nil || !isLink {
 			return false, fmt.Sprintf("%s is not a link", target)
 		}
-		resolved, err := fslink.PointsTo(target)
+		// RawTarget, not PointsTo: the comparison is against the ONE HOP a wiring call actually
+		// recorded, not a fully-resolved chain. PointsTo fully resolves — which fails outright when
+		// a later segment is gone (a stale-pair prune, where the warp side a wired junction chains
+		// through no longer exists) and silently walks past a target that is itself a further
+		// symlink (a portal wired at a warp `_lyx` that itself points at weft), comparing an
+		// end state a one-hop expectedTarget was never meant to match.
+		rawTarget, err := fslink.RawTarget(target)
 		if err != nil {
-			return false, fmt.Sprintf("resolve link target of %s: %v", target, err)
+			return false, fmt.Sprintf("read link target of %s: %v", target, err)
 		}
-		if filepath.Clean(resolved) != filepath.Clean(own.expectedTarget) {
-			return false, fmt.Sprintf("%s resolves to %s, not the expected %s", target, resolved, own.expectedTarget)
+		if filepath.Clean(rawTarget) != filepath.Clean(own.expectedTarget) {
+			return false, fmt.Sprintf("%s points to %s, not the expected %s", target, rawTarget, own.expectedTarget)
 		}
 		return true, ""
 
