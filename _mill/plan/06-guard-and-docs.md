@@ -25,7 +25,9 @@ Batch-local decision beyond `## Shared Decisions`: the guard's banned-token set 
 
 - **Context:**
   - `cmd/lyx/rawgitmutation_test.go`
+  - `_mill/discussion.md`
   - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/doc.go`
   - `internal/fabricengine/warpprobe.go`
   - `internal/fabricengine/gitexclude.go`
   - `internal/fabricengine/index.go`

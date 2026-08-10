@@ -76,6 +76,8 @@ Batch-local decisions live in each batch file._
   They are pinned here once so no batch invents its own:
   - `type destructiveCheck int` with `checkContainment`, `checkOwnership`, `checkDirtiness`, `checkForce`.
   - `type destructiveRefusal struct { Check destructiveCheck; What, Target, Reason string }` with an `Error() string` method, returned as `*destructiveRefusal`.
+  - `type pathRequest struct { what, container, target string; slug *slugSpec; ownership pathOwnership; dirtiness pathDirtiness; force bool }` and `type branchRequest struct { what, repoDir, branch string; ownership branchOwnership; dirtiness branchDirtiness; force bool }`.
+    `branchRequest` carries no `container` and no `target`, and it carries no `branchPrefix` either — the branch prefix is an input `ownedManagedBranch`'s predicate needs, so by the "each check's inputs travel with the check" rule it rides on that constructor as `ownedManagedBranch(l *lyxcwd.Location, branchPrefix string)` rather than as a bare request field.
   - `type pathOwnership struct` and `type branchOwnership struct` — two distinct types, each with unexported fields and a fixed set of constructor functions.
     `pathRequest.ownership` is a `pathOwnership`;
     `branchRequest.ownership` is a `branchOwnership`.

@@ -68,12 +68,15 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Requirements:** add the two request shapes and the closed enums they carry, exactly as pinned in the overview's `## Shared Decisions` "exact Go type shapes for the gate" subsection.
   Declare `type pathRequest struct { what string; container string; target string; slug *slugSpec; ownership pathOwnership; dirtiness pathDirtiness; force bool }` and `type branchRequest struct { what string; repoDir string; branch string; ownership branchOwnership; dirtiness branchDirtiness; force bool }`.
   `branchRequest` carries no `container` and no `target` field — that absence is how containment is declared structurally not-applicable for a ref, and adding either field later would reopen the hole.
+  It carries no `branchPrefix` field either;
+  the prefix rides on `ownedManagedBranch`, per the pinned shapes in the overview's `## Shared Decisions`.
   Declare `type slugSpec struct { name string; junctionNames []string }`.
   Declare `type createdToken struct { path string; worktree bool }`.
   Declare `pathOwnership` and `branchOwnership` as structs with unexported fields (a kind discriminator plus the per-kind inputs) and give each kind exactly one constructor function, each taking exactly what its predicate needs and nothing more:
   `ownedRegisteredLinkedWorktree(repoDir string)`, `ownedWarpCheckout(repoDir string)`, `ownedFabricHub()`, `ownedUnderGeometryRoot(root string)`, `ownedFreshlyCreatedPath(tok createdToken)`, `ownedFreshlyCreatedWorktree(tok createdToken)`, `ownedWiredJunction(wiredLinks []string, expectedTarget string)` and `ownedDriftedWiredJunction(wiredLinks []string)` return `pathOwnership`;
-  `ownedManagedBranch(l *lyxcwd.Location)` returns `branchOwnership`.
+  `ownedManagedBranch(l *lyxcwd.Location, branchPrefix string)` returns `branchOwnership`.
   No ownership constructor takes a `*lyxcwd.Location` except `ownedManagedBranch`, because `primaryWeftBranch` is the only predicate that needs one and clone's two hub-level sites have no Location in scope at all.
+  `branchPrefix` rides on that same constructor for the same reason — it is an input that kind's predicate needs and no other kind does.
   Declare `pathDirtiness` with constructors `dirtyScopeTracked()`, `dirtyScopeAll()` and `dirtinessNA(reason string)`, and `branchDirtiness` with the single constructor `dirtyCheckedOutBranch()`.
   The two `pathDirtiness` scope constructors carry the matching `dirtyScope` value from `internal/fabricengine/dirtiness.go`.
   A zero-value `pathOwnership`, `branchOwnership`, `pathDirtiness` or `branchDirtiness` is invalid and must be refused by the pipeline in card 7 — that is what makes an omitted declaration a loud failure instead of a silent pass.
@@ -106,10 +109,10 @@ Batch-local decisions beyond `## Shared Decisions`:
   `ownedFreshlyCreatedPath(tok)` and `ownedFreshlyCreatedWorktree(tok)` require `tok.path` to equal the request's `target` after `filepath.Clean` and require `tok.worktree` to be false and true respectively;
   `ownedWiredJunction(wiredLinks, expectedTarget)` requires `target` to be a member of `wiredLinks`, to be a link per `fslink.IsLink`, and to resolve to `expectedTarget`;
   `ownedDriftedWiredJunction(wiredLinks)` requires the first two and deliberately does not compare the resolved target, because drift is the precondition for repairing it;
-  `ownedManagedBranch(l)` requires the branch name to be one fabric's own scheme constructs — `WeftWarpSlug` accepts it, or it carries the configured branch prefix — requires it not to equal `primaryWeftBranch(l)`, and requires it not to be checked out at any worktree per `listWeftBranches`'s `WorktreePath` field.
+  `ownedManagedBranch(l, branchPrefix)` requires the branch name to be one fabric's own scheme constructs — `WeftWarpSlug` accepts it, or it carries `branchPrefix` — requires it not to equal `primaryWeftBranch(l)`, and requires it not to be checked out at any worktree per `listWeftBranches`'s `WorktreePath` field.
   `ownedManagedBranch` inherits `primaryWeftBranch`'s fail-closed direction: an unreadable primary refuses rather than proceeds.
-  `ownedManagedBranch` needs the configured branch prefix, which lives on `Topology.cfg` and is not reachable from a `*lyxcwd.Location`;
-  carry it on `branchRequest` as an additional `branchPrefix string` field set by each call site from its own `t.cfg.BranchPrefix`, and treat an empty prefix as "prefix test does not apply" rather than as a match-everything wildcard.
+  The prefix is the second constructor parameter rather than a `branchRequest` field: it is an input this one predicate needs, and the rule that keeps the request shapes honest is that each check's inputs travel with the check.
+  Every call site passes its own configured branch prefix, and an empty prefix means "the prefix test does not apply" rather than a match-everything wildcard.
   Every predicate answers false on an enumeration failure — the conservative direction the existing helpers already take.
 - **Commit:** `feat(fabricengine): resolve every gate ownership kind from an existing predicate`
 
@@ -186,7 +189,9 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Requirements:** add the creation half of the gate, so the gate owns the creation whose destruction it later authorises.
   `createExclusiveDir(path string) (createdToken, error)` creates the directory with `os.Mkdir` on the final component — not `os.MkdirAll`, which succeeds on an existing directory — so an already-present path fails with `EEXIST` and the token is only ever minted for a directory this call brought into being.
   It returns a `createdToken` with `path` set to `filepath.Clean(path)` and `worktree` false.
-  `createGitWorktree(repoDir string, addArgs []string, target string) (createdToken, exitCode int, stderr string, err error)` runs `gitexec.RunGit(addArgs, repoDir)` and returns a token with `path` set to `filepath.Clean(target)` and `worktree` true when the add succeeded, plus git's own exit code and stderr so the call site keeps building its existing error messages.
+  `createGitWorktree(repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error)` — spell the first return value with an explicit name.
+  Writing it as an unnamed `createdToken` followed by `exitCode int` would make Go parse the two as one name-group of type `int`, shadowing the type inside the function body so the token literal cannot compile at all.
+  It runs `gitexec.RunGit(addArgs, repoDir)` and returns a token with `path` set to `filepath.Clean(target)` and `worktree` true when the add succeeded, plus git's own exit code and stderr so the call site keeps building its existing error messages.
   On a nonzero exit or a spawn error it returns the zero token, which no ownership kind accepts.
   Document on both minters that `createdToken` is only unforgeable because the bypass guard batch 6 adds bans the token `createdToken{` outside this file — the type being unexported does not prevent a same-package composite literal, and a reader who believes otherwise will eventually write one.
 - **Commit:** `feat(fabricengine): mint gate-owned creation tokens for teardown ownership`

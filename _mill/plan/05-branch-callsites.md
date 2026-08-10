@@ -25,6 +25,10 @@ Batch-local decisions beyond `## Shared Decisions`:
 - Ownership selects which branches are candidates at all;
   it does not license skipping the floor.
   The checked-out check and the primary-weft carve-out apply to every `deleteBranch` call including the two rollback sites.
+- The configured branch prefix rides on `ownedManagedBranch`'s own constructor, not on `branchRequest`.
+  Every card below therefore threads the prefix to the constructor call, and none of them adds a request field.
+  Three of the four sites have no config in scope today and gain a parameter for it;
+  the fourth reaches it from its receiver.
 
 ## Cards
 
@@ -38,7 +42,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** convert `deleteWeftBranch`'s `git branch -D` call onto the gate's `deleteBranch` executor, with a `branchRequest` carrying `repoDir` the resolved weft repo root, `branch` the branch name, `branchPrefix` from the caller's config, ownership `ownedManagedBranch(l)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
+- **Requirements:** convert `deleteWeftBranch`'s `git branch -D` call onto the gate's `deleteBranch` executor, with a `branchRequest` carrying `repoDir` the resolved weft repo root, `branch` the branch name, ownership `ownedManagedBranch(l, branchPrefix)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
   `deleteWeftBranch` has no config in scope today;
   thread the branch prefix in from `Topology.Cleanup`, which holds it on its own config field, rather than reaching for a package-level default.
   Preserve every existing `entry.Error` string verbatim, including `resolve weft repo root: %v`, `git branch -D %s: %v` and `delete weft branch %q failed (git exit %d): %s`, all now built from the exit code and stderr the executor returns.
@@ -59,7 +63,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** convert `rollbackSwitch`'s `git branch -D` call — the one deleting the weft branch this `Checkout` forked — onto `deleteBranch`, with a `branchRequest` carrying `repoDir` the weft worktree path this site already passes as the git working directory, `branch` the forked weft branch, `branchPrefix` from the receiver's config, ownership `ownedManagedBranch(l)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
+- **Requirements:** convert `rollbackSwitch`'s `git branch -D` call — the one deleting the weft branch this `Checkout` forked — onto `deleteBranch`, with a `branchRequest` carrying `repoDir` the weft worktree path this site already passes as the git working directory, `branch` the forked weft branch, ownership `ownedManagedBranch(l, branchPrefix)` with the prefix read from the receiver's config, dirtiness `dirtyCheckedOutBranch()` and `force` false.
   `rollbackSwitch` returns nothing and discards every error today, which is deliberate for its two `git switch` calls and must stay that way for them.
   For the branch deletion it is no longer acceptable: a gate refusal here would vanish entirely.
   Apply the `void` shape from the overview's refusal-surfacing decision — test the returned error with `errors.As` for `*destructiveRefusal` and log it via `logger.Warn` naming the branch and the refusing check, then continue.
@@ -84,7 +88,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   Second, give `rollbackAdd` an additional `warpTok createdToken` parameter and pass the token at all of its call sites in `Topology.Add`;
   every one of them is after the worktree creation, so the token is always in scope.
   Convert `rollbackAdd`'s `git worktree remove --force` call onto `removeGitWorktree`, with container the hub path reached through the Location, target the warp worktree path, ownership `ownedFreshlyCreatedWorktree(warpTok)`, dirtiness `dirtinessNA("rollback of the worktree this Add created")` and `force` true.
-  Third, convert `rollbackAdd`'s `git branch -D` call onto `deleteBranch`, with `repoDir` the acting warp worktree path this site already passes, `branch` the warp branch, `branchPrefix` from the receiver's config, ownership `ownedManagedBranch(l)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
+  Third, convert `rollbackAdd`'s `git branch -D` call onto `deleteBranch`, with `repoDir` the acting warp worktree path this site already passes, `branch` the warp branch, ownership `ownedManagedBranch(l, branchPrefix)` with the prefix read from the receiver's config, dirtiness `dirtyCheckedOutBranch()` and `force` false.
   Preserve `rollbackAdd`'s `firstErr` accumulate-and-continue shape and both existing "git worktree remove failed with exit code %d" and "git branch -D failed with exit code %d" messages.
   Wrap each converted call's result in `surfaceRefusal` before folding it into `firstErr`, so an operational failure keeps today's best-effort behaviour while a refusal is always recorded.
   Leave the existing `!weftBranchAdopted` carve-out that preserves a pre-existing adopted weft branch exactly where it is — it runs ahead of the weft-side deletion and is preserved, not replaced, by the gate.
@@ -101,7 +105,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** convert `removeWeftWorktree`'s `git branch -D` call — reached from `Remove` with the removed pair's weft branch and from `rollbackAdd` with the delete-branch flag set only when this `Add` created it — onto `deleteBranch`, with a `branchRequest` carrying `repoDir` the resolved weft repo root, `branch` the branch parameter, `branchPrefix` from the caller, ownership `ownedManagedBranch(l)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
+- **Requirements:** convert `removeWeftWorktree`'s `git branch -D` call — reached from `Remove` with the removed pair's weft branch and from `rollbackAdd` with the delete-branch flag set only when this `Add` created it — onto `deleteBranch`, with a `branchRequest` carrying `repoDir` the resolved weft repo root, `branch` the branch parameter, ownership `ownedManagedBranch(l, branchPrefix)`, dirtiness `dirtyCheckedOutBranch()` and `force` false.
   `removeWeftWorktree` has no config in scope;
   add a parameter for the branch prefix rather than reaching for a package-level default, and pass it from both call sites.
   Preserve the existing `firstErr` shape and the existing "git branch -D failed with exit code %d" message.
