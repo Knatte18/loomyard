@@ -19,7 +19,10 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -317,4 +320,172 @@ type branchDirtiness struct {
 // somewhere", since git branch -D cannot delete a checked-out branch anyway.
 func dirtyCheckedOutBranch() branchDirtiness {
 	return branchDirtiness{kind: branchDirtinessCheckedOutBranch}
+}
+
+// resolvePathOwnership dispatches own's kind to its predicate and reports whether target satisfies
+// it. Every predicate reuses an existing helper rather than reimplementing it, and every predicate
+// answers false on an enumeration failure — the conservative direction the existing helpers already
+// take.
+func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason string) {
+	switch own.kind {
+	case pathOwnershipRegisteredLinkedWorktree:
+		if !isRegisteredLinkedWorktreeIn(own.repoDir, target) {
+			return false, fmt.Sprintf("%s is not a registered linked worktree of %s", target, own.repoDir)
+		}
+		return true, ""
+
+	case pathOwnershipWarpCheckout:
+		if !isWarpCheckout(own.repoDir, target) {
+			return false, fmt.Sprintf("%s is not a worktree of the warp repo at %s", target, own.repoDir)
+		}
+		return true, ""
+
+	case pathOwnershipFabricHub:
+		if !looksLikeHub(target) {
+			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoardDirName)
+		}
+		return true, ""
+
+	case pathOwnershipUnderGeometryRoot:
+		// The geometry-root set has exactly one member today, the value launchersDir returns: a
+		// directory whose base name is launchersDirName. A root outside that set is itself a
+		// refusal, so a call site cannot satisfy this check by naming a convenient parent.
+		if filepath.Base(filepath.Clean(own.root)) != launchersDirName {
+			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
+		}
+		if !pathAtOrBelow(own.root, target) {
+			return false, fmt.Sprintf("%s does not resolve at or below geometry root %s", target, own.root)
+		}
+		return true, ""
+
+	case pathOwnershipFreshlyCreatedPath:
+		if own.tok.worktree || filepath.Clean(target) != own.tok.path {
+			return false, "target does not match a token createExclusiveDir minted for it"
+		}
+		return true, ""
+
+	case pathOwnershipFreshlyCreatedWorktree:
+		if !own.tok.worktree || filepath.Clean(target) != own.tok.path {
+			return false, "target does not match a token createGitWorktree minted for it"
+		}
+		return true, ""
+
+	case pathOwnershipWiredJunction:
+		if !containsCleanPath(own.wiredLinks, target) {
+			return false, fmt.Sprintf("%s is not one of fabric's wired junction paths", target)
+		}
+		isLink, err := fslink.IsLink(target)
+		if err != nil || !isLink {
+			return false, fmt.Sprintf("%s is not a link", target)
+		}
+		resolved, err := fslink.PointsTo(target)
+		if err != nil {
+			return false, fmt.Sprintf("resolve link target of %s: %v", target, err)
+		}
+		if filepath.Clean(resolved) != filepath.Clean(own.expectedTarget) {
+			return false, fmt.Sprintf("%s resolves to %s, not the expected %s", target, resolved, own.expectedTarget)
+		}
+		return true, ""
+
+	case pathOwnershipDriftedWiredJunction:
+		// The resolved target is deliberately not compared: drift (or a dangling target) is the
+		// precondition for repairing this link, not a disqualifier.
+		if !containsCleanPath(own.wiredLinks, target) {
+			return false, fmt.Sprintf("%s is not one of fabric's wired junction paths", target)
+		}
+		isLink, err := fslink.IsLink(target)
+		if err != nil || !isLink {
+			return false, fmt.Sprintf("%s is not a link", target)
+		}
+		return true, ""
+
+	default:
+		return false, "no ownership kind declared"
+	}
+}
+
+// isWarpCheckout reports whether target is ANY worktree of the warp repo at repoDir, prime included
+// — List's membership test with no Main-entry exclusion. It is deliberately not
+// isRegisteredLinkedWorktreeIn, which skips the main entry: the hub's prime warp worktree is
+// resetHardTo's ordinary target and must pass. An unenumerable repo answers false, the conservative
+// direction.
+func isWarpCheckout(repoDir, target string) bool {
+	entries, err := List(repoDir)
+	if err != nil {
+		return false
+	}
+	cleanTarget := filepath.Clean(target)
+	for _, entry := range entries {
+		if filepath.Clean(filepath.FromSlash(entry.Path)) == cleanTarget {
+			return true
+		}
+	}
+	return false
+}
+
+// pathAtOrBelow reports whether target resolves at or below root, admitting deep descendants and
+// non-directory targets alike.
+func pathAtOrBelow(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// containsCleanPath reports whether target, once filepath.Clean'd, matches any entry of paths (also
+// cleaned) — the membership test the two link-shaped ownership kinds share.
+func containsCleanPath(paths []string, target string) bool {
+	cleanTarget := filepath.Clean(target)
+	for _, p := range paths {
+		if filepath.Clean(p) == cleanTarget {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveBranchOwnership dispatches own's kind to its predicate and reports whether branch satisfies
+// it.
+func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason string) {
+	switch own.kind {
+	case branchOwnershipManaged:
+		return resolveManagedBranch(own.location, own.branchPrefix, branch)
+	default:
+		return false, "no ownership kind declared"
+	}
+}
+
+// resolveManagedBranch implements ownedManagedBranch's predicate: branch must be one fabric's own
+// scheme constructs, must not be l's primary weft branch, and must not be checked out at any
+// worktree. It inherits primaryWeftBranch's fail-closed direction: an unreadable primary refuses
+// rather than proceeds, since Cleanup's deletions (and every other branch -D site) are irreversible.
+func resolveManagedBranch(l *lyxcwd.Location, branchPrefix, branch string) (bool, string) {
+	_, weftManaged := WeftWarpSlug(branch)
+	prefixManaged := branchPrefix != "" && strings.HasPrefix(branch, branchPrefix)
+	if !weftManaged && !prefixManaged {
+		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
+	}
+
+	primary, err := primaryWeftBranch(l)
+	if err != nil {
+		return false, fmt.Sprintf("cannot determine the repo's primary weft branch: %v", err)
+	}
+	if branch == primary {
+		return false, fmt.Sprintf("%s is the repo's primary weft branch", branch)
+	}
+
+	branches, err := listWeftBranches(l)
+	if err != nil {
+		return false, fmt.Sprintf("cannot enumerate weft branches: %v", err)
+	}
+	for _, b := range branches {
+		if b.Branch == branch && b.WorktreePath != "" {
+			return false, fmt.Sprintf("%s is checked out at %s", branch, b.WorktreePath)
+		}
+	}
+	return true, ""
 }
