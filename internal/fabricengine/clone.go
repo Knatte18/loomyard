@@ -27,10 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// RemoveAll is an exported testability seam for os.RemoveAll, allowing tests to inject errors into
-// fabric's own clone-orchestration teardown path.
-var RemoveAll = os.RemoveAll
-
 // staleFabricAnchorName is the pre-rename lyx-anchor marker filename, aliased from its single
 // declarer in internal/lyxcwd so clone's guard and lyxcwd's own read-time guard can never drift
 // apart.

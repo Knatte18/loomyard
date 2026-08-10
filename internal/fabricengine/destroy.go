@@ -718,3 +718,9 @@ func createGitWorktree(repoDir string, addArgs []string, target string) (tok cre
 	}
 	return createdToken{path: filepath.Clean(target), worktree: true}, exitCode, stderr, nil
 }
+
+// RemoveAll is an exported testability seam over the gate's own directory-removal primitive,
+// allowing tests to inject errors into it. It moved here from clone.go, which it used to serve as a
+// clone-teardown-only seam: removePath is now its only caller once batches 3 and 4 land, and the one
+// file allowed to destroy should own the function that destroys.
+var RemoveAll = os.RemoveAll
