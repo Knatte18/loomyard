@@ -141,6 +141,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/worktreelist.go`
 - **Edits:**
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/weftwiring_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
