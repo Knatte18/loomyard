@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -724,3 +725,36 @@ func createGitWorktree(repoDir string, addArgs []string, target string) (tok cre
 // clone-teardown-only seam: removePath is now its only caller once batches 3 and 4 land, and the one
 // file allowed to destroy should own the function that destroys.
 var RemoveAll = os.RemoveAll
+
+// resetHardTo is the executor for the ResetHard primitive: it runs the pipeline against req, and
+// only once that passes does it call repo's own ResetHard(sha) — repo is the raw gitrepo.Repo handle
+// the pipeline's ownership check has just proven req.target actually belongs to, and sha is the
+// commit the caller wants the checkout rewound to.
+func resetHardTo(req pathRequest, repo *gitrepo.Repo, sha string) error {
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	return repo.ResetHard(sha)
+}
+
+// ResetHard resets the warp checkout's HEAD, index, and working tree to sha, discarding any local
+// commits or uncommitted changes past that point.
+// It is the gated executor for the ResetHard primitive: there is exactly one correct check
+// declaration for "reset this Fabric's warp checkout", so this exported one-argument method
+// hardcodes it rather than exposing a request-taking API — container is the hub
+// (filepath.Dir(f.warpPath); Fabric holds no *lyxcwd.Location at all, and the parent of the warp
+// worktree path is the hub), target is the warp worktree itself, ownership is ownedWarpCheckout so
+// the hub's ordinary prime-worktree target still passes, dirtiness is dirtyScopeTracked to match
+// warpWorktreeDirty exactly, and force is always false — Pull exposes no force flag, and this is the
+// primitive R2's defect discarded uncommitted tracked work through on every advance path.
+func (f *Fabric) ResetHard(sha string) error {
+	req := pathRequest{
+		what:      "reset warp checkout",
+		container: filepath.Dir(f.warpPath),
+		target:    f.warpPath,
+		ownership: ownedWarpCheckout(f.warpPath),
+		dirtiness: dirtyScopeTracked(),
+		force:     false,
+	}
+	return resetHardTo(req, f.warp, sha)
+}
