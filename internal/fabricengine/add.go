@@ -40,22 +40,18 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		return AddResult{}, err
 	}
 
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, l.WorktreePath())
+	dirty, _, err := worktreeDirty(scopeTracked, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("read warp worktree status at %s: %w", l.WorktreePath(), err)
 	}
-	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("read warp worktree status at %s (git exit %d): %s",
-			l.WorktreePath(), exitCode, strings.TrimSpace(stderr))
-	}
-	if strings.TrimSpace(stdout) != "" {
+	if dirty {
 		return AddResult{}, fmt.Errorf("source worktree has uncommitted changes")
 	}
 
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(warpBranch)
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
+	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, err)
 	}
@@ -75,7 +71,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddRes
 		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
 	}
 
-	stdout, stderr, exitCode, err = gitexec.RunGit([]string{"remote"}, l.WorktreePath())
+	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"remote"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("list warp remotes: %w", err)
 	}

@@ -37,18 +37,11 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, 
 	weftWorktree := WeftWorktree(l)
 
 	// Refuse if the weft worktree is dirty to prevent half-switched pairs.
-	weftStatus, statusStderr, exitCode, err := gitexec.RunGit(
-		[]string{"status", "--porcelain", "--untracked-files=no"},
-		weftWorktree,
-	)
+	weftDirty, _, err := worktreeDirty(scopeTracked, weftWorktree)
 	if err != nil {
 		return CheckoutResult{}, fmt.Errorf("check weft status: %w", err)
 	}
-	if exitCode != 0 {
-		return CheckoutResult{}, fmt.Errorf("git status failed in weft worktree (exit %d): %s",
-			exitCode, strings.TrimSpace(statusStderr))
-	}
-	if strings.TrimSpace(weftStatus) != "" {
+	if weftDirty {
 		return CheckoutResult{}, fmt.Errorf("weft worktree has uncommitted changes; stash or commit before checkout")
 	}
 

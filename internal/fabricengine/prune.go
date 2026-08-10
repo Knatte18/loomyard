@@ -211,14 +211,11 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 		return
 	}
 
-	stdout, _, exitCode, err := gitexec.RunGit(
-		[]string{"status", "--porcelain", "--untracked-files=no"},
-		weftPath,
-	)
-	if err != nil || exitCode != 0 {
+	dirty, _, err := worktreeDirty(scopeTracked, weftPath)
+	if err != nil {
 		return
 	}
-	if strings.TrimSpace(stdout) == "" {
+	if !dirty {
 		return
 	}
 

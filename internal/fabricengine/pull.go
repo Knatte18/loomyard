@@ -140,14 +140,11 @@ func (f *Fabric) weftHasUpstream() (bool, error) {
 // Untracked files are deliberately excluded: reset --hard leaves them alone, so they are no reason
 // to refuse a pull.
 func (f *Fabric) warpWorktreeDirty() (bool, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"status", "--porcelain", "--untracked-files=no"}, f.warpPath)
+	dirty, _, err := worktreeDirty(scopeTracked, f.warpPath)
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: git status in %s: %w", f.warpPath, err)
 	}
-	if code != 0 {
-		return false, fmt.Errorf("fabricengine: git status in %s: %s", f.warpPath, stderr)
-	}
-	return strings.TrimSpace(stdout) != "", nil
+	return dirty, nil
 }
 
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
