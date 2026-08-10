@@ -12,11 +12,13 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -177,12 +179,32 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 // rollbackSwitch switches both warp and weft back to their original branches on failure,
 // cleaning up any forked weft branch, with errors silently discarded.
 // The junction stays consistent without rewiring because the worktree directory path doesn't change.
+//
+// rollbackSwitch is void and discards every error from its two git switch calls, deliberately — that
+// stays unchanged. The forked-branch deletion is different: it now runs through the gate's
+// deleteBranch executor, and a gate refusal there is never allowed to vanish silently. Since this
+// function cannot return an error without widening its signature (out of scope — it runs on paths
+// where Checkout is already failing, and turning a best-effort rollback into a hard failure is a
+// behaviour change this slice does not make), a refusal is logged via logger.Warn instead.
 func (t *Topology) rollbackSwitch(l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
 	if originalWeftBranch != "" {
 		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
 	}
 	if forkedWeftBranch != "" {
-		_, _, _, _ = gitexec.RunGit([]string{"branch", "-D", forkedWeftBranch}, WeftWorktree(l))
+		req := branchRequest{
+			what:      "delete forked weft branch",
+			repoDir:   WeftWorktree(l),
+			branch:    forkedWeftBranch,
+			ownership: ownedManagedBranch(l, t.cfg.BranchPrefix),
+			dirtiness: dirtyCheckedOutBranch(),
+			force:     false,
+		}
+		if _, _, err := deleteBranch(req); err != nil {
+			var refusal *destructiveRefusal
+			if errors.As(err, &refusal) {
+				logger.Warn("fabricengine: rollbackSwitch's branch deletion was refused by the destructive gate", "branch", forkedWeftBranch, "check", refusal.Check.String())
+			}
+		}
 	}
 }
