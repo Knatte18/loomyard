@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-dirtiness-probe
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r4  '2026-08-10T17:18:00Z'
 plan-fix-r5  '2026-08-10T17:31:51Z'
 planned  '2026-08-10T17:32:03Z'
 implementing  '2026-08-10T17:43:28Z'
+approved-dirtiness-probe  '2026-08-10T17:53:36Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-08-10T17:43:28Z'
 ```yaml
 batches:
   - name: dirtiness-probe
-    state: running
+    state: approved
     implementer_session: 2c58d66a-c805-4f7d-b687-de9606e95776
     start_sha: bb9aa21012d0c08cc19d94e5d03eadefe53335ef
+    commit_sha: c248d402fa9a0ab171a97a52bfeef8ac3a325469
     verify_baseline_failures: []
   - name: the-gate
     state: pending
