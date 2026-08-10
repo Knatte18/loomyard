@@ -212,8 +212,18 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 
 	warpURL := effective
 
-	// Create Hub directory
-	if err := os.MkdirAll(hubPath, 0o755); err != nil {
+	// Create Hub directory exclusively, minting the token teardownHub needs to prove — rather than
+	// merely assume — that a later teardown call is removing a directory this invocation created.
+	// os.Mkdir's EEXIST is now the safety property, and the two offline "hub already exists" stat
+	// guards above are UX and ordering only, not the last word on collision safety: this call staying
+	// after both stat guards, rather than folding into either, is deliberate (see this function's doc
+	// comment for why moving it would either leak a residual hub or break the offline-before-network
+	// ordering). Being later, the exclusive create is also strictly more correct than the stat guards
+	// it follows — it closes a real time-of-check-to-time-of-use window that exists between a stat and
+	// a plain os.MkdirAll, in which a concurrent process can create the hub in between and have
+	// MkdirAll silently accept it.
+	hubTok, err := createExclusiveDir(hubPath)
+	if err != nil {
 		return CloneResult{}, err
 	}
 
