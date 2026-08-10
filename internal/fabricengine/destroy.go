@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -592,4 +593,91 @@ func checkBranchDirtiness(req branchRequest) error {
 		}
 	}
 	return nil
+}
+
+// removePath is the executor for the os.RemoveAll/os.Remove primitive: it runs the pipeline, then
+// removes req.target via RemoveAll for a directory or os.Remove otherwise, tolerating an
+// already-absent target on either path.
+// It is named removePath, not removeDir, because removeLaunchers deletes script FILES as well as
+// their directory, and both must route through one executor.
+func removePath(req pathRequest) error {
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+
+	info, statErr := os.Lstat(req.target)
+	if os.IsNotExist(statErr) {
+		return nil
+	}
+	if statErr != nil {
+		return fmt.Errorf("stat %s: %w", req.target, statErr)
+	}
+
+	if info.IsDir() {
+		if err := RemoveAll(req.target); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove %s: %w", req.target, err)
+		}
+		return nil
+	}
+
+	if err := os.Remove(req.target); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", req.target, err)
+	}
+	return nil
+}
+
+// removeGitWorktree is the executor for the git worktree remove primitive: it runs the pipeline,
+// then runs git worktree remove [--force] from repoDir. It returns git's own exit code and stderr
+// rather than swallowing them, because three of its four call sites build distinct error messages
+// from both.
+func removeGitWorktree(req pathRequest, repoDir string) (exitCode int, stderr string, err error) {
+	if checkErr := checkPathRequest(req); checkErr != nil {
+		return 0, "", checkErr
+	}
+
+	args := []string{"worktree", "remove"}
+	if req.force {
+		args = append(args, "--force")
+	}
+	args = append(args, req.target)
+
+	_, stderr, exitCode, err = gitexec.RunGit(args, repoDir)
+	return exitCode, stderr, err
+}
+
+// removeLink is the executor for the fslink.Remove primitive: it runs the pipeline, then removes
+// req.target via fslink.Remove.
+func removeLink(req pathRequest) error {
+	if err := checkPathRequest(req); err != nil {
+		return err
+	}
+	return fslink.Remove(req.target)
+}
+
+// repointLink is the executor for a junction re-point: it removes a drifted or dangling link so the
+// caller can recreate it, enforcing containment and ownership but declaring dirtiness N/A — a
+// re-point is repair, not teardown, and has no force semantics at all, so it takes no force
+// parameter: a repair site can never be handed a teardown site's force flag.
+func repointLink(what, container, target string, own pathOwnership) error {
+	req := pathRequest{
+		what:      what,
+		container: container,
+		target:    target,
+		ownership: own,
+		dirtiness: dirtinessNA("re-pointing a drifted or dangling link is repair, not teardown; there is no work to lose"),
+		force:     false,
+	}
+	return removeLink(req)
+}
+
+// deleteBranch is the executor for the git branch -D primitive: it runs the pipeline, then runs git
+// branch -D from req.repoDir, with the same return shape and the same reason removeGitWorktree has
+// for keeping git's own exit code and stderr rather than swallowing them.
+func deleteBranch(req branchRequest) (exitCode int, stderr string, err error) {
+	if checkErr := checkBranchRequest(req); checkErr != nil {
+		return 0, "", checkErr
+	}
+
+	_, stderr, exitCode, err = gitexec.RunGit([]string{"branch", "-D", req.branch}, req.repoDir)
+	return exitCode, stderr, err
 }
