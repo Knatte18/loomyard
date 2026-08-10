@@ -58,15 +58,11 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	_ = removeLaunchers(l, slug)
 
 	if !force {
-		stdout, statusStderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, target)
+		dirty, _, err := worktreeDirty(scopeAll, target)
 		if err != nil {
 			return RemoveResult{}, fmt.Errorf("check warp worktree status at %s: %w", target, err)
 		}
-		if exitCode != 0 {
-			return RemoveResult{}, fmt.Errorf("check warp worktree status at %s (git exit %d): %s",
-				target, exitCode, strings.TrimSpace(statusStderr))
-		}
-		if strings.TrimSpace(stdout) != "" {
+		if dirty {
 			return RemoveResult{}, fmt.Errorf("worktree has uncommitted changes; use --force")
 		}
 	}
@@ -129,15 +125,11 @@ func refuseDirtyWeftWorktree(weftTarget string) error {
 		return nil
 	}
 
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"status", "--porcelain"}, weftTarget)
+	dirty, _, err := worktreeDirty(scopeAll, weftTarget)
 	if err != nil {
 		return fmt.Errorf("check weft worktree status at %s: %w", weftTarget, err)
 	}
-	if exitCode != 0 {
-		return fmt.Errorf("check weft worktree status at %s (git exit %d): %s",
-			weftTarget, exitCode, strings.TrimSpace(stderr))
-	}
-	if strings.TrimSpace(stdout) != "" {
+	if dirty {
 		return fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")
 	}
 	return nil

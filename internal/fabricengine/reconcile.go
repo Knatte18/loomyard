@@ -296,11 +296,11 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 	// not at reconcile time, when a long-lived board may carry unrelated uncommitted content a
 	// backfill commit would sweep up and push. This check is read-only and runs before anything is
 	// written, so no half-written state is ever left behind.
-	statusOut, _, statusExit, statusErr := gitexec.RunGit([]string{"status", "--porcelain"}, boardDir)
-	if statusErr != nil || statusExit != 0 {
-		return WarpBindingOutcomeDeferred, fmt.Sprintf("board status check failed: %v (exit %d)", statusErr, statusExit)
+	dirty, _, statusErr := worktreeDirty(scopeAll, boardDir)
+	if statusErr != nil {
+		return WarpBindingOutcomeDeferred, fmt.Sprintf("board status check failed: %v", statusErr)
 	}
-	if strings.TrimSpace(statusOut) != "" {
+	if dirty {
 		return WarpBindingOutcomeDeferred, "board worktree has uncommitted changes; backfill deferred to avoid sweeping them into an unrelated commit"
 	}
 
