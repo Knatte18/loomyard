@@ -24,8 +24,9 @@ Four sites are tracked-only today and stay tracked-only;
 four are untracked-inclusive today and stay untracked-inclusive.
 Every refusal message is preserved verbatim, because these eight sites are covered by named integration tests that assert on those messages.
 Error *paths* are the one exception, and it is a uniform one: `worktreeDirty` returns a single consolidated error where a site today distinguishes a spawn failure from a nonzero exit, so at those sites the two paths collapse into one and the surviving wording is the spawn-failure form, with the exit code carried inside the wrapped error.
-That applies to `add.go`, `checkout.go`, `warpclean.go` and `reconcile.go`;
-each card names it at the site rather than leaving it to be inferred.
+That applies to **every** migrated probe that distinguishes the two forms today, which is all of them except `prune.go`'s, whose probe deliberately treats any failure as unprotected and so has only one path to begin with.
+Each card names the collapse at the site rather than leaving it to be inferred;
+the rule is stated once here and enumerated nowhere, because an enumeration is the thing that goes stale.
 
 ## Cards
 

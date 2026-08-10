@@ -99,7 +99,9 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** implement the ownership half of the gate: one unexported resolver per kind, each returning `(ok bool, reason string)`, dispatched from a single `resolvePathOwnership(own pathOwnership, target string) (bool, string)` and `resolveBranchOwnership(own branchOwnership, branch, repoDir string) (bool, string)`.
+- **Requirements:** implement the ownership half of the gate: one unexported resolver per kind, each returning `(ok bool, reason string)`, dispatched from a single `resolvePathOwnership(own pathOwnership, target string) (bool, string)` and `resolveBranchOwnership(own branchOwnership, branch string) (bool, string)`.
+  The branch dispatcher takes no `repoDir`: the one branch-shaped kind resolves its name test, its primary-weft comparison and its checked-out lookup entirely from the Location it carries, so a `repoDir` parameter would be dead on arrival.
+  Add one back only when a kind needs it.
   Each kind runs exactly the predicate the discussion's `ownership-is-a-closed-enum` table names, and every one of them reuses an existing helper rather than reimplementing it:
   `ownedRegisteredLinkedWorktree` calls `isRegisteredLinkedWorktreeIn(repoDir, target)`;
   `ownedWarpCheckout` calls `List(repoDir)` and accepts membership **including** the entry whose `Main` field is true — it is deliberately not `isRegisteredLinkedWorktreeIn`, which skips the main entry, because the hub's prime warp worktree is `ResetHard`'s ordinary target and must pass;

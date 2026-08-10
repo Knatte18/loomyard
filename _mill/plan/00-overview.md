@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: one ownership-and-dirtiness gate for all destruction (slice 12)'
 slug: 'fabric-destructive-chokepoint'
-approved: false
+approved: true
 started: '20260810-124739'
 parent: 'main'
 root: ""
