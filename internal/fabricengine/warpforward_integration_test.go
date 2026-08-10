@@ -111,10 +111,44 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	}
 }
 
-// TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges proves ResetHard discards both a later
-// commit AND an uncommitted working-tree change, landing HEAD exactly at the older sha with the
-// later file gone from disk.
-func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
+// TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree proves ResetHard discards a later commit,
+// landing HEAD exactly at the older sha, when the warp checkout has no uncommitted changes.
+// This is the half of ResetHard's contract that is unaffected by the gate: a clean tracked
+// worktree is never dirty, so dirtyScopeTracked never refuses it.
+func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	if err != nil {
+		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+	}
+
+	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
+
+	// A committed change past olderSHA, with no uncommitted change on top —
+	// ResetHard must still discard the committed history.
+	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
+	commitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
+
+	if err := f.ResetHard(olderSHA); err != nil {
+		t.Fatalf("ResetHard(%q): %v", olderSHA, err)
+	}
+
+	if got := currentSHAOf(t, fixture.Layout.WorktreePath()); got != olderSHA {
+		t.Errorf("HEAD SHA after ResetHard = %q; want %q", got, olderSHA)
+	}
+	if _, err := os.Stat(laterPath); !os.IsNotExist(err) {
+		t.Errorf("file %s still present after ResetHard; want discarded (err=%v)", laterPath, err)
+	}
+}
+
+// TestFabricWarp_ResetHardRefusesDirtyWarpCheckout proves ResetHard refuses to run, leaving both
+// the later commit and the uncommitted working-tree change on disk, when the warp checkout has
+// uncommitted tracked changes. This is card 11's deliberate hardening of ResetHard's contract:
+// it no longer unconditionally discards, matching Pull's own pre-existing ErrWarpDirty check but
+// enforced at the ResetHard call site itself rather than only by callers who wrap it in Pull.
+func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
@@ -126,22 +160,31 @@ func TestFabricWarp_ResetHardDiscardsCommitsAndWorktreeChanges(t *testing.T) {
 	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
 
 	// A committed change past olderSHA, then an uncommitted change on top —
-	// ResetHard must discard both in one call.
+	// ResetHard must refuse rather than discard either one.
 	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
 	commitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
-	if err := os.WriteFile(laterPath, []byte("uncommitted edit"), 0o644); err != nil {
+	const uncommittedContent = "uncommitted edit"
+	if err := os.WriteFile(laterPath, []byte(uncommittedContent), 0o644); err != nil {
 		t.Fatalf("write uncommitted change: %v", err)
 	}
 
-	if err := f.ResetHard(olderSHA); err != nil {
-		t.Fatalf("ResetHard(%q): %v", olderSHA, err)
+	err = f.ResetHard(olderSHA)
+	if err == nil {
+		t.Fatalf("ResetHard(%q) on dirty warp checkout error = nil; want a refusal", olderSHA)
+	}
+	if !strings.Contains(err.Error(), "dirtiness check failed") {
+		t.Errorf("ResetHard(%q) error = %q; want a dirtiness-gate refusal", olderSHA, err)
 	}
 
-	if got := currentSHAOf(t, fixture.Layout.WorktreePath()); got != olderSHA {
-		t.Errorf("HEAD SHA after ResetHard = %q; want %q", got, olderSHA)
+	if got := currentSHAOf(t, fixture.Layout.WorktreePath()); got == olderSHA {
+		t.Errorf("HEAD SHA after refused ResetHard = %q; want the later commit to remain (refusal must not discard history)", got)
 	}
-	if _, err := os.Stat(laterPath); !os.IsNotExist(err) {
-		t.Errorf("file %s still present after ResetHard; want discarded (err=%v)", laterPath, err)
+	gotContent, err := os.ReadFile(laterPath)
+	if err != nil {
+		t.Fatalf("read %s after refused ResetHard: %v", laterPath, err)
+	}
+	if string(gotContent) != uncommittedContent {
+		t.Errorf("content of %s after refused ResetHard = %q; want uncommitted change left on disk (%q)", laterPath, gotContent, uncommittedContent)
 	}
 }
 
