@@ -22,7 +22,10 @@ Nothing in this batch mentions the gate, ownership, containment or force — tho
 Batch-local decision beyond `## Shared Decisions`: no call site changes its dirtiness *scope*.
 Four sites are tracked-only today and stay tracked-only;
 four are untracked-inclusive today and stay untracked-inclusive.
-Every error message and every returned error shape is preserved verbatim, because these eight sites are covered by named integration tests that assert on those messages.
+Every refusal message is preserved verbatim, because these eight sites are covered by named integration tests that assert on those messages.
+Error *paths* are the one exception, and it is a uniform one: `worktreeDirty` returns a single consolidated error where a site today distinguishes a spawn failure from a nonzero exit, so at those sites the two paths collapse into one and the surviving wording is the spawn-failure form, with the exit code carried inside the wrapped error.
+That applies to `add.go`, `checkout.go`, `warpclean.go` and `reconcile.go`;
+each card names it at the site rather than leaving it to be inferred.
 
 ## Cards
 
@@ -91,7 +94,9 @@ Every error message and every returned error shape is preserved verbatim, becaus
   and `refuseDirtyWeftWorktree`, keeping its leading `os.Stat` absent-is-not-a-refusal guard, its `check weft worktree status at %s: %w` error and its `weft worktree has uncommitted changes; run "lyx fabric sync" or use --force` refusal.
   The doc comment on `refuseDirtyWeftWorktree` explains that an unreadable weft worktree IS a refusal because the probe once swallowed its own spawn error;
   that property must survive the migration, and `worktreeDirty` returning an error rather than a silent false is what preserves it.
-  In `internal/fabricengine/warpclean.go`, `dirtyReason`: keep the function, its `label` parameter and its two error formats, and replace its body with a `worktreeDirty(scopeAll, dir)` call returning `detail`.
+  In `internal/fabricengine/warpclean.go`, `dirtyReason`: keep the function and its `label` parameter, and replace its body with a `worktreeDirty(scopeAll, dir)` call returning `detail`.
+  It has two error formats today, a spawn-failure form and an exit-code form, and `worktreeDirty` returns one consolidated error for both — so keep the spawn-failure wording and let the exit code arrive inside the wrapped error, exactly the collapse card 2 concedes for the two sites above.
+  Do not widen `worktreeDirty`'s return shape to preserve the second format: one caller wanting a distinct exit-code sentence is not worth handing every caller an exit code to re-format, and the surviving message still carries the code.
   In `internal/fabricengine/reconcile.go`, the board-status check that decides `WarpBindingOutcomeDeferred`: it treats a spawn failure and a nonzero exit identically, so a single `err != nil` branch preserves the existing `board status check failed: %v (exit %d)` behaviour — keep a `board status check failed` prefix carrying the error, and keep the `board worktree has uncommitted changes; backfill deferred to avoid sweeping them into an unrelated commit` deferral text verbatim.
 - **Commit:** `refactor(fabricengine): route the four untracked-inclusive probes through worktreeDirty`
 

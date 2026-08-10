@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussed  '2026-08-10T12:41:06Z'
 planning  '2026-08-10T12:59:08Z'
 plan-review-r1  '2026-08-10T13:11:42Z'
 plan-fix-r1  '2026-08-10T13:11:42Z'
+plan-review-r2  '2026-08-10T13:22:31Z'
+plan-fix-r2  '2026-08-10T13:22:31Z'
 ```
