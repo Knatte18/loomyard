@@ -76,7 +76,9 @@ The verdict is written down, the implementation is filed as its own task, and th
   func (e *GitError) Error() string
   ```
 
-  Returned as `*GitError`. `Error()` renders `git <args joined by space>: exit <code>: <trimmed stderr>`, and omits the trailing `: <stderr>` segment entirely when stderr is empty, yielding `git <args>: exit <code>`.
+  Returned as `*GitError`. `Error()` renders `git <args>: exit <code>: <trimmed stderr>`, and omits the trailing `: <stderr>` segment entirely when stderr is empty, yielding `git <args>: exit <code>`.
+- **Arg joining: space-separated, `%q`-quoted only when an arg needs it** — an arg containing whitespace, or an empty arg. `git status --porcelain` stays readable; `git commit -m "fix the thing"` stays unambiguous and copy-pasteable.
+  Quoting every arg unconditionally was rejected as noise on the common case (`git "status" "--porcelain"`), and a bare join was rejected because commit messages, `--filter=` values and paths with spaces all occur in this tree and would render ambiguously.
 - **Rationale:** `Args` and `Dir` make the message self-locating, so callers can stop repeating "which command, in which directory" in their own wrappers — that ceremony is part of what the change removes.
   Trimming stderr keeps git's trailing newline out of wrapped messages. Omitting the empty segment avoids a dangling colon while still surfacing the exit code.
 - **Argument rendering and credentials.** `Error()` renders `Args` **verbatim**, with no redaction, and the godoc must say so: *callers must not pass credentials in args.*
@@ -124,7 +126,31 @@ The verdict is written down, the implementation is filed as its own task, and th
   - A first pass reported 48/11 = 59 because it only examined comparisons on a line containing `if` or `switch`, skipping `weftwiring.go:78`, `weftwiring.go:96`, `pull.go:135` and `checkout.go:77`.
   - A second pass reported 48/15 because it looked only for `fmt.Errorf` / `errors.New` in the following window and so missed **helper-constructed** errors. `internal/fabricengine/warpprobe.go` builds its errors via `wrapProbeError`, so lines 71, 95 and 136 return errors and are **not** predicates — only `:81` is. Broadening to any error-returning branch gives 51/12.
   Any future pass must assume there is another helper it has not accounted for.
+- **Correction to the premise — pure predicates and *mixed* tri-states are different classes.** The rationale above says predicate sites "discard stderr correctly, because there is no failure". That holds for a **pure** predicate (`return exitCode == 0`, `rev-parse --verify` existence checks), where every code is an answer.
+  It is **false** for a **mixed tri-state**, where some codes are answers and the rest are failures. `internal/gitrepo/ancestry.go:36` is exactly the bare-exit-code class this change exists to close:
+
+  ```go
+  switch code {
+  case 0:  return true, nil                                        // answer
+  case 1:  return false, nil                                       // answer
+  default: return false, fmt.Errorf("...: git exited %d", code)    // FAILURE, stderr discarded
+  }
+  ```
+
+- **Disposition for the mixed class: the checked form, with `errors.As` recovery** — not the raw form:
+
+  ```go
+  _, err := r.runChecked("merge-base", "--is-ancestor", sha, ref)
+  if err == nil { return true, nil }
+  var gitErr *gitexec.GitError
+  if errors.As(err, &gitErr) && gitErr.ExitCode == 1 { return false, nil }
+  return false, fmt.Errorf("gitrepo: merge-base --is-ancestor %s %s in %s: %w", sha, ref, r.path, err)
+  ```
+
+  This is strictly better than today: the answer codes still answer, and the `default:` branch **gains** the stderr it currently throws away. `internal/gitrepo/gitrepo.go:140` and `:193` (`diff --cached --quiet`) are the same class and take the same treatment, though they already bind stderr in their default branch.
+  The `errors.As` ceremony the [verdict](#verdict-second-entry-point) rejects for *pure* predicates is correct here, because a mixed site genuinely has both an answer and a failure to distinguish.
 - **Rejected:** Treating these as unmigrated debt to be swept later — they are not debt; sweeping them would be a regression.
+  Folding mixed tri-states into "raw, permanently correct" — that is what an earlier draft did, and it silently preserved a bare-exit-code failure path inside a site labelled as needing no diagnostic.
 
 ### guard-test-with-justification-comments
 
@@ -139,8 +165,16 @@ The verdict is written down, the implementation is filed as its own task, and th
   the **Client Boundary Invariant** answers *which `gitrepo` methods may reach the git CLI at all* and is keyed by **method name** — update it when a method gains or loses a `run`/`gitexec` call;
   the **Checked-Call Invariant** answers *which call sites may use the raw, unchecked form* and is keyed by **call site** — update it only when a site moves between the raw and checked forms.
   A new `gitexec` call inside an already-pinned method trips the second and not the first; a new method reaching the CLI trips both. Each invariant's `CONSTRAINTS.md` entry must carry a one-line cross-reference to the other.
-- **The Client Boundary guard does not currently tolerate the gitrepo pair — both of its assertions must change in the implementation commit.** This is recorded as fact, not as something for the implementer to confirm:
-  - `cmd/lyx/gitrepoboundary_test.go:174` asserts `gitexecTotal != 1` — **exactly one** non-comment `gitexec.` occurrence in all of `internal/gitrepo` non-test source — and `:177` requires that one occurrence to sit inside `run`'s body. A checked sibling calling `gitexec.Run` makes it two and fails both.
+- **How the gitrepo checked sibling is implemented — decided here, because the guard claim depends on it.** `runChecked` calls **`gitexec.Run` directly**, as a second chokepoint beside `run`:
+
+  ```go
+  func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) { return gitexec.RunGit(args, r.path) }
+  func (r *Repo) runChecked(args ...string) (string, error)                       { return gitexec.Run(args, r.path) }
+  ```
+
+  The alternative — implementing `runChecked` on top of `r.run` — was rejected because it forces `gitrepo` to construct `*gitexec.GitError` itself, duplicating logic that belongs in one place and requiring `gitexec` to export a constructor for it. It would also leave `gitexecTotal == 1` and both boundary assertions passing, which is only an apparent saving: the invariant's real point is that git-CLI access is funnelled through named helpers, and two named helpers satisfy that as well as one.
+- **Given that decision, the Client Boundary guard does not tolerate the pair — both of its assertions must change in the implementation commit.** The claim is stated as fact because its premise is now decided, not assumed:
+  - `cmd/lyx/gitrepoboundary_test.go:174` asserts `gitexecTotal != 1` — **exactly one** non-comment `gitexec.` occurrence in all of `internal/gitrepo` non-test source — and `:177` requires that one occurrence to sit inside `run`'s body. `runChecked` calling `gitexec.Run` makes it two and fails both. The assertions become "exactly two, one inside `run` and one inside `runChecked`".
   - `:167` runs set-equality on `gitrepoPinnedRunBoundMethods`, keyed on methods containing `r.run(`. Any method migrated from `r.run` to the checked sibling silently drops out of that set and trips the diff.
 - **Three further guards key on the literal token `gitexec.RunGit` and go blind to `gitexec.Run`.** `gitexec.Run(` does not contain that substring, so each must gain the new token in the same commit or its invariant is silently holed:
   - `cmd/lyx/tierpurity_test.go:54` (`bannedTokens`) — **Test Tier Purity Invariant**; without it an untagged test can spawn git through the new entry point.
@@ -252,7 +286,17 @@ func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) 
 **21 production `r.run(...)` call sites** across `gitrepo.go`, `push.go`, `pull.go`, `reset.go`, `ancestry.go`.
 **Regeneration query:** `grep -rn 'r\.run(' --include='*.go' internal/gitrepo | grep -v _test` for the total, and for the discard subset match **any `_` in the second (stderr) binding position** — `^\s*\S+,\s*_,\s*\S+,\s*\S+\s*:?=\s*r\.run\(`.
 Do not use `_, _, .*= r\.run(`: it returns four, missing `push.go:133` (`stdout, _, code, err`), which discards stderr while binding stdout.
-**Five discard stderr** — `reset.go:18`, `pull.go:19`, `pull.go:33`, `push.go:133`, `ancestry.go:26`. The remaining **sixteen** bind it and thread it into an error message.
+**Five discard stderr**, and the count is the least interesting thing about them — four of the five discard it for a *reason*, which is why gitrepo needs per-site dispositions rather than a sweep:
+
+| site | why it discards | disposition |
+|---|---|---|
+| `pull.go:19` (`Pull`) | deliberate, godoc-documented, `pull_test.go:87` fails if the error contains `"fatal:"` | **raw** |
+| `pull.go:33` (`Fetch`) | same contract, same pinning | **raw** |
+| `push.go:133` (`HasUnpushed`) | pure predicate — non-zero folds into `(true, nil)` | **raw** |
+| `ancestry.go:26` (`IsAncestor`) | mixed tri-state; its `default:` branch is a real failure that *should* carry stderr | **checked** + `errors.As` |
+| `reset.go:18` (`ResetHard`) | no stated reason — an ordinary discard | **checked** |
+
+The remaining **sixteen** bind stderr and thread it into an error message.
 This is why the "5 sites outside fabric" figure understates the shape's reach — behind one of those five sits a second fan-out of 21.
 
 ### The predicate-site inventory — non-zero exit as an answer
@@ -287,7 +331,10 @@ Current result: 63 total, ~51 error-returning, ~12 predicate.
 
 `warpprobe.go:77` is **the only predicate in `warpprobe.go`.** The comparisons at `:71`, `:95` and `:136` look identical but return `wrapProbeError(...)` — they are error paths, misfiled as predicates by an earlier classifier that recognised only `fmt.Errorf` / `errors.New`.
 
-**`gitrepo` tri-states and quiet probes — 3 call sites:**
+**`internal/gitrepo/push.go:133`** — `rev-list --count @{u}..HEAD` in `HasUnpushed`; `→ :136` returns `true, nil` on a non-zero exit, with the godoc stating "rev-list errors fold into `(true, nil)`" (no upstream configured is treated as unpushed so the first push still happens). A **pure predicate**, and it stays raw.
+It was previously listed only among the discard sites and never in the shape list, which is a reminder that **`gitrepo`'s 21 sites need per-site raw/checked dispositions, not a count** — the implementation task must classify each one, and this document only fixes the classes, not every member.
+
+**`gitrepo` tri-states and quiet probes — 3 call sites** (all **mixed**, so all take the *checked* form with `errors.As` recovery — see [predicate-sites-are-real-and-must-stay-expressible](#predicate-sites-are-real-and-must-stay-expressible)):
 
 `internal/gitrepo/ancestry.go:26` — `merge-base --is-ancestor`, with the tri-state stated in the method's own godoc ("true if an ancestor, false if not (both with nil error), or an error on failure"):
 
@@ -367,6 +414,19 @@ If deliberate discard is meant to be *visible*, the **guard test is the mechanis
   ```
 
   A bare `return "", Sentinel` (`lyxcwd.go:152`) may also stay bare. Both preserve `errors.Is(err, Sentinel)` for `internal/loomengine/preflight.go:46`, and the exact-string assertions in `internal/lyxcwd/lyxcwd_test.go:127`, `internal/configcli/reconcile_test.go`, `internal/reedcli/cli_test.go` and `internal/idecli/cli_test.go`, all of which pin the bare-sentinel surface.
+
+  **Exit paths that suppress stderr deliberately keep the raw form.** A third class, and the one that most complicates this document's thesis: some sites withhold git's stderr *on purpose*, as a documented contract, and `%w`-wrapping a `GitError` would embed it and break them.
+  `internal/gitrepo/pull.go` is the worked example. `Pull` (`:19`) and `Fetch` (`:33`) substitute a **reproduction pointer** for the raw diagnostic:
+
+  ```go
+  // pull.go:14-17, paraphrased godoc: "raw stderr is deliberately NOT folded into the error
+  // (pull_test.go pins that contract), so the reproduction pointer is what keeps a nonzero exit
+  // diagnosable instead of a bare number."
+  return fmt.Errorf("gitrepo: pull --ff-only in %s: git exited %d (run `git -C %s pull --ff-only` for git's own diagnosis)", r.path, code, r.path)
+  ```
+
+  `internal/gitrepo/pull_test.go:87` and `:119` **fail if `err.Error()` contains `"fatal:"`**, and separately require the `git -C` reproduction string. These two sites stay **raw** with a `//gitexec:raw` marker citing the pinned contract.
+  This class matters beyond its two members: it is a live counter-example to "55 sites discard stderr because the API made it easy". Here the discard is a considered decision with a test behind it, and the verdict must not present every discard as an accident of the shape.
 
   **Regeneration query for the merge count.** For each `gitexec.RunGit(` call in a non-test file under `internal/fabricengine`, inspect the following window (~20 lines, to the next call or function end) and count it as a merge site when the window contains **both** an `err != nil` guard and an exit-code comparison. A coarse 22-line window returns 63 of 70; the careful count that respects block boundaries returns ~51. Re-derive before quoting.
 
@@ -470,3 +530,12 @@ Resolved in discussion review round 2:
 - **Q:** Did the predicate inventory double-count? **A:** Yes — `warpprobe.go:77`/`:81` and `weftwiring.go:90`/`:96` are two sites listed as four, because some entries were keyed to the call line and others to the comparison line. The inventory is now a table keyed **to the call site** throughout, with the comparison as a column. `weftwiring.go:73` and `pull.go:131` were added as call sites for comparisons previously listed bare.
 - **Q:** gitrepo discard count? **A:** Five, not six — `reset.go:18`, `pull.go:19`, `pull.go:33`, `push.go:133`, `ancestry.go:26` — so sixteen bind stderr, not fifteen. The stated query was also wrong: `_, _, .*= r\.run(` returns four because `push.go:133` is `stdout, _, code, err`. Widened to match any `_` in the second binding position.
 - **Q:** Does the design doc's own status line support keeping it? **A:** No — "Deleted once the verdict is recorded" reads as delete *now*. The retention rests on the Documentation Lifecycle rule alone, and this task **amends** that status line rather than citing it.
+
+Resolved in discussion review round 3:
+
+- **Q:** Are all stderr discards accidents of the API shape? **A:** No, and this is the sharpest correction to the document's thesis. `gitrepo.Pull` and `Fetch` withhold stderr **deliberately**, substituting a `git -C ...` reproduction pointer, and `pull_test.go:87`/`:119` fail if the error contains `"fatal:"`. Both stay raw with a marker citing the pinned contract, and the verdict must not present every discard as an accident.
+- **Q:** Do predicate sites really never fail? **A:** Pure ones do not; **mixed tri-states** do. `ancestry.go:36`'s `default:` branch returns `git exited %d` with stderr discarded — the exact bare-exit-code class this change exists to close, sitting inside a site an earlier draft labelled "raw, permanently correct". Mixed sites now take the **checked** form with `errors.As(err, &gitErr) && gitErr.ExitCode == 1` recovery, which keeps the answers and gains stderr on the failure branch. `gitrepo.go:140`/`:193` are the same class.
+- **Q:** Does the gitrepo checked sibling call `gitexec.Run` directly or wrap `r.run`? **A:** Directly — `runChecked` becomes a second chokepoint beside `run`. Wrapping `r.run` would force `gitrepo` to construct `*gitexec.GitError` itself and would leave the boundary guard passing, but the invariant's point is funnelling git-CLI access through named helpers, which two helpers satisfy. This decision is what makes the "both boundary assertions change" claim a fact rather than an assumption.
+- **Q:** Is `HasUnpushed` a predicate? **A:** Yes — `push.go:133`, non-zero folds into `(true, nil)` per its godoc. It appeared only in the discard list, never in the shape list. Added, along with the standing note that gitrepo's 21 sites need **per-site dispositions, not a count**; this document fixes the classes, and the implementation task classifies each member.
+- **Q:** How does `Error()` join args? **A:** Space-separated, `%q`-quoted only for args containing whitespace or empty args. Unconditional quoting is noise on `git "status" "--porcelain"`; a bare join is ambiguous for commit messages, `--filter=` values and paths with spaces, all of which occur in this tree.
+
