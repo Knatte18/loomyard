@@ -19,6 +19,7 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -488,4 +489,107 @@ func resolveManagedBranch(l *lyxcwd.Location, branchPrefix, branch string) (bool
 		}
 	}
 	return true, ""
+}
+
+// checkPathRequest runs the gate's four checks against req, in fixed order, stopping at the first
+// failure: containment, ownership, dirtiness, force.
+//
+// An absent target is a no-op success before any check runs — most ownership predicates fail on a
+// path that is not there, and removePortal, removeJunctionRecords, removeLaunchers and Remove's
+// tolerance of an already-absent weft worktree are all documented as idempotent today, so refusing
+// here would turn those into hard failures. os.Lstat, not os.Stat, is what decides "absent": a
+// dangling link is present as a link even though its target is not, and ownedDriftedWiredJunction
+// must still see it.
+func checkPathRequest(req pathRequest) error {
+	if _, statErr := os.Lstat(req.target); os.IsNotExist(statErr) {
+		return nil
+	}
+
+	if req.ownership.kind == pathOwnershipUnset {
+		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
+	}
+	if req.dirtiness.kind == pathDirtinessUnset {
+		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "no dirtiness declared"}
+	}
+	if req.dirtiness.kind == pathDirtinessNA && req.dirtiness.reason == "" {
+		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "dirtinessNA requires a non-empty reason"}
+	}
+
+	if req.slug != nil {
+		if err := validateWorktreeSlug(req.slug.name, req.slug.junctionNames); err != nil {
+			return &destructiveRefusal{Check: checkContainment, What: req.what, Target: req.target, Reason: err.Error()}
+		}
+	}
+
+	if err := refuseUncontainedPath(req.container, req.target, req.what); err != nil {
+		return &destructiveRefusal{Check: checkContainment, What: req.what, Target: req.target, Reason: err.Error()}
+	}
+
+	if ok, reason := resolvePathOwnership(req.ownership, req.target); !ok {
+		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.target, Reason: reason}
+	}
+
+	return checkPathDirtiness(req)
+}
+
+// checkPathDirtiness runs the pipeline's dirtiness step for a pathRequest.
+//
+// req.force is consulted only here, and nowhere else in the pipeline: it satisfies dirtiness and
+// nothing else, never containment and never ownership, which is what keeps "remove .." — a
+// containment failure — from ever being answerable by a flag.
+// A dirtinessNA declaration always passes (its validity was already checked in checkPathRequest). A
+// probe that cannot run at all is itself a refusal, not a pass, since a probe failure is exactly the
+// state in which an unconditional destructive act is least defensible.
+func checkPathDirtiness(req pathRequest) error {
+	if req.dirtiness.kind == pathDirtinessNA {
+		return nil
+	}
+	if req.force {
+		return nil
+	}
+
+	dirty, _, err := worktreeDirty(req.dirtiness.scope, req.target)
+	if err != nil {
+		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: err.Error()}
+	}
+	if dirty {
+		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
+	}
+	return nil
+}
+
+// checkBranchRequest runs the gate's checks against req: the same pipeline checkPathRequest runs,
+// minus containment and minus the absent-target rule, neither of which has meaning for a ref.
+func checkBranchRequest(req branchRequest) error {
+	if req.ownership.kind == branchOwnershipUnset {
+		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
+	}
+	if req.dirtiness.kind == branchDirtinessUnset {
+		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
+	}
+
+	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
+		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.branch, Reason: reason}
+	}
+
+	return checkBranchDirtiness(req)
+}
+
+// checkBranchDirtiness runs the pipeline's dirtiness step for a branchRequest: is branch checked out
+// at any worktree. git branch -D cannot delete a checked-out branch anyway, so this converts git's
+// own refusal into a named gate refusal, the same move as re-gating removeWarpWorktreeDir's fallback.
+// Unlike checkPathDirtiness, req.force is never consulted here — branch-deletion-is-ref-shaped in
+// _mill/discussion.md is explicit that --force may answer a call site's own gate (Cleanup's
+// raddleFoldedBack) but never this check.
+func checkBranchDirtiness(req branchRequest) error {
+	branches, err := listWeftBranches(req.ownership.location)
+	if err != nil {
+		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: err.Error()}
+	}
+	for _, b := range branches {
+		if b.Branch == req.branch && b.WorktreePath != "" {
+			return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
+		}
+	}
+	return nil
 }
