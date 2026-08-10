@@ -13,10 +13,11 @@ Committed to, in this order, next.
    The campaign ran six serial model-rotating review+fix rounds and produced 81 findings, 9 BLOCKING, **8 of them data-loss** — and the finding count per round never converged, because it was draining a class instance by instance.
    Every individual defect is fixed;
    the shapes that keep producing them are not.
-   Build order is **instrument → channel → fix**, not root-cause-first: **slice 12** (live-state integration harness) first, because the hermetic suite was green through all eight data-loss bugs and slice 14's acceptance criterion is literally "prove no call site bypasses the gate", which is a harness assertion rather than a code review;
-   **slice 13** (accumulate the result envelope from actual mutations, not from control flow) second, because slice 14's gate must report which check refused and why, and a failure must never report success — both unrepresentable in today's envelope, and both what makes slice 12's cells meaningful;
-   **slice 14** (route every destructive operation through one containment/ownership/dirtiness/force gate, with a `CONSTRAINTS.md` invariant and a guard test in the same commit) third, now provable and expressible;
-   **slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last, independent of the other three.
+   Slice numbers are assigned in build order.
+   **Slice 12** (a live-state integration harness against real git in dirty and hostile state) comes first only because **slice 13** — the root-cause fix, one containment/ownership/dirtiness/force gate every destructive operation routes through, with a `CONSTRAINTS.md` invariant and a static bypass guard in the same commit — is a consolidating refactor of the exact code paths that destroyed something eight times, and the only test tier that can observe destruction is the one slice 12 builds.
+   Slice 12 is therefore scoped small on purpose: cover the destructive verbs, then grow to the full cross product after slice 13 lands.
+   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is third, because it is truthfulness rather than safety: slice 13's steps 1-4 are what stop destruction, and its step 5 may land in each verb's existing error shape and be generalised here, a bounded churn cost paid to get the safety fix in a slice earlier.
+   **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last, independent of the other three.
    Placed ahead of `Shed` because fabric is the module every other worktree's work stands on, and this is a data-loss class in it — not because `Shed` slipped;
    `Shed` → `loom` keeps its own order below.
    Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
