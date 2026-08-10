@@ -22,6 +22,17 @@ Committed to, in this order, next.
    `Shed` → `loom` keeps its own order below.
    Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
 
+1. **lyxtest builds real fabric hubs — invert the dependency** — `internal/lyxtest`'s fixtures are hand-assembled approximations of a fabric hub, never produced by `CloneHub`: no `_board`, no junctions, no `.lyx-anchor`, no warp binding.
+   Every test built on them asserts against a shape someone wrote down rather than the shape fabric produces, and nothing detects drift between the two.
+   Invert it — `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning — so drift becomes impossible by construction instead of by discipline.
+   Both objections were measured and both failed: the import cycle touches 14 `fabricengine` files (which move to `fabrictest`, created by slice 12) plus two files needing only `MustRun`, and the runtime cost is **+3.6 s on Tier 2's ~132 s, about 2.7 %** — 167 `Copy*` call sites at a measured 24 ms per full fixture against today's 2.3 ms.
+   The template-and-copy model is not discarded but moves one level down: **copy the two bares** (zero symlinks, ~2 ms) and **clone the hub** (~22 ms, unavoidable since its junctions carry absolute targets).
+   Local bare repos are real remotes, so `push`/`pull`/`sync` need no GitHub — the repo already tests force-pushed upstreams and genuine non-fast-forwards this way.
+   The real cost is migrating whichever assertions break on the true hub shape, and each such break marks a test currently asserting against an invented one.
+   Windows is unmeasured and is the one open question.
+   Builds on the fabric campaign's slice 12 below.
+   See [designs/lyxtest-real-hubs.md](designs/lyxtest-real-hubs.md).
+
 1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
    Everything that used to be "special" is just a producer like any other: `loom`'s own Preflight is the first producer in `loom`'s list;
    Finalize is an ordinary producer both `loom` and `Hardener` happen to reference at the end of their own list (shared by reference, not by Shed special-casing it) — Raddle-regeneration is now scoped as part of Finalize's own contract, not a separate producer, since merge-conflict risk makes updating Raddle before the Finalize merge impractical (`Tenter`/`Hardener` will need the equivalent, deferred).
