@@ -66,15 +66,65 @@ A caller that wants the old behaviour must reach for the typed error deliberatel
 
 - **Is a breaking signature change acceptable**, or should a second entry point (`RunGitE`, or similar) be added and callers migrated incrementally?
   Incremental migration avoids a big-bang change but leaves the footgun loaded for anyone who does not migrate.
-- **Which callers outside fabric exist, and how many are affected?**
-  This needs counting before any work starts.
-  The 74 number above is fabric-only by construction and says nothing about the rest of the tree — `internal/gitrepo`, `internal/boardengine` and `internal/githubclient`'s neighbours are the obvious places to count first.
-  **This count is the item's first deliverable**;
-  the decision cannot honestly be made without it.
+- ~~**Which callers outside fabric exist, and how many are affected?**~~ **Answered — see [First deliverable, closed](#first-deliverable-closed--measured-2026-08-10) below.**
 - **Does the wrapping belong in `gitexec` at all**, or should it stay a caller responsibility with a lint rule enforcing it?
   A lint rule is cheaper and less invasive, but only catches what it is written to catch.
 - **How does this interact with the sites where discarding is correct?**
   Best-effort teardown (`gitexec.RunGit([]string{"worktree","prune"}, ...)` with `//nolint:errcheck`) is deliberate and documented in several places, and any change must keep that expressible without ceremony.
+
+## First deliverable, closed — measured 2026-08-10
+
+The caller count outside fabric was this item's stated precondition.
+Production call sites, excluding tests and the declaration itself, 75 total:
+
+| package | sites |
+|---|---|
+| `internal/fabricengine` | 70 |
+| `internal/gitrepo` | 2 |
+| `internal/websterengine` | 1 |
+| `internal/lyxcwd` | 1 |
+| `internal/fabriccli` | 1 |
+
+**Five production call sites exist outside fabric.**
+The blast radius is almost entirely the module the crucible already swept, which is the opposite of what "shared infrastructure" suggests and weakens the counter-argument below accordingly.
+Tests add 50 more — `fabricengine` 15, `cmd/lyx` 10, `gitrepo` 10, `configcli` 5, `gitexec` 4, and a few elsewhere — which migrate with the signature but carry no design weight.
+`internal/boardengine` and `internal/githubclient`, named above as places to look, have **no** production call sites.
+
+R5 counted 74 in fabric where this count finds 71 (70 in `fabricengine` plus 1 in `fabriccli`);
+code changed between the two counts, and nothing in the argument turns on the difference.
+
+### The exit code is provably redundant
+
+Every exit-code comparison in `internal/fabricengine` is against zero — all 63 of them:
+
+```
+44  exitCode != 0        8  exitCode == 0
+ 7  code != 0            2  code == 0
+ 1  unbornExit != 0      1  statusExit != 0
+```
+
+No call site reads a specific exit code.
+`exitCode` therefore carries nothing `err != nil` does not already carry, so the verdict does not have to weigh whether to keep it in the signature.
+The code has answered that one.
+
+### The migration splits unevenly, and the split should inform the verdict
+
+- **Mechanical, whole-tree sweep** — dropping `exitCode` and rewriting `if exitCode != 0` to `if err != nil`.
+  Safe across all 75 sites given the finding above;
+  `gofmt -r` or a small AST tool handles both the binding and the condition, and the five full-discard sites (`_, _, _, _`) come along for free.
+- **Per-site judgement, not automatable** — the 55 sites that discard stderr today.
+  The question at each is what the operator should see when it fails, which is the entire point of the item.
+  The 6 paths in `add.go` that substitute a fixed wrong string must each be read.
+
+Sites that do bind stderr today follow one uniform shape: each named `*Stderr` variable appears exactly twice, once bound and once used in an error message, and does nothing else with it.
+
+### Sequencing follows from the split
+
+The **decision** is independent of the fabric chain and can be taken at any time — it reads call sites and writes a verdict, touching no production code.
+
+The **implementation**, if the verdict is a signature change, cannot.
+It rewrites 70 call sites in `internal/fabricengine`, the package [fabric-crucible-followups.md](fabric-crucible-followups.md)'s chain is serialised to protect from concurrent edits.
+File it as its own task behind that chain rather than folding it into this one.
 
 ## The counter-argument, weighed rather than dismissed
 
