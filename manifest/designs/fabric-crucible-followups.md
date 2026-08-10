@@ -43,153 +43,46 @@ Two facts about this table drive the whole ordering below.
 `12 → 13 → 14`, with `15` independent and parked at the tail.
 The slice numbers are assigned in build order, so numeric order is always build order.
 
-The root-cause fix (the destructive-operation chokepoint) is **slice 13, not slice 12** — it is second, not first, and the single sentence justifying that is:
+**The root-cause fix — the destructive-operation chokepoint — is slice 12, and it goes first.**
+It is the only slice that stops anything being destroyed;
+everything else is instrumentation, truthfulness, or a self-healing race.
 
-> Slice 13 is a consolidating refactor of the exact code paths that destroyed something eight times, and the only test tier that can observe destruction is the one slice 12 builds.
+An earlier draft of this file put the harness first, on the argument that the chokepoint is a consolidating refactor of the exact paths that destroyed something eight times, and that the only tier able to observe destruction was the one the harness builds.
+**That argument was wrong, and the correction matters enough to record rather than quietly delete**, because it is the kind of reasoning that sounds right and delays a safety fix by a whole slice.
 
-Doing the refactor first means rewriting fabric's highest-blast-radius code with a suite that provably cannot see the failure mode it is being rewritten to prevent.
-That is how bug nine happens.
-Slice 12 is deliberately kept small for this reason — see its scope note: it must cover the destructive verbs before slice 13 starts, and only needs to grow to the full cross product afterwards.
+It conflated two different jobs:
+
+- **Regression cover for the refactor** — "did I break a guarantee that already holds?" — *already exists*.
+  The campaign fixed each of the eight defects **with a named, sabotage-proved test**: `TestPull_DirtyWarpRefusesBeforeMovingWarp`, `TestPrune_RefusesHubDirectoryItDoesNotOwn`, `TestPrune_RefusesUnrelatedGitCloneInHub`, `TestPrune_ProtectsDirtyWeftWorktreeUntilForced`, `TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout`, `TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut`, `TestAdd_RejectsReservedHubNameSlug`, and the `remove_guard`/`remove_reserved` integration files — inside roughly **29 integration test files** covering the destructive verbs.
+  A consolidating refactor is exactly the change those tests are good at policing.
+- **Discovery of instance number nine** — that is the harness's job, and it is a *finding* task, not a refactor-safety one.
+
+And the chokepoint's own completeness proof — the static guard showing no call site bypasses the gate — is a tree walk that needs no fixtures at all.
+
+Two further reasons the chokepoint leads:
+
+- Slice 14 rewrites **every verb's result path**, the destructive ones included.
+  Landing the gate first means that work happens on already-gated code.
+- The class is open in the sense that a future change can add a ninth instance — and there are three more fabric slices immediately after this one.
 
 The rest of the order:
 
-- **Slice 12 first** — the instrument.
-  Additive (`//go:build integration`), touches no production code, and its hostile-state matrix is likely to surface further instances of the slice-13 class *before* the gate is designed, which is worth more than the same instances surfacing after.
-  Note what it does and does not prove: proving that no *call site bypasses* the gate is the job of slice 13's own static guard test, not of the harness;
-  the harness proves the gate *behaves* correctly once reached, against real git in dirty and hostile state.
-  Both are needed and they are different mechanisms.
-- **Slice 13 second** — the safety fix, landing as early as it can be landed with cover.
-  Its steps 1-4 (containment, ownership, dirtiness, force semantics) are what actually stop destruction and depend on nothing but slice 12.
-  Its step 5 (honest reporting) is truthfulness, not safety — `remove ..` would have been stopped dead by step 1 alone — so step 5 is allowed to land in each verb's existing error shape and be generalised by slice 14.
-  That is a deliberate, bounded churn cost, paid to get the safety fix in earlier.
+- **Slice 13 second** — the instrument.
+  Additive (`//go:build integration`), touches no production code.
+  Its first job is now to validate the gate slice 12 built, against real git in dirty and hostile state;
+  its second is to find instances nobody has thought of.
+  Note the division of proof: *no call site bypasses the gate* is slice 12's static guard;
+  *the gate behaves correctly once reached* is the harness.
+  Different mechanisms, both needed.
 - **Slice 14 third** — the envelope.
-  It generalises slice 13's per-verb refusal reporting into one accumulate-as-you-mutate shape, and it completes slice 12: a harness cell is only fully meaningful when it asserts both "the operator's file is still on disk" *and* "the report was truthful", because case after case in the table above returned an error **and** destroyed something.
+  It generalises slice 12's per-verb refusal reporting into one accumulate-as-you-mutate shape, and it completes slice 13: a harness cell is only fully meaningful when it asserts both "the operator's file is still on disk" *and* "the report was truthful", because case after case in the table above returned an error **and** destroyed something.
 - **Slice 15 last** — LOW, self-healing, unrelated to the destruction class, and gated on a locking decision rather than on any of the others.
 
-Nothing here runs usefully in parallel.
-12 and 14 both concern the same result shape from opposite sides, and 13 sits between them by design.
+**Slices 12 and 13 may run in parallel if two agents are available** — the gate is production code, the harness is test-tier — but 12 leads if they are done in sequence.
+Slice 14 needs 12 landed;
+15 needs nothing.
 
-## Slice 12 — live-state integration harness
-
-Issue #144 (`enhancement`).
-
-### Why
-
-Every one of the eight data-loss defects was found by driving real git against a real filesystem with hostile or dirty state.
-**Not one was found by the hermetic suite, which was green throughout.**
-
-That is not a gap in any individual test.
-It is a gap in what the suite is *able* to express: it does not build a real hub, so it cannot put one into a dirty or hostile state, so it cannot observe a verb destroying something.
-
-The reason is structural and correct.
-The hermetic tier is bound by CONSTRAINTS.md's [Test Tier Purity Invariant](../../CONSTRAINTS.md#test-tier-purity-invariant): untagged test files must not call `gitexec.RunGit`, `exec.Command*`, or `lyxtest.Copy*`.
-That invariant stays — it is what keeps the fast tier fast.
-But it means the fast tier can never observe a verb's behaviour against real git, and today the `//go:build integration` tier covers that ground **per-verb and ad hoc**, only where someone thought to write a test.
-
-The campaign proved the alternative works.
-R3 drove an explicit 40-cell matrix — every mutating verb (`pull`, `sync`, `checkout`, `reconcile`, `remove`, `cleanup`, `unwire`, `prune`) × dirty warp / dirty weft / both — and found a BLOCKING defect.
-The orchestrator's note at the time, carried into the campaign handoff:
-
-> Both data-loss bugs in this campaign are destructive git operations with no dirty-worktree check, and both were invisible until someone ran the verb with uncommitted work on disk.
-> Neither round covered that axis *systematically* — each hit it once by luck of scenario choice.
-> **A third lucky hit is not a convergence signal; an exhaustive clean sweep of that matrix is.**
-
-R5 then extended the idea to axes nobody had driven — concurrency between worktrees, the hook surface, `_portals`/`_launchers` — and found 2 BLOCKING and 5 MEDIUM in 24 scenarios across 18 independent hubs.
-The pattern is consistent: point a systematic live matrix at fabric and it finds something;
-the hermetic suite finds none of it.
-
-### What needs to happen
-
-An integration-tier harness (`//go:build integration`) providing:
-
-1. **A hub factory.**
-   Build a real hub from local bare remotes, **by running clone** rather than by assembling the layout in test code — a hand-built hub tests a shape the author asserted, not the one fabric produces, which is the same blindness this slice exists to remove.
-   The campaign's recipe has two gotchas worth encoding rather than rediscovering: `git init --bare` leaves `HEAD` on `master` while the pushed branch is `main` (needs `git -C <bare> symbolic-ref HEAD refs/heads/main`), and the weft remote must be genuinely empty or clone's bootstrap guard refuses it.
-   One independent hub per destructive scenario, never shared.
-
-   **This is more extraction than new construction, and `internal/lyxtest` is not where it goes.**
-   Read this paragraph before reaching for either;
-   both mistakes are easy to make and one of them fails the build.
-
-   - `internal/lyxtest` **does** build real hermetic git repos — `buildWarpHub` (warp repo + bare remote), `buildWeftPrime` (`<name>-weft` sibling with a placeholder `_lyx/config` + bare), and `CopyPaired`/`CopyWarpHub`/`CopyWeft` on a template-built-once + copy-per-test pattern.
-     Reuse that machinery: `HermeticGitEnv`, the bare-remote builders, the origin-URL rewriting, the per-test isolation.
-   - What it builds is **not a fabric hub**.
-     Every fixture is assembled by hand, never through `CloneHub`, so there is no `_board`, no `_portals`/`_launchers`, no hub-level `.lyx`, no junctions, no `.lyx-anchor` marker, no warp-URL binding on `weft:main` and no repo-wide `fabric.yaml`.
-     Its bare remotes are left empty and never pushed to, which is why the `symbolic-ref HEAD` gotcha above does not arise there — it appears only once a hub is built by really cloning.
-   - **Naming trap:** `lyxtest.WarpFixture.Hub` is the *warp repo*, not a fabric hub.
-     "lyxtest already gives me a Hub" is a misreading that produces the wrong fixture.
-   - **The factory cannot live in `internal/lyxtest`.** The [lyxtest Leaf Invariant](../../CONSTRAINTS.md#lyxtest-leaf-invariant) bars it from importing `fabricengine`, machine-enforced by `internal/lyxtest/leaf_enforcement_test.go`, because feature packages' own tests import lyxtest and a reverse import closes a test-build cycle.
-     Anything that drives `CloneHub` is therefore out of bounds there.
-   - **Nor in an in-package (`package fabricengine`) test file that imports a shared helper package**, for the same cycle reason one level down.
-
-   **Where it does go: `internal/fabricengine/fabrictest`, mirroring `internal/boardengine/boardtest`.**
-   The repo already has this exact pattern — `boardtest` is the black-box package holding board's benchmarks, concurrency stress and git-backed integration suites, with its own `doc.go` and a `testmain_test.go` calling `lyxtest.HermeticGitEnv` (required by the [Hermetic Git Test Environment Invariant](../../CONSTRAINTS.md#hermetic-git-test-environment-invariant)), and `docs/overview.md`'s Tests section names it as the convention.
-   Nothing imports `boardtest`;
-   nothing will import `fabrictest`.
-
-   The cycle only ever bites **in-package** test files.
-   `fabricengine_test` → `fabrictest` → `fabricengine` is a legal chain, because Go compiles external test packages separately for exactly this reason.
-   `fabrictest` may also import `lyxtest` (for `HermeticGitEnv` and the bare-remote builders) without risk, since `lyxtest` imports neither.
-
-   - **Measured cost of a hub fixture** (2026-08-10, Linux/WSL2 ext4, 155U, 14 cores, hermetic git env;
-     two independent methods agreeing).
-     `CloneHub` in-process: 60–66 ms serial, 15–16 ms concurrent.
-     Via the CLI: ~101–110 ms serial, 19 ms concurrent.
-     **Full fixture — own bares plus hub clone — 24 ms concurrent**, of which copying two prebuilt bares is ~2 ms and the clone ~22 ms.
-     Concurrency scales 5.2× on 14 cores (37% of linear): clone is `fork`/`fsync`-bound, not CPU-bound.
-     For comparison, today's `lyxtest.CopyPaired` is 13.3 ms serial / 2.3 ms concurrent.
-     Cheap enough that per-scenario hubs are not a cost concern on this platform;
-     Windows is unmeasured (see [fabric-windows-verification.md](fabric-windows-verification.md)).
-   - **Copy the bares, clone the hub.** Bare repos hold zero symlinks, so the existing copy helper handles them;
-     a hub cannot be copied at all, because its junctions carry **absolute** targets (`warp/_lyx → <hub>/warp-weft/_lyx`, `warp/.lyx → …`, `warp/_board → <hub>/_board`), so a filesystem copy would leave every link aimed at the template.
-   - **Local bares are real remotes — no GitHub needed for `push`/`pull`/`sync`.** The repo already proves this: `pull_integration_test.go:73,78` force-pushes from a second clone to produce the diverged upstream `Fabric.Pull` re-anchors from, and `coalesce_integration_test.go:128-138` advances the bare from a second clone to force a genuine non-fast-forward through `gitrepo.Push`'s rebase-retry.
-     Give each scenario its **own** bare pair so cells can push independently without racing;
-     that isolation is already required for correctness, and it also means the suite never touches the sandbox Hub, so both can run at once.
-   - **The consolidation half, and it is cheaper than it looks.** Fabric's own tests already call `CloneHub` **101 times across 7 files**, with no shared factory and a scattering of ad-hoc local helpers — `gitStatusPorcelain` is defined twice.
-     **Six of those seven files are already `package fabricengine_test`** (only `clone_test.go` is in-package), and `fabricengine` runs 38 external test files against 45 in-package ones.
-     So a `fabrictest` factory serves the existing call sites immediately, with **no export-for-test shim** — the conversion problem `lyxtest`'s own package doc flags as "a slice of its own" does not arise here.
-     `clone_test.go` stays in-package and keeps its own setup;
-     that is not a defect to fix in this slice.
-2. **A state matrix.**
-   Named hostile states applied to a fresh hub: clean, dirty warp (tracked), dirty warp (untracked), dirty weft, both dirty, tracked symlink present, foreign directory at a fabric-owned path, unrelated git clone parked at a fabric-named path, stale portal link, non-executable user hook, `core.hooksPath` set.
-3. **A verb table.**
-   Every exported verb with its arguments, including hostile inputs — `""`, `.`, `..`, `../x`, `-weft`-suffixed, reserved hub names, a leading `-`.
-4. **The cross product driven, with per-cell assertions on what must survive.**
-   The critical assertion is **not** "the verb returned an error" but "the operator's file is still on disk" — case after case in the evidence table returned an error *and* destroyed something.
-   Once slice 14 lands, each cell also asserts the report was truthful.
-5. **Subpath coverage.**
-   Every cell runnable on a `--subpath backend` hub as well as a `.`-anchored one.
-   The campaign's number one concern throughout was the anchor/subpath mechanism, and it is the axis most likely to differ.
-
-The point is the **cross product**, not the individual cells.
-A new verb added to the table inherits every state;
-a new state inherits every verb.
-That is the property the current per-verb integration tests do not have, and it is precisely how `remove` escaped four consecutive review rounds.
-
-### Scope note — build the minimum that covers slice 13, then grow
-
-This slice does **not** have to ship the full cross product before slice 13 starts, and deliberately should not.
-The blocking subset is: the hub factory, the dirty/hostile states that the evidence table's eight defects actually exercised, and the hostile-input row of the verb table driven against every destructive verb.
-That is enough to refactor the destructive paths under cover, which is the whole reason this slice is sequenced first.
-
-The remaining axes — concurrency between worktrees, the hook surface, `_portals`/`_launchers`, and full subpath coverage of every cell — are additive and land after slice 13, alongside slice 14's truthfulness assertions.
-Growing the matrix is cheap once the factory exists;
-holding slice 13 hostage to a complete matrix is not.
-
-### Scope, cost and risk
-
-Fabric is unusually well suited to this: it spawns no LLM subprocess, its substrate is real git plus the real filesystem, so live driving is cheap and there is no concurrency ceiling.
-The campaign ran 18 independent hubs in a single round without trouble.
-
-Runtime is the real cost.
-This belongs behind the `integration` tag and must not be in the default `go test ./...` path.
-Measure wall-clock before the matrix grows large;
-parallelising per-hub is straightforward since every cell owns its own hub.
-
-**Known limitation, stated up front rather than discovered later:** Windows path behaviour (junctions vs symlinks, case-insensitive compare in `lyxcwd.samePath`) cannot be exercised on a Linux host.
-The campaign carried this as a permanent known gap across all six rounds rather than pretending to have verified it, and this harness inherits that gap honestly — see the Someday `fabric: Windows path behaviour is unverified` item and [fabric-windows-verification.md](fabric-windows-verification.md).
-
-## Slice 13 — route every destructive operation through one ownership-and-dirtiness gate
+## Slice 12 — route every destructive operation through one ownership-and-dirtiness gate
 
 Issue #146 (`bug`).
 This is the root-cause slice.
@@ -297,7 +190,7 @@ That is the part that turns this from another fix into a closed class:
 - A graded sweep (the crucible's form) showing every one of R4's enumerated destructive sites routes through the gate.
 - A guard test that fails when a new raw `os.RemoveAll` / `os.Remove` / `git worktree remove --force` appears outside the gate.
   The cheapest shape matching how this repo already enforces structure is a test that walks the tree, in the manner of the Test Tier Purity Invariant's guard — see the open question below.
-- Slice 12's harness driving the hostile-input row of its verb table against every verb, which is what keeps proving it.
+- Slice 13's harness driving the hostile-input row of its verb table against every verb, which is what keeps proving it — it arrives after this slice lands, so it validates the gate rather than gating it.
 - A **CONSTRAINTS.md invariant in the same commit**.
   This is exactly the cross-cutting kind that file exists for, and CLAUDE.md requires it in the same commit anyway.
 
@@ -316,6 +209,125 @@ Whatever R6 recorded is folded in **here** rather than fixed twice: the two clas
 - **How to enforce "no new raw destructive call" mechanically.**
   Options: a test walking the AST, a `golangci-lint` forbidigo rule, or the existing grep-the-tree pattern.
   The last is cheapest and matches the repo's existing guards — but see the Someday `lyx has ~15 home-grown static-analysis guards` item (issue #135) before adding a sixteenth hand-rolled walk.
+
+## Slice 13 — live-state integration harness
+
+Issue #144 (`enhancement`).
+
+### Why
+
+Every one of the eight data-loss defects was found by driving real git against a real filesystem with hostile or dirty state.
+**Not one was found by the hermetic suite, which was green throughout.**
+
+That is not a gap in any individual test.
+It is a gap in what the suite is *able* to express: it does not build a real hub, so it cannot put one into a dirty or hostile state, so it cannot observe a verb destroying something.
+
+The reason is structural and correct.
+The hermetic tier is bound by CONSTRAINTS.md's [Test Tier Purity Invariant](../../CONSTRAINTS.md#test-tier-purity-invariant): untagged test files must not call `gitexec.RunGit`, `exec.Command*`, or `lyxtest.Copy*`.
+That invariant stays — it is what keeps the fast tier fast.
+But it means the fast tier can never observe a verb's behaviour against real git, and today the `//go:build integration` tier covers that ground **per-verb and ad hoc**, only where someone thought to write a test.
+
+The campaign proved the alternative works.
+R3 drove an explicit 40-cell matrix — every mutating verb (`pull`, `sync`, `checkout`, `reconcile`, `remove`, `cleanup`, `unwire`, `prune`) × dirty warp / dirty weft / both — and found a BLOCKING defect.
+The orchestrator's note at the time, carried into the campaign handoff:
+
+> Both data-loss bugs in this campaign are destructive git operations with no dirty-worktree check, and both were invisible until someone ran the verb with uncommitted work on disk.
+> Neither round covered that axis *systematically* — each hit it once by luck of scenario choice.
+> **A third lucky hit is not a convergence signal; an exhaustive clean sweep of that matrix is.**
+
+R5 then extended the idea to axes nobody had driven — concurrency between worktrees, the hook surface, `_portals`/`_launchers` — and found 2 BLOCKING and 5 MEDIUM in 24 scenarios across 18 independent hubs.
+The pattern is consistent: point a systematic live matrix at fabric and it finds something;
+the hermetic suite finds none of it.
+
+### What needs to happen
+
+An integration-tier harness (`//go:build integration`) providing:
+
+1. **A hub factory.**
+   Build a real hub from local bare remotes, **by running clone** rather than by assembling the layout in test code — a hand-built hub tests a shape the author asserted, not the one fabric produces, which is the same blindness this slice exists to remove.
+   The campaign's recipe has two gotchas worth encoding rather than rediscovering: `git init --bare` leaves `HEAD` on `master` while the pushed branch is `main` (needs `git -C <bare> symbolic-ref HEAD refs/heads/main`), and the weft remote must be genuinely empty or clone's bootstrap guard refuses it.
+   One independent hub per destructive scenario, never shared.
+
+   **This is more extraction than new construction, and `internal/lyxtest` is not where it goes.**
+   Read this paragraph before reaching for either;
+   both mistakes are easy to make and one of them fails the build.
+
+   - `internal/lyxtest` **does** build real hermetic git repos — `buildWarpHub` (warp repo + bare remote), `buildWeftPrime` (`<name>-weft` sibling with a placeholder `_lyx/config` + bare), and `CopyPaired`/`CopyWarpHub`/`CopyWeft` on a template-built-once + copy-per-test pattern.
+     Reuse that machinery: `HermeticGitEnv`, the bare-remote builders, the origin-URL rewriting, the per-test isolation.
+   - What it builds is **not a fabric hub**.
+     Every fixture is assembled by hand, never through `CloneHub`, so there is no `_board`, no `_portals`/`_launchers`, no hub-level `.lyx`, no junctions, no `.lyx-anchor` marker, no warp-URL binding on `weft:main` and no repo-wide `fabric.yaml`.
+     Its bare remotes are left empty and never pushed to, which is why the `symbolic-ref HEAD` gotcha above does not arise there — it appears only once a hub is built by really cloning.
+   - **Naming trap:** `lyxtest.WarpFixture.Hub` is the *warp repo*, not a fabric hub.
+     "lyxtest already gives me a Hub" is a misreading that produces the wrong fixture.
+   - **The factory cannot live in `internal/lyxtest`.** The [lyxtest Leaf Invariant](../../CONSTRAINTS.md#lyxtest-leaf-invariant) bars it from importing `fabricengine`, machine-enforced by `internal/lyxtest/leaf_enforcement_test.go`, because feature packages' own tests import lyxtest and a reverse import closes a test-build cycle.
+     Anything that drives `CloneHub` is therefore out of bounds there.
+   - **Nor in an in-package (`package fabricengine`) test file that imports a shared helper package**, for the same cycle reason one level down.
+
+   **Where it does go: `internal/fabricengine/fabrictest`, mirroring `internal/boardengine/boardtest`.**
+   The repo already has this exact pattern — `boardtest` is the black-box package holding board's benchmarks, concurrency stress and git-backed integration suites, with its own `doc.go` and a `testmain_test.go` calling `lyxtest.HermeticGitEnv` (required by the [Hermetic Git Test Environment Invariant](../../CONSTRAINTS.md#hermetic-git-test-environment-invariant)), and `docs/overview.md`'s Tests section names it as the convention.
+   Nothing imports `boardtest`;
+   nothing will import `fabrictest`.
+
+   The cycle only ever bites **in-package** test files.
+   `fabricengine_test` → `fabrictest` → `fabricengine` is a legal chain, because Go compiles external test packages separately for exactly this reason.
+   `fabrictest` may also import `lyxtest` (for `HermeticGitEnv` and the bare-remote builders) without risk, since `lyxtest` imports neither.
+
+   - **Measured cost of a hub fixture** (2026-08-10, Linux/WSL2 ext4, 155U, 14 cores, hermetic git env;
+     two independent methods agreeing).
+     `CloneHub` in-process: 60–66 ms serial, 15–16 ms concurrent.
+     Via the CLI: ~101–110 ms serial, 19 ms concurrent.
+     **Full fixture — own bares plus hub clone — 24 ms concurrent**, of which copying two prebuilt bares is ~2 ms and the clone ~22 ms.
+     Concurrency scales 5.2× on 14 cores (37% of linear): clone is `fork`/`fsync`-bound, not CPU-bound.
+     For comparison, today's `lyxtest.CopyPaired` is 13.3 ms serial / 2.3 ms concurrent.
+     Cheap enough that per-scenario hubs are not a cost concern on this platform;
+     Windows is unmeasured (see [fabric-windows-verification.md](fabric-windows-verification.md)).
+   - **Copy the bares, clone the hub.** Bare repos hold zero symlinks, so the existing copy helper handles them;
+     a hub cannot be copied at all, because its junctions carry **absolute** targets (`warp/_lyx → <hub>/warp-weft/_lyx`, `warp/.lyx → …`, `warp/_board → <hub>/_board`), so a filesystem copy would leave every link aimed at the template.
+   - **Local bares are real remotes — no GitHub needed for `push`/`pull`/`sync`.** The repo already proves this: `pull_integration_test.go:73,78` force-pushes from a second clone to produce the diverged upstream `Fabric.Pull` re-anchors from, and `coalesce_integration_test.go:128-138` advances the bare from a second clone to force a genuine non-fast-forward through `gitrepo.Push`'s rebase-retry.
+     Give each scenario its **own** bare pair so cells can push independently without racing;
+     that isolation is already required for correctness, and it also means the suite never touches the sandbox Hub, so both can run at once.
+   - **The consolidation half, and it is cheaper than it looks.** Fabric's own tests already call `CloneHub` **101 times across 7 files**, with no shared factory and a scattering of ad-hoc local helpers — `gitStatusPorcelain` is defined twice.
+     **Six of those seven files are already `package fabricengine_test`** (only `clone_test.go` is in-package), and `fabricengine` runs 38 external test files against 45 in-package ones.
+     So a `fabrictest` factory serves the existing call sites immediately, with **no export-for-test shim** — the conversion problem `lyxtest`'s own package doc flags as "a slice of its own" does not arise here.
+     `clone_test.go` stays in-package and keeps its own setup;
+     that is not a defect to fix in this slice.
+2. **A state matrix.**
+   Named hostile states applied to a fresh hub: clean, dirty warp (tracked), dirty warp (untracked), dirty weft, both dirty, tracked symlink present, foreign directory at a fabric-owned path, unrelated git clone parked at a fabric-named path, stale portal link, non-executable user hook, `core.hooksPath` set.
+3. **A verb table.**
+   Every exported verb with its arguments, including hostile inputs — `""`, `.`, `..`, `../x`, `-weft`-suffixed, reserved hub names, a leading `-`.
+4. **The cross product driven, with per-cell assertions on what must survive.**
+   The critical assertion is **not** "the verb returned an error" but "the operator's file is still on disk" — case after case in the evidence table returned an error *and* destroyed something.
+   Once slice 14 lands, each cell also asserts the report was truthful.
+5. **Subpath coverage.**
+   Every cell runnable on a `--subpath backend` hub as well as a `.`-anchored one.
+   The campaign's number one concern throughout was the anchor/subpath mechanism, and it is the axis most likely to differ.
+
+The point is the **cross product**, not the individual cells.
+A new verb added to the table inherits every state;
+a new state inherits every verb.
+That is the property the current per-verb integration tests do not have, and it is precisely how `remove` escaped four consecutive review rounds.
+
+### Scope note — build the minimum that validates slice 12's gate, then grow
+
+Ship the tranche that validates slice 12's gate first, then grow.
+That tranche is: the hub factory, the dirty/hostile states the evidence table's eight defects actually exercised, and the hostile-input row of the verb table driven against every destructive verb.
+It is what turns "the gate refuses correctly" from a claim into an assertion.
+
+The remaining axes — concurrency between worktrees, the hook surface, `_portals`/`_launchers`, and full subpath coverage of every cell — are additive and can land alongside slice 14's truthfulness assertions.
+Growing the matrix is cheap once the factory exists.
+
+### Scope, cost and risk
+
+Fabric is unusually well suited to this: it spawns no LLM subprocess, its substrate is real git plus the real filesystem, so live driving is cheap and there is no concurrency ceiling.
+The campaign ran 18 independent hubs in a single round without trouble.
+
+Runtime is the real cost.
+This belongs behind the `integration` tag and must not be in the default `go test ./...` path.
+Measure wall-clock before the matrix grows large;
+parallelising per-hub is straightforward since every cell owns its own hub.
+
+**Known limitation, stated up front rather than discovered later:** Windows path behaviour (junctions vs symlinks, case-insensitive compare in `lyxcwd.samePath`) cannot be exercised on a Linux host.
+The campaign carried this as a permanent known gap across all six rounds rather than pretending to have verified it, and this harness inherits that gap honestly — see the Someday `fabric: Windows path behaviour is unverified` item and [fabric-windows-verification.md](fabric-windows-verification.md).
 
 ## Slice 14 — accumulate the result envelope from mutations, not from control flow
 
@@ -372,7 +384,7 @@ Confined to `internal/fabricengine` and `internal/fabriccli`.
 It changes JSON output shape, so anything parsing fabric's output is affected — enumerate the consumers before starting;
 within loomyard they are known, and `internal/boardengine` is the one to check first since it routes through `CommitWeftAt`/`PushWeftAt`.
 
-Sequenced **after** slice 13, not before: the gate's own refusal reporting (its step 5) lands in each verb's existing error shape first, and this slice is what generalises that into one accumulate-as-you-mutate envelope.
+Sequenced **after** slice 12, not before: the gate's own refusal reporting (its step 5) lands in each verb's existing error shape first, and this slice is what generalises that into one accumulate-as-you-mutate envelope.
 Deferring the envelope is a deliberate, bounded churn cost, paid so the safety half of the gate lands a slice earlier.
 
 ## Slice 15 — corrindex two-phase read-modify-write races an unlocked RebuildIndex
@@ -425,9 +437,9 @@ R6 recorded it as incidental observation O1, outside that round's two-part assig
 
 - [fabric-unified-view.md](fabric-unified-view.md) — the slice 1-10 campaign these four slices follow;
   slice 11 was the crucible hardening pass itself.
-- [fabric-windows-verification.md](fabric-windows-verification.md) — the Someday platform gap slice 12 inherits honestly rather than closing.
+- [fabric-windows-verification.md](fabric-windows-verification.md) — the Someday platform gap slice 13 inherits honestly rather than closing.
 - [gitexec-error-shape.md](gitexec-error-shape.md) — the fifth class the campaign surfaced, scoped out of these slices because its blast radius is every module that touches git, not fabric.
-- [CONSTRAINTS.md](../../CONSTRAINTS.md) — where slice 13's invariant goes;
+- [CONSTRAINTS.md](../../CONSTRAINTS.md) — where slice 12's invariant goes;
   its [Fabric Git Invariant](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft) and [Test Tier Purity Invariant](../../CONSTRAINTS.md#test-tier-purity-invariant) are the two these slices sit next to.
 - `internal/fabricengine` package documentation — where the durable rationale folds when this file is deleted.
 - The campaign's own artifacts — `.scratch/fabric-review-HANDOFF.md` and the per-round orchestrator verifications (`fabric-review-r3-orchestrator-verification.md`, `-r4-`, `-r5-`, and `fabric-review-opus-medium-r4.md`'s 28-site destructive enumeration) — lived in the `fabric-v2-crucible` worktree and were never merged.
