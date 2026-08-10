@@ -53,6 +53,7 @@ one file in `internal/fabricengine`, not a sub-package.
 - Closing three gaps found during exploration that the manifest does not name (see Technical context): `removeJunctionRecords` containment, `teardownHub` ownership, and `removeWarpWorktreeDir`'s un-regated `os.RemoveAll` fallback.
 - R6's validation-asymmetry class, folded in here rather than fixed twice: the gate validates slug-derived targets via `validateWorktreeSlug`, so `Prune`'s and `Reconcile`'s **derived** slugs are validated for the first time.
 - Moving the `var RemoveAll = os.RemoveAll` test seam from `clone.go:32` into `destroy.go` — the one file allowed to destroy should own the function that destroys.
+- Moving `Fabric.ResetHard` from `warpforward.go:33-35` into `destroy.go`, where it becomes the gated executor; `pull.go`'s three sites call it instead of reaching for the raw `f.warp` handle.
 - A typed `*destructiveRefusal` error carrying which of the four checks refused, wrapped by each verb into its existing error shape, and distinguishable via `errors.As` on best-effort paths.
 - A bypass guard test at `cmd/lyx/destructiveguard_test.go`.
 - A short imperative `CONSTRAINTS.md` invariant, in the same commit.
@@ -76,11 +77,18 @@ one file in `internal/fabricengine`, not a sub-package.
 
 - Decision: typed request structs plus one executor per primitive, all in `internal/fabricengine/destroy.go`.
   **Two request shapes**, because destruction has two target shapes:
-  - `pathRequest{what, container, target, slug, ownership, dirtiness, force}` — for `os.RemoveAll`/`os.Remove`, `git worktree remove`, `ResetHard`, and link removal.
-    Executors: `removeDir`, `removeGitWorktree`, `resetHardTo`, `removeLink`.
-  - `branchRequest{what, repoDir, branch, ownership, dirtiness, force}` — for `git branch -D`.
+  - `pathRequest{l *lyxcwd.Location, junctionNames []string, what, container, target, slug, ownership, dirtiness, force}` — for `os.RemoveAll`/`os.Remove`, `git worktree remove`, `ResetHard`, link removal, and link re-point.
+    Executors: `removeDir`, `removeGitWorktree`, `resetHardTo`, `removeLink`, `repointLink`.
+  - `branchRequest{l *lyxcwd.Location, what, repoDir, branch, ownership, dirtiness, force}` — for `git branch -D`.
     Executor: `deleteBranch`.
     It carries **no `container` or `target` field at all**, which is how containment is declared structurally N/A for a ref rather than by a per-call-site `""`.
+
+  **Both shapes carry `l *lyxcwd.Location`, and the path shape also carries `junctionNames []string`, because the gate resolves its own predicates and those predicates need inputs.**
+  `primaryWeftBranch(l *lyxcwd.Location)` (`cleanup.go`) needs the Location;
+  `validateWorktreeSlug(slug string, junctionNames []string)` (`slug.go:30`) needs the repo's configured pathspec name-set, which reaches the verbs today as `t.cfg.Dirs()`;
+  `WeftRepoRoot(l)` and the geometry helpers need it too.
+  Leaving these off the struct would mean the gate either cannot resolve its own checks or reaches around the request for them, and "the gate resolves ownership itself" is the property the closed enum exists to guarantee.
+  `l` is passed, never derived — the Cwd Resolution Invariant owns resolution, and the gate is a consumer.
 
   One shared check pipeline runs the four checks in the same fixed order over both shapes;
   each executor calls it first, then performs the act.
@@ -126,7 +134,7 @@ one file in `internal/fabricengine`, not a sub-package.
   R4's `clone --reset` defect *was* a teardown path.
 - **Which ownership kind `teardownHub` declares, and why neither obvious answer is right.**
   This must be stated rather than left to the implementer, because both available answers fail:
-  - **`ownedFabricHub` is wrong on the merits, not merely inconvenient.** `looksLikeHub` (`clone.go:579`) requires a `_board` entry or at least one weft sibling. `teardownHub` has **14 call sites** in `clone.go`, the earliest at `:243`/`:245` — immediately after the warp clone attempt, when neither exists yet. The rollback would be *refused* at nearly every early failure, and `clone.go:606` would leave "residual hub left at %s; remove it manually". A gate that blocks cleanup of a half-built hub is worse than the gap it closes.
+  - **`ownedFabricHub` is wrong on the merits, not merely inconvenient.** `looksLikeHub` (`clone.go:579`) requires a `_board` entry or at least one weft sibling. `teardownHub` has **13 call sites** in `clone.go`, the earliest at `:243`/`:245` — immediately after the warp clone attempt, when neither exists yet. The rollback would be *refused* at nearly every early failure, and `clone.go:606` would leave "residual hub left at %s; remove it manually". A gate that blocks cleanup of a half-built hub is worse than the gap it closes.
   - **A bare `ownedInTransaction` trust-me closes the gap in name only** — "teardown is special" is precisely the reasoning that produced the `clone --reset` defect.
 
   The resolution is **containment plus a structurally guaranteed transaction identity**, declared as `ownedFreshlyCreatedPath(reason)`:
@@ -136,7 +144,7 @@ one file in `internal/fabricengine`, not a sub-package.
   **Why that is stronger than `looksLikeHub`, not weaker.** `looksLikeHub` answers "does this *look like* a hub" — a pattern match, and pattern-matching a name fabric *derives* rather than one the operator types is exactly what R4's `clone --reset` defect exploited. The transaction check answers "did this invocation create this exact path", which is strictly stronger. `--reset` genuinely cannot use it, because it acts on a directory that pre-existed the invocation — which is why `looksLikeHub` is correct there and wrong here. The two siblings *should* differ; what was missing was the reason, and containment, which `teardownHub` lacks entirely today.
 - Rejected: bypassing the gate with a guard allowlist (re-opens the "teardown is special" reasoning that produced the `clone --reset` defect);
   passing `force: true` (makes rollback indistinguishable from an operator's `--force`, which step 4 of the gate explicitly forbids conflating);
-  `ownedFabricHub` for `teardownHub` (refuses at 14 early-failure sites, see above).
+  `ownedFabricHub` for `teardownHub` (refuses at 13 early-failure sites, see above).
 
 ### dirtiness-probe-stays-fabric-local
 
@@ -204,6 +212,17 @@ one file in `internal/fabricengine`, not a sub-package.
   routing `branch -D` through `ownedInTransaction` at all four sites (the escape hatch, and the cheap pick under time pressure);
   leaving `branch -D` outside the gate (it is one of the manifest's five pinned primitives).
 
+### link-repoint-is-gated-too
+
+- Decision: the two junction **re-point** sites — `junction.go:161` (`seedLyxJunction`) and `junction.go:311` (`wireBoardLink`) — go through the gate via a distinct `repointLink` executor, not through `removeLink`.
+  `repointLink` enforces containment and ownership, declares dirtiness N/A, and accepts no `force` at all.
+- Rationale: both remove a link and immediately `fslink.CreateDirLink` it back, so they are repair, not teardown — but what they remove is decided by "the path is a link and it dangles or resolves elsewhere", and **R1's defect was `reconcile` destroying a tracked symlink in the warp worktree**, which is exactly this family of judgement.
+  Both sites already guard informally (`fslink.IsLink`, `fslink.PointsTo` target comparison);
+  routing them through the gate makes that structural instead of per-site, which is the whole slice.
+  A separate executor rather than `removeLink` because the checks differ: a re-point has no `force` semantics and no dirtiness question, and folding it into the teardown executor would mean a teardown call could accidentally reach a repair-shaped check set.
+- Rejected: allowlisting both as "repair, not destruction" (that judgement is precisely what R1's defect got wrong);
+  routing them through `removeLink` (gives repair a `force` parameter it must never have).
+
 ### link-removal-is-gated-exclude-rewrite-is-not
 
 - Decision: slug-derived `fslink.Remove` calls go through the gate (containment + ownership).
@@ -261,7 +280,11 @@ one file in `internal/fabricengine`, not a sub-package.
   `RemoveAll(` is a superset that also catches `os.RemoveAll(`, making the latter redundant.
   The seam declaration itself carries no trailing paren and so is not self-flagged.
   **Move the seam into `destroy.go`** in the same commit: it is now a test seam for the gate's own removal primitive, it has no user outside `internal/fabricengine` (verified — `clone.go:32` is the only reference in the tree), and leaving it in `clone.go` means the one file allowed to destroy does not own the function that destroys.
-  The same class was checked for the other tokens: `.ResetHard(` does catch `f.warp.ResetHard(` at `pull.go:233,267,285`, since those are method calls rather than a package alias.
+- **The `ResetHard` token must be `warp.ResetHard(` / `weft.ResetHard(`, not `.ResetHard(`.**
+  Re-running the enumeration exposed the mirror image of the seam problem: `.ResetHard(` is too *broad*, not too narrow.
+  Once `Fabric.ResetHard` becomes the gated executor and `pull.go`'s three sites call `f.ResetHard(...)`, `.ResetHard(` flags the **correctly migrated** callers.
+  This exact trap is already documented in the file being cloned — `rawgitmutation_test.go:8-11` explains that it bans construction/call tokens rather than per-verb method names precisely because "a verb-name ban would both flag the correctly-migrated consumer code (which legitimately calls `.CheckoutDetached(`/`.ResetHard(` …) and miss the raw `gitexec.RunGit(` bypass".
+  Banning the raw handles instead — `warp.ResetHard(`, `weft.ResetHard(` — targets the thing that is actually forbidden: reaching past the gate to the `gitrepo.Repo` field. It needs no leading dot, so it matches under any receiver name.
 - **State the guard's blind spot in the `CONSTRAINTS.md` entry**, in one sentence, per repo convention.
   `"worktree", "remove"` is a raw substring with specific spacing: `[]string{"worktree","remove"}` evades it, as does a dynamically built arg slice.
   The gitrepo Client Boundary Invariant carries a "Known guard blind spot" paragraph and the Fabric Vocabulary Invariant a "what the machine check does and does not reach" section written "stated honestly, not implying full coverage".
@@ -312,20 +335,56 @@ This task is unblocked and goes first.
 
 ### The five primitives and their current sites
 
-| primitive | sites in `internal/fabricengine` |
-|---|---|
-| `os.RemoveAll` / `os.Remove` | `remove.go:197`, `prune.go:276`, `clone.go:569,605` (via the `RemoveAll` seam), `launchers.go:165,170`, `junction.go:259`, `index.go:315`, `hook.go:160`, `ancestors.go:52`, `warpprobe.go:57`, `gitexclude.go:108,112,116,120` |
-| `git worktree remove [--force]` | `remove.go:177-185`, `prune.go:258-261`, `add.go:265`, `weftwiring.go:175-180` |
-| `git branch -D` | `cleanup.go:273`, `checkout.go:193`, `add.go:277`, `weftwiring.go:192` |
-| `ResetHard` | `pull.go:233,267,285` (all via `f.warp.ResetHard`, thin delegation through `warpforward.go:33`) |
-| link removal | `weftwiring.go:156` (`fslink.Remove` via `removeJunctionRecords`), `portals.go:57`, `junction.go:259` |
+**Enumeration method, stated so it can be re-run and audited.**
+Per-token `grep -rn '<token>' --include='*.go' internal/fabricengine | grep -v _test`, one pass per token, over the **final** token set below — not over the manifest's prose list.
+This matters: the first pass used `os.RemoveAll(` and `.ResetHard(` and produced a wrong inventory both ways (it missed the bare-seam calls, and it mislabelled `junction.go:259`).
+The list below is the re-run result.
+**Every site has a disposition. There are no unlisted sites for these tokens**, which is the property the In-scope promise ("every destructive call site in `internal/fabricengine`") depends on.
 
-Not all of these are gate candidates.
-`gitexclude.go`'s four are temp-file cleanup inside `writeFileAtomically` under a flock;
-`warpprobe.go:57` removes a probe directory the same function created;
-`ancestors.go:52` is `pruneEmptyAncestors`, which removes only directories that are already empty and halts on the first non-empty one;
-`index.go:315` removes fabric's own derived correspondence-index cache file.
-These are allowlist candidates, and each allowlist entry carries its reason.
+`RemoveAll(` — 6 sites:
+
+| site | disposition |
+|---|---|
+| `remove.go:197` | **gate** — `removeDir`, the re-gated fallback |
+| `prune.go:276` | **gate** — `removeDir` |
+| `clone.go:569` (`resetHub`) | **gate** — `removeDir`, `ownedFabricHub` |
+| `clone.go:605` (`teardownHub`) | **gate** — `removeDir`, `ownedFreshlyCreatedPath` |
+| `warpprobe.go:57` | **allowlist** — removes a probe directory the same function created |
+| `destroy.go` (after the seam moves) | **allowlist** — the gate itself |
+
+`os.Remove(` — 10 sites:
+
+| site | disposition |
+|---|---|
+| `launchers.go:165,170` | **gate** — `removeDir` |
+| `gitexclude.go:108,112,116,120` | **allowlist** — temp-file cleanup inside `writeFileAtomically`, under the flock |
+| `ancestors.go:52` | **allowlist** — `pruneEmptyAncestors`; `os.Remove` on a directory is refused by the OS when non-empty, and the loop halts on the first refusal |
+| `junction.go:259` | **allowlist** — same class: removes the directory the loop immediately above just emptied by `os.Rename`, and cannot remove it if anything remains. **Not a link removal** — the first pass mislabelled it as one |
+| `index.go:315` | **allowlist** — fabric's own derived correspondence-index cache, deliberately deleted-then-rebuilt so a failed refresh misses honestly rather than answering cross-branch |
+| `hook.go:160` | **allowlist** — removes the user-hook backup this same function wrote ten lines earlier, on its own rollback path after restoring the original |
+
+`"worktree", "remove"` — 4 sites: `remove.go:177-185`, `prune.go:258-261`, `add.go:265`, `weftwiring.go:175-180` — **all gate** (`removeGitWorktree`).
+
+`"branch", "-D"` — 4 sites: `cleanup.go:273`, `checkout.go:193`, `add.go:277`, `weftwiring.go:192` — **all gate** (`deleteBranch`).
+
+`warp.ResetHard(` / `weft.ResetHard(` — 4 sites: `pull.go:233,267,285` and `warpforward.go:34`.
+`warpforward.go:34` is `Fabric.ResetHard`, the exported thin delegation.
+**That method moves into `destroy.go` and becomes the gated executor**, and `pull.go`'s three sites call it (`f.ResetHard(...)`) instead of reaching for the raw handle.
+One gated entry, three callers, no allowlist entry needed.
+
+`fslink.Remove(` — 6 sites:
+
+| site | disposition |
+|---|---|
+| `weftwiring.go:156` (`removeJunctionRecords`) | **gate** — `removeLink`; the live containment gap |
+| `portals.go:57` (`removePortal`) | **gate** — `removeLink` |
+| `unwire.go:143` (board-junction unwire) | **gate** — `removeLink`; its existing "is it a link" refusal becomes the ownership kind |
+| `junction.go:461` (unwire sweep) | **gate** — `removeLink`; its existing `linkResolved != targetResolved` refusal becomes the ownership kind |
+| `junction.go:161` (`seedLyxJunction` re-point) | **gate** — `repointLink`, see `link-repoint-is-gated-too` |
+| `junction.go:311` (`wireBoardLink` re-point) | **gate** — `repointLink` |
+
+The first pass listed only two of these six and named a non-`fslink` site among them.
+`unwire.go` was missed entirely as a file.
 
 ### Ingredients that already exist — consolidate, do not invent
 
@@ -348,7 +407,7 @@ These are allowlist candidates, and each allowlist entry carries its reason.
 ### Three gaps found during exploration that the manifest does not name
 
 1. **`removeJunctionRecords` has no containment check** (`weftwiring.go:153-161`). Its siblings `removePortal` (`portals.go:54`) and `removeLaunchers` (`launchers.go:159`) both call `refuseUncontainedPath`; this one calls `fslink.Remove` straight on a slug-derived `WarpJunction.Link`. Reached from `Remove` and `rollbackAdd`.
-2. **`teardownHub` has no containment check and no ownership check** (`clone.go:604`). It calls `RemoveAll(hubPath)` unconditionally on any clone-or-worktree-add failure, from **14 call sites** in `clone.go` (`:243,245,268,279,288,308,325,335,346,349,361,371,379`). The `--reset` path 40 lines above (`clone.go:563`) calls `looksLikeHub` first — the same directory, two different rules. The resolution is *not* to give `teardownHub` the same rule: see the `rollback-paths-go-through-the-gate` decision for why `looksLikeHub` would refuse at nearly every early failure, and what replaces it.
+2. **`teardownHub` has no containment check and no ownership check** (`clone.go:604`). It calls `RemoveAll(hubPath)` unconditionally on any clone-or-worktree-add failure, from **13 call sites** in `clone.go` (`:243,245,268,279,288,308,325,335,346,349,361,371,379`). The `--reset` path 40 lines above (`clone.go:563`) calls `looksLikeHub` first — the same directory, two different rules. The resolution is *not* to give `teardownHub` the same rule: see the `rollback-paths-go-through-the-gate` decision for why `looksLikeHub` would refuse at nearly every early failure, and what replaces it.
 3. **`removeWarpWorktreeDir`'s fallback is not re-gated** (`remove.go:191-199`). It fires on *any* nonzero exit from `git worktree remove` for a registered linked worktree, and `git worktree remove` without `--force` refuses on untracked files. See the `remove-keeps-untracked-inclusive-and-the-fallback-is-regated` decision.
 
 ### The eight probe sites to collapse
@@ -364,10 +423,19 @@ Four tracked-only, four untracked-inclusive — which is why scope is a declared
 `cmd/lyx/rawgitmutation_test.go` is the model to clone.
 Its shape: `rawGitMutationScanPackages` (module-relative subtrees), `rawGitMutationBannedTokens` (raw substrings), `rawGitMutationAllowlist` (module-relative slash-separated path → reason), `rawGitMutationMinScannedFiles` (vacuous-scan floor), `exec.LookPath("go")` skip, `go env GOMOD` module-root resolution, `filepath.WalkDir` skipping `_test.go`, `filepath.ToSlash` before comparison (Windows is the primary dev OS).
 
-Banned token set: `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `.ResetHard(`, `fslink.Remove(`.
-`RemoveAll(` rather than `os.RemoveAll(` — see the `bypass-guard-shape-and-home` decision;
-the bare-seam call sites at `clone.go:569,605` are invisible to the `os.`-prefixed form, and one of them is `teardownHub`.
-Allowlist: `destroy.go` (the gate itself), `gitexclude.go`, `warpprobe.go`, `ancestors.go`, `index.go` — each with its reason.
+Banned token set: `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`.
+
+Two tokens were corrected after re-running the enumeration, in opposite directions:
+`RemoveAll(` rather than `os.RemoveAll(`, because the latter is too narrow and misses the bare-seam calls at `clone.go:569,605`, one of them `teardownHub`;
+`warp.ResetHard(`/`weft.ResetHard(` rather than `.ResetHard(`, because the latter is too broad and would flag `pull.go`'s correctly migrated `f.ResetHard(...)` calls.
+
+Allowlist, complete — every file the final token set matches that is not converted to a gate call:
+`destroy.go` (the gate itself), `gitexclude.go`, `warpprobe.go`, `ancestors.go`, `index.go`, `junction.go` (line 259 only — the emptied-directory removal; the file's five other matches all convert to gate calls), `hook.go` (line 160 only).
+Each entry carries its reason, per the table in "The five primitives and their current sites".
+
+Note the per-file granularity limitation this creates: `junction.go` and `hook.go` are allowlisted as whole files, so a *new* raw `os.Remove(` added to either would not be caught.
+`rawgitmutation_test.go`'s allowlist has the same shape and the same limitation.
+State it in the invariant's blind-spot sentence rather than build per-line allowlisting, which is issue #135 territory.
 
 Known blind spot, to be stated in the invariant: raw substring matching means `[]string{"worktree","remove"}` (no space) and any dynamically built arg slice evade the check.
 
@@ -402,7 +470,7 @@ From `CONSTRAINTS.md`:
 
 New invariant this slice adds (short, imperative, rules only):
 
-- **Fabric Destruction Chokepoint Invariant** — pinning: the one file that may destroy; the banned token set; the four checks and their fixed order; that `--force` answers dirtiness and **never containment or ownership**; that a gate refusal is never discarded on a best-effort path; that every allowlist entry carries a reason; a one-sentence known-blind-spot note (raw substring matching, so alternative arg-slice spacing or a dynamically built slice evades it); and the enforcing test name.
+- **Fabric Destruction Chokepoint Invariant** — pinning: the one file that may destroy; the banned token set; the four checks and their fixed order; that `--force` answers dirtiness and **never containment or ownership**; that a gate refusal is never discarded on a best-effort path; that every allowlist entry carries a reason; a one-sentence known-blind-spot note (raw substring matching, so alternative arg-slice spacing or a dynamically built slice evades it, and the allowlist is per-file, so a new raw call added to an allowlisted file is not caught); and the enforcing test name.
 
 Discovered during discussion:
 
@@ -412,6 +480,18 @@ Discovered during discussion:
 ## Testing
 
 ### Hermetic tier (untagged, `package fabricengine`)
+
+**What stays hermetic once the request structs carry `l *lyxcwd.Location`.**
+The Test Tier Purity Invariant bans `gitexec.RunGit`, `exec.Command*` and `lyxtest.Copy*` — it does not ban filesystem access.
+So the split is by predicate, not by struct field:
+
+- **Hermetic** — `refuseUncontainedPath` (pure), `validateWorktreeSlug` (pure: string + `[]string`), `looksLikeHub` (`os.Stat`/`os.ReadDir` only), force semantics, `dirtinessNA` reason enforcement, and refusal typing.
+  Check *ordering* is provable hermetically too: to show containment refuses before ownership, submit a request failing both and assert the reported `Check`;
+  to show ownership refuses before dirtiness, use `ownedFabricHub` against a temp directory, which needs no git.
+- **Integration only** — `isRegisteredLinkedWorktreeIn` (calls `List` → `gitexec.RunGit`), `primaryWeftBranch` (`readBranch`), and every dirtiness probe including `dirtyCheckedOutBranch`.
+
+Passing `l` therefore costs no hermetic coverage;
+a `*lyxcwd.Location` can be constructed in a temp directory without spawning anything.
 
 TDD candidates — these are the gate's own logic and should be written first:
 
@@ -439,7 +519,7 @@ Ownership and dirtiness need real git:
   These must hold at all four `branch -D` sites, not only in `Cleanup`, which is the point of moving the logic into the gate.
 - **The three newly-closed gaps**, one test each:
   - `removeJunctionRecords` refuses a junction link outside the worktree it belongs to.
-  - `teardownHub` refuses a `hubPath` outside the operator-named parent, and **succeeds** on a half-built hub with no `_board` and no weft sibling — the case `ownedFabricHub` would have wrongly refused at 14 call sites.
+  - `teardownHub` refuses a `hubPath` outside the operator-named parent, and **succeeds** on a half-built hub with no `_board` and no weft sibling — the case `ownedFabricHub` would have wrongly refused at 13 call sites.
   - `removeWarpWorktreeDir`'s fallback does not delete a registered linked worktree carrying untracked files when git refused for that reason.
 
 ### Guard test
@@ -484,9 +564,18 @@ Resolved against the orchestrator's review of this document (`_mill/discussion-r
 
 - **Q:** `git branch -D` is a gated primitive, but the ownership enum was four path-shaped kinds and a ref is not a path — so the only kind that would compile is the trust-me escape hatch. **A:** A second request shape (`branchRequest`, carrying no path fields, so containment is N/A by type) plus a ref-shaped ownership kind and a `dirtyCheckedOutBranch` member. `primaryWeftBranch` and the checked-out check move **into** the gate, so they apply at all four `branch -D` sites rather than in `Cleanup` alone.
 - **Q:** Does the proposed token set see the `RemoveAll` seam? **A:** No — `clone.go:569,605` call `RemoveAll(hubPath)` bare, and `os.RemoveAll(` is not a substring of that. The two sites the slice most wants policed were the two the guard was blind to, one of them `teardownHub`. Token is now `RemoveAll(`, and the seam moves into `destroy.go` (verified to have no other reference in the tree).
-- **Q:** Which ownership kind does `teardownHub` declare? **A:** Neither obvious answer works. `ownedFabricHub` would refuse at 14 early-failure sites, since `looksLikeHub` needs a `_board` or weft sibling that does not exist yet — leaving "residual hub, remove it manually" where teardown works today. A bare trust-me closes the gap in name only. Resolved as containment plus a *structurally guaranteed* transaction identity: both clone forms prove non-existence (`clone.go:163`, `:211`) before `os.MkdirAll` (`:219`). That is strictly stronger than `looksLikeHub`, which pattern-matches a derived name — exactly what R4's `clone --reset` defect exploited.
+- **Q:** Which ownership kind does `teardownHub` declare? **A:** Neither obvious answer works. `ownedFabricHub` would refuse at 13 early-failure sites, since `looksLikeHub` needs a `_board` or weft sibling that does not exist yet — leaving "residual hub, remove it manually" where teardown works today. A bare trust-me closes the gap in name only. Resolved as containment plus a *structurally guaranteed* transaction identity: both clone forms prove non-existence (`clone.go:163`, `:211`) before `os.MkdirAll` (`:219`). That is strictly stronger than `looksLikeHub`, which pattern-matches a derived name — exactly what R4's `clone --reset` defect exploited.
 - **Q:** Does the Out-section's "no behaviour changes" contradict the In-section's three gap closures? **A:** Yes, as written. Reworded to "other than the three named gaps"; the load-bearing part — every site keeps its dirtiness scope, and a test needing an edit is surfaced not edited — is kept.
 - **Q:** Does `--force` satisfy containment? **A:** No, and it needed saying. `remove ..` is a containment failure, so a force-satisfies-containment reading returns the hub-destroying defect behind a flag. The rule is now: force answers dirtiness only, with a test per check.
 - **Q:** Should the guard's substring brittleness be stated? **A:** Yes — repo convention. The gitrepo Client Boundary Invariant and the Fabric Vocabulary Invariant both carry explicit blind-spot notes. One imperative sentence in the new entry.
 - **Q:** `checkout.go:193` and `remove.go`'s `worktree prune` deliberately discard errors — what happens when they become gate executors? **A:** One policy: an operational failure stays discardable on a documented best-effort path; a `*destructiveRefusal` never is. Distinguishable via `errors.As`, so it is expressible rather than aspirational.
 - **Q:** The manifest's slice-12 open questions say the probe "is deliberately tracked-only" and the chokepoint should inherit that. **A:** That sentence over-generalised `prune.go`'s comment and is contradicted by the verified 4/4 split. Corrected in the same commit rather than merely diverged from, since a reviewer of this slice reads that section.
+
+Resolved in discussion review round 1 (2 blocking, 2 nits — all verified against the tree before fixing):
+
+- **Q:** The request structs list no `Location` and no junction-name set, yet the gate must resolve `primaryWeftBranch(l)` and `validateWorktreeSlug(slug, junctionNames)` itself. **A:** Both shapes carry `l *lyxcwd.Location`; the path shape also carries `junctionNames []string` (today's `t.cfg.Dirs()`). `l` is passed, never derived. This costs no hermetic coverage — the purity split is by predicate, not by field, and `looksLikeHub`/`refuseUncontainedPath`/`validateWorktreeSlug` are all git-free.
+- **Q:** Is the link-removal site list reliable? **A:** No — it was wrong in both directions. `junction.go:259` is `os.Remove(link)`, not `fslink.Remove`, and four real `fslink.Remove(` sites were missing, including the whole of `unwire.go`. Root cause: the first pass enumerated from the manifest's prose rather than by grepping the actual token set. The enumeration method is now stated in Technical context, was re-run over the final token set, and every site carries a disposition.
+- **Q:** Do any banned-token matches lack a disposition? **A:** Yes — `warpforward.go:34`, `hook.go:160` and `junction.go:259` would have landed the one-commit slice with a red guard. All three now have one: `Fabric.ResetHard` moves into `destroy.go` as the gated executor; the other two are allowlisted with reasons.
+- **Q:** Is `.ResetHard(` the right token? **A:** No, and this is the mirror of the seam problem — it is too broad, not too narrow. Once `pull.go` calls the gated `f.ResetHard(...)`, `.ResetHard(` flags the correctly migrated code. `rawgitmutation_test.go:8-11` documents this exact trap in the file being cloned. Token is now `warp.ResetHard(` / `weft.ResetHard(`, which bans reaching past the gate to the raw handle.
+- **Q:** Are the two junction re-point sites (`junction.go:161`, `:311`) destruction? **A:** They remove a link and recreate it in the same breath, so they are repair — but the judgement "this link is fabric's and it is broken" is exactly what R1's defect got wrong when `reconcile` destroyed a tracked symlink. Gated via a distinct `repointLink` executor with no `force` parameter.
+- **Q:** `teardownHub` call-site count? **A:** 13, not 14. `grep -c "teardownHub(hubPath"` returns 14 because one match is the function declaration at `clone.go:604`. Corrected in all five places.
