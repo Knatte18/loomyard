@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-path-callsites
+phase: approved-clone-callsites
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-dirtiness-probe  '2026-08-10T17:53:36Z'
 approved-the-gate  '2026-08-10T18:06:18Z'
 self-resolved-verify-logic  '2026-08-10T18:36:09Z'
 approved-path-callsites  '2026-08-10T18:40:06Z'
+approved-clone-callsites  '2026-08-10T18:44:45Z'
 ```
 
 ## Batches
@@ -58,9 +59,10 @@ batches:
     commit_sha: 4f5b147fa36c28e207494ca2801c0180a2209902
     verify_baseline_failures: []
   - name: clone-callsites
-    state: running
+    state: approved
     implementer_session: a6c1879f-ec2c-4f1b-b7b0-feeaab4a533b
     start_sha: e3db011360e6a786f1c0ab6caab31bc11ac4cd3f
+    commit_sha: e35b7fd44b8d1b0d78eb2b88d6946db523466452
     verify_baseline_failures: []
   - name: branch-callsites
     state: pending
