@@ -78,7 +78,8 @@ one file in `internal/fabricengine`, not a sub-package.
 - Decision: typed request structs plus one executor per primitive, all in `internal/fabricengine/destroy.go`.
   **Two request shapes**, because destruction has two target shapes:
   - `pathRequest{what, container, target, slug *slugSpec, ownership, dirtiness, force}` — for `os.RemoveAll`/`os.Remove`, `git worktree remove`, `ResetHard`, link removal, and link re-point.
-    Executors: `removeDir`, `removeGitWorktree`, `resetHardTo`, `removeLink`, `repointLink`.
+    Executors: `removePath`, `removeGitWorktree`, `resetHardTo`, `removeLink`, `repointLink`.
+    `removePath`, not `removeDir`: `removeLaunchers` deletes the `ide` and `fabric-checkout` **script files** (`launchers.go:165`) as well as their directory, and `os.Remove(` is a banned token, so those calls must route through this executor too.
   - `branchRequest{what, repoDir, branch, ownership, dirtiness, force}` — for `git branch -D`.
     Executor: `deleteBranch`.
     It carries **no `container` or `target` field at all**, which is how containment is declared structurally N/A for a ref rather than by a per-call-site `""`.
@@ -87,7 +88,7 @@ one file in `internal/fabricengine`, not a sub-package.
   This is the rule that keeps "every field required ⇒ an omitted check is a compile error" true, and it is what the first draft got wrong by hoisting `l *lyxcwd.Location` to a top-level field.
 
   - Ownership kinds are parameterised by exactly what they need, and nothing else: `ownedFabricHub` and `ownedFreshlyCreatedPath(reason)` take no repo context at all;
-    `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)` and `ownedHubGeometryChild(container)` take a path;
+    `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)` and `ownedUnderGeometryRoot(root)` take a path;
     `ownedManagedWeftBranch(l *lyxcwd.Location)` takes the Location, because `primaryWeftBranch(l)` is the one predicate that genuinely needs it.
   - Slug validation travels as `slug *slugSpec{name string, junctionNames []string}` — nil when the target is not slug-derived, and otherwise carrying both halves `validateWorktreeSlug(slug, junctionNames)` (`slug.go:30`) requires. `junctionNames` reaches the verbs today as `t.cfg.Dirs()`.
 
@@ -147,15 +148,26 @@ one file in `internal/fabricengine`, not a sub-package.
 
   **The gate creates the path, so it can verify the claim instead of believing it.**
   An earlier draft had this kind take a free-text `reason` and no repo context, which left the gate executing nothing for it — the `ownedInTransaction` trust-me this section rejects, wearing a better name.
-  Instead `destroy.go` exposes the *creation* side too: `createExclusiveDir(path) (createdToken, error)` performs the stat-then-`MkdirAll` sequence itself and returns an unexported `createdToken`.
+  Instead `destroy.go` exposes the *creation* side too: `createExclusiveDir(path) (createdToken, error)` creates the directory **exclusively** — `os.Mkdir` on the final component, which fails with `EEXIST` rather than succeeding on an existing directory the way `os.MkdirAll` does — and returns an unexported `createdToken`.
   `ownedFreshlyCreatedPath` accepts only that token.
   Since the type is unexported and the gate is its sole minter, **a site cannot declare this kind for a path the gate did not create** — the claim becomes structural rather than asserted, and a new declaration is impossible to write rather than merely discouraged.
-  `CloneHub` calls `createExclusiveDir(hubPath)` in place of its current `os.Stat` guard plus `os.MkdirAll` (`clone.go:163`, `:211`, `:219`) and holds the token for its 13 teardown sites.
   This is the same "the gate executes rather than approves" principle applied one step earlier: the gate now owns the creation whose destruction it will later authorise.
+
+  **Exactly one call, at `clone.go:220`, replacing `os.MkdirAll(hubPath, 0o755)` — and the two existing offline stat guards stay where they are.**
+  This placement has to be stated, because the three statements are *not* adjacent and both alternative readings change behaviour.
+  `CloneHub`'s stat guards sit at `clone.go:163` (two-argument) and `clone.go:212` (one-argument), and `probeWeftBinding` — the network call — runs between the first of them and the creation, an ordering `clone.go:208-211` documents as deliberate.
+  So:
+  - Creating **early**, at either stat guard, would leak a residual hub whenever the probe then fails, since that path returns without teardown.
+  - Creating **late but folding the stat guards in** would defer the offline "hub already exists" refusal until after a network call, breaking the documented offline-before-network ordering.
+  - Creating late and **leaving the guards alone** — the choice here — preserves both existing error messages verbatim, keeps the offline refusal offline, and mints the token at the single point where the directory actually comes into being.
+
+  The guards are UX and ordering;
+  `createExclusiveDir`'s own `EEXIST` is the safety property, and being later it is also strictly more current.
+  That closes a real TOCTOU window present today between the stat at `:163` and the `MkdirAll` at `:220`, in which a concurrent process can create the hub and have `os.MkdirAll` silently accept it.
 
   With that in place the two halves are:
   - *Containment*: `hubPath` resolves strictly below the `cwd` the operator named. `HubPath(parent, name)` is `filepath.Join(parent, name+HubSuffix)` (`junctionnames.go:106-108`) and `DeriveWarpName` splits on `/`, `\` and `:` so no separator survives — a derived `..` becomes the harmless `..-HUB`. Containment therefore holds today; asserting it costs nothing, which is `refuseUncontainedPath`'s own stated rationale (`ancestors.go:17-19`).
-  - *Transaction identity*: `teardownHub` provably removes only a directory this invocation created, and after the change the **gate** is what proves it. Today the guarantee lives in `CloneHub`: both forms `os.Stat(hubPath)` and fail with "hub already exists at %s" — two-argument at `clone.go:163`, one-argument at `clone.go:211` — before `os.MkdirAll(hubPath, 0o755)` at `clone.go:219`, with no intervening return that skips the guard. `createExclusiveDir` absorbs exactly that sequence, so the property is preserved and moves from "a structural guarantee of the surrounding function" to "a token the gate minted".
+  - *Transaction identity*: `teardownHub` provably removes only a directory this invocation created, and after the change the **gate** is what proves it. Today the guarantee is spread across `CloneHub`: both forms `os.Stat(hubPath)` and fail with "hub already exists at %s" — two-argument at `clone.go:163`, one-argument at `clone.go:212` — and `os.MkdirAll(hubPath, 0o755)` follows at `clone.go:220`. `createExclusiveDir` takes over the creation only, so the property moves from "a structural guarantee spread across the surrounding function" to "a token the gate minted", and it strengthens on the way (see the placement note above).
 
   **Why that is stronger than `looksLikeHub`, not weaker.** `looksLikeHub` answers "does this *look like* a hub" — a pattern match, and pattern-matching a name fabric *derives* rather than one the operator types is exactly what R4's `clone --reset` defect exploited. The transaction check answers "did this invocation create this exact path", which is strictly stronger. `--reset` genuinely cannot use it, because it acts on a directory that pre-existed the invocation — which is why `looksLikeHub` is correct there and wrong here. The two siblings *should* differ; what was missing was the reason, and containment, which `teardownHub` lacks entirely today.
 - Rejected: bypassing the gate with a guard allowlist (re-opens the "teardown is special" reasoning that produced the `clone --reset` defect);
@@ -192,12 +204,40 @@ one file in `internal/fabricengine`, not a sub-package.
 - Decision: ownership is a closed enum of kinds, each resolved by the gate itself.
 
   Directory-shaped, valid on a `pathRequest`:
-  `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)`, `ownedFabricHub`, `ownedHubGeometryChild(container)`, `ownedFreshlyCreatedPath(tok createdToken)`, `ownedFreshlyCreatedWorktree(tok createdToken)`.
+  `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)`, `ownedFabricHub`, `ownedUnderGeometryRoot(root)`, `ownedFreshlyCreatedPath(tok createdToken)`, `ownedFreshlyCreatedWorktree(tok createdToken)`.
 
   The two token-carrying kinds differ only in what the gate minted — a bare directory (`createExclusiveDir`) versus a git worktree the gate added — and neither token is constructible outside `destroy.go`.
 
   Link-shaped, valid on a `pathRequest`:
-  `ownedWiredJunction(expectedTarget)`, `ownedDriftedWiredJunction` — see below.
+  `ownedWiredJunction(wiredLinks []string, expectedTarget string)`, `ownedDriftedWiredJunction(wiredLinks []string)` — see below.
+
+- **Every kind names the predicate the gate runs.** No kind is a label only;
+  if a kind cannot state what it verifies, it is a trust-me and does not belong in the enum.
+
+  | kind | what the gate verifies |
+  |---|---|
+  | `ownedRegisteredLinkedWorktree(repoDir)` | `isRegisteredLinkedWorktreeIn(repoDir, target)` — `List` membership **excluding** the main entry |
+  | `ownedWarpCheckout(repoDir)` | `List(repoDir)` membership **including** the main entry |
+  | `ownedFabricHub` | `looksLikeHub(target)` — a `_board` entry or at least one weft sibling |
+  | `ownedUnderGeometryRoot(root)` | `root` is a member of the closed set `{portalsDir(l), launchersDir(l)}`, and `target` resolves at or below it |
+  | `ownedFreshlyCreatedPath(tok)` / `ownedFreshlyCreatedWorktree(tok)` | the token was minted by the gate for exactly this `target` |
+  | `ownedWiredJunction(wiredLinks, expectedTarget)` | `target ∈ wiredLinks`, `target` is a link, and it resolves to `expectedTarget` |
+  | `ownedDriftedWiredJunction(wiredLinks)` | `target ∈ wiredLinks` and `target` is a link; the resolved target is deliberately not compared |
+  | `ownedManagedWeftBranch(l)` | `WeftWarpSlug` accepts the branch name, and it is not `primaryWeftBranch(l)` (fail-closed if unreadable) |
+  | `ownedTransactionCreatedBranch` | the branch was created earlier in this same invocation; the checked-out floor check still applies |
+
+- **`ownedUnderGeometryRoot` replaces the earlier `ownedHubGeometryChild`, and the rename is not cosmetic.**
+  "Child" was literally false at its main site: `launchersDir(l)` is `<hub>/_launchers` (`launchers.go:25-27`) while `LauncherDir(l, slug)` is `<hub>/_launchers/<AnchorRel>/<slug>` (`launchers.go:33-35`), so on a subpath-anchored hub the script files `removeLaunchers` deletes sit three or more levels down.
+  The kind admits **deep descendants and non-directory targets**, both deliberately.
+  What it actually adds over containment is the half containment cannot supply: **containment proves the target is below the container, but proves nothing if the caller chose the container.**
+  `ownedUnderGeometryRoot` closes that by requiring `root` to come from a fixed set of fabric's own geometry roots, so a call site cannot satisfy containment by naming a convenient parent.
+
+- **The two link kinds take the wired link-path set explicitly**, because "its location is one fabric wires" is half the rule and a kind cannot evaluate an input it never receives.
+  Without it `ownedDriftedWiredJunction` would degenerate to bare link-ness — the exact R1 rule this decision rejects.
+  Where `wiredLinks` comes from at each site:
+  `WarpJunctions(l, slug, names)`'s `.Link` values for `weftwiring.go:156`, `junction.go:161` and `junction.go:461`;
+  `PortalLink(l, slug)` for `portals.go:57`;
+  `filepath.Join(WorktreePath(l, slug), l.AnchorRel, BoardDirName)` for `unwire.go:143` and `junction.go:311`.
 
   Ref-shaped, valid on a `branchRequest`:
   `ownedManagedWeftBranch(l *lyxcwd.Location)`, `ownedTransactionCreatedBranch(reason)` — see `branch-deletion-is-ref-shaped`.
@@ -400,43 +440,43 @@ Every gated row names its ownership kind, so no site is left for the implementer
 
 `RemoveAll(` — 6 sites:
 
-| site | disposition | ownership kind |
-|---|---|---|
-| `remove.go:197` | **gate** — `removeDir`, the re-gated fallback | `ownedRegisteredLinkedWorktree(warpRepoDir)` |
-| `prune.go:276` | **gate** — `removeDir` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` |
-| `clone.go:569` (`resetHub`) | **gate** — `removeDir` | `ownedFabricHub` |
-| `clone.go:605` (`teardownHub`) | **gate** — `removeDir` | `ownedFreshlyCreatedPath(tok)` |
-| `warpprobe.go:57` | **allowlist** — removes a probe directory the same function created | — |
-| `destroy.go` (after the seam moves) | **allowlist** — the gate itself | — |
+| site | disposition | ownership kind | dirtiness |
+|---|---|---|---|
+| `remove.go:197` | **gate** — `removePath`, the re-gated fallback | `ownedRegisteredLinkedWorktree(warpRepoDir)` | `dirtyScopeAll` |
+| `prune.go:276` | **gate** — `removePath` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` | `dirtyScopeTracked` |
+| `clone.go:569` (`resetHub`) | **gate** — `removePath` | `ownedFabricHub` | `dirtinessNA("--reset is the operator explicitly asking for this hub to be replaced; ownership is the check that matters here")` |
+| `clone.go:605` (`teardownHub`) | **gate** — `removePath` | `ownedFreshlyCreatedPath(tok)` | `dirtinessNA("gate-created within this invocation; nothing pre-existing to lose")` |
+| `warpprobe.go:57` | **allowlist** — removes a probe directory the same function created | — | — |
+| `destroy.go` (after the seam moves) | **allowlist** — the gate itself | — | — |
 
 `os.Remove(` — 10 sites:
 
-| site | disposition | ownership kind |
-|---|---|---|
-| `launchers.go:165,170` (`removeLaunchers`) | **gate** — `removeDir` | `ownedHubGeometryChild(launchersDir(l))` |
-| `gitexclude.go:108,112,116,120` | **allowlist** — temp-file cleanup inside `writeFileAtomically`, under the flock | — |
-| `ancestors.go:52` | **allowlist** — `pruneEmptyAncestors`; `os.Remove` on a directory is refused by the OS when non-empty, and the loop halts on the first refusal | — |
-| `junction.go:259` | **allowlist** — same class: removes the directory the loop immediately above just emptied by `os.Rename`, and cannot remove it if anything remains. **Not a link removal** — the first pass mislabelled it as one | — |
-| `index.go:315` | **allowlist** — fabric's own derived correspondence-index cache, deliberately deleted-then-rebuilt so a failed refresh misses honestly rather than answering cross-branch | — |
-| `hook.go:160` | **allowlist** — removes the user-hook backup this same function wrote ten lines earlier, on its own rollback path after restoring the original | — |
+| site | disposition | ownership kind | dirtiness |
+|---|---|---|---|
+| `launchers.go:165,170` (`removeLaunchers`) | **gate** — `removePath` | `ownedUnderGeometryRoot(launchersDir(l))` | `dirtinessNA("launcher scripts are generated artifacts, never edited content")` |
+| `gitexclude.go:108,112,116,120` | **allowlist** — temp-file cleanup inside `writeFileAtomically`, under the flock | — | — |
+| `ancestors.go:52` | **allowlist** — `pruneEmptyAncestors`; `os.Remove` on a directory is refused by the OS when non-empty, and the loop halts on the first refusal | — | — |
+| `junction.go:259` | **allowlist** — same class: removes the directory the loop immediately above just emptied by `os.Rename`, and cannot remove it if anything remains. **Not a link removal** — the first pass mislabelled it as one | — | — |
+| `index.go:315` | **allowlist** — fabric's own derived correspondence-index cache, deliberately deleted-then-rebuilt so a failed refresh misses honestly rather than answering cross-branch | — | — |
+| `hook.go:160` | **allowlist** — removes the user-hook backup this same function wrote ten lines earlier, on its own rollback path after restoring the original | — | — |
 
 `"worktree", "remove"` — 4 sites, all gated via `removeGitWorktree`:
 
-| site | caller | ownership kind |
-|---|---|---|
-| `remove.go:177-185` | `Remove` | `ownedRegisteredLinkedWorktree(warpRepoDir)` |
-| `prune.go:258-261` | `removeStalePair` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` |
-| `add.go:265` | `rollbackAdd` | `ownedFreshlyCreatedWorktree(tok)` — the warp worktree this `Add` created; minted by the gate the same way `createExclusiveDir` mints a directory token |
-| `weftwiring.go:175-180` | `removeWeftWorktree`, from `Remove` and `rollbackAdd` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` |
+| site | caller | ownership kind | dirtiness |
+|---|---|---|---|
+| `remove.go:177-185` | `Remove` | `ownedRegisteredLinkedWorktree(warpRepoDir)` | `dirtyScopeAll` |
+| `prune.go:258-261` | `removeStalePair` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` | `dirtyScopeTracked` |
+| `add.go:265` | `rollbackAdd` | `ownedFreshlyCreatedWorktree(tok)` — the warp worktree this `Add` created; minted by the gate the same way `createExclusiveDir` mints a directory token | `dirtinessNA("rollback of the worktree this Add created")` |
+| `weftwiring.go:175-180` | `removeWeftWorktree`, from `Remove` and `rollbackAdd` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` | `dirtyScopeAll`, matching `refuseDirtyWeftWorktree`'s current scope; `rollbackAdd` passes `force` |
 
 `"branch", "-D"` — 4 sites, all gated via `deleteBranch`:
 
-| site | caller | ownership kind |
-|---|---|---|
-| `cleanup.go:273` | `deleteWeftBranch` | `ownedManagedWeftBranch(l)` |
-| `checkout.go:193` | `rollbackSwitch` | `ownedTransactionCreatedBranch` — the weft branch this `Checkout` forked, non-empty only in that case |
-| `add.go:277` | `rollbackAdd` | `ownedTransactionCreatedBranch` — the warp branch this `Add` created |
-| `weftwiring.go:192` | `removeWeftWorktree(deleteBranch=true)` | `ownedManagedWeftBranch(l)`; `rollbackAdd`'s existing `!weftBranchAdopted` carve-out is preserved ahead of the call |
+| site | caller | ownership kind | dirtiness |
+|---|---|---|---|
+| `cleanup.go:273` | `deleteWeftBranch` | `ownedManagedWeftBranch(l)` | `dirtyCheckedOutBranch` |
+| `checkout.go:193` | `rollbackSwitch` | `ownedTransactionCreatedBranch` — the weft branch this `Checkout` forked, non-empty only in that case | `dirtyCheckedOutBranch` |
+| `add.go:277` | `rollbackAdd` | `ownedTransactionCreatedBranch` — the warp branch this `Add` created | `dirtyCheckedOutBranch` |
+| `weftwiring.go:192` | `removeWeftWorktree(deleteBranch=true)` | `ownedManagedWeftBranch(l)`; `rollbackAdd`'s existing `!weftBranchAdopted` carve-out is preserved ahead of the call | `dirtyCheckedOutBranch` |
 
 `warp.ResetHard(` / `weft.ResetHard(` — 4 sites: `pull.go:233,267,285` and `warpforward.go:34`.
 `warpforward.go:34` is `Fabric.ResetHard`, the exported thin delegation.
@@ -445,14 +485,14 @@ One gated entry, three callers, no allowlist entry needed.
 
 `fslink.Remove(` — 6 sites:
 
-| site | disposition | ownership kind |
-|---|---|---|
-| `weftwiring.go:156` (`removeJunctionRecords`) | **gate** — `removeLink`; the live containment gap | `ownedWiredJunction(j.Target)` |
-| `portals.go:57` (`removePortal`) | **gate** — `removeLink` | `ownedWiredJunction(portal target)` |
-| `unwire.go:143` (board-junction unwire) | **gate** — `removeLink` | `ownedWiredJunction(BoardDir(l.HubPath))`; subsumes the site's existing is-it-a-link refusal |
-| `junction.go:461` (unwire sweep) | **gate** — `removeLink` | `ownedWiredJunction(targetResolved)`; subsumes the site's existing `linkResolved != targetResolved` refusal |
-| `junction.go:161` (`seedLyxJunction` re-point) | **gate** — `repointLink`, see `link-repoint-is-gated-too` | `ownedDriftedWiredJunction` |
-| `junction.go:311` (`wireBoardLink` re-point) | **gate** — `repointLink` | `ownedDriftedWiredJunction` |
+| site | disposition | ownership kind | dirtiness |
+|---|---|---|---|
+| `weftwiring.go:156` (`removeJunctionRecords`) | **gate** — `removeLink`; the live containment gap | `ownedWiredJunction(WarpJunctions links, j.Target)` | `dirtinessNA("a junction holds no content; the weft target it points at is untouched")` |
+| `portals.go:57` (`removePortal`) | **gate** — `removeLink` | `ownedWiredJunction([PortalLink(l, slug)], portal target)` | `dirtinessNA("a junction holds no content; the weft target it points at is untouched")` |
+| `unwire.go:143` (board-junction unwire) | **gate** — `removeLink` | `ownedWiredJunction([board link path], BoardDir(l.HubPath))`; subsumes the site's existing is-it-a-link refusal | `dirtinessNA("a junction holds no content; the weft target it points at is untouched")` |
+| `junction.go:461` (unwire sweep) | **gate** — `removeLink` | `ownedWiredJunction(WarpJunctions links, targetResolved)`; subsumes the site's existing `linkResolved != targetResolved` refusal | `dirtinessNA("a junction holds no content; the weft target it points at is untouched")` |
+| `junction.go:161` (`seedLyxJunction` re-point) | **gate** — `repointLink`, see `link-repoint-is-gated-too` | `ownedDriftedWiredJunction(WarpJunctions links)` | `dirtinessNA("a junction holds no content; the weft target it points at is untouched")` |
+| `junction.go:311` (`wireBoardLink` re-point) | **gate** — `repointLink` | `ownedDriftedWiredJunction([board link path])` | `dirtinessNA("a junction holds no content; the weft target it points at is untouched")` |
 
 The first pass listed only two of these six and named a non-`fslink` site among them.
 `unwire.go` was missed entirely as a file.
