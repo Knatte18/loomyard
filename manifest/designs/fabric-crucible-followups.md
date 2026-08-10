@@ -121,9 +121,21 @@ An integration-tier harness (`//go:build integration`) providing:
    - **The factory cannot live in `internal/lyxtest`.** The [lyxtest Leaf Invariant](../../CONSTRAINTS.md#lyxtest-leaf-invariant) bars it from importing `fabricengine`, machine-enforced by `internal/lyxtest/leaf_enforcement_test.go`, because feature packages' own tests import lyxtest and a reverse import closes a test-build cycle.
      Anything that drives `CloneHub` is therefore out of bounds there.
    - **Nor in an in-package (`package fabricengine`) test file that imports a shared helper package**, for the same cycle reason one level down.
-     Put the harness in an **external test package** — it is black-box by nature (drives exported verbs, asserts on the filesystem) and needs no unexported access, so this costs nothing.
-   - **The consolidation half.** Fabric's own tests already call `CloneHub` **101 times across 7 files**, with no shared factory and a scattering of ad-hoc local helpers — `gitStatusPorcelain` is defined twice.
-     The factory is largely the extraction of what those call sites re-derive, which is the same shape as slice 13's eight hand-rolled porcelain probes.
+
+   **Where it does go: `internal/fabricengine/fabrictest`, mirroring `internal/boardengine/boardtest`.**
+   The repo already has this exact pattern — `boardtest` is the black-box package holding board's benchmarks, concurrency stress and git-backed integration suites, with its own `doc.go` and a `testmain_test.go` calling `lyxtest.HermeticGitEnv` (required by the [Hermetic Git Test Environment Invariant](../../CONSTRAINTS.md#hermetic-git-test-environment-invariant)), and `docs/overview.md`'s Tests section names it as the convention.
+   Nothing imports `boardtest`;
+   nothing will import `fabrictest`.
+
+   The cycle only ever bites **in-package** test files.
+   `fabricengine_test` → `fabrictest` → `fabricengine` is a legal chain, because Go compiles external test packages separately for exactly this reason.
+   `fabrictest` may also import `lyxtest` (for `HermeticGitEnv` and the bare-remote builders) without risk, since `lyxtest` imports neither.
+
+   - **The consolidation half, and it is cheaper than it looks.** Fabric's own tests already call `CloneHub` **101 times across 7 files**, with no shared factory and a scattering of ad-hoc local helpers — `gitStatusPorcelain` is defined twice.
+     **Six of those seven files are already `package fabricengine_test`** (only `clone_test.go` is in-package), and `fabricengine` runs 38 external test files against 45 in-package ones.
+     So a `fabrictest` factory serves the existing call sites immediately, with **no export-for-test shim** — the conversion problem `lyxtest`'s own package doc flags as "a slice of its own" does not arise here.
+     `clone_test.go` stays in-package and keeps its own setup;
+     that is not a defect to fix in this slice.
 2. **A state matrix.**
    Named hostile states applied to a fresh hub: clean, dirty warp (tracked), dirty warp (untracked), dirty weft, both dirty, tracked symlink present, foreign directory at a fabric-owned path, unrelated git clone parked at a fabric-named path, stale portal link, non-executable user hook, `core.hooksPath` set.
 3. **A verb table.**
