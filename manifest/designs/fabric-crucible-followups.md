@@ -131,6 +131,20 @@ An integration-tier harness (`//go:build integration`) providing:
    `fabricengine_test` → `fabrictest` → `fabricengine` is a legal chain, because Go compiles external test packages separately for exactly this reason.
    `fabrictest` may also import `lyxtest` (for `HermeticGitEnv` and the bare-remote builders) without risk, since `lyxtest` imports neither.
 
+   - **Measured cost of a hub fixture** (2026-08-10, Linux/WSL2 ext4, 155U, 14 cores, hermetic git env;
+     two independent methods agreeing).
+     `CloneHub` in-process: 60–66 ms serial, 15–16 ms concurrent.
+     Via the CLI: ~101–110 ms serial, 19 ms concurrent.
+     **Full fixture — own bares plus hub clone — 24 ms concurrent**, of which copying two prebuilt bares is ~2 ms and the clone ~22 ms.
+     Concurrency scales 5.2× on 14 cores (37% of linear): clone is `fork`/`fsync`-bound, not CPU-bound.
+     For comparison, today's `lyxtest.CopyPaired` is 13.3 ms serial / 2.3 ms concurrent.
+     Cheap enough that per-scenario hubs are not a cost concern on this platform;
+     Windows is unmeasured (see [fabric-windows-verification.md](fabric-windows-verification.md)).
+   - **Copy the bares, clone the hub.** Bare repos hold zero symlinks, so the existing copy helper handles them;
+     a hub cannot be copied at all, because its junctions carry **absolute** targets (`warp/_lyx → <hub>/warp-weft/_lyx`, `warp/.lyx → …`, `warp/_board → <hub>/_board`), so a filesystem copy would leave every link aimed at the template.
+   - **Local bares are real remotes — no GitHub needed for `push`/`pull`/`sync`.** The repo already proves this: `pull_integration_test.go:73,78` force-pushes from a second clone to produce the diverged upstream `Fabric.Pull` re-anchors from, and `coalesce_integration_test.go:128-138` advances the bare from a second clone to force a genuine non-fast-forward through `gitrepo.Push`'s rebase-retry.
+     Give each scenario its **own** bare pair so cells can push independently without racing;
+     that isolation is already required for correctness, and it also means the suite never touches the sandbox Hub, so both can run at once.
    - **The consolidation half, and it is cheaper than it looks.** Fabric's own tests already call `CloneHub` **101 times across 7 files**, with no shared factory and a scattering of ad-hoc local helpers — `gitStatusPorcelain` is defined twice.
      **Six of those seven files are already `package fabricengine_test`** (only `clone_test.go` is in-package), and `fabricengine` runs 38 external test files against 45 in-package ones.
      So a `fabrictest` factory serves the existing call sites immediately, with **no export-for-test shim** — the conversion problem `lyxtest`'s own package doc flags as "a slice of its own" does not arise here.
