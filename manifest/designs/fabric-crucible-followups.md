@@ -103,9 +103,27 @@ the hermetic suite finds none of it.
 An integration-tier harness (`//go:build integration`) providing:
 
 1. **A hub factory.**
-   Build a real hub from local bare remotes.
-   The campaign's recipe is known and has two gotchas worth encoding rather than rediscovering: `git init --bare` leaves `HEAD` on `master` while the pushed branch is `main` (needs `git -C <bare> symbolic-ref HEAD refs/heads/main`), and the weft remote must be genuinely empty or clone's bootstrap guard refuses it.
+   Build a real hub from local bare remotes, **by running clone** rather than by assembling the layout in test code — a hand-built hub tests a shape the author asserted, not the one fabric produces, which is the same blindness this slice exists to remove.
+   The campaign's recipe has two gotchas worth encoding rather than rediscovering: `git init --bare` leaves `HEAD` on `master` while the pushed branch is `main` (needs `git -C <bare> symbolic-ref HEAD refs/heads/main`), and the weft remote must be genuinely empty or clone's bootstrap guard refuses it.
    One independent hub per destructive scenario, never shared.
+
+   **This is more extraction than new construction, and `internal/lyxtest` is not where it goes.**
+   Read this paragraph before reaching for either;
+   both mistakes are easy to make and one of them fails the build.
+
+   - `internal/lyxtest` **does** build real hermetic git repos — `buildWarpHub` (warp repo + bare remote), `buildWeftPrime` (`<name>-weft` sibling with a placeholder `_lyx/config` + bare), and `CopyPaired`/`CopyWarpHub`/`CopyWeft` on a template-built-once + copy-per-test pattern.
+     Reuse that machinery: `HermeticGitEnv`, the bare-remote builders, the origin-URL rewriting, the per-test isolation.
+   - What it builds is **not a fabric hub**.
+     Every fixture is assembled by hand, never through `CloneHub`, so there is no `_board`, no `_portals`/`_launchers`, no hub-level `.lyx`, no junctions, no `.lyx-anchor` marker, no warp-URL binding on `weft:main` and no repo-wide `fabric.yaml`.
+     Its bare remotes are left empty and never pushed to, which is why the `symbolic-ref HEAD` gotcha above does not arise there — it appears only once a hub is built by really cloning.
+   - **Naming trap:** `lyxtest.WarpFixture.Hub` is the *warp repo*, not a fabric hub.
+     "lyxtest already gives me a Hub" is a misreading that produces the wrong fixture.
+   - **The factory cannot live in `internal/lyxtest`.** The [lyxtest Leaf Invariant](../../CONSTRAINTS.md#lyxtest-leaf-invariant) bars it from importing `fabricengine`, machine-enforced by `internal/lyxtest/leaf_enforcement_test.go`, because feature packages' own tests import lyxtest and a reverse import closes a test-build cycle.
+     Anything that drives `CloneHub` is therefore out of bounds there.
+   - **Nor in an in-package (`package fabricengine`) test file that imports a shared helper package**, for the same cycle reason one level down.
+     Put the harness in an **external test package** — it is black-box by nature (drives exported verbs, asserts on the filesystem) and needs no unexported access, so this costs nothing.
+   - **The consolidation half.** Fabric's own tests already call `CloneHub` **101 times across 7 files**, with no shared factory and a scattering of ad-hoc local helpers — `gitStatusPorcelain` is defined twice.
+     The factory is largely the extraction of what those call sites re-derive, which is the same shape as slice 13's eight hand-rolled porcelain probes.
 2. **A state matrix.**
    Named hostile states applied to a fresh hub: clean, dirty warp (tracked), dirty warp (untracked), dirty weft, both dirty, tracked symlink present, foreign directory at a fabric-owned path, unrelated git clone parked at a fabric-named path, stale portal link, non-executable user hook, `core.hooksPath` set.
 3. **A verb table.**
