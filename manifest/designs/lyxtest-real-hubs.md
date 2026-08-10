@@ -1,7 +1,10 @@
 # lyxtest builds real fabric hubs — invert the dependency
 
 > **Status: not built.**
-> Depends on `fabric-live-state-harness` (slice 13), which creates the `fabrictest` package this task needs as a landing zone.
+> Depends on `fabric-live-state-harness` (slice 13), which creates the `fabrictest` package this task needs as a landing zone — but sequenced behind the **whole** fabric chain (`12 → 13 → 14 → 15`), not just slice 13.
+> It moves `fabricengine`'s 14 in-package `lyxtest` callers and migrates their assertions, which is the same package slice 14 rewrites every verb's result path in;
+> only one of those may be in flight at a time.
+> See [fabric-crucible-followups.md](fabric-crucible-followups.md)'s build order.
 > Deleted once landed, per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle);
 > the durable half becomes the rewritten lyxtest invariant in `CONSTRAINTS.md` and `internal/lyxtest`'s own package doc.
 

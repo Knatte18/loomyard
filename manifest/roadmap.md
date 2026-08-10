@@ -21,8 +21,10 @@ Committed to, in this order, next.
    **Slice 13** (the live-state integration harness against real git in dirty and hostile state) is second and depends on 12: its cells assert on refusal behaviour — that a verb refuses instead of destroying, and which check refused — which is exactly what slice 12 changes, so cells written first would be rewritten after.
    Its first job is to validate the gate, its second to find instance number nine.
    **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is third, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction, and its step 5 may land in each verb's existing error shape and be generalised here.
-   **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last, independent of the other three.
-   The chain is strict — 13 and 14 both need 12 landed — and only 15 is free of the others.
+   **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last — logically independent of the other three, but sequenced behind them anyway.
+   The chain is strict and total: `12 → 13 → 14 → 15`, **one fabric slice in flight at a time**.
+   Two reasons, and both must hold before any two overlap: logically each slice asserts on behaviour the previous one changes, and mechanically all four edit `internal/fabricengine` while 12 and 14 rewrite it package-wide (12 rewires ~29 destructive call sites and lands a static guard over the tree; 14 rewrites every verb's result path).
+   An earlier draft declared 15 free to pick up at any point on its logical independence alone — **that was wrong**: logical independence does not make it safe to edit the same package alongside a package-wide refactor, and 15 is LOW and self-healing, so it loses nothing by waiting.
    Placed ahead of `Shed` because fabric is the module every other worktree's work stands on, and this is a data-loss class in it — not because `Shed` slipped;
    `Shed` → `loom` keeps its own order below.
    Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
