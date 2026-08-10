@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-10T10:16:14Z'
+discussed  '2026-08-10T12:41:06Z'
 ```
