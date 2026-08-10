@@ -77,18 +77,24 @@ one file in `internal/fabricengine`, not a sub-package.
 
 - Decision: typed request structs plus one executor per primitive, all in `internal/fabricengine/destroy.go`.
   **Two request shapes**, because destruction has two target shapes:
-  - `pathRequest{l *lyxcwd.Location, junctionNames []string, what, container, target, slug, ownership, dirtiness, force}` — for `os.RemoveAll`/`os.Remove`, `git worktree remove`, `ResetHard`, link removal, and link re-point.
+  - `pathRequest{what, container, target, slug *slugSpec, ownership, dirtiness, force}` — for `os.RemoveAll`/`os.Remove`, `git worktree remove`, `ResetHard`, link removal, and link re-point.
     Executors: `removeDir`, `removeGitWorktree`, `resetHardTo`, `removeLink`, `repointLink`.
-  - `branchRequest{l *lyxcwd.Location, what, repoDir, branch, ownership, dirtiness, force}` — for `git branch -D`.
+  - `branchRequest{what, repoDir, branch, ownership, dirtiness, force}` — for `git branch -D`.
     Executor: `deleteBranch`.
     It carries **no `container` or `target` field at all**, which is how containment is declared structurally N/A for a ref rather than by a per-call-site `""`.
 
-  **Both shapes carry `l *lyxcwd.Location`, and the path shape also carries `junctionNames []string`, because the gate resolves its own predicates and those predicates need inputs.**
-  `primaryWeftBranch(l *lyxcwd.Location)` (`cleanup.go`) needs the Location;
-  `validateWorktreeSlug(slug string, junctionNames []string)` (`slug.go:30`) needs the repo's configured pathspec name-set, which reaches the verbs today as `t.cfg.Dirs()`;
-  `WeftRepoRoot(l)` and the geometry helpers need it too.
-  Leaving these off the struct would mean the gate either cannot resolve its own checks or reaches around the request for them, and "the gate resolves ownership itself" is the property the closed enum exists to guarantee.
-  `l` is passed, never derived — the Cwd Resolution Invariant owns resolution, and the gate is a consumer.
+  **Each check's inputs travel with the check, not on the request.**
+  This is the rule that keeps "every field required ⇒ an omitted check is a compile error" true, and it is what the first draft got wrong by hoisting `l *lyxcwd.Location` to a top-level field.
+
+  - Ownership kinds are parameterised by exactly what they need, and nothing else: `ownedFabricHub` and `ownedFreshlyCreatedPath(reason)` take no repo context at all;
+    `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)` and `ownedHubGeometryChild(container)` take a path;
+    `ownedManagedWeftBranch(l *lyxcwd.Location)` takes the Location, because `primaryWeftBranch(l)` is the one predicate that genuinely needs it.
+  - Slug validation travels as `slug *slugSpec{name string, junctionNames []string}` — nil when the target is not slug-derived, and otherwise carrying both halves `validateWorktreeSlug(slug, junctionNames)` (`slug.go:30`) requires. `junctionNames` reaches the verbs today as `t.cfg.Dirs()`.
+
+  **This is what makes clone's two hub-level sites work.** `CloneHub(cwd string, …)` (`clone.go:128`) has **no `*lyxcwd.Location` at all** where they run: `resetHub` is called at `clone.go:159` and `:204`, `teardownHub`'s earliest calls are `:243`/`:245`, the only earlier Location is the synthetic partial `&lyxcwd.Location{HubPath, WorktreeName}` at `:260` — itself after the first teardown sites — and the real `lyxcwd.Resolve` is not reached until `:369`.
+  A required top-level `l` would have forced those two sites to pass `nil` or a synthetic, which is the "trust me" hole in another costume.
+  With inputs on the kinds, both sites declare kinds that need no Location (`ownedFabricHub`, `ownedFreshlyCreatedPath`), nothing is nil, and the compile-error property holds at all six `RemoveAll(` sites.
+  Nothing derives `l` — the Cwd Resolution Invariant owns resolution and the gate is a consumer.
 
   One shared check pipeline runs the four checks in the same fixed order over both shapes;
   each executor calls it first, then performs the act.
@@ -176,13 +182,20 @@ one file in `internal/fabricengine`, not a sub-package.
 - Decision: ownership is a closed enum of kinds, each resolved by the gate itself.
 
   Path-shaped, valid on a `pathRequest`:
-  `ownedRegisteredLinkedWorktree(repoDir)`, `ownedFabricHub`, `ownedHubGeometryChild(container)`, `ownedFreshlyCreatedPath(reason)`.
+  `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)`, `ownedFabricHub`, `ownedHubGeometryChild(container)`, `ownedFreshlyCreatedPath(reason)`.
 
   Ref-shaped, valid on a `branchRequest`:
-  `ownedManagedWeftBranch(weftRepoRoot)`, `ownedTransactionCreatedBranch(reason)` — see `branch-deletion-is-ref-shaped`.
+  `ownedManagedWeftBranch(l *lyxcwd.Location)`, `ownedTransactionCreatedBranch(reason)` — see `branch-deletion-is-ref-shaped`.
 
   Nothing else.
   The gate calls `isRegisteredLinkedWorktreeIn`, `looksLikeHub`, `WeftWarpSlug` and `primaryWeftBranch` internally.
+
+- **`ownedWarpCheckout` exists because `ResetHard` is the one primitive that mutates a worktree in place rather than removing something, and the prime worktree is its normal target.**
+  `isRegisteredLinkedWorktreeIn` skips `entry.Main` (`remove.go:229-231`) — deliberately, since a main working tree is exactly what must never be deleted after a git refusal.
+  Reusing it for `resetHardTo` would therefore refuse `lyx fabric pull` run in the hub's prime warp worktree, which is the ordinary case, not an edge one.
+  `ownedWarpCheckout(repoDir)` is `List(repoDir)` membership **including** the main entry: the target must be a worktree of this warp repo, prime or linked.
+  The two predicates are deliberately distinct and the difference is exactly the `Main` skip;
+  neither may be substituted for the other.
 - **`--force` satisfies dirtiness only. It never satisfies containment and never satisfies ownership.**
   The manifest's step 4 states the ownership half;
   the containment half needs saying too, and did not have it.
@@ -192,6 +205,25 @@ one file in `internal/fabricengine`, not a sub-package.
   Every one of the 28 sites already had the freedom to define its own check, and that freedom is what produced the class.
 - Rejected: a caller-supplied predicate `func() (bool, string)` (exactly the hole the slice exists to close);
   an interface with per-kind implementations — note this would **not** be equivalently closed, since Go interfaces are open sets unless sealed with an unexported method, so the closure property would have to be re-established rather than assumed.
+
+### resethard-declares-a-full-check-set
+
+- Decision: `resetHardTo` takes a `pathRequest` with every field named, not a partial one:
+  - **container** — the hub (`l.HubPath`), since the warp checkout being reset always sits inside it.
+  - **target** — the warp worktree path (`f.warpPath`), the working tree `git reset --hard` actually rewrites.
+  - **ownership** — `ownedWarpCheckout(warpRepoDir)`, *not* `ownedRegisteredLinkedWorktree`. See the `Main`-skip note under `ownership-is-a-closed-enum`. **`lyx fabric pull` in the hub's prime warp worktree must still pass**, and does, because this kind counts the main entry.
+  - **dirtiness** — `dirtyScopeTracked`, matching `warpWorktreeDirty` (`pull.go:142-152`) exactly: `reset --hard` leaves untracked files alone, so they are no reason to refuse.
+  - **force** — always `false`. `Pull` exposes no force flag, and R2's defect was `ResetHard` discarding uncommitted tracked work on every advance path;
+    a force parameter here would be a hole with no caller asking for it.
+- **`Fabric.ResetHard(sha string) error` keeps its exported signature.**
+  A one-argument exported method cannot let its callers declare ownership or dirtiness — and it should not. There is exactly one correct declaration for "reset this Fabric's warp checkout", so the wrapper hardcodes the five fields above and its callers get the gate for free.
+  What changes is the body and the file, not the API: the method moves from `warpforward.go:33-35` into `destroy.go` and builds the request itself.
+  `warpforward.go`'s package doc describes these delegations as public API for out-of-package callers preserving the one-repo illusion, so the signature is preserved deliberately — verified: no production caller outside `internal/fabricengine` exists today (the only tree-wide matches are in test files and two guard tests), but the surface is kept regardless.
+  `CheckoutDetached`, `RestoreBranch` and `CurrentBranch` stay in `warpforward.go` untouched — none is one of the manifest's five destructive primitives.
+- Rationale: without this, `ResetHard` is assigned to `pathRequest` with no stated container, target or ownership kind, and the only pre-existing worktree-ownership predicate silently refuses the primitive's most common caller.
+- Rejected: giving `resetHardTo` a reduced request shape (a fourth shape for one primitive, and it would need containment anyway);
+  reusing `ownedRegisteredLinkedWorktree` (refuses pull in the prime worktree);
+  replacing the exported `Fabric.ResetHard` with a request-taking method (breaks the documented public delegation surface for no gain, since the declaration is fixed anyway).
 
 ### branch-deletion-is-ref-shaped
 
@@ -430,7 +462,10 @@ Two tokens were corrected after re-running the enumeration, in opposite directio
 `warp.ResetHard(`/`weft.ResetHard(` rather than `.ResetHard(`, because the latter is too broad and would flag `pull.go`'s correctly migrated `f.ResetHard(...)` calls.
 
 Allowlist, complete — every file the final token set matches that is not converted to a gate call:
-`destroy.go` (the gate itself), `gitexclude.go`, `warpprobe.go`, `ancestors.go`, `index.go`, `junction.go` (line 259 only — the emptied-directory removal; the file's five other matches all convert to gate calls), `hook.go` (line 160 only).
+`destroy.go` (the gate itself), `gitexclude.go`, `warpprobe.go`, `ancestors.go`, `index.go`, `junction.go` (line 259 only — the emptied-directory removal; the file's five other matches all convert to gate calls), `hook.go` (line 160 only), and `doc.go`.
+
+`doc.go` is on the list because this slice adds the destruction rationale to it and the scan is a raw substring match over every non-test `.go` file in the tree — a prose sentence mentioning `os.RemoveAll(` or `fslink.Remove(` would trip the guard from inside the very document explaining it.
+The reason recorded for the entry is that `doc.go` is documentation-only: its sole non-comment line is `package fabricengine` (line 513), so it can never contain a real call.
 Each entry carries its reason, per the table in "The five primitives and their current sites".
 
 Note the per-file granularity limitation this creates: `junction.go` and `hook.go` are allowlisted as whole files, so a *new* raw `os.Remove(` added to either would not be caught.
@@ -466,6 +501,7 @@ From `CONSTRAINTS.md`:
 - **Hermetic Git Test Environment Invariant** — every git-spawning test package needs a `TestMain` calling `lyxtest.HermeticGitEnv()`. `internal/fabricengine` already has `testmain_test.go`; new integration tests land in that package and inherit it.
 - **CLI / Cobra Invariant** — not triggered: no CLI surface changes, no new commands.
 - **Never Force-Add Invariant** — not triggered, but it is the closest precedent in the file for a narrow, machine-checked, imperative entry.
+- **Markdown Link Integrity** — `manifest/designs/fabric-crucible-followups.md` and `manifest/roadmap.md` are both scan sources for `TestEnforcement_MarkdownLinks`. Every link this slice adds or edits must resolve, including its `#anchor` for a `.md` target and any `../../internal/fabricengine/doc.go`-style target — the root restriction is source-side only, so an out-of-root target still gets resolved.
 - **Documentation Lifecycle** — `manifest/designs/fabric-crucible-followups.md` is deleted once all four slices land, with its durable rationale folded into `internal/fabricengine`'s package doc. This slice folds slice 12's share of that rationale into `doc.go` now, and marks slice 12 landed in the manifest file rather than deleting it.
 
 New invariant this slice adds (short, imperative, rules only):
@@ -579,3 +615,11 @@ Resolved in discussion review round 1 (2 blocking, 2 nits — all verified again
 - **Q:** Is `.ResetHard(` the right token? **A:** No, and this is the mirror of the seam problem — it is too broad, not too narrow. Once `pull.go` calls the gated `f.ResetHard(...)`, `.ResetHard(` flags the correctly migrated code. `rawgitmutation_test.go:8-11` documents this exact trap in the file being cloned. Token is now `warp.ResetHard(` / `weft.ResetHard(`, which bans reaching past the gate to the raw handle.
 - **Q:** Are the two junction re-point sites (`junction.go:161`, `:311`) destruction? **A:** They remove a link and recreate it in the same breath, so they are repair — but the judgement "this link is fabric's and it is broken" is exactly what R1's defect got wrong when `reconcile` destroyed a tracked symlink. Gated via a distinct `repointLink` executor with no `force` parameter.
 - **Q:** `teardownHub` call-site count? **A:** 13, not 14. `grep -c "teardownHub(hubPath"` returns 14 because one match is the function declaration at `clone.go:604`. Corrected in all five places.
+
+Resolved in discussion review round 2 (2 blocking, 3 nits — all verified against the tree before fixing):
+
+- **Q:** Clone's two hub-level gate sites run where no `*lyxcwd.Location` exists — `CloneHub` takes only `cwd string`, `resetHub` fires at `clone.go:159`/`:204` and `teardownHub` from `:243`, while `lyxcwd.Resolve` is not reached until `:369`. What do they pass? **A:** Nothing, because `l` comes off the request entirely. Each check's inputs now travel with the check: ownership kinds are parameterised by exactly what they need, and the two kinds clone uses (`ownedFabricHub`, `ownedFreshlyCreatedPath`) need no repo context. A required top-level `l` would have forced `nil` or a synthetic partial at those sites — the trust-me hole in another costume. Slug validation travels the same way, as `slug *slugSpec{name, junctionNames}`.
+- **Q:** What are `resetHardTo`'s container, target and ownership kind? **A:** Hub, warp worktree path, and a **new** `ownedWarpCheckout(repoDir)`. This one matters: `isRegisteredLinkedWorktreeIn` skips `entry.Main` (`remove.go:229-231`) on purpose, so reusing it would refuse `lyx fabric pull` in the hub's prime warp worktree — the ordinary case. `ownedWarpCheckout` is the same membership test *including* main. Dirtiness is `dirtyScopeTracked`, force always false.
+- **Q:** A one-argument `Fabric.ResetHard(sha)` cannot let its callers declare ownership or dirtiness. **A:** It should not. There is exactly one correct declaration for "reset this Fabric's warp checkout", so the exported signature is kept and the wrapper hardcodes all five fields. Only the body and the file move. `warpforward.go`'s other three delegations are untouched — none is a destructive primitive.
+- **Q:** Is `internal/fabricengine/doc.go` safe from its own guard? **A:** No — this slice writes destruction rationale into it, and the scan is a raw substring match over every non-test `.go` file, so a prose `os.RemoveAll(` would trip it from inside the document explaining the rule. Allowlisted, with the reason that its only non-comment line is `package fabricengine`.
+- **Q:** Does Markdown Link Integrity apply? **A:** Yes — both manifest files this slice edits are scan sources. Added to Constraints.
