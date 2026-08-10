@@ -166,6 +166,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Edits:**
   - `internal/fabricengine/unwire.go`
   - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/junction_test.go`
   - `internal/fabricengine/reconcile.go`
 - **Creates:** none
 - **Deletes:** none
