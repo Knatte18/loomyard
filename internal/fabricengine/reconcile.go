@@ -19,6 +19,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -731,8 +733,17 @@ func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 
 	var removed []string
 	for _, name := range stale {
-		_ = removeWarpJunction(warpLayout, slug, []string{name})
+		removeErr := removeWarpJunction(warpLayout, slug, []string{name})
 		_, _ = unseedGitExclude(warpLayout, slug, []string{name})
+
+		var refusal *destructiveRefusal
+		if errors.As(removeErr, &refusal) {
+			// applyStaleRemoval is a void helper with no propagation path, so a gate refusal is
+			// logged rather than silently discarded — and the name must not be reported removed
+			// when the gate refused to remove it.
+			logger.Warn("fabricengine: reconcile stale-junction removal refused", "worktree", slug, "junction", name, "error", refusal.Error())
+			continue
+		}
 		removed = append(removed, name)
 	}
 

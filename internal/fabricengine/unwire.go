@@ -140,7 +140,16 @@ func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) 
 				filepath.Base(link), link,
 			)
 		}
-		if err := fslink.Remove(link); err != nil {
+		req := pathRequest{
+			what:      "remove board junction",
+			container: WorktreePath(l, slug),
+			target:    link,
+			slug:      nil,
+			ownership: ownedWiredJunction([]string{link}, BoardDir(l.HubPath)),
+			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
+			force:     false,
+		}
+		if err := removeLink(req); err != nil {
 			return false, fmt.Errorf("remove board junction %s: %w", link, err)
 		}
 		removed = true

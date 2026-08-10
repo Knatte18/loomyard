@@ -123,6 +123,11 @@ func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
 // a real directory is refused.
 func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 	junctions := WarpJunctions(l, slug, names)
+	container := WorktreePath(l, slug)
+	links := make([]string, len(junctions))
+	for i, j := range junctions {
+		links[i] = j.Link
+	}
 
 	for _, j := range junctions {
 		link := j.Link
@@ -158,7 +163,7 @@ func seedLyxJunction(l *lyxcwd.Location, slug string, names []string) error {
 				// corrupted or externally-modified wiring, not user content.
 				// Re-point it at the canonical weft target so pairs whose
 				// junction drifted are repairable (Reconcile relies on this).
-				if removeErr := fslink.Remove(link); removeErr != nil {
+				if removeErr := repointLink("re-point junction", container, link, ownedDriftedWiredJunction(links)); removeErr != nil {
 					return fmt.Errorf("re-point junction %s: %w", link, removeErr)
 				}
 				if createErr := fslink.CreateDirLink(link, target); createErr != nil {
@@ -308,7 +313,7 @@ func wireBoardLink(l *lyxcwd.Location, slug string) error {
 			// Dangling or wrong-target — corrupted or externally-modified
 			// wiring, not user content. Re-point it, mirroring
 			// seedLyxJunction's repair path.
-			if removeErr := fslink.Remove(link); removeErr != nil {
+			if removeErr := repointLink("re-point board junction", WorktreePath(l, slug), link, ownedDriftedWiredJunction([]string{link})); removeErr != nil {
 				return fmt.Errorf("re-point board junction %s: %w", link, removeErr)
 			}
 			if createErr := fslink.CreateDirLink(link, target); createErr != nil {
@@ -385,7 +390,7 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (UnwireRes
 // already unwired; this is the legitimate no-op case, not an error. See
 // unseedJunctionRecords for the error cases.
 func unseedLyxJunction(l *lyxcwd.Location, slug string, names []string) (removed []string, err error) {
-	return unseedJunctionRecords(WarpJunctions(l, slug, names))
+	return unseedJunctionRecords(WorktreePath(l, slug), WarpJunctions(l, slug, names))
 }
 
 // unseedJunctionRecords removes each junction in junctions in order, mirroring
@@ -409,7 +414,15 @@ func unseedLyxJunction(l *lyxcwd.Location, slug string, names []string) (removed
 // junction's warp path is a real directory rather than a junction, or if it
 // resolves to an unexpected target — all of these indicate corruption or
 // external modification rather than a normal unwire.
-func unseedJunctionRecords(junctions []WarpJunction) (removed []string, err error) {
+// container is the containment boundary every junction in junctions must resolve strictly below — a
+// gated site cannot declare containment against a parent it never receives. Its one caller,
+// unseedLyxJunction, passes WorktreePath(l, slug).
+func unseedJunctionRecords(container string, junctions []WarpJunction) (removed []string, err error) {
+	links := make([]string, len(junctions))
+	for i, j := range junctions {
+		links[i] = j.Link
+	}
+
 	for _, j := range junctions {
 		link := j.Link
 		target := j.Target
@@ -458,7 +471,16 @@ func unseedJunctionRecords(junctions []WarpJunction) (removed []string, err erro
 			)
 		}
 
-		if err := fslink.Remove(link); err != nil {
+		req := pathRequest{
+			what:      "remove warp junction",
+			container: container,
+			target:    link,
+			slug:      nil,
+			ownership: ownedWiredJunction(links, targetResolved),
+			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
+			force:     false,
+		}
+		if err := removeLink(req); err != nil {
 			return removed, fmt.Errorf("remove warp junction %s: %w", link, err)
 		}
 		removed = append(removed, j.Name)
