@@ -517,7 +517,7 @@ Discovered during discussion:
 
 ### Hermetic tier (untagged, `package fabricengine`)
 
-**What stays hermetic once the request structs carry `l *lyxcwd.Location`.**
+**What stays hermetic once ownership kinds carry their own inputs (a `*lyxcwd.Location` among them, for `ownedManagedWeftBranch`).**
 The Test Tier Purity Invariant bans `gitexec.RunGit`, `exec.Command*` and `lyxtest.Copy*` — it does not ban filesystem access.
 So the split is by predicate, not by struct field:
 
@@ -609,7 +609,7 @@ Resolved against the orchestrator's review of this document (`_mill/discussion-r
 
 Resolved in discussion review round 1 (2 blocking, 2 nits — all verified against the tree before fixing):
 
-- **Q:** The request structs list no `Location` and no junction-name set, yet the gate must resolve `primaryWeftBranch(l)` and `validateWorktreeSlug(slug, junctionNames)` itself. **A:** Both shapes carry `l *lyxcwd.Location`; the path shape also carries `junctionNames []string` (today's `t.cfg.Dirs()`). `l` is passed, never derived. This costs no hermetic coverage — the purity split is by predicate, not by field, and `looksLikeHub`/`refuseUncontainedPath`/`validateWorktreeSlug` are all git-free.
+- **Q:** The request structs list no `Location` and no junction-name set, yet the gate must resolve `primaryWeftBranch(l)` and `validateWorktreeSlug(slug, junctionNames)` itself. **A:** The inputs must reach the gate. *(First answered by putting `l` and `junctionNames` on both request structs — **superseded in round 2**, which found that clone's two hub-level sites have no Location to pass. Inputs now travel with the check that needs them; see the round-2 entry below.)* Either way this costs no hermetic coverage — the purity split is by predicate, not by field, and `looksLikeHub`/`refuseUncontainedPath`/`validateWorktreeSlug` are all git-free.
 - **Q:** Is the link-removal site list reliable? **A:** No — it was wrong in both directions. `junction.go:259` is `os.Remove(link)`, not `fslink.Remove`, and four real `fslink.Remove(` sites were missing, including the whole of `unwire.go`. Root cause: the first pass enumerated from the manifest's prose rather than by grepping the actual token set. The enumeration method is now stated in Technical context, was re-run over the final token set, and every site carries a disposition.
 - **Q:** Do any banned-token matches lack a disposition? **A:** Yes — `warpforward.go:34`, `hook.go:160` and `junction.go:259` would have landed the one-commit slice with a red guard. All three now have one: `Fabric.ResetHard` moves into `destroy.go` as the gated executor; the other two are allowlisted with reasons.
 - **Q:** Is `.ResetHard(` the right token? **A:** No, and this is the mirror of the seam problem — it is too broad, not too narrow. Once `pull.go` calls the gated `f.ResetHard(...)`, `.ResetHard(` flags the correctly migrated code. `rawgitmutation_test.go:8-11` documents this exact trap in the file being cloned. Token is now `warp.ResetHard(` / `weft.ResetHard(`, which bans reaching past the gate to the raw handle.
