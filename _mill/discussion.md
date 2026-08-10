@@ -27,7 +27,7 @@ The verdict is written down, the implementation is filed as its own task, and th
 
 **In:**
 
-- Rewrite `manifest/designs/gitexec-error-shape.md` from an open question into a **recorded verdict**, carrying the decision, its reasoning, the counter-argument weighed, the new-shape specification, the enumerated predicate-site inventory, and the migration recipe.
+- Rewrite `manifest/designs/gitexec-error-shape.md` from an open question into a **recorded verdict**, carrying the decision, its reasoning, the counter-argument weighed, the new-shape specification, the site inventories as *shapes plus regeneration queries*, and the migration recipe including the two-message merge rule.
 - Replace the decision item at `manifest/roadmap.md:70` in place with the implementation item, stating the verdict in one line.
 - File the implementation task in the wiki: slug `gitexec-checked-entry-point`, `depends_on: ['fabric-corrindex-record-race']`.
 
@@ -79,6 +79,9 @@ The verdict is written down, the implementation is filed as its own task, and th
   Returned as `*GitError`. `Error()` renders `git <args joined by space>: exit <code>: <trimmed stderr>`, and omits the trailing `: <stderr>` segment entirely when stderr is empty, yielding `git <args>: exit <code>`.
 - **Rationale:** `Args` and `Dir` make the message self-locating, so callers can stop repeating "which command, in which directory" in their own wrappers — that ceremony is part of what the change removes.
   Trimming stderr keeps git's trailing newline out of wrapped messages. Omitting the empty segment avoids a dangling colon while still surfacing the exit code.
+- **Argument rendering and credentials.** `Error()` renders `Args` **verbatim**, with no redaction, and the godoc must say so: *callers must not pass credentials in args.*
+  Arg vectors reach error strings, which reach logs and the board. `clone.go:521` passes a caller-supplied `gitURL` straight through and `add.go:195` pushes to a named remote, so URL-shaped args already flow into this vector.
+  No path in this repo constructs a URL with embedded `userinfo` today, so this is not a live leak — but `GitError` is being specified now as shared infrastructure, and the rule needs to exist before someone adds token auth. Stating the contract is chosen over implementing `userinfo` stripping, because a redaction rule invites callers to rely on it and it only covers the URL-shaped case.
 - **Rejected:**
   - Adding a `Stdout` field — speculative; no site in the tree reads stdout on a failure path today.
   - A minimal `{ExitCode, Stderr}` — smallest surface, but every caller then re-adds the command and directory to its own wrapper.
@@ -104,11 +107,21 @@ The verdict is written down, the implementation is filed as its own task, and th
 - **Rationale:** Every one of the 63 exit-code comparisons in `internal/fabricengine` is against zero (44 `exitCode != 0`, 8 `exitCode == 0`, 7 `code != 0`, 2 `code == 0`, plus one each for `unbornExit` and `statusExit`). No call site reads a *specific* code. On the checked form the value is dead weight in the signature, and it is exactly the redundant return that produced the `if exitCode != 0` habit in the first place.
 - **Rejected:** `(stdout string, exitCode int, err error)` — keeps the code at hand without `errors.As`, at the cost of reintroducing the habit the change exists to break.
 
+### stdout-is-returned-even-when-the-error-is-non-nil
+
+- **Decision:** `gitexec.Run` returns whatever git wrote to stdout **in every case**, including when it returns a `*GitError`. The first return value is never blanked on failure.
+  This must be stated in the function's godoc, not left to the reader.
+- **Rationale:** It is what today's `RunGit` does, so the two forms stay consistent and the migration introduces no behavioural change beyond the error. It is also what makes rejecting a `Stdout` field on `GitError` coherent — that rejection is only reasonable if stdout still arrives in the first return value; blank it and the field becomes necessary after all.
+  Discarding captured output on a failure path is the exact sin this whole change exists to correct, and several git commands (`push`, `worktree add`) write useful context to stdout while exiting non-zero.
+- **Rejected:** Returning `""` on error — it reads as tidier and prevents a caller accidentally consuming partial output, but it throws away data the process already captured and would force a `Stdout` field onto `GitError` to get it back.
+
 ### predicate-sites-are-real-and-must-stay-expressible
 
 - **Decision:** Non-zero exit is recorded in the verdict as a **load-bearing answer**, not a failure, at the enumerated sites below. These keep the raw form permanently and are the reason the raw form is not deprecated.
-- **Rationale:** The task body's claim that "the exit code is provably redundant" is true of the *value* and false of the *zero/non-zero predicate*. Mechanically classifying the 59 exit-code comparisons in `fabricengine` by whether their branch constructs an error puts 48 in an error-constructing branch and 11 in one that does not.
-  The inventory (see [Technical context](#technical-context) for the full list) is `rev-parse --verify [--quiet] <ref>` used as a ref-existence check, the `warpprobe.go` "is this weft a weft" probes, `gitrepo.IsAncestor`'s explicit tri-state `switch`, and `diff --cached --quiet` mapped to `ErrIndexNotEmpty`.
+- **Rationale:** The task body's claim that "the exit code is provably redundant" is true of the *value* and false of the *zero/non-zero predicate*. Classifying **all 63** exit-code comparisons in `fabricengine` by whether their branch constructs an error puts **48 in an error-constructing branch and 15 in one that does not**.
+  The inventory (see [Technical context](#technical-context) for the full list) is `rev-parse --verify [--quiet] <ref>` used as a ref-existence check, the `warpprobe.go` "is this weft a weft" probes, the three `return <code> == 0` predicate functions, `gitrepo.IsAncestor`'s explicit tri-state `switch`, and `diff --cached --quiet` mapped to `ErrIndexNotEmpty`.
+- **Note on the count.** A first pass reported 48/11 = 59 because its classifier only examined comparisons appearing on a line containing `if` or `switch`. The four it skipped are `weftwiring.go:78`, `weftwiring.go:96`, `pull.go:135` (all `return <code> == 0`-shaped) and `checkout.go:77` (a multi-line `if` continuation).
+  All four are **predicate** sites, so the correction moves them into the non-error-constructing column and strengthens rather than weakens the evidence: 48 + 15 = 63, matching the total quoted in [drop-exitcode-from-the-checked-signature](#drop-exitcode-from-the-checked-signature).
 - **Rejected:** Treating these as unmigrated debt to be swept later — they are not debt; sweeping them would be a regression.
 
 ### guard-test-with-justification-comments
@@ -117,17 +130,24 @@ The verdict is written down, the implementation is filed as its own task, and th
   Written and landed by the **implementation** task, not by this one.
 - **Rationale:** Mirrors the established pattern in this repo — `cmd/lyx/gitrepoboundary_test.go` (`TestGitrepoBoundary_PinnedRunCallSites`) and `internal/gitrepo/noforceadd_test.go` — so it needs no new machinery and no `golangci-lint` (this repo has none; "lint rule" here means a guard test).
   The justification comment is what turns the pin from a bookkeeping list into a review artifact: a reviewer sees the claim being made, not just that the count changed.
+- **How it composes with the gitrepo Client Boundary Invariant.** After this change two set-equality guards assert over overlapping sets in `internal/gitrepo`, and the invariant text must say which is which so a future edit does not have to guess from whichever test fails first:
+  the **Client Boundary Invariant** answers *which `gitrepo` methods may reach the git CLI at all* and is keyed by **method name** — update it when a method gains or loses a `run`/`gitexec` call;
+  the **Checked-Call Invariant** answers *which call sites may use the raw, unchecked form* and is keyed by **call site** — update it only when a site moves between the raw and checked forms.
+  A new `gitexec` call inside an already-pinned method trips the second and not the first; a new method reaching the CLI trips both. Each invariant's `CONSTRAINTS.md` entry must carry a one-line cross-reference to the other.
 - **Rejected:**
   - Pinning without requiring a justification comment — cheaper to maintain, weaker at review time.
   - No guard test at all — then the verdict is indistinguishable from plain incremental migration, and the raw form does silently become legacy debt.
 - **Known blind spot, inherited from the sibling invariant:** set-equality on call sites does not catch a raw call slipped into an already-pinned function; per-call review still applies there.
 
-### implementation-task-migrates-shape-not-wording
+### the-migration-is-a-two-message-merge-not-a-substitution
 
-- **Decision:** The implementation task performs a mechanical shape migration. Error *messages* improve as a free consequence of `%w`-wrapping the `GitError`. The one hand-read exception is the 6 paths in `internal/fabricengine/add.go` that substitute a fixed wrong cause — each must be read individually.
-- **Rationale:** The per-site "what should the operator see when this fails" judgement is precisely what crucible R5 already did, site by site, with the totals independently re-counted. Redoing it wholesale is a second campaign, not a migration, and it would turn a bounded 75-site sweep into open-ended work.
-  The `add.go` paths are the exception because the shape change alone does not remove a *wrong* cause — it just puts a right one next to it.
-- **Rejected:** Full per-site message review of all 55 (open-ended, re-litigates R5); shape-only with no `add.go` exception (leaves six actively misleading messages standing).
+- **Decision:** The dominant per-site pattern is a **merge of two existing error messages**, not a mechanical substitution, and the verdict must say so and supply the merge rule.
+  Measured: roughly **51 of the ~70** `fabricengine` call sites carry *both* an `if err != nil` block and an `if exitCode != 0` block after the same call, each with its own message — the first for "git would not run", the second for "git ran and refused". Under the new shape both conditions collapse into `if err != nil`, so every one of those sites is a decision about which message survives.
+  **The default merge rule, to be stated in the verdict so the implementer is not re-deciding it 51 times:** the **exit-path message wins** (it is the one written for the failure operators actually hit) and the exec-path message is dropped, with the returned error `%w`-wrapped so `GitError`'s own text supplies what the exec-path message used to say. Sites that do not fit the rule — where the exec-path message carries information the exit-path one lacks — are read individually and the deviation noted.
+- **Rationale:** This corrects a claim this document inherited from the task body and did not test against the tree. `gofmt -r` rewrites expressions; it cannot merge two statements with divergent bodies, and an AST tool that did would be making the editorial choice silently.
+  The original cost model — "55 discard sites need judgement, the rest is a sweep" — is close to inverted: the sites needing *no* thought are the small group, and ~51 need a message decision precisely *because* they already have two messages. This does not overturn the verdict, which is defensible at the higher cost, but it must change the implementation task's size estimate rather than surprising it.
+- **Consequence for scope:** the implementation task still does **not** re-review the *wording quality* of R5's messages — that judgement was made site by site and re-litigating it is a second campaign. What it must do is decide, per site, which of two existing messages survives the merge, under the default rule above. The 6 paths in `internal/fabricengine/add.go` that substitute a fixed wrong cause remain a separate hand-read exception, because a shape change alone does not remove a wrong cause.
+- **Rejected:** Keeping "mechanical, whole-tree sweep" as written (measurably false at 51 sites, and it would hand the implementer an estimate off by an order of magnitude); full per-site wording review of all 55 (open-ended, re-litigates R5); leaving the merge rule unstated and letting the implementer choose per site (51 uncoordinated editorial choices is exactly the inconsistency the guard test cannot catch).
 
 ### verdict-doc-lifecycle
 
@@ -137,11 +157,17 @@ The verdict is written down, the implementation is filed as its own task, and th
   - Promoting it to `docs/reference/` as a durable contract doc — it documents one package's error shape, not a cross-module *file* contract honoured by a real consumer, so it does not meet that bar.
   - Recording the verdict directly in the package comment now and deleting the doc — the package comment would describe a shape the code does not have.
 
-### verdict-carries-the-migration-recipe
+### verdict-carries-shapes-and-a-regeneration-recipe-not-durable-line-numbers
 
-- **Decision:** The rewritten verdict includes a "How the migration goes" section with the concrete rewrite patterns, the enumerated predicate-site inventory, and an `errors.As` recovery snippet.
-- **Rationale:** The doc is deleted when the implementation lands, so anything not written into it has to be rediscovered from scratch by a session with no memory of this exploration. Recording the mechanics is what makes the follow-up task cheap.
-- **Rejected:** Keeping the verdict to decision-and-reasoning only — cleaner as a document, more expensive as a hand-off.
+- **Decision:** The rewritten verdict includes a "How the migration goes" section carrying the rewrite patterns, the merge rule, the `errors.As` recovery snippet, and the site inventories — but the inventories are recorded as **shapes plus the grep/AST query that produced each count**, with every file:line marked as a snapshot taken 2026-08-10 that **must be re-derived at implementation time**.
+  The acceptance bar in [Testing](#testing) changes from "executable from the doc alone" to **"re-derivable from the doc alone"**.
+- **Rationale:** The implementation sits behind the whole serialised fabric chain (`depends_on: fabric-corrindex-record-race`), and that chain rewrites the exact code the inventory points at. Slice 12 rewires roughly 29 destructive call sites; slice 14's scope note says it rewrites *every verb's result path* — which is precisely the `if exitCode != 0 { return fmt.Errorf(...) }` blocks this migration edits.
+  A concrete instance already exists: `checkout.go:193` is a `git branch -D` call and one of the seven discard sites, and it is one of the five primitives the in-flight chokepoint slice routes through an executing gate — after which it returns a *refusal* that the current `_, _, _, _ =` swallows. That line will not look like this when the migration runs.
+  So "executable from the doc alone" was never achievable, and promising it would hand the implementer stale coordinates presented as fact. The queries survive the chain; the line numbers do not.
+- **Rejected:**
+  - Keeping the enumerated file:line inventory as the deliverable and the "executable from the doc alone" bar — it fails on contact with the chain the same document sequences behind.
+  - Dropping the dependency so the inventory stays fresh — the chain exists to keep concurrent edits out of `internal/fabricengine`, and a 70-site rewrite is the worst possible thing to run beside it.
+  - Recording no inventory at all and telling the implementer to measure from scratch — the *shape* classification (which sites are predicates, which are two-message merges) is the expensive part and it is what this exploration actually produced.
 
 ### go-git-spike-is-a-supporting-argument
 
@@ -204,7 +230,13 @@ This is why the "5 sites outside fabric" figure understates the shape's reach �
 
 ### The predicate-site inventory — non-zero exit as an answer
 
-These are the sites that keep the raw form. This list must be carried into the verdict doc verbatim, because it is the load-bearing evidence for the two-entry-point decision.
+These are the sites that keep the raw form. The **shape classification** below is the load-bearing evidence for the two-entry-point decision and must be carried into the verdict.
+
+> **Snapshot, not a coordinate list.** Every file:line here was measured on 2026-08-10 against `main` at `c52faee4`. The implementation runs behind the serialised fabric chain, which rewrites this exact code, so the verdict records these as *shapes plus the query that finds them* and the implementer **re-derives** the lines. See [verdict-carries-shapes-and-a-regeneration-recipe-not-durable-line-numbers](#verdict-carries-shapes-and-a-regeneration-recipe-not-durable-line-numbers).
+
+**Regeneration query** — classify every exit-code comparison by whether its branch constructs an error. Walk each non-test `.go` file under `internal/fabricengine`, match `\b(exitCode|code|unbornExit|statusExit)\s*(!=|==)\s*0\b`, and for each hit inspect the following ~8 lines for `fmt.Errorf` / `errors.New`.
+Do **not** restrict the match to lines containing `if` or `switch` — that filter is what caused this document's first pass to report 59 instead of 63.
+Current result: 63 total, 48 error-constructing, 15 not.
 
 `rev-parse --verify [--quiet] <ref>` used as a ref-existence check — 6 sites:
 
@@ -229,24 +261,55 @@ default: return false, fmt.Errorf(...)
 
 `diff --cached --quiet` where exit 1 means "index is dirty" — `internal/gitrepo/gitrepo.go:140` (mapped to `ErrIndexNotEmpty`) and `internal/gitrepo/gitrepo.go:193`.
 
-Other non-error-constructing branches surfaced by the mechanical classification, to be re-read when the inventory is finalised: `cleanup.go:280`, `reconcile.go:271`, `reconcile.go:300`, `reconcile.go:534`, `prune.go:218`, `prune.go:266`.
+**Bare `return <code> == 0` predicate functions** — the whole function *is* the predicate, so there is no error to construct and nothing for the checked form to give them: `internal/fabricengine/weftwiring.go:78`, `weftwiring.go:96`, `internal/fabricengine/pull.go:135` (`return code == 0, nil`), plus `internal/fabricengine/checkout.go:77` (`); werr == nil && code == 0 {`, a multi-line `if` continuation).
+These four are the comparisons the first classification pass skipped (see the note under [predicate-sites-are-real-and-must-stay-expressible](#predicate-sites-are-real-and-must-stay-expressible)).
 
-### Deliberate best-effort discards
+Other non-error-constructing branches surfaced by the classification, to be re-read when the inventory is regenerated: `cleanup.go:280`, `reconcile.go:271`, `reconcile.go:300`, `reconcile.go:534`, `prune.go:218`, `prune.go:266`.
 
-Only two, both trivially expressible in either shape:
+### Full-discard sites — seven, in two classes
+
+Query: `grep -rn "_, _, _, _ *= *gitexec.RunGit\|^\s*gitexec.RunGit(" --include="*.go" internal/ | grep -v _test`.
 
 ```go
-// internal/fabricengine/prune.go:284-285
-gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)     //nolint:errcheck
-gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath()) //nolint:errcheck
+internal/fabricengine/remove.go:202     _, _, _, _ = RunGit({"worktree", "prune"}, ...)
+internal/fabricengine/reconcile.go:426  _, _, _, _ = RunGit({"worktree", "prune"}, ...)
+internal/fabricengine/checkout.go:188   _, _, _, _ = RunGit({"switch", originalBranch}, ...)
+internal/fabricengine/checkout.go:190   _, _, _, _ = RunGit({"switch", originalWeftBranch}, ...)
+internal/fabricengine/checkout.go:193   _, _, _, _ = RunGit({"branch", "-D", forkedWeftBranch}, ...)
+internal/fabricengine/prune.go:284      RunGit({"worktree", "prune"}, weftRepoRoot)     //nolint:errcheck
+internal/fabricengine/prune.go:285      RunGit({"worktree", "prune"}, l.WorktreePath()) //nolint:errcheck
 ```
 
-The original item flagged "how does this interact with the sites where discarding is correct?" as an open question; the answer is that it barely does — `//nolint:errcheck` on `gitexec.Run` reads the same as it does today.
+**They are not one class, and the distinction matters to the verdict:**
+
+- **Genuinely best-effort bookkeeping** — `remove.go:202`, `reconcile.go:426`, `prune.go:284`, `prune.go:285`. All `worktree prune`; `remove.go`'s own comment states it must not turn a completed removal into an error. These migrate as discards and stay discards.
+- **Rollback and teardown on an error path** — `checkout.go:188`, `:190`, `:193`. `checkout.go:193` (`branch -D`) is one of the five primitives the in-flight chokepoint slice routes through an executing gate. Once that gate is live, a discarded return can swallow a **refusal**, which is a different failure from a best-effort operation not working. These three must be read individually at implementation time, not swept.
+
+**On `//nolint:errcheck`.** The original item flagged "how does this interact with the sites where discarding is correct?" as an open question, and the honest closing is that the question was scoped to the wrong set — it was answered against 2 sites when there are 7, spanning two classes with different correctness arguments.
+The comment itself enforces nothing here: this repo has no `golangci-lint` (see [Repo conventions](#repo-conventions-this-task-must-follow)), so `//nolint:errcheck` is documentation, and nothing checks either the old shape or the new one.
+If deliberate discard is meant to be *visible*, the **guard test is the mechanism, not the comment** — the Checked-Call Invariant's justification-comment requirement is what makes each of these seven state its own case.
 
 ### The migration recipe to record in the verdict
 
-- **Mechanical, whole-tree.** At failure sites: `_, stderr, exitCode, err := gitexec.RunGit(a, d)` + `if err != nil {...}` + `if exitCode != 0 { return fmt.Errorf("...: %s", stderr) }` collapses to `out, err := gitexec.Run(a, d)` + `if err != nil { return fmt.Errorf("...: %w", err) }`. `gofmt -r` or a small AST tool handles the binding and the condition; the five full-discard `_, _, _, _` sites come along for free.
-- **Uniform prior shape.** Sites that *do* bind stderr today follow one shape — each named `*Stderr` variable appears exactly twice, once bound and once used in an error message, and does nothing else with it. That uniformity is what makes the sweep safe.
+- **The dominant pattern is a two-message merge, and it is not mechanical.** At a failure site today:
+
+  ```go
+  _, stderr, exitCode, err := gitexec.RunGit(a, d)
+  if err != nil          { return fmt.Errorf("<exec-path message>: %w", err) }
+  if exitCode != 0       { return fmt.Errorf("<exit-path message>: %s", stderr) }
+  ```
+
+  Under the new shape both conditions become `if err != nil`, so the two blocks **merge** and one of the two messages has to go. Roughly **51 of ~70** `fabricengine` sites are in this shape. `gofmt -r` rewrites expressions; it cannot merge statements with divergent bodies, and an AST tool that silently picked a message would be making the editorial call for the implementer.
+  **Default merge rule:** the exit-path message wins, `%s`-of-stderr becomes `%w`-of-error, and the exec-path message is dropped because `GitError`'s own text now carries what it said:
+
+  ```go
+  out, err := gitexec.Run(a, d)
+  if err != nil { return fmt.Errorf("<exit-path message>: %w", err) }
+  ```
+
+  Deviate only where the exec-path message carries information the exit-path one lacks, and note each deviation.
+- **Genuinely mechanical subset.** Sites with only one of the two blocks, and the four best-effort `worktree prune` discards. Small — this is the group the original "whole-tree sweep" framing mistook for the majority.
+- **Uniform prior shape for stderr binding.** Sites that *do* bind stderr follow one shape — each named `*Stderr` variable appears exactly twice, once bound and once used in an error message, and does nothing else with it. That uniformity is what makes the *binding* half of the rewrite safe; it says nothing about the merge.
 - **Predicate recovery**, for any site that needs the code back:
 
   ```go
@@ -254,7 +317,7 @@ The original item flagged "how does this interact with the sites where discardin
   if errors.As(err, &gitErr) && gitErr.ExitCode == 1 { /* the answer, not a failure */ }
   ```
 
-- **Hand-read exception.** The 6 paths in `internal/fabricengine/add.go` that report `"cwd is not a valid git worktree"` for unrelated failures.
+- **Hand-read exceptions.** The 6 paths in `internal/fabricengine/add.go` that report `"cwd is not a valid git worktree"` for unrelated failures, and the three rollback discards at `checkout.go:188/190/193` (one of which becomes a gate-refusal path under the chokepoint slice).
 
 ### Repo conventions this task must follow
 
@@ -288,13 +351,16 @@ Verification is the repo's existing documentation guards plus a read-through.
 - **Markdown reflow** — `tools/mdreflow` is the repo's semantic-line-break tooling; the rewritten doc and the roadmap edit must satisfy it (one sentence per line, no fixed-column wrap, table cells on one line).
 - **`go build ./...` / `go test ./...`** — expected to be a no-op pass. Run it as a negative check that nothing outside `manifest/` was touched, not as evidence of anything positive.
 - **Wiki task creation is verified by reading it back** — after `upsert_task`, re-fetch `gitexec-checked-entry-point` and confirm the slug, the title, and that `depends_on` is exactly `['fabric-corrindex-record-race']`.
-- **Self-containment check on the verdict doc** — the acceptance bar is that a session with no memory of this discussion could execute the migration from the doc alone. Concretely: the predicate-site inventory is enumerated with file:line, the `GitError` definition is given in full, the exec-level-failure rule is stated, and the `errors.As` recovery snippet is present.
+- **Self-containment check on the verdict doc** — the acceptance bar is that a session with no memory of this discussion could **re-derive** the migration from the doc alone, against a tree the fabric chain has since rewritten. Not "execute from the doc alone": the line numbers will be stale by then, and promising otherwise hands the implementer stale coordinates presented as fact.
+  Concretely, the doc must carry: the `GitError` definition in full; the stdout-on-failure rule; the exec-level-failure rule; the `errors.As` recovery snippet; the two-message merge rule; and, for each inventory (predicate sites, two-message merges, seven discards), the **shape** and the **query that regenerates it**, with its file:line list labelled as a 2026-08-10 snapshot.
 
 Scenarios that must be covered by the verdict's prose, since they are what a future reader will challenge it on:
 
 - Why the raw `RunGit` is not deprecated (the predicate sites).
 - Why a non-zero exit from a `--verify` probe is not an error.
-- Why exec-level failures are not `GitError`s.
+- Why exec-level failures are not `GitError`s, and why stdout still comes back when one is returned.
+- Why the migration is a message merge at ~51 sites rather than a mechanical sweep, and what the default merge rule is.
+- Why the seven discard sites split into two classes, and why three of them are hand-read.
 - Why the counter-argument ("diagnostic quality, not correctness") was weighed and not accepted.
 
 ## Q&A log
@@ -312,3 +378,14 @@ Scenarios that must be covered by the verdict's prose, since they are what a fut
 - **Q:** How does the `go-git` feasibility spike interact? **A:** Cited as an argument *for* the change: a backend swap is only possible if callers consume an `error` rather than a synthesised `(stderr, exitCode)` pair.
 - **Q:** Slug and sequencing of the implementation task? **A:** `gitexec-checked-entry-point`, `depends_on: ['fabric-corrindex-record-race']` — the tail of the serialised chain protecting `internal/fabricengine` from concurrent edits.
 - **Q:** Roadmap treatment? **A:** `manifest/roadmap.md:70` is replaced in place by the implementation item with the verdict stated in one line — the decision item completes and a planned item is added, which is exactly when the roadmap moves.
+
+Resolved in discussion review (orchestrator review, 2026-08-10):
+
+- **Q:** Is the failure-site rewrite really mechanical? **A:** No — measured, ~51 of ~70 `fabricengine` sites carry both an `err != nil` and an `exitCode != 0` block with separate messages, so the rewrite is a **merge** and each merge is an editorial choice. The claim was inherited from the task body and did not survive contact with the tree. The verdict now states a default merge rule (exit-path message wins, exec-path dropped, `%w`-wrap) so the implementer is not deciding it 51 times, and the implementation task's size estimate goes up accordingly.
+- **Q:** Can the verdict promise a file:line inventory that is "executable from the doc alone"? **A:** No — the implementation sits behind the whole fabric chain, and slice 14 rewrites every verb's result path, which is exactly the code the inventory points at. `checkout.go:193` is already a live instance: the chokepoint slice routes its `branch -D` through an executing gate, after which the current `_, _, _, _ =` swallows a refusal. Inventories are now recorded as shapes plus regeneration queries, and the acceptance bar is **re-derivable** from the doc alone.
+- **Q:** How many deliberate-discard sites are there? **A:** Seven, not two — the document counted only the two bare `prune.go` calls and never connected the five `_, _, _, _` sites to the section answering the inherited open question. They split into two classes: four best-effort `worktree prune` (stay discards) and three `checkout.go` rollback sites that must be hand-read.
+- **Q:** What is the first return value of `gitexec.Run` when it returns a `*GitError`? **A:** Captured stdout, always — never blanked. This is what makes rejecting a `Stdout` field on `GitError` coherent, and blanking it would discard data the process already has.
+- **Q:** 59 or 63 exit-code comparisons? **A:** 63. The 59 came from a classifier that only looked at lines containing `if` or `switch`; the four it missed (`weftwiring.go:78`, `weftwiring.go:96`, `pull.go:135`, `checkout.go:77`) are all `return <code> == 0`-shaped **predicate** sites, so the correction is 48 error-constructing / 15 predicate and it strengthens the inventory.
+- **Q:** Does `//nolint:errcheck` express deliberate discard? **A:** No — this repo has no `golangci-lint`, so the comment enforces nothing and "it reads the same as today" is true but hollow. The guard test's justification-comment requirement is the mechanism.
+- **Q:** How do the two set-equality guards on `gitrepo` compose? **A:** Client Boundary is keyed by **method name** (which methods may reach the CLI); Checked-Call is keyed by **call site** (which sites may use the raw form). A new call inside a pinned method trips only the second; a new method reaching the CLI trips both. Each `CONSTRAINTS.md` entry cross-references the other.
+- **Q:** Can `GitError.Args` leak credentials? **A:** Not today — no path in the repo builds a URL with embedded `userinfo`. The spec now states args are rendered **verbatim** and callers must not pass credentials in them, chosen over a `userinfo` redaction rule because redaction invites reliance and covers only the URL-shaped case.
