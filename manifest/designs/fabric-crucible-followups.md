@@ -186,6 +186,39 @@ Consolidate these into one path every destructive operation must go through, enf
    This step, and this step only, may land in each verb's existing error shape — slice 14 generalises it into one envelope afterwards.
    Steps 1-4 are the safety half and must not be deferred that way.
 
+### What "one entry point" must mean — three precisions
+
+**One shared pre-flight in front of several destructive primitives, never one delete function.**
+Destruction in fabric is not one operation.
+It is at least five, spread across a dozen files:
+
+| primitive | current sites |
+|---|---|
+| `os.RemoveAll` / `os.Remove` | `remove.go`, `prune.go`, `clone.go` (via the `RemoveAll` seam), `launchers.go`, `junction.go`, `index.go`, `hook.go` |
+| `git worktree remove [--force]` | `remove.go`, `prune.go`, `add.go`, `weftwiring.go` |
+| `git branch -D` | `cleanup.go`, `checkout.go`, `add.go`, `weftwiring.go` |
+| `ResetHard` | `pull.go`, three call sites |
+| exclude rewrite / link removal | `gitexclude.go`, `junction.go` |
+
+If the chokepoint is read as "one function that deletes a directory", R2's `ResetHard` defect walks straight past it — and that is exactly how R2's defect worked.
+The gate is the four checks;
+the primitives are what it fronts.
+
+**The gate executes, it does not merely approve.**
+A gate the caller consults and then deletes on its own behalf is a rule someone must remember to follow, which is the failure mode this whole slice exists to end — 28 destructive sites each remembering their own checks is how the class was produced.
+A gate that performs the act makes `os.RemoveAll` outside one file mechanically bannable, which is what reduces the bypass guard to a trivial file-scoped scan.
+This is [overview.md](../../docs/overview.md#principles)'s principle 6 — make the correct path the path of least resistance and make drift detectable — applied to fabric's own internals.
+`clone.go:32`'s `var RemoveAll = os.RemoveAll` already demonstrates the routing works.
+
+**One file in `internal/fabricengine`, not a sub-package — at least first.**
+A sub-package (`internal/fabricengine/destroy`, or a lower leaf beside `internal/fslink`) is the shape that first suggests itself, and it has a concrete blocker: the predicates the gate needs — `isRegisteredLinkedWorktree`, `looksLikeHub`, `applyStalePairOwnership`, `refuseDirtyWeftWorktree`, weft path construction — are `fabricengine`-private.
+A sub-package importing `fabricengine` for them while `fabricengine` imports the sub-package for the gate is an import cycle Go forbids.
+A sub-package therefore only works if the gate is **told** its predicates and never derives them — the [Treadle Runner-Seam Invariant](../../CONSTRAINTS.md#treadle-runner-seam-invariant) pattern, which is a real option but a larger design.
+
+Nothing is lost by starting in-package.
+Enforcement does not need a package boundary: `internal/scoutengine/lspclient_guard_test.go` already polices a **single file**, so "the only file allowed to call `os.RemoveAll`" is exactly as machine-checkable as "the only package".
+Extract to a told-everything leaf later if a non-fabric caller appears — which is the open question below, and the reason this slice does not settle it up front.
+
 Then **prove no call site bypasses it**.
 That is the part that turns this from another fix into a closed class:
 
