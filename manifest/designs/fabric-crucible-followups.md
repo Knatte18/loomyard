@@ -41,24 +41,33 @@ Two facts about this table drive the whole ordering below.
 ## Build order and why
 
 `12 → 13 → 14`, with `15` independent and parked at the tail.
+The slice numbers are assigned in build order, so numeric order is always build order.
 
-The order is deliberately *not* "root cause first".
-It is instrument, then channel, then fix:
+The root-cause fix (the destructive-operation chokepoint) is **slice 13, not slice 12** — it is second, not first, and the single sentence justifying that is:
 
-- **Slice 12 first, because the campaign's own evidence says a fix you cannot prove is a fix you will re-break.**
-  The hermetic suite was green through all eight data-loss defects.
-  Building slice 14's chokepoint without a harness that can drive it against hostile state would reproduce exactly the failure mode this campaign documented — and slice 14's acceptance criterion is literally "prove no call site bypasses it", which is a harness assertion, not a code review.
-  The harness is additive (`//go:build integration`), touches no production code, and its matrix is likely to surface further instances of the slice-14 class *before* the gate is designed, which is worth more than the same instances surfacing after.
-- **Slice 13 second, because slice 14 needs a channel that can express what it does.**
-  Slice 14's gate must report *which* of its checks refused and why, and must never report success after a partial mutation.
-  Both are unrepresentable in today's envelope.
-  Building the gate before the envelope means writing per-verb refusal reporting and then rewriting it.
-  Slice 13 also completes slice 12: a harness cell is only meaningful when it asserts both "the operator's file is still on disk" *and* "the report was truthful", because case after case in the table above returned an error **and** destroyed something.
-- **Slice 14 third** — the root-cause fix, now provable by 12 and expressible by 13.
-- **Slice 15 last** — LOW, self-healing, unrelated to the destruction class, and gated on a locking decision rather than on either of the others.
+> Slice 13 is a consolidating refactor of the exact code paths that destroyed something eight times, and the only test tier that can observe destruction is the one slice 12 builds.
 
-Slices 12 and 13 are the only pair that could plausibly run in parallel;
-they do not collide in production code (12 adds test-tier files only), but 13 changes the JSON shape 12's cells assert on, so sequencing them avoids rewriting assertions.
+Doing the refactor first means rewriting fabric's highest-blast-radius code with a suite that provably cannot see the failure mode it is being rewritten to prevent.
+That is how bug nine happens.
+Slice 12 is deliberately kept small for this reason — see its scope note: it must cover the destructive verbs before slice 13 starts, and only needs to grow to the full cross product afterwards.
+
+The rest of the order:
+
+- **Slice 12 first** — the instrument.
+  Additive (`//go:build integration`), touches no production code, and its hostile-state matrix is likely to surface further instances of the slice-13 class *before* the gate is designed, which is worth more than the same instances surfacing after.
+  Note what it does and does not prove: proving that no *call site bypasses* the gate is the job of slice 13's own static guard test, not of the harness;
+  the harness proves the gate *behaves* correctly once reached, against real git in dirty and hostile state.
+  Both are needed and they are different mechanisms.
+- **Slice 13 second** — the safety fix, landing as early as it can be landed with cover.
+  Its steps 1-4 (containment, ownership, dirtiness, force semantics) are what actually stop destruction and depend on nothing but slice 12.
+  Its step 5 (honest reporting) is truthfulness, not safety — `remove ..` would have been stopped dead by step 1 alone — so step 5 is allowed to land in each verb's existing error shape and be generalised by slice 14.
+  That is a deliberate, bounded churn cost, paid to get the safety fix in earlier.
+- **Slice 14 third** — the envelope.
+  It generalises slice 13's per-verb refusal reporting into one accumulate-as-you-mutate shape, and it completes slice 12: a harness cell is only fully meaningful when it asserts both "the operator's file is still on disk" *and* "the report was truthful", because case after case in the table above returned an error **and** destroyed something.
+- **Slice 15 last** — LOW, self-healing, unrelated to the destruction class, and gated on a locking decision rather than on any of the others.
+
+Nothing here runs usefully in parallel.
+12 and 14 both concern the same result shape from opposite sides, and 13 sits between them by design.
 
 ## Slice 12 — live-state integration harness
 
@@ -103,7 +112,7 @@ An integration-tier harness (`//go:build integration`) providing:
    Every exported verb with its arguments, including hostile inputs — `""`, `.`, `..`, `../x`, `-weft`-suffixed, reserved hub names, a leading `-`.
 4. **The cross product driven, with per-cell assertions on what must survive.**
    The critical assertion is **not** "the verb returned an error" but "the operator's file is still on disk" — case after case in the evidence table returned an error *and* destroyed something.
-   Once slice 13 lands, each cell also asserts the report was truthful.
+   Once slice 14 lands, each cell also asserts the report was truthful.
 5. **Subpath coverage.**
    Every cell runnable on a `--subpath backend` hub as well as a `.`-anchored one.
    The campaign's number one concern throughout was the anchor/subpath mechanism, and it is the axis most likely to differ.
@@ -112,6 +121,16 @@ The point is the **cross product**, not the individual cells.
 A new verb added to the table inherits every state;
 a new state inherits every verb.
 That is the property the current per-verb integration tests do not have, and it is precisely how `remove` escaped four consecutive review rounds.
+
+### Scope note — build the minimum that covers slice 13, then grow
+
+This slice does **not** have to ship the full cross product before slice 13 starts, and deliberately should not.
+The blocking subset is: the hub factory, the dirty/hostile states that the evidence table's eight defects actually exercised, and the hostile-input row of the verb table driven against every destructive verb.
+That is enough to refactor the destructive paths under cover, which is the whole reason this slice is sequenced first.
+
+The remaining axes — concurrency between worktrees, the hook surface, `_portals`/`_launchers`, and full subpath coverage of every cell — are additive and land after slice 13, alongside slice 14's truthfulness assertions.
+Growing the matrix is cheap once the factory exists;
+holding slice 13 hostage to a complete matrix is not.
 
 ### Scope, cost and risk
 
@@ -126,7 +145,74 @@ parallelising per-hub is straightforward since every cell owns its own hub.
 **Known limitation, stated up front rather than discovered later:** Windows path behaviour (junctions vs symlinks, case-insensitive compare in `lyxcwd.samePath`) cannot be exercised on a Linux host.
 The campaign carried this as a permanent known gap across all six rounds rather than pretending to have verified it, and this harness inherits that gap honestly — see the Someday `fabric: Windows path behaviour is unverified` item and [fabric-windows-verification.md](fabric-windows-verification.md).
 
-## Slice 13 — accumulate the result envelope from mutations, not from control flow
+## Slice 13 — route every destructive operation through one ownership-and-dirtiness gate
+
+Issue #146 (`bug`).
+This is the root-cause slice.
+
+### Why
+
+The eight data-loss defects are eight instances of one shape spread across six files: **a destructive operation acting on a path it does not own, or without checking whether there is work there to lose.**
+
+The structural cause is that fabric has **no common chokepoint for destruction**.
+Every call site implements its own ownership check and its own dirtiness check, or forgets to.
+That is why each round found a new one.
+
+R4 enumerated **28 destructive sites** across the fabric packages and closed the two live defects in that enumeration.
+R5 then found two more in regions R4's sweep did not cover — `remove`'s slug door and the shared `.git/info/exclude` — which is the evidence that enumerate-and-fix does not terminate here.
+
+### What needs to happen
+
+Every ingredient already exists in the tree.
+They are just scattered, and applied by whichever call site remembers to apply them:
+
+- `refuseUncontainedPath(container, target, what)` — `internal/fabricengine/ancestors.go`, added by R5.
+- `isRegisteredLinkedWorktree` / `isRegisteredLinkedWorktreeIn` — "is this git's, and this hub's?"
+- `applyStalePairOwnership` — `prune.go`, R4's ownership gate, deliberately NOT bypassed by `--force`.
+- `looksLikeHub` — `clone.go`, R4's hub predicate.
+- `refuseDirtyWeftWorktree` / `applyStalePairProtection` — the tracked-changes probes.
+- `validateWorktreeSlug` — `slug.go`, which currently has **two** call sites (`add.go`, `remove.go`) against **eight** exported `Topology` verbs.
+- `var RemoveAll = os.RemoveAll` — `clone.go:32`, an existing test seam that shows the routing idea already works.
+
+Consolidate these into one path every destructive operation must go through, enforcing in a fixed order:
+
+1. **Containment** — the target resolves strictly below the container it is supposed to be inside.
+2. **Ownership** — the target is something fabric created and this hub owns, not merely something whose name matches a pattern.
+3. **Dirtiness** — there is no uncommitted tracked work being discarded, unless `--force` was given.
+4. **Force semantics** — `--force` answers "discard work I might want", and must **never** answer "delete something that was never fabric's".
+   R4 established this seam and verified it live;
+   the chokepoint makes it structural rather than per-site discipline.
+5. **Honest reporting** — a refusal names which of the four gates refused and why, and a failure never reports success.
+   This step, and this step only, may land in each verb's existing error shape — slice 14 generalises it into one envelope afterwards.
+   Steps 1-4 are the safety half and must not be deferred that way.
+
+Then **prove no call site bypasses it**.
+That is the part that turns this from another fix into a closed class:
+
+- A graded sweep (the crucible's form) showing every one of R4's enumerated destructive sites routes through the gate.
+- A guard test that fails when a new raw `os.RemoveAll` / `os.Remove` / `git worktree remove --force` appears outside the gate.
+  The cheapest shape matching how this repo already enforces structure is a test that walks the tree, in the manner of the Test Tier Purity Invariant's guard — see the open question below.
+- Slice 12's harness driving the hostile-input row of its verb table against every verb, which is what keeps proving it.
+- A **CONSTRAINTS.md invariant in the same commit**.
+  This is exactly the cross-cutting kind that file exists for, and CLAUDE.md requires it in the same commit anyway.
+
+### Fold in R6's validation-asymmetry class
+
+`validateWorktreeSlug`'s two-of-eight call-site ratio was enumerated by crucible R6 as a separate class — validation asymmetry across entry points.
+Whatever R6 recorded is folded in **here** rather than fixed twice: the two classes meet at exactly the door where `remove ..` got in.
+
+### Open questions
+
+- **Does the gate belong in `internal/fabricengine`, or lower** — beside `internal/fslink` / `internal/gitrepo` — so non-fabric callers get it too?
+  Leaning fabricengine first, since all eight defects were fabric's, and generalising later is cheaper than a premature abstraction.
+- **The dirtiness probe is deliberately tracked-only today** (`git status --porcelain --untracked-files=no`).
+  That decision is reasoned and documented in `prune.go`;
+  the chokepoint inherits it rather than silently widening it, because refusing on untracked files would make `prune` useless on exactly the debris it exists to clear.
+- **How to enforce "no new raw destructive call" mechanically.**
+  Options: a test walking the AST, a `golangci-lint` forbidigo rule, or the existing grep-the-tree pattern.
+  The last is cheapest and matches the repo's existing guards — but see the Someday `lyx has ~15 home-grown static-analysis guards` item (issue #135) before adding a sixteenth hand-rolled walk.
+
+## Slice 14 — accumulate the result envelope from mutations, not from control flow
 
 Issue #143 (`bug`).
 
@@ -181,74 +267,8 @@ Confined to `internal/fabricengine` and `internal/fabriccli`.
 It changes JSON output shape, so anything parsing fabric's output is affected — enumerate the consumers before starting;
 within loomyard they are known, and `internal/boardengine` is the one to check first since it routes through `CommitWeftAt`/`PushWeftAt`.
 
-Sequenced **before** slice 14, not after: slice 14's gate has to report which check refused and why, and that report needs this shape to land in.
-
-## Slice 14 — route every destructive operation through one ownership-and-dirtiness gate
-
-Issue #146 (`bug`).
-This is the root-cause slice.
-
-### Why
-
-The eight data-loss defects are eight instances of one shape spread across six files: **a destructive operation acting on a path it does not own, or without checking whether there is work there to lose.**
-
-The structural cause is that fabric has **no common chokepoint for destruction**.
-Every call site implements its own ownership check and its own dirtiness check, or forgets to.
-That is why each round found a new one.
-
-R4 enumerated **28 destructive sites** across the fabric packages and closed the two live defects in that enumeration.
-R5 then found two more in regions R4's sweep did not cover — `remove`'s slug door and the shared `.git/info/exclude` — which is the evidence that enumerate-and-fix does not terminate here.
-
-### What needs to happen
-
-Every ingredient already exists in the tree.
-They are just scattered, and applied by whichever call site remembers to apply them:
-
-- `refuseUncontainedPath(container, target, what)` — `internal/fabricengine/ancestors.go`, added by R5.
-- `isRegisteredLinkedWorktree` / `isRegisteredLinkedWorktreeIn` — "is this git's, and this hub's?"
-- `applyStalePairOwnership` — `prune.go`, R4's ownership gate, deliberately NOT bypassed by `--force`.
-- `looksLikeHub` — `clone.go`, R4's hub predicate.
-- `refuseDirtyWeftWorktree` / `applyStalePairProtection` — the tracked-changes probes.
-- `validateWorktreeSlug` — `slug.go`, which currently has **two** call sites (`add.go`, `remove.go`) against **eight** exported `Topology` verbs.
-- `var RemoveAll = os.RemoveAll` — `clone.go:32`, an existing test seam that shows the routing idea already works.
-
-Consolidate these into one path every destructive operation must go through, enforcing in a fixed order:
-
-1. **Containment** — the target resolves strictly below the container it is supposed to be inside.
-2. **Ownership** — the target is something fabric created and this hub owns, not merely something whose name matches a pattern.
-3. **Dirtiness** — there is no uncommitted tracked work being discarded, unless `--force` was given.
-4. **Force semantics** — `--force` answers "discard work I might want", and must **never** answer "delete something that was never fabric's".
-   R4 established this seam and verified it live;
-   the chokepoint makes it structural rather than per-site discipline.
-5. **Honest reporting** — a refusal names which of the four gates refused and why, and a failure never reports success.
-   This is slice 13's envelope;
-   that is why 13 is sequenced first.
-
-Then **prove no call site bypasses it**.
-That is the part that turns this from another fix into a closed class:
-
-- A graded sweep (the crucible's form) showing every one of R4's enumerated destructive sites routes through the gate.
-- A guard test that fails when a new raw `os.RemoveAll` / `os.Remove` / `git worktree remove --force` appears outside the gate.
-  The cheapest shape matching how this repo already enforces structure is a test that walks the tree, in the manner of the Test Tier Purity Invariant's guard — see the open question below.
-- Slice 12's harness driving the hostile-input row of its verb table against every verb, which is what keeps proving it.
-- A **CONSTRAINTS.md invariant in the same commit**.
-  This is exactly the cross-cutting kind that file exists for, and CLAUDE.md requires it in the same commit anyway.
-
-### Fold in R6's validation-asymmetry class
-
-`validateWorktreeSlug`'s two-of-eight call-site ratio was enumerated by crucible R6 as a separate class — validation asymmetry across entry points.
-Whatever R6 recorded is folded in **here** rather than fixed twice: the two classes meet at exactly the door where `remove ..` got in.
-
-### Open questions
-
-- **Does the gate belong in `internal/fabricengine`, or lower** — beside `internal/fslink` / `internal/gitrepo` — so non-fabric callers get it too?
-  Leaning fabricengine first, since all eight defects were fabric's, and generalising later is cheaper than a premature abstraction.
-- **The dirtiness probe is deliberately tracked-only today** (`git status --porcelain --untracked-files=no`).
-  That decision is reasoned and documented in `prune.go`;
-  the chokepoint inherits it rather than silently widening it, because refusing on untracked files would make `prune` useless on exactly the debris it exists to clear.
-- **How to enforce "no new raw destructive call" mechanically.**
-  Options: a test walking the AST, a `golangci-lint` forbidigo rule, or the existing grep-the-tree pattern.
-  The last is cheapest and matches the repo's existing guards — but see the Someday `lyx has ~15 home-grown static-analysis guards` item (issue #135) before adding a sixteenth hand-rolled walk.
+Sequenced **after** slice 13, not before: the gate's own refusal reporting (its step 5) lands in each verb's existing error shape first, and this slice is what generalises that into one accumulate-as-you-mutate envelope.
+Deferring the envelope is a deliberate, bounded churn cost, paid so the safety half of the gate lands a slice earlier.
 
 ## Slice 15 — corrindex two-phase read-modify-write races an unlocked RebuildIndex
 
@@ -302,7 +322,7 @@ R6 recorded it as incidental observation O1, outside that round's two-part assig
   slice 11 was the crucible hardening pass itself.
 - [fabric-windows-verification.md](fabric-windows-verification.md) — the Someday platform gap slice 12 inherits honestly rather than closing.
 - [gitexec-error-shape.md](gitexec-error-shape.md) — the fifth class the campaign surfaced, scoped out of these slices because its blast radius is every module that touches git, not fabric.
-- [CONSTRAINTS.md](../../CONSTRAINTS.md) — where slice 14's invariant goes;
+- [CONSTRAINTS.md](../../CONSTRAINTS.md) — where slice 13's invariant goes;
   its [Fabric Git Invariant](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft) and [Test Tier Purity Invariant](../../CONSTRAINTS.md#test-tier-purity-invariant) are the two these slices sit next to.
 - `internal/fabricengine` package documentation — where the durable rationale folds when this file is deleted.
 - The campaign's own artifacts — `.scratch/fabric-review-HANDOFF.md` and the per-round orchestrator verifications (`fabric-review-r3-orchestrator-verification.md`, `-r4-`, `-r5-`, and `fabric-review-opus-medium-r4.md`'s 28-site destructive enumeration) — lived in the `fabric-v2-crucible` worktree and were never merged.
