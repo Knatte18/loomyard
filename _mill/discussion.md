@@ -143,9 +143,19 @@ one file in `internal/fabricengine`, not a sub-package.
   - **`ownedFabricHub` is wrong on the merits, not merely inconvenient.** `looksLikeHub` (`clone.go:579`) requires a `_board` entry or at least one weft sibling. `teardownHub` has **13 call sites** in `clone.go`, the earliest at `:243`/`:245` — immediately after the warp clone attempt, when neither exists yet. The rollback would be *refused* at nearly every early failure, and `clone.go:606` would leave "residual hub left at %s; remove it manually". A gate that blocks cleanup of a half-built hub is worse than the gap it closes.
   - **A bare `ownedInTransaction` trust-me closes the gap in name only** — "teardown is special" is precisely the reasoning that produced the `clone --reset` defect.
 
-  The resolution is **containment plus a structurally guaranteed transaction identity**, declared as `ownedFreshlyCreatedPath(reason)`:
+  The resolution is **containment plus a transaction identity the gate itself mints**, declared as `ownedFreshlyCreatedPath(tok createdToken)`.
+
+  **The gate creates the path, so it can verify the claim instead of believing it.**
+  An earlier draft had this kind take a free-text `reason` and no repo context, which left the gate executing nothing for it — the `ownedInTransaction` trust-me this section rejects, wearing a better name.
+  Instead `destroy.go` exposes the *creation* side too: `createExclusiveDir(path) (createdToken, error)` performs the stat-then-`MkdirAll` sequence itself and returns an unexported `createdToken`.
+  `ownedFreshlyCreatedPath` accepts only that token.
+  Since the type is unexported and the gate is its sole minter, **a site cannot declare this kind for a path the gate did not create** — the claim becomes structural rather than asserted, and a new declaration is impossible to write rather than merely discouraged.
+  `CloneHub` calls `createExclusiveDir(hubPath)` in place of its current `os.Stat` guard plus `os.MkdirAll` (`clone.go:163`, `:211`, `:219`) and holds the token for its 13 teardown sites.
+  This is the same "the gate executes rather than approves" principle applied one step earlier: the gate now owns the creation whose destruction it will later authorise.
+
+  With that in place the two halves are:
   - *Containment*: `hubPath` resolves strictly below the `cwd` the operator named. `HubPath(parent, name)` is `filepath.Join(parent, name+HubSuffix)` (`junctionnames.go:106-108`) and `DeriveWarpName` splits on `/`, `\` and `:` so no separator survives — a derived `..` becomes the harmless `..-HUB`. Containment therefore holds today; asserting it costs nothing, which is `refuseUncontainedPath`'s own stated rationale (`ancestors.go:17-19`).
-  - *Transaction identity*: `teardownHub` provably removes only a directory this invocation created. **Both** clone forms `os.Stat(hubPath)` and fail with "hub already exists at %s" — two-argument at `clone.go:163`, one-argument at `clone.go:211` — before `os.MkdirAll(hubPath, 0o755)` at `clone.go:219`, with no intervening return that skips the guard. This is a structural guarantee of the surrounding function, not a claim the call site asserts.
+  - *Transaction identity*: `teardownHub` provably removes only a directory this invocation created, and after the change the **gate** is what proves it. Today the guarantee lives in `CloneHub`: both forms `os.Stat(hubPath)` and fail with "hub already exists at %s" — two-argument at `clone.go:163`, one-argument at `clone.go:211` — before `os.MkdirAll(hubPath, 0o755)` at `clone.go:219`, with no intervening return that skips the guard. `createExclusiveDir` absorbs exactly that sequence, so the property is preserved and moves from "a structural guarantee of the surrounding function" to "a token the gate minted".
 
   **Why that is stronger than `looksLikeHub`, not weaker.** `looksLikeHub` answers "does this *look like* a hub" — a pattern match, and pattern-matching a name fabric *derives* rather than one the operator types is exactly what R4's `clone --reset` defect exploited. The transaction check answers "did this invocation create this exact path", which is strictly stronger. `--reset` genuinely cannot use it, because it acts on a directory that pre-existed the invocation — which is why `looksLikeHub` is correct there and wrong here. The two siblings *should* differ; what was missing was the reason, and containment, which `teardownHub` lacks entirely today.
 - Rejected: bypassing the gate with a guard allowlist (re-opens the "teardown is special" reasoning that produced the `clone --reset` defect);
@@ -181,13 +191,26 @@ one file in `internal/fabricengine`, not a sub-package.
 
 - Decision: ownership is a closed enum of kinds, each resolved by the gate itself.
 
-  Path-shaped, valid on a `pathRequest`:
-  `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)`, `ownedFabricHub`, `ownedHubGeometryChild(container)`, `ownedFreshlyCreatedPath(reason)`.
+  Directory-shaped, valid on a `pathRequest`:
+  `ownedRegisteredLinkedWorktree(repoDir)`, `ownedWarpCheckout(repoDir)`, `ownedFabricHub`, `ownedHubGeometryChild(container)`, `ownedFreshlyCreatedPath(tok createdToken)`, `ownedFreshlyCreatedWorktree(tok createdToken)`.
+
+  The two token-carrying kinds differ only in what the gate minted — a bare directory (`createExclusiveDir`) versus a git worktree the gate added — and neither token is constructible outside `destroy.go`.
+
+  Link-shaped, valid on a `pathRequest`:
+  `ownedWiredJunction(expectedTarget)`, `ownedDriftedWiredJunction` — see below.
 
   Ref-shaped, valid on a `branchRequest`:
   `ownedManagedWeftBranch(l *lyxcwd.Location)`, `ownedTransactionCreatedBranch(reason)` — see `branch-deletion-is-ref-shaped`.
 
   Nothing else.
+
+- **The two link-shaped kinds, because "a path is a link" is not ownership.**
+  The six gated `fslink.Remove` sites need "this is a fabric junction", and the earlier draft deferred that to each site's existing `fslink.IsLink` / target-comparison refusal — which names no enum member and re-admits the per-site checks the enum exists to abolish.
+  Link-ness alone cannot be the rule: **R1's defect destroyed a *tracked symlink* in the warp worktree**, and a user's tracked symlink is a link. What separates fabric's junction from the operator's own is *where it sits* — a path fabric wires a junction at, from the configured name-set.
+  - `ownedWiredJunction(expectedTarget)` — teardown (`weftwiring.go:156`, `portals.go:57`, `unwire.go:143`, `junction.go:461`): the path is a link, its location is one fabric wires, **and** it resolves to `expectedTarget`.
+  - `ownedDriftedWiredJunction` — re-point (`junction.go:161`, `:311`): the path is a link and its location is one fabric wires, and the target is deliberately **not** compared, because a drifted or dangling target is the precondition for repairing it.
+
+  Two kinds rather than one with a flag: the target comparison is not merely optional between them, it is inverted, and a single kind would let a teardown site silently opt out of the check that protects it.
   The gate calls `isRegisteredLinkedWorktreeIn`, `looksLikeHub`, `WeftWarpSlug` and `primaryWeftBranch` internally.
 
 - **`ownedWarpCheckout` exists because `ResetHard` is the one primitive that mutates a worktree in place rather than removing something, and the prime worktree is its normal target.**
@@ -228,8 +251,8 @@ one file in `internal/fabricengine`, not a sub-package.
 ### branch-deletion-is-ref-shaped
 
 - Decision: `git branch -D` goes through the gate as a `branchRequest`, with the four checks reinterpreted for a ref target rather than skipped:
-  1. **Containment — structurally N/A.** `branchRequest` carries no path fields at all, so this is expressed by the type rather than by a per-site declaration that could be forgotten.
-  2. **Ownership** — `ownedManagedWeftBranch(weftRepoRoot)`, resolved inside the gate: the name must be fabric-managed (`WeftWarpSlug` accepts its suffix) **and** must not be `primaryWeftBranch(l)`. The gate resolves `primaryWeftBranch` itself and **inherits its fail-closed direction** — an unreadable primary refuses rather than proceeds (`cleanup.go:200-211`: "Cleanup's deletions are irreversible, so an unreadable primary is the one direction that must fail closed"). The alternative kind, `ownedTransactionCreatedBranch(reason)`, covers only the two rollback sites that delete a branch the same invocation created.
+  1. **Containment — structurally N/A.** `branchRequest` carries no `container` and no `target`, so this is expressed by the type rather than by a per-site declaration that could be forgotten. (It does carry `repoDir` — which repo the branch lives in, not a path being destroyed.)
+  2. **Ownership** — `ownedManagedWeftBranch(l *lyxcwd.Location)`, resolved inside the gate: the name must be fabric-managed (`WeftWarpSlug` accepts its suffix) **and** must not be `primaryWeftBranch(l)`. The gate resolves `primaryWeftBranch` itself and **inherits its fail-closed direction** — an unreadable primary refuses rather than proceeds (`cleanup.go:200-211`: "Cleanup's deletions are irreversible, so an unreadable primary is the one direction that must fail closed"). The Location is the kind's parameter because `primaryWeftBranch(l)` needs it and `WeftRepoRoot(l)` derives the repo root from it — a bare `weftRepoRoot` could not resolve the primary. The alternative kind, `ownedTransactionCreatedBranch`, covers only the two rollback sites that delete a branch the same invocation created.
   3. **Dirtiness — `dirtyCheckedOutBranch`.** For a ref, "is there work here to lose" is "is this branch checked out at some worktree". `git branch -D` cannot delete a checked-out branch anyway, so this converts git's own refusal into a named gate refusal, the same move as re-gating `removeWarpWorktreeDir`'s fallback.
   4. **Force** — `--force` may answer the `raddleFoldedBack` gate, which is what `Cleanup`'s `force` means today. It may **not** answer the primary-weft carve-out and may not answer the checked-out check. `TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut` pins exactly this and must stay green unchanged.
 
@@ -373,31 +396,47 @@ This matters: the first pass used `os.RemoveAll(` and `.ResetHard(` and produced
 The list below is the re-run result.
 **Every site has a disposition. There are no unlisted sites for these tokens**, which is the property the In-scope promise ("every destructive call site in `internal/fabricengine`") depends on.
 
+Every gated row names its ownership kind, so no site is left for the implementer to guess.
+
 `RemoveAll(` — 6 sites:
 
-| site | disposition |
-|---|---|
-| `remove.go:197` | **gate** — `removeDir`, the re-gated fallback |
-| `prune.go:276` | **gate** — `removeDir` |
-| `clone.go:569` (`resetHub`) | **gate** — `removeDir`, `ownedFabricHub` |
-| `clone.go:605` (`teardownHub`) | **gate** — `removeDir`, `ownedFreshlyCreatedPath` |
-| `warpprobe.go:57` | **allowlist** — removes a probe directory the same function created |
-| `destroy.go` (after the seam moves) | **allowlist** — the gate itself |
+| site | disposition | ownership kind |
+|---|---|---|
+| `remove.go:197` | **gate** — `removeDir`, the re-gated fallback | `ownedRegisteredLinkedWorktree(warpRepoDir)` |
+| `prune.go:276` | **gate** — `removeDir` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` |
+| `clone.go:569` (`resetHub`) | **gate** — `removeDir` | `ownedFabricHub` |
+| `clone.go:605` (`teardownHub`) | **gate** — `removeDir` | `ownedFreshlyCreatedPath(tok)` |
+| `warpprobe.go:57` | **allowlist** — removes a probe directory the same function created | — |
+| `destroy.go` (after the seam moves) | **allowlist** — the gate itself | — |
 
 `os.Remove(` — 10 sites:
 
-| site | disposition |
-|---|---|
-| `launchers.go:165,170` | **gate** — `removeDir` |
-| `gitexclude.go:108,112,116,120` | **allowlist** — temp-file cleanup inside `writeFileAtomically`, under the flock |
-| `ancestors.go:52` | **allowlist** — `pruneEmptyAncestors`; `os.Remove` on a directory is refused by the OS when non-empty, and the loop halts on the first refusal |
-| `junction.go:259` | **allowlist** — same class: removes the directory the loop immediately above just emptied by `os.Rename`, and cannot remove it if anything remains. **Not a link removal** — the first pass mislabelled it as one |
-| `index.go:315` | **allowlist** — fabric's own derived correspondence-index cache, deliberately deleted-then-rebuilt so a failed refresh misses honestly rather than answering cross-branch |
-| `hook.go:160` | **allowlist** — removes the user-hook backup this same function wrote ten lines earlier, on its own rollback path after restoring the original |
+| site | disposition | ownership kind |
+|---|---|---|
+| `launchers.go:165,170` (`removeLaunchers`) | **gate** — `removeDir` | `ownedHubGeometryChild(launchersDir(l))` |
+| `gitexclude.go:108,112,116,120` | **allowlist** — temp-file cleanup inside `writeFileAtomically`, under the flock | — |
+| `ancestors.go:52` | **allowlist** — `pruneEmptyAncestors`; `os.Remove` on a directory is refused by the OS when non-empty, and the loop halts on the first refusal | — |
+| `junction.go:259` | **allowlist** — same class: removes the directory the loop immediately above just emptied by `os.Rename`, and cannot remove it if anything remains. **Not a link removal** — the first pass mislabelled it as one | — |
+| `index.go:315` | **allowlist** — fabric's own derived correspondence-index cache, deliberately deleted-then-rebuilt so a failed refresh misses honestly rather than answering cross-branch | — |
+| `hook.go:160` | **allowlist** — removes the user-hook backup this same function wrote ten lines earlier, on its own rollback path after restoring the original | — |
 
-`"worktree", "remove"` — 4 sites: `remove.go:177-185`, `prune.go:258-261`, `add.go:265`, `weftwiring.go:175-180` — **all gate** (`removeGitWorktree`).
+`"worktree", "remove"` — 4 sites, all gated via `removeGitWorktree`:
 
-`"branch", "-D"` — 4 sites: `cleanup.go:273`, `checkout.go:193`, `add.go:277`, `weftwiring.go:192` — **all gate** (`deleteBranch`).
+| site | caller | ownership kind |
+|---|---|---|
+| `remove.go:177-185` | `Remove` | `ownedRegisteredLinkedWorktree(warpRepoDir)` |
+| `prune.go:258-261` | `removeStalePair` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` |
+| `add.go:265` | `rollbackAdd` | `ownedFreshlyCreatedWorktree(tok)` — the warp worktree this `Add` created; minted by the gate the same way `createExclusiveDir` mints a directory token |
+| `weftwiring.go:175-180` | `removeWeftWorktree`, from `Remove` and `rollbackAdd` | `ownedRegisteredLinkedWorktree(weftRepoRoot)` |
+
+`"branch", "-D"` — 4 sites, all gated via `deleteBranch`:
+
+| site | caller | ownership kind |
+|---|---|---|
+| `cleanup.go:273` | `deleteWeftBranch` | `ownedManagedWeftBranch(l)` |
+| `checkout.go:193` | `rollbackSwitch` | `ownedTransactionCreatedBranch` — the weft branch this `Checkout` forked, non-empty only in that case |
+| `add.go:277` | `rollbackAdd` | `ownedTransactionCreatedBranch` — the warp branch this `Add` created |
+| `weftwiring.go:192` | `removeWeftWorktree(deleteBranch=true)` | `ownedManagedWeftBranch(l)`; `rollbackAdd`'s existing `!weftBranchAdopted` carve-out is preserved ahead of the call |
 
 `warp.ResetHard(` / `weft.ResetHard(` — 4 sites: `pull.go:233,267,285` and `warpforward.go:34`.
 `warpforward.go:34` is `Fabric.ResetHard`, the exported thin delegation.
@@ -406,14 +445,14 @@ One gated entry, three callers, no allowlist entry needed.
 
 `fslink.Remove(` — 6 sites:
 
-| site | disposition |
-|---|---|
-| `weftwiring.go:156` (`removeJunctionRecords`) | **gate** — `removeLink`; the live containment gap |
-| `portals.go:57` (`removePortal`) | **gate** — `removeLink` |
-| `unwire.go:143` (board-junction unwire) | **gate** — `removeLink`; its existing "is it a link" refusal becomes the ownership kind |
-| `junction.go:461` (unwire sweep) | **gate** — `removeLink`; its existing `linkResolved != targetResolved` refusal becomes the ownership kind |
-| `junction.go:161` (`seedLyxJunction` re-point) | **gate** — `repointLink`, see `link-repoint-is-gated-too` |
-| `junction.go:311` (`wireBoardLink` re-point) | **gate** — `repointLink` |
+| site | disposition | ownership kind |
+|---|---|---|
+| `weftwiring.go:156` (`removeJunctionRecords`) | **gate** — `removeLink`; the live containment gap | `ownedWiredJunction(j.Target)` |
+| `portals.go:57` (`removePortal`) | **gate** — `removeLink` | `ownedWiredJunction(portal target)` |
+| `unwire.go:143` (board-junction unwire) | **gate** — `removeLink` | `ownedWiredJunction(BoardDir(l.HubPath))`; subsumes the site's existing is-it-a-link refusal |
+| `junction.go:461` (unwire sweep) | **gate** — `removeLink` | `ownedWiredJunction(targetResolved)`; subsumes the site's existing `linkResolved != targetResolved` refusal |
+| `junction.go:161` (`seedLyxJunction` re-point) | **gate** — `repointLink`, see `link-repoint-is-gated-too` | `ownedDriftedWiredJunction` |
+| `junction.go:311` (`wireBoardLink` re-point) | **gate** — `repointLink` | `ownedDriftedWiredJunction` |
 
 The first pass listed only two of these six and named a non-`fslink` site among them.
 `unwire.go` was missed entirely as a file.
@@ -494,7 +533,7 @@ Integration tests for this slice therefore go in existing or new `//go:build int
 
 From `CONSTRAINTS.md`:
 
-- **Cwd Resolution Invariant** — `internal/lyxcwd` owns cwd resolution alone. The gate takes a `*lyxcwd.Location` and derives paths through the existing geometry helpers; it never resolves cwd itself and never constructs a weft or junction path by string literal.
+- **Cwd Resolution Invariant** — `internal/lyxcwd` owns cwd resolution alone. Each check's inputs travel with the check; only `ownedManagedWeftBranch` takes a `*lyxcwd.Location`, and it is passed in, never derived. The gate reaches paths through the existing geometry helpers, never resolves cwd itself, and never constructs a weft or junction path by string literal.
 - **Fabric Git Invariant (warp + weft)** — every git operation LYX's own code performs goes through `internal/fabricengine`. Read-only verbs (`git status --porcelain`, current SHA) are exempt, which is why `dirtiness.go` is not a violation. Its `mutateGitExclude` bullet is why `gitexclude.go` is out of scope.
 - **gitrepo Client Boundary Invariant** — `gitexec` is the only path to the git CLI inside `internal/gitrepo`, with a pinned method list any new call must update in the same commit. Not triggered: the `dirtiness-probe-stays-fabric-local` decision means nothing is added to `internal/gitrepo`.
 - **Test Tier Purity Invariant** — untagged test files must not call `gitexec.RunGit`, `exec.Command*`, or `lyxtest.Copy*`, and a raw substring match trips on a comment or string literal too. The new guard test at `cmd/lyx/destructiveguard_test.go` carries banned tokens as test data and uses `exec.Command` for `go env GOMOD`, so **it needs an allowlist entry in `cmd/lyx/tierpurity_test.go`**, exactly as `rawgitmutation_test.go` and `tierpurity_test.go` itself do. Hermetic unit tests for the gate must not spawn git.
@@ -538,6 +577,8 @@ TDD candidates — these are the gate's own logic and should be written first:
 - **`dirtinessNA` requires a reason.** An empty reason is a refusal, not a pass.
 - **Refusal typing.** `*destructiveRefusal` carries the correct `Check` value for each of the four.
 - **Shape separation.** A `dirtyCheckedOutBranch` on a `pathRequest`, or a path-shaped scope on a `branchRequest`, does not compile — asserted by construction rather than by test where the type system reaches, and by a refusal test where it does not.
+- **Token kinds are unforgeable.** `createdToken` is unexported with no exported constructor, so `ownedFreshlyCreatedPath` / `ownedFreshlyCreatedWorktree` cannot be declared for a path the gate did not create. Assert the round trip: `createExclusiveDir` refuses a path that already exists, and the token it returns authorises removal of that path and no other.
+- **Link kinds.** `ownedWiredJunction` refuses a real directory, refuses a link at a path outside the wired name-set, and refuses a link resolving somewhere other than `expectedTarget` — the last being the R1 case, an operator's own tracked symlink sitting where fabric did not wire one. `ownedDriftedWiredJunction` accepts a dangling or mis-pointed link at a wired path and still refuses a real directory.
 - **Best-effort policy.** An operational failure from an executor is discardable; a `*destructiveRefusal` is distinguishable via `errors.As` so a best-effort caller can discard the former without swallowing the latter.
 
 ### Integration tier (`//go:build integration`, `package fabricengine_test`)
@@ -581,8 +622,8 @@ That is slice 13's harness, and building it here without the hub factory would m
 
 ## Q&A log
 
-- **Q:** What is the gate's call shape? **A:** Typed `destructiveRequest` struct plus one executor per primitive, all in `internal/fabricengine/destroy.go`, with a single `gate(req)` running the four checks in fixed order. Required fields make an omitted check a compile error.
-- **Q:** How is dirtiness scope decided — fixed per primitive, or declared by the caller? **A:** Caller-declared from a closed enum (`dirtyScopeTracked` / `dirtyScopeAll` / `dirtinessNA(reason)`), with every current site keeping its current scope. Deriving it from the primitive breaks `Prune`, whose tracked-only probe is deliberate.
+- **Q:** What is the gate's call shape? **A:** Typed request structs plus one executor per primitive, all in `internal/fabricengine/destroy.go`, with one check pipeline running the four checks in fixed order. Required fields make an omitted check a compile error. *(First answered as a single `destructiveRequest` struct — **superseded**: a ref is not a path, so there are two shapes, `pathRequest` and `branchRequest`. See `gate-call-shape`.)*
+- **Q:** How is dirtiness scope decided — fixed per primitive, or declared by the caller? **A:** Caller-declared from a closed sum type, with every current site keeping its current behaviour. *(First answered with three members — **superseded**: `dirtyCheckedOutBranch` was added for the ref shape, since "is there work here to lose" means something different for a branch. See `branch-deletion-is-ref-shaped`.)* Deriving it from the primitive breaks `Prune`, whose tracked-only probe is deliberate.
 - **Q:** Does `Remove` normalise to tracked-only? **A:** No. It stays untracked-inclusive, and `removeWarpWorktreeDir`'s `os.RemoveAll` fallback is itself re-gated with `dirtyScopeAll` — otherwise git's untracked refusal would route straight into the fallback and delete the untracked files.
 - **Q:** Do in-transaction rollback and teardown paths go through the gate? **A:** Yes, with containment and ownership enforced and dirtiness declared N/A per site. Ownership matters there: R4's `clone --reset` defect was a teardown path, and `teardownHub` has no ownership check today.
 - **Q:** Is the tracked-only dirtiness probe promoted into `internal/gitrepo`? **A:** No — fabric-local. Applying the manifest's stated criterion: six of the eight probe sites are `Topology` verbs, and `Topology` holds no `Repo` at all. Only `pull.go` has one.
@@ -623,3 +664,12 @@ Resolved in discussion review round 2 (2 blocking, 3 nits — all verified again
 - **Q:** A one-argument `Fabric.ResetHard(sha)` cannot let its callers declare ownership or dirtiness. **A:** It should not. There is exactly one correct declaration for "reset this Fabric's warp checkout", so the exported signature is kept and the wrapper hardcodes all five fields. Only the body and the file move. `warpforward.go`'s other three delegations are untouched — none is a destructive primitive.
 - **Q:** Is `internal/fabricengine/doc.go` safe from its own guard? **A:** No — this slice writes destruction rationale into it, and the scan is a raw substring match over every non-test `.go` file, so a prose `os.RemoveAll(` would trip it from inside the document explaining the rule. Allowlisted, with the reason that its only non-comment line is `package fabricengine`.
 - **Q:** Does Markdown Link Integrity apply? **A:** Yes — both manifest files this slice edits are scan sources. Added to Constraints.
+
+Resolved in discussion review round 3 (2 blocking, 5 nits — all verified against the tree before fixing):
+
+- **Q:** The closed enum has no link-shaped kind, yet six gated link sites need one — the tables deferred to each site's existing `fslink.IsLink` / target-comparison refusal, which is no enum member and re-admits per-site checks. **A:** Two link kinds added. Link-ness alone cannot be ownership: **R1's defect destroyed a tracked symlink**, and a user's tracked symlink is a link. What separates fabric's junction is *where it sits* — a path fabric wires. `ownedWiredJunction(expectedTarget)` for teardown (link + wired location + resolves to target); `ownedDriftedWiredJunction` for re-point, which deliberately does *not* compare the target, since drift is the precondition for repair. Two kinds because the comparison is inverted, not optional.
+- **Q:** `ownedFreshlyCreatedPath` takes no repo context, so the gate executes nothing for it — what stops a future site declaring it? **A:** Nothing did, and that made it the `ownedInTransaction` trust-me under a better name. Fixed by having the gate mint the claim: `destroy.go` gains `createExclusiveDir(path) (createdToken, error)`, absorbing `CloneHub`'s existing stat-then-`MkdirAll` sequence, and the kind accepts only that unexported token. A site cannot declare it for a path the gate did not create — impossible to write rather than discouraged. The gate now owns the creation whose destruction it later authorises.
+- **Q:** Do all gated sites name an ownership kind? **A:** No — `rollbackAdd`, `rollbackSwitch`, `add.go:265` and `launchers.go:165,170` had none, and `ownedHubGeometryChild` was defined but mapped to no site. Every disposition table now carries an ownership-kind column. This also surfaced a needed `ownedFreshlyCreatedWorktree(tok)` for `add.go:265`'s rollback of the worktree that same `Add` created.
+- **Q:** `ownedManagedWeftBranch(l)` or `(weftRepoRoot)`? **A:** `(l *lyxcwd.Location)`. A bare repo root cannot resolve `primaryWeftBranch`, which is the kind's whole point; `WeftRepoRoot(l)` derives the root from the Location anyway.
+- **Q:** Three statements still described superseded models — the Constraints bullet ("the gate takes a `*lyxcwd.Location`"), and the Q&A log's first two entries (single struct, three-member dirtiness enum). **A:** All three corrected, the Q&A ones marked as superseded rather than rewritten, matching how the round-1 entry was handled.
+- **Q:** Does `branchRequest` have "no path fields at all"? **A:** No — it carries `repoDir`. Narrowed to the accurate claim: no `container` and no `target`.
