@@ -179,7 +179,9 @@ func removeJunctionRecords(container string, junctions []WarpJunction) error {
 // removeWeftWorktree tears down the weft worktree, optionally its branch, and
 // prunes stale worktree entries. Returns the first error encountered, or nil
 // if all steps succeed.
-func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBranch bool) error {
+// branchPrefix is the caller's configured warp branch prefix, forwarded to ownedManagedBranch — this
+// function has no config in scope of its own.
+func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch bool, branchPrefix string) error {
 	weftPath := WeftWorktreePath(l, slug)
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
@@ -208,8 +210,16 @@ func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBr
 		}
 	}
 
-	if deleteBranch {
-		_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, weftRoot)
+	if alsoDeleteBranch {
+		branchReq := branchRequest{
+			what:      "delete weft branch",
+			repoDir:   weftRoot,
+			branch:    branch,
+			ownership: ownedManagedBranch(l, branchPrefix),
+			dirtiness: dirtyCheckedOutBranch(),
+			force:     false,
+		}
+		exitCode, _, err = deleteBranch(branchReq)
 		if err != nil || exitCode != 0 {
 			if firstErr == nil {
 				if err != nil {

@@ -111,7 +111,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	// A weft-teardown failure is tolerated only when the weft worktree is actually gone (already
 	// absent, or removed with just a branch/prune step failing) — a weft worktree still on disk
 	// after a "successful" Remove is a half-torn pair the operator was never told about.
-	weftErr := removeWeftWorktree(l, slug, weftBranch, force, true)
+	weftErr := removeWeftWorktree(l, slug, weftBranch, force, true, t.cfg.BranchPrefix)
 	if weftErr != nil {
 		weftTarget := WeftWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
