@@ -67,10 +67,14 @@ Two further reasons the chokepoint leads:
 
 The rest of the order:
 
-- **Slice 13 second** — the instrument.
+- **Slice 13 second, and genuinely after 12 rather than merely beside it** — the instrument.
   Additive (`//go:build integration`), touches no production code.
-  Its first job is now to validate the gate slice 12 built, against real git in dirty and hostile state;
+  Its first job is to validate the gate slice 12 built, against real git in dirty and hostile state;
   its second is to find instances nobody has thought of.
+  It **depends on** slice 12 rather than running alongside it, for the same reason slice 14 does: its cells assert on *refusal* behaviour — that a verb refuses instead of destroying, and which of the four checks refused — and slice 12 is precisely what changes that behaviour and those messages.
+  Cells written before the gate would be rewritten after it.
+  The hub factory, state matrix and verb table are admittedly gate-independent and could be built in parallel, but that is about a third of the task;
+  the valuable two thirds is not.
   Note the division of proof: *no call site bypasses the gate* is slice 12's static guard;
   *the gate behaves correctly once reached* is the harness.
   Different mechanisms, both needed.
@@ -78,9 +82,8 @@ The rest of the order:
   It generalises slice 12's per-verb refusal reporting into one accumulate-as-you-mutate shape, and it completes slice 13: a harness cell is only fully meaningful when it asserts both "the operator's file is still on disk" *and* "the report was truthful", because case after case in the table above returned an error **and** destroyed something.
 - **Slice 15 last** — LOW, self-healing, unrelated to the destruction class, and gated on a locking decision rather than on any of the others.
 
-**Slices 12 and 13 may run in parallel if two agents are available** — the gate is production code, the harness is test-tier — but 12 leads if they are done in sequence.
-Slice 14 needs 12 landed;
-15 needs nothing.
+The chain is strict: 13 needs 12 landed, and 14 needs 12 landed.
+Only 15 is free of the others and can be picked up at any point.
 
 ## Slice 12 — route every destructive operation through one ownership-and-dirtiness gate
 
@@ -310,6 +313,7 @@ That is the property the current per-verb integration tests do not have, and it 
 ### Scope note — build the minimum that validates slice 12's gate, then grow
 
 Ship the tranche that validates slice 12's gate first, then grow.
+This is why the slice depends on 12 rather than running beside it — that tranche cannot be written against behaviour the gate has not yet changed.
 That tranche is: the hub factory, the dirty/hostile states the evidence table's eight defects actually exercised, and the hostile-input row of the verb table driven against every destructive verb.
 It is what turns "the gate refuses correctly" from a claim into an assertion.
 
