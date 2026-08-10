@@ -43,7 +43,9 @@ batches:
     commit_sha: c248d402fa9a0ab171a97a52bfeef8ac3a325469
     verify_baseline_failures: []
   - name: the-gate
-    state: pending
+    state: running
+    implementer_session: 57f1b8c0-fb0a-4ad3-925a-fcd3190557e4
+    start_sha: 926039d1f60bee80af3448f572a021803e903308
     verify_baseline_failures: []
   - name: path-callsites
     state: pending
