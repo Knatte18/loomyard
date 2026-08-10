@@ -681,3 +681,40 @@ func deleteBranch(req branchRequest) (exitCode int, stderr string, err error) {
 	_, stderr, exitCode, err = gitexec.RunGit([]string{"branch", "-D", req.branch}, req.repoDir)
 	return exitCode, stderr, err
 }
+
+// createExclusiveDir creates path as a directory the gate can later authorise the removal of, and
+// returns the createdToken proving it.
+//
+// It uses os.Mkdir on the final component, not os.MkdirAll, which succeeds on an already-existing
+// directory — so an already-present path fails with EEXIST, and the token is only ever minted for a
+// directory this call actually brought into being.
+//
+// createdToken is only unforgeable because the bypass guard batch 6 adds bans the token
+// `createdToken{` outside this file, with destroy.go itself on the guard's allowlist — being
+// unexported does not by itself stop a same-package composite literal, and a reader who believes
+// otherwise will eventually write one.
+func createExclusiveDir(path string) (createdToken, error) {
+	if err := os.Mkdir(path, 0o755); err != nil {
+		return createdToken{}, err
+	}
+	return createdToken{path: filepath.Clean(path), worktree: false}, nil
+}
+
+// createGitWorktree runs git worktree add with addArgs from repoDir and, on success, returns the
+// createdToken proving the gate itself added the worktree at target, plus git's own exit code and
+// stderr so the call site keeps building its existing error messages.
+//
+// The first return value is spelled with an explicit name (tok createdToken) rather than left
+// unnamed: an unnamed `createdToken` immediately followed by `exitCode int` would parse as one
+// name-group of type int, shadowing the type inside the function body so the token literal below
+// could not compile at all.
+//
+// On a nonzero exit or a spawn error it returns the zero token, which no ownership kind accepts — see
+// createExclusiveDir's doc comment for why createdToken is unforgeable outside this file.
+func createGitWorktree(repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error) {
+	_, stderr, exitCode, err = gitexec.RunGit(addArgs, repoDir)
+	if err != nil || exitCode != 0 {
+		return createdToken{}, exitCode, stderr, err
+	}
+	return createdToken{path: filepath.Clean(target), worktree: true}, exitCode, stderr, nil
+}
