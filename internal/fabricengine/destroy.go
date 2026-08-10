@@ -19,6 +19,8 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // destructiveCheck enumerates the four checks the gate's pipeline runs, always in this fixed order.
@@ -73,4 +75,246 @@ func surfaceRefusal(err error) error {
 		return err
 	}
 	return nil
+}
+
+// slugSpec carries the two halves validateWorktreeSlug needs, for a pathRequest whose target is
+// slug-derived. It is nil on a pathRequest whose target is not slug-derived — slug validation is
+// skipped entirely in that case, never treated as vacuously passing or failing.
+type slugSpec struct {
+	name          string
+	junctionNames []string
+}
+
+// createdToken is the unforgeable proof that the gate itself created a path or a git worktree: the
+// createExclusiveDir / createGitWorktree minters below are its only producers.
+// Its unexported-ness alone does not stop a same-package composite literal — createdToken{} compiles
+// anywhere in this package — so the property is enforced by the bypass guard batch 6 adds, which bans
+// the token `createdToken{` outside this file. A reader who believes the type system alone enforces
+// this will eventually write one.
+type createdToken struct {
+	path     string
+	worktree bool
+}
+
+// pathRequest is the gate's request shape for every destructive primitive whose target is a
+// filesystem path: os.RemoveAll/os.Remove, git worktree remove, ResetHard, and link removal/re-point.
+// Every field is required — a zero-value ownership or dirtiness is refused by the pipeline rather
+// than silently passed, which is what makes an omitted check a loud failure instead of a forgotten
+// one.
+type pathRequest struct {
+	// what names the act being attempted, for the refusal message (e.g. "remove worktree").
+	what string
+	// container is the path target must resolve strictly below; see refuseUncontainedPath.
+	container string
+	// target is the path the executor will act on.
+	target string
+	// slug is non-nil when target is derived from a caller-supplied slug, and carries the two
+	// inputs validateWorktreeSlug needs.
+	slug *slugSpec
+	// ownership declares which closed-enum ownership kind target must satisfy.
+	ownership pathOwnership
+	// dirtiness declares which dirtiness probe (or N/A) the pipeline runs against target.
+	dirtiness pathDirtiness
+	// force, when true, satisfies the dirtiness check only — never containment, never ownership.
+	force bool
+}
+
+// branchRequest is the gate's request shape for the one destructive primitive whose target is a ref:
+// git branch -D. It carries no container and no target field at all — containment is structurally
+// N/A for a ref, expressed by the type rather than by a per-site "" that could be forgotten. It
+// carries no branchPrefix field either: the prefix is an input ownedManagedBranch's predicate needs,
+// so per the "each check's inputs travel with the check" rule it rides on that constructor instead.
+type branchRequest struct {
+	// what names the act being attempted, for the refusal message.
+	what string
+	// repoDir is the weft repo the branch lives in — not a path being destroyed.
+	repoDir string
+	// branch is the branch name the executor will delete.
+	branch string
+	// ownership declares which closed-enum ownership kind branch must satisfy.
+	ownership branchOwnership
+	// dirtiness declares which dirtiness probe the pipeline runs against branch.
+	dirtiness branchDirtiness
+	// force, when true, may answer a call site's own gate (e.g. Cleanup's raddleFoldedBack) but
+	// never the gate's own checked-out-branch dirtiness check — see branch-deletion-is-ref-shaped
+	// in _mill/discussion.md.
+	force bool
+}
+
+// pathOwnershipKind enumerates the closed set of ownership predicates a pathRequest may declare.
+// It has meaning only inside this file; every kind is reached solely through its ownedXxx
+// constructor below, never constructed directly.
+type pathOwnershipKind int
+
+const (
+	// pathOwnershipUnset is the zero value: an omitted declaration, always refused.
+	pathOwnershipUnset pathOwnershipKind = iota
+	pathOwnershipRegisteredLinkedWorktree
+	pathOwnershipWarpCheckout
+	pathOwnershipFabricHub
+	pathOwnershipUnderGeometryRoot
+	pathOwnershipFreshlyCreatedPath
+	pathOwnershipFreshlyCreatedWorktree
+	pathOwnershipWiredJunction
+	pathOwnershipDriftedWiredJunction
+)
+
+// pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
+// satisfy. The zero value is invalid and is refused by the pipeline before any check runs.
+// Construct one only via the ownedXxx functions below — each takes exactly what its predicate
+// needs and nothing more, per the each-check's-inputs-travel-with-the-check rule.
+type pathOwnership struct {
+	kind           pathOwnershipKind
+	repoDir        string
+	root           string
+	tok            createdToken
+	wiredLinks     []string
+	expectedTarget string
+}
+
+// ownedRegisteredLinkedWorktree declares target as owned when it is registered in repoDir's worktree
+// list as a worktree OTHER than the main one — the ordinary teardown case, resolved via
+// isRegisteredLinkedWorktreeIn.
+func ownedRegisteredLinkedWorktree(repoDir string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipRegisteredLinkedWorktree, repoDir: repoDir}
+}
+
+// ownedWarpCheckout declares target as owned when it is ANY worktree of the warp repo at repoDir,
+// prime included — the membership test resetHardTo needs, since ResetHard's ordinary target is the
+// hub's prime warp worktree, which isRegisteredLinkedWorktreeIn deliberately excludes.
+func ownedWarpCheckout(repoDir string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipWarpCheckout, repoDir: repoDir}
+}
+
+// ownedFabricHub declares target as owned when it structurally looks like a fabric hub — a `_board`
+// entry, or at least one weft sibling — per looksLikeHub.
+func ownedFabricHub() pathOwnership {
+	return pathOwnership{kind: pathOwnershipFabricHub}
+}
+
+// ownedUnderGeometryRoot declares target as owned when root is a member of the closed set of fabric
+// geometry roots and target resolves at or below it, admitting deep descendants and non-directory
+// targets. It supplies what containment cannot: containment proves target is below the container,
+// but proves nothing if the caller chose the container.
+func ownedUnderGeometryRoot(root string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipUnderGeometryRoot, root: root}
+}
+
+// ownedFreshlyCreatedPath declares target as owned when tok is the token createExclusiveDir minted
+// for exactly this path. Since createdToken has no producer outside this file's two minters (backed
+// by the bypass guard), a site cannot declare this kind for a path the gate did not create.
+func ownedFreshlyCreatedPath(tok createdToken) pathOwnership {
+	return pathOwnership{kind: pathOwnershipFreshlyCreatedPath, tok: tok}
+}
+
+// ownedFreshlyCreatedWorktree declares target as owned when tok is the token createGitWorktree
+// minted for exactly this path, mirroring ownedFreshlyCreatedPath for the worktree-shaped case
+// (add.go's rollback of a worktree that same Add call created).
+func ownedFreshlyCreatedWorktree(tok createdToken) pathOwnership {
+	return pathOwnership{kind: pathOwnershipFreshlyCreatedWorktree, tok: tok}
+}
+
+// ownedWiredJunction declares target as owned when it is a member of wiredLinks, is itself a link,
+// and resolves to expectedTarget — the teardown-shaped link check. Comparing the resolved target is
+// what R1's defect needed and did not have: a user's own tracked symlink sitting at a wired path is
+// a link, but does not resolve to what fabric wired there.
+func ownedWiredJunction(wiredLinks []string, expectedTarget string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipWiredJunction, wiredLinks: wiredLinks, expectedTarget: expectedTarget}
+}
+
+// ownedDriftedWiredJunction declares target as owned when it is a member of wiredLinks and is itself
+// a link — the re-point-shaped link check. The resolved target is deliberately not compared, because
+// a drifted or dangling target is the precondition for repairing it, not a disqualifier.
+func ownedDriftedWiredJunction(wiredLinks []string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipDriftedWiredJunction, wiredLinks: wiredLinks}
+}
+
+// branchOwnershipKind enumerates the closed set of ownership predicates a branchRequest may declare.
+type branchOwnershipKind int
+
+const (
+	// branchOwnershipUnset is the zero value: an omitted declaration, always refused.
+	branchOwnershipUnset branchOwnershipKind = iota
+	branchOwnershipManaged
+)
+
+// branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
+// satisfy. The zero value is invalid and is refused by the pipeline before any check runs.
+type branchOwnership struct {
+	kind         branchOwnershipKind
+	location     *lyxcwd.Location
+	branchPrefix string
+}
+
+// ownedManagedBranch declares branch as owned when it is one fabric's own scheme constructs (accepted
+// by WeftWarpSlug, or carrying branchPrefix), is not l's primary weft branch, and is not checked out
+// at any worktree. It is the only ownership constructor that takes a *lyxcwd.Location, because
+// primaryWeftBranch(l) is the one predicate that genuinely needs it — clone's two hub-level path
+// sites have no Location in scope at all, which is exactly why every other kind does without one.
+// An empty branchPrefix means "the prefix test does not apply", never a match-everything wildcard.
+func ownedManagedBranch(l *lyxcwd.Location, branchPrefix string) branchOwnership {
+	return branchOwnership{kind: branchOwnershipManaged, location: l, branchPrefix: branchPrefix}
+}
+
+// pathDirtinessKind enumerates the closed set of dirtiness declarations a pathRequest may carry.
+type pathDirtinessKind int
+
+const (
+	// pathDirtinessUnset is the zero value: an omitted declaration, always refused.
+	pathDirtinessUnset pathDirtinessKind = iota
+	pathDirtinessScope
+	pathDirtinessNA
+)
+
+// pathDirtiness declares which dirtiness probe (or N/A) the pipeline runs against a pathRequest's
+// target. The zero value is invalid; dirtinessNA("") is likewise invalid — an empty reason is a
+// refusal, not a pass.
+type pathDirtiness struct {
+	kind   pathDirtinessKind
+	scope  dirtyScope
+	reason string
+}
+
+// dirtyScopeTracked declares that the pipeline's dirtiness step probes tracked files only, via
+// worktreeDirty(scopeTracked, target) — the right scope wherever the destructive action leaves
+// untracked files alone (e.g. a reset --hard).
+func dirtyScopeTracked() pathDirtiness {
+	return pathDirtiness{kind: pathDirtinessScope, scope: scopeTracked}
+}
+
+// dirtyScopeAll declares that the pipeline's dirtiness step probes tracked and untracked files
+// alike, via worktreeDirty(scopeAll, target) — the right scope wherever the destructive action would
+// take untracked files down with it.
+func dirtyScopeAll() pathDirtiness {
+	return pathDirtiness{kind: pathDirtinessScope, scope: scopeAll}
+}
+
+// dirtinessNA declares that the dirtiness check does not apply to this pathRequest, for the stated
+// reason — e.g. a rollback site tearing down a path this same transaction created, which has no work
+// to lose because nothing was ever committed to it. reason must be non-empty: an empty reason is
+// refused by the pipeline as an unstated N/A, not treated as a pass.
+func dirtinessNA(reason string) pathDirtiness {
+	return pathDirtiness{kind: pathDirtinessNA, reason: reason}
+}
+
+// branchDirtinessKind enumerates the closed set of dirtiness declarations a branchRequest may carry.
+type branchDirtinessKind int
+
+const (
+	// branchDirtinessUnset is the zero value: an omitted declaration, always refused.
+	branchDirtinessUnset branchDirtinessKind = iota
+	branchDirtinessCheckedOutBranch
+)
+
+// branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
+// The zero value is invalid and is refused by the pipeline before any check runs.
+type branchDirtiness struct {
+	kind branchDirtinessKind
+}
+
+// dirtyCheckedOutBranch declares that the pipeline's dirtiness step asks whether branch is checked
+// out at any worktree — for a ref, "is there work here to lose" means "is this branch checked out
+// somewhere", since git branch -D cannot delete a checked-out branch anyway.
+func dirtyCheckedOutBranch() branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessCheckedOutBranch}
 }
