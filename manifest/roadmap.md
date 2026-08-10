@@ -9,6 +9,18 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
+1. **fabric: crucible follow-ups — slices 12-15** — the four defect *shapes* the fabric v2 crucible campaign (slice 11) surfaced but did not close, each filed by the campaign orchestrator as a GitHub issue (#144, #143, #146, #148) and folded in here.
+   The campaign ran six serial model-rotating review+fix rounds and produced 81 findings, 9 BLOCKING, **8 of them data-loss** — and the finding count per round never converged, because it was draining a class instance by instance.
+   Every individual defect is fixed;
+   the shapes that keep producing them are not.
+   Build order is **instrument → channel → fix**, not root-cause-first: **slice 12** (live-state integration harness) first, because the hermetic suite was green through all eight data-loss bugs and slice 14's acceptance criterion is literally "prove no call site bypasses the gate", which is a harness assertion rather than a code review;
+   **slice 13** (accumulate the result envelope from actual mutations, not from control flow) second, because slice 14's gate must report which check refused and why, and a failure must never report success — both unrepresentable in today's envelope, and both what makes slice 12's cells meaningful;
+   **slice 14** (route every destructive operation through one containment/ownership/dirtiness/force gate, with a `CONSTRAINTS.md` invariant and a guard test in the same commit) third, now provable and expressible;
+   **slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last, independent of the other three.
+   Placed ahead of `Shed` because fabric is the module every other worktree's work stands on, and this is a data-loss class in it — not because `Shed` slipped;
+   `Shed` → `loom` keeps its own order below.
+   Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
+
 1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
    Everything that used to be "special" is just a producer like any other: `loom`'s own Preflight is the first producer in `loom`'s list;
    Finalize is an ordinary producer both `loom` and `Hardener` happen to reference at the end of their own list (shared by reference, not by Shed special-casing it) — Raddle-regeneration is now scoped as part of Finalize's own contract, not a separate producer, since merge-conflict risk makes updating Raddle before the Finalize merge impractical (`Tenter`/`Hardener` will need the equivalent, deferred).
@@ -36,6 +48,13 @@ Committed to, in this order, next.
    Also supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See [internal/pattern](../internal/pattern/doc.go).
 
+1. **gitexec: decide whether `RunGit` should return a typed error carrying git's stderr** — a **decision item, not an implementation**: it exists to produce a verdict, and its first deliverable is a count of the affected callers outside fabric, which nobody has made.
+   Crucible R5 found that **55 of 74** `RunGit` call sites in fabric discarded git's stderr, 33 of them turning a failure into a bare exit code with no explanation, while the same sweep found the silent-swallow class genuinely closed (zero of 388 `if err != nil` blocks failed to handle the error).
+   That asymmetry is what the API shape produces, not who wrote the lines — the sites are fixed, the shape is not, and the next module to use `gitexec` starts the count over.
+   Kept out of the fabric slices above because `internal/gitexec` is shared by every module that touches git.
+   The counter-argument is real and should be weighed rather than dismissed: this is a diagnostic-quality problem, not a correctness one, and "not worth it" is a legitimate verdict — provided it is written down.
+   See [designs/gitexec-error-shape.md](designs/gitexec-error-shape.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -54,6 +73,12 @@ No build order is implied between these items.
 1. **reed: own-window strand anchoring** — a `display` anchor that spawns a strand into its own switchable tmux window instead of a pane.
 
 1. **Real-Linux validation** — run the sandbox suite and validate every tmux/`/proc` assumption on a real Linux box (built and cross-compiled so far, never executed there).
+
+1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of `Real-Linux validation` above.
+   All six crucible rounds ran on Linux, so `lyxcwd.ValidateAnchorRel`'s volume-rooted rejection, `excludePatternFor`'s separator handling, `lyxcwd.samePath`'s case-insensitive branch and every line of `internal/fslink`'s junction path have never executed — and the campaign's eight data-loss defects all lived exactly where platform behaviour lives (path composition, link creation, filesystem semantics).
+   Someday rather than Planned because closing it needs a Windows host rather than a design, and because it gets much cheaper once Planned slice 12's live-state harness exists: at that point it is largely a matter of running the harness there.
+   Deciding that Windows is not a goal is a legitimate resolution — but then `internal/fslink`'s existence and CLAUDE.md's "junctions are the only link type guaranteed everywhere" claim must be retired in the same breath.
+   See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
 
 1. **raddle** — codeguide's woven-in successor;
    parallel-regeneration design exists;

@@ -224,5 +224,6 @@ Read-only verbs the caller can run directly.
 - [internal/pattern](../../internal/pattern/doc.go) — hand-authored weft content;
   a `_pattern` junction consumer of the slice-1 config-driven list;
   also the residue of rebase re-alignment.
-- `fabric-v2-crucible` (wiki) — the final hardening slice, sequenced after every slice in this doc including 7-10, per project policy that it runs last.
+- `fabric-v2-crucible` (wiki) — slice 11, the hardening pass sequenced after every slice in this doc including 7-10, per project policy that it runs last.
+  It landed 2026-08-09 and turned out **not** to be the final slice: it surfaced four defect *shapes* it could not close, now scoped as slices 12-15 in [fabric-crucible-followups.md](fabric-crucible-followups.md).
 - CONSTRAINTS.md's Fabric Git Invariant and Cwd Resolution Invariant — the invariants this doc's shipped work enforces and slice 7 narrowed.
