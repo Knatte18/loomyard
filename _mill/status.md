@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -27,4 +27,25 @@ plan-review-r4  '2026-08-10T17:18:00Z'
 plan-fix-r4  '2026-08-10T17:18:00Z'
 plan-fix-r5  '2026-08-10T17:31:51Z'
 planned  '2026-08-10T17:32:03Z'
+implementing  '2026-08-10T17:43:28Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: dirtiness-probe
+    state: pending
+  - name: the-gate
+    state: pending
+  - name: path-callsites
+    state: pending
+  - name: clone-callsites
+    state: pending
+  - name: branch-callsites
+    state: pending
+  - name: guard-and-docs
+    state: pending
+  - name: gap-integration-tests
+    state: pending
 ```
