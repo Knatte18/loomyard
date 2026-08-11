@@ -37,7 +37,9 @@ batches:
     commit_sha: d9f68c3adb81d1f58b7c81e607a923b3d50cf6be
     verify_baseline_failures: []
   - name: package-skeleton-and-hub-factory
-    state: pending
+    state: running
+    implementer_session: 68f6ca4c-2382-4ac3-bca8-734930ed2e8b
+    start_sha: 439f31b09ed665ff4663fea5339619b82a4d246a
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: manifest-capture-and-diff
     state: pending
