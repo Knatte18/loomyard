@@ -23,7 +23,8 @@ import (
 func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 	t.Parallel()
 
-	hubPath := filepath.Join(t.TempDir(), "warp"+HubSuffix)
+	parent := t.TempDir()
+	hubPath := filepath.Join(parent, "warp"+HubSuffix)
 	precious := filepath.Join(hubPath, "important", "data.txt")
 	if err := os.MkdirAll(filepath.Dir(precious), 0o755); err != nil {
 		t.Fatalf("seed non-hub directory: %v", err)
@@ -33,7 +34,7 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 		t.Fatalf("write %s: %v", precious, err)
 	}
 
-	err := resetHub(hubPath)
+	err := resetHub(parent, hubPath)
 	if err == nil {
 		t.Fatalf("resetHub(%s) = nil; want a refusal for a directory that is not a fabric hub", hubPath)
 	}
@@ -68,12 +69,13 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			hubPath := filepath.Join(t.TempDir(), "warp"+HubSuffix)
+			parent := t.TempDir()
+			hubPath := filepath.Join(parent, "warp"+HubSuffix)
 			if err := os.MkdirAll(filepath.Join(hubPath, tt.child), 0o755); err != nil {
 				t.Fatalf("seed hub: %v", err)
 			}
 
-			if err := resetHub(hubPath); err != nil {
+			if err := resetHub(parent, hubPath); err != nil {
 				t.Fatalf("resetHub(%s) = %v; want nil for a directory carrying %s", hubPath, err, tt.child)
 			}
 			if _, statErr := os.Stat(hubPath); !os.IsNotExist(statErr) {
@@ -88,8 +90,9 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 func TestResetHub_AbsentPathIsANoop(t *testing.T) {
 	t.Parallel()
 
-	hubPath := filepath.Join(t.TempDir(), "never-created"+HubSuffix)
-	if err := resetHub(hubPath); err != nil {
+	parent := t.TempDir()
+	hubPath := filepath.Join(parent, "never-created"+HubSuffix)
+	if err := resetHub(parent, hubPath); err != nil {
 		t.Fatalf("resetHub(absent) = %v; want nil", err)
 	}
 }
