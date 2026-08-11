@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: batcher-standalone-split
 branch: batcher-standalone-split
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-documentation  '2026-08-11T05:22:20Z'
 holistic-reviewing  '2026-08-11T05:22:45Z'
 holistic-approved  '2026-08-11T05:25:27Z'
 done  '2026-08-11T05:26:28Z'
+pr-pending  '2026-08-11T05:28:02Z'
 ```
 
 ## Batches
