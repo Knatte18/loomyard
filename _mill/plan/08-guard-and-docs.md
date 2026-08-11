@@ -18,7 +18,7 @@ It runs last because both the guard and the docs describe the finished shape, an
 
 ## Cards
 
-### Card 32: the Mutation Record guard
+### Card 33: the Mutation Record guard
 
 - **Context:**
   - `cmd/lyx/rawgitmutation_test.go`
@@ -54,10 +54,10 @@ It runs last because both the guard and the docs describe the finished shape, an
   Carry a vacuous-scan floor for each table the same way `destructiveGuardMinScannedFiles` does for the existing walk, so a table that silently stopped matching fails loudly rather than passing on zero rows.
 
   State the guard's blind spots in its own file-header comment, as the chokepoint guard already does for its raw-substring matching: it pins the parameter and the embed, not that a recording call is *correct*, and a new `Kind` added without a recording site is caught by nothing here.
-  That honesty is required by the invariant text card 33 writes.
+  That honesty is required by the invariant text card 34 writes.
 - **Commit:** `test(lyx): guard that every executor records and every mutating result carries it`
 
-### Card 33: the Mutation Record Invariant
+### Card 34: the Mutation Record Invariant
 
 - **Context:**
   - `cmd/lyx/destructiveguard_test.go`
@@ -78,14 +78,16 @@ It runs last because both the guard and the docs describe the finished shape, an
   - Every mutating verb's result type embeds `MutationRecord`; the four read-only verbs' result types must not.
   - `internal/fabricengine/mutation.go` is the single declarer of the `Kind` enum. A new member lands in the same commit as its recording site and its guard-test entry, never ahead of either.
   - A `CheckForce` member must never be added to `Check`: force is consulted only inside `checkPathDirtiness`, where it makes the dirtiness check *pass* rather than fail, so a refusal can never be attributed to it.
-  - The envelope's key set is fixed: `mutations` is always an array (empty, never `null`) and `partial` always a bool (`false`, never absent) on every mutating verb, success and failure alike;
+  - The envelope's key set is fixed for every envelope emitted from a **verb outcome**: `mutations` is always an array (empty, never `null`) and `partial` always a bool (`false`, never absent), on success and failure alike;
     `partial` derives from exactly one rule, `error ≠ nil ∧ record non-empty`.
+    The invariant text must carry the pre-flight carve-out in the same breath — a handler that fails before calling its verb (cwd/location resolution, `LoadConfig`, an argument `usage: …` error) emits a bare `output.Err` with neither key, because nothing was mutated and there is no result to read a record from.
+    Without that clause the invariant is machine-quotable and false against the shipped envelope.
   - Enforced by `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource`, with its blind spots named: it pins the parameter and the embed by raw source inspection, not the correctness of any recording call, and a new `Kind` with no recording site is caught by review, not by the guard.
 
   Update the existing `## Fabric Destruction Chokepoint Invariant` section with one sentence noting that the recorder is threaded *into* `destroy.go` and must never be worked around by recording at a call site outside it — that is what makes destructive coverage provably total rather than a per-call-site review obligation.
 - **Commit:** `docs(constraints): add the Mutation Record Invariant`
 
-### Card 34: module and package docs
+### Card 35: module and package docs
 
 - **Context:**
   - `CONSTRAINTS.md`
@@ -104,7 +106,7 @@ It runs last because both the guard and the docs describe the finished shape, an
   `internal/fabricengine/doc.go`: document the mutation record where the package doc describes result shapes — the vocabulary, the accumulate-as-you-mutate rule, the verb-owned recorder plus populating defer, the gate's auto-recording and its record-only-on-observed-effect rule, and the fixed `mutations`/`partial` envelope key set.
   Say plainly what the record is for: `ok` means "no error was returned" and never meant "nothing happened", and `mutations` plus `partial` are what answer that second question directly.
 
-  `internal/fabricengine/fabrictest/doc.go`: card 31 already updated the sabotage table and the deferred-work note.
+  `internal/fabricengine/fabrictest/doc.go`: card 32 already updated the sabotage table and the deferred-work note.
   This card adds the oracle's own contract to the package doc — both cross-check directions, the manifest-observable/git-state kind split and why it exists, the coverage rule for worktree-rooted entries, the net-effect fold on the commission direction, and the twice-called `DiffManifest` (permitted roots suppress diff noise only, never the honesty assertion).
 
   `docs/overview.md`: check whether the module table or execution-stack description needs a change.
@@ -113,7 +115,7 @@ It runs last because both the guard and the docs describe the finished shape, an
   Every inline link in the file must still resolve, file part and `#anchor` alike — `internal/lyxcwd/docslink_test.go` enforces it and this batch's verify runs it.
 - **Commit:** `docs(fabricengine): document the mutation record and the truthfulness oracle`
 
-### Card 35: design-doc corrections and roadmap
+### Card 36: design-doc corrections and roadmap
 
 - **Context:**
   - `_mill/discussion.md`

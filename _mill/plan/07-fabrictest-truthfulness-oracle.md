@@ -23,7 +23,7 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
 
 ## Cards
 
-### Card 27: consume the exported check enum, delete the copy
+### Card 28: consume the exported check enum, delete the copy
 
 - **Context:**
   - `internal/fabricengine/destroy.go`
@@ -52,7 +52,7 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   Rewrite both to cite `fabricengine.Check`'s own doc comment as the rule's home rather than restating it a second time — one declarer for the enum means one declarer for its rule.
 - **Commit:** `refactor(fabrictest): consume fabricengine's exported Check enum`
 
-### Card 28: the oracle
+### Card 29: the oracle
 
 - **Context:**
   - `internal/fabricengine/fabrictest/manifest.go`
@@ -100,7 +100,7 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   Skip a `"."` target in both directions and say why in the code.
 - **Commit:** `feat(fabrictest): add the mutation-record truthfulness oracle`
 
-### Card 29: `VerbCase.Run` returns the record
+### Card 30: `VerbCase.Run` returns the record
 
 - **Context:**
   - `internal/fabricengine/mutation.go`
@@ -132,7 +132,7 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   Where a `Run` closure fails early through `tb.Fatalf` before reaching the verb call, return the zero `fabricengine.Mutations` alongside its error — `tb.Fatalf` does not return, so the value is unreachable, but the compiler needs it.
 - **Commit:** `refactor(fabrictest): have VerbCase.Run return the mutation record`
 
-### Card 30: wire the oracle into every cell
+### Card 31: wire the oracle into every cell
 
 - **Context:**
   - `internal/fabricengine/fabrictest/mutationoracle.go`
@@ -147,19 +147,19 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   In `internal/fabricengine/fabrictest/matrix_test.go`, both `runCell` and `TestCloneHubReset`'s inline cell body now:
 
   1. capture `rec, err := vc.Run(t, h, fixture)` instead of `err := vc.Run(...)`;
-  2. compute the diff **twice** — once with `exp.PermittedRoots` feeding the existing `AssertNoUnpermittedChange` survival assertion, and once with a `nil` permitted list feeding the new honesty assertion;
-  3. call `AssertRecordMatchesDiff(t, rec, <the unfiltered diff>)`.
+  2. keep the existing `AssertNoUnpermittedChange(t, before, after, exp.PermittedRoots)` call exactly as it is — it takes the two manifests and diffs internally, so it needs no new argument and its signature must not be widened;
+  3. add **one** new `DiffManifest(before, after, nil)` call and pass its result to `AssertRecordMatchesDiff(t, rec, <that unfiltered diff>)`.
 
   Permitted removal roots suppress **diff noise only** and never suppress the honesty assertion.
   This is the difference between the slice's headline case asserting something and asserting nothing: the `Remove` anomaly cell declares `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>` as permitted precisely *because* they do get destroyed before the refusal, so if permitted roots also suppressed the honesty check, the one cell that reproduces "mutated, then refused" would assert exactly nothing about the record.
   Under this rule that cell asserts both that the deletions were allowed **and** that the envelope admitted to them.
 
-  `DiffManifest(before, after Manifest, permitted []string)` already takes the permitted list as a parameter, so the second call needs no API change.
+  `DiffManifest(before, after Manifest, permitted []string)` already takes the permitted list as a parameter, so the new `nil`-permitted call needs no API change at all.
   Keep the existing five-phase cell order and every existing assertion — this card **adds** an assertion, it does not replace one.
   Put the honesty assertion after the existing `AssertNoUnpermittedChange` call so a cell that fails both reports the survival failure first, which is the one that usually explains the other.
 - **Commit:** `test(fabrictest): cross-check every cell's record against the manifest diff`
 
-### Card 31: oracle unit tests and the doc.go sabotage table
+### Card 32: oracle unit tests and the doc.go sabotage table
 
 - **Context:**
   - `internal/fabricengine/fabrictest/mutationoracle.go`
@@ -197,6 +197,6 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
 ## Batch Tests
 
 `verify: go test -tags integration ./internal/fabricengine/fabrictest/` runs the whole tagged harness package — the full cross-product matrix plus the `CloneHub{Reset}` column plus the new oracle unit tests.
-The unbounded scope is justified here rather than scoped to a name prefix: card 30 adds an assertion to **every** cell, so the batch's own change surface *is* the whole matrix, and a scoped run would leave most of what this batch touches unverified.
+The unbounded scope is justified here rather than scoped to a name prefix: card 31 adds an assertion to **every** cell, so the batch's own change surface *is* the whole matrix, and a scoped run would leave most of what this batch touches unverified.
 This package is the slice's most expensive suite;
 running it once per fixer round is the intended cost, and no other batch pays it.

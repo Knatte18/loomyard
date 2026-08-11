@@ -4,7 +4,7 @@
 task: 'fabric: accumulate the result envelope from mutations, not control flow (slice 14)'
 batch: 'constructive-recording'
 number: 5
-cards: 5
+cards: 6
 verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go test -tags integration -run TestMutationRecord ./internal/fabricengine/
 depends-on: [4]
 ```
@@ -29,6 +29,10 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/gitexclude.go`
+  - `internal/fabricengine/commit.go`
+  - `internal/fabricengine/pull.go`
+  - `internal/fabricengine/coalesce.go`
+  - `internal/fabricengine/commit_lock_integration_test.go`
 - **Edits:**
   - `internal/fabricengine/portals.go`
   - `internal/fabricengine/junction.go`
@@ -52,14 +56,17 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   A junction **re-point** therefore records as `link_removed` (from the gate, batch 4) followed by `link_created` (here) — two entries for what physically happens.
   There is deliberately no `link_repointed` kind, and none may be added: the new target does not exist at `repointLink`'s recording site, so its `Detail` would be unfillable.
 
-  Record `KindFileWritten` when a `.git/info/exclude` rewrite actually changed the file — `mutateGitExclude` in `internal/fabricengine/gitexclude.go` already returns a `changed bool` that says so, and its callers are where the record goes:
+  Record `KindFileWritten` when a `.git/info/exclude` rewrite actually changed the file — `mutateGitExclude` in `internal/fabricengine/gitexclude.go` already returns a `changed bool` that says so, and its two junction-side callers are where the record goes:
 
   - `seedGitExclude` and `unseedGitExclude` — `internal/fabricengine/junction.go`
-  - `seedWeftArtifactExcludes` — `internal/fabricengine/weftgit.go`
 
   Each gains a leading `rec *Mutations` parameter, threaded from its callers, and records the resolved exclude-file path with `Append` only when `changed` is true.
   A rewrite that changed nothing records nothing, per the record-only-on-observed-effect rule.
   `mutateGitExclude` and `writeFileAtomically` themselves stay unparameterised — they are the mechanism, and their callers are the ones that know the act was a fabric mutation.
+
+  **`seedWeftArtifactExcludes` (`internal/fabricengine/weftgit.go`) is deliberately NOT recorded and NOT parameterised.** It writes only into the `.git` metadata directory, which `CaptureManifest` excludes wholesale — bucket 3 of the derived-inventory Shared Decision — so an entry would buy the oracle nothing.
+  It is also reached only through `ensureWeftLockDirAt`/`ensureWeftLockDir`, so threading a recorder into it would force the parameter onto that chain and break its five callers (`internal/fabricengine/pull.go`, `internal/fabricengine/commit.go`, `internal/fabricengine/coalesce.go`, `internal/fabricengine/weftgit.go` itself, and `internal/fabricengine/commit_lock_integration_test.go`) for no coverage gain.
+  The weft lock directory that chain creates is bucket 2: it lives under a weft worktree already recorded as `worktree_created`, so the coverage rule accounts for it.
 
   Do not change any behaviour, ordering, or error text.
 - **Commit:** `feat(fabricengine): record link_created and file_written at their success sites`
@@ -72,6 +79,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Edits:**
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/reconcile.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -86,7 +94,8 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - `createWeftWorktree` gains a leading `rec *Mutations` parameter and records `KindWorktreeCreated` with the created weft worktree path on success, plus `rec.AppendRef(KindBranchCreated, branch, "")` when the call created the branch rather than checking out an existing one. This site does **not** route through the gate — `createGitWorktree` is the gate's minter for the *warp* side, and the Fabric Destruction Chokepoint Invariant governs destruction, not creation — so the record here is hand-written by design, not an oversight. Say so in a comment.
   - `pushWeftBranch` gains a leading `rec *Mutations` parameter and records `rec.AppendRef(KindBranchPushed, branch, "")` on success.
 
-  Thread the new parameters from the callers of both functions (`internal/fabricengine/add.go`), passing the verb's own recorder.
+  Thread the new parameters from **both** callers of `createWeftWorktree` — `internal/fabricengine/add.go` and `internal/fabricengine/reconcile.go`'s `reconcileMissingWeft` — and from `pushWeftBranch`'s caller in `internal/fabricengine/add.go`, passing each verb's own recorder.
+  Grep for each renamed helper before finishing the card rather than trusting this list.
   Do not change any behaviour, ordering, or error text.
 - **Commit:** `feat(fabricengine): record worktree, branch and push mutations on the add path`
 
@@ -165,7 +174,47 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   Do not change any behaviour, ordering, or error text.
 - **Commit:** `feat(fabricengine): record worktree_switched and repo_advanced`
 
-### Card 21: engine-level mutated-then-errored assertions
+### Card 21: the launcher and clone construction sites
+
+- **Context:**
+  - `internal/fabricengine/mutation.go`
+  - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/fabrictest/manifest.go`
+- **Edits:**
+  - `internal/fabricengine/launchers.go`
+  - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/add.go`
+  - `internal/fabricengine/reconcile.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  These are the hub-visible constructive writes cards 17-20 do not reach.
+  Every one is recorded at the **coarsest covering root**, per the derived-inventory Shared Decision — one entry per thing created, never one per file.
+
+  `writeLaunchers` — `internal/fabricengine/launchers.go` — gains a leading `rec *Mutations` parameter, threaded from its two callers (`internal/fabricengine/add.go` and `internal/fabricengine/reconcile.go`'s pair-wiring repair).
+  It records **one** `KindDirCreated` for the launcher directory it minted, on success.
+  The three files it writes inside that directory (the IDE launcher, the fabric-checkout launcher, and the menu launcher) get no entries of their own — the coverage rule accounts for every path beneath the recorded root.
+  If the menu launcher is written outside the launcher directory, it needs its own `KindFileWritten` entry;
+  check the path before deciding, and state which case held in the commit body.
+
+  `CloneHub` — `internal/fabricengine/clone.go` — records at each of its construction steps, using the recorder card 10 installed:
+
+  - the `<hub>/.lyx` directory creation — `KindDirCreated`
+  - each of the two `cloneRepo` calls (warp, then weft) — `KindWorktreeCreated` at the clone destination. A clone genuinely brings a worktree into being, and one entry covers the whole cloned tree.
+  - `ensureBoardWorktree`'s materialization of `<hub>/_board` — `KindWorktreeCreated` at `boardDir`
+  - the `.lyx-anchor` marker write — `KindFileWritten`
+  - `writeWarpBinding`'s `.lyx-warp` record — `KindFileWritten`
+
+  Record each only on the success of its own step, never before attempting it.
+  `cloneRepo` itself stays unparameterised — it is a mechanism with no notion of a record;
+  `CloneHub` records at the call site, where the destination path and the error are both in hand.
+
+  Before finishing this card, run the derivation the Shared Decision requires — grep `internal/fabricengine` and `internal/fabriccli` for `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `fslink.CreateDirLink(` and `cloneRepo(` — and classify every remaining production hit into the three buckets, writing that classification into the batch's completion note.
+  A hit in bucket 1 that this card missed is a batch-7 cell failure waiting to happen, and the derivation is what catches it before the oracle does.
+- **Commit:** `feat(fabricengine): record the launcher and clone construction sites`
+
+### Card 22: engine-level mutated-then-errored assertions
 
 - **Context:**
   - `internal/fabricengine/mutation.go`
@@ -173,6 +222,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - `internal/fabricengine/remove.go`
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/remove_guard_integration_test.go`
+  - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/testmain_test.go`
 - **Edits:** none
 - **Creates:**
@@ -180,7 +230,8 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Create `internal/fabricengine/mutation_record_integration_test.go` behind the `integration` build tag, in `package fabricengine_test` — the **external** test package, matching `internal/fabricengine/remove_guard_integration_test.go`, whose fixture builder `newFabricFixture` is declared there and is unreachable from the internal package.
+  Create `internal/fabricengine/mutation_record_integration_test.go` behind the `integration` build tag, in `package fabricengine_test` — the **external** test package, matching `internal/fabricengine/remove_guard_integration_test.go`.
+  The fixture builder both files use, `newFabricFixture`, is declared in `internal/fabricengine/reconcile_stale_registration_test.go` — not in the guard file, whose own header points at it — and is unreachable from the internal test package.
   Everything this card asserts is exported (`RefusalOf`, `Mutated()`, `Topology.Remove`, `Topology.Add`), so the external package costs nothing.
   The package's `TestMain` already calls `lyxtest.HermeticGitEnv()`, per the Hermetic Git Test Environment Invariant.
 
@@ -198,6 +249,6 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 
 ## Batch Tests
 
-`verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go test -tags integration -run TestMutationRecord ./internal/fabricengine/` runs the two packages' untagged suites — which must stay green, since no behaviour changes here — and then the one new tagged file, selected by the `TestMutationRecord` name prefix card 21 mandates.
+`verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go test -tags integration -run TestMutationRecord ./internal/fabricengine/` runs the two packages' untagged suites — which must stay green, since no behaviour changes here — and then the one new tagged file, selected by the `TestMutationRecord` name prefix card 22 mandates.
 The tagged run is deliberately name-scoped rather than the whole `integration` suite for this package: the full tagged suite is minutes long and this batch's own new surface is one file.
 The whole tagged suite runs at the done gate (`pipeline.done_gate` is already `go test ./... && go test -tags integration ./...` for this hub), which is what catches a regression this scope cannot see.

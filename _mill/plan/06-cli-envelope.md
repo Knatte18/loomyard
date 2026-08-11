@@ -19,7 +19,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 
 ## Cards
 
-### Card 22: the envelope helper
+### Card 23: the envelope helper
 
 - **Context:**
   - `internal/fabricengine/mutation.go`
@@ -48,7 +48,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   State that in the file's doc comment, alongside the note that `internal/fabricengine`'s read-only verbs (`list`, `pairs`, `status`, `diff`) deliberately do **not** route through these helpers.
 - **Commit:** `feat(fabriccli): add the record-carrying envelope helpers`
 
-### Card 23: emit the record from the Topology verb handlers
+### Card 24: emit the record from the Topology verb handlers
 
 - **Context:**
   - `internal/fabriccli/envelope.go`
@@ -72,12 +72,12 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Nothing has been mutated at those points, there is no result to read a record from, and inventing an empty record for them would put `mutations` on an envelope that is not a verb outcome at all.
   Add a one-line comment at the first such site in each handler saying so, so the asymmetry reads as a decision.
 
-  `runReconcile` is deliberately absent from that list: it does its own CLI-layer mutating, so card 24 both records and converts it in one place rather than this card converting an emission card 24 would immediately rewrite.
+  `runReconcile` is deliberately absent from that list: it does its own CLI-layer mutating, so card 25 both records and converts it in one place rather than this card converting an emission card 25 would immediately rewrite.
 
   The read-only handlers `runList` and `runPairs` (`internal/fabriccli/fabric.go`) are **not** touched — no `mutations`, no `partial`.
 - **Commit:** `feat(fabriccli): emit mutations and partial from the topology verb handlers`
 
-### Card 24: record and emit the CLI layer's own mutations
+### Card 25: record and emit the CLI layer's own mutations
 
 - **Context:**
   - `internal/fabriccli/envelope.go`
@@ -98,7 +98,8 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 
   **`CloneAndWire`** — `internal/fabriccli/clone.go`. Convert it to named results (`func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.CloneResult, err error)`), build `rec := fabricengine.NewMutations(res.HubPath)` once `CloneHub` has returned, seed it with `rec.Extend(res.Mutated())`, and install `defer func() { res.Mutations = rec.Snapshot() }()` so all eight `return fabricengine.CloneResult{}, err` sites carry the accumulated record without being individually rewritten.
   Note the ordering constraint: the defer can only be installed after `rec` exists, so the first return (the `CloneHub` failure itself) instead returns `res, err` directly — `CloneHub`'s own record is already in `res` at that point, and dropping it there would discard the hub the clone had just minted.
-  Hand-record the CLI-layer steps at their success sites: the two `configsync` calls as `KindFileWritten` on the config path each wrote, and the `Bolt.Commit` call site as `KindCommitCreated` with the SHA `Commit` already returns as its detail.
+  Hand-record the CLI-layer steps at their success sites: the two `configsync` calls as `KindFileWritten` on the config path each wrote, and the `Bolt.Commit` call site as `KindCommitCreated` with the **board worktree path** (`res.BoardDir`) as its `Target` and the SHA `Commit` already returns as its `Detail`.
+  The `Target` matters beyond consistency with card 19's "the worktree the commit landed in" rule: it is what supplies the omission-direction coverage for the board-side `.lyx-warp` and config writes in the clone and reconcile cells.
   The `WireJunctionsWith` call needs no entry of its own — it records `link_created` internally from batch 5.
   `fabricengine.Bolt` itself is **out of scope as a type** — it keeps its `(sha, committed, err)` signature untouched;
   what records is its *call site* here, which already has the SHA and the committed flag in hand.
@@ -111,7 +112,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 
   `runCloneWithReset` then emits through the card-22 helpers, keeping its four existing fields (`hub`, `anchor`, `warp`, `warp_binding_recorded`).
 
-  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten`, and record the `Bolt.Commit` backfill step as `KindCommitCreated` at its success site.
+  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten`, and record the `Bolt.Commit` backfill step as `KindCommitCreated` at its success site, with the board worktree path (`fabricengine.BoardDir(l.HubPath)`) as its `Target` and the returned SHA as its `Detail`.
   Its `Bolt.Push` records nothing either, for the same unobservable-outcome reason spelled out above.
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
   Emit through the card-22 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
@@ -119,7 +120,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   This is not optional polish: `internal/fabricengine/fabrictest/verbs.go`'s `CloneHubReset`/`RealHub` cell drives `CloneAndWire`, so batch 7's unfiltered honesty diff contains those junctions, config writes and commits, and the omission direction fires on them if they go unrecorded.
 - **Commit:** `feat(fabriccli): record and emit the CLI layer's own mutations`
 
-### Card 25: emit the record from the weft verb handlers
+### Card 26: emit the record from the weft verb handlers
 
 - **Context:**
   - `internal/fabriccli/envelope.go`
@@ -152,7 +153,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   The read-only `status` and `diff` subcommands in this file are **not** touched.
 - **Commit:** `feat(fabriccli): emit mutations and partial from the weft verb handlers`
 
-### Card 26: envelope shape assertions
+### Card 27: envelope shape assertions
 
 - **Context:**
   - `internal/fabriccli/envelope.go`
@@ -194,7 +195,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 ## Batch Tests
 
 `verify: go test ./internal/fabriccli/ ./internal/output/ && go test -tags integration ./internal/fabriccli/` runs the untagged suites of the package whose handlers this batch rewrites and of the package whose new `ErrFields` they depend on, then the tagged `internal/fabriccli` suite.
-The tagged run is required rather than optional: `internal/fabriccli/cli_test.go` is `integration`-tagged, so card 26's end-to-end per-verb assertions are invisible to an untagged run, and so is any compile break card 23-25's handler rewrites introduced in it.
+The tagged run is required rather than optional: `internal/fabriccli/cli_test.go` is `integration`-tagged, so card 27's end-to-end per-verb assertions are invisible to an untagged run, and so is any compile break card 24-25's handler rewrites introduced in it.
 The new untagged assertions live in `internal/fabriccli/envelope_test.go`;
 `internal/output/output_test.go` is unchanged here and runs as a regression check that the additive `ErrFields` still has not disturbed `Ok` or `Err`.
 `internal/fabricengine` is not in scope — this batch changes no engine code.

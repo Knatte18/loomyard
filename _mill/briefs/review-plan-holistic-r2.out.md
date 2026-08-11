@@ -1,0 +1,58 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: accumulate the result envelope from mutations, not control flow (slice 14) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Anthropic Claude, Opus-class (runtime reports claude-opus-5)
+reviewed_file: plan/
+date: 2026-08-11
+```
+
+## Findings
+
+### [BLOCKING:scope] Constructive inventory misses writes the oracle asserts
+**Location:** batch 5 cards 17-20 vs batch 7 cards 28/30
+**Issue:** Card 28's omission direction requires *every* unfiltered diff change to be covered by a record entry, but the batch-5 inventory is hand-enumerated and omits real hub-rooted writes: `writeLaunchers` (`launchers.go:100,110,141`, called from `add.go:160` and `reconcile.go:390`) creates `_launchers/<anchor>/<slug>/ide*`, `fabric-checkout*` and the menu launcher, and `CloneHub` creates `<hub>/.lyx` (`clone.go:239`), clones warp (`:245`) and weft (`:273`), materialises `<hub>/_board` (`:293`) and writes `.lyx-anchor` (`:354`) and `.lyx-warp` (`:366`) — none recorded by any card, while card 28 explicitly skips the one `"."` entry that could have covered the clone cell. The Add, Reconcile and CloneHub cells therefore fail on correct behaviour.
+**Fix:** Extend the recording inventory to cover these sites (or state a per-cell exemption rule), and replace hand-enumeration with a stated method for finding every hub-visible write.
+
+### [BLOCKING:scope] Card 17's `seedWeftArtifactExcludes` breaks callers not in Edits
+**Location:** batch 5, card 17
+**Issue:** `seedWeftArtifactExcludes` is reached only through `ensureWeftLockDirAt`/`ensureWeftLockDir` (`weftgit.go:53,47`); adding a leading `rec` forces those to thread it, breaking `pull.go:292`, `commit.go:163`, `coalesce.go:94`, `weftgit.go:255` and `commit_lock_integration_test.go:60`. Card 17's `Edits:` lists none of `commit.go`, `pull.go`, `coalesce.go` or that test file.
+**Fix:** Add the four files to card 17's `Edits:` (and to `## All Files Touched`), or state that only the three direct call sites record and the chain keeps its signature.
+
+### [BLOCKING:scope] Two threaded helpers each have a caller outside their card's Edits
+**Location:** batch 5 card 18; batch 4 card 14
+**Issue:** `createWeftWorktree` is called at `add.go:149` **and** `reconcile.go:511`, but card 18's Edits list only `add.go`/`weftwiring.go` and its prose says "callers … (`internal/fabricengine/add.go`)". `unwireBoardLink` is called at `unwire.go:79` **and** `remove.go:99`, but card 14's Edits omit `remove.go`. Both cards leave the tree uncompilable as written.
+**Fix:** Add `internal/fabricengine/reconcile.go` to card 18's Edits and `internal/fabricengine/remove.go` to card 14's.
+
+### [BLOCKING:consistency] Card 13 repoints `teardownHub` before card 14 declares it
+**Location:** batch 4, cards 13 and 14
+**Issue:** Card 13 requires repointing "`teardownHub` through the seam in `internal/fabricengine/export_test.go`" with a throwaway recorder, but `teardownHub` only gains `rec *Mutations` in card 14 — and card 14's `Edits:` omits `export_test.go`. Card 13's commit cannot compile, and card 14's cannot either.
+**Fix:** Move the `export_test.go` teardownHub repoint into card 14 and list the file in card 14's Edits.
+
+### [BLOCKING:scope] Card 21's Context omits `newFabricFixture`'s declaring file
+**Location:** batch 5, card 21
+**Issue:** The card names `newFabricFixture` and attributes it to `internal/fabricengine/remove_guard_integration_test.go`; it is declared at `internal/fabricengine/reconcile_stale_registration_test.go:103` (the guard file's own header says so), which appears in neither `Context:` nor `Edits:` — cold-start exploration for the implementer.
+**Fix:** Correct the attribution and add `internal/fabricengine/reconcile_stale_registration_test.go` to card 21's `Context:`.
+
+### [NIT:consistency] Batch 4 states two different vet scopes
+**Location:** batch 4 `## Batch Tests` vs its yaml header and card 14
+**Issue:** The yaml `verify:` and card 14's justification both say `go vet -tags integration ./...`; the `## Batch Tests` paragraph says `go vet -tags integration ./internal/fabricengine/...`, which would not reach `internal/configcli` / `internal/loomengine`.
+**Fix:** Make the Batch Tests prose match the authoritative `./...` form.
+
+### [NIT:consistency] Card 30 misdescribes `AssertNoUnpermittedChange`'s signature
+**Location:** batch 7, card 30
+**Issue:** The card says to "compute the diff twice — once with `exp.PermittedRoots` feeding the existing `AssertNoUnpermittedChange`", but that helper takes `(tb, before, after Manifest, permitted []string)` and diffs internally (`matrix_test.go:232`); only one new `DiffManifest(before, after, nil)` call is actually needed, and following the card literally invites a needless signature widening the same batch forbids elsewhere.
+**Fix:** Reword to "keep the existing `AssertNoUnpermittedChange(before, after, exp.PermittedRoots)` call and add one `DiffManifest(before, after, nil)` for the honesty assertion".
+
+### [NIT:decision] Card 24 leaves the `Bolt.Commit` entry's `Target` unstated
+**Location:** batch 6, card 24
+**Issue:** Every other `commit_created` site fixes `Target` to the worktree the commit landed in (card 19); card 24 specifies only the SHA as `Detail`, leaving `Target` undecided — and that Target is what supplies omission coverage for the board-side `.lyx-warp`/config writes in the clone and reconcile cells.
+**Fix:** State the `Target` explicitly (the board worktree path) for both `Bolt.Commit` record sites.
+
+## Verdict
+
+REQUEST_CHANGES
+Recording inventory and several cards' Edits/Context lists are incomplete; batches 4-7 would not compile or pass.
+MILL_REVIEW_END

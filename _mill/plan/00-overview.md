@@ -86,6 +86,19 @@ batches:
 - **Rationale:** a record containing no-ops would fail the truthfulness cross-check's commission direction on correct behaviour, and would commit the mirror image of the campaign defect — claiming a destruction that never happened.
 - **Applies to:** batch 4, batch 5.
 
+### Decision: record at the covering root, and derive the inventory rather than enumerating it
+
+- **Decision:** a constructive record entry is appended at the **coarsest root that covers what the operation created**, not once per file written. `writeLaunchers` records one entry for the launcher directory it minted, not three for the scripts inside it;
+  `cloneRepo` records one `worktree_created` for the clone root, not one per cloned file.
+  The oracle's coverage rule (batch 7 card 30) already resolves a diff change against a record entry by segment-wise subtree containment, so one root entry accounts for every path beneath it.
+- **The inventory is derived, never hand-enumerated.** Before finishing batch 5, the implementer greps `internal/fabricengine` and `internal/fabriccli` for `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `fslink.CreateDirLink(` and `cloneRepo(`, and classifies **every** production hit into exactly one of three buckets, writing the classification into the batch's completion note:
+  1. **Recorded here** — the write is the coarsest root of something new, so it gets an entry.
+  2. **Covered by an enclosing recorded root** — e.g. the weft lock directory `.weft/`, which lives under a weft worktree already recorded as `worktree_created`.
+  3. **Invisible to the manifest** — the write lands under the `.git` metadata directory, which `CaptureManifest` excludes wholesale, so no entry is needed and none should be added.
+- **Rationale:** batch 7's omission direction requires every unfiltered-diff change to be covered by *some* record entry, so a hand-written list that misses one hub-visible write fails a cell on correct behaviour. Round 2's review found exactly that: `writeLaunchers` and six separate `CloneHub` construction sites were missing from a list that read as complete. A derivation the implementer runs against the source is the only form of this inventory that can be checked;
+  a list in a plan file cannot.
+- **Applies to:** batch 5, batch 6.
+
 ### Decision: `mutation.go` is the single declarer of the `Kind` enum
 
 - **Decision:** every `Kind` constant is declared in `internal/fabricengine/mutation.go` and nowhere else.
@@ -98,7 +111,7 @@ batches:
 ### Decision: `ok` is unchanged; `mutations` and `partial` are always present
 
 - **Decision:** `ok` keeps meaning "no error was returned". Every envelope emitted from a **verb outcome** always carries `mutations` (an array, empty rather than `null`) and `partial` (a bool, `false` rather than absent), on success and failure alike. `partial` is true from exactly one rule: `error ≠ nil ∧ record non-empty`. The four read-only verbs (`list`, `pairs`, `status`, `diff`) carry neither key.
-- **The pre-flight failure class is explicitly outside the fixed key set.** A handler that fails *before* calling its verb — cwd/location resolution, `LoadConfig`, an argument `usage: …` error — keeps emitting a bare `output.Err` with neither key. Nothing has been mutated at those points and there is no result to read a record from, so an invented empty record would put `mutations` on an envelope that is not a verb outcome at all. Every statement of the fixed-key-set rule — card 22's doc comment and card 33's `CONSTRAINTS.md` wording — must carry this carve-out in the same breath, or the invariant is machine-quotable and false.
+- **The pre-flight failure class is explicitly outside the fixed key set.** A handler that fails *before* calling its verb — cwd/location resolution, `LoadConfig`, an argument `usage: …` error — keeps emitting a bare `output.Err` with neither key. Nothing has been mutated at those points and there is no result to read a record from, so an invented empty record would put `mutations` on an envelope that is not a verb outcome at all. Every statement of the fixed-key-set rule — card 24's doc comment and card 35's `CONSTRAINTS.md` wording — must carry this carve-out in the same breath, or the invariant is machine-quotable and false.
 - **Rationale:** `_mill/discussion.md`'s `ok-semantics-and-error-path-fields` Decision. A fixed key set means a consumer never distinguishes absent from false, and redefining `ok` in place would silently change a field every existing consumer already reads.
 - **Applies to:** batch 6.
 

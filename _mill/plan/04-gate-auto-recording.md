@@ -65,6 +65,7 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 - **Context:**
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/mutation.go`
+  - `internal/fabricengine/export_test.go`
 - **Edits:**
   - `internal/fabricengine/portals.go`
   - `internal/fabricengine/launchers.go`
@@ -75,7 +76,6 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/portallauncher_test.go`
   - `internal/fabricengine/weftwiring_test.go`
-  - `internal/fabricengine/export_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -92,7 +92,8 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 
   Where a helper's caller is itself a helper, thread the parameter through rather than constructing a second recorder — there is exactly one `*Mutations` per verb invocation, and it is the one card 9 or card 10 built.
 
-  Three of these helpers have in-package test callers, which this card repoints by passing a throwaway `NewMutations("")` recorder so each assertion's meaning is unchanged: `removeLaunchers` in `internal/fabricengine/portallauncher_test.go`, `removeJunctionRecords` in `internal/fabricengine/weftwiring_test.go`, and `teardownHub` through the seam in `internal/fabricengine/export_test.go`.
+  Three of these helpers have in-package test callers, which this card repoints by passing a throwaway `NewMutations("")` recorder so each assertion's meaning is unchanged: `removeLaunchers` in `internal/fabricengine/portallauncher_test.go` and `removeJunctionRecords` in `internal/fabricengine/weftwiring_test.go`.
+  `teardownHub`'s own seam in `internal/fabricengine/export_test.go` is **not** repointed here — `teardownHub` does not gain its parameter until card 14, so card 14 owns that repoint and lists the file.
   Grep each renamed helper across `internal/fabricengine/*_test.go` before finishing the card rather than trusting this list — an unbuilt test file is invisible to `go build ./...` and only the widened `go vet -tags integration ./...` in this batch's verify catches it.
 
   No behaviour, ordering, or error text changes anywhere in this card.
@@ -113,8 +114,10 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/checkout.go`
   - `internal/fabriccli/clone.go`
+  - `internal/fabricengine/remove.go`
   - `internal/fabricengine/clone_reset_guard_test.go`
   - `internal/fabricengine/junction_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -122,8 +125,8 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   Add a leading `rec *Mutations` parameter to:
 
   - `seedLyxJunction` and `unseedJunctionRecords` and `wireBoardLink` — `internal/fabricengine/junction.go`
-  - `unwireBoardLink` — `internal/fabricengine/unwire.go`
-  - `resetHub` and `teardownHub` — `internal/fabricengine/clone.go`
+  - `unwireBoardLink` — `internal/fabricengine/unwire.go`; it has **two** callers, `internal/fabricengine/unwire.go` and `internal/fabricengine/remove.go`, both of which this card updates
+  - `resetHub` and `teardownHub` — `internal/fabricengine/clone.go`. Both have in-package test callers this card repoints with a throwaway `NewMutations("")` recorder: `resetHub` in `internal/fabricengine/clone_reset_guard_test.go`, and `teardownHub` through the seam in `internal/fabricengine/export_test.go`.
   - `(*Topology).repairPairWiring` — `internal/fabricengine/reconcile.go`, since it reaches the junction wiring
 
   **`WireJunctions` is the one exception to the leading-parameter rule, and the shape is exact.** It keeps its current signature and gains a recording sibling:
@@ -211,6 +214,6 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 ## Batch Tests
 
 `verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./internal/fabricengine/...` covers the two packages whose production code this batch rewrites, plus a tagged type-check.
-The chained vet is load-bearing here: `WireJunctions` and `UnwireJunctions` are called from `internal/fabricengine/fabrictest/verbs.go`, which is `integration`-tagged and therefore invisible to the untagged test run and to `go build ./...`.
+The chained vet is `go vet -tags integration ./...` — module-wide, not the package-scoped form batch 3 uses — and the width is load-bearing: `UnwireJunctions` is called from the `integration`-tagged `internal/fabricengine/fabrictest/verbs.go`, invisible to both the untagged test run and `go build ./...`, and the helper repoints in this batch reach tagged files in `internal/configcli` and `internal/loomengine` that a `./internal/fabricengine/...` scope would never compile.
 The new assertions live in `internal/fabricengine/destroy_test.go`;
 `internal/fabricengine/export_test.go` is repointed but adds no new case.
