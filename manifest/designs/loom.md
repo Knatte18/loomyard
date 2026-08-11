@@ -13,8 +13,8 @@ the LLM owns the thinking.
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the separate, generic **`perch`** module (`lyx perch run|pause` — see the `internal/perchengine` package documentation) — the iterative review loop, independent of loom but used by it between every phase. `perch` composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary, `loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 **Naming note (later addition):** the generic outer phase-FSM this doc specifies — sequencing, resume, crash recovery, pause, the status-file contract — is being generalized for reuse by the Someday `Hardener` module under the name **`Shed`** (see [shed.md](shed.md));
-`loom` = `Shed` + loom's own Preflight + the Discussion/Plan/Webster producer.
-This doc has not been rewritten to extract `Shed` explicitly — it remains the authoritative design for the engine described here.
+`loom` = `Shed` + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+The extraction has since happened: `shed.md` is now the authoritative description of `Shed`'s own generic mechanism, and this doc is the authoritative description of `loom`'s specific producer list plus the engine-level detail (crash recovery, pause, session bootstrap) `shed.md` does not restate.
 
 ## Why — the inversion
 
