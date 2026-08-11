@@ -38,6 +38,7 @@ That property is what the current per-verb integration tests do not have.
 - A **whole-hub manifest snapshot/diff** with prefix-rooted permit lists — the mechanism that catches destruction nobody thought to assert on.
 - Two refusal-expectation helpers — `RefusedByGate(err, check)` and `RefusedBefore(err, substring)` — since most tranche-1 refusals fire in a verb's own pre-flight and never reach the gate.
 - Owner rows for `internal/fabricengine/fabrictest` in `fabricVocabularyOwners` and `weftnameImportOwners` (`internal/lyxcwd/enforcement_test.go`), plus the matching `CONSTRAINTS.md` owner-set update — required in the same commit or `go test ./...` fails.
+- A `fabrictest` subdirectory exclusion in `cmd/lyx/destructiveguard_test.go`'s walk, plus the matching `CONSTRAINTS.md` scope clarification — likewise required in the same commit, and for the same reason.
 - Every cell run on both a `.`-anchored and a `--subpath backend` hub.
 - Positive expected-effect assertions on every `clean`-state cell, so an over-refusing gate cannot pass the matrix.
 - The one movable duplicate `gitStatusPorcelain` (the `fabricengine_test` copy) folded into `fabrictest`.
@@ -92,8 +93,19 @@ That property is what the current per-verb integration tests do not have.
   Anything outside every permitted root that disappears or changes is a failure.
 - **Rationale:** `Remove <slug>` legitimately deletes a worktree, its weft sibling, its junctions, its launchers and its portal — a dozen-plus paths whose internal file list is not this task's business.
   Prefix roots stay concise, stay stable against a pair's internal layout changing, and still fail loudly on anything outside those roots — which is the shape all eight defects took without exception.
+- **Refusal cells carry permit roots too — a refusal is not assumed side-effect-free.**
+  Every expectation kind carries a permit-root field, including the two refusal kinds.
+  The reason is concrete and verified: `Remove` runs `removePortal` and `removeLaunchers` at `remove.go:61-66`, **before** its own dirty pre-flight at `remove.go:68-76`.
+  A dirty-`Remove` cell that correctly refuses has therefore **already destroyed** `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>`.
+  Those two paths are declared as permitted roots on that cell, so the matrix is green against current deliberate behaviour.
+- **That anomaly is recorded, not silently normalised.**
+  "The verb returned an error and destroyed something anyway" is the exact shape of all eight campaign defects, so a cell permitting it must say so out loud rather than bury it in a permit list.
+  It is current intended behaviour — the comment at `remove.go:58-60` is explicit that portal and launcher cleanup runs before the git removal so it still fires when the worktree directory is already gone — and this task must not unilaterally redefine it.
+  `doc.go` names it as the one known case in tranche 1 where a refusal is not side-effect-free, and flags it for slice 14's truthfulness work, where "what did this call actually mutate before it failed" becomes representable in the result envelope.
 - **Rejected:** exact-path permits (hundreds of entries per cell, breaks on any layout change, and would in practice be regenerated-from-actual, at which point it asserts nothing);
-  per-cell predicate functions (full expressiveness, but each cell carries bespoke logic and the declarative table is forfeited).
+  per-cell predicate functions (full expressiveness, but each cell carries bespoke logic and the declarative table is forfeited);
+  empty permit roots on every refusal cell (the framing "refuses, and the hub still exists" implies it, but it is factually wrong for the single most important verb in the matrix and would fail against a correct binary);
+  treating the pre-refusal portal/launcher removal as instance nine and asserting against it (it is deliberate, documented behaviour, and a harness task is the wrong place to reverse a production decision unilaterally).
 
 ### cross-product-shape
 
@@ -105,7 +117,8 @@ That property is what the current per-verb integration tests do not have.
 
 ### where-the-suite-lives
 
-- **Decision:** Both the factory and the matrix suite live in `internal/fabricengine/fabrictest`, mirroring `boardtest`, which holds both its helpers and its suites.
+- **Decision:** Both the factory and the matrix suite live in `internal/fabricengine/fabrictest`.
+  The package is a **hybrid of two existing precedents**, and neither one alone covers it: `boardtest` supplies the untagged-`doc.go`-plus-tagged-`*_test.go` suite shape (it holds only `doc.go` and five `*_test.go` files — **no** non-test helper source), while `lyxtest` supplies the non-test-helper-package shape the factory needs in order to be importable by `fabricengine_test` at all.
 - **Rationale:** the matrix drives only the **exported** verb surface.
   A cell that needs an `export_test.go` shim is not testing the verb's public contract, it is testing an internal.
   Cases genuinely needing the gate's unexported predicates stay in `internal/fabricengine/destructivegaps_integration_test.go` where they already are — an honest cost, not a hidden gap.
@@ -131,9 +144,11 @@ That property is what the current per-verb integration tests do not have.
 
 ### refused-before-the-gate-vs-by-the-gate
 
-- **Decision:** A cell declares one of **two expectation kinds**, and the verb table records which kind each cell uses:
+- **Decision:** A cell declares one of two **refusal** expectation kinds, and the verb table records which kind each cell uses:
   `RefusedByGate(check)` — the error carries `"<check> check failed"`, so the gate refused;
   `RefusedBefore(substring)` — the verb's own pre-flight refused, and the cell pins that verb's own message instead.
+  A third, non-refusal kind (`Proceeds`) is added by the three-expectation-kinds decision below;
+  these two cover only the cells where the verb is expected to stop.
 - **Why this is not optional:** most refusals in tranche 1 **never reach the gate**.
   Verified sites: `remove.go:45` calls `validateWorktreeSlug` and returns a plain `fmt.Errorf` before any `pathRequest` exists;
   `remove.go`'s own `worktreeDirty(scopeAll, target)` pre-flight returns `fmt.Errorf("worktree has uncommitted changes; use --force")` — **byte-identical to the gate's dirtiness reason at `destroy.go:564` but without the `dirtiness check failed` prefix**, so a substring assertion on the gate form silently fails there;
@@ -193,6 +208,39 @@ That property is what the current per-verb integration tests do not have.
   R2 (`pull` discarding uncommitted tracked warp work) and R3 (`prune` removing a path git had just refused) were both about the verb's **own target** being dirty.
 - **Rejected:** dirtying every checkout in the hub for every dirtiness cell (uniform and simple, but then no cell distinguishes "refused because my target was dirty" from "refused because something unrelated was dirty", which is most of the signal);
   a separate `dirtyElsewhere` state alongside `dirtyTarget` (a genuine assertion — a verb must *not* refuse over an unrelated dirty worktree — but it doubles the dirtiness rows, and over-refusal is already covered by the clean-state effect assertions below).
+
+### three-expectation-kinds-and-the-scope-table
+
+- **Decision:** There are **three** expectation kinds, not two.
+  Alongside `RefusedByGate(check)` and `RefusedBefore(substring)`, a cell may declare **`Proceeds`** — the verb succeeds despite a non-clean state, its intended effect lands, and the state's planted content survives.
+  All three carry a permit-root field.
+- **Why a two-kind scheme is wrong:** dirtiness scope is per-verb, so a dirtiness state does **not** imply refusal.
+  `Checkout` probes `worktreeDirty(scopeTracked, weftWorktree)` at `checkout.go:42`, so `dirtyWarpUntracked` — and any untracked-only weft state — must make `Checkout` **succeed**, with the untracked file still on disk afterwards.
+  Under the two-kind scheme that cell had no derivable expected outcome at all and would have been written regenerated-from-actual.
+- **The scope table, so every dirtiness cell's outcome is derived rather than guessed.**
+  Verified against the tree:
+
+  | verb | probe | scope | probed path |
+  |---|---|---|---|
+  | `Add` | own pre-flight (`add.go:43`) | `scopeTracked` | prime warp worktree |
+  | `Checkout` | own pre-flight (`checkout.go:42`) | `scopeTracked` | weft worktree |
+  | `Remove` | own pre-flight (`remove.go:69`) | `scopeAll` | the pair's warp worktree |
+  | `Remove` | `refuseDirtyWeftWorktree` (`remove.go:79`, `:144`) | `scopeAll` | the pair's weft worktree |
+  | `Remove` | gate (`remove.go:196`, `:230`) | `dirtyScopeAll` | worktree / launchers |
+  | `Prune` | own pre-flight (`prune.go:214`) | `scopeTracked` | weft path |
+  | `Prune` | gate (`prune.go:269`, `:292`) | `dirtyScopeTracked` | stale pair paths |
+  | `Pull` | own pre-flight (`pull.go:143`) | `scopeTracked` | prime warp worktree |
+  | `Pull` | gate, via `Fabric.ResetHard` (`destroy.go:762`) | `dirtyScopeTracked` | prime warp worktree |
+  | `Reconcile` | own pre-flight (`reconcile.go:301`) | `scopeAll` | `_board` |
+  | `Cleanup` | gate, branch-shaped | `dirtyCheckedOutBranch` | n/a — is the branch checked out anywhere |
+  | `UnwireJunctions` | gate, link-shaped | `dirtinessNA` | n/a |
+  | `CloneHub{Reset}` | gate (`clone.go:585`) | `dirtinessNA` | n/a |
+
+- **The derivation rule:** a `scopeTracked` verb against an untracked-only state expects `Proceeds`;
+  a `scopeAll` verb against the same state expects a refusal.
+  That divergence is the one case proving dirtiness scope is a real per-request parameter rather than a constant, which is exactly what `TestWorktreeDirty_BothScopesAcrossFourStates` already asserts at the unit level and what this matrix now asserts at the verb level.
+- **Rejected:** leaving non-clean success cells undefined (they would be written from observed behaviour and assert nothing);
+  giving every dirtiness cell a refusal expectation (factually wrong for every `scopeTracked` verb against an untracked-only state, and would fail against a correct binary).
 
 ### clean-state-effect-assertions
 
@@ -304,7 +352,7 @@ That property is what the current per-verb integration tests do not have.
 - **Suggested files** (mill-plan may adjust): `doc.go` (untagged: package doc, the measured wall-clock number, the Windows-gap section);
   `hub.go` (template-once bares, `CloneAndWire`-backed factory);
   `manifest.go` (snapshot, diff, prefix-rooted permits, Windows-safe path compare);
-  `refusal.go` (`Check` constants and `RefusedBy`);
+  `refusal.go` (the three `Check` constants, `RefusedByGate` and `RefusedBefore`);
   `states.go` (the 9 states);
   `verbs.go` (the 9 verb cases and their hostile-input sets);
   `matrix_test.go` (the cross-product driver);
@@ -391,11 +439,18 @@ From `CONSTRAINTS.md`:
 - **lyxtest Leaf Invariant** — `lyxtest` must not import `fabricengine`.
   Machine-enforced by `internal/lyxtest/leaf_enforcement_test.go`.
   This is why the factory lives in `fabrictest`.
-- **Fabric Destruction Chokepoint Invariant** — `destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive.
+- **Fabric Destruction Chokepoint Invariant — this one also blocks the build, and the guard's reach is wider than its invariant text implies.**
+  `destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive.
   The banned bypass tokens are all eight of `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
   The two `ResetHard` tokens matter here specifically: `Fabric.Pull`'s `ResetHard` is what tranche 1's `Pull` cell exercises, and it is the primitive R2's defect discarded uncommitted tracked warp work through on every advance path.
-  **This does not apply to `fabrictest`** (a different package), but states that need to plant hostile filesystem shapes should still prefer `fslink` and ordinary `os` calls in test code without pretending to be gated.
-  Enforced by `cmd/lyx/destructiveguard_test.go`.
+  **The guard is directory-scoped, not package-scoped.**
+  `cmd/lyx/destructiveguard_test.go` sets `destructiveGuardScanPackages = []string{"internal/fabricengine"}` and runs `filepath.WalkDir` over that whole subtree, skipping only files whose name ends in `_test.go`.
+  So `internal/fabricengine/fabrictest/{hub,states,manifest,verbs,refusal}.go` **are scanned**, even though they are a different package — and the harness genuinely needs `fslink.Remove(` and `os.Remove(` to plant and tear down hostile shapes such as `staleWiredJunction`.
+  **Required in the same commit:** exclude the `fabrictest` subdirectory from the guard's walk with a stated reason, and update `CONSTRAINTS.md`'s invariant text to say the scan is package-scoped in intent and names the `fabrictest` subpackage exclusion explicitly.
+  A directory-level exclusion is preferred over per-file allowlist rows because it restores the guard to exactly the scope its own invariant text already claims ("the only file in *package fabricengine*") rather than punching a growing set of per-file holes in it;
+  the alternative — confining every destructive token in `fabrictest` to `_test.go` files — was rejected because it would strand the state builders inside the test binary, unreachable by the `fabricengine_test` consumers the package exists to serve.
+  Once the exclusion lands, `fabrictest` is outside the guard, and its state builders plant and tear down hostile filesystem shapes through `fslink` and ordinary `os` calls without pretending to be gated — but that is a consequence of the exclusion, not a property it had beforehand.
+  Enforced by `cmd/lyx/destructiveguard_test.go` (`TestNoDestructiveBypass_FabricengineProductionSource`).
 - **Cwd Resolution Invariant** — `internal/lyxcwd` alone owns cwd resolution.
   The factory resolves a `*lyxcwd.Location` via `lyxcwd.Resolve(PrimeCwd)`, never by constructing one.
 - **Fabric Git Invariant (warp + weft)** — the harness must use fabric's own vocabulary (warp, weft, prime, pair, hub, anchor) in names and messages.
@@ -448,8 +503,9 @@ TDD candidates, in build order, each independently verifiable before the matrix 
    a link whose raw target changes is reported;
    `.git` internals churning does not produce noise.
    Path keys are `ToSlash`-normalised and comparison is case-folding on Windows.
-4. **`RefusedBy`.**
-   Against real refusals produced by driving a verb, one per check where reachable, plus a negative: a non-refusal error must not match any check.
+4. **`RefusedByGate` and `RefusedBefore`.**
+   `RefusedByGate` against real gate refusals produced by driving a verb, one per reachable `Check`, plus a negative: a non-refusal error must not match any check.
+   `RefusedBefore` against a real pre-flight refusal — `Remove`'s own dirty message is the sharpest case, since it is byte-identical to the gate's reason minus the `dirtiness check failed` prefix, so a helper that matched on the reason text alone would wrongly report a gate refusal there.
 5. **The state matrix.**
    Each state gets a direct assertion that it actually established what it claims *before* any verb runs — a `dirtyWarpTracked` state that silently failed to dirty anything would make every cell using it vacuous.
    This is the single most important guard in the whole harness and must not be skipped.
@@ -489,7 +545,7 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Which verbs are in tranche 1? **A:** All nine gate-reaching verbs, with hostile inputs applied only to the three that accept a slug or branch.
 - **Q:** Which states are in tranche 1? **A:** The eight defects' states plus the two link/foreign-path shapes, nine total, each citing its originating defect.
 - **Q:** Where does the matrix suite itself live, given `export_test.go` shims are unreachable from `fabrictest`? **A:** In `fabrictest`, mirroring `boardtest` — a cell needing an unexported shim is testing an internal, not the verb's public contract; those cases stay in `destructivegaps_integration_test.go` as an honest cost.
-- **Q:** How does a cell assert *which* of the four checks refused? **A:** Substring-match the refusal message via a `RefusedBy` helper — zero production churn, and the message is itself slice 12's stated honesty contract, which slice 14 will rewrite anyway.
+- **Q:** How does a cell assert *which* check refused? **A:** Substring-match the refusal message via a `RefusedByGate` helper — zero production churn, and the message is itself slice 12's stated honesty contract, which slice 14 will rewrite anyway. Round 1 later split this into `RefusedByGate` plus `RefusedBefore`, and round 2 established that the exported `Check` set has three members, since `checkForce` is never emitted.
 - **Q:** How much of the call-site extraction lands here? **A:** Factory only, plus the one movable `gitStatusPorcelain`; converting the 100 calls in the 7 external files is a regression-risky diff against green tests and belongs elsewhere, and the 2 in the in-package `clone_test.go` can never import `fabrictest` at all.
 - **Q:** Does tranche 1 run cells on a `--subpath` hub? **A:** Yes, both anchors for the full matrix — `_portals`/`_launchers` paths are `AnchorRel`-interpolated, which is where a containment bug hides.
 - **Q:** Do clean-state cells assert the verb succeeds? **A:** Yes — without it an over-refusing gate is indistinguishable from a correct one, which defeats the matrix's purpose.
@@ -502,3 +558,6 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Round 1 gap — most refusals never reach the gate (`remove.go:45`, `remove.go`'s own dirty pre-flight, `checkout.go:42-47` all return plain errors), so a single gate-shaped assertion mis-specifies. What is the second expectation kind? **A:** [auto-pick] Two expectation kinds, `RefusedByGate(check)` and `RefusedBefore(substring)`, declared per cell with the verb table recording which. **Why:** which layer refused is signal — R5's defect was a missing pre-flight and R3's a gate-side fallback, so a cell that pins the layer fails when a refactor moves a check across that boundary.
 - **Q:** Round 1 gap — `resetHub` declares `dirtinessNA`, so no dirtiness state can refuse `CloneHub{Reset:true}` and the permitted root is the whole hub, making the manifest diff vacuous. What does that column assert? **A:** [auto-pick] Re-scope the column to the ownership axis: drive `Reset` against a non-hub directory and a `<derived>-HUB`-named non-hub, assert refusal-by-ownership plus full survival, omit the dirtiness rows with the reason stated, and assert the rebuild through `CloneAndWire`. **Why:** that is exactly R4's `clone --reset` defect, and it converts ~18 vacuous cells into two that assert something.
 - **Q:** Round 1 gap — a leading `-` passes `validateWorktreeSlug` and `Checkout` validates no branch at all, leaving both cells' expected outcome undefined. **A:** [auto-pick] Assert survival and no-partial-mutation with no check-name assertion, writing the cell against the *safe* expectation (the argument must not reach git as a flag); use branch-shaped hostile inputs for `Checkout` plus a no-half-switched-pair assertion. **Why:** if the current code is unsafe the cell fails, and that failure is instance nine, which is the tranche's purpose — asserting current behaviour instead would assert nothing.
+- **Q:** Round 2 gap — the destructive bypass guard is directory-scoped (`filepath.WalkDir` over `internal/fabricengine`, skipping only `_test.go`), so it *does* reach `fabrictest`'s non-test files, contradicting this document's claim that it does not. **A:** [auto-pick] Exclude the `fabrictest` subdirectory from the guard's walk with a stated reason, and update `CONSTRAINTS.md`'s invariant text to name the exclusion. **Why:** a directory exclusion restores the guard to the scope its own invariant text already claims ("the only file in *package fabricengine*"), where per-file allowlist rows would punch a growing set of holes, and confining destructive tokens to `_test.go` would strand the state builders inside the test binary where `fabricengine_test` consumers cannot reach them.
+- **Q:** Round 2 gap — `Remove` deletes the portal and launchers at `remove.go:61-66`, *before* its dirty pre-flight at `:68-76`, so a correctly-refusing dirty-`Remove` cell has already destroyed two paths. Do refusal cells carry permit roots? **A:** [auto-pick] Yes — every expectation kind carries a permit-root field, those two paths are permitted on that cell, and the anomaly is recorded in `doc.go` and flagged for slice 14 rather than silently buried in a permit list. **Why:** "returned an error and destroyed something anyway" is the shape of all eight campaign defects, so a cell permitting it must say so out loud; but it is deliberate documented behaviour, and a harness task is the wrong place to reverse a production decision unilaterally.
+- **Q:** Round 2 gap — dirtiness scope is per-verb, so `dirtyWarpUntracked` against a `scopeTracked` verb like `Checkout` must *succeed*, an outcome the two-kind refusal scheme could not express. **A:** [auto-pick] Add a third expectation kind, `Proceeds` (verb succeeds, effect lands, planted content survives), and record the verified per-verb dirtiness-scope table so every cell's outcome is derived rather than guessed. **Why:** the scopeTracked-vs-scopeAll divergence against an untracked-only state is the one case proving dirtiness scope is a real per-request parameter, and without the table those cells would have been written from observed behaviour and asserted nothing.
