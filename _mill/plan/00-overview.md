@@ -144,7 +144,7 @@ Batch-local decisions live in each batch file._
     its only gate call is `deleteBranch` at `checkout.go:195-203`);
     `Pull` −4 (its only gate call is `Fabric.ResetHard` at `destroy.go:762`, a warp checkout reset, not a path executor);
     `Add` −2 for `trackedSymlinkAtWiredPath` and `staleWiredJunction` (its gate calls at `add.go:263-295` act on the pair it is creating, whose junction paths do not exist before `Run`);
-    `UnwireJunctions` −1 for `unrelatedGitCloneAtWeftNamedPath` (its only gate call is `removeLink` at `unwire.go:143-152`, which never visits a weft-named path).
+    `UnwireJunctions` −1 for `unrelatedGitCloneAtWeftNamedPath` (its only gate call is the `removeLink` inside `unseedJunctionRecords` at `junction.go:474-483`, reached from `UnwireJunctions` at `junction.go:368` via `unseedLyxJunction`, and it never visits a weft-named path — note that `unwire.go:143-152` is a *different* function, `unwireBoardLink`, which `UnwireJunctions` never calls).
     That is **15 per anchor, 30 in total**, leaving **130**.
   - **Hostile-input cases:** 17 (`Add` 7 + `Remove` 7 + `Checkout` 2 + `UnwireJunctions` 1) × the `clean` state only × 2 anchors = **34**.
   - **`CloneHub{Reset: true}` column:** 2 targets × 2 anchors = **4**.

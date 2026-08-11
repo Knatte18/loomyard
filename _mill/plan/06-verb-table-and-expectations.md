@@ -37,6 +37,7 @@ that is the exact failure mode that let a green suite coexist with eight data-lo
   - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/reconcile.go`
   - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/junction.go`
   - `internal/fabricengine/pull.go`
   - `internal/fabricengine/clone.go`
   - `internal/fabricengine/destroy.go`
@@ -130,7 +131,7 @@ that is the exact failure mode that let a green suite coexist with eight data-lo
   If the current code does let it through as a flag the cell fails, and that failure is instance nine, which is the point of the tranche — asserting whatever the current behaviour happens to be would assert nothing.
   The `Checkout` hostile cells additionally assert **no half-switched pair**.
   **The omission table.** Export a table naming every verb/state pair excluded from the cross product with its reason, so a green matrix can be audited against what it did not run.
-  It starts with the structural-state omissions derived in the overview — `Cleanup` and `Checkout` all four (branch-shaped; their only gate call is `deleteBranch` at `cleanup.go:275` and `checkout.go:195-203`), `Pull` all four (its only gate call is `Fabric.ResetHard` at `destroy.go:762`, not a path executor), `Add` two (`trackedSymlinkAtWiredPath` and `staleWiredJunction`, whose paths do not exist at `Add`'s target before `Run`), `UnwireJunctions` one (`unrelatedGitCloneAtWeftNamedPath`, never visited by `removeLink` at `unwire.go:143-152`) — and grows with any dirtiness-state omission resolved here.
+  It starts with the structural-state omissions derived in the overview — `Cleanup` and `Checkout` all four (branch-shaped; their only gate call is `deleteBranch` at `cleanup.go:275` and `checkout.go:195-203`), `Pull` all four (its only gate call is `Fabric.ResetHard` at `destroy.go:762`, not a path executor), `Add` two (`trackedSymlinkAtWiredPath` and `staleWiredJunction`, whose paths do not exist at `Add`'s target before `Run`), `UnwireJunctions` one (`unrelatedGitCloneAtWeftNamedPath`, never visited by the `removeLink` inside `unseedJunctionRecords` at `junction.go:474-483`, which is the gate call `UnwireJunctions` at `junction.go:368` actually reaches via `unseedLyxJunction` — `unwire.go:143-152` is `unwireBoardLink`, a different function it never calls) — and grows with any dirtiness-state omission resolved here.
   An arbitrarily-planted state is worse than an absent one: it produces a green cell that proves nothing while reading like coverage.
 - **Commit:** `fabrictest: add the tranche-1 verb table, expectations and hostile inputs`
 

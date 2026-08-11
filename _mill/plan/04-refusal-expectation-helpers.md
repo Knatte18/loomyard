@@ -56,7 +56,7 @@ Batch-local decision: no production refusal type is exported.
   - `internal/fabricengine/fabrictest/hub.go`
   - `internal/fabricengine/remove.go`
   - `internal/fabricengine/prune.go`
-  - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/junction.go`
   - `internal/fabricengine/destroy.go`
 - **Edits:** none
 - **Creates:**
@@ -67,7 +67,8 @@ Batch-local decision: no production refusal type is exported.
   Assertions are made against **real errors produced by driving a verb**, never against hand-written error strings — a helper proved only against synthetic strings proves nothing about the message format it is pinning.
   **`RefusedByGate`, one case per reachable `Check`.**
   Drive a real gate refusal for each of `CheckContainment`, `CheckOwnership` and `CheckDirtiness` and assert the helper matches the right one.
-  Reach containment through `fabricengine.UnwireJunctions` with a junction name escaping its worktree (`../x`) — `unwire.go:143-152` is the link executor's containment surface, and `TestUnwireJunctions_RefusesLinkOutsideItsWorktree` already proves it is a live refusal rather than a hypothetical one.
+  Reach containment through `fabricengine.UnwireJunctions` with a junction name escaping its worktree (`../x`) — `UnwireJunctions` at `junction.go:368` reaches the link executor's containment surface through `unseedLyxJunction` into `unseedJunctionRecords`, whose `pathRequest` and `removeLink` call are at `junction.go:474-483`, and `TestUnwireJunctions_RefusesLinkOutsideItsWorktree` already proves it is a live refusal rather than a hypothetical one.
+  Do not cite `unwire.go:143-152` here: that is `unwireBoardLink`, a different function reached only from `unwire.go:79` and `remove.go:99`, which `UnwireJunctions` never calls.
   Reach ownership through `Topology.Prune(apply=true)` against a hub child whose name ends in the weft suffix but which fabric never created.
   Reach dirtiness through the gate's own `dirtyScopeAll` request at `remove.go:196`/`:230`, planting the dirt so `Remove`'s earlier pre-flight does not claim it first — if that proves unreachable in practice, drive `Prune`'s gate request at `prune.go:269`/`:292` instead and say so in a comment.
   **Two negatives, both required.**
