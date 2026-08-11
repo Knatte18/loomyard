@@ -34,6 +34,7 @@ The `batcher.Active` call keeps `batcher.Select`'s exact position in `Persistent
 - **Edits:**
   - `internal/websterengine/config.go`
   - `internal/websterengine/template.yaml`
+  - `internal/websterengine/template.go`
   - `internal/websterengine/runlevel.go`
   - `internal/webstercli/cli.go`
   - `internal/webstercli/run.go`
@@ -48,6 +49,10 @@ The `batcher.Active` call keeps `batcher.Select`'s exact position in `Persistent
   Nothing else in this file changes — `LoadConfig` never referenced `Batcher`.
   In `internal/websterengine/template.yaml`, delete the entire `batcher: ""` line including its trailing comment.
   Do not renumber or reflow the surrounding lines.
+  In `internal/websterengine/template.go`, amend `ConfigTemplate`'s doc comment, which today enumerates what the template holds as "role model-specs, batchifier selection, and Master session configuration";
+  drop the "batchifier selection" clause.
+  This is the exact sibling of the `Config` type-doc amendment above and belongs in the same card rather than in batch 3: a grep for `batcher.Select`/`batcher:`/`batcher.yaml` does not reach this line (it says "batchifier selection"), so leaving it to the documentation batch would let the tree carry a self-falsifying template doc across the whole of batch 2.
+  Change no code in that file — the embed directive and the accessor body are untouched.
   In `internal/websterengine/runlevel.go`, declare a new package-level sentinel beside `ErrRunBusy`:
 
 ```go
@@ -74,7 +79,7 @@ var ErrNilBatcher = errors.New("webster: RunDeps.Batcher not populated")
   In `internal/webstercli/cli.go`, replace `activeBatcher, err := batcher.Select(websterCfg.Batcher)` with `activeBatcher, err := batcher.Active(layout.AnchorPath())`, leaving the surrounding `if err != nil` / `output.Err` / `clihelp.Abort` block, the call's position after the `websterengine.LoadConfig` call, and the `c.batcher = activeBatcher` assignment all untouched.
   Do not move the call earlier in `PersistentPreRunE` even though it no longer depends on `websterCfg`.
   In `internal/webstercli/run.go`, add `Batcher: c.batcher,` to the `websterengine.RunDeps` literal, placed adjacent to the existing `Roles:` and `Config:` fields so the literal's field order still mirrors the struct's.
-  In `internal/websterengine/config_test.go`, delete the `Batcher: "",` line from the `websterengine.Config` literal in `TestLoadConfig_TemplateDefaults`' `want`, delete the `batcher: identity` line from the `override` YAML string in `TestLoadConfig_OverridesRoundTrip`, delete the `cfg.Batcher != "identity"` assertion block from that same test, and delete the `batcher: identity` line from the `badRole` YAML string in `TestLoadConfig_BadRoleGrammarNamesTheKey`.
+  In `internal/websterengine/config_test.go`, delete the `Batcher: "",` line from the `websterengine.Config` literal in `TestConfigTemplate_RoundTripsThroughLoadConfig`'s `want`, delete the `batcher: identity` line from the `override` YAML string in `TestLoadConfig_OverridesRoundTrip`, delete the `cfg.Batcher != "identity"` assertion block from that same test, and delete the `batcher: identity` line from the `badRole` YAML string in `TestLoadConfig_BadRoleGrammarNamesTheKey`.
   Leave `TestConfigTemplate_ContainsEveryConfigYAMLTag` and `containsKey` untouched — they walk `Config`'s fields reflectively and stay correct once the field is gone.
 - **Commit:** `refactor(batcher): move batchifier selection from webster.yaml to batcher.yaml`
 
@@ -153,7 +158,7 @@ var ErrNilBatcher = errors.New("webster: RunDeps.Batcher not populated")
 
 `verify:` runs `go build ./...` first, because the field deletion in card 5 is a compile-level change that must be proven across every package before any test runs.
 
-The untagged run (`go test ./internal/websterengine/... ./internal/webstercli/...`) covers card 5's `internal/websterengine/config_test.go` edits — `TestLoadConfig_TemplateDefaults`, `TestLoadConfig_OverridesRoundTrip`, `TestLoadConfig_BadRoleGrammarNamesTheKey`, and the reflective `TestConfigTemplate_ContainsEveryConfigYAMLTag`, which is what mechanically proves the struct and the template stayed in sync after the field left both.
+The untagged run (`go test ./internal/websterengine/... ./internal/webstercli/...`) covers card 5's `internal/websterengine/config_test.go` edits — `TestConfigTemplate_RoundTripsThroughLoadConfig`, `TestLoadConfig_OverridesRoundTrip`, `TestLoadConfig_BadRoleGrammarNamesTheKey`, and the reflective `TestConfigTemplate_ContainsEveryConfigYAMLTag`, which is what mechanically proves the struct and the template stayed in sync after the field left both.
 
 The tagged run (`go test -tags integration ./internal/websterengine/... ./internal/webstercli/...`) carries this batch's decisive evidence and is not optional: `internal/websterengine/runlevel_test.go` and `internal/webstercli/verbs_test.go` are both `//go:build integration`, so a plain `go test ./...` neither runs nor even *compiles* them.
 A broken `RunDeps` literal in `newRunFixture` (card 6) or a `strings.Replace` still targeting the removed `batcher: ""` literal (card 8) would both land green under the untagged run alone.

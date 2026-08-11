@@ -11,8 +11,9 @@ depends-on: [2]
 
 ## Batch Scope
 
-This batch amends the eleven documentation sites whose claims batches 1–2 falsify.
+This batch amends the documentation sites whose claims batches 1–2 falsify, across the thirteen files its four cards name.
 It is one batch because every card is the same operation — a prose correction with no behaviour change — and because the sites are only correct to write once the code they describe has landed, which is why the whole batch depends on batch 2 rather than interleaving with it.
+Two further corrections are deliberately NOT here: `websterengine/config.go`'s `Config` type doc and `websterengine/template.go`'s `ConfigTemplate` doc are fixed inline by batch 2 card 5, because that card's own edits are what falsify them.
 
 There is no new external interface;
 this batch closes the Documentation Lifecycle obligation for the task.

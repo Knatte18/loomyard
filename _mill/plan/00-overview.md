@@ -121,11 +121,13 @@ Batch-local decisions live in each batch file._
 ### Decision: doc-site-ownership
 
 - **Decision:** this task owns every site whose claim it itself falsifies.
-  Eleven sites are enumerated in batch 3;
-  the enumeration method is a grep for `batcher.Select`, `batcher:`, and `batcher.yaml` across *all* production Go and markdown, not a `doc.go`-and-`.md`-only sweep.
-- **Rationale:** an earlier discussion draft enumerated only package docs and reference docs and therefore missed three in-code file-header/struct-doc comments.
-  Site 11 (`internal/configcli/configcli_test.go`'s "The other nine modules are absent" comment) was found by applying that same stated rule during planning: registering `batcher` makes it ten.
-- **Applies to:** documentation
+  Batch 3's four cards carry the corrections that are only writable once the code has landed;
+  two further corrections live inline in batch 2 card 5 (`websterengine/config.go`'s `Config` type doc and `websterengine/template.go`'s `ConfigTemplate` doc) because the clauses they fix are falsified by that card's own edits and would otherwise leave the tree self-contradicting across the whole of batch 2.
+  No site count is asserted here — several files carry more than one falsified clause, so a file count and a clause count disagree, and the per-card `Requirements:` are self-contained.
+- **Rationale:** the enumeration method, not a number, is what makes the completeness claim checkable: grep `batcher.Select`, `batcher:`, and `batcher.yaml` across *all* production Go and markdown, not a `doc.go`-and-`.md`-only sweep, then read the surrounding paragraph of every hit for the two recurring claims (webster ownership; the `webster.yaml` key pin).
+  An earlier discussion draft enumerated only package docs and reference docs and therefore missed three in-code file-header/struct-doc comments.
+  Two sites were found by applying the stated rule during planning and plan review: `internal/configcli/configcli_test.go`'s "The other nine modules are absent" comment (registering `batcher` makes it ten), and `internal/websterengine/template.go`'s `ConfigTemplate` doc, which says "batchifier selection" and so is reachable only by reading around the grep hits, never by the grep itself.
+- **Applies to:** documentation, call-site-migration
 
 ### Decision: no-cobra-command-no-sandbox-tag
 
@@ -173,5 +175,6 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/websterengine/recordbatch.go`
 - `internal/websterengine/runlevel.go`
 - `internal/websterengine/runlevel_test.go`
+- `internal/websterengine/template.go`
 - `internal/websterengine/template.yaml`
 - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`
