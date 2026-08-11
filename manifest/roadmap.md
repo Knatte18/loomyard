@@ -14,24 +14,34 @@ Committed to, in this order, next.
    Every individual defect is fixed;
    the shapes that keep producing them are not, except slice 12's — see Done below for the root-cause fix.
    Slice numbers are assigned in build order.
+   **Slice 12, the root-cause fix, has landed** — see Done below: one containment/ownership/dirtiness/force gate every destructive operation routes through, with a `CONSTRAINTS.md` invariant and a static bypass guard in the same commit.
+   It was the only slice that stops anything being destroyed;
+   the rest are instrumentation, truthfulness,
+   and a self-healing race.
+   An earlier draft put the harness first on the grounds that the gate is a consolidating refactor with no tier able to observe destruction — **that was wrong**,
+   and the design doc records why rather than deleting it: the campaign left a named, sabotage-proved regression test for every one of the eight defects across ~29 destructive-verb integration files, which is exactly the cover a consolidating refactor needs,
+   and the gate's own completeness proof is a static tree walk needing no fixtures at all.
    **Slice 13** (the live-state integration harness against real git in dirty and hostile state) is next and depends on the slice that has landed, slice 12: its cells assert on refusal behaviour — that a verb refuses instead of destroying, and which check refused — which is exactly what slice 12 changed, so cells written before it would have been rewritten after.
    Its first job is to validate the gate, its second to find instance number nine.
-   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is after that, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction, and its step 5 already landed in each verb's existing error shape, to be generalised here.
+   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is after that, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction,
+   and its step 5 already landed in each verb's existing error shape, to be generalised here.
    **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last — logically independent of the other two, but sequenced behind them anyway.
    The chain among the three remaining slices is strict and total: `13 → 14 → 15`, **one fabric slice in flight at a time**.
    Two reasons, and both must hold before any two overlap: logically each slice asserts on behaviour the previous one changes, and mechanically all three edit `internal/fabricengine` while 14 rewrites it package-wide (every verb's result path).
    An earlier draft declared 15 free to pick up at any point on its logical independence alone — **that was wrong**: logical independence does not make it safe to edit the same package alongside a package-wide refactor, and 15 is LOW and self-healing, so it loses nothing by waiting.
-   Placed ahead of `Shed` because fabric is the module every other worktree's work stands on, and this is a data-loss class in it — not because `Shed` slipped;
+   Placed ahead of `Shed` because fabric is the module every other worktree's work stands on,
+   and this is a data-loss class in it — not because `Shed` slipped;
    `Shed` → `loom` keeps its own order below.
    Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — `internal/lyxtest`'s fixtures are hand-assembled approximations of a fabric hub, never produced by `CloneHub`: no `_board`, no junctions, no `.lyx-anchor`, no warp binding.
    Every test built on them asserts against a shape someone wrote down rather than the shape fabric produces, and nothing detects drift between the two.
    Invert it — `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning — so drift becomes impossible by construction instead of by discipline.
-   Both objections were measured and both failed: the import cycle touches 14 `fabricengine` files (which move to `fabrictest`, created by slice 13) plus two files needing only `MustRun`, and the runtime cost is **+3.6 s on Tier 2's ~132 s, about 2.7 %** — 167 `Copy*` call sites at a measured 24 ms per full fixture against today's 2.3 ms.
-   The template-and-copy model is not discarded but moves one level down: **copy the two bares** (zero symlinks, ~2 ms) and **clone the hub** (~22 ms, unavoidable since its junctions carry absolute targets).
+   Both objections were measured and both failed: the import cycle touches 14 `fabricengine` files (which move to `fabrictest`, created by slice 13) plus two files needing only `MustRun`,
+   and the runtime cost is **+3.6 s on Tier 2's ~132 s, about 2.7 %** — 167 `Copy*` call sites at a measured 24 ms per full fixture against today's 2.3 ms. The template-and-copy model is not discarded but moves one level down: **copy the two bares** (zero symlinks, ~2 ms) and **clone the hub** (~22 ms, unavoidable since its junctions carry absolute targets).
    Local bare repos are real remotes, so `push`/`pull`/`sync` need no GitHub — the repo already tests force-pushed upstreams and genuine non-fast-forwards this way.
-   The real cost is migrating whichever assertions break on the true hub shape, and each such break marks a test currently asserting against an invented one.
+   The real cost is migrating whichever assertions break on the true hub shape,
+   and each such break marks a test currently asserting against an invented one.
    Windows is unmeasured and is the one open question.
    Builds on the fabric campaign's slice 13 above, which creates the `fabrictest` package this needs as a landing zone.
    See [designs/lyxtest-real-hubs.md](designs/lyxtest-real-hubs.md).
@@ -63,11 +73,10 @@ Committed to, in this order, next.
    Also supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See [internal/pattern](../internal/pattern/doc.go).
 
-1. **gitexec: decide whether `RunGit` should return a typed error carrying git's stderr** — a **decision item, not an implementation**: it exists to produce a verdict, and its first deliverable is a count of the affected callers outside fabric, which nobody has made.
-   Crucible R5 found that **55 of 74** `RunGit` call sites in fabric discarded git's stderr, 33 of them turning a failure into a bare exit code with no explanation, while the same sweep found the silent-swallow class genuinely closed (zero of 388 `if err != nil` blocks failed to handle the error).
-   That asymmetry is what the API shape produces, not who wrote the lines — the sites are fixed, the shape is not, and the next module to use `gitexec` starts the count over.
-   Kept out of the fabric slices above because `internal/gitexec` is shared by every module that touches git.
-   The counter-argument is real and should be weighed rather than dismissed: this is a diagnostic-quality problem, not a correctness one, and "not worth it" is a legitimate verdict — provided it is written down.
+1. **gitexec: checked entry point + call-site migration** — the verdict is decided: a second, must-succeed entry point `gitexec.Run` returns stdout and a typed error, `RunGit` is unchanged and stays permanently correct for predicate sites, `gitrepo` gains the same checked/raw pair,
+   and the remaining raw sites are pinned by a guard test requiring a written justification comment.
+   Filed behind the tail of the serialised fabric chain, because it rewrites roughly 70 call sites in the package that chain exists to protect from concurrent edits.
+   The bulk of the work is a per-site merge of two existing error messages under a stated default rule, not a mechanical sweep.
    See [designs/gitexec-error-shape.md](designs/gitexec-error-shape.md).
 
 ## Someday
@@ -158,15 +167,15 @@ No build order is implied between these items.
    Add a repo-wide default layer, read from `_board`, with each worktree's own `_lyx/config/<module>.yaml` as an override on top — the same two-layer overlay millhouse's `mill-config.yaml` (hub root) → `.millhouse/config.local.yaml` (local override) already uses.
    Generalizes `fabric.yaml`'s existing `_board` anchor to every module's config, not just fabric's. Not yet designed.
 
-1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on discussion- and plan-review findings, not just a severity marker,
-   and scope each review stage to what its downstream stage cannot catch better (e.g. complete call-site enumeration belongs to `go build`, not a discussion reviewer).
+1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on discussion- and plan-review findings, not just a severity marker, and scope each review stage to what its downstream stage cannot catch better (e.g. complete call-site enumeration belongs to `go build`, not a discussion reviewer).
    Motivated by an observed 6-round discussion-review loop on `pattern-into-lyx-consolidation` that never converged: design findings resolved by round 2, but hand-enumerated "missed call site" findings recurred through round 6 because the underlying method (grep-by-hand) was never the actual fix.
    Not yet designed in implementation detail.
    See [designs/review-finding-classification.md](designs/review-finding-classification.md).
 
 1. **scout: narrow the `"resolution":"complete"` trust-marker promise, or add a way to scope out cross-package interface-method noise** — `docs/benchmarks/scout-vs-grep.md` (Task 3) found a live case where `lyx scout refs` on an interface method returned `"resolution":"complete"` while the majority of returned hits were real but irrelevant call sites on structurally-similar, unrelated interfaces in other packages (`gopls` resolves interface methods structurally, workspace-wide) — the caller still had to manually re-verify results by hand, which is exactly what the marker promises is unnecessary.
    The `--within <dir>` flag added after that benchmark narrows the practical exposure for a query that already knows its intended package, but does not itself change what the marker means.
-   Either narrow the marker's documented contract ("every result shown is genuine," not "no further filtering is ever needed") or make the tool live up to the stronger promise by default. Not yet designed.
+   Either narrow the marker's documented contract ("every result shown is genuine," not "no further filtering is ever needed") or make the tool live up to the stronger promise by default.
+   Not yet designed.
 
 ## Done
 
