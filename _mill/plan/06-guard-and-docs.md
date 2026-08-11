@@ -34,6 +34,7 @@ Batch-local decision beyond `## Shared Decisions`: the guard's banned-token set 
   - `internal/fabricengine/hook.go`
   - `internal/fabricengine/ancestors.go`
   - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/launchers.go`
 - **Edits:** none
 - **Creates:**
   - `cmd/lyx/destructiveguard_test.go`
@@ -54,6 +55,7 @@ Batch-local decision beyond `## Shared Decisions`: the guard's banned-token set 
   the correspondence-index cache, deliberately deleted then rebuilt so a failed refresh misses honestly rather than answering cross-branch;
   the junction file, for the one removal of a directory the loop above it just emptied by rename;
   the hook file, for the removal of the user-hook backup that same function wrote ten lines earlier on its own rollback path;
+  the launchers file, whose directory removal runs the gate's own `checkPathRequest` immediately above it but calls a raw `os.Remove` instead of `removePath`, specifically to avoid `removePath`'s `RemoveAll` branch silently destroying foreign content beside the launchers directory (this file was missing from this card's original file lists — added via a plan-extend commit once the guard's first run surfaced it);
   and the package doc file, because this slice writes destruction rationale into it and a raw substring match over prose would trip the guard from inside the document explaining the rule — its only non-comment line is the package clause, so it can never contain a real call.
   Note in the header that the junction and hook entries are whole-file allowlists, so a *new* raw removal added to either would not be caught, and that this is the same limitation the file being cloned already has.
   Set the vacuous-scan floor to a value comfortably below the package's current production file count and comfortably above zero, and state in a comment that its job is catching a misconfigured walk rather than tracking the package's size.
