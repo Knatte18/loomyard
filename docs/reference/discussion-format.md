@@ -88,14 +88,36 @@ or `Discussion-Review` — is a later milestone-12 implementation detail, not pi
 What this doc pins is the contract: the ledger exists, its purpose is anti-circling,
 and its shape is verdict + findings + resolution per round.
 
-## Validation checklist
+## Validation checks (spec for the future validator)
 
-Spec for a future validator:
+Per-run checks:
 
 - Both files exist under `_lyx/discussion/` (`decision-record.md` and `support-log.md`).
 - `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria);
   "Notes for the plan writer" is optional and its absence is not a violation.
-- The **Plan-never-reads-`support-log`** boundary holds: `Plan-Write`'s declared input set never names `support-log.md`.
+
+This mechanical producer is **exhaustively defined by the checks listed above** — it has no judgment, and nothing beyond these two checks is "its" to look for.
+
+**The `Plan-never-reads-support-log` boundary is not a per-run check.**
+The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
+It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
+This assertion lands with `Shed`.
+Recorded here explicitly so nobody re-files it later as a missing per-run check.
+
+## Discussion-Review rubric — what not to flag
+
+This section is the text the future `perch` profile for `Discussion-Review` must **point at**, per the pointer rule — never copy or paraphrase into the profile itself.
+
+`Discussion-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer (which has only checks, never judgment) cannot exhibit.
+Do not flag any of the following as a finding:
+
+- **A missing "Notes for the plan writer" subsection.**
+  It is optional by contract; its absence is never a deficiency.
+- **Missing rejected alternatives in `decision-record.md`.**
+  Rejected alternatives belong in `support-log.md`'s Rejected alternatives section, not in `decision-record.md`;
+  their absence from `decision-record.md` is by design, not an omission.
+- **Incomplete call-site or cross-reference enumeration.**
+  That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
 
 ## Worked example
 
