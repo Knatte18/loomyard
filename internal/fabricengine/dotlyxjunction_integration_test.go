@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine/fabrictest"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -160,7 +161,7 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 	}
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	status := gitStatusPorcelain(t, weftPath)
+	status := fabrictest.GitStatusPorcelain(t, weftPath)
 	if strings.TrimSpace(status) != "" {
 		t.Errorf("git status --porcelain in weft worktree = %q; want clean (the .lyx exclude must exist before any write)", status)
 	}

@@ -12,10 +12,13 @@
 //
 // Package fabricengine_test to construct a real *fabricengine.Fabric against
 // isolated warp/weft fixtures; shares the TestMain in testmain_test.go.
-// newWarpFixture/newFabricPair/writeWeftConfig/gitStatusPorcelain below are
-// this file's own fixture helpers, relocated here from
-// weftgit_differential_test.go before its deletion (this file was already
-// its only other consumer).
+// newWarpFixture/newFabricPair/writeWeftConfig below are this file's own
+// fixture helpers, relocated here from weftgit_differential_test.go before
+// its deletion (this file was already its only other consumer).
+// gitStatusPorcelain moved to fabrictest.GitStatusPorcelain, which this file
+// now calls: package fabricengine_test importing fabrictest, which imports
+// fabricengine, is legal because Go compiles external test packages
+// separately.
 
 package fabricengine_test
 
@@ -27,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine/fabrictest"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -106,20 +110,6 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 	}
 }
 
-// gitStatusPorcelain returns `git status --porcelain`'s raw output for
-// repoPath.
-func gitStatusPorcelain(t *testing.T, repoPath string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git status --porcelain in %s: %v", repoPath, err)
-	}
-	return string(out)
-}
-
 // TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content (which creates the
 // .weft lock dir) and drops a push lock file, then asserts neither artifact appears in `git status
 // --porcelain` — the exact check Remove's no-force weft dirty gate runs.
@@ -146,7 +136,7 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 		t.Fatalf("write push lock artifact: %v", err)
 	}
 
-	status := gitStatusPorcelain(t, weftFixture.WeftPath)
+	status := fabrictest.GitStatusPorcelain(t, weftFixture.WeftPath)
 	if strings.Contains(status, ".weft") {
 		t.Errorf("git status --porcelain reports .weft as dirt: %q; want it git-excluded", status)
 	}
@@ -243,7 +233,7 @@ func mustWriteFile(t *testing.T, path, content string) {
 }
 
 // gitLsFiles returns `git ls-files`'s raw output for repoPath — the tracked
-// (committed-or-staged) file set, as opposed to gitStatusPorcelain's
+// (committed-or-staged) file set, as opposed to fabrictest.GitStatusPorcelain's
 // untracked/dirty view.
 func gitLsFiles(t *testing.T, repoPath string) string {
 	t.Helper()
