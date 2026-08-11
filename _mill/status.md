@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-contract-docs-producer-model
 slug: format-docs-name-producers
 branch: format-docs-name-producers
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-11T05:01:35Z'
 plan-fix-r3  '2026-08-11T05:09:55Z'
 planned  '2026-08-11T05:10:14Z'
 implementing  '2026-08-11T05:20:33Z'
+approved-contract-docs-producer-model  '2026-08-11T05:26:37Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-08-11T05:20:33Z'
 ```yaml
 batches:
   - name: contract-docs-producer-model
-    state: running
+    state: approved
     implementer_session: d6ad3df6-8753-4510-a40a-407585cdca6a
     start_sha: f07c58609b726590bd2bd5078bc0e0425245a3b4
+    commit_sha: 64297a74835f8351a4f64223da2d47fd46a64943
     verify_baseline_failures: []
   - name: producer-table-and-rename-sweep
     state: pending
