@@ -244,6 +244,10 @@ Every number below was verified against the tree at branch point `c3af3c9c`.
 **`manifest/designs/hardener.md`** — `:17`'s "just with `Tenter` in the producer-slot instead of Discussion/Plan/Webster". `Shed` has no slots; reword to `Hardener`'s own producer list.
 
 **`manifest/roadmap.md`** — `:110` (the raddle slot line) and `:54` (the six-task breakdown, which still names `shed-model-contradiction-sweep` as "E — final owner of `shed.md`/`loom.md`/this roadmap item, sweeps the remaining contradictions and adds the `CONSTRAINTS.md` pointer-rule invariant" — a present-tense pending claim about a task that never ran).
+
+- `:51` — **in scope, and the subtlest site in the file.** It states the generic contract inside the *same* Planned `Shed` bullet whose `:57–61` states the carve-out, and it contradicts it twice over: "a producer is always atomic (one mechanical action or one LLM session, never an internal multi-step process of its own)" is the unqualified claim, and "**Input** (artifact(s) consumed, …)" forecloses the thin-Input case.
+  This is the identical wording this task scopes at `shed.md:8` and `loom.md:44`, so treating it differently in the one doc that carries both halves six lines apart would leave the roadmap item self-contradicting.
+  **Disposition: scope it.** Qualify `:51`'s atomicity clause to bind simple producers, and admit the thin-Input/thin-Output cases in the Input/Output definitions — in both cases pointing forward to `:57–61` rather than restating it, since that text stays verbatim.
 Also add the phase-enum deferral record here, per `carry-forward-e-phase-enum-record` below. `:57–61` already carries the atomicity resolution and is **verify-only**; do not rewrite it, and prefer its wording when phrasing the design-doc text.
 
 **`manifest/designs/shed-followups.md`** — section E starts at `:409` and runs up to (not including) `## F — batcher-standalone-split`'s heading at `:552`.
@@ -291,7 +295,9 @@ The meaningful failure mode is *incompleteness* — a residue site missed — wh
 Acceptance, in order:
 
 1. **`go test ./internal/lyxcwd -run TestEnforcement_MarkdownLinks`** — the Markdown Link Integrity invariant. This is the one machine check that directly covers this task's output, since it adds cross-doc anchor links.
-2. **A targeted grep set** proving zero surviving instances of the retired phrasings, run over `manifest/` and `docs/`.
+2. **A targeted grep set** proving zero surviving instances of the retired phrasings, run over `manifest/`, `docs/`, **and `README.md`**.
+   `README.md` is in the grep roots even though this task edits nothing in it: `:97` inlines its own producer chain ("Preflight → Discussion → Plan → Webster → Finalize"), which is the same drift failure mode as `docs/overview.md:283`, and `CONSTRAINTS.md:263` records that `README.md`'s own outgoing links are checked by nobody.
+   **Checked at branch point `c3af3c9c`: `README.md` is clean** — no `Raddle` phase, no `producer-slot`, no retired phrasing. Including it makes that a verifiable claim rather than an untested assumption, and catches a regression if a later edit reintroduces one.
    **Two standing exclusions apply to every grep below**, and each exists because the excluded text is correct where it stands — so a grep that flagged it would only be satisfiable by editing something this task's Scope forbids editing:
    - `manifest/designs/shed-followups.md` — permanently exempt by its own recorded convention (see Gotchas).
    - `docs/reference/status-schema.md` — carries the `phase` enum, which Scope declares out.
@@ -315,7 +321,7 @@ They are the same decision stated twice by necessity (roadmap item vs. design do
 ## Q&A log
 
 - **Q:** Does this task inherit task E's full remaining residue, or only the four items in its own brief? **A:** Full residue — this task is E's outright successor, inheriting all three ownership positions. E was removed without running and no other wiki task holds it.
-- **Q:** Where does the typology text live — `shed.md`, `loom.md`, or both? **A:** Full text in `shed.md`'s producer-contract section; `loom.md` gets one-line pointers from its atomicity sentence and its table's Type column. Applying the pointer rule to the docs themselves.
+- **Q:** Where does the typology text live — `shed.md`, `loom.md`, or both? **A:** Full text in `shed.md`'s producer-contract section; `loom.md` points at it — from its atomicity sentence at `:44`, and from a single anchor in the sentence introducing the producer table, which gains a new `Kind` column (see the auto-pick entry below). Applying the pointer rule to the docs themselves.
 - **Q:** How is Question 2 (`Discussion-Write` has no Input) resolved? **A:** Symmetric thin-Input carve-out — the Input contract permits no Input for a chain-head producer, because its input is human intent, not an artifact. Explicitly reject the "wiki task record is the pointer target" framing as a mill-ism that does not transfer to `lyx`.
 - **Q:** What terminology names the two kinds? **A:** `roadmap.md:58`'s exact terms — "simple, single-agent-spawn producer" and "bespoke, multi-spawn producer" — with "LLM-Producer" named only as a candidate.
 - **Q:** How does the typology reconcile with `shed.md`'s existing four-way engine-adapter split? **A:** Two distinct axes, cross-referenced with one sentence. The adapter split cuts on engine type to argue "two adapters, not eleven"; the typology cuts on atomicity and crash-recovery ownership. They align on `Webster`/`perch`, not on the mechanical producers.
