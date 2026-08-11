@@ -36,7 +36,7 @@ The key cannot go straight to `loom.yaml` instead: both live `Select` call sites
 - `internal/websterengine/config_test.go` — in scope whole, not just one line: the `cfg.Batcher == "identity"` assertion at `:125–127` moves into `internal/batcher`'s own tests in the shape of an `Active` test, the `Batcher: ""` field in the `Config` literal at `:61` is removed with the field, and the `batcher: identity` lines in the YAML fixtures at `:106` and `:139` go stale and must be dropped.
 - `internal/webstercli/verbs_test.go` — `seedPersistentPreRunFixture` seeds `batcher.yaml`; the gate-test pair at `:696–732` string-replaces against batcher's template instead of webster's; the comment at `:218–220` is rewritten (the `batcher.Select("")` call itself stays — see Decisions → verbs-test-select-helper).
 - Four doc amendments (see Decisions → doc-amendments): `internal/batcher/doc.go`, `CONSTRAINTS.md`'s Batcher Registry+Config Invariant, `docs/overview.md`, `docs/reference/plan-format.md`.
-- Five further doc sites discovered during exploration and review, none named in the manifest: `internal/websterengine/doc.go:23–29`, `docs/reference/webster-contract.md:14`, `internal/websterengine/master-template.md:37`, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md:28`, and `internal/planparser/doc.go:4`.
+- Six further doc sites discovered during exploration and review, none named in the manifest: `internal/websterengine/doc.go:23–29`, `docs/reference/webster-contract.md:14`, `internal/websterengine/master-template.md:37`, `tools/sandbox/SANDBOX-WEBSTER-SUITE.md:28`, `internal/planparser/doc.go:4`, and three in-code comments (`internal/batcher/registry.go:3`, `internal/websterengine/recordbatch.go:34`, `internal/websterengine/beginbatch.go:52`).
 
 **Out:**
 
@@ -120,7 +120,8 @@ The key cannot go straight to `loom.yaml` instead: both live `Select` call sites
 
 ### doc-amendments
 
-- Decision: nine doc sites, each its own step. The four from the manifest plus five found during exploration and review.
+- Decision: ten doc sites, each its own step. The four from the manifest plus six found during exploration and review.
+- **Enumeration method, so the completeness claim is checkable rather than asserted:** grep `batcher.Select` and `webster.yaml` across *all* production Go and markdown, not just `doc.go` and `.md` files. An earlier draft enumerated only package docs and reference docs and therefore missed three in-code file-header/struct-doc comments (site 10). The rule stays "this task owns every site whose claim it itself falsifies"; what changed is the search that finds them.
 - Rationale: each site states something this task falsifies, so each belongs to this task under the repo's own ownership rule.
 - The sites:
   1. `internal/batcher/doc.go` — the package comment must stop saying batching is "100% webster's own execution-policy decision" (lines 5–6) and instead say it is a standalone step webster consumes today and `Shed` will drive as producer #8 once built. The "chosen via webster.yaml's batcher: config key" paragraph (lines 11–14) must name `batcher.yaml`'s `active:` key and `Active` instead.
@@ -132,6 +133,10 @@ The key cannot go straight to `loom.yaml` instead: both live `Select` call sites
   7. `internal/websterengine/master-template.md:37` — "`lyx webster` groups this flat list into execution batches via the plan's configured batchifier". Not in the manifest's list. This is an embedded agent prompt, and the line is wrong *today*: the batchifier is not the plan's, it is config's. This task makes it wrong in a second way by moving the config owner, so it is this task's to fix under the same ownership rule the other six use. Correct it to name `batcher.yaml`'s configured batchifier, leaving the surrounding "you drive the loop by BATCH number, not by reasoning about grouping yourself" instruction untouched.
   8. `tools/sandbox/SANDBOX-WEBSTER-SUITE.md:28` — "**Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` — which materializes `_lyx/config/webster.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly". The enumeration is complete today and incomplete the moment `batcher.yaml` becomes required, so it is falsified by this task even though the suite still runs green (a fresh `clone` materializes the new file automatically). Add `batcher.yaml` to the list. Not in the manifest; found in review round 2.
   9. `internal/planparser/doc.go:4` — "every consumer (webster's batcher, master, and fork prompt rendering) goes through planparser.ParsePlan". The possessive is the same ownership claim this task removes everywhere else, so it is in scope under the same rule: reword to "the batcher, webster's master, and fork prompt rendering". A one-word fix; listed rather than swept silently because the eight-site list above claims completeness for "sites whose claim this task falsifies", and leaving an unlisted ninth would falsify that claim instead.
+  10. Three in-code comments naming webster as `Select`'s caller, all falsified by the call-site move and none reachable by a `doc.go`-only sweep:
+      - `internal/batcher/registry.go:3` — "webster resolves the config-chosen active batcher back out by name via the exported Select". False once `webstercli` calls `Active` and no webster code calls `Select` at all. Reword to name `Active` as the config-resolving entry point over `Select`.
+      - `internal/websterengine/recordbatch.go:34` and `beginbatch.go:52` — both `Deps` struct docs say "Batches is the batchifier-derived execution batches (see internal/batcher.Select) `run` computed once at entry". `run` will compute them from the injected `RunDeps.Batcher`, so the `Select` pointer is wrong. Repoint both to `RunDeps.Batcher`.
+      (`internal/websterengine/config.go:30`'s "see internal/batcher.Select" comment needs no separate step — it is deleted with the `Batcher` field it documents.)
 
 ## Technical context
 

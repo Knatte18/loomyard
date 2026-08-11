@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: batcher-standalone-split
 branch: batcher-standalone-split
 plan: null
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-08-11T03:36:47Z'
 discussion-fix-r3  '2026-08-11T04:29:24Z'
 discussion-fix-r4  '2026-08-11T04:34:08Z'
+discussion-fix-r5  '2026-08-11T04:39:03Z'
+discussed  '2026-08-11T04:39:03Z'
 ```
