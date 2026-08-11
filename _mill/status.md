@@ -38,7 +38,9 @@ batches:
     commit_sha: 5c3717299786212e218bd78a3a0a01bc79e1e4dd
     verify_baseline_failures: []
   - name: loom-md-pointers-and-kind-column
-    state: pending
+    state: running
+    implementer_session: 9501badf-34f6-4555-88bc-bb3515fbf28e
+    start_sha: 08d649f138404f3caa697e94010edf5698d9840f
     verify_baseline_failures: []
   - name: roadmap-overview-hardener-followups
     state: pending
