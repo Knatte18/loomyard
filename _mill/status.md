@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: batcher-standalone-split
 branch: batcher-standalone-split
 plan: _mill/plan
@@ -24,4 +24,17 @@ plan-review-r1  '2026-08-11T04:55:31Z'
 plan-fix-r1  '2026-08-11T04:55:31Z'
 plan-fix-r2  '2026-08-11T05:06:04Z'
 planned  '2026-08-11T05:06:14Z'
+implementing  '2026-08-11T05:06:47Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: batcher-config-module
+    state: pending
+  - name: call-site-migration
+    state: pending
+  - name: documentation
+    state: pending
 ```
