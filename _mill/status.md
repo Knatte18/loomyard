@@ -40,7 +40,9 @@ batches:
     commit_sha: 3ee8da05e6ad991590ce2e59f1fb9083a96a5a37
     verify_baseline_failures: []
   - name: call-site-migration
-    state: pending
+    state: running
+    implementer_session: fdc6f31b-f3e1-4b43-9002-dcbd2badd601
+    start_sha: 9564254ce40fab440d8c9d14023b8ceb463cb9cc
     verify_baseline_failures: []
   - name: documentation
     state: pending
