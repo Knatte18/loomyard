@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
-plan: null
+plan: _mill/plan
 parent: main
 task: 'shed: land the producer-typology decision (atomicity carve-out) and sweep remaining doc contradictions'
 task_description: |
@@ -18,4 +18,5 @@ discussing  '2026-08-11T14:10:01Z'
 discussion-fix-r2  '2026-08-11T14:42:56Z'
 discussion-fix-r5  '2026-08-11T14:56:49Z'
 discussed  '2026-08-11T14:56:49Z'
+planning  '2026-08-11T15:05:45Z'
 ```
