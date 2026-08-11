@@ -59,8 +59,11 @@ Committed to, in this order, next.
    Producers split into two kinds: a **simple, single-agent-spawn producer** (one mechanical action or one LLM session — `Discussion-Write`, `Plan-Write`, and candidates for a shared `Shed`-level "LLM-Producer" type), and a **bespoke, multi-spawn producer** that owns its own internal loop (`Webster`, and the `perch`-gated review producers `Discussion-Review`/`Plan-Review`/`Webster-Review`) — the latter are exempt from atomicity by design, not in violation of it.
    `Shed`'s own contract stays two parts only, Input and Output pointers, and its resume/crash-recovery/pause guarantee operates at producer granularity only — it re-drives a crashed producer from its last recorded pointer, never mid-producer.
    A bespoke multi-spawn producer that would lose expensive internal progress on a crash needs its **own** internal crash-recovery, a per-producer capability `Shed` does not provide — already shipped precedent exists in both directions: `internal/websterengine` re-drives the first unreported batch from `state.json` (see its `doc.go`'s "crash/resume" section), and `perchengine`'s round loop (now in `internal/treadleengine`) keeps its own resumable run-dir state with an OS advisory lock.
-   **Deferred (2026-08-11):** `internal/loomengine/coherence.go`'s `validPhases` map and `docs/reference/status-schema.md`'s matching phase enum are deliberately left as-is, not realigned to the flat producer list here — the flat producer list **replaces** the enum rather than editing it, so rewriting it now would invent an interim phase set the Planned `Shed` build task would immediately discard.
-   An earlier task in this chain already renamed `builder` to `webster` in both, so the enum is not stale in the way it was at scoping time; realignment lands with the `Shed` build task itself.
+   **Deferred (2026-08-11):** `internal/loomengine/coherence.go`'s `validPhases` map and `docs/reference/status-schema.md`'s matching phase enum are deliberately left as-is, not realigned to the flat producer list here — the flat producer list **replaces** the enum rather than editing it,
+so rewriting it now would invent an interim phase set the Planned `Shed` build task would immediately discard.
+   An earlier task in this chain already renamed `builder` to `webster` in both,
+so the enum is not stale in the way it was at scoping time;
+realignment lands with the `Shed` build task itself.
    See [designs/shed-followups.md](designs/shed-followups.md) for the full surfaced-open-questions record.
    Independent of the landed `Treadle` engine (see the `internal/treadleengine` package documentation) — a different engine, never blocked on it.
    See [designs/shed.md](designs/shed.md).
