@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: format-docs-name-producers
 branch: format-docs-name-producers
 plan: _mill/plan
@@ -29,6 +29,8 @@ approved-contract-docs-producer-model  '2026-08-11T05:26:37Z'
 approved-producer-table-and-rename-sweep  '2026-08-11T05:32:29Z'
 holistic-reviewing  '2026-08-11T05:32:53Z'
 holistic-fixing  '2026-08-11T05:37:48Z'
+nits-fixed-holistic  '2026-08-11T05:39:23Z'
+holistic-approved  '2026-08-11T05:39:36Z'
 ```
 
 ## Batches
