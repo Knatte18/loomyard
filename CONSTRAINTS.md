@@ -226,6 +226,21 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   every other `fabricengine` caller remains a review obligation.
   The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
 
+## Fabric Destruction Chokepoint Invariant
+
+`internal/fabricengine/destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive: `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, and a warp checkout's `ResetHard`.
+
+- The banned bypass tokens are `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
+- Every destructive executor runs the gate's four checks first, always in this fixed order, stopping at the first failure: containment, ownership, dirtiness, force.
+- `--force` answers dirtiness only.
+  It never satisfies containment and never satisfies ownership.
+- A gate refusal (`*destructiveRefusal`) is never discarded on a best-effort path — every such site wraps its executor call in `surfaceRefusal` (or, where the call site cannot return an error at all, logs the refusal via `logger.Warn`) rather than swallowing it.
+- Every entry on the guard's per-file allowlist carries a reason.
+- **Known guard blind spot:** the check is raw substring matching, so an alternative argument-slice spelling with different spacing, a dynamically built argument slice, and aliasing a raw repo handle to a local all evade it, and the allowlist is per-file, so a new raw call added inside an already-allowlisted file is not caught.
+  A shared static-analysis-guard framework (issue #135) would close this class of blind spot repo-wide;
+  this invariant does not resolve that question.
+- **Enforced by** `cmd/lyx/destructiveguard_test.go` (`TestNoDestructiveBypass_FabricengineProductionSource`).
+
 ## Markdown Link Integrity
 
 Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` or `docs/` resolves — both its file part and, for a `.md` target carrying one, its `#anchor`.
