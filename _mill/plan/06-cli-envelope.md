@@ -133,7 +133,9 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
   Emit through the card-23 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
 
-  **All three of this handler's `output.Err` sites become `errWithRecord`, carrying `rec`'s accumulated entries** — the `ReconcileFabricAt` failure, the `LoadConfig` failure, and the `Reconcile` failure.
+  **The three post-`l` `output.Err` sites become `errWithRecord`, carrying `rec`'s accumulated entries** — the `ReconcileFabricAt` failure, the `LoadConfig` failure, and the `Reconcile` failure.
+  The handler has **four** `output.Err` sites in total;
+  the first, the `resolveWarpLocation()` failure, stays a bare `output.Err` under card 24's pre-mutation carve-out — it precedes both `l` and the recorder, so there is nothing to carry.
   None of them qualifies for card 24's pre-flight carve-out: `ReconcileFabricAt` runs first in this handler and may have written a file before any of the three is reached, so all three are post-mutation returns even though two of them look like ordinary pre-flight failures in every other handler.
   The `ReconcileFabricAt` failure site is the subtle one — it can fail *after* a partial write, so it emits whatever `rec` holds rather than a bare error.
   This is the one handler where "pre-flight" and "pre-mutation" come apart, and it is why the carve-out is stated as the latter.

@@ -28,8 +28,8 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
 - **Context:**
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/fabrictest/hub.go`
-  - `internal/fabricengine/fabrictest/matrix_test.go`
 - **Edits:**
+  - `internal/fabricengine/fabrictest/matrix_test.go`
   - `internal/fabricengine/fabrictest/refusal.go`
   - `internal/fabricengine/fabrictest/refusal_test.go`
   - `internal/fabricengine/fabrictest/verbs.go`
@@ -43,6 +43,8 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   `RefusedByGate`'s `string(check)+" check failed"` composition keeps working verbatim, because the exported constants carry the same three string values the deleted copy did.
 
   `Expectation.Check` in `internal/fabricengine/fabrictest/verbs.go` changes to `fabricengine.Check`, and every cell that sets it updates to the exported constants.
+  `internal/fabricengine/fabrictest/matrix_test.go` is repointed in **this** card's commit, not left to card 31: it carries `for _, other := range []Check{CheckContainment, CheckOwnership, CheckDirtiness}` in its refusal assertion, which does not compile once the local type is deleted.
+  Grep the package for the bare `Check` type and the three bare constants before finishing, rather than working from this list — the compiler is the authority.
 
   Additionally — the bonus the accessor makes available — reimplement `RefusedByGate` on top of `fabricengine.RefusalOf` instead of substring matching, comparing the returned `Refusal.Check` to the wanted check.
   That is strictly more precise than matching a rendered message, and it is what the exported accessor exists for.
@@ -85,7 +87,13 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   `mutationoracle.go` is in the same `package fabrictest`, so it calls the unexported `pathAtOrBelowRoot` directly;
   `manifest.go` needs no edit and must not be widened — exporting a helper only to reach it from a sibling file in the same package would grow the harness's public surface for nothing.
 
-  **Coverage rule.** An entry whose `Target` is a worktree root — `worktree_created`, `worktree_removed`, `worktree_reset`, `worktree_switched`, `repo_advanced` — covers both (i) every path at or beneath that worktree root and (ii) the corresponding `<prime>/.git/worktrees/<slug>` admin entry, where `<slug>` is derived from the worktree path exactly as the harness's own `primeWorktreeAdminPermittedRoot` / `primeWeftAdminPermittedRoot` helpers in `internal/fabricengine/fabrictest/verbs.go` already derive it.
+  **Coverage rule.** An entry whose `Target` is a worktree root — `worktree_created`, `worktree_removed`, `worktree_reset`, `worktree_switched`, `repo_advanced` — covers both (i) every path at or beneath that worktree root and (ii) the corresponding `<prime>/.git/worktrees/<name>` admin entry.
+
+  **The admin entry's derivation discriminates warp from weft, and the harness's two helpers cannot be applied blindly.** Both `primeWorktreeAdminPermittedRoot` and `primeWeftAdminPermittedRoot` in `internal/fabricengine/fabrictest/verbs.go` take a **warp** slug: the weft one applies `weftname.SiblingPath("", slug)` to it, so feeding it a weft target already named `<slug>-weft` yields `warp-bare-weft/.git/worktrees/<slug>-weft-weft` — a key that does not exist, leaving every `Add`/`Remove` cell's weft admin change uncovered and firing a false lie of omission.
+  So: test the target's basename for `weftname.Suffix` first.
+  A weft-side worktree target strips the suffix and goes to `primeWeftAdminPermittedRoot`;
+  a warp-side one goes to `primeWorktreeAdminPermittedRoot` unchanged.
+  Naming both admin roots directly is an acceptable alternative if the implementer finds it clearer, but the discrimination itself is not optional.
   Every other kind covers its `Target` subtree alone.
 
   **Coverage also extends upward, to directory-shaped ancestors.** An entry's coverage set additionally includes every **ancestor directory** of its `Target`, up to but excluding the hub root, and only for a diff change whose entry is `KindDir`.
@@ -193,7 +201,7 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   - a diff change with no covering record entry fails (lie of omission — defect 2's shape);
   - a manifest-observable record entry with no diff change at or beneath its target fails (lie of commission);
   - a diff change beneath a `worktree_created` target passes under segment-wise containment, and a sibling path sharing a name prefix (`_portalsfoo/y` against a `_portals/x` root) does **not**;
-  - a `<prime>/.git/worktrees/<slug>` admin change is covered by the worktree-rooted entry naming that worktree, and by nothing else;
+  - a `<prime>/.git/worktrees/<slug>` admin change is covered by the worktree-rooted entry naming that worktree, and by nothing else — with **two rows, one warp-side and one weft-side**, since the weft row is the one the naive single-helper derivation gets wrong;
   - a git-state kind (`branch_created`, `commit_created`, `worktree_reset`, `push_spawned`, `repo_advanced`) with no diff change passes the commission direction;
   - `file_written` under the `.git` metadata directory is exempt from commission while `file_written` outside the `.git` metadata directory is not;
   - a `dir_created` inverted by a later `path_removed` on the same target is exempt from commission, while the same pair in the reverse order is not — the rule is *later* inverts *earlier*;

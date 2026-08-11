@@ -36,6 +36,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - `internal/fabricengine/portals.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/gitexclude.go`
+  - `internal/fabricengine/gitexclude_integration_test.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/remove.go`
@@ -70,7 +71,9 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   A rewrite that changed nothing records nothing, per the record-only-on-observed-effect rule.
 
   **That path is not in scope at either caller today, so `mutateGitExclude`'s return widens to carry it.** `resolveGitExcludePath` runs *inside* `mutateGitExclude` and its result never leaves the function, while `seedGitExclude`/`unseedGitExclude` hold only `WorktreePath(l, slug)`.
-  Change the signature to `mutateGitExclude(repoDir string, rewrite func(content string) (string, error)) (excludePath string, changed bool, err error)`, returning the resolved path on every path including the error ones where it is known, and update its three in-package callers (`seedGitExclude`, `unseedGitExclude`, `seedWeftArtifactExcludes`).
+  Change the signature to `mutateGitExclude(repoDir string, rewrite func(content string) (string, error)) (excludePath string, changed bool, err error)`, returning the resolved path on every path including the error ones where it is known, and update its three **production** callers (`seedGitExclude`, `unseedGitExclude`, `seedWeftArtifactExcludes`).
+  That list is production-only: `internal/fabricengine/gitexclude_integration_test.go` calls it at four further sites, two of which bind the current second return as `changed, err := mutateGitExclude(...)` and become `_, changed, err :=`.
+  Repoint all four in the same commit — the widened return is a compile break, and the tagged file is invisible to an untagged `go test`.
   `seedGitExclude` currently discards the `changed` bool with `_`;
   it must capture it, since the record is gated on it.
   This is the smallest widening that makes the requirement satisfiable — the alternative, recording the worktree path with a `Detail` naming the exclude file, would put a `Target` on the record that is not the thing written.
@@ -103,7 +106,8 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 
   In `internal/fabricengine/weftwiring.go`:
 
-  - `createWeftWorktree` gains a leading `rec *Mutations` parameter and records `KindWorktreeCreated` with the created weft worktree path on success, plus `rec.AppendRef(KindBranchCreated, branch, "")` when the call created the branch rather than checking out an existing one. This site does **not** route through the gate — `createGitWorktree` is the gate's minter for the *warp* side, and the Fabric Destruction Chokepoint Invariant governs destruction, not creation — so the record here is hand-written by design, not an oversight. Say so in a comment.
+  - `createWeftWorktree` gains a leading `rec *Mutations` parameter and records, on `err == nil && exitCode == 0`, both `KindWorktreeCreated` with the created weft worktree path and `rec.AppendRef(KindBranchCreated, branch, "")` — the branch entry **unconditionally**, not on an adopt-vs-create test. The function always runs `worktree add -b <branch>`, so reaching a zero exit means the branch was created;
+    the adopt-vs-create decision lives in the caller (`add.go`'s `weftBranchAlreadyExists`) and is not observable from inside this function at all. This site does **not** route through the gate — `createGitWorktree` is the gate's minter for the *warp* side, and the Fabric Destruction Chokepoint Invariant governs destruction, not creation — so the record here is hand-written by design, not an oversight. Say so in a comment.
   - `pushWeftBranch` gains a leading `rec *Mutations` parameter and records `rec.AppendRef(KindBranchPushed, branch, "")` on success.
 
   Thread the new parameters from **both** callers of `createWeftWorktree` — `internal/fabricengine/add.go` and `internal/fabricengine/reconcile.go`'s `reconcileMissingWeft` — and from `pushWeftBranch`'s caller in `internal/fabricengine/add.go`, passing each verb's own recorder.
