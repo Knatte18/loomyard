@@ -41,8 +41,11 @@ So the design effort moves from writing long skills to pinning the contracts (`d
 ## The phase machine — a flat producer list, no predefined slots
 
 `Shed` (see [shed.md](shed.md)) has no predefined slots — no Preflight-slot, no Producer-slot, no shared Finalize.
-It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across the whole list.
-`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order:
+It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across the whole list;
+atomicity — one mechanical action or LLM session — binds **simple** producers only, per the carve-out in [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
+`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order.
+The table's `Kind` column records each producer's simple/bespoke typology;
+see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the carve-out that defines it:
 
 | # | Producer | Type | Input | Output |
 |---|---|---|---|---|
