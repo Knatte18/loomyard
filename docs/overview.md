@@ -280,7 +280,7 @@ User-facing modules each get one `lyx <module>` namespace:
 - **planparser** — the sole parser of the on-disk flat card-list plan format (`_lyx/plan/`, see [plan-format.md](reference/plan-format.md));
   no other package reads that tree directly (`internal/planparser`). ✅ Implemented.
 - **batcher** — the name-keyed batchifier registry that groups a plan's flat card list into webster's execution batches, selected by `batcher.yaml`'s `active:` config key (default: identity, one card per batch); its own standalone configreg module, separate from webster's (`internal/batcher`). ✅ Implemented.
-- **loom** — phased orchestrator: drives Preflight → Discussion → Plan → Webster → Raddle → Finalize, each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — the `lyx loom` command and phase machine are unbuilt. loom's config module (`loom.yaml`, holding the `discussion`/`plan` role model-specs and `discussion_timeout_min`/`plan_timeout_min`) exists and reconciles via `lyx config reconcile`.
+- **loom** — phased orchestrator: drives its flat, ordered [producer list](../manifest/designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots), each gated by a perch review (`lyx loom run`, alias `lyx run`). 🚧 Design — the `lyx loom` command and phase machine are unbuilt. loom's config module (`loom.yaml`, holding the `discussion`/`plan` role model-specs and `discussion_timeout_min`/`plan_timeout_min`) exists and reconciles via `lyx config reconcile`.
   The Discussion producer is ✅ **built**, ahead of the phase machine: a prompt/profile fed to `shuttle.Run` (`internal/loomengine`'s `discussion-template.md` + `prompt.go` + `discussion.go`).
   The Planner producer is ✅ **built** too, the same way (`internal/loomengine`'s `plan-template.md` + `plantemplate.go` + `plan.go`) — both distinct from the still-unbuilt phase machine that will drive them.
   See [manifest/designs/loom.md](../manifest/designs/loom.md).
@@ -298,7 +298,7 @@ User-facing modules each get one `lyx <module>` namespace:
 
 The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of the stack;
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
-both folded back into reed — see the `internal/reedengine` package documentation.)
+both folded back into reed — see the `internal/reedengine` package documentation. This `shed` is an abandoned earlier `reed` model/view draft, unrelated to [`Shed`](../manifest/designs/shed.md) the outer phase-FSM.)
 
 The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
 
