@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: accumulate the result envelope from mutations, not control flow (slice 14)'
 slug: 'fabric-mutation-record-envelope'
-approved: false
+approved: true
 started: '20260811-150313'
 parent: 'main'
 root: ""
