@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: batcher-standalone-split
 branch: batcher-standalone-split
 plan: _mill/plan
@@ -23,4 +23,5 @@ planning  '2026-08-11T04:46:57Z'
 plan-review-r1  '2026-08-11T04:55:31Z'
 plan-fix-r1  '2026-08-11T04:55:31Z'
 plan-fix-r2  '2026-08-11T05:06:04Z'
+planned  '2026-08-11T05:06:14Z'
 ```
