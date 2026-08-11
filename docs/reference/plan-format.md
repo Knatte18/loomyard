@@ -1,6 +1,15 @@
 # Plan-format — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
+
+## Producer and contract
+
+This format is produced by `Plan-Write`.
+It is validated by `Plan-Validate` — see [Validation checks](#validation-checks-spec-for-the-future-validator) below, this file's own validation-checks section.
+It is reviewed by `Plan-Review`.
+
+- **Output** — the shape below, per [Card fields and order](#card-fields-and-order).
+  Consumed as Input by `Batchifier` and `Webster` (via `internal/planparser`, webster's sole parser).
 
 ## What a card is
 
@@ -19,9 +28,9 @@ The DAG is a **consequence** of the compile-validity requirement, not a separate
 
 ## Batch is gone / the card is the unit
 
-**Batching is a webster-internal execution-policy optimization, not a plan-schema concept.**
+**Batching is a step outside the plan schema, not a plan-schema concept.**
 The plan's unit is always the individual **card** — the smallest, most precise, independently verifiable unit.
-Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared file-op fields) is a later, measured, entirely internal decision, not something the plan format needs to express or the planner needs to decide.
+Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared file-op fields) is a later, measured decision made outside the plan format, not something the plan format needs to express or `Plan-Write` needs to decide.
 
 There is no batch-level "declared ownership" `## Scope` concept.
 A card's own typed file-op fields (`Context:`/`Edits:`/`Creates:`/ `Deletes:`/`Moves:`) *are* its declared footprint;

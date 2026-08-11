@@ -11,8 +11,8 @@ import _ "embed"
 //go:embed template.yaml
 var configTemplate string
 
-// ConfigTemplate returns the default YAML template for webster configuration: role model-specs,
-// batchifier selection, and Master session configuration.
+// ConfigTemplate returns the default YAML template for webster configuration: role model-specs and
+// Master session configuration.
 func ConfigTemplate() string {
 	return configTemplate
 }

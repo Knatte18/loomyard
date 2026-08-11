@@ -10,7 +10,7 @@ Everything that used to look "special" — Preflight, Finalize, review gates —
 What makes `loom` "loom" versus `Hardener` is purely which producers are in the list, in what order: pure configuration, not architecture.
 See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for `loom`'s concrete list — this doc stays about `Shed`'s own generic mechanism, not about enumerating `loom`'s specific producers.
 
-- **`loom`** = `Shed` + `loom`'s own producer list (`Preflight`, `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review-Gate`, `Plan-Review`, `Batchifier`, `Webster`, `Webster-Review`, `Finalize`) — unchanged behavior/CLI from the outside, `lyx loom run`.
+- **`loom`** = `Shed` + `loom`'s own producer list (`Preflight`, `Discussion-Write`, `Discussion-Validate`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Validate`, `Plan-Review`, `Batchifier`, `Webster`, `Webster-Review`, `Finalize`) — unchanged behavior/CLI from the outside, `lyx loom run`.
 - **`Hardener`** = `Shed` + Hardener's own list (its own `Preflight`, `Tenter` — `Treadle` + a live-substrate round-runner + behavior-review profile, see the `internal/treadleengine` package documentation — and its own `Finalize`) — `lyx hardener run`.
   Someday, deprioritized;
   not part of this doc's Planned scope.
@@ -38,7 +38,7 @@ This is not a new pattern: it mirrors two seams that already exist in this codeb
 
 Applied one level up, `Shed` needs a small `ProducerRunner`-shaped seam, and — critically — **not one adapter per producer, one per distinct engine type**:
 
-- **Mechanical Go-function producers** (`Preflight`, `Plan-Sweep`, `Plan-Review-Gate`, `Batchifier`, `Finalize`) need no translation adapter at all — a plain Go function can already satisfy the seam directly.
+- **Mechanical Go-function producers** (`Preflight`, `Discussion-Validate`, `Plan-Sweep`, `Plan-Validate`, `Batchifier`, `Finalize`) need no translation adapter at all — a plain Go function can already satisfy the seam directly.
 - **Single LLM-spawn producers** (`Discussion-Write`, `Plan-Write`) are already unified today via the shared `shuttleengine.Spec` → `shuttle.Run` pattern (`DiscussionSpec`/`PlanSpec` in `internal/loomengine`) — effectively free.
 - **`perch`** needs one adapter, reused by every `*-Review` producer.
 - **`Webster`** needs one adapter (its own verb-driven black-box form differs from `perch`'s).
