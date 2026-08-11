@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
 plan: _mill/plan
@@ -23,4 +23,17 @@ plan-review-r1  '2026-08-11T15:14:40Z'
 plan-fix-r1  '2026-08-11T15:16:18Z'
 plan-fix-r2  '2026-08-11T15:23:18Z'
 planned  '2026-08-11T15:23:30Z'
+implementing  '2026-08-11T15:24:04Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: shed-md-and-constraints
+    state: pending
+  - name: loom-md-pointers-and-kind-column
+    state: pending
+  - name: roadmap-overview-hardener-followups
+    state: pending
 ```
