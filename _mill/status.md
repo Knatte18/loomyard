@@ -32,7 +32,11 @@ implementing  '2026-08-11T05:20:33Z'
 ```yaml
 batches:
   - name: contract-docs-producer-model
-    state: pending
+    state: running
+    implementer_session: d6ad3df6-8753-4510-a40a-407585cdca6a
+    start_sha: f07c58609b726590bd2bd5078bc0e0425245a3b4
+    verify_baseline_failures: []
   - name: producer-table-and-rename-sweep
     state: pending
+    verify_baseline_failures: []
 ```
