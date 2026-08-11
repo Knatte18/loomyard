@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-manifest-capture-and-diff
+phase: approved-refusal-expectation-helpers
 slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-enforcement-and-extraction  '2026-08-11T10:58:50Z'
 approved-enforcement-and-extraction  '2026-08-11T10:59:19Z'
 approved-package-skeleton-and-hub-factory  '2026-08-11T11:10:07Z'
 approved-manifest-capture-and-diff  '2026-08-11T11:19:29Z'
+approved-refusal-expectation-helpers  '2026-08-11T11:34:39Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     commit_sha: 60780383b93d3a24a1ffeb56725b9e759a86ef31
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: refusal-expectation-helpers
-    state: running
+    state: approved
     implementer_session: 23cd8cd3-7b57-4e09-a9cb-32f6b6c3af84
     start_sha: ff979b27639b790cf12058ebd6fb06712562282e
+    commit_sha: 2b0823b799dfe2e6e61e46741384e0edd6c162ea
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: hostile-state-matrix
     state: pending
