@@ -72,12 +72,14 @@ Pre-decided at `shed-followups.md:314–320` and recorded so no card reopens it.
   "the Discussion producer" at `:47` and `:71` → **`Discussion-Write`**;
   "the perch discussion-review gate" at `:72` → **`Discussion-Review`**.
   `:3`'s "the Discussion phase" and "the Plan producer" are already handled by card 1 and must not be re-edited here.
-  `:12`'s "the **Discussion-review gate**" is card 3's, not this card's.
+  `:12` carries both "the **Discussion-review gate**" and an eighth "the Plan producer" occurrence;
+  both are subsumed by card 3's full rewrite of the `:11–12` bullet and must not be edited here.
   `:14`'s sentence is re-grounded by card 4;
   this card performs only its `Plan-Write` substitution, leaving the rest of the sentence for card 4.
   Two sites are load-bearing and must survive the substitution with their force intact: `:10`'s "The Plan producer's **sole** input" becomes a statement about `Plan-Write`'s sole input, and `:83`'s "the Plan producer's declared input set" becomes a statement about `Plan-Write`'s declared input set.
   Naming them is the point — it turns each into a statement about a *named producer's* declared Input.
-  The acceptance criterion for this card is that `grep -n "the Plan producer\|the Discussion producer\|the Discussion phase\|discussion-review gate\|the planner" docs/reference/discussion-format.md` returns nothing.
+  The acceptance criterion for this card is that `grep -in "the Plan producer\|the Discussion producer\|the Discussion phase\|discussion-review gate\|the planner" docs/reference/discussion-format.md` returns nothing.
+  The `-i` is load-bearing: `:12`'s phrase is capitalized (`**Discussion-review gate**`), so a case-sensitive grep would pass even if it survived unswept.
 - **Commit:** `docs(discussion-format): sweep generic phase words to Plan-Write, Discussion-Write, and Discussion-Review`
 
 ### Card 3: `discussion-format.md:12` names `Discussion-Review` as `support-log.md`'s reader
@@ -107,6 +109,7 @@ Pre-decided at `shed-followups.md:314–320` and recorded so no card reopens it.
 
 - **Context:**
   - `internal/websterengine/doc.go`
+  - `internal/websterengine/recordbatch.go`
   - `docs/overview.md`
   - `manifest/designs/shed-followups.md`
 - **Edits:**
@@ -205,7 +208,7 @@ Two files, not two sections of one file, on purpose: a distilled digest, never r
   Keep it short and pointer-shaped — it must not restate the card schema below it.
   (c) Sweep "the planner" at `:24` to **`Plan-Write`**.
   That is the only generic-phrase site in this file.
-  The acceptance criterion is that `grep -n "the Plan producer\|the Discussion producer\|the Discussion phase\|discussion-review gate\|the planner" docs/reference/plan-format.md` returns nothing.
+  The acceptance criterion is that `grep -in "the Plan producer\|the Discussion producer\|the Discussion phase\|discussion-review gate\|the planner" docs/reference/plan-format.md` returns nothing.
   `Plan-Review-Gate` does not occur anywhere in this file, so this card performs no rename.
 - **Commit:** `docs(plan-format): name Plan-Write, Plan-Validate, and Plan-Review in the blockquote and a new Producer and contract section`
 
@@ -218,7 +221,8 @@ Do not add an allowlist entry to work around a break this batch creates — fix 
 The batch is otherwise docs-only with no runnable surface of its own (`shed-followups.md:340`).
 Three additional criteria are verified by grep rather than by a test, and the batch is not done until all three pass:
 
-1. `grep -n "the Plan producer\|the Discussion producer\|the Discussion phase\|discussion-review gate\|the planner" docs/reference/discussion-format.md docs/reference/plan-format.md` returns nothing — the generic-phrase sweep is complete.
+1. `grep -in "the Plan producer\|the Discussion producer\|the Discussion phase\|discussion-review gate\|the planner" docs/reference/discussion-format.md docs/reference/plan-format.md` returns nothing — the generic-phrase sweep is complete.
+   Run it case-insensitively: `discussion-format.md:12`'s phrase is capitalized (`**Discussion-review gate**`), so a case-sensitive grep is not the exhaustive backstop it looks like.
    Each site must have been **replaced** by the named producer per cards 2, 3, and 7, not deleted.
 2. Each of the three "what NOT to look for" items has **both** halves present in `discussion-format.md`: the writer-side statement in the body (card 5) and the reviewer-side statement in the rubric section (card 6).
    A missing half is the exact non-convergent-loop failure `review-finding-classification.md:53` describes.

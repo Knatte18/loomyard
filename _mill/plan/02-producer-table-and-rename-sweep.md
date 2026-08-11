@@ -122,7 +122,7 @@ Batch-local decisions beyond the overview's shared set, each recorded so no card
   `:45` and `:46` each carry one `Plan-Review-Gate` → replace with `Plan-Validate`.
   `:47` carries one `Discussion-Review-Gate`, inside task C's own entry in the six-task breakdown ("add the `Discussion-Review-Gate` producer") → replace with `Discussion-Validate`.
   The roadmap describes the live, forward-looking plan and names this task's deliverable, so leaving it naming a producer that never lands under that name is the same defect the `Plan-Review-Gate` sweep exists to fix.
-  This is **not** a roadmap move under `CLAUDE.md`'s rule — no item changes state, none is added, none is removed — so do not touch any item's status, and do not touch `:68`'s deferred-slot line, which is task E's remaining obligation.
+  This is **not** a roadmap move under `CLAUDE.md`'s rule — no item changes state, none is added, none is removed — so do not touch any item's status, and do not touch the deferred-slot line reading "deferred phase slot between Webster and Finalize" (currently `:102`), which is task E's remaining obligation.
   After the replacement, read each of the three sentences and confirm it still reads correctly;
   a rename that lands inside prose describing the *old* concept is a silent regression the zero-hit grep will not catch.
 - **Commit:** `docs(roadmap): rename Plan-Review-Gate to Plan-Validate and name task C's producer Discussion-Validate`

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: format-docs-name-producers
 branch: format-docs-name-producers
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussion-fix-r1  '2026-08-11T04:07:51Z'
 discussion-fix-r2  '2026-08-11T04:27:06Z'
 discussed  '2026-08-11T04:34:52Z'
 planning  '2026-08-11T04:41:16Z'
+plan-review-r1  '2026-08-11T04:50:40Z'
+plan-fix-r1  '2026-08-11T04:51:32Z'
 ```
