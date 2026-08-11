@@ -22,6 +22,7 @@
   **Never** read by `Plan-Write`.
 
 Two files, not two sections of one file, on purpose: a distilled digest, never raw prose, is what `Plan-Write` should ever see.
+This follows the same principle `internal/websterengine`'s package documentation states directly for the distilled-`Digest`-persisted-at-terminal contract (see also `recordbatch.go`'s `RecordResult.Digest` handling), and that [`docs/overview.md`](../overview.md#principles) states architecturally: "Go-distilled digests, never raw prose."
 A hard filesystem boundary is stronger than a convention about which section an agent may read — `Plan-Write` cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file isn't in its input set.
 Filenames are self-describing rather than terse, matching the existing naming.
 
