@@ -40,7 +40,7 @@ Batch-local decision: the sabotage edits are **local working-tree changes, rever
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Prove **exactly these nine cells**, keyed as (state, verb, anchor) triples, one per evidence-table defect and only those — proving a cell fails on demand costs a manual edit-run-revert cycle each, which is affordable nine times and not affordable 168 times:
-  (1) `trackedSymlinkAtWiredPath` × `Reconcile` × `.` — R1, reconcile destroyed a tracked symlink;
+  (1) `trackedSymlinkAtWiredPath` × `UnwireJunctions` × `.` — R1, retargeted from `Reconcile` because `Reconcile` has no path-executor gate call at all (batch 7's own omission findings), so the literal `Reconcile` cell cannot be run; `UnwireJunctions` destroyed a tracked symlink instead;
   (2) `dirtyWarpTracked` × `Pull` × `.` — R2, pull discarded uncommitted tracked warp work;
   (3) `dirtyWarpUntracked` × `Remove` × `.` — R3, remove destroyed the warp worktree past a git refusal;
   (4) `clean` × `Cleanup` × `.` — R3, cleanup deleted the primary weft branch;
