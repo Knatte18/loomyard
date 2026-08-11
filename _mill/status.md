@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussed
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-11T14:10:01Z'
 discussion-fix-r2  '2026-08-11T14:42:56Z'
+discussion-fix-r5  '2026-08-11T14:56:49Z'
+discussed  '2026-08-11T14:56:49Z'
 ```
