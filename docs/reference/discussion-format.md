@@ -60,11 +60,15 @@ Compaction rules `Discussion-Write` follows when writing this file:
 - **Decisions carry Decision + Rationale only.**
   Rejected alternatives do **not** appear here — they belong in `support-log.md`'s Rejected alternatives section.
   A decision record that re-litigates what was *not* chosen is not distilled.
+  Do not enumerate rejected alternatives here at all — that belongs to `support-log.md`, not to this file.
 - **Must-cover test scenarios go under Acceptance criteria**, not a standalone "Testing" section — there is no separate Technical-context/Testing pair the way millhouse's discussion template had one.
 - **No italic prose-coaching.**
   The rendered record is terse, structured prose for `Plan-Write` to act on — not a template with meta-commentary about how to fill it in.
 - **"Notes for the plan writer" is a non-exhaustive head-start, never a completeness requirement.**
   `Plan-Write` explores the codebase itself, so a useful pointer, helper, or gotcha may go here, but nothing downstream depends on this subsection being present or complete.
+  Do not write this subsection to be complete, and do not add one solely to avoid its absence — omitting it entirely is a valid, non-deficient record.
+- **Do not enumerate call sites or cross-references here.**
+  Incomplete call-site or cross-reference enumeration is not this stage's job — that belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to discussion writing.
 
 ## `support-log.md` shape
 
