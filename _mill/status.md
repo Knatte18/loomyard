@@ -59,7 +59,9 @@ batches:
     commit_sha: 2b0823b799dfe2e6e61e46741384e0edd6c162ea
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: hostile-state-matrix
-    state: pending
+    state: running
+    implementer_session: 221f73d5-6e35-4980-b5ed-00eb1663fd7d
+    start_sha: 67539f12384619db0b14de0f9528dc9acc8256c3
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: verb-table-and-expectations
     state: pending
