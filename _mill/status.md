@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
@@ -40,6 +40,8 @@ holistic-reviewing  '2026-08-11T13:32:52Z'
 holistic-fixing  '2026-08-11T13:38:16Z'
 holistic-reviewing  '2026-08-11T13:41:41Z'
 holistic-fixing  '2026-08-11T13:44:50Z'
+nits-fixed-holistic  '2026-08-11T13:47:50Z'
+holistic-approved  '2026-08-11T13:48:00Z'
 ```
 
 ## Batches

@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: live-state integration harness (slice 13) — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-11
+```
+
+## Findings
+
+### [NIT:consistency] Sabotage row 1 retargeted from Reconcile to UnwireJunctions without a plan-text update
+**Location:** `internal/fabricengine/fabrictest/doc.go:78-97` vs `_mill/plan/08-sabotage-proof-and-docs.md:43`
+**Issue:** Card 20 names row (1) as `trackedSymlinkAtWiredPath × Reconcile × "."`, but `doc.go`'s sabotage table proves the R1 fix against `UnwireJunctions` instead, because batch 7's own omission findings (Reconcile has no path-executor gate call at all) make the literal Reconcile cell impossible to run. The card file itself was never amended to reflect this.
+**Fix:** None required for correctness — the substitution is verified against real production call sites and doubly confirmed (a neutered hermetic fixture plus a live harness run), and the plan's own card 19/20 language anticipates exactly this kind of honest redirection ("a row that could not be proved is recorded as such with the reason"). Cosmetic only: a one-line edit to card 20's row (1) description would keep the plan file itself in sync with the delivered artifact.
+
+## Verdict
+
+APPROVE
+Every batch's cards are realised faithfully, cross-batch contracts hold, and the one plan/doc.go divergence is honestly documented and technically justified.
+MILL_REVIEW_END
