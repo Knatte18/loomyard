@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-contract-docs-producer-model
+phase: approved-producer-table-and-rename-sweep
 slug: format-docs-name-producers
 branch: format-docs-name-producers
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-08-11T05:09:55Z'
 planned  '2026-08-11T05:10:14Z'
 implementing  '2026-08-11T05:20:33Z'
 approved-contract-docs-producer-model  '2026-08-11T05:26:37Z'
+approved-producer-table-and-rename-sweep  '2026-08-11T05:32:29Z'
 ```
 
 ## Batches
@@ -39,8 +40,9 @@ batches:
     commit_sha: 64297a74835f8351a4f64223da2d47fd46a64943
     verify_baseline_failures: []
   - name: producer-table-and-rename-sweep
-    state: running
+    state: approved
     implementer_session: 0c1a5c76-fbe9-43c7-b155-124ab6538167
     start_sha: d66884db7c498cac1dc0e7da88b3f36a3e2ca529
+    commit_sha: 1f05900faed558fb1fdd1db3c21c97a154995812
     verify_baseline_failures: []
 ```
