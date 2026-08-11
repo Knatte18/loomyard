@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
@@ -473,4 +474,119 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 		})
 		assertScopes(t, true, true)
 	})
+}
+
+// assertBranchGateRefusesBothForceModes asserts DeleteBranchForTest refuses branch (a weft branch
+// in the repo at weftRoot, gated via ownedManagedBranch(l, "")) under both force=false and
+// force=true, with the same wantSubstring reason each time, and that branch survives both attempts.
+// The force=true half is what proves the property card 34 exists to pin: force reaches only
+// Cleanup's own folded-back-raddle gate, never the branch-ownership kind itself — a
+// force-satisfies-ownership reading is how the slice's original defect would return behind a flag.
+func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, weftRoot, branch, wantSubstring string) {
+	t.Helper()
+	for _, force := range []bool{false, true} {
+		_, _, err := fabricengine.DeleteBranchForTest(l, weftRoot, branch, "", force)
+		if err == nil {
+			t.Fatalf("DeleteBranchForTest(%q, force=%v) = nil error; want a refusal", branch, force)
+		}
+		if !strings.Contains(err.Error(), wantSubstring) {
+			t.Errorf("DeleteBranchForTest(%q, force=%v) error = %q; want it to contain %q", branch, force, err, wantSubstring)
+		}
+		if !branchExistsAt(t, weftRoot, branch) {
+			t.Fatalf("DeleteBranchForTest(%q, force=%v) deleted a branch the gate should have refused", branch, force)
+		}
+	}
+}
+
+// TestBranchOwnership_ManagedBranchKind covers ownedManagedBranch/resolveManagedBranch's four
+// refusal shapes — the primary weft branch, an unreadable primary, a branch checked out at some
+// worktree, and a name outside fabric's own scheme — each under both force=false and force=true,
+// plus the positive case that proves the kind is not trivially always-refusing.
+func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	weftRoot := mustWeftRepoRoot(t, l)
+	primaryWeft := fabricengine.WeftBranchName("main")
+
+	t.Run("RefusesPrimaryWeftBranch", func(t *testing.T) {
+		assertBranchGateRefusesBothForceModes(t, l, weftRoot, primaryWeft, "primary weft branch")
+	})
+
+	t.Run("RefusesWhenPrimaryUnreadable", func(t *testing.T) {
+		// A hub whose board worktree is gone cannot answer "what is the repo's primary weft
+		// branch" at all — the inherited fail-closed direction that must never invert, since these
+		// deletions are irreversible.
+		unreadable := newFabricFixture(t)
+		ul := unreadable.Layout
+		uWeftRoot := mustWeftRepoRoot(t, ul)
+		if err := os.RemoveAll(fabricengine.BoardDir(ul.HubPath)); err != nil {
+			t.Fatalf("remove board worktree: %v", err)
+		}
+		const orphan = "orphan-primary-unreadable-weft"
+		lyxtest.MustRun(t, uWeftRoot, "git", "branch", orphan)
+		assertBranchGateRefusesBothForceModes(t, ul, uWeftRoot, orphan, "cannot determine the repo's primary weft branch")
+	})
+
+	t.Run("RefusesCheckedOutBranch", func(t *testing.T) {
+		checkedOut := newFabricFixture(t)
+		cl := checkedOut.Layout
+		cWeftRoot := mustWeftRepoRoot(t, cl)
+		topology := fabricengine.NewTopology(fabricengine.Config{})
+		const slug = "branch-ownership-checkedout"
+		if _, err := topology.Add(cl, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+			t.Fatalf("setup Add: %v", err)
+		}
+		assertBranchGateRefusesBothForceModes(t, cl, cWeftRoot, fabricengine.WeftBranchName(slug), "checked out at")
+	})
+
+	t.Run("RefusesUnmanagedName", func(t *testing.T) {
+		lyxtest.MustRun(t, weftRoot, "git", "branch", "plain-unmanaged-branch")
+		assertBranchGateRefusesBothForceModes(t, l, weftRoot, "plain-unmanaged-branch", "not a name fabric's own scheme constructs")
+	})
+
+	t.Run("AcceptsOrphanedFabricNamedNonPrimaryNonCheckedOutBranch", func(t *testing.T) {
+		const orphan = "orphan-task-weft"
+		lyxtest.MustRun(t, weftRoot, "git", "branch", orphan)
+		exitCode, stderr, err := fabricengine.DeleteBranchForTest(l, weftRoot, orphan, "", false)
+		if err != nil || exitCode != 0 {
+			t.Fatalf("DeleteBranchForTest(%q) = exit %d, err %v, stderr %q; want a clean deletion", orphan, exitCode, err, stderr)
+		}
+		if branchExistsAt(t, weftRoot, orphan) {
+			t.Errorf("branch %q still exists after an accepted deletion", orphan)
+		}
+	})
+}
+
+// TestBranchOwnership_RefusalHoldsAtOtherDeletionSites drives the branch-ownership kind through a
+// deletion site other than Cleanup — Add's own rollback, the cheapest of the other three since it
+// already has integration cover (add_rollback_adopt_test.go) — and asserts the branch the gate
+// refuses there survives the rollback. This is the entire reason the ownership logic moved into the
+// shared gate rather than staying local to Cleanup: the same refusal must hold everywhere a branch
+// is deleted, not just at the one site it was first noticed missing from.
+func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
+	t.Parallel()
+
+	const slug = "branch-ownership-rollback-refused"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+
+	// No BranchPrefix, and the slug itself carries no "-weft" suffix: the gate's ownedManagedBranch
+	// has no scheme to recognise this warp branch by, so rollbackAdd's own attempt to delete it must
+	// be refused exactly as Cleanup's would be for an equivalently-unmanaged name.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+
+	// Break the warp origin remote so Add's final push fails after the warp branch and worktree
+	// already exist — the same post-creation-failure injection
+	// TestAddRollback_UnwiresJunctionsOnPostWiringFailure uses — triggering rollbackAdd.
+	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
+
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+		t.Fatalf("Add should have failed (broken origin remote)")
+	}
+
+	if !branchExistsAt(t, l.WorktreePath(), slug) {
+		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
+	}
 }
