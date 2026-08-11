@@ -3,7 +3,7 @@
 ```yaml
 task: 'shed: land the producer-typology decision (atomicity carve-out) and sweep remaining doc contradictions'
 slug: 'shed-producer-typology-sweep'
-approved: false
+approved: true
 started: '20260811-150036'
 parent: 'main'
 root: ""

@@ -86,7 +86,7 @@ see the `shed-md-is-authoritative-loom-md-points` Shared Decision for the enumer
   The existing **Type** column is **left alone** — it holds engine-type values (`mechanical`, `LLM`, `LLM/perch`, `black box …`) and stays on that axis.
   Do not merge the two axes into one cell;
   that is precisely the conflation the cross-reference in `manifest/designs/shed.md`'s engine-adapter section exists to prevent, and it would make the engine axis unreadable at a glance.
-  Update the header separator row to twelve-column-consistent form (six columns).
+  Update the header separator row to six columns, matching the new six-column header above the table's twelve producer rows.
   **(b) The values.**
   Rows 4, 8, 10, 11 and 12 — `Discussion-Review`, `Plan-Review`, `Webster`, `Webster-Review`, `Finalize` — are `bespoke`.
   The other seven — `Preflight`, `Discussion-Write`, `Discussion-Validate`, `Plan-Sweep`, `Plan-Write`, `Plan-Validate`, `Batchifier` — are `simple`.
