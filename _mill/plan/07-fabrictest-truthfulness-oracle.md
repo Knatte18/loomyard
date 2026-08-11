@@ -87,6 +87,12 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
 
   **Coverage rule.** An entry whose `Target` is a worktree root — `worktree_created`, `worktree_removed`, `worktree_reset`, `worktree_switched`, `repo_advanced` — covers both (i) every path at or beneath that worktree root and (ii) the corresponding `<prime>/.git/worktrees/<slug>` admin entry, where `<slug>` is derived from the worktree path exactly as the harness's own `primeWorktreeAdminPermittedRoot` / `primeWeftAdminPermittedRoot` helpers in `internal/fabricengine/fabrictest/verbs.go` already derive it.
   Every other kind covers its `Target` subtree alone.
+
+  **Coverage also extends upward, to directory-shaped ancestors.** An entry's coverage set additionally includes every **ancestor directory** of its `Target`, up to but excluding the hub root, and only for a diff change whose entry is `KindDir`.
+  This is what accounts for the directory chains fabric creates and prunes implicitly around the roots it records — the `_portals/<anchor>/` chain `fslink.CreateDirLink` `MkdirAll`s, the `_launchers/<anchor>/<slug>` chain `writeLaunchers` `MkdirAll`s, and the same chains `pruneEmptyAncestors` reaps on removal.
+  Without it the Add, Remove and Prune cells all report a false lie of omission on correct behaviour.
+  The restriction to `KindDir` is what keeps the widening honest: a *file* or *link* appearing beside a recorded target is still an uncovered change, and only the directory levels the recorded target could not exist without are admitted.
+  `Change` carries `Before`/`After` `Entry` values whose `Kind` field supplies the test, so no new manifest API is needed.
   This one rule replaces two exemption lists and is honest about *why* the admin entry changed — because a worktree was created or destroyed, which the record does state.
   Without it, git-admin bookkeeping and the working-tree rewrites `Checkout`'s `git switch` and `Pull`'s reset cause would fire as false lies of omission on correct behaviour.
 
@@ -96,8 +102,13 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   An entry is exempt when a **later** entry in the same record inverts it on the same `Target`. The inverse pairs are `dir_created`/`worktree_created` ↔ `path_removed`/`worktree_removed`, and `link_created` ↔ `link_removed`.
   The omission direction is unaffected and still runs over raw entries — a path the diff shows as changed must be accounted for by *something* in the record, whether or not it was later undone.
 
-  **The hub-root entry is exempt from both directions.** `CloneHub` mints the hub via `createExclusiveDir(hubPath)`, whose hub-relative form is `"."`. That is recorded honestly — the hub really was created — but `CaptureManifest` never emits a `"."` key (it returns early at `path == hubRoot`), and `"."` would make every path in the diff a segment-wise descendant, trivially satisfying the omission direction for the entire clone cell while asserting nothing.
-  Skip a `"."` target in both directions and say why in the code.
+  **A `"."` target is always exempt from commission, and exempt from omission only when it is constructive.** `CaptureManifest` never emits a `"."` key (it returns early at `path == hubRoot`), so no `"."`-targeted entry can ever find a matching change — the commission exemption is unconditional and mechanical.
+  The omission direction splits by what the entry says happened:
+
+  - **`dir_created` with `Target: "."`** — `CloneHub` minting the hub via `createExclusiveDir(hubPath)` — is **exempt**. It would make every path in the diff a segment-wise descendant, trivially satisfying omission for the entire clone cell while asserting nothing, and every creation that follows it is recorded individually by batch 5 card 21 anyway. The clone cell asserts hub creation through its own existence assertion instead.
+  - **`path_removed` with `Target: "."`** — `resetHub` tearing the whole hub down through `removePath` at `target = hubPath` — **counts**. Nothing survives the teardown for a finer entry to name, so admitting it loses no assertion: it is the honest and complete statement of what happened. Without this, the `CloneHubReset`/`RealHub` cell reports every path the old hub carried as an uncovered `ChangeRemoved`, because `TestCloneHubReset` captures before/after at `fixture.ResetHubPath` and the teardown's only possible entry is this one.
+
+  State both halves and the reason for the asymmetry in the code, so the next reader does not collapse them back into one rule.
 - **Commit:** `feat(fabrictest): add the mutation-record truthfulness oracle`
 
 ### Card 30: `VerbCase.Run` returns the record
@@ -187,7 +198,9 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   - `file_written` under the `.git` metadata directory is exempt from commission while `file_written` outside the `.git` metadata directory is not;
   - a `dir_created` inverted by a later `path_removed` on the same target is exempt from commission, while the same pair in the reverse order is not — the rule is *later* inverts *earlier*;
   - a `link_created`/`link_removed` pair nets to zero the same way;
-  - a `"."` target is skipped in both directions;
+  - a `"."` target is skipped in the commission direction regardless of kind;
+  - a `dir_created` with target `"."` does **not** satisfy the omission direction for an unrelated diff change, while a `path_removed` with target `"."` does — the two halves of the asymmetry, asserted separately so a future simplification that collapses them fails here;
+  - a `KindDir` diff change at an ancestor of a recorded target passes under the upward coverage rule, while a `KindFile` change at that same ancestor path does not;
   - an empty record against an empty diff passes, and an empty record against a non-empty diff fails.
 
   Then extend `internal/fabricengine/fabrictest/doc.go`'s nine-cell sabotage table with the truthfulness dimension: with a guarding check neutered, the cell must now fail on **both** the survival assertion and the honesty assertion.

@@ -43,7 +43,7 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 
   - `removePath(rec *Mutations, req pathRequest) error` — on success, `rec.Append(KindPathRemoved, req.target, detail)` where `detail` is the literal `"recursive"` on the `RemoveAll` branch and `"single"` on the `os.Remove` branch. The already-absent early return (`os.IsNotExist(statErr)`) records **nothing** — that is a successful no-op, not a removal.
   - `removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) (exitCode int, stderr string, err error)` — record `KindWorktreeRemoved` with `req.target` and an empty detail, **only** when `err == nil` **and** `exitCode == 0`. A nonzero exit with a nil error is reachable here and must not be recorded.
-  - `removeLink(rec *Mutations, req pathRequest) error` — record `KindLinkRemoved` with `req.target` on a nil error from `fslink.Remove`.
+  - `removeLink(rec *Mutations, req pathRequest) error` — record `KindLinkRemoved` with `req.target` **only when the link was actually there**. A nil error from `fslink.Remove` is not sufficient: `fslink.Remove` is documented as idempotent and returns nil for an absent link, and `checkPathRequest` deliberately passes an absent target through as a no-op success before any check runs (it names `removePortal`, `removeJunctionRecords` and `removeLaunchers` as the idempotent callers that depend on it). So probe first — `os.Lstat(req.target)` before calling `fslink.Remove`, exactly as `removePath` already probes — and record only when the probe found something and the removal then succeeded. `os.Lstat`, not `os.Stat`, for the same reason `checkPathRequest` uses it: a dangling link is present as a link even though its target is not.
   - `repointLink(rec *Mutations, what, container, target string, own pathOwnership) error` — passes `rec` straight through to `removeLink` and appends nothing itself.
   - `deleteBranch(rec *Mutations, req branchRequest) (exitCode int, stderr string, err error)` — record via `rec.AppendRef(KindBranchDeleted, req.branch, "")`, **only** when `err == nil` **and** `exitCode == 0`. A branch name is a ref, not a path, so this uses `AppendRef` and never `Append`.
   - `createExclusiveDir(rec *Mutations, path string) (createdToken, error)` — record `KindDirCreated` with `path` after `os.Mkdir` succeeds, never before attempting it.
@@ -152,10 +152,9 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   doing it here would mean editing `CloneAndWire`'s return shape twice.
 
   `teardownHub`'s many call sites in `internal/fabricengine/clone.go` all sit inside `CloneHub`, whose recorder card 10 installed — pass it at each.
-  `resetHub`'s two call sites are also inside `CloneHub`, but note the earlier of the two runs before `hubPath` is derived in the `--reset` path;
-  if the recorder is still nil there, pass it anyway — `Append` is nil-safe, and a reset performed before the hub root is known is recorded by the second call site's own recorder or not at all.
-  If the implementer finds `hubPath` is in fact derivable before the first `resetHub` call, move the `rec = NewMutations(hubPath)` assignment card 10 introduced up to that point instead, so the reset teardown is recorded — that is the better outcome and should be preferred when the code allows it.
-  State which of the two the implementation took in the commit body.
+  `resetHub`'s two call sites are also inside `CloneHub`, and the recorder **must not** still be nil at either: both are immediately preceded by `hubPath = HubPath(cwd, name)` in their own branch, so `hubPath` is in hand before the reset runs.
+  Move the `rec = NewMutations(hubPath)` assignment card 10 introduced up to directly follow each `hubPath = HubPath(cwd, name)` line, ahead of the `if opts.Reset` block, so the hub teardown is recorded rather than dropped.
+  This is load-bearing, not tidiness: the teardown's `path_removed` entry — whose hub-relative target is `"."` — is the only entry that can cover the `CloneHubReset`/`RealHub` cell's removals in batch 7's omission direction (see card 29's split treatment of a `"."` target).
 
   No behaviour, ordering, or error text changes anywhere in this card.
 - **Commit:** `refactor(fabricengine): thread the recorder through the junction, unwire and clone helpers`
@@ -204,6 +203,8 @@ extending the same hard rule to an exported helper with roughly fifty existing t
     on a plain file, detail `single`.
   - `removePath` on a refused request (a containment failure, reusing the file's existing refusal fixtures) records nothing.
   - `removeLink` on a refused request records nothing.
+  - `removeLink` on an **already-absent** target returns nil and records nothing — the absent-link case `fslink.Remove`'s own idempotence would otherwise turn into a recorded removal that never happened.
+  - `removeLink` on a present link records exactly one `link_removed`.
   - `createExclusiveDir` records one `dir_created` on success and nothing on the already-exists EEXIST path.
   - A `nil` recorder passed to any of the above does not panic.
 
@@ -213,7 +214,7 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 
 ## Batch Tests
 
-`verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./internal/fabricengine/...` covers the two packages whose production code this batch rewrites, plus a tagged type-check.
+`verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./...` covers the two packages whose production code this batch rewrites, plus a module-wide tagged type-check.
 The chained vet is `go vet -tags integration ./...` — module-wide, not the package-scoped form batch 3 uses — and the width is load-bearing: `UnwireJunctions` is called from the `integration`-tagged `internal/fabricengine/fabrictest/verbs.go`, invisible to both the untagged test run and `go build ./...`, and the helper repoints in this batch reach tagged files in `internal/configcli` and `internal/loomengine` that a `./internal/fabricengine/...` scope would never compile.
 The new assertions live in `internal/fabricengine/destroy_test.go`;
 `internal/fabricengine/export_test.go` is repointed but adds no new case.
