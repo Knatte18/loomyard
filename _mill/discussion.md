@@ -86,6 +86,14 @@ That property is what the current per-verb integration tests do not have.
   and for a file, a **content hash**.
   Deliberately **not** recorded: permission bits (meaningless on Windows), mtime, and size-without-hash.
   This is the minimum that makes all three of "it vanished", "it was replaced by a different kind of thing", and "its content changed" observable, and nothing beyond it.
+- **The walk records a link as a *leaf* and never descends through it, on every platform.**
+  This is load-bearing, not an optimisation.
+  Fabric's wired junctions carry **absolute** targets that point back **inside the same hub** — `warp/_lyx → <hub>/warp-weft/_lyx`, `warp/.lyx → …`, `warp/_board → <hub>/_board`.
+  A descending walk would therefore record the weft sibling's contents twice: once under its own path, and again under every warp junction path chaining into it.
+  Every legitimate weft-side change would then surface as an unpermitted mutation under a *warp* key, and permit roots written against warp paths would silently license weft destruction.
+  Stated explicitly because it is not settled by "it works on Linux": Windows junctions and POSIX symlinks differ in how a directory walk traverses them, so a walk that happens not to descend on one platform may descend on the other.
+  The link's identity is fully captured by `kind: link` plus its raw one-hop target;
+  whatever the target contains is recorded under the target's own path, exactly once.
 - **The `.git` rule: a narrow allowlist, not a blanket exclusion.**
   Inside any `.git` directory — or a `.git` *file*, which is what a linked worktree carries — the manifest records **only**: the `.git` entry itself, and each `.git/worktrees/<name>` directory, both at existence granularity with no content hash.
   Everything else under `.git` is excluded.
@@ -196,9 +204,9 @@ That property is what the current per-verb integration tests do not have.
   `""`, `.`, `..`, `../x`, a `-weft`-suffixed name, a reserved hub name (`_board`, `_portals`, `_launchers`), and a leading `-` apply only to the verbs that accept a slug or branch argument: **`Add`, `Remove`, `Checkout`**.
   `Prune`, `Cleanup`, `Reconcile` and `Unwire` take no such argument, so for them the hostile-input axis is empty and the cell must not fabricate one.
   `UnwireJunctions` takes a `names []string` — the hostile input there is a junction name escaping its worktree (`../x`), which is its own shape.
-- **The `CloneHub{Reset: true}` column is re-scoped to the ownership axis, not run against the nine states.**
+- **The `CloneHub{Reset: true}` column is re-scoped to the ownership axis, not run against the ten states.**
   `resetHub` declares `dirtinessNA` (`clone.go:585`), so **no dirtiness state can ever refuse it** — total hub destruction on `--reset` is correct behaviour, deliberately so.
-  That makes the permitted root the hub root itself, which would render the manifest diff vacuous across all nine states.
+  That makes the permitted root the hub root itself, which would render the manifest diff vacuous across all ten states.
   Instead this column drives `Reset` against two ownership-shaped targets and asserts refusal plus full survival: a directory that is not a hub at all, and a directory *named* `<derived>-HUB` that is not a hub — the exact shape of R4's `clone --reset` defect, which destroyed any directory matching a name fabric *derives* rather than one the operator types.
   The dirtiness rows for this column are **omitted with the reason stated in the table**, never silently present-and-vacuous.
   The rebuild half is asserted through `CloneAndWire`, so the hub that comes back is full-fidelity rather than `CloneHub`-partial.
@@ -209,12 +217,12 @@ That property is what the current per-verb integration tests do not have.
   This is recorded as a **precondition of the R2 scenario**, not an implementation detail: R2's defect is only reachable on an advance path.
 - **`Add`'s rollback needs an induced post-creation failure, and the arrangement is named.**
   `rollbackAdd` fires only at post-creation sites (`add.go:139-204`), every one of them after `warpTok` is minted.
-  None of the nine states induces one — `Add`'s only probe reachable from the state matrix is its `scopeTracked` pre-flight at `add.go:43`, which returns a plain error long before `destroy.go` is involved.
+  None of the ten states induces one — `Add`'s only probe reachable from the state matrix is its `scopeTracked` pre-flight at `add.go:43`, which returns a plain error long before `destroy.go` is involved.
   So without an arrangement, `Add` would never reach the gate at all and the claim that every executor gets driven would be false.
   `Add`'s `Arrange` **breaks the warp origin remote** (`git remote set-url origin <nonexistent>`), so the push at the end of `Add` fails after the branch and worktree already exist, triggering `rollbackAdd`.
   This is the same injection `TestBranchOwnership_RefusalHoldsAtOtherDeletionSites` already uses, so it is a proven trigger rather than a guess.
 - **Hostile-input cells run in the `clean` state only, on both anchors.**
-  Crossing them with the full state matrix would multiply out to hundreds of cells, nearly all vacuous: `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows would assert exactly what the ninth does.
+  Crossing them with the full state matrix would multiply out to hundreds of cells, nearly all vacuous: `remove ..` refuses at `remove.go:45` before any hub state is consulted, so all but one of its state rows would assert exactly what that one does.
   That is precisely the vacuity the `Reset` column was re-scoped to avoid, and permitting it here would contradict that decision one paragraph later.
   **Expressed without forfeiting the cross-product property:** a `VerbCase` carries an optional `States` restriction;
   when empty — the default, and what every ordinary verb uses — the case inherits **every** state, so a newly appended verb still gets the full matrix automatically.
@@ -230,10 +238,15 @@ That property is what the current per-verb integration tests do not have.
   | `UnwireJunctions` | **in scope** — one junction name escaping its worktree (`../x`) | 1 |
 
   `UnwireJunctions` is deliberately **in**, despite taking neither a slug nor a branch: its `names []string` is the only route to the link executor's containment check, and `TestUnwireJunctions_RefusesLinkOutsideItsWorktree` already proves that path is a live refusal surface rather than a hypothetical one.
-- **Resulting tranche-1 cell count:** 8 ordinary verbs × 9 states × 2 anchors = **144**;
-  plus 17 hostile-input cases (7 + 7 + 2 + 1) × 1 state × 2 anchors = **34**;
-  plus the `Reset` column's 2 ownership targets × 2 anchors = **4**.
-  **182 cells total**, at roughly 24 ms of hub cost each, parallel.
+- **Resulting tranche-1 cell count — an enumeration, not a single asserted number.**
+  The full product is 8 ordinary verbs × 10 states × 2 anchors = **160**, plus 17 hostile-input cases (7 + 7 + 2 + 1) × 1 state × 2 anchors = **34**, plus the `Reset` column's 2 ownership targets × 2 anchors = **4** — an upper bound of **198**.
+  The omit-with-reason rule then subtracts from it.
+  **Known omissions today:** `Cleanup` × the four structural states (branch-shaped verb, no path any structural state can name) = **−8**.
+  That gives **190**, and the figure is a **ceiling on what remains, not a final count**: the omission set is completed by the plan's per-cell enumeration, where each verb/state pair is resolved against the placement rule one at a time.
+  **A precise-sounding total is deliberately not asserted here.**
+  Quoting one before the omission set is enumerated would be the same error as exact-path permit lists — a number that looks authoritative, is regenerated from whatever the implementation happened to produce, and asserts nothing.
+  What this document owns is the *rule* that generates the enumeration;
+  the plan owns the enumeration.
 - **Leading-`-` and `Checkout` hostile-input cells assert survival and no-partial-mutation, with no check-name assertion, and are written against the *safe* expectation.**
   A leading `-` passes `validateWorktreeSlug` untouched — it is not on any of that function's five rejection rules — so no gate check owns it and neither expectation kind from the refusal decision applies.
   The cell therefore asserts that the argument **does not reach git as a flag**, and that nothing outside the permitted roots is destroyed.
@@ -249,8 +262,13 @@ That property is what the current per-verb integration tests do not have.
 
 ### tranche-1-state-matrix
 
-- **Decision:** Nine named states, each traceable to the defect it was born from:
-  `clean`, `dirtyWarpTracked`, `dirtyWarpUntracked`, `dirtyWeftTracked`, `bothDirty`, `trackedSymlinkAtWiredPath` (R1), `foreignDirAtFabricOwnedPath` (R4), `unrelatedGitCloneAtWeftNamedPath` (R4), `staleWiredJunction` (a drifted/dangling link, R1's repair-side counterpart).
+- **Decision:** **Ten** named states, each traceable to the defect it was born from:
+  `clean`, `dirtyWarpTracked`, `dirtyWarpUntracked`, `dirtyWeftTracked`, **`dirtyWeftUntracked`**, `bothDirty`, `trackedSymlinkAtWiredPath` (R1), `foreignDirAtFabricOwnedPath` (R4), `unrelatedGitCloneAtWeftNamedPath` (R4), `staleWiredJunction` (a drifted/dangling link, R1's repair-side counterpart).
+- **`dirtyWeftUntracked` is the state that makes the dirtiness-scope parameter observable at all, and it was missing.**
+  The `Proceeds` decision's whole justification is that a `scopeTracked` verb and a `scopeAll` verb diverge against an untracked-only state.
+  On the weft side that divergence is real and sharp: `Checkout` probes `worktreeDirty(scopeTracked, weftWorktree)` (`checkout.go:42`) so it must **proceed**, while `Remove`'s `refuseDirtyWeftWorktree` probes `scopeAll` (`remove.go:79`, `:144`) so it must **refuse** — same state, same checkout, opposite correct outcomes.
+  Without this state that divergence is exercised by no cell in the matrix.
+  `dirtyWarpUntracked × Checkout` does **not** substitute for it: `Checkout` has no warp-side dirtiness probe at all, so that cell proceeds vacuously and proves nothing about scope.
 - **Rationale:** the four dirtiness states reach only the gate's dirtiness check.
   Containment and ownership — the two checks `--force` can never override, and the two that between them account for the worst defect in the campaign (`remove ..` destroying an entire hub) — need the link/foreign-path states.
   Every state citing its originating defect keeps the matrix auditable against the evidence table rather than aspirational.
@@ -283,8 +301,8 @@ That property is what the current per-verb integration tests do not have.
   Alongside `RefusedByGate(check)` and `RefusedBefore(substring)`, a cell may declare **`Proceeds`** — the verb succeeds despite a non-clean state, its intended effect lands, and the state's planted content survives.
   All three carry a permit-root field.
 - **Why a two-kind scheme is wrong:** dirtiness scope is per-verb, so a dirtiness state does **not** imply refusal.
-  `Checkout` probes `worktreeDirty(scopeTracked, weftWorktree)` at `checkout.go:42`, so `dirtyWarpUntracked` — and any untracked-only weft state — must make `Checkout` **succeed**, with the untracked file still on disk afterwards.
-  Under the two-kind scheme that cell had no derivable expected outcome at all and would have been written regenerated-from-actual.
+  The proving pair is `dirtyWeftUntracked`: `Checkout` probes `worktreeDirty(scopeTracked, weftWorktree)` at `checkout.go:42` and must **proceed** with the untracked file still on disk, while `Remove`'s `refuseDirtyWeftWorktree` probes `scopeAll` at `remove.go:79`/`:144` against the same checkout and must **refuse**.
+  Under the two-kind scheme the `Checkout` half had no derivable expected outcome at all and would have been written regenerated-from-actual.
 - **The scope table, so every dirtiness cell's outcome is derived rather than guessed.**
   Verified against the tree:
 
@@ -292,6 +310,7 @@ That property is what the current per-verb integration tests do not have.
   |---|---|---|---|
   | `Add` | own pre-flight (`add.go:43`) | `scopeTracked` | prime warp worktree |
   | `Checkout` | own pre-flight (`checkout.go:42`) | `scopeTracked` | weft worktree |
+  | `Checkout` | **none — no warp-side dirtiness probe exists** (`checkout.go:38-85` goes straight to `git switch`) | n/a | prime warp worktree |
   | `Remove` | own pre-flight (`remove.go:69`) | `scopeAll` | the pair's warp worktree |
   | `Remove` | `refuseDirtyWeftWorktree` (`remove.go:79`, `:144`) | `scopeAll` | the pair's weft worktree |
   | `Remove` | gate, `removeWarpWorktreeDir`'s primary and fallback requests (`remove.go:196`, `:230`) | `dirtyScopeAll` | the pair's warp worktree |
@@ -305,8 +324,13 @@ That property is what the current per-verb integration tests do not have.
   | `UnwireJunctions` | gate, link-shaped | `dirtinessNA` | n/a |
   | `CloneHub{Reset}` | gate (`clone.go:585`) | `dirtinessNA` | n/a |
 
+- **`dirtyWarpTracked × Checkout` is git-decided, and the cell asserts the safe disjunction rather than picking a branch of it.**
+  `Checkout` never probes the warp worktree, so the outcome belongs to `git switch`: it either carries the tracked modification across to the new branch, or refuses with "your local changes would be overwritten".
+  Guessing which would be asserting git's behaviour rather than fabric's, so the cell asserts what must hold **either way**: the tracked modification is still on disk afterwards, and the pair is **not half-switched** — either both sides moved, or neither did.
+  That is a real assertion, since a half-switched pair is precisely what `Checkout`'s documented all-or-nothing rollback exists to prevent, and it is what a `git switch` failure would leave behind if the rollback were broken.
 - **The derivation rule:** a `scopeTracked` verb against an untracked-only state expects `Proceeds`;
-  a `scopeAll` verb against the same state expects a refusal.
+  a `scopeAll` verb against the same state expects a refusal;
+  a verb with **no probe** for the dirtied side gets an explicit per-cell expectation, never a derived one — the row above is the only such case in tranche 1.
   That divergence is the one case proving dirtiness scope is a real per-request parameter rather than a constant, which is exactly what `TestWorktreeDirty_BothScopesAcrossFourStates` already asserts at the unit level and what this matrix now asserts at the verb level.
 - **Rejected:** leaving non-clean success cells undefined (they would be written from observed behaviour and assert nothing);
   giving every dirtiness cell a refusal expectation (factually wrong for every `scopeTracked` verb against an untracked-only state, and would fail against a correct binary).
@@ -381,6 +405,8 @@ That property is what the current per-verb integration tests do not have.
     A permit-list entry or effect assertion naming `ide-menu.sh` literally would fail on Windows.
     Match launcher paths by directory root or by the same GOOS branch, never by a hardcoded extension.
   - **Manifest keys** are stored as `filepath.ToSlash`-normalised paths relative to the hub root, so a permit-list literal written with `/` works on both platforms.
+  - **The manifest walk stops at every link and never descends through it**, on Windows junctions exactly as on POSIX symlinks.
+    A walk that descends on one platform and not the other would double-record the weft sibling under warp junction keys on that platform alone, making the whole suite's diff results platform-dependent — see the per-entry record above for why this is load-bearing rather than cosmetic.
   - **Path comparison** in the manifest diff must be case-insensitive on Windows.
     `lyxcwd.samePath` (`internal/lyxcwd/anchor.go:112`) does exactly this via `strings.EqualFold`, but is **unexported** — `fabrictest` needs its own equivalent rather than reaching for it.
   - **Bare-remote URLs** passed to git go through `filepath.ToSlash`, as the existing `makeBareRemote` helper already does.
@@ -604,8 +630,21 @@ TDD candidates, in build order, each independently verifiable before the matrix 
 
 **Sabotage-proving — mechanism and artifact, both named.**
 
-- **Scope:** the **nine evidence-table scenarios** listed above, and only those.
-  Not all 182 cells — proving a cell fails on demand costs a manual edit-run-revert cycle each, which is affordable nine times and not affordable 182 times.
+- **Scope: nine named cells, keyed as (state, verb, anchor) triples**, one per evidence-table defect, and only those.
+  Not the whole matrix — proving a cell fails on demand costs a manual edit-run-revert cycle each, which is affordable nine times and not affordable ~190 times.
+  The scenario bullets above are prose and do not map one-to-one onto cells (one covers six hostile inputs, another covers two distinct states, another is not a cell at all), so the sabotage table keys on these concrete triples instead:
+
+  | # | defect | state | verb | anchor |
+  |---|---|---|---|---|
+  | 1 | R1 `reconcile` destroyed a tracked symlink | `trackedSymlinkAtWiredPath` | `Reconcile` | `.` |
+  | 2 | R2 `pull` discarded uncommitted tracked warp work | `dirtyWarpTracked` | `Pull` | `.` |
+  | 3 | R3 `remove` destroyed the warp worktree past a git refusal | `dirtyWarpUntracked` | `Remove` | `.` |
+  | 4 | R3 `cleanup` deleted the primary weft branch | `clean` | `Cleanup` | `.` |
+  | 5 | R3 `prune` removed a path git had just refused | `dirtyWarpUntracked` | `Prune` | `.` |
+  | 6 | R4 `prune` removed an ordinary weft-suffixed user directory | `foreignDirAtFabricOwnedPath` | `Prune` | `.` |
+  | 7 | R4 `prune` removed an unrelated git clone | `unrelatedGitCloneAtWeftNamedPath` | `Prune` | `.` |
+  | 8 | R4 `clone --reset` destroyed a non-hub `<derived>-HUB` | `Reset` column, non-hub target | `CloneHub{Reset}` | `.` |
+  | 9 | R5 `remove ..` destroyed an entire hub | hostile input `..` | `Remove` | `.` |
 - **Mechanism:** during implementation, for each of the nine, temporarily neuter the specific check that scenario depends on — the pre-flight branch, or the gate check, whichever the cell's expectation kind names — run that one cell, and confirm it **fails**.
   The edit is a **local working-tree change that is reverted immediately and never committed**;
   it does not appear in any commit, and `destroy.go` is untouched in the delivered diff.
@@ -646,9 +685,12 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Round 2 gap — `Remove` deletes the portal and launchers at `remove.go:61-66`, *before* its dirty pre-flight at `:68-76`, so a correctly-refusing dirty-`Remove` cell has already destroyed two paths. Do refusal cells carry permit roots? **A:** [auto-pick] Yes — every expectation kind carries a permit-root field, those two paths are permitted on that cell, and the anomaly is recorded in `doc.go` and flagged for slice 14 rather than silently buried in a permit list. **Why:** "returned an error and destroyed something anyway" is the shape of all eight campaign defects, so a cell permitting it must say so out loud; but it is deliberate documented behaviour, and a harness task is the wrong place to reverse a production decision unilaterally.
 - **Q:** Round 2 gap — dirtiness scope is per-verb, so `dirtyWarpUntracked` against a `scopeTracked` verb like `Checkout` must *succeed*, an outcome the two-kind refusal scheme could not express. **A:** [auto-pick] Add a third expectation kind, `Proceeds` (verb succeeds, effect lands, planted content survives), and record the verified per-verb dirtiness-scope table so every cell's outcome is derived rather than guessed. **Why:** the scopeTracked-vs-scopeAll divergence against an untracked-only state is the one case proving dirtiness scope is a real per-request parameter, and without the table those cells would have been written from observed behaviour and asserted nothing.
 - **Q:** Round 3 gap — what does a manifest entry actually record, and how is `.git` handled, given that a blanket exclusion and a per-cell permit have opposite consequences? **A:** [auto-pick] Entry is path → kind + link raw target + file content hash, with no mode/mtime/size; `.git` gets a narrow allowlist recording only the `.git` entry itself and `.git/worktrees/<name>` at existence granularity. **Why:** a blanket `.git` exclusion would blind the harness to linked-worktree deregistration, which is R3's shape exactly, while hashing everything under `.git` would drown every cell in `index`/`logs`/`refs`/`objects` churn until the permit lists permitted everything.
-- **Q:** Round 3 gap — hostile inputs are scoped to three verbs but to no state set, so under `[]State × []VerbCase` they would inherit all nine states and both anchors (~378 cells), nearly all vacuous. **A:** [auto-pick] Hostile-input cells run in `clean` only, expressed as an optional `States` restriction on the `VerbCase` that is empty by default — so an ordinary newly-appended verb still inherits every state. **Why:** `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows would assert exactly what the ninth does, which is the same vacuity the `Reset` column was re-scoped to avoid. Round 4 recomputed the total to 182 from the per-verb input sets, `Checkout` taking two branch-shaped inputs rather than the seven slug-shaped ones.
+- **Q:** Round 3 gap — hostile inputs are scoped to three verbs but to no state set, so under `[]State × []VerbCase` they would inherit every state and both anchors (hundreds of cells), nearly all vacuous. **A:** [auto-pick] Hostile-input cells run in `clean` only, expressed as an optional `States` restriction on the `VerbCase` that is empty by default — so an ordinary newly-appended verb still inherits every state. **Why:** `remove ..` refuses at `remove.go:45` before any hub state is consulted, so all but one of its state rows would assert exactly what that one does, which is the same vacuity the `Reset` column was re-scoped to avoid. Round 4 recomputed from the per-verb input sets (`Checkout` takes two branch-shaped inputs, not the seven slug-shaped ones), and round 5 replaced the single asserted total with an enumeration plus a stated ceiling.
 - **Q:** Round 4 gap — `VerbCase{Name; Run}` gave no arrangement hook, yet most verbs need a fixture no state builds, and folding it into `Run` would put every arrangement mutation into the diff as an unpermitted change. **A:** [auto-pick] Add an `Arrange` field and fix the five-phase order — build, arrange, state, capture-before, run-then-capture-after. **Why:** the before-manifest must be taken after both arrange and state so each is baseline rather than noise, and state must follow arrange because several states plant into what arrange created (a dirty pair worktree does not exist until `Add` has made one).
 - **Q:** Round 4 gap — `pull.go:210-212` returns early when local HEAD equals upstream, before the dirty check, and the template bare is never advanced, so every `Pull` cell short-circuits. **A:** [auto-pick] `Pull`'s `Arrange` pushes a new commit to that scenario's own warp bare, recorded as a precondition of the R2 scenario. **Why:** without it the `dirtyWarpTracked × Pull` cell expects `ErrWarpDirty` and fails against a *correct* binary, and R2's defect is only reachable on an advance path at all.
 - **Q:** Round 4 gap — the four structural states name a kind of path rather than a specific one, and had no per-verb placement rule. **A:** [auto-pick] Extend `dirty-what-per-cell`'s rule to them — plant at the path the verb under test actually acts on — resolved per verb, and omit the cell with a recorded reason where no such path exists. **Why:** an arbitrarily-planted structural state is worse than an absent one, since it yields a green cell that proves nothing while reading like coverage.
+- **Q:** Round 5 gap — the `Proceeds` rationale cited an untracked-only weft state that the matrix does not contain, so the scope divergence it rests on is exercised by no cell. **A:** [auto-pick] Add `dirtyWeftUntracked` as a tenth state. **Why:** it is the one cell that makes the dirtiness-scope parameter observable — `Checkout` (`scopeTracked`, `checkout.go:42`) must proceed while `Remove` (`scopeAll`, `remove.go:79`/`:144`) must refuse against the same checkout; `dirtyWarpUntracked × Checkout` cannot substitute, since `Checkout` has no warp-side probe and that cell proceeds vacuously.
+- **Q:** Round 5 gap — `dirtyWarpTracked × Checkout` has no derivable expectation, since `Checkout` never probes the warp side and the outcome belongs to `git switch`. **A:** [auto-pick] Add the row explicitly, and have the cell assert the safe disjunction — the tracked modification survives, and the pair is not half-switched either way. **Why:** picking a branch would be asserting git's behaviour rather than fabric's, while the disjunction still catches the thing that matters, since a half-switched pair is exactly what `Checkout`'s all-or-nothing rollback exists to prevent.
+- **Q:** Round 5 gap — the manifest walk's link-traversal rule was unstated, and wired junctions carry absolute targets back into the same hub. **A:** [auto-pick] State that the walk records a link as a leaf and never descends through it, on every platform, and add it to the Windows portability rules. **Why:** a descending walk would record the weft sibling twice — once under its own path and again under every warp junction chaining into it — so legitimate weft changes would report as unpermitted mutations under warp keys, and permit roots written against warp paths would silently license weft destruction; Windows junctions and POSIX symlinks differ here, so "it works on Linux" does not settle it.
 - **Q:** Round 4 gap — `Add`'s rollback fires only on post-creation failure, and no state induces one, so `Add` may never reach the gate. **A:** [auto-pick] `Add`'s `Arrange` breaks the warp origin remote so the closing push fails after the branch and worktree exist. **Why:** it is the same injection `TestBranchOwnership_RefusalHoldsAtOtherDeletionSites` already uses, so it is a proven trigger rather than a guess.
 - **Q:** Round 3 gap — sabotage-proving named no mechanism and no artifact, and neutering `destroy.go` is a production edit not in scope. **A:** [auto-pick] Name both: a temporary local working-tree edit per scenario, reverted immediately and never committed, scoped to the nine evidence-table scenarios only, with a `doc.go` table recording cell, neutered check and observed failure as the durable artifact, and all nine rows as a completion gate. **Why:** a permanent automated gate would need a per-check injection seam slice 12 deliberately did not build, and adding one would be production surface introduced by a test-only slice — but a harness whose cells were never made to fail would repeat the mistake it exists to correct.
