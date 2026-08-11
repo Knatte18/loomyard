@@ -79,12 +79,7 @@ Review is never a property attached to the producer it reviews — it is always 
 
 Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored `plan-format.md`'s `depends-on-order` check — is now resolved, not open.
 The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks `discussion-format.md`'s validation-checks section defines.
-The second open question stays open, untouched by this task: whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
-**Hand-off note (task C, as landed):** this task widens the second question's subject.
-`Plan-Validate` and the newly-inserted `Discussion-Validate` now share that same thin-Output property, so task E resolves the question over four producers — `Preflight`, `Plan-Validate`, `Discussion-Validate`, `Finalize` — not two.
-This task also repaired the first clause above in place, so task E does not need to go looking for it.
-The [`## The gate`](#the-gate) section below still uses "gate" in the perch sense (sense A) and is unchanged by this task — it remains task E's territory.
-Wiki task `shed-producer-model-scoping` is the dedicated survey pass that reconciles this table against `discussion-format.md`/`plan-format*.md` and `raddle.md`/`finalize.md`, and produces the actual buildable follow-up tasks — this table is settled on the model, not yet on every file-level detail.
+The second question — whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition — is now resolved too, over all four producers that share some form of thin Output (`Preflight`, `Discussion-Validate`, `Plan-Validate`, `Finalize`): see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the two-case statement, rather than restating either case here.
 
 ## The gate
 
