@@ -153,8 +153,19 @@ The two minters `createExclusiveDir` (`:703`) and `createGitWorktree` (`:721`) a
 they are natural auto-record sites too and should be treated as such.
 
 **The refusal type:** `destructiveRefusal{Check, What, Target, Reason}` at `destroy.go:62`, with `Error()` at `:70` and `surfaceRefusal` at `:79`.
-The exported `Check` set has exactly three live members — `CheckContainment`, `CheckOwnership`, `CheckDirtiness`. `checkForce` is declared and rendered by `String()` but is never constructed into a refusal anywhere in the tree (force is consulted only inside `checkPathDirtiness`, where it makes the check pass), so a `CheckForce` constant could never match a real refusal and must not be added.
-This is documented in `fabrictest/doc.go`.
+
+The check enum exists in two places, in two packages, and the `refusal` object must be serialised from the first, not the second:
+
+- `internal/fabricengine`'s own `destructiveCheck` (`destroy.go:33-40`) is **entirely unexported** — `checkContainment`, `checkOwnership`, `checkDirtiness`, `checkForce` — rendered to prose by `String()` at `destroy.go:42`. This is what a `*destructiveRefusal` actually carries, and therefore what production code in `fabriccli` must serialise the `refusal.check` field from. Grepping `internal/fabricengine` for an exported `CheckContainment` finds nothing.
+- `internal/fabricengine/fabrictest`'s exported `Check` (`fabrictest/refusal.go:19-30`) is a string-backed, **`integration`-tagged** fabrictest-owned copy of that unexported enum, built by slice 13 so `RefusedByGate` can match a rendered message without importing the unexported type. It has exactly three live members — `CheckContainment`, `CheckOwnership`, `CheckDirtiness`. Being test-support behind a build tag, production code cannot import it.
+
+`checkForce` is declared and rendered by `String()` but is never constructed into a `*destructiveRefusal` anywhere in the tree — force is consulted only inside `checkPathDirtiness`, where it makes the dirtiness check *pass* rather than fail.
+A `CheckForce` constant could therefore never match a real refusal and must not be added to either enum.
+`fabrictest/refusal.go` carries this as a standing comment, and `fabrictest/doc.go` documents it again;
+the new refusal-serialisation code must not reintroduce it.
+
+There is a live consistency question here for mill-plan: once `refusal.check` is emitted as a machine-readable JSON field, the unexported enum's `String()` output becomes part of fabric's public contract, and fabrictest's string-backed copy becomes a second encoding of it.
+Whether the two are reconciled (e.g. by exporting the enum from `fabricengine` and having fabrictest consume it) or deliberately left as parallel copies is a decision to make explicitly, not by default.
 
 **Prior art to mirror, not duplicate:** `PruneEntry` (`prune.go:38`) carries `WarpWorktree`/`WeftWorktree`/`Reason`/`Removed`/`Protected`/`Unowned`/`Error`;
 `CleanupBranchEntry` (`cleanup.go:65`) carries `Branch`/`Deleted`/`Protected`/`Error`.
@@ -195,7 +206,8 @@ Discovered during discussion:
 
 - `internal/output` is shared by every module. The change must be strictly additive — `Ok` and `Err` keep their current signatures and behaviour, and no other module's envelope changes.
 - `push` and `sync` have no engine result type at all today. Introducing one for them is part of this slice, not a follow-up.
-- The `checkForce` non-member of the Check set (above) must not be "helpfully" added to any new refusal-serialisation code.
+- The check enum lives unexported in `internal/fabricengine` (`destructiveCheck`) and is mirrored, exported and `integration`-tagged, in `internal/fabricengine/fabrictest` (`Check`). Production serialisation of `refusal.check` must come from the former;
+  the latter is test-support behind a build tag and cannot be imported by production code. `checkForce` is a non-member of both and must not be "helpfully" added to any new refusal-serialisation code.
 
 ## Testing
 
