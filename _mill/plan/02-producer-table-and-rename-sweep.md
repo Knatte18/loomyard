@@ -142,6 +142,7 @@ Batch-local decisions beyond the overview's shared set, each recorded so no card
 - **Context:**
   - `manifest/designs/loom.md`
   - `manifest/roadmap.md`
+  - `_mill/discussion.md`
 - **Edits:**
   - `manifest/designs/shed-followups.md`
 - **Creates:** none
