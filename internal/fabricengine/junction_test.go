@@ -76,7 +76,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 		{Name: "second", Link: secondLink, Target: filepath.Join(root, "second-target")},
 	}
 
-	removed, err := unseedJunctionRecords(junctions)
+	removed, err := unseedJunctionRecords(root, junctions)
 	if err == nil {
 		t.Fatal("unseedJunctionRecords = nil error; want error from the second (real-directory) junction")
 	}
@@ -99,9 +99,11 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 func TestUnseedJunctionRecords_EmptyIsNoOp(t *testing.T) {
 	t.Parallel()
 
-	removed, err := unseedJunctionRecords(nil)
+	root := t.TempDir()
+
+	removed, err := unseedJunctionRecords(root, nil)
 	if err != nil {
-		t.Fatalf("unseedJunctionRecords(nil) = %v; want nil", err)
+		t.Fatalf("unseedJunctionRecords(root, nil) = %v; want nil", err)
 	}
 	if len(removed) != 0 {
 		t.Errorf("removed = %v; want empty", removed)
@@ -130,7 +132,7 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 		{Name: "second", Link: secondLink, Target: secondTarget},
 	}
 
-	removed, err := unseedJunctionRecords(junctions)
+	removed, err := unseedJunctionRecords(root, junctions)
 	if err != nil {
 		t.Fatalf("unseedJunctionRecords = %v; want nil", err)
 	}

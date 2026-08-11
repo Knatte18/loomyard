@@ -1,7 +1,7 @@
 # Fixture-copy benchmark report
 
 Deep analysis behind the "Speed up git-fixture tests" task: the full benchmark report recorded during the task's discussion phase (2026-07-13), ported here verbatim as the permanent record, plus a "Reproducing" section to regenerate the copy numbers with the permanent benchmark this task shipped (`internal/lyxtest/bench_test.go`).
-For the headline before/after wall-clock numbers, see [test-suite-timing.md](test-suite-timing.md#current-best-times);
+For the headline before/after wall-clock numbers, see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers);
 for how to run the suite, see [running-tests.md](running-tests.md).
 
 > **Windows + Linux.** The benchmark report below (2026-07-13) was measured on the operator's 155U Windows machine with Cortex XDR live. The previously-flagged Linux gap is **now filled** ([Linux benchmark](#linux-benchmark-2026-07-13)), and a third machine isolates the AV cost ([9800X3D A/B](#windows-clean-cpu-benchmark-ryzen-7-9800x3d-defender-ab)). Key finding: the huge 155U copy cost was **Cortex XDR** (an aggressive corporate EDR) plus a weak CPU — consumer **Defender barely touches this path** (~6 % A/B), and even AV-free Windows is still ~14× slower than Linux on the raw filesystem floor. Compare down each machine's column, never across.
@@ -189,7 +189,7 @@ An earlier version of this doc said "~99 % of the measured Windows copy cost was
 The 9800X3D A/B run shows that lumping Cortex and Defender together was wrong:
 
 - **Defender alone is nearly free for fixture-copy** — 91.3 → 85.5 ms with it excluded is ~6 % (within noise).
-  Defender's real-time scanner does not tax this byte-copy path meaningfully (its cost shows up in in-process/compile work instead — see [test-suite-timing.md](test-suite-timing.md#windows-clean-cpu-baseline-ryzen-7-9800x3d-defender-ab)).
+  Defender's real-time scanner does not tax this byte-copy path meaningfully (its cost shows up in in-process/compile work instead — see [test-suite-timing.md](test-suite-timing.md#what-the-spread-shows)).
 - **The 452 ms on the 155U was Cortex XDR (an aggressive corporate EDR) plus a weak 15 W CPU**, not Defender.
   Cortex is a different, far heavier scanner than consumer Defender;
   do not generalize "AV" from it.
