@@ -352,6 +352,13 @@ webster's execution unit is the batchifier-derived batch, not the raw plan card 
 - Batching is selected by `internal/batcher`'s name-keyed registry plus `batcher.yaml`'s `active:` config key (default `identity`), owned by `internal/batcher` rather than by webster — no plan-supplied batching, no batch grouping in the plan format itself.
 - **Enforced by** review obligation.
 
+## Producer Pointer-Rule Invariant
+
+An instruction file — a producer's own prompt or skill — must never duplicate or paraphrase another producer's format-contract content, only point at it, so that editing that one format-contract file alone is sufficient to change what both its producer and its consumers do.
+
+- Binds **instruction files** (agent prompts and skills) and format-contract docs, not Go source, and not design docs restating the rule for a human reader.
+- **Enforced by** review obligation.
+
 ## GitHub Auth Invariant
 
 All GitHub authentication goes through `internal/githubclient`;
