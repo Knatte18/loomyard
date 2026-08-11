@@ -68,9 +68,11 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 
   For each: the `output.Ok(out, map[string]any{...})` success return becomes `okWithRecord(out, r.Mutated(), map[string]any{...})` with the same fields, and the `output.Err(out, err.Error())` return that follows the **verb call** becomes `errWithRecord(out, r.Mutated(), err)`.
 
-  The `output.Err` sites that precede the verb call — cwd/location resolution failures, `LoadConfig` failures, and the `usage: ...` argument errors — stay `output.Err` exactly as they are.
+  The `output.Err` sites that precede **any mutation** — cwd/location resolution failures, `LoadConfig` failures, and the `usage: ...` argument errors — stay `output.Err` exactly as they are.
   Nothing has been mutated at those points, there is no result to read a record from, and inventing an empty record for them would put `mutations` on an envelope that is not a verb outcome at all.
   Add a one-line comment at the first such site in each handler saying so, so the asymmetry reads as a decision.
+
+  **The carve-out's boundary is "before any CLI-layer mutation", not "before the verb call".** The two differ in `runReconcile`, where `configsync.ReconcileFabricAt` runs *before* `LoadConfig` and may already have written a file — card 25 enumerates that handler's returns explicitly for this reason.
 
   `runReconcile` is deliberately absent from that list: it does its own CLI-layer mutating, so card 25 both records and converts it in one place rather than this card converting an emission card 25 would immediately rewrite.
 
@@ -86,7 +88,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   - `internal/fabricengine/bolt.go`
   - `internal/configsync/configsync.go`
   - `internal/configengine/config.go`
-  - `internal/fabriccli/cli_test.go`
+  - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/fabrictest/verbs.go`
 - **Edits:**
   - `internal/fabriccli/clone.go`
@@ -102,7 +104,8 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Note the ordering constraint: the defer can only be installed after `rec` exists, so the first return (the `CloneHub` failure itself) instead returns `res, err` directly — `CloneHub`'s own record is already in `res` at that point, and dropping it there would discard the hub the clone had just minted.
   Hand-record the CLI-layer steps at their success sites.
   The two `configsync` calls do **not** write one file each: `configsync.ReconcileAll(baseDir, apply)` returns a `[]Result`, one per registered module, and each `Result` carries an `Applied bool` reporting whether that module's file was written.
-  Record **one `KindFileWritten` per `Result` whose `Applied` is true**, with the target `configengine.ConfigFile(baseDir, r.Module)` — `internal/fabriccli/cli_test.go` already imports `configengine` and uses exactly that helper, so the import is established in the package.
+  Record **one `KindFileWritten` per `Result` whose `Applied` is true**, with the target `configengine.ConfigFile(baseDir, r.Module)`.
+  That is a **new import** for `internal/fabriccli/clone.go` and `internal/fabriccli/fabric.go` — add it. (The package's `integration`-tagged external test file imports `configengine` today, but an external test package's imports establish nothing for production code beside it.)
   `configsync.ReconcileFabricAt` returns a single `Result` and records at most one entry, on the same `Applied` condition.
   A single entry per call would leave every other materialised config file as an uncovered addition, which batch 7's omission direction fires on.
   Then the `Bolt.Commit` call site as `KindCommitCreated` with the **board worktree path** (`res.BoardDir`) as its `Target` and the SHA `Commit` already returns as its `Detail`.
@@ -118,6 +121,8 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Write that reasoning into a comment at the call site so the next reader does not "fix" it by adding the entry.
 
   `runCloneWithReset` then emits through the card-23 helpers, keeping its four existing fields (`hub`, `anchor`, `warp`, `warp_binding_recorded`).
+  Its `output.Err` **after** the `CloneAndWire` call becomes `errWithRecord(out, res.Mutated(), err)` — `CloneAndWire`'s defer has populated the result by then, and that failure path is precisely the mutated-then-errored case this slice exists to represent.
+  The two returns before it — the `lyxcwd.Getwd()` failure and the `usage: ...` argument error — stay bare `output.Err`: nothing has been mutated at either.
 
   **`runReconcile`** — `internal/fabriccli/fabric.go`. **Build the recorder before the first mutation, not after the engine call**, or the emitted array misstates the order: `configsync.ReconcileFabricAt` runs *before* `top.Reconcile(l)` in this handler, so seeding from `r.Mutated()` first and appending the config rewrite afterwards would claim the rewrite happened after the engine's mutations — and array order is the only thing carrying ordering in this vocabulary.
   The sequence is: construct `rec := fabricengine.NewMutations(l.HubPath)` as soon as `l` resolves;
@@ -127,6 +132,11 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Its `Bolt.Push` records nothing either, for the same unobservable-outcome reason spelled out above.
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
   Emit through the card-23 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
+
+  **All three of this handler's `output.Err` sites become `errWithRecord`, carrying `rec`'s accumulated entries** — the `ReconcileFabricAt` failure, the `LoadConfig` failure, and the `Reconcile` failure.
+  None of them qualifies for card 24's pre-flight carve-out: `ReconcileFabricAt` runs first in this handler and may have written a file before any of the three is reached, so all three are post-mutation returns even though two of them look like ordinary pre-flight failures in every other handler.
+  The `ReconcileFabricAt` failure site is the subtle one — it can fail *after* a partial write, so it emits whatever `rec` holds rather than a bare error.
+  This is the one handler where "pre-flight" and "pre-mutation" come apart, and it is why the carve-out is stated as the latter.
 
   This is not optional polish: `internal/fabricengine/fabrictest/verbs.go`'s `CloneHubReset`/`RealHub` cell drives `CloneAndWire`, so batch 7's unfiltered honesty diff contains those junctions, config writes and commits, and the omission direction fires on them if they go unrecorded.
 - **Commit:** `feat(fabriccli): record and emit the CLI layer's own mutations`
@@ -196,7 +206,9 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   - **Failure path, non-empty record:** `ok:false`, `error` present, `mutations` populated, `partial:true`.
   - **Failure path carrying a refusal:** the `refusal` object present with all four keys (`check`, `what`, `target`, `reason`), *and* the flattened `error` string still present. Build the error with a real gate refusal reached through `fabricengine.RefusalOf`'s own contract rather than a hand-rolled stub.
   - **Read-only verbs:** `list`, `pairs`, `status` and `diff` assert `mutations` is **absent** from their envelope, so the which-verbs scope decision is machine-held rather than a convention.
-  - **Reserved keys:** an `okWithRecord`/`errWithRecord` caller supplying `ok` or `error` in its fields map is overridden, and a caller supplying `mutations` or `partial` is overridden too — the envelope's invariant fields cannot be shadowed by accident.
+  - **Reserved keys**, asserted per helper rather than jointly, because the two inject different sets: for `okWithRecord`, a caller supplying `ok`, `mutations` or `partial` is overridden — **not** `error`, which `output.Ok` never touches and which `okWithRecord` therefore does not reserve;
+    for `errWithRecord`, a caller supplying `ok`, `error`, `mutations` or `partial` is overridden.
+    The envelope's invariant fields cannot be shadowed by accident on either path.
 
   The first two bullets and the reserved-keys bullet belong in `internal/fabriccli/envelope_test.go` (no hub needed);
   the read-only-verb bullet and the refusal bullet belong in `internal/fabriccli/cli_test.go`, which can drive a real verb against a real hub.

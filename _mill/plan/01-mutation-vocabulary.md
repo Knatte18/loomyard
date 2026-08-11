@@ -51,10 +51,15 @@ Batch-local decision: `Mutations` is a value type carrying an unexported `hubRoo
   - `func NewMutations(hubRoot string) *Mutations` — the only constructor. `hubRoot` may be empty, in which case `Append` never converts and records the absolute slashed path.
   - `func (m *Mutations) Append(kind Kind, target, detail string)` — appends one entry, converting `target` from an absolute filesystem path to a hub-relative `filepath.ToSlash`'d string via `filepath.Rel(m.hubRoot, target)`, falling back to `filepath.ToSlash(target)` when `filepath.Rel` errors or when the result escapes the hub root (a `..` first segment). A `target` that resolves to the hub root itself is recorded as the literal `"."`, matching `filepath.Rel`'s own output — this is `CloneHub`'s hub-minting case and is deliberately kept rather than special-cased away.
   - `func (m *Mutations) AppendRef(kind Kind, ref, detail string)` — appends one entry with `Target` set to `ref` verbatim, performing no path arithmetic at all. This is the git-ref recording path (`branch_created`, `branch_deleted`, `branch_pushed`).
-  - `func (m *Mutations) Entries() []Mutation` — returns a copy, never the internal slice, and never `nil`: an empty record returns an empty non-nil slice.
+  - `func (m Mutations) Entries() []Mutation` — returns a copy, never the internal slice, and never `nil`: an empty record returns an empty non-nil slice. **Value receiver**, deliberately — see the receiver rule below.
   - `func (m *Mutations) Snapshot() Mutations` — returns a value copy whose `entries` is a freshly allocated copy of the current entries, so later appends through the recorder cannot mutate an already-returned result.
   - `func (m Mutations) MarshalJSON() ([]byte, error)` — marshals to a JSON array of entries, emitting `[]` rather than `null` for an empty or zero-value record. Declared on the value receiver so both `Mutations` and `*Mutations` marshal identically.
-  - `func (m *Mutations) Len() int` — the entry count, so callers can test "record non-empty" without copying the slice. The receiver is a **pointer**, not a value, because card 7 requires `Len()` to be nil-safe and a value receiver would dereference a nil pointer and panic. One consequence the implementer must carry into batch 6: `res.Mutated()` returns a non-addressable `Mutations` value, so `res.Mutated().Len()` does not compile — `errWithRecord` takes the record as a parameter and calls `Len()` on its own addressable local.
+  - `func (m Mutations) Len() int` — the entry count, so callers can test "record non-empty" without copying the slice. **Value receiver**, deliberately — see the receiver rule below.
+
+  **Receiver rule, and why it is split.** The mutating and snapshotting methods take a **pointer** receiver and must be nil-safe: `Append`, `AppendRef`, `Extend` (card 7) and `Snapshot` (card 7).
+  Those are the ones called on a recorder variable that can still be nil — `CloneHub` and `Unwire` both install their populating defer before the recorder exists.
+  The three read-only methods — `Entries`, `Len` and `MarshalJSON` — take a **value** receiver and carry no nil-safety obligation, because they are called on the `Mutations` *value* a result type carries, never on a recorder pointer.
+  This split is load-bearing rather than stylistic: `Mutated()` returns a non-addressable `Mutations` value, so `res.Mutated().Entries()` and `res.Mutated().Len()` — which batches 5, 6 and 7 all use — would not compile against a pointer receiver.
 
   A nil `*Mutations` receiver must be safe on `Append` and `AppendRef` (both return without panicking), so a not-yet-threaded call site degrades to recording nothing rather than crashing.
 
@@ -106,6 +111,7 @@ Batch-local decision: `Mutations` is a value type carrying an unexported `hubRoo
     Assert against the exact JSON byte string.
   - A `MutationRecord` embedded in a throwaway local struct marshals its record under the `mutations` key, and `Mutated()` returns the same entries.
   - A nil `*Mutations` receiver: `Append` and `AppendRef` do not panic.
+  - `Entries()` and `Len()` are callable on a non-addressable `Mutations` value — assert it by calling them directly on the result of a function returning `Mutations`, which is the construct batches 5-7 rely on and the reason those two carry value receivers.
 - **Commit:** `test(fabricengine): cover the mutation-record vocabulary`
 
 ### Card 3: `output.ErrFields`

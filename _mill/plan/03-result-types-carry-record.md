@@ -43,10 +43,10 @@ Batch-local decision: the existing `return XResult{}, err` sites are **left exac
   This is the composition primitive for a verb that calls another recording entry point (`Unwire` over `UnwireJunctions`), and for the CLI layer's concatenate-engine-record-then-CLI-entries rule in batch 6.
   A nil `*Mutations` receiver is safe, and an empty `other` is a no-op.
 
-  Also make `Snapshot()` and `Len()` safe on a nil `*Mutations` receiver: `Snapshot()` returns the zero `Mutations` and `Len()` returns 0.
-  `CloneHub` constructs its recorder only once the hub path is derived, so its `defer` observes a nil recorder on the earliest failure paths.
+  Also make `Snapshot()` safe on a nil `*Mutations` receiver, returning the zero `Mutations`: `CloneHub` and `Unwire` both install their populating defer before the recorder exists, so the defer can observe a nil recorder on the earliest failure paths.
+  `Len()` is **not** on this list — card 1 gives it a value receiver precisely so `res.Mutated().Len()` compiles, and a value receiver has no nil case.
 
-  Extend `internal/fabricengine/mutation_test.go` with cases for `Extend` (order preserved, entries unconverted, nil receiver safe, empty source a no-op) and for the nil-receiver behaviour of `Snapshot` and `Len`.
+  Extend `internal/fabricengine/mutation_test.go` with cases for `Extend` (order preserved, entries unconverted, nil receiver safe, empty source a no-op) and for the nil-receiver behaviour of `Snapshot`.
 - **Commit:** `feat(fabricengine): add Mutations.Extend for composed records`
 
 ### Card 8: embed the record in every mutating result type
@@ -156,7 +156,9 @@ Batch-local decision: the existing `return XResult{}, err` sites are **left exac
   Construct `rec := NewMutations(filepath.Dir(f.warpPath))` and install `defer func() { res.Mutations = rec.Snapshot() }()` as the first statements of each body.
 
   `CloneHub` mints the hub, so its hub root is not known at entry.
-  Declare `var rec *Mutations` and install the nil-safe defer as the first statements, then assign `rec = NewMutations(hubPath)` at the point `hubPath` is first derived — before the `createExclusiveDir(hubPath)` call at `internal/fabricengine/clone.go:225`, so the hub-minting record itself is captured by batch 4.
+  Declare `var rec *Mutations` and install the nil-safe defer as the first statements, then assign `rec = NewMutations(hubPath)` **immediately after each `hubPath = HubPath(cwd, name)` line, ahead of that branch's `if opts.Reset` block** — there are two such branches.
+  That is the final position, not a provisional one: placing it later (say, just before `createExclusiveDir`) would leave the recorder nil across the `resetHub` teardown, whose record batch 7 depends on, and batch 4 would then have to move it — the double-edit this plan avoids elsewhere.
+  Batch 4 card 14 relies on this placement rather than changing it.
 
   `(*Fabric).Pull`'s `if opts.SkipGit { return PullResult{}, nil }` early return stays exactly as written;
   the defer still populates it with the (empty) record.

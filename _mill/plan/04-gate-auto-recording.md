@@ -155,9 +155,10 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   doing it here would mean editing `CloneAndWire`'s return shape twice.
 
   `teardownHub`'s many call sites in `internal/fabricengine/clone.go` all sit inside `CloneHub`, whose recorder card 10 installed — pass it at each.
-  `resetHub`'s two call sites are also inside `CloneHub`, and the recorder **must not** still be nil at either: both are immediately preceded by `hubPath = HubPath(cwd, name)` in their own branch, so `hubPath` is in hand before the reset runs.
-  Move the `rec = NewMutations(hubPath)` assignment card 10 introduced up to directly follow each `hubPath = HubPath(cwd, name)` line, ahead of the `if opts.Reset` block, so the hub teardown is recorded rather than dropped.
-  This is load-bearing, not tidiness: the teardown's `path_removed` entry — whose hub-relative target is `"."` — is the only entry that can cover the `CloneHubReset`/`RealHub` cell's removals in batch 7's omission direction (see card 29's split treatment of a `"."` target).
+  `resetHub`'s two call sites are also inside `CloneHub`, and the recorder is **already** non-nil at both: card 10 places `rec = NewMutations(hubPath)` immediately after each `hubPath = HubPath(cwd, name)` line, ahead of that branch's `if opts.Reset` block.
+  This card relies on that placement and must not move it;
+  if the recorder is found nil at a `resetHub` call site, card 10 was implemented wrongly and that is the thing to fix.
+  The placement is load-bearing, not tidiness: the teardown's `path_removed` entry — whose hub-relative target is `"."` — is the only entry that can cover the `CloneHubReset`/`RealHub` cell's removals in batch 7's omission direction (see card 29's split treatment of a `"."` target).
 
   No behaviour, ordering, or error text changes anywhere in this card.
 - **Commit:** `refactor(fabricengine): thread the recorder through the junction, unwire and clone helpers`

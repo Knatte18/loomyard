@@ -28,7 +28,6 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Context:**
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/destroy.go`
-  - `internal/fabricengine/gitexclude.go`
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/pull.go`
   - `internal/fabricengine/coalesce.go`
@@ -36,6 +35,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Edits:**
   - `internal/fabricengine/portals.go`
   - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/gitexclude.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/remove.go`
@@ -66,9 +66,15 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 
   - `seedGitExclude` and `unseedGitExclude` — `internal/fabricengine/junction.go`
 
-  Each gains a leading `rec *Mutations` parameter, threaded from its callers, and records the resolved exclude-file path with `Append` only when `changed` is true.
+  Each gains a leading `rec *Mutations` parameter, threaded from its callers, and records the exclude file's own resolved path with `Append` only when the rewrite reports `changed`.
   A rewrite that changed nothing records nothing, per the record-only-on-observed-effect rule.
-  `mutateGitExclude` and `writeFileAtomically` themselves stay unparameterised — they are the mechanism, and their callers are the ones that know the act was a fabric mutation.
+
+  **That path is not in scope at either caller today, so `mutateGitExclude`'s return widens to carry it.** `resolveGitExcludePath` runs *inside* `mutateGitExclude` and its result never leaves the function, while `seedGitExclude`/`unseedGitExclude` hold only `WorktreePath(l, slug)`.
+  Change the signature to `mutateGitExclude(repoDir string, rewrite func(content string) (string, error)) (excludePath string, changed bool, err error)`, returning the resolved path on every path including the error ones where it is known, and update its three in-package callers (`seedGitExclude`, `unseedGitExclude`, `seedWeftArtifactExcludes`).
+  `seedGitExclude` currently discards the `changed` bool with `_`;
+  it must capture it, since the record is gated on it.
+  This is the smallest widening that makes the requirement satisfiable — the alternative, recording the worktree path with a `Detail` naming the exclude file, would put a `Target` on the record that is not the thing written.
+  `writeFileAtomically` stays untouched: it is the mechanism, and its caller is the one that knows the act was a fabric mutation.
 
   **`seedWeftArtifactExcludes` (`internal/fabricengine/weftgit.go`) is deliberately NOT recorded and NOT parameterised.** It writes only into the `.git` metadata directory, which `CaptureManifest` excludes wholesale — bucket 3 of the derived-inventory Shared Decision — so an entry would buy the oracle nothing.
   It is also reached only through `ensureWeftLockDirAt`/`ensureWeftLockDir`, so threading a recorder into it would force the parameter onto that chain and break its five callers (`internal/fabricengine/pull.go`, `internal/fabricengine/commit.go`, `internal/fabricengine/coalesce.go`, `internal/fabricengine/weftgit.go` itself, and `internal/fabricengine/commit_lock_integration_test.go`) for no coverage gain.
@@ -189,6 +195,8 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/fabrictest/manifest.go`
+  - `internal/fabricengine/boardweft.go`
+  - `internal/fabricengine/warpbinding.go`
 - **Edits:**
   - `internal/fabricengine/launchers.go`
   - `internal/fabricengine/clone.go`
@@ -202,18 +210,22 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   Every one is recorded at the **coarsest covering root**, per the derived-inventory Shared Decision — one entry per thing created, never one per file.
 
   `writeLaunchers` — `internal/fabricengine/launchers.go` — gains a leading `rec *Mutations` parameter, threaded from its two callers: `internal/fabricengine/add.go`, and `restorePortalAndLaunchers` in `internal/fabricengine/reconcile.go` (the intermediate `repairPairWiring` reaches it through, rather than calling it directly).
-  It records **two** entries on success:
+  **Every one of its entries is conditional on an observation, because none of its writes is unconditional.** `writeLaunchers` is also the repair path (`restorePortalAndLaunchers` calls it against an already-wired pair), so an unconditional entry set records writes that did not happen and fires batch 7's commission direction on correct behaviour.
+  The three predicates:
 
-  - one `KindDirCreated` for the launcher directory it minted — `LauncherDir(l, slug)`, i.e. `<hub>/_launchers/<anchorRel>/<slug>`. The two scripts it writes inside that directory, the IDE launcher and the fabric-checkout launcher, get no entries of their own: the coverage rule accounts for every path beneath the recorded root.
-  - one `KindFileWritten` for the **menu launcher**, which is *not* inside that directory. `menuLauncherPath` resolves to `<hub>/_launchers/<anchorRel>/menu.<ext>` — a sibling of the launcher directory, one level up — so no recorded root covers it and it needs its own entry.
+  - **The launcher directory** — `LauncherDir(l, slug)`, i.e. `<hub>/_launchers/<anchorRel>/<slug>`. `os.MkdirAll` succeeds on an already-existing directory, so stat the path *before* the `MkdirAll` and record `KindDirCreated` only when it was absent.
+  - **The two scripts inside it** — the IDE launcher and the fabric-checkout launcher. These are written unconditionally with deterministic content, so on the repair path they are rewritten byte-identically and the manifest shows no change at all. Record one `KindFileWritten` per script **only when the write actually changed the file**: read the existing bytes first (absent counts as changed) and compare against the content about to be written. When the directory entry above fired, these two are already covered by it under the coverage rule and may be omitted; when it did not, they are the only thing that can cover a real rewrite, so the comparison is what decides.
+  - **The menu launcher** — `menuLauncherPath`, `<hub>/_launchers/<anchorRel>/menu.<ext>`, a sibling of the launcher directory one level up, so no recorded root covers it. It is **never-clobber**: `writeLaunchers` returns early when the menu already exists, and `removeLaunchers` deliberately leaves it in place, so the repair path reaches that early return every time. Record its `KindFileWritten` only on the branch that actually reaches the `os.WriteFile`.
+
+  This card is the concrete instance of the record-only-on-observed-effect Shared Decision on the constructive side: "on success" is not the predicate — "the filesystem changed" is.
 
   `CloneHub` — `internal/fabricengine/clone.go` — records at each of its construction steps, using the recorder card 10 installed:
 
   - the `<hub>/.lyx` directory creation — `KindDirCreated`
   - each of the two `cloneRepo` calls (warp, then weft) — `KindWorktreeCreated` at the clone destination. A clone genuinely brings a worktree into being, and one entry covers the whole cloned tree.
   - `ensureBoardWorktree`'s materialization of `<hub>/_board` — `KindWorktreeCreated` at `boardDir`
-  - the `.lyx-anchor` marker write — `KindFileWritten`
-  - `writeWarpBinding`'s `.lyx-warp` record — `KindFileWritten`
+  - the `.lyx-anchor` marker write — `KindFileWritten`, **on the create branch only**. The adopt branch writes no marker (it found one already committed), so recording there would claim a write that never happened.
+  - `writeWarpBinding`'s `.lyx-warp` record — `KindFileWritten`, on the `writeRecord` branch that actually calls it
 
   Record each only on the success of its own step, never before attempting it.
   `cloneRepo` itself stays unparameterised — it is a mechanism with no notion of a record;
@@ -246,7 +258,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 
   Every test function name starts with `TestMutationRecord` so the batch's `-run TestMutationRecord` verify selects exactly this file's tests and nothing else.
 
-  Assert the two headline mutated-then-errored paths at the engine boundary, reading the record through `res.Mutated().Entries()`:
+  Assert the two headline mutated-then-errored paths at the engine boundary, reading the record through `res.Mutated().Entries()` — which compiles because card 1 gives `Entries()` a value receiver for exactly this construct:
 
   - **`Remove` refusing on a dirty warp worktree after `removePortal`/`removeLaunchers` already ran.** `internal/fabricengine/remove.go` runs the portal and launcher removals *before* its dirty pre-flight, so a correctly-refusing `Remove` has already destroyed both. Assert the returned record names both deletions, that the returned error is non-nil, and — separately — that `RefusalOf(err)` reports `false`: that pre-flight returns a bare `fmt.Errorf("worktree has uncommitted changes; use --force")`, never a `*destructiveRefusal`, so no `refusal` object exists on this path. Assert its **absence**, not its contents. This slice does not convert that pre-flight into a gate refusal.
   - **`Add` failing partway and running `rollbackAdd`.** Assert the record carries the creations *and* the rollback's own destructions, in execution order — a `worktree_created` before the `worktree_removed` that undoes it, not merely both present.
