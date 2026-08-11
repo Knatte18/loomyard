@@ -408,6 +408,14 @@ It is exactly what would have caught the dead `fabric.md` links, the dead phase-
 
 ## E — shed-model-contradiction-sweep
 
+**Override recorded 2026-08-11 (`shed-producer-typology-sweep`, as landed).**
+Task E was removed from the wiki without ever running, superseded by `shed-producer-typology-sweep`.
+E's **Question 1** (`Webster` versus producer atomicity) is **resolved**, not merely surfaced as this section's body frames it below — the producer typology plus the atomicity carve-out landed on `manifest/roadmap.md` on 2026-08-11.
+E's **Question 2** (`Discussion-Write` has no Input) is resolved by a symmetric thin-Input carve-out, recorded in `manifest/designs/shed.md`'s producer-contract section — the "the task record is the Input" framing considered at scoping time is explicitly rejected as a mill-ism that does not transfer to `lyx`.
+E's **Question 3** (the overloaded `shed` name) is discharged by a disambiguating note at the first `shed`/`glance` occurrence in `docs/overview.md`.
+The successor task also discharged all three of E's ownership positions — `manifest/designs/loom.md`'s final owner, `manifest/roadmap.md`'s last owner, `docs/overview.md`'s last owner — and wrote the deferred phase-enum record E was assigned.
+The body below stays byte-identical as the scoping-time record; do not read it as still pending.
+
 # shed: sweep the remaining producer-model contradictions and add the pointer-rule invariant
 
 ### Why
