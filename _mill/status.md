@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -36,4 +36,27 @@ plan-review-r8  '2026-08-11T17:07:24Z'
 plan-fix-r8  '2026-08-11T17:07:24Z'
 plan-review-r9  '2026-08-11T17:11:03Z'
 planned  '2026-08-11T17:11:20Z'
+implementing  '2026-08-11T17:14:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: mutation-vocabulary
+    state: pending
+  - name: exported-check-enum
+    state: pending
+  - name: result-types-carry-record
+    state: pending
+  - name: gate-auto-recording
+    state: pending
+  - name: constructive-recording
+    state: pending
+  - name: cli-envelope
+    state: pending
+  - name: fabrictest-truthfulness-oracle
+    state: pending
+  - name: guard-and-docs
+    state: pending
 ```
