@@ -45,6 +45,8 @@ batches:
     commit_sha: cc0f12e7f0b2ff43d6e03b75ab5b8cddddc95167
     verify_baseline_failures: []
   - name: roadmap-overview-hardener-followups
-    state: pending
+    state: running
+    implementer_session: d8338de8-1a3c-438b-9d8e-0d3a17e6f570
+    start_sha: ffb70d97c7553e8cf7850abb24f165975bf51afd
     verify_baseline_failures: []
 ```
