@@ -33,9 +33,9 @@ The key cannot go straight to `loom.yaml` instead: both live `Select` call sites
 - `internal/webstercli/cli.go:158` — `batcher.Select(websterCfg.Batcher)` becomes `batcher.Active(layout.AnchorPath())`.
 - `internal/webstercli/run.go:57` — populate the new `RunDeps.Batcher` field from `c.batcher`.
 - `internal/websterengine/config_test.go:125` — the `cfg.Batcher == "identity"` assertion moves into `internal/batcher`'s own tests, in the shape of an `Active` test.
-- `internal/webstercli/verbs_test.go` — `seedPersistentPreRunFixture` seeds `batcher.yaml`; the gate-test pair at `:696–732` string-replaces against batcher's template instead of webster's; the `batcher.Select("")` helper use at `:221–223` is revisited.
+- `internal/webstercli/verbs_test.go` — `seedPersistentPreRunFixture` seeds `batcher.yaml`; the gate-test pair at `:696–732` string-replaces against batcher's template instead of webster's; the comment at `:218–220` is rewritten (the `batcher.Select("")` call itself stays — see Decisions → verbs-test-select-helper).
 - Four doc amendments (see Decisions → doc-amendments): `internal/batcher/doc.go`, `CONSTRAINTS.md`'s Batcher Registry+Config Invariant, `docs/overview.md`, `docs/reference/plan-format.md`.
-- Two further doc sites discovered during exploration and not named in the manifest: `internal/websterengine/doc.go:23–25` and `docs/reference/webster-contract.md:14`.
+- Three further doc sites discovered during exploration and not named in the manifest: `internal/websterengine/doc.go:23–25`, `docs/reference/webster-contract.md:14`, and `internal/websterengine/master-template.md:37`.
 
 **Out:**
 
@@ -93,9 +93,29 @@ The key cannot go straight to `loom.yaml` instead: both live `Select` call sites
 - Rationale: identical to every other module's behaviour; no batcher-specific absence path. A module that silently tolerates a missing config is the one module whose config never gets created.
 - Rejected: falling back to `DefaultName` when the file is absent — never blocks a run, but hides that the split happened and makes `batcher` the sole exception.
 
+### reconcile-required-for-pre-registry-wefts
+
+- Decision: a weft whose tracked `_lyx/config/` was written before `batcher` joined `configreg` gets no `batcher.yaml` until an operator runs `lyx config reconcile --apply` and commits the result. Until then, every `lyx webster <verb>` aborts in `PersistentPreRunE` with `configengine.Load`'s "config file …/batcher.yaml not found; run \"lyx config reconcile\"" error. This is accepted as the standard reconcile step, not worked around.
+- Rationale: `_lyx/config/*.yaml` is committed weft content, materialized once by `configsync.ReconcileAll(res.WeftBase, true)` at `internal/fabriccli/clone.go:83` — writing one file per module registered in `configreg` *as of the binary that ran that clone*. Nothing re-runs that afterwards; `lyx config reconcile` is the only thing that adds a newly-registered module's file. So the affected set is defined by the weft's committed config content, not by worktree age: a worktree created after this task lands still lacks `batcher.yaml` if it branches off such a weft, and one `reconcile --apply` plus commit on the weft fixes every worktree off it at once. A hub cloned after this lands is unaffected, since `clone` reconciles against the then-current registry — which also means the sandbox suites (`tools/sandbox/SANDBOX-WEBSTER-SUITE.md`) that clone a fresh hub need no change.
+- The error is loud, names the exact missing file, and already names the fixing command, so it is self-resolving for an operator who hits it.
+- Rejected: declaring the case out of existence (narrower than it looks — it turns on whether any weft in use has a committed `_lyx/config/` predating this task, which was not verified; this worktree has no `_lyx/config/` at all, so it proves nothing either way); having this task run reconcile and commit `batcher.yaml` into the weft as part of landing (commits generated config from a task branch and puts config materialization inside a code task).
+- Relationship to no-migration-path: distinct concerns. That decision is about the *orphaned* `batcher:` key in `webster.yaml`, which needs no code. This one is about the *newly required* `batcher.yaml` file, which needs an operator action. Neither implies the other.
+
+### verbs-test-select-helper
+
+- Decision: `internal/webstercli/verbs_test.go:221`'s direct `batcher.Select("")` call stays as-is. Only its explanatory comment at `:218–220` is rewritten.
+- Rationale: `Select` remains exported and its `"" → DefaultName` behaviour is unchanged, so the call still compiles and still produces exactly the batchifier a real `PersistentPreRunE` would have stored on `c.batcher`. Routing this hand-built `*websterCLI` literal through `Active` instead would require the test to materialize an `_lyx/config/` tree for no gain — the test is deliberately bypassing `PersistentPreRunE`, not exercising it. The comment is what goes stale: it currently says the resolution is "exactly what `PersistentPreRunE` would have resolved and stored on `c.batcher`", which must now name `Active`-resolved `c.batcher` as the thing being stood in for.
+- Rejected: switching the call to `Active` (needs a config tree for a test whose whole point is bypassing config load); deleting the stand-in and letting `c.batcher` be nil (the verbs under test call `c.batcher.Batch`).
+
+### persistentprerun-ordering
+
+- Decision: the `batcher.Active` call stays exactly where `batcher.Select` sits today — `internal/webstercli/cli.go:158`, after `websterengine.LoadConfig` at `:151`.
+- Rationale: the position decides which module's not-found error a half-reconciled worktree surfaces first. Leaving it in place preserves today's precedence (shuttle → reed → webster → batcher, `cli.go:137–163`), so no existing test's expected error message changes. Moving it earlier is possible — `Active` no longer depends on `websterCfg` — but buys nothing and silently reorders operator-visible failure output.
+- Rejected: moving it ahead of the three `LoadConfig` calls (reorders error precedence for no benefit and would need existing fixture expectations re-checked).
+
 ### doc-amendments
 
-- Decision: six doc sites, each its own step. The four from the manifest plus two found during exploration.
+- Decision: seven doc sites, each its own step. The four from the manifest plus three found during exploration.
 - Rationale: each site states something this task falsifies, so each belongs to this task under the repo's own ownership rule.
 - The sites:
   1. `internal/batcher/doc.go` — the package comment must stop saying batching is "100% webster's own execution-policy decision" (lines 5–6) and instead say it is a standalone step webster consumes today and `Shed` will drive as producer #8 once built. The "chosen via webster.yaml's batcher: config key" paragraph (lines 12–15) must name `batcher.yaml`'s `active:` key and `Active` instead.
@@ -104,6 +124,7 @@ The key cannot go straight to `loom.yaml` instead: both live `Select` call sites
   4. `docs/reference/plan-format.md:20–28`, the "Batch is gone / the card is the unit" section — the card stays the plan's unit, but the "entirely internal to webster" framing at `:22`/`:24` goes.
   5. `internal/websterengine/doc.go:23–25` — "selected once at config-load time via webster.yaml's `batcher:` key". Not in the manifest's list; the manifest names `doc.go:12` and `:25–27`, which have since drifted.
   6. `docs/reference/webster-contract.md:14` — "webster groups a plan's cards into execution batches via a config-selected batcher". Ambiguous today, actively wrong-reading once the config is not webster's; a one-clause fix.
+  7. `internal/websterengine/master-template.md:37` — "`lyx webster` groups this flat list into execution batches via the plan's configured batchifier". Not in the manifest's list. This is an embedded agent prompt, and the line is wrong *today*: the batchifier is not the plan's, it is config's. This task makes it wrong in a second way by moving the config owner, so it is this task's to fix under the same ownership rule the other six use. Correct it to name `batcher.yaml`'s configured batchifier, leaving the surrounding "you drive the loop by BATCH number, not by reasoning about grouping yourself" instruction untouched.
 
 ## Technical context
 
@@ -148,6 +169,8 @@ From `CONSTRAINTS.md`:
 - **CLI / Cobra Invariant** — does **not** apply. Nothing is registered on the cobra root; there is no `Command()`, no `Short`, no help-tree entry.
 - **Sandbox Suite Coverage** — does **not** apply, and must not be satisfied. `cmd/lyx/sandbox_coverage_test.go:38–47` enumerates `newRoot().Commands()`, i.e. cobra registration, not `configreg`. Adding a `**Covers:** batcher` tag would fail that test's drift assert. Verified against the current file during exploration.
 - **Documentation Lifecycle** — applies: this task changes observable config behaviour and a module's shape, so `docs/overview.md`, the affected reference docs, and `CONSTRAINTS.md` all land in the same commit as the code.
+- **Test Tier Purity Invariant** (`:288–299`) — applies to the new `internal/batcher` tests and must not be tripped. All three existing test files there carry the header "Tier-1 (pure logic, no git, no TestMain)". An untagged test file must not call `gitexec.RunGit`, `exec.Command`/`exec.CommandContext`, or `lyxtest.Copy*`. The seeding decision below keeps `internal/batcher` untagged and Tier-1. Enforced by `cmd/lyx/tierpurity_test.go`.
+- **Hermetic Git Test Environment Invariant** (`:301–309`) — would apply if the new tests seeded config via `lyxtest.SeedConfig`, since that helper is named in the invariant's own git-spawning list and would oblige `internal/batcher` to add a `TestMain` calling `lyxtest.HermeticGitEnv()`. The seeding decision below avoids that entirely, so `internal/batcher` stays without a `TestMain`. Enforced by `cmd/lyx/hermeticenv_test.go`.
 
 Discovered during discussion:
 
@@ -155,12 +178,19 @@ Discovered during discussion:
 
 ## Testing
 
+**Seeding mechanism for every new `internal/batcher` test — decided, not left to the plan writer.**
+Config fixtures are written with a plain-filesystem helper: `os.MkdirAll(configengine.ConfigDir(baseDir), 0o755)` then `os.WriteFile(configengine.ConfigFile(baseDir, "batcher"), …)`, over a `t.TempDir()` base.
+Copy the shape of `internal/websterengine/config_test.go:21–32`'s `seedConfig`, whose own doc comment already states the reason: it is "a plain-filesystem stand-in for `lyxtest.SeedConfig`, deliberately avoiding that helper's git spawn since `configengine.Load` never needs a repository."
+`configengine.FindBaseDir` checks only that `<baseDir>/_lyx` exists — no git repository is involved at any point in `Active`'s path.
+Do **not** use `lyxtest.SeedConfig`: it spawns git, which drags `internal/batcher` under the Hermetic Git Test Environment Invariant (a `TestMain` calling `lyxtest.HermeticGitEnv()`) and out of Tier-1, contradicting the "Tier-1 (pure logic, no git, no TestMain)" header all three existing test files carry.
+`internal/batcher` gains no `TestMain` and no build tag as a result of this task.
+
 Existing evidence that must keep passing untouched: `internal/batcher/batcher_test.go`, `registry_test.go`, and `identity_test.go`. They are the proof that only the configuration source moved and the batching itself did not. If any of them needs editing, something outside this task's scope has changed.
 
 TDD candidates, in the order they are worth writing:
 
-1. **`internal/batcher` — `Active` resolves from `batcher.yaml`.** The core new behaviour. Seed a worktree with `_lyx/config/batcher.yaml`, call `Active(baseDir)`, assert the returned `Batcher`'s `Name()`. Cover: the shipped-template default (`active: ""` → `identity`), an explicit `active: "identity"`, and an unknown name (error naming the bad value, reusing `Select`'s existing message). This absorbs the `cfg.Batcher == "identity"` assertion moving out of `internal/websterengine/config_test.go:125`.
-2. **`internal/batcher` — absent config is a hard error.** `Active` against a worktree with an `_lyx/` tree but no `batcher.yaml` returns an error naming the file and pointing at `lyx config reconcile`. Guards the absent-config-is-a-hard-error decision against a later silent-default regression.
+1. **`internal/batcher` — `Active` resolves from `batcher.yaml`.** The core new behaviour. Seed `_lyx/config/batcher.yaml` under a `t.TempDir()` base per the seeding mechanism above, call `Active(baseDir)`, assert the returned `Batcher`'s `Name()`. Cover: the shipped-template default (`active: ""` → `identity`), an explicit `active: "identity"`, and an unknown name (error naming the bad value, reusing `Select`'s existing message). This absorbs the `cfg.Batcher == "identity"` assertion moving out of `internal/websterengine/config_test.go:125`.
+2. **`internal/batcher` — absent config is a hard error.** `Active` against a base dir with an `_lyx/` tree (created with `os.MkdirAll`, no config file) returns an error naming the file and pointing at `lyx config reconcile`. Guards the absent-config-is-a-hard-error decision against a later silent-default regression, and is the unit-level counterpart of the operator step recorded in reconcile-required-for-pre-registry-wefts.
 3. **`internal/configreg` — `batcher` is in the module list, in sort order.** Extend `configreg_test.go:17`'s existing `want` slice rather than adding a parallel test; that test already pins order as user-visible.
 4. **`internal/webstercli` — the `PersistentPreRunE` gate still fails fast.** The relocated pair from `verbs_test.go:696–732`, driving `Command()`'s real `PersistentPreRunE` (never a hand-built `*websterCLI`), with the bad name now injected into `batcher.yaml`. Behaviour asserted is unchanged: exit 1, `"ok":false`, and the unknown-batcher message naming the bad key, proven via the `status` verb.
 
@@ -181,4 +211,6 @@ Acceptance: `go build ./...` and `go test ./...` pass. The config relocation is 
 - **Q:** Where does the migration test live? **A:** Nowhere. Pre-split worktrees do not exist, so that state does not need supporting.
 - **Q:** "Hard error" on what, exactly? **A:** Only the absent-`batcher.yaml` case, which is `configengine.Load`'s standard behaviour. No strict unknown-key validation in `configengine` — the state it would catch does not exist.
 - **Q:** File layout inside `internal/batcher`? **A:** Mirror every other config module — separate `template.yaml`, `template.go`, `config.go`.
+- **Q:** [review round 1 gap] A weft whose `_lyx/config/` predates this task gets no `batcher.yaml`, so `lyx webster` aborts until reconcile is run. How is that handled? **A:** Record it as an accepted one-step operator action, together with the fact that `fabric clone` reconciles automatically so fresh hubs and the sandbox suites are unaffected. Clarified during the exchange that "predates" is about the weft's *committed config content*, not worktree age — a worktree created after this lands is still affected if it branches off such a weft.
+- **Q:** [review round 1 gap] How do the new `internal/batcher` tests seed `_lyx/config/batcher.yaml`? **A:** Plain filesystem, no git, copying `internal/websterengine/config_test.go:21–32`'s `seedConfig` — keeps the package Tier-1 with no `TestMain`, avoiding both the Test Tier Purity and Hermetic Git invariants.
 - **Q:** Entry-point name, and what makes a batcher "active"? **A:** `Active`. The word is the package's own existing vocabulary (`registry.go:31`, `doc.go:12`, `webstercli/cli.go:54`,`:158`); it names the one registry entry this worktree's config selects, against the registered-but-idle rest.
