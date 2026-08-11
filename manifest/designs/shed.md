@@ -5,7 +5,8 @@
 ## What it is
 
 **Revised model (2026-08-08), superseding an earlier "two swappable slots" description:** `Shed` has no predefined slots at all — no Preflight-slot, no Producer-slot, no shared Finalize.
-It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across every entry.
+It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry;
+atomicity — one mechanical action or LLM session, never an internal multi-step process of its own — binds **simple** producers only, per the carve-out in [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) below.
 Everything that used to look "special" — Preflight, Finalize, review gates — is just a producer like any other in that list.
 What makes `loom` "loom" versus `Hardener` is purely which producers are in the list, in what order: pure configuration, not architecture.
 See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for `loom`'s concrete list — this doc stays about `Shed`'s own generic mechanism, not about enumerating `loom`'s specific producers.
@@ -24,6 +25,27 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
 A producer's **contract** — the only thing any other producer or instruction file may reference — is exactly two parts: **Input** (a pointer to the format-contract file defining consumed artifact(s)' shape, never a restated copy) and **Output** (same pointer discipline).
 **The pointer rule**: an instruction file (a producer's own prompt/skill) must never duplicate or paraphrase another producer's format-contract content, only point at it — so editing that one format file alone is sufficient to change what both its producer and its consumers do.
 Review is never a property attached to the producer it reviews; it is always the next, separate producer in the list.
+
+Producers split into two kinds, and the atomicity rule stated above is scoped to the first:
+
+- A **simple, single-agent-spawn producer** is one mechanical action or one LLM session.
+  The current LLM examples are `Discussion-Write` and `Plan-Write`;
+  the mechanical examples are the five gate/step producers `Preflight`, `Discussion-Validate`, `Plan-Sweep`, `Plan-Validate` and `Batchifier`.
+  The LLM examples are named as **candidates** for a shared `Shed`-level "LLM-Producer" type — input file(s) plus optional input-format pointer, internal instruction files, output file(s) plus optional output-format pointer, plus a log — candidate, never decided.
+  This kind does not typically need its own crash-recovery, since re-running one spawn from scratch is cheap.
+- A **bespoke, multi-spawn producer** owns its own internal loop — many LLM spawns, or an agent orchestrating sub-agents.
+  The current examples are `Webster` (its per-batch fork loop) and the three `perch`-gated review producers `Discussion-Review`, `Plan-Review` and `Webster-Review` (perch's own round loop, now `internal/treadleengine`, spawning a fresh burler round per iteration plus ephemeral judge/triage calls).
+  Bespoke producers are **exempt from the atomicity rule by design, not in violation of it.**
+
+`Shed`'s own contract stays exactly two parts, Input and Output pointers.
+Its resume/crash-recovery/pause guarantee operates at **producer granularity only**, re-driving a crashed producer from its last recorded pointer and never mid-producer.
+A bespoke multi-spawn producer that would lose expensive internal progress on a crash needs its **own** internal crash-recovery, a capability `Shed` does not provide;
+both current bespoke examples already ship it — `internal/websterengine` re-drives the first unreported batch from its recorded state (see its package documentation's crash/resume section), and `internal/treadleengine`'s round loop keeps its own resumable run-dir state under an OS advisory lock released automatically if the holding process dies.
+
+`Finalize` is classified **bespoke**: [finalize.md](finalize.md) puts raddle-regeneration's parallel leaf forks plus a serial `Overview.md` step inside the merge's critical section, requires the merge lock to span that whole section as one atomic unit never released and re-acquired partway through, and spawns a fresh higher-capability LLM in a clean session on merge conflict — an internal multi-spawn process with an internal-atomicity obligation `Shed` does not provide at sub-producer granularity.
+The happy path is genuinely pure Go with zero LLM spawns, and the classification is made on the worst case regardless, because the axis exists to say who owns crash-recovery.
+Unlike `Webster` and the `perch`-gated reviews, `Finalize` does not ship its own internal crash-recovery today, so a crash inside its locked critical section is unrecovered — recorded here as an observation for the `Shed` build task, not designed here.
+[finalize.md](finalize.md) already records an alternative giving Raddle its own `Shed` producer, with merge-in and locking lifted into `Shed` itself, as a live candidate for a future task.
 
 A producer's **definition** — internal to how `Shed` actually runs it, invisible to the contract — additionally names an **engine** (which code drives it) and a **config** (how that engine is parameterized for this specific producer).
 Many producers share the same engine: every `*-Review` producer is `engine: perch`, differing only by which rubric/fasit `config` file is handed to it — the same generic, profile-driven mechanism `perch` already implements today ("reused for every phase... only the review profile differs").
