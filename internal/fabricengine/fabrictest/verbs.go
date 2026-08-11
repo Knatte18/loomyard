@@ -864,6 +864,11 @@ func checkoutCase() VerbCase {
 						if !switched && warpBranch != f.OriginalBranch {
 							tb.Errorf("Checkout neither switched to %q nor left the original branch %q; warp branch = %q", f.CheckoutBranch, f.OriginalBranch, warpBranch)
 						}
+						// The tracked modification must be on disk either way -- see this file's own
+						// doc comment on why the git-status shape it reports (still tracked-modified,
+						// or carried into a branch that never tracked this path) is git's to decide,
+						// not the content surviving at all.
+						assertTrackedContentSurvives(tb, h.PrimeWorktree(), sentinelFileName("dirtyWarpTracked"))
 					},
 				}
 			default:

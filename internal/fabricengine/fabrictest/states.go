@@ -77,6 +77,12 @@ func sentinelFileName(stateName string) string {
 	return "fabrictest-sentinel-" + stateName + ".txt"
 }
 
+// trackedDirtMarker is the line plantTrackedDirt appends to a sentinel file's committed content to
+// produce its own local modification. Its presence on disk is what assertTrackedContentSurvives checks
+// for, independent of whatever git status shape (" M" tracked-modified, or "??" if a branch switch
+// carried it into a tree that never tracked it) the sentinel currently reports.
+const trackedDirtMarker = "fabrictest sentinel dirty"
+
 // plantTrackedDirt commits a fresh sentinel file into checkout, then modifies it, so `git status
 // --porcelain` reports the sentinel with the tracked-modification " M" shape.
 func plantTrackedDirt(tb testing.TB, checkout, stateName string) string {
@@ -89,10 +95,31 @@ func plantTrackedDirt(tb testing.TB, checkout, stateName string) string {
 	}
 	mustGit(checkout, "add", name)
 	mustGit(checkout, "commit", "-m", "fabrictest: seed "+name)
-	if err := os.WriteFile(path, []byte("fabrictest sentinel seed\nfabrictest sentinel dirty\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("fabrictest sentinel seed\n"+trackedDirtMarker+"\n"), 0o644); err != nil {
 		tb.Fatalf("plantTrackedDirt(%s): modify %s: %v", stateName, path, err)
 	}
 	return name
+}
+
+// assertTrackedContentSurvives fails tb unless checkout still carries sentinel on disk with
+// plantTrackedDirt's own local modification intact, regardless of whatever git status shape the
+// sentinel currently reports.
+// This is what makes the check usable for a cell whose outcome is declared
+// KindEitherProceedsOrRefusedBefore -- e.g. checkoutCase's dirtyWarpTracked cell, where `git switch`
+// itself decides whether the modification stays tracked-modified at the original branch or is carried
+// across as untracked content in a tree that never had this path -- rather than only for a cell with a
+// single git-status shape it can assert via assertDirtyContains.
+func assertTrackedContentSurvives(tb testing.TB, checkout, sentinel string) {
+	tb.Helper()
+
+	path := filepath.Join(checkout, sentinel)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		tb.Fatalf("tracked modification lost: read %s: %v", path, err)
+	}
+	if !strings.Contains(string(data), trackedDirtMarker) {
+		tb.Fatalf("tracked modification lost: %s no longer contains %q; got %q", path, trackedDirtMarker, string(data))
+	}
 }
 
 // plantUntrackedDirt writes a fresh sentinel file into checkout without ever staging or committing it,
