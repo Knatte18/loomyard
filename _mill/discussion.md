@@ -72,8 +72,7 @@ Both predecessors are merged;
   | --- | --- | --- |
   | `path_removed` | `removePath` (`destroy.go:610`) | `Detail` is `recursive` (the `RemoveAll` branch, `:624`) or `single` (the `os.Remove` branch, `:630`) |
   | `worktree_removed` | `removeGitWorktree` (`:640`) | |
-  | `link_removed` | `removeLink` (`:657`) | |
-  | `link_repointed` | `repointLink` (`:668`) | `Detail` carries the new target |
+  | `link_removed` | `removeLink` (`:657`) | also the removal half of a repoint — see below |
   | `branch_deleted` | `deleteBranch` (`:683`) | `Target` is the ref name |
   | `worktree_reset` | `resetHardTo` (`:739`) | `Detail` carries the SHA reset to; the primitive behind defect 1 |
   | `dir_created` | `createExclusiveDir` (`:703`) | constructive minter |
@@ -81,11 +80,17 @@ Both predecessors are merged;
   | `branch_created` | verb success sites | `Target` is the ref name |
   | `branch_pushed` | verb success sites | `Target` is the ref name |
   | `commit_created` | verb success sites | `Detail` carries the SHA |
-  | `link_created` | verb success sites (junction wiring) | |
+  | `link_created` | verb success sites (`fslink.CreateDirLink`, `junction.go:169,319`) | also the create half of a repoint |
   | `file_written` | verb success sites (`.git/info/exclude`, config rewrites) | |
+  | `push_spawned` | `sync`'s detached-push call site | a push was *launched*, not observed — see the composition section |
 
-  The first eight are auto-recorded inside `destroy.go`;
-  the last five are hand-recorded at their success sites, since no chokepoint covers them.
+  Seven are auto-recorded inside `destroy.go` (`path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `worktree_reset`, `dir_created`, `worktree_created`);
+  the remaining six are hand-recorded at their success sites, since no chokepoint covers them.
+
+  **There is deliberately no `link_repointed` kind.** `repointLink` (`destroy.go:668-678`) executes *by calling* `removeLink`, and the replacement link is created later at the caller's own `fslink.CreateDirLink` (`junction.go:169,319`), outside the gate entirely.
+  A repoint is therefore recorded as what physically happens — a `link_removed` from the gate, then a `link_created` from the caller — rather than as one synthetic kind.
+  This also resolves a `Detail` that could not be filled: the new target simply does not exist at `repointLink`'s recording site.
+  **Rejected:** keeping `link_repointed` and suppressing the inner `removeLink`'s record (one entry per logical act, but it requires passing a nil recorder into `removeLink`, which defeats the compiler-enforced threading the `gate-auto-records` Decision is built on, and still leaves `Detail` unfillable).
 
   **Rule for adding a member:** a new `Kind` lands in the same commit as its recording site and its guard-test entry, never ahead of either. `mutation.go` is the single declarer of the enum — no other file declares a kind string literal.
 - **Rationale:** JSON-stable, trivially assertable, and the enum is precisely what a guard test can pin. It mirrors `PruneEntry`'s existing flat-fields-plus-a-string-reason shape rather than introducing nested payloads into a package whose result types are all currently flat.
@@ -108,6 +113,15 @@ Both predecessors are merged;
   Rather than split the mechanism — a struct field for the five request-shaped sites and a parameter for the three others — every one of the eight takes `rec *Mutations` as an explicit leading parameter.
   **Rationale:** a missing struct field is a silent zero value the compiler accepts;
   a missing parameter does not compile. Given that this entire slice exists because a record was silently dropped, the mechanism that makes dropping it a build failure is the right one, and one uniform rule beats two.
+  **Recording timing — append only after the primitive observably changed state.**
+  The record is a log of what happened, so a call that changed nothing appends nothing. Three concrete cases, all of which would otherwise produce entries the manifest cannot corroborate:
+  - `removePath` returns `nil` early when the target is already absent (`destroy.go:615-618`). That is a successful no-op, not a removal — **record nothing**.
+  - `removeGitWorktree` (`:640`) and `deleteBranch` (`:683`) return git's own `exitCode` and `stderr` alongside `err`, so a **nonzero exit with a nil `err`** is reachable. Record only when `err == nil` **and** `exitCode == 0`.
+  - The two minters record after the create actually succeeds, never before attempting it.
+
+  This rule is what makes the cross-check's commission direction sound: if the record could contain no-ops, "every record entry has a matching diff change" would fail on correct behaviour, and the assertion would have to be weakened to the point of uselessness.
+  It is also the rule that keeps auto-recording from committing the *opposite* of the campaign's defect — claiming a destruction that never occurred.
+
   **Rejected:** adding `rec` to `pathRequest`/`branchRequest` and giving the other three a parameter anyway (less churn at the five request-shaped call sites, but two mechanisms to remember and a silently-omissible field on the majority of them);
   adopting the request types into the three outliers (uniform shape, but `createExclusiveDir` and `createGitWorktree` are constructive minters that have no ownership or dirtiness to declare, so the request fields would be dead weight carried purely for shape).
 - **Rationale:** the **Fabric Destruction Chokepoint Invariant** already guarantees, machine-checked by `cmd/lyx/destructiveguard_test.go`, that every destructive primitive in `package fabricengine` routes through `destroy.go`. Recording there makes destructive-mutation coverage *provably total by construction* rather than a per-call-site review obligation. This is the one place in the codebase where that guarantee already exists, and declining to use it would be throwing it away.
@@ -162,7 +176,17 @@ Both predecessors are merged;
 - **Decision:** permitted removal roots suppress **diff noise only**, and never suppress the honesty assertion. The record must still name a permitted-root mutation positively. Concretely, each cell runs `DiffManifest` **twice**: once with the cell's permitted roots, feeding the existing survival assertion (what was allowed to change), and once with a `nil` permitted list, feeding the new honesty assertion (what the record must account for).
 - **Rationale:** this is the difference between the slice's headline case asserting something and asserting nothing. The `Remove` anomaly cell declares `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>` as permitted precisely *because* they do get destroyed before the refusal — so if permitted roots also suppressed the honesty check, the one cell that reproduces "mutated, then refused" would assert exactly nothing about the record. Separating the two questions is what makes the cell say: those deletions were allowed to happen **and** the envelope admitted to them.
 - **Mechanically free:** `DiffManifest(before, after Manifest, permitted []string)` (`fabrictest/manifest.go:289`) already takes the permitted list as a parameter, so calling it a second time with `nil` needs no API change.
-- **The cross-check, stated in both directions:** every change in the unfiltered diff must have a matching record entry (a lie of omission — defect 2's shape), and every record entry must have a matching unfiltered-diff change (a lie of commission).
+- **Only the manifest-observable Kinds participate in the diff cross-check.** `CaptureManifest` records `.git` itself and each `.git/worktrees/<name>` at existence granularity and excludes everything else beneath `.git`, and states outright that "branch existence is deliberately not carried by the manifest at all;
+  it is asserted through git itself in the per-verb effect assertions" (`fabrictest/manifest.go:109-118,184-213`). Splitting the enum accordingly:
+  - **Manifest-observable — cross-checked both ways:** `path_removed`, `worktree_removed`, `worktree_created`, `dir_created`, `link_removed`, `link_created`, and `file_written` **when its target is outside `.git/`**.
+  - **Git-state — exempt from the diff cross-check, asserted against git itself** via the existing per-verb effect assertions, which is the authoritative oracle rather than an inference from a ref file: `branch_created`, `branch_deleted`, `branch_pushed`, `commit_created`, `worktree_reset`, `push_spawned`, and `file_written` **when its target is under `.git/`** (e.g. `.git/info/exclude`, which the manifest deliberately excludes).
+
+  Without this split the stated reverse direction would fail on every cell that creates a branch or lands a commit — the record would carry entries the manifest can never corroborate, and the assertion would be reporting a lie of commission on entirely correct behaviour.
+- **The cross-check, stated in both directions, over the manifest-observable kinds only:** every change in the unfiltered diff must be covered by some record entry (a lie of omission — defect 2's shape), and every manifest-observable record entry must have at least one corresponding unfiltered-diff change (a lie of commission).
+- **Matching is segment-wise subtree containment, not path equality.** One `worktree_created` or `path_removed` entry names a single root, while `DiffManifest` emits one `Change` per path beneath it — so a normal `Add` yields dozens of diff entries against one record entry. Under string equality every one of those would read as a lie of omission on correct behaviour. Concretely:
+  - *Omission:* every unfiltered-diff change's path must equal, or be a segment-wise descendant of, some manifest-observable record entry's `Target`.
+  - *Commission:* every manifest-observable record entry's `Target` must have at least one unfiltered-diff change at or beneath it.
+  - Segment-wise means the same matching `pathPermitted` already implements for permitted roots — a root of `_portals/x` never matches `_portalsfoo/y` — so the harness has the helper already and the two mechanisms stay consistent.
 - **Rejected:** excluding permitted-root changes from the cross-check (simpler, one `DiffManifest` call — and it silently guts the `Remove` anomaly cell, the best live test case the slice has);
   asserting the record only against the filtered diff (same defect, less obviously).
 
@@ -202,10 +226,16 @@ Note that `push` and `sync` currently return bare `error` with no result type at
 
 - `PushResult` is introduced once and returned by all three push entry points — `(*Fabric).PushWeft` (`weftgit.go:269`), `PushWarpAt` (`spawn.go:89`), and `CoalescePushBothAt` (`coalesce.go:86`). One type, three producers;
   `CoalescePushBothAt` pushes both sides, so its record simply carries two `branch_pushed` entries.
-- `sync` gets **no** engine result type, because it has no engine function — it is composed in `internal/fabriccli/weft_verbs.go:243-265` from a commit call followed by a push call. The CLI concatenates the two records **in execution order** (commit's entries first, then push's) into one flat `mutations` array.
-- The composition rule for `sync`'s envelope: `partial` is true when either composed call returned an error and the **combined** record is non-empty. This is the case that matters — a commit that lands followed by a push that fails is exactly "mutated, then errored", and the combined record is what makes it visible.
-- `sync` therefore has no `PartialSyncError` and needs none;
-  the combined record plus `partial` carries the same information without a fourth partial-error type.
+- **The `push` verb is itself two calls, not one.** `weft_verbs.go:188-192` runs `fab.Commit` and *then* `fab.PushWeft`, both in-process. So `push`'s envelope is already a concatenation — the commit record followed by the push record, in execution order — and needs the same rule this section originally reserved for `sync`. Its `--bypass` branch (`:179-186`) instead calls `CoalescePushBothAt` alone, and carries that one record.
+- **`sync` is not "commit + push" and cannot carry a push record at all.** `weft_verbs.go:257-265` runs `fab.Commit` and then `spawnPush`, which delegates to `fabricengine.SpawnDetachedPush` (`fabriccli/spawn.go:13-15`) — a **detached child process**. The push happens in another process, after this one has returned;
+  its outcome is unobservable here.
+  `sync`'s envelope therefore carries the commit record plus exactly one `push_spawned` entry (`Target`: the weft worktree path;
+  `Detail`: `detached`), recording that a push was *launched*.
+  It must **never** emit `branch_pushed`, which would assert an outcome this process did not observe — precisely the control-flow-derived lie the slice exists to eliminate. Recording the spawn honestly is the whole point: the operator learns a push is in flight, not that a push succeeded.
+- **Composition rule, applying to both verbs:** concatenate the composed calls' records in execution order into one flat `mutations` array;
+  `partial` is true when any composed call returned an error and the **combined** record is non-empty. A commit that lands followed by a push that fails is exactly "mutated, then errored", and the combined record is what makes it visible.
+- Neither verb needs a `PartialSyncError`/`PartialPushError`;
+  the combined record plus `partial` carries the same information without a new error type.
 
 **The gate's destructive executors** (all in `internal/fabricengine/destroy.go`), which are the auto-record sites:
 
@@ -290,9 +320,9 @@ Discovered during discussion:
 
 Key scenarios, each of which is a mutated-then-errored path that today returns a zero result:
 
-- `Remove` refusing on a dirty warp worktree *after* `removePortal`/`removeLaunchers` already deleted the portal and launcher paths — the anomaly documented in `fabrictest/doc.go`. The record must name both deletions;
-  `partial` must be true;
-  the refusal object must name the dirtiness check.
+- `Remove` refusing on a dirty warp worktree *after* `removePortal`/`removeLaunchers` already deleted the portal and launcher paths — the anomaly documented in `fabrictest/doc.go`. The record must name both deletions and `partial` must be true.
+  **No `refusal` object is present on this path, and the test must assert its absence rather than its contents:** `remove.go:68-76` returns a bare `fmt.Errorf("worktree has uncommitted changes; use --force")` from its own pre-flight, never a `*destructiveRefusal`, so `errors.As` finds nothing.
+  This pre-flight is **not** converted to a gate refusal in this slice — that is a behaviour change belonging next to the gate, exactly as the `remove-ordering-anomaly` Decision holds for the ordering itself. It is the same class of issue and belongs on the same follow-up issue: `Remove` has a verb-level pre-flight that duplicates a gate check without producing a gate refusal.
 - `Add` failing partway and running `rollbackAdd` — the record must reflect both the creations and the rollback's own destructions, in order.
 - `Checkout` failing partway and running `rollbackSwitch` on both sides.
 - `Prune`/`Cleanup` removing some entries and then failing — the "removed three of five pairs, then failed" case the task names as currently unrepresentable.
@@ -355,5 +385,12 @@ Review round 1 gaps (auto-picked at the recommended resolution):
   a missing parameter does not compile. This slice exists because a record was silently dropped, so the mechanism that turns dropping it into a build failure is the right one — and one uniform rule beats two.
 - **Q:** [auto-pick] What are the initial `Kind` members? **A:** Thirteen, tabulated in the `mutation-entry-shape` Decision — eight auto-recorded inside `destroy.go` (one per executor and minter) plus five hand-recorded constructive kinds (`branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`). **Why:** the guard test can only pin an enumerated set, and `Kind` was described as "precisely what a guard test can pin" while naming no member. Adding a member requires its recording site and guard entry in the same commit;
   `mutation.go` is the single declarer.
+- **Q:** [auto-pick] Which Kinds can the manifest oracle actually observe? **A:** Only the filesystem-visible ones. Git-state kinds (`branch_*`, `commit_created`, `worktree_reset`, `push_spawned`, and `file_written` under `.git/`) are exempt from the diff cross-check and asserted against git itself via the existing per-verb effect assertions. **Why:** `CaptureManifest` excludes everything under `.git` bar `.git` itself and `.git/worktrees/<name>`, and says outright that branch existence is deliberately not carried;
+  cross-checking those kinds against the diff would report a lie of commission on correct behaviour.
+- **Q:** [auto-pick] How do record entries match diff changes, given one entry can name a whole subtree? **A:** Segment-wise subtree containment in both directions, never path equality — reusing the same segment matching `pathPermitted` already implements. **Why:** one `worktree_created` names a root while the diff emits one change per path beneath it, so equality matching would read a normal `Add` as dozens of lies of omission.
+- **Q:** [auto-pick] How is a link repoint recorded, given `repointLink` executes by calling `removeLink`? **A:** Drop `link_repointed` entirely;
+  a repoint records `link_removed` (auto, at the gate) then `link_created` (hand, at the caller's `fslink.CreateDirLink`). **Why:** that is what physically happens, it avoids double-recording one act, and it fixes a `Detail` that was unfillable — the new target does not exist at `repointLink`'s recording site.
+- **Q:** [auto-pick] When does the gate append — unconditionally, or only on observed effect? **A:** Only after the primitive observably changed state: nothing for `removePath`'s already-absent early return, and nothing for `removeGitWorktree`/`deleteBranch` when git exits nonzero with a nil error. **Why:** a record containing no-ops would fail the commission direction of the cross-check on correct behaviour, and would commit the campaign defect's mirror image — claiming a destruction that never happened.
+- **Q:** [auto-pick] What can `sync` record, given its push is a detached child? **A:** The commit record plus one `push_spawned` entry, never `branch_pushed`. `push` (a different verb) is in-process and concatenates its commit and push records. **Why:** `sync` calls `SpawnDetachedPush`, so the push outcome is unobservable in this process — asserting `branch_pushed` there would be exactly the control-flow-derived lie this slice exists to kill.
 - **Q:** [auto-pick] Do permitted removal roots suppress the truthfulness cross-check as well as the diff noise? **A:** No — permitted roots suppress diff noise only;
   the record must still name a permitted-root mutation positively. Each cell calls `DiffManifest` twice, once with its permitted roots (survival) and once with `nil` (honesty). **Why:** the `Remove` anomaly cell declares the portal and launcher paths permitted precisely because they get destroyed before the refusal, so suppressing the honesty check there would leave the slice's headline case asserting nothing at all.
