@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cross-product-driver
+phase: approved-sabotage-proof-and-docs
 slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-refusal-expectation-helpers  '2026-08-11T11:34:39Z'
 approved-hostile-state-matrix  '2026-08-11T11:49:32Z'
 approved-verb-table-and-expectations  '2026-08-11T12:14:22Z'
 approved-cross-product-driver  '2026-08-11T12:43:02Z'
+approved-sabotage-proof-and-docs  '2026-08-11T13:07:10Z'
 ```
 
 ## Batches
@@ -80,8 +81,9 @@ batches:
     commit_sha: e7b3e0e278bbb4795cb2c56feb9149e05b06f204
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: sabotage-proof-and-docs
-    state: running
+    state: approved
     implementer_session: ba0b5a5b-34ea-4f96-bfbf-1d6f07e1c3e5
     start_sha: 605ab35977cb27aaa2eac89a8eeb76df09deb37d
+    commit_sha: c46d93f777107cf3e9e615069698abe16f8e905c
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
 ```
