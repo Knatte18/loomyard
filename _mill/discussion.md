@@ -27,11 +27,11 @@ So this task is E's successor, not merely the atomicity carve-out.
 **In:**
 
 - `manifest/designs/shed.md` — the producer-typology carve-out (the authoritative, full statement), the thin-Input carve-out, the two-axes cross-reference in the engine-adapter section, plus E's own `shed.md` residue (`:7`, `:18`, `:19`, `:63`).
-- `manifest/designs/loom.md` — pointers to `shed.md`'s carve-out from the atomicity sentence and the producer table's Type column, plus E's `loom.md` residue (`:15–17`, `:76–83`).
+- `manifest/designs/loom.md` — a new `Kind` column on the producer table plus a pointer to `shed.md`'s carve-out from the atomicity sentence, and E's `loom.md` residue (`:15–17`, `:57` row 9, `:76–83`).
 - `CONSTRAINTS.md` — a new, short `## Producer Pointer-Rule Invariant`.
 - `docs/overview.md` — the `shed`/`glance` name-disambiguation note at `:300`, and the stale phase chain at `:283`.
 - `manifest/designs/hardener.md` — `:17`'s "producer-slot".
-- `manifest/roadmap.md` — `:110`'s "deferred phase slot between Webster and Finalize"; verify-only on `:57–61`.
+- `manifest/roadmap.md` — `:110`'s "deferred phase slot between Webster and Finalize", `:54`'s six-task breakdown line (which still names task E as a pending final owner), and the phase-enum deferral record E was to write; verify-only on `:57–61`.
 - `manifest/designs/shed-followups.md` — one supersession block at the head of section E.
 
 **Out:**
@@ -43,7 +43,8 @@ So this task is E's successor, not merely the atomicity carve-out.
   This task names the shared type only as a **candidate**, never as a decided design.
 - **Any Go source change.**
   This task is docs-only. No package is created, renamed, or deleted.
-- **The `phase` enum.** `internal/loomengine/coherence.go:14–22`'s `validPhases` map and `docs/reference/status-schema.md`'s twin stay untouched, per `shed-followups.md:529–532` — the flat producer list replaces the enum rather than editing it, and that realignment lands with the `Shed` build task.
+- **Editing the `phase` enum.** `internal/loomengine/coherence.go:14–22`'s `validPhases` map and `docs/reference/status-schema.md`'s twin stay untouched, per `shed-followups.md:529–532` — the flat producer list replaces the enum rather than editing it, and that realignment lands with the `Shed` build task.
+  **Writing the deferral *record* is in scope, though** — see `carry-forward-e-phase-enum-record` below. `shed-followups.md:529–532` gives E two obligations, and only the first is a non-goal here.
 - **A machine-checked guard for the pointer rule.** `shed-followups.md:499` explicitly scopes it as review-enforced.
 - **`manifest/designs/finalize.md`, `raddle.md`, `self-report.md`.** Task D (`ab3d67b1`) owns these and has landed; this task does not reopen them.
 - **`docs/reference/discussion-format.md` and `plan-format.md`.** Task C (`2186ff53`) owns these and has landed.
@@ -62,7 +63,15 @@ So this task is E's successor, not merely the atomicity carve-out.
 ### shed-md-is-authoritative-loom-md-points
 
 - **Decision:** the full producer-typology text lives in `shed.md`'s producer-contract section (`## Producer contract vs. producer definition`, currently `:22–29`).
-  `loom.md` gets short pointers only — its atomicity sentence at `:44` and its producer table's Type column cite `shed.md`'s carve-out by anchor rather than restating it.
+  `loom.md` gets short pointers only — it cites `shed.md`'s carve-out by anchor rather than restating it.
+- **Concrete shape in `loom.md`'s producer table.** The existing **Type** column is left alone: it holds engine-type values (`mechanical`, `LLM`, `LLM/perch`, `black box …`) and stays on that axis.
+  Add **one new `Kind` column** whose only values are `simple` and `bespoke`.
+  Column order becomes `# | Producer | Kind | Type | Input | Output`.
+  Rows 4, 8, 10 and 11 (`Discussion-Review`, `Plan-Review`, `Webster`, `Webster-Review`) are `bespoke`; the other eight are `simple`.
+  **The anchor pointer into `shed.md` appears exactly once**, in the sentence introducing the table — not repeated per row, and not inside any cell.
+  Cells carry the bare word only.
+- **Rationale for a separate column rather than augmenting `Type`:** merging both axes into one cell (e.g. `LLM/perch — bespoke`) is precisely the conflation `two-axes-cross-reference` exists to prevent, and it would make the engine axis unreadable at a glance.
+  A single anchor above the table also keeps the doc from carrying twelve identical links, which would itself read as a pointer-rule violation.
 - **Rationale:** this is the authority split the two docs already declare. `shed.md:3` calls itself "the authoritative description of `Shed`'s own generic mechanism"; `loom.md:43` defers to `shed.md` for the mechanism and owns only `loom`'s concrete list.
   The typology is a property of `Shed`'s generic contract, not of `loom`'s particular producers.
   It is also the pointer rule applied to the docs themselves — the same discipline this task is adding to `CONSTRAINTS.md`.
@@ -156,6 +165,17 @@ So this task is E's successor, not merely the atomicity carve-out.
 - **Rejected:** inlining the full twelve-producer list at `:283` — self-contained but drifts again on the next producer-list change.
   Fixing `:283` only — leaves `roadmap.md:110` contradicting `finalize.md`.
 
+### carry-forward-e-phase-enum-record
+
+- **Decision:** add the phase-enum deferral record to `manifest/roadmap.md`, on the Planned `Shed` item beside the atomicity resolution at `:57–61`.
+  Two or three sentences: `internal/loomengine/coherence.go`'s `validPhases` map and `docs/reference/status-schema.md`'s twin (`preflight | discussion | plan | webster | raddle | finalize | done`) are deliberately left as-is; realigning them lands with the `Shed` build task, because the flat producer list **replaces** the enum rather than editing it, and rewriting it now would invent an interim phase set `Shed` would immediately discard.
+  Note that task A already renamed `builder` → `webster` in both, so the enum is not stale in the way it was at scoping time.
+- **Rationale:** `shed-followups.md:529–532` gives task E **two** obligations, not one — leave the enum alone, *and* "record this deferral explicitly alongside its roadmap edits, so a later reader finds a decision rather than an oversight".
+  A grep confirms `manifest/roadmap.md` carries no such record today (no match for `phase enum`, `validPhases`, or `coherence.go`).
+  Inheriting only the leave-it-alone half would deliver exactly the oversight-looking outcome the second half exists to prevent — and this task is the last owner of `roadmap.md`, so there is no later chance to write it.
+- **Rejected:** dropping the record — the deferral would then be visible only inside `shed-followups.md`, a file describing a task chain that has finished, rather than on the live roadmap item the `Shed` build task will be written from.
+  Putting it in `shed.md` instead — `shed-followups.md:532` says "alongside its roadmap edits", and the roadmap item is where `Shed`'s preconditions are already gathered.
+
 ### shed-followups-supersession-block
 
 - **Decision:** add one supersession block at the **head of section E** in `manifest/designs/shed-followups.md`, leaving E's body intact as the historical record.
@@ -202,11 +222,20 @@ Every number below was verified against the tree at branch point `c3af3c9c`.
 
 - `:15–17` — the naming note still reads "`loom` = `Shed` + loom's own Preflight + the Discussion/Plan/Webster producer" (old slot framing, contradicting the table 25 lines below), and its "This doc has not been rewritten to extract `Shed` explicitly" claim is now false.
 - `:44` — the mirror of `shed.md:8`'s atomicity claim; gets the pointer to `shed.md`'s carve-out.
-- `:47–60` — the producer table. The **Type** column is where the typology surfaces per `shed-md-is-authoritative-loom-md-points`: rows 4, 8, 10 and 11 (`Discussion-Review`, `Plan-Review`, `Webster`, `Webster-Review`) are bespoke; the rest are simple.
+- `:47–60` — the producer table, which gains a new `Kind` column per `shed-md-is-authoritative-loom-md-points`. The existing `Type` column is not touched.
+- `:57` — row 9, `Batchifier`. **Two stale artifact names**, both left behind because task C's scope was rows 2–7 only and task F did not edit `loom.md` at all (`shed-followups.md:618`): the Input cell reads "`plan.md` (approved) + `webster.yaml`'s `batcher:` key".
+  `plan.md` does not exist — the artifact is the `_lyx/plan/` directory, exactly the fix task C applied to rows 2–7.
+  The `batcher:` key moved out of `webster.yaml` in task F (`e179ad0c`); the live key is `batcher.yaml`'s `active:` (see `CONSTRAINTS.md:352` and `docs/overview.md:282`).
+  `shed-followups.md:452` assigns this row to E ("rewritten to match whatever task F landed"), so it is this task's.
+  Note the row-number drift: `shed-followups.md` calls it "row 8" at `:452` and `:618`, which was correct at scoping time; task C's insertion of `Discussion-Validate` shifted it to **row 9**. Same row, renumbered.
 - `:50` — `Discussion-Write`'s Input cell, "— (starting point)", is Question 2's subject; it stays as-is textually but now cites the thin-Input carve-out.
 - `:58` — the `Webster` row, which must cite the carve-out explicitly instead of reading as an unresolved conflict with atomicity.
 - `:70–72` — `loom.md`'s own copy of the two-part contract and the pointer rule.
 - `:76–83` — the open-questions paragraph, cited as the whole paragraph for context. `:76–77` is the **already-resolved** first question (`Discussion-Validate` closed it, per task C) and needs no edit; the residue this task actually owns is `:78–83`. `:78` states thin-Output is open; `:79–82` is task C's hand-off note widening it to four producers and naming **task E**, which no longer exists; `:83` carries the stale `shed-producer-model-scoping` claim.
+- `:82` specifically — "The `## The gate` section below still uses 'gate' in the perch sense (sense A) and is unchanged by this task — it remains task E's territory."
+  **Disposition: the `## The gate` section (`:85–90`) is verify-only; only this dangling hand-off sentence is deleted.**
+  Task C already resolved the overload it names, by landing the mechanical pre-checks as `Discussion-Validate`/`Plan-Validate` rather than `*-Review-Gate` precisely so "gate" could mean perch alone (`shed-followups.md:327–330`).
+  The gate section therefore already uses the word in the only surviving sense, and needs no edit — the sentence is stale because the ambiguity it warns about is gone, not because the section is wrong.
 
 **`CONSTRAINTS.md`** — `## Batcher Registry+Config Invariant` runs `:348–353`; the new invariant goes immediately after it.
 
@@ -214,7 +243,8 @@ Every number below was verified against the tree at branch point `c3af3c9c`.
 
 **`manifest/designs/hardener.md`** — `:17`'s "just with `Tenter` in the producer-slot instead of Discussion/Plan/Webster". `Shed` has no slots; reword to `Hardener`'s own producer list.
 
-**`manifest/roadmap.md`** — `:110` (the raddle slot line). `:57–61` already carries the resolution and is **verify-only**; do not rewrite it, and prefer its wording when phrasing the design-doc text.
+**`manifest/roadmap.md`** — `:110` (the raddle slot line) and `:54` (the six-task breakdown, which still names `shed-model-contradiction-sweep` as "E — final owner of `shed.md`/`loom.md`/this roadmap item, sweeps the remaining contradictions and adds the `CONSTRAINTS.md` pointer-rule invariant" — a present-tense pending claim about a task that never ran).
+Also add the phase-enum deferral record here, per `carry-forward-e-phase-enum-record` below. `:57–61` already carries the atomicity resolution and is **verify-only**; do not rewrite it, and prefer its wording when phrasing the design-doc text.
 
 **`manifest/designs/shed-followups.md`** — section E starts at `:409` and runs up to (not including) `## F — batcher-standalone-split`'s heading at `:552`.
 The supersession block goes at section E's head, immediately under the `## E — shed-model-contradiction-sweep` heading.
@@ -261,13 +291,22 @@ The meaningful failure mode is *incompleteness* — a residue site missed — wh
 Acceptance, in order:
 
 1. **`go test ./internal/lyxcwd -run TestEnforcement_MarkdownLinks`** — the Markdown Link Integrity invariant. This is the one machine check that directly covers this task's output, since it adds cross-doc anchor links.
-2. **A targeted grep set** proving zero surviving instances of the retired phrasings, run over `manifest/` and `docs/` with `manifest/designs/shed-followups.md` **excluded** (see Gotchas):
-   - `producer-slot` — expect 0.
+2. **A targeted grep set** proving zero surviving instances of the retired phrasings, run over `manifest/` and `docs/`.
+   **Two standing exclusions apply to every grep below**, and each exists because the excluded text is correct where it stands — so a grep that flagged it would only be satisfiable by editing something this task's Scope forbids editing:
+   - `manifest/designs/shed-followups.md` — permanently exempt by its own recorded convention (see Gotchas).
+   - `docs/reference/status-schema.md` — carries the `phase` enum, which Scope declares out.
+   The greps:
+   - `producer-slot` — expect 0, **excluding `manifest/roadmap.md:48`**, where "no built-in concept of Preflight, a producer-slot, or Finalize at all" is a *correct negation* on a line this task does not own. Grep for the affirmative use (a producer sitting *in* the producer-slot), not the bare token.
    - `by \*value\*` — expect 0.
    - `shed-producer-model-scoping` used in a *present/future-tense owner* sense (`shed.md:63`, `loom.md:83`) — expect 0. A past-tense historical mention is fine.
-   - `Raddle` named as a phase or slot between Webster and Finalize (`roadmap.md:110`, `overview.md:283`) — expect 0.
-   - `task E` / `shed-model-contradiction-sweep` referenced as a *pending future owner* (`loom.md:80`) — expect 0 outside `shed-followups.md`.
+   - `webster.yaml`'s `batcher:` key — expect 0 across `manifest/` and `docs/`; `loom.md:57` is the only live site, and `CONSTRAINTS.md:352` / `docs/overview.md:282` are the correct-target reference.
+   - `plan.md` as a producer-table artifact name in `loom.md` — expect 0; the artifact is `_lyx/plan/`.
+   - `Raddle` named as a **phase or slot between Webster and Finalize** (`roadmap.md:110`, `overview.md:283`) — expect 0. This is a phrase grep, not a bare-token grep: `docs/reference/status-schema.md`'s `raddle` enum entries are excluded per the standing exclusion above, and ordinary references to the raddle *module* are untouched.
+   - `task E` / `shed-model-contradiction-sweep` referenced as a *pending future owner* (`loom.md:80`, `roadmap.md:54`) — expect 0.
    - The two dangling `below` back-references in `shed.md:7` and `:19` — verified by reading, since `below` is too common to grep usefully.
+
+   The general rule these exclusions encode: **an acceptance grep must never be satisfiable only by editing text this task declares out of scope.**
+   If a new grep trips on out-of-scope text, narrow the grep — do not widen the scope.
 3. **`go test ./...`** as a regression backstop — `CONSTRAINTS.md` and the `docs/` tree are walked by several enforcement tests (`TestEnforcement_FabricVocabulary`, `TestEnforcement_GeometryLiterals`), so a docs edit can trip a Go test.
 
 A positive check worth running as well: `manifest/roadmap.md:57–61`'s resolution text and the new `shed.md` carve-out text must agree in substance and terminology.
@@ -284,4 +323,5 @@ They are the same decision stated twice by necessity (roadmap item vs. design do
 - **Q:** Does the `shed`/`glance` note go at one site or both? **A:** `:300` only, the first hit in reading order. (The task body's `:289`/`:318` line numbers are stale.)
 - **Q:** Does `shed-followups.md` get a supersession record? **A:** Yes — one block at the head of section E, recording E's removal, this task's succession, and the resolution of all three of E's surfaced questions. Section E's body stays intact as the historical record.
 - **Q:** `roadmap.md:110`'s "deferred phase slot" and `overview.md:283`'s stale chain — open decisions or mechanical fixes? **A:** Mechanical. Task D already decided the Raddle fold; both sites just carry it forward. `:283` points at `loom.md`'s table rather than inlining a chain, so it cannot drift again.
+- **Q:** `loom.md`'s producer table Type column already holds engine-type values — does the typology replace them, augment them per row, or get its own column? **A:** [auto-pick] New `Kind` column holding `simple`/`bespoke`; `Type` left alone on the engine axis; column order `# | Producer | Kind | Type | Input | Output`; the `shed.md` anchor stated once above the table, never per row. **Why:** merging both axes into one cell is the exact conflation `two-axes-cross-reference` exists to prevent, and twelve identical anchor links would itself read as a pointer-rule violation.
 - **Q:** What is the acceptance criterion? **A:** `TestEnforcement_MarkdownLinks` + a targeted grep set for the retired phrasings (excluding the permanently-exempt `shed-followups.md`) + `go test ./...` as a backstop. No new tests — `shed-followups.md:499` scopes the pointer rule as review-enforced.
