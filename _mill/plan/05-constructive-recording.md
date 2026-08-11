@@ -49,9 +49,15 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Requirements:**
   Record `KindLinkCreated` at every `fslink.CreateDirLink` success site, with the **link** path as the target (never the link's own target path):
 
-  - `createPortal` — `internal/fabricengine/portals.go`; add a leading `rec *Mutations` parameter and thread it from its callers.
+  - `createPortal` — `internal/fabricengine/portals.go`; add a leading `rec *Mutations` parameter and thread it from its callers, one of which is the intermediate `restorePortalAndLaunchers` in `internal/fabricengine/reconcile.go`, not `repairPairWiring` directly.
   - `seedLyxJunction`'s two creation sites and `adoptDotLyxContent`'s own — `internal/fabricengine/junction.go`; `seedLyxJunction` already carries `rec` from batch 4, and `adoptDotLyxContent` gains a leading `rec *Mutations` parameter threaded from it.
   - `wireBoardLink`'s two creation sites — `internal/fabricengine/junction.go`; already carries `rec` from batch 4.
+
+  `adoptDotLyxContent` additionally **relocates content**, which no other card covers: its `os.Rename` loop moves every entry of the warp-side `.lyx` directory to the weft-side target before removing the now-empty source and creating the link.
+  Those moved paths are hub-visible additions at the destination, so record **one** `KindFileWritten` at the destination directory with `Detail: "adopted"`, after the rename loop completes and before the link is created.
+  One entry at the destination root covers the whole moved tree under the coverage rule.
+  No new `Kind` is added for this: a relocation is already representable as the destination entry plus the source's own `link_created`, which replaces the moved-away directory at the same path, and a sixteenth member carried forever for one call site is not worth the guard-table row.
+  `Detail: "adopted"` is what tells a reader this write was a move rather than a fresh authoring.
 
   A junction **re-point** therefore records as `link_removed` (from the gate, batch 4) followed by `link_created` (here) — two entries for what physically happens.
   There is deliberately no `link_repointed` kind, and none may be added: the new target does not exist at `repointLink`'s recording site, so its `Detail` would be unfillable.
@@ -147,6 +153,8 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/coalesce.go`
+  - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/pull.go`
@@ -167,8 +175,9 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 
   In `internal/fabricengine/pull.go`, record `KindRepoAdvanced`:
 
-  - after the weft fast-forward pull succeeds (the `f.PullWeft(opts)` call inside `(*Fabric).Pull`), `rec.Append(KindRepoAdvanced, f.weftPath, "")`. This is load-bearing: `Pull` sets `result.WeftPulled = true` and can then return a `*PartialPullError` with `Stage: "unpushed-check"` or `Stage: "fetch"` having created no commit and executed no gate primitive — without this entry the record would be empty and `partial` would be `false` while the weft worktree had genuinely been advanced. That is this slice's own defect class inside the very verb that produced defect 1.
-  - after each warp advance succeeds, `rec.Append(KindRepoAdvanced, f.warpPath, <the new tip SHA when it is in hand, otherwise empty>)`. The `ResetHard` underneath is separately recorded by the gate as `worktree_reset`; both entries are correct and both belong — one names the primitive, the other names the effect.
+  - after the weft fast-forward pull succeeds (the `f.PullWeft(opts)` call inside `(*Fabric).Pull`), `rec.Append(KindRepoAdvanced, f.weftPath, <the new SHA>)` — but **only when the weft actually moved**. `PullWeft` is a bare `f.weft.Pull()` that also returns nil when the weft is already up to date, so an unconditional entry would fabricate a mutation and emit `partial: true` over it on the `unpushed-check`/`fetch` failure paths — the mirror image of the campaign defect, and exactly the lie card 19 rejects for push. Sample `f.weft.CurrentSHA()` before and after the call and record only on a change, mirroring card 19's before/after predicate;
+    `internal/fabricengine/coalesce.go`'s `headOrEmpty` is the in-repo precedent for this sampling, including its `gitrepo.ErrNoCommits` tolerance. If either sample errors, record nothing and do not propagate — a failure to observe is not a failure to pull. This is load-bearing: `Pull` sets `result.WeftPulled = true` and can then return a `*PartialPullError` with `Stage: "unpushed-check"` or `Stage: "fetch"` having created no commit and executed no gate primitive — without this entry the record would be empty and `partial` would be `false` while the weft worktree had genuinely been advanced. That is this slice's own defect class inside the very verb that produced defect 1.
+  - after each warp advance succeeds, `rec.Append(KindRepoAdvanced, f.warpPath, <the new tip SHA>)`, under the same before/after `CurrentSHA()` predicate — a reset to the SHA warp already carries advances nothing and must record nothing. The `ResetHard` underneath is separately recorded by the gate as `worktree_reset`; both entries are correct and both belong when the advance really happened — one names the primitive, the other names the effect.
 
   `PartialPullError.Stage` surfaces as the `Detail` of the relevant mutation where a mutation exists for it, never as a top-level envelope field — the envelope's key set stays fixed across verbs.
   Do not change any behaviour, ordering, or error text.
@@ -192,7 +201,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   These are the hub-visible constructive writes cards 17-20 do not reach.
   Every one is recorded at the **coarsest covering root**, per the derived-inventory Shared Decision — one entry per thing created, never one per file.
 
-  `writeLaunchers` — `internal/fabricengine/launchers.go` — gains a leading `rec *Mutations` parameter, threaded from its two callers (`internal/fabricengine/add.go` and `internal/fabricengine/reconcile.go`'s pair-wiring repair).
+  `writeLaunchers` — `internal/fabricengine/launchers.go` — gains a leading `rec *Mutations` parameter, threaded from its two callers: `internal/fabricengine/add.go`, and `restorePortalAndLaunchers` in `internal/fabricengine/reconcile.go` (the intermediate `repairPairWiring` reaches it through, rather than calling it directly).
   It records **one** `KindDirCreated` for the launcher directory it minted, on success.
   The three files it writes inside that directory (the IDE launcher, the fabric-checkout launcher, and the menu launcher) get no entries of their own — the coverage rule accounts for every path beneath the recorded root.
   If the menu launcher is written outside the launcher directory, it needs its own `KindFileWritten` entry;
@@ -210,7 +219,7 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   `cloneRepo` itself stays unparameterised — it is a mechanism with no notion of a record;
   `CloneHub` records at the call site, where the destination path and the error are both in hand.
 
-  Before finishing this card, run the derivation the Shared Decision requires — grep `internal/fabricengine` and `internal/fabriccli` for `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `fslink.CreateDirLink(` and `cloneRepo(` — and classify every remaining production hit into the three buckets, writing that classification into the batch's completion note.
+  Before finishing this card, run the derivation the Shared Decision requires — grep `internal/fabricengine` and `internal/fabriccli` for `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `os.Rename(`, `fslink.CreateDirLink(` and `cloneRepo(` — and classify every remaining production hit into the three buckets, writing that classification into the batch's completion note.
   A hit in bucket 1 that this card missed is a batch-7 cell failure waiting to happen, and the derivation is what catches it before the oracle does.
 - **Commit:** `feat(fabricengine): record the launcher and clone construction sites`
 

@@ -74,6 +74,7 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   - `internal/fabricengine/prune.go`
   - `internal/fabricengine/cleanup.go`
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/reconcile.go`
   - `internal/fabricengine/portallauncher_test.go`
   - `internal/fabricengine/weftwiring_test.go`
 - **Creates:** none
@@ -88,7 +89,9 @@ extending the same hard rule to an exported helper with roughly fifty existing t
   - `removeWarpWorktreeDir` — `internal/fabricengine/remove.go`
   - `removeStalePair` — `internal/fabricengine/prune.go`; callers at `internal/fabricengine/prune.go`
   - `deleteWeftBranch` — `internal/fabricengine/cleanup.go`; caller at `internal/fabricengine/cleanup.go`
-  - `removeJunctionRecords` and `removeWeftWorktree` — `internal/fabricengine/weftwiring.go`; callers at `internal/fabricengine/add.go` and `internal/fabricengine/remove.go`
+  - `removeJunctionRecords` and `removeWeftWorktree` — `internal/fabricengine/weftwiring.go`. `removeWeftWorktree` is called from `internal/fabricengine/add.go` and `internal/fabricengine/remove.go`; `removeJunctionRecords` is reached only through the intermediates `removeWarpJunction` (`internal/fabricengine/weftwiring.go`) and `applyStaleRemoval` (`internal/fabricengine/reconcile.go`), both of which must be threaded too.
+
+  **The caller lists in this card are illustrative, not authoritative.** The compiler is the authority for every one of these — a missing argument does not build — and the grep step below is what finds a caller this list missed. Do not treat a name absent from the list as a site that needs no threading.
 
   Where a helper's caller is itself a helper, thread the parameter through rather than constructing a second recorder — there is exactly one `*Mutations` per verb invocation, and it is the one card 9 or card 10 built.
 

@@ -91,7 +91,7 @@ batches:
 - **Decision:** a constructive record entry is appended at the **coarsest root that covers what the operation created**, not once per file written. `writeLaunchers` records one entry for the launcher directory it minted, not three for the scripts inside it;
   `cloneRepo` records one `worktree_created` for the clone root, not one per cloned file.
   The oracle's coverage rule (batch 7 card 29) already resolves a diff change against a record entry by segment-wise subtree containment, so one root entry accounts for every path beneath it.
-- **The inventory is derived, never hand-enumerated.** Before finishing batch 5, the implementer greps `internal/fabricengine` and `internal/fabriccli` for `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `fslink.CreateDirLink(` and `cloneRepo(`, and classifies **every** production hit into exactly one of three buckets, writing the classification into the batch's completion note:
+- **The inventory is derived, never hand-enumerated.** Before finishing batch 5, the implementer greps `internal/fabricengine` and `internal/fabriccli` for `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `os.Rename(`, `fslink.CreateDirLink(` and `cloneRepo(`, and classifies **every** production hit into exactly one of three buckets, writing the classification into the batch's completion note:
   1. **Recorded here** — the write is the coarsest root of something new, so it gets an entry.
   2. **Covered by an enclosing recorded root** — e.g. the weft lock directory `.weft/`, which lives under a weft worktree already recorded as `worktree_created`.
   3. **Invisible to the manifest** — the write lands under the `.git` metadata directory, which `CaptureManifest` excludes wholesale, so no entry is needed and none should be added.

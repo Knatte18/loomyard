@@ -1,0 +1,48 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: accumulate the result envelope from mutations, not control flow (slice 14) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-opus-5 (Anthropic)
+reviewed_file: plan/
+date: 2026-08-11
+```
+
+## Findings
+
+### [BLOCKING:design] repo_advanced recorded on a weft pull that advanced nothing
+**Location:** batch 5 / card 20
+**Issue:** The card records `KindRepoAdvanced` unconditionally after `f.PullWeft(opts)` returns nil, but `PullWeft` is a bare `f.weft.Pull()` (`weftgit.go:277-282`) that also returns nil when the weft is already up to date — so a `Pull` that advanced nothing and then failed at `unpushed-check`/`fetch` emits `partial: true` over a fabricated mutation. That is the record-only-on-observed-effect Shared Decision's "mirror image of the campaign defect", and the very lie card 19 rejects for push.
+**Fix:** Gate the entry on an observation — `f.weft.CurrentSHA()` sampled before and after the `PullWeft` call — mirroring card 19's before/after `HasUnpushed` predicate.
+
+### [BLOCKING:consistency] Card 33's guard exempts a "body check" it never defines
+**Location:** batch 8 / card 33
+**Issue:** Assertion 1 specifies only that each executor's declaration line in `destroy.go` carries a `rec *Mutations` parameter, yet the same paragraph exempts `repointLink` from a "*body* check" that is nowhere specified, and the blind-spot sentence then says the guard "pins the parameter and the embed" — three mutually inconsistent statements of what the test asserts.
+**Fix:** Decide and state whether the guard also asserts a `rec.Append`/`rec.AppendRef` call inside each executor body, then align the `repointLink` exemption and the blind-spot wording with that one answer.
+
+### [BLOCKING:design] The weft handlers' hub root is unresolvable in `push --bypass`
+**Location:** batch 6 / card 26
+**Issue:** The card derives every weft handler's recorder hub root from "the parent of the warp worktree path the command already resolves". In bypass mode `weft_verbs.go`'s `PersistentPreRunE` returns before `resolveWarpLocation()`, so `l` stays nil, and `spawnPush` always injects an empty `--warp-path` (`fabriccli/spawn.go:14`, `fabricengine.SpawnDetachedPush("", weftPath)`) — the stated derivation yields `filepath.Dir("") == "."` at best and a nil dereference on the production detached-push path at worst.
+**Fix:** State the bypass branch's own hub root explicitly (the injected weft path's parent, or an empty hub root, since that branch records only `AppendRef` entries and needs no path conversion).
+
+### [BLOCKING:scope] The derived inventory's token list cannot see a content relocation
+**Location:** Shared Decision "record at the covering root, and derive the inventory" / batch 5 card 21
+**Issue:** The derivation greps only `os.WriteFile(`, `os.MkdirAll(`, `os.Mkdir(`, `fslink.CreateDirLink(` and `cloneRepo(`. `adoptDotLyxContent`'s `os.Rename` loop (`junction.go:253-262`) moves warp-side `.lyx` content to a hub-visible weft destination that no token matches and no card records; the created paths under the weft target are then uncovered additions in batch 7's omission direction. The Decision claims the derivation classifies *every* production hit, so the gap is invisible rather than accepted.
+**Fix:** Add `os.Rename(` to the token list and give the relocation destination an explicit disposition (its own entry, or a stated bucket-2 classification under the weft worktree root).
+
+### [NIT:scope] Threading lists name callers that are not the callers
+**Location:** batch 4 cards 13-14, batch 5 cards 17 and 21
+**Issue:** `createPortal`/`writeLaunchers` are reached from `restorePortalAndLaunchers` (`reconcile.go:372`), not from `repairPairWiring` as card 21 states, and that intermediate is named nowhere. `removeJunctionRecords` is reached through `removeWarpJunction` (`weftwiring.go:144`) and `applyStaleRemoval` (`reconcile.go:706`), also unnamed. The compiler forces the destructive half; the constructive half is not compiler-forced.
+**Fix:** Name the three intermediates, or state that the lists are illustrative and the compiler (plus the card's own grep step) is the authority.
+
+### [NIT:consistency] runReconcile's Bolt.Commit records without the committed flag
+**Location:** batch 6 / card 25
+**Issue:** The `CloneAndWire` half of the card requires "record the commit only when the returned `committed` flag is true", while the `runReconcile` half says only "at its success site". `Bolt.Commit` returns `(sha, committed, err)` and returns `("", false, nil)` on a no-op, so the reconcile backfill can record a `commit_created` that never happened.
+**Fix:** Apply the same `committed == true` condition to the `runReconcile` backfill site.
+
+## Verdict
+
+REQUEST_CHANGES
+Two fabricated-mutation paths, one undefined guard check, one unreachable hub-root derivation.
+MILL_REVIEW_END

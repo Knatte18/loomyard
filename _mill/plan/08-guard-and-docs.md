@@ -48,12 +48,15 @@ It runs last because both the guard and the docs describe the finished shape, an
 
   It asserts two things by raw source inspection:
 
-  1. **Every executor in `internal/fabricengine/destroy.go` records.** Declare the eight executor names (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `createExclusiveDir`, `createGitWorktree`, `resetHardTo`) as a table, and for each assert its declaration line in `destroy.go` carries a `rec *Mutations` parameter. `repointLink` carries an allowlist-style exemption from the *body* check with its reason — it records nothing of its own, passing `rec` straight through to `removeLink`, because there is deliberately no `link_repointed` kind — while still being required to take the parameter.
+  1. **Every executor in `internal/fabricengine/destroy.go` takes a recorder.** Declare the eight executor names (`removePath`, `removeGitWorktree`, `removeLink`, `repointLink`, `deleteBranch`, `createExclusiveDir`, `createGitWorktree`, `resetHardTo`) as a table, and for each assert its declaration line in `destroy.go` carries a `rec *Mutations` parameter.
+     **The guard asserts the parameter only — it does not inspect executor bodies for a `rec.Append`/`rec.AppendRef` call.** That is a deliberate scoping choice, not an omission: a body scan would have to exempt `repointLink`, which correctly records nothing of its own and passes `rec` straight through to `removeLink` (there is deliberately no `link_repointed` kind), and a raw-substring body scan cannot tell a real recording call from one inside a comment.
+     Because the guard checks declarations only, `repointLink` needs no exemption entry and must not be given one.
+     Whether each body's recording call is *correct* is a review obligation, stated as such in the blind-spot comment below and in the invariant text.
   2. **Every mutating result type carries the record.** Declare the twelve result-type names (`AddResult`, `RemoveResult`, `CheckoutResult`, `PruneResult`, `CleanupResult`, `UnwireVerbResult`, `UnwireResult`, `ReconcileResult`, `CommitResult`, `PullResult`, `CloneResult`, `PushResult`) with the file each is declared in, and assert each declaration embeds `MutationRecord`. Declare the two read-only result types (`StatusResult`, `DiffResult`) in a companion table asserting they do **not** — the which-verbs scope decision is machine-held, not a convention.
 
   Carry a vacuous-scan floor for each table the same way `destructiveGuardMinScannedFiles` does for the existing walk, so a table that silently stopped matching fails loudly rather than passing on zero rows.
 
-  State the guard's blind spots in its own file-header comment, as the chokepoint guard already does for its raw-substring matching: it pins the parameter and the embed, not that a recording call is *correct*, and a new `Kind` added without a recording site is caught by nothing here.
+  State the guard's blind spots in its own file-header comment, as the chokepoint guard already does for its raw-substring matching: it pins the parameter and the embed by declaration inspection only — never that an executor body actually appends, nor that what it appends is correct — and a new `Kind` added without a recording site is caught by nothing here.
   That honesty is required by the invariant text card 34 writes.
 - **Commit:** `test(lyx): guard that every executor records and every mutating result carries it`
 

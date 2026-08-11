@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -23,4 +23,6 @@ plan-review-r2  '2026-08-11T15:47:29Z'
 plan-fix-r2  '2026-08-11T15:47:29Z'
 plan-review-r3  '2026-08-11T15:57:11Z'
 plan-fix-r3  '2026-08-11T15:57:11Z'
+plan-review-r4  '2026-08-11T16:11:52Z'
+plan-fix-r4  '2026-08-11T16:11:52Z'
 ```

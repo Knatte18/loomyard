@@ -119,7 +119,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 
   `runCloneWithReset` then emits through the card-23 helpers, keeping its four existing fields (`hub`, `anchor`, `warp`, `warp_binding_recorded`).
 
-  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten`, and record the `Bolt.Commit` backfill step as `KindCommitCreated` at its success site, with the board worktree path (`fabricengine.BoardDir(l.HubPath)`) as its `Target` and the returned SHA as its `Detail`.
+  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten` when its returned `Result.Applied` is true, and record the `Bolt.Commit` backfill step as `KindCommitCreated` — **only when the returned `committed` flag is true**, exactly as the `CloneAndWire` half requires, since `Bolt.Commit` returns `("", false, nil)` on a no-op and an unconditional entry would record a commit that never happened — with the board worktree path (`fabricengine.BoardDir(l.HubPath)`) as its `Target` and the returned SHA as its `Detail`.
   Its `Bolt.Push` records nothing either, for the same unobservable-outcome reason spelled out above.
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
   Emit through the card-23 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
@@ -154,7 +154,10 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Neither verb needs a `PartialSyncError` or `PartialPushError`;
   the combined record plus `partial` carries the same information without a new error type.
 
-  The hub root for these handlers is the parent of the warp worktree path the command already resolves — derive it the way the surrounding handler code already derives warp/weft paths, and do not introduce a new geometry helper.
+  **The hub root differs by branch, and the bypass branch cannot use the ordinary derivation.** In the four ordinary branches the command's `PersistentPreRunE` has resolved a `*lyxcwd.Location`, so the hub root is `l.HubPath` — the canonical accessor, not a hand-rolled parent-of-warp computation.
+  In `push --bypass` it has **not**: that branch takes the injected `--warp-path`/`--weft-path` values and returns before `resolveWarpLocation()`, leaving `l` nil, and `spawnPush` always injects an empty warp path (`fabricengine.SpawnDetachedPush("", weftPath)`), so any parent-of-warp derivation yields `"."` at best and dereferences nil at worst.
+  Build the bypass branch's recorder with an **empty hub root**: it appends no path-targeted entries of its own — it only `Extend`s `CoalescePushBothAt`'s already-converted record, and `Extend` performs no conversion — so the hub root is never consulted on that path.
+  Do not introduce a new geometry helper for either branch.
   `internal/fabriccli/spawn.go` is deliberately **not** edited: `spawnPush` keeps its `error`-only signature, and the `push_spawned` entry is appended by its caller in `internal/fabriccli/weft_verbs.go`, which owns the recorder.
 
   The read-only `status` and `diff` subcommands in this file are **not** touched.
