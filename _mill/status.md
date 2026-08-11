@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-branch-callsites
+phase: approved-guard-and-docs
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -35,6 +35,7 @@ self-resolved-verify-logic  '2026-08-10T18:36:09Z'
 approved-path-callsites  '2026-08-10T18:40:06Z'
 approved-clone-callsites  '2026-08-10T18:44:45Z'
 approved-branch-callsites  '2026-08-10T18:57:50Z'
+approved-guard-and-docs  '2026-08-11T03:43:19Z'
 ```
 
 ## Batches
@@ -72,9 +73,10 @@ batches:
     commit_sha: 59917cd56bff892ef889cc84dc0c3a51d43731c4
     verify_baseline_failures: []
   - name: guard-and-docs
-    state: running
+    state: approved
     implementer_session: 556e5735-846c-4bfa-8ed5-2edf9e4cfb8c
     start_sha: a37945a2330883e23dba8a18380137a823d91213
+    commit_sha: 4d72fa54fd5092f1661864577ac17a4512028648
     verify_baseline_failures: []
   - name: gap-integration-tests
     state: pending
