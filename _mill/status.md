@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: max-rounds exhausted after 7 rounds, 3 BLOCKINGs remain
+phase: plan-fix-r7
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -32,4 +31,5 @@ plan-fix-r6  '2026-08-11T16:38:57Z'
 plan-review-r7  '2026-08-11T16:49:33Z'
 plan-fix-r7  '2026-08-11T16:49:33Z'
 blocked  '2026-08-11T16:49:33Z'
+plan-fix-r7  '2026-08-11T16:53:47Z'
 ```
