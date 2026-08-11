@@ -1,0 +1,183 @@
+# Batch: gate-auto-recording
+
+```yaml
+task: 'fabric: accumulate the result envelope from mutations, not control flow (slice 14)'
+batch: 'gate-auto-recording'
+number: 4
+cards: 5
+verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./internal/fabricengine/...
+depends-on: [2, 3]
+```
+
+## Batch Scope
+
+This batch makes destructive-mutation coverage provably total by construction: all eight executors in `internal/fabricengine/destroy.go` take an explicit leading `rec *Mutations` parameter and record their own primitive, and every intermediate helper on the path from a verb entry to a gate call is threaded with the same parameter.
+It is one batch because a parameter added to an executor breaks every call site at once — this cannot be split without leaving the tree uncompilable.
+
+The threading mechanism is an explicit parameter on all eight sites, never a request-type field: a missing struct field is a silent zero value the compiler accepts, and a missing parameter does not compile.
+This slice exists because a record was silently dropped, so the mechanism that turns dropping it into a build failure is the right one.
+
+Batch-local decision: `repointLink` records nothing of its own beyond the `link_removed` its inner `removeLink` call already produces.
+There is deliberately no `link_repointed` kind — a repoint physically *is* a removal here plus a creation at the caller's own `fslink.CreateDirLink`, which batch 5 records.
+
+## Cards
+
+### Card 12: the eight gate executors take and use a recorder
+
+- **Context:**
+  - `internal/fabricengine/mutation.go`
+  - `internal/fabricengine/pull.go`
+  - `_mill/discussion.md`
+- **Edits:**
+  - `internal/fabricengine/destroy.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  In `internal/fabricengine/destroy.go`, add `rec *Mutations` as the **leading** parameter of all eight executors, and record after the primitive observably changed state:
+
+  - `removePath(rec *Mutations, req pathRequest) error` — on success, `rec.Append(KindPathRemoved, req.target, detail)` where `detail` is the literal `"recursive"` on the `RemoveAll` branch and `"single"` on the `os.Remove` branch. The already-absent early return (`os.IsNotExist(statErr)`) records **nothing** — that is a successful no-op, not a removal.
+  - `removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) (exitCode int, stderr string, err error)` — record `KindWorktreeRemoved` with `req.target` and an empty detail, **only** when `err == nil` **and** `exitCode == 0`. A nonzero exit with a nil error is reachable here and must not be recorded.
+  - `removeLink(rec *Mutations, req pathRequest) error` — record `KindLinkRemoved` with `req.target` on a nil error from `fslink.Remove`.
+  - `repointLink(rec *Mutations, what, container, target string, own pathOwnership) error` — passes `rec` straight through to `removeLink` and appends nothing itself.
+  - `deleteBranch(rec *Mutations, req branchRequest) (exitCode int, stderr string, err error)` — record via `rec.AppendRef(KindBranchDeleted, req.branch, "")`, **only** when `err == nil` **and** `exitCode == 0`. A branch name is a ref, not a path, so this uses `AppendRef` and never `Append`.
+  - `createExclusiveDir(rec *Mutations, path string) (createdToken, error)` — record `KindDirCreated` with `path` after `os.Mkdir` succeeds, never before attempting it.
+  - `createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error)` — record `KindWorktreeCreated` with `target` only on the success path that mints the token.
+  - `resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string) error` — record `KindWorktreeReset` with `req.target` and `sha` as the detail, on a nil error from `repo.ResetHard(sha)`. This is the primitive behind defect 1.
+
+  Also change the exported wrapper `(*Fabric).ResetHard(sha string) error` to `(*Fabric).ResetHard(rec *Mutations, sha string) error`, passing `rec` into `resetHardTo`. Its three callers in `internal/fabricengine/pull.go` are updated by card 15.
+
+  Every executor records **after** the pipeline passed and the primitive succeeded, never before — a refusal records nothing, since nothing happened.
+  Add a paragraph to `destroy.go`'s file header stating the recording contract and the record-only-on-observed-effect rule, and why it is what makes the truthfulness cross-check's commission direction sound.
+
+  Do not convert `Target` here: the gate passes the absolute paths it already has, and `Mutations.Append` does the hub-relative conversion.
+  `destroy.go` performs no path arithmetic for the record.
+- **Commit:** `feat(fabricengine): auto-record every destructive primitive at the gate`
+
+### Card 13: thread the recorder through the removal helpers
+
+- **Context:**
+  - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/mutation.go`
+- **Edits:**
+  - `internal/fabricengine/portals.go`
+  - `internal/fabricengine/launchers.go`
+  - `internal/fabricengine/add.go`
+  - `internal/fabricengine/remove.go`
+  - `internal/fabricengine/prune.go`
+  - `internal/fabricengine/cleanup.go`
+  - `internal/fabricengine/weftwiring.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  Add a leading `rec *Mutations` parameter to each helper that reaches a gate executor, and pass the verb's own recorder down from the entry point card 9 already installed.
+  The functions, each named with the file it lives in:
+
+  - `removePortal` — `internal/fabricengine/portals.go`; callers at `internal/fabricengine/add.go`, `internal/fabricengine/remove.go`, `internal/fabricengine/prune.go`
+  - `removeLaunchers` — `internal/fabricengine/launchers.go`; same three callers. Note this function calls `checkPathRequest` and then `os.Remove` directly rather than `removePath` (it is on the destructive guard's allowlist for exactly that reason), so it records `KindPathRemoved` with detail `"single"` itself, at its own success site, using the same record-only-on-observed-effect rule.
+  - `removeWarpWorktreeDir` — `internal/fabricengine/remove.go`
+  - `removeStalePair` — `internal/fabricengine/prune.go`; callers at `internal/fabricengine/prune.go`
+  - `deleteWeftBranch` — `internal/fabricengine/cleanup.go`; caller at `internal/fabricengine/cleanup.go`
+  - `removeJunctionRecords` and `removeWeftWorktree` — `internal/fabricengine/weftwiring.go`; callers at `internal/fabricengine/add.go` and `internal/fabricengine/remove.go`
+
+  Where a helper's caller is itself a helper, thread the parameter through rather than constructing a second recorder — there is exactly one `*Mutations` per verb invocation, and it is the one card 9 or card 10 built.
+  No behaviour, ordering, or error text changes anywhere in this card.
+- **Commit:** `refactor(fabricengine): thread the recorder through the removal helpers`
+
+### Card 14: thread the recorder through the junction, unwire and clone helpers
+
+- **Context:**
+  - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/mutation.go`
+- **Edits:**
+  - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/reconcile.go`
+  - `internal/fabricengine/add.go`
+  - `internal/fabricengine/checkout.go`
+  - `internal/fabriccli/clone.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  Add a leading `rec *Mutations` parameter to:
+
+  - `seedLyxJunction` and `unseedJunctionRecords` and `wireBoardLink` — `internal/fabricengine/junction.go`
+  - the exported `WireJunctions(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error` — `internal/fabricengine/junction.go`; callers at `internal/fabricengine/add.go`, `internal/fabricengine/checkout.go`, `internal/fabricengine/reconcile.go`, and `internal/fabriccli/clone.go`
+  - `unwireBoardLink` — `internal/fabricengine/unwire.go`
+  - `resetHub` and `teardownHub` — `internal/fabricengine/clone.go`
+  - `(*Topology).repairPairWiring` — `internal/fabricengine/reconcile.go`, since it reaches `WireJunctions`
+
+  At `internal/fabriccli/clone.go`, `CloneAndWire` has no recorder of its own yet — batch 6 gives it one.
+  For this batch, pass the record already carried by the `fabricengine.CloneResult` the preceding `CloneHub` call returned: build a local `rec := fabricengine.NewMutations(res.HubPath)`, seed it with `rec.Extend(res.Mutated())`, pass it into `WireJunctions`, and leave it otherwise unused.
+  Batch 6 is what folds that recorder into the returned result and the envelope;
+  doing it here would mean editing `CloneAndWire`'s return shape twice.
+
+  `teardownHub`'s many call sites in `internal/fabricengine/clone.go` all sit inside `CloneHub`, whose recorder card 10 installed — pass it at each.
+  `resetHub`'s two call sites are also inside `CloneHub`, but note the earlier of the two runs before `hubPath` is derived in the `--reset` path;
+  if the recorder is still nil there, pass it anyway — `Append` is nil-safe, and a reset performed before the hub root is known is recorded by the second call site's own recorder or not at all.
+  If the implementer finds `hubPath` is in fact derivable before the first `resetHub` call, move the `rec = NewMutations(hubPath)` assignment card 10 introduced up to that point instead, so the reset teardown is recorded — that is the better outcome and should be preferred when the code allows it.
+  State which of the two the implementation took in the commit body.
+
+  No behaviour, ordering, or error text changes anywhere in this card.
+- **Commit:** `refactor(fabricengine): thread the recorder through the junction, unwire and clone helpers`
+
+### Card 15: thread the recorder through add, checkout and pull
+
+- **Context:**
+  - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/mutation.go`
+- **Edits:**
+  - `internal/fabricengine/add.go`
+  - `internal/fabricengine/checkout.go`
+  - `internal/fabricengine/pull.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  - `internal/fabricengine/add.go`: pass the verb's recorder into the `createGitWorktree` call, and add a leading `rec *Mutations` parameter to `(*Topology).rollbackAdd`, threading it from each of its eleven call sites inside `Add`. The rollback's own `removeGitWorktree` and `deleteBranch` calls then record through the same recorder — which is the point: `Add`'s record must carry both the creations and the rollback's own destructions, in execution order.
+  - `internal/fabricengine/checkout.go`: add a leading `rec *Mutations` parameter to `(*Topology).rollbackSwitch`, threading it from its three call sites inside `Checkout`, and pass the recorder into the `WireJunctions` call.
+  - `internal/fabricengine/pull.go`: update the three `f.ResetHard(upstreamSHA)` call sites to `f.ResetHard(rec, upstreamSHA)`, using the recorder card 10 installed in `Pull`.
+
+  No behaviour, ordering, or error text changes.
+  After this card the tree compiles with every destructive primitive recorded through the gate, and `go test ./internal/fabricengine/ ./internal/fabriccli/` passes unchanged — nothing yet *reads* the record, so no existing assertion can move.
+- **Commit:** `refactor(fabricengine): thread the recorder through add, checkout and pull`
+
+### Card 16: gate recording tests
+
+- **Context:**
+  - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/mutation.go`
+  - `internal/fabricengine/destroy_test.go`
+  - `internal/fabricengine/export_test.go`
+- **Edits:**
+  - `internal/fabricengine/destroy_test.go`
+  - `internal/fabricengine/export_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  Repoint every executor call in `internal/fabricengine/destroy_test.go` and `internal/fabricengine/export_test.go` to the new leading-`rec` signatures, preserving each assertion's current meaning.
+
+  Add untagged table tests to `internal/fabricengine/destroy_test.go` covering the record-only-on-observed-effect rule, using only filesystem primitives already reachable from an untagged test in this package (`removePath`, `removeLink`, `createExclusiveDir` — no git spawn, per the Test Tier Purity Invariant):
+
+  - `removePath` on an already-absent target returns nil **and** records nothing.
+  - `removePath` on a directory records one `path_removed` with detail `recursive`;
+    on a plain file, detail `single`.
+  - `removePath` on a refused request (a containment failure, reusing the file's existing refusal fixtures) records nothing.
+  - `removeLink` on a refused request records nothing.
+  - `createExclusiveDir` records one `dir_created` on success and nothing on the already-exists EEXIST path.
+  - A `nil` recorder passed to any of the above does not panic.
+
+  The git-spawning executors (`removeGitWorktree`, `deleteBranch`) are **not** covered here: an untagged test in this package may not spawn git, and their nonzero-exit-with-nil-error rule is asserted through `internal/fabricengine/fabrictest`'s tagged matrix in batch 7 instead.
+  Say so in a comment on the new test group, so the omission reads as a decision rather than a gap.
+- **Commit:** `test(fabricengine): cover the gate's record-only-on-observed-effect rule`
+
+## Batch Tests
+
+`verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./internal/fabricengine/...` covers the two packages whose production code this batch rewrites, plus a tagged type-check.
+The chained vet is load-bearing here: `WireJunctions` and `UnwireJunctions` are called from `internal/fabricengine/fabrictest/verbs.go`, which is `integration`-tagged and therefore invisible to the untagged test run and to `go build ./...`.
+The new assertions live in `internal/fabricengine/destroy_test.go`;
+`internal/fabricengine/export_test.go` is repointed but adds no new case.
