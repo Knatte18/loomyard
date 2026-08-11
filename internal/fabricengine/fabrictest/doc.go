@@ -68,7 +68,16 @@
 //
 // # Omission table
 //
-// Placeholder — batches 6 and 7 populate this section as they enumerate the verb/state cross product:
-// every verb/state cell omitted from the product, together with its reason, so the recorded omission
-// count and the real omission count stay equal.
+// The exported Omissions slice (verbs.go) names every verb/state pair excluded from the cross
+// product, with its reason, so a green matrix can be audited against what it did not run.
+// All fifteen entries are structural-state omissions, derived from each verb's actual reach into
+// destroy.go's path executors: Cleanup and Checkout each omit all four structural states
+// (trackedSymlinkAtWiredPath, foreignDirAtFabricOwnedPath, unrelatedGitCloneAtWeftNamedPath,
+// staleWiredJunction) because their only gate call is the branch-shaped deleteBranch; Pull omits the
+// same four because its only gate call is Fabric.ResetHard, a warp checkout reset rather than a path
+// executor; Add omits trackedSymlinkAtWiredPath and staleWiredJunction because its gate calls act on
+// the pair it is creating, whose junction paths do not exist before Run; UnwireJunctions omits
+// unrelatedGitCloneAtWeftNamedPath because its only gate call never visits a weft-named path.
+// No dirtiness-state omission was found beyond this structural set: fifteen per anchor, thirty in
+// total, matching the plan's own cell-enumeration-and-omissions Shared Decision.
 package fabrictest
