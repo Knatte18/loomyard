@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-shed-md-and-constraints  '2026-08-11T15:29:15Z'
 approved-loom-md-pointers-and-kind-column  '2026-08-11T15:33:09Z'
 approved-roadmap-overview-hardener-followups  '2026-08-11T15:39:07Z'
 holistic-reviewing  '2026-08-11T15:39:36Z'
+holistic-fixing  '2026-08-11T15:45:54Z'
 ```
 
 ## Batches
