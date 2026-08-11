@@ -64,8 +64,10 @@ Batch-local decisions live in each batch file._
 ### Decision: shed-md-is-authoritative-loom-md-points
 
 - **Decision:** the full producer-typology text lives in `manifest/designs/shed.md`'s `### Producer contract vs. producer definition` section. `manifest/designs/loom.md` never restates it — it links to `shed.md#producer-contract-vs-producer-definition` instead.
-  The link appears in `loom.md` exactly twice: once from the atomicity sentence that currently sits at `loom.md:44`, and once in the sentence introducing the producer table.
-  It never appears inside a table cell and is never repeated per row.
+  The anchor appears in `loom.md` in exactly four sentences, each making its own distinct claim: the atomicity sentence that currently sits at `loom.md:44` (card 7a), the sentence introducing the producer table (card 7b), the two-part-contract sentence at `loom.md:70` (card 9a), and the pointer-rule sentence at `loom.md:71` (card 9b).
+  The rule that actually binds is not a link count but this: the anchor never appears inside a table cell, is never repeated per row, and never accompanies a restatement of the text it points at.
+  Twelve identical per-row links would violate that rule;
+  four distinct sentences each replacing a restatement with a pointer are the rule being obeyed.
 - **Rationale:** `shed.md:3` declares itself "the authoritative description of `Shed`'s own generic mechanism" and `loom.md:43` already defers to it for the mechanism, owning only `loom`'s concrete list.
   The typology is a property of `Shed`'s generic contract.
   This is also the pointer rule applied to the docs themselves — the same discipline this task codifies in `CONSTRAINTS.md`.

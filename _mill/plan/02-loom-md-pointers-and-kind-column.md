@@ -16,9 +16,11 @@ It is one batch because it is one file whose sections cross-reference each other
 
 It depends on batch 1 because every pointer this batch writes resolves into `shed.md#producer-contract-vs-producer-definition`, whose content batch 1 authors, and because the `Kind` column's `simple`/`bespoke` values are read against batch 1 card 2's typology bullets — including `Finalize`'s bespoke classification, which is the one value that is not carry-forward from the roadmap.
 
-Batch-local decision beyond `## Shared Decisions`: **the `shed.md` anchor appears exactly twice in this file and never inside a table cell.**
+Batch-local decision beyond `## Shared Decisions`: **the `shed.md` anchor never appears inside a table cell and is never repeated per row.**
 Cells carry the bare word `simple` or `bespoke`.
-Twelve identical anchor links would itself read as a pointer-rule violation, which is the failure this batch exists to avoid.
+Twelve identical per-row anchor links would itself read as a pointer-rule violation, which is the failure this batch exists to avoid.
+The anchor does appear in four distinct sentences across cards 7 and 9 — two in card 7, two in card 9 — each one replacing a restatement with a pointer, which is the rule being obeyed rather than bent;
+see the `shed-md-is-authoritative-loom-md-points` Shared Decision for the enumeration.
 
 ## Cards
 
@@ -52,12 +54,14 @@ Twelve identical anchor links would itself read as a pointer-rule violation, whi
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Two pointers into `manifest/designs/shed.md`, and only two, both written as inline links to `shed.md#producer-contract-vs-producer-definition`.
+- **Requirements:** Two pointers into `manifest/designs/shed.md`, both written as inline links to `shed.md#producer-contract-vs-producer-definition`.
+  These are the first two of the file's four anchored pointers;
+  card 9 writes the other two, in the contract-restatement sentence and the pointer-rule sentence.
   **(a)** `manifest/designs/loom.md` line 44 currently reads "It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across the whole list."
   This is the mirror of the claim batch 1 card 2 qualified in `shed.md`, and it gets the symmetric treatment: qualify the atomicity clause so it binds **simple** producers, and link to `shed.md`'s carve-out.
   Do **not** restate the carve-out here — the qualification plus the link is the whole edit.
   **(b)** The sentence introducing the producer table (currently line 45, ending "purely which producers are in the list, in what order:") gains the second and last anchor: state that the table's new `Kind` column records the simple/bespoke typology and link to `shed.md`'s carve-out for its definition.
-  The anchor appears **exactly once** in that introducing sentence — never repeated per row and never inside a cell.
+  The anchor appears **once** in that introducing sentence — never repeated per row and never inside a cell.
   Card 8 adds the column itself;
   this card only writes the sentence above the table, so that card 8's cells can carry the bare word.
 - **Commit:** `docs(loom): scope atomicity to simple producers and anchor the typology pointer above the table`
@@ -120,7 +124,9 @@ Twelve identical anchor links would itself read as a pointer-rule violation, whi
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** `manifest/designs/loom.md` lines 70-72 carry this file's own copy of the two-part contract and the pointer rule.
-  Both are edited, for different reasons.
+  Both are edited, for different reasons, and each gets **its own** inline link to `shed.md#producer-contract-vs-producer-definition` — two links, one per sentence, not one merged sentence and not a shared link.
+  They are this file's third and fourth anchored pointers;
+  card 7 wrote the first two.
   **(a) Line 70** states "A producer's contract is exactly two parts — **Input** (a *pointer* to the format-contract file defining consumed artifact(s)' shape, never a restated copy of its content) and **Output** (same pointer discipline)."
   The thin-Input carve-out contradicts it outright: `Discussion-Write` has no Input and therefore no pointer.
   Qualify the sentence to admit the thin-Input and thin-Output cases, pointing at `manifest/designs/shed.md`'s contract section rather than restating either carve-out.
@@ -131,8 +137,8 @@ Twelve identical anchor links would itself read as a pointer-rule violation, whi
   Do **not** cite the invariant as the reason in the doc text.
   **(c) Line 72** ("Review is never a property attached to the producer it reviews…") is correct and stays;
   keep its existing `[the gate](#the-gate)` link intact.
-  The two pointers card 7 wrote are this file's anchored links into `shed.md`'s carve-out;
-  the link this card writes points at `shed.md`'s contract section for the contract and pointer rule, which is the same section and the same anchor, and that is fine — it is a different sentence making a different claim, not a repeated per-row link.
+  Both links this card writes resolve to the same `shed.md` section and anchor as card 7's two, and that is correct rather than redundant: each of the four sits in a different sentence making a different claim, and each replaces a restatement rather than decorating one.
+  What the pointer rule forbids is a repeated per-row or per-cell link, and none of the four is that.
 - **Commit:** `docs(loom): reduce the contract restatement and pointer-rule copy to shed.md pointers`
 
 ### Card 10: retire the open-questions paragraph's resolved and dangling text

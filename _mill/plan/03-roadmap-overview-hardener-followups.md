@@ -38,7 +38,12 @@ If a grep trips on out-of-scope text, narrow the grep — do not widen the scope
   The atomicity clause is the unqualified claim, and the Input definition forecloses the thin-Input case.
   This is the identical wording scoped at `manifest/designs/shed.md` line 8 and `manifest/designs/loom.md` line 44, so leaving it alone would leave the one doc that carries both halves six lines apart self-contradicting.
   Qualify the atomicity clause so it binds **simple** producers, and admit the thin-Input and thin-Output cases in the Input and Output definitions.
-  In both cases **point forward to lines 57-61 rather than restating them** — that text stays verbatim and is the source of the wording used everywhere else.
+  **The two halves point at different targets, and conflating them would write a false cross-reference.**
+  The atomicity qualification **points forward to lines 57-61**, which state the simple/bespoke typology — that text stays verbatim and is the source of the wording used everywhere else.
+  The thin-Input and thin-Output admission **points at `manifest/designs/shed.md`'s producer-contract section instead**, because lines 57-61 say nothing about either carve-out;
+  that section is their authoritative home per the `shed-md-is-authoritative-loom-md-points` Shared Decision.
+  Pointing the thin-case admission at 57-61 would send a reader to text that does not discuss what is being admitted — the exact class of doc contradiction this task exists to remove.
+  Restate neither target: a prose reference to `shed.md`'s contract section is sufficient here, and `manifest/roadmap.md` need not carry an anchored link.
   Lines 57-61 are **verify-only**: read them to confirm they still state the resolution accurately, then leave them byte-identical.
   Do not mark the `Shed` roadmap item done — `Shed` is unbuilt;
   only its precondition is discharged.
@@ -80,7 +85,9 @@ If a grep trips on out-of-scope text, narrow the grep — do not widen the scope
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add the phase-enum deferral record to `manifest/roadmap.md`'s Planned `Shed` item, placed beside the atomicity resolution at lines 57-61 (immediately after it, before the existing pointer to the surfaced-open-questions record).
+- **Requirements:** Add the phase-enum deferral record to `manifest/roadmap.md`'s Planned `Shed` item, placed **after the atomicity resolution at lines 57-60 and before the `designs/shed-followups.md` pointer at line 61** — that is, between line 60 and line 61.
+  Line 61 is itself the "See … for the full surfaced-open-questions record" pointer, so it sits inside the commonly-cited 57-61 range;
+  the record goes above it, not after it.
   Two or three sentences, no more.
   It must state that `internal/loomengine/coherence.go`'s `validPhases` map and `docs/reference/status-schema.md`'s matching phase enum are deliberately left as-is;
   that realigning them lands with the `Shed` build task, because the flat producer list **replaces** the enum rather than editing it, and rewriting it now would invent an interim phase set `Shed` would immediately discard;
