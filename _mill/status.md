@@ -52,7 +52,9 @@ batches:
     commit_sha: 86edec587d5dc3c7bff556681c9ccd653d895165
     verify_baseline_failures: []
   - name: exported-check-enum
-    state: pending
+    state: running
+    implementer_session: 47e38dd8-9d9e-4da3-81e8-f723dc7ed7e1
+    start_sha: 635e17757f69e5b058faf360b84c20934b1d1d72
     verify_baseline_failures: []
   - name: result-types-carry-record
     state: pending
