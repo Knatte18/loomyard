@@ -39,6 +39,8 @@ batches:
     commit_sha: 64297a74835f8351a4f64223da2d47fd46a64943
     verify_baseline_failures: []
   - name: producer-table-and-rename-sweep
-    state: pending
+    state: running
+    implementer_session: 0c1a5c76-fbe9-43c7-b155-124ab6538167
+    start_sha: d66884db7c498cac1dc0e7da88b3f36a3e2ca529
     verify_baseline_failures: []
 ```
