@@ -193,7 +193,7 @@ No build order is implied between these items.
    Dirtiness scope is a caller-declared member of a closed sum type, and every one of the roughly 29 converted call sites kept the scope it already had.
    Slices 14-15 remain — see Planned above.
 
-1. **fabric: crucible follow-ups — slice 13** — the live-state integration harness (`internal/fabricengine/fabrictest`, `//go:build integration`) that validates slice 12's gate against real cloned hubs in dirty and hostile on-disk state, and finds instances beyond the eight the campaign already found.
+1. **fabric: crucible follow-ups — slice 13** — the live-state integration harness (`internal/fabricengine/fabrictest`, `//go:build integration`) that validates slice 12's gate against real cloned hubs in dirty and hostile on-disk state, broadening coverage to ten states, nine verbs, and hostile inputs.
    The hub factory drives real clones through the extracted `fabriccli.CloneAndWire`, never a hand-assembled fixture;
    the ten-state × nine-verb × two-anchor cross product runs with prefix-rooted manifest permits, so a cell asserts "the operator's content is still on disk," not merely "the verb returned an error";
    the two refusal-expectation helpers pin a refusal to the exact layer that produced it, gate versus pre-flight;
