@@ -36,14 +36,15 @@ That property is what the current per-verb integration tests do not have.
 - A small production extraction in `internal/fabriccli`: the engine-y middle of `runCloneWithReset` becomes an exported `CloneAndWire`, called by both the cobra handler and the factory.
 - A **named hostile-state matrix** (9 states), a **verb table** (9 gate-reaching verbs plus hostile inputs), and the **cross product driven** with per-cell survival assertions.
 - A **whole-hub manifest snapshot/diff** with prefix-rooted permit lists — the mechanism that catches destruction nobody thought to assert on.
-- A `RefusedBy(err, check)` helper so a cell asserts *which* of the four gate checks refused.
+- Two refusal-expectation helpers — `RefusedByGate(err, check)` and `RefusedBefore(err, substring)` — since most tranche-1 refusals fire in a verb's own pre-flight and never reach the gate.
+- Owner rows for `internal/fabricengine/fabrictest` in `fabricVocabularyOwners` and `weftnameImportOwners` (`internal/lyxcwd/enforcement_test.go`), plus the matching `CONSTRAINTS.md` owner-set update — required in the same commit or `go test ./...` fails.
 - Every cell run on both a `.`-anchored and a `--subpath backend` hub.
 - Positive expected-effect assertions on every `clean`-state cell, so an over-refusing gate cannot pass the matrix.
 - The one movable duplicate `gitStatusPorcelain` (the `fabricengine_test` copy) folded into `fabrictest`.
 
 **Out:**
 
-- Converting the 102 existing `CloneHub(` call sites across 7 files to the factory.
+- Converting the existing `CloneHub(` call sites to the factory — **100 calls across the 7 `package fabricengine_test` files, plus 2 more in the in-package `clone_test.go`** (102 in the tree overall, across 8 files).
   They stay as they are; conversion is opportunistic later work or belongs to `lyxtest-real-hubs`.
 - `internal/fabricengine/clone_test.go` — in-package, keeps its own setup, explicitly not a defect to fix here.
 - The in-package `gitStatusPorcelain` in `commitweftat_test.go`.
@@ -116,13 +117,33 @@ That property is what the current per-verb integration tests do not have.
 
 ### refusal-check-assertion
 
-- **Decision:** Assert which check refused by **substring-matching the refusal message**, via a `fabrictest.RefusedBy(err error, check Check) bool` helper and exported `Check` constants in `fabrictest`.
+- **Decision:** Assert which check refused by **substring-matching the refusal message**, via a `fabrictest.RefusedByGate(err error, check Check) bool` helper and exported `Check` constants in `fabrictest`.
 - **Rationale:** `*destructiveRefusal` is unexported, so `errors.As` is unavailable from `fabrictest`.
-  The message format is `refusing to <what>: <check> check failed for <target>: <reason>`, so `RefusedBy` searches for `"<check> check failed"` — unambiguous, and it survives call-site wrapping because it searches the full error string.
+  The message format is `refusing to <what>: <check> check failed for <target>: <reason>`, so the helper searches for `"<check> check failed"` — unambiguous, and it survives call-site wrapping because it searches the full error string.
   The message *is* slice 12's step-5 honest-reporting contract, so pinning it tests something real rather than a proxy.
   Slice 14 rewrites the result envelope one slice later, so exporting a refusal type now is dead weight that gets replaced.
+- **The exported `Check` set has three members, not four: `CheckContainment`, `CheckOwnership`, `CheckDirtiness`.**
+  `checkForce` is declared at `destroy.go:39` and rendered by `String()` at `destroy.go:51`, but is **never constructed into a `destructiveRefusal`** anywhere in the tree — force is consulted only inside `checkPathDirtiness`, where it causes the dirtiness check to *pass*, so a refusal is never attributed to it.
+  A `CheckForce` constant could therefore never match and must not be offered;
+  `doc.go` records why, so a future reader does not add it back believing the gate simply forgot to emit it.
 - **Rejected:** exporting `DestructiveRefusal` with an exported `Check` field (assert-by-value, immune to rewording, but a production API change in an additive slice, superseded by slice 14);
   asserting refusal only without the check (drops a stated requirement, and would pass against a gate refusing everything for the wrong reason).
+
+### refused-before-the-gate-vs-by-the-gate
+
+- **Decision:** A cell declares one of **two expectation kinds**, and the verb table records which kind each cell uses:
+  `RefusedByGate(check)` — the error carries `"<check> check failed"`, so the gate refused;
+  `RefusedBefore(substring)` — the verb's own pre-flight refused, and the cell pins that verb's own message instead.
+- **Why this is not optional:** most refusals in tranche 1 **never reach the gate**.
+  Verified sites: `remove.go:45` calls `validateWorktreeSlug` and returns a plain `fmt.Errorf` before any `pathRequest` exists;
+  `remove.go`'s own `worktreeDirty(scopeAll, target)` pre-flight returns `fmt.Errorf("worktree has uncommitted changes; use --force")` — **byte-identical to the gate's dirtiness reason at `destroy.go:564` but without the `dirtiness check failed` prefix**, so a substring assertion on the gate form silently fails there;
+  `checkout.go:42-47` returns `fmt.Errorf("weft worktree has uncommitted changes; stash or commit before checkout")`.
+  Without this decision the matrix's central assertion would mis-specify on the most obvious dirty-`Remove` cell in the whole table.
+- **Rationale for pinning the layer rather than erasing the distinction:** which layer refused is *signal*, not noise.
+  R5's defect was precisely a pre-flight check that did not exist, and R3's was a gate-side fallback with no dirtiness check.
+  A cell that records the layer fails when a future refactor moves a check across that boundary in either direction, which is exactly the drift this harness exists to detect.
+- **Rejected:** asserting only "refused + survived" with no check name (never wrong, but drops a stated requirement and cannot distinguish a correct refusal from an accidental one);
+  normalising all nine verbs so every refusal routes through the gate (one expectation kind and the cleanest end state, but a substantial production change in a slice scoped as additive, overlapping slice 14's envelope rewrite).
 
 ### tranche-1-verb-table
 
@@ -134,8 +155,24 @@ That property is what the current per-verb integration tests do not have.
   `""`, `.`, `..`, `../x`, a `-weft`-suffixed name, a reserved hub name (`_board`, `_portals`, `_launchers`), and a leading `-` apply only to the verbs that accept a slug or branch argument: **`Add`, `Remove`, `Checkout`**.
   `Prune`, `Cleanup`, `Reconcile` and `Unwire` take no such argument, so for them the hostile-input axis is empty and the cell must not fabricate one.
   `UnwireJunctions` takes a `names []string` — the hostile input there is a junction name escaping its worktree (`../x`), which is its own shape.
+- **The `CloneHub{Reset: true}` column is re-scoped to the ownership axis, not run against the nine states.**
+  `resetHub` declares `dirtinessNA` (`clone.go:585`), so **no dirtiness state can ever refuse it** — total hub destruction on `--reset` is correct behaviour, deliberately so.
+  That makes the permitted root the hub root itself, which would render the manifest diff vacuous across all nine states.
+  Instead this column drives `Reset` against two ownership-shaped targets and asserts refusal plus full survival: a directory that is not a hub at all, and a directory *named* `<derived>-HUB` that is not a hub — the exact shape of R4's `clone --reset` defect, which destroyed any directory matching a name fabric *derives* rather than one the operator types.
+  The dirtiness rows for this column are **omitted with the reason stated in the table**, never silently present-and-vacuous.
+  The rebuild half is asserted through `CloneAndWire`, so the hub that comes back is full-fidelity rather than `CloneHub`-partial.
+- **Leading-`-` and `Checkout` hostile-input cells assert survival and no-partial-mutation, with no check-name assertion, and are written against the *safe* expectation.**
+  A leading `-` passes `validateWorktreeSlug` untouched — it is not on any of that function's five rejection rules — so no gate check owns it and neither expectation kind from the refusal decision applies.
+  The cell therefore asserts that the argument **does not reach git as a flag**, and that nothing outside the permitted roots is destroyed.
+  If the current code does let it through as a flag, the cell fails, and that failure is instance nine — which is the point of the tranche.
+  `Checkout` validates no branch at all (`checkout.go:38-85` goes straight to `git switch`), so its hostile set is **branch-shaped rather than slug-shaped**: a nonexistent branch and a flag-shaped name.
+  Those cells additionally assert **no half-switched pair**, since `Checkout` is documented as all-or-nothing with rollback on both sides.
 - **Rejected:** only the four verbs from the evidence table (`remove`, `prune`, `cleanup`, `pull`) — leaves `Checkout`'s `branch -D`, `Reconcile`'s link repoint and `Add`'s rollback with no cell at all;
-  all exported verbs including read-only ones (every such cell asserts a tautology).
+  all exported verbs including read-only ones (every such cell asserts a tautology);
+  dropping the `Reset` column entirely (honest and smaller, but leaves R4's defect with no cell in the matrix);
+  keeping `Reset` in the uniform nine-state product and accepting ~18 vacuous cells (preserves table uniformity at exactly the cost the permit-list decision already rejected);
+  moving the leading-`-` and `Checkout` hostile inputs out of tranche 1 (defensible, but discards the input class most likely to hide an undiscovered defect, in the tranche whose job is finding one);
+  asserting whatever the current behaviour happens to be (regenerated-from-actual, asserts nothing).
 
 ### tranche-1-state-matrix
 
@@ -171,7 +208,7 @@ That property is what the current per-verb integration tests do not have.
   `Reconcile` → returns pairs, no error, no mutation outside repair roots;
   `UnwireJunctions` → junctions gone, worktree intact;
   `Pull` → warp advanced to upstream;
-  `CloneHub{Reset:true}` → hub torn down and rebuilt.
+  `CloneHub{Reset:true}` → hub torn down and rebuilt, the rebuild driven through `CloneAndWire` so junctions and the repo-wide `fabric.yaml` are present in the result (a `CloneHub`-only rebuild would reproduce exactly the partial-hub shortfall the factory decision exists to avoid).
 - **Rejected:** survival assertions only (matches the design doc's literal "assertions on what must SURVIVE" framing, but an over-refusing gate becomes indistinguishable from a correct one);
   additionally asserting that `--force` *does* override dirtiness (strictly more coverage and a good later addition, but it adds a force axis to the state matrix, which is growth this tranche does not need to validate the gate).
 
@@ -244,10 +281,11 @@ That property is what the current per-verb integration tests do not have.
 ### extraction-scope
 
 - **Decision:** Ship the factory and move the one movable duplicate `gitStatusPorcelain`.
-  Leave all 102 existing `CloneHub(` call sites alone.
+  Leave every existing `CloneHub(` call site alone — **100 across the 7 external test files, plus 2 in the in-package `clone_test.go`**.
 - **Rationale:** the factory is the actual deliverable.
-  Converting 102 calls across 7 files is a large, regression-risky mechanical diff against tests that are currently green, and most of those calls are clone-*behaviour* tests that deliberately vary clone's own arguments — a factory serves them badly.
-  `warpbinding_clone_integration_test.go` alone holds 59 and `clone_adopt_test.go` 29.
+  Converting 100 calls across 7 files is a large, regression-risky mechanical diff against tests that are currently green, and most of those calls are clone-*behaviour* tests that deliberately vary clone's own arguments — a factory serves them badly.
+  `warpbinding_clone_integration_test.go` alone holds 59 and `clone_adopt_test.go` 29, which is 88 of the 100 between them.
+  The remaining 2 are in `clone_test.go`, which is in-package and out of scope for a different reason — it can never import `fabrictest` at all.
   Decoupling that conversion from this task decouples an unrelated risk.
 - **Rejected:** converting all 7 external files now;
   classifying and converting only the pure-setup calls (the honest middle, but the classification requires reading all 7 files, which is most of the full conversion's cost anyway).
@@ -360,7 +398,14 @@ From `CONSTRAINTS.md`:
   Enforced by `cmd/lyx/destructiveguard_test.go`.
 - **Cwd Resolution Invariant** — `internal/lyxcwd` alone owns cwd resolution.
   The factory resolves a `*lyxcwd.Location` via `lyxcwd.Resolve(PrimeCwd)`, never by constructing one.
-- **Fabric Git Invariant (warp + weft)** and **Fabric Vocabulary Invariant** — the harness must use fabric's own vocabulary (warp, weft, prime, pair, hub, anchor) in names and messages.
+- **Fabric Git Invariant (warp + weft)** — the harness must use fabric's own vocabulary (warp, weft, prime, pair, hub, anchor) in names and messages.
+- **Fabric Vocabulary Invariant — this one blocks the build and must be handled in the same commit.**
+  `TestEnforcement_FabricVocabulary` (`internal/lyxcwd/enforcement_test.go`) walks every non-`_test.go` `.go` file under `internal/` and `cmd/`, computes `dir := filepath.ToSlash(filepath.Dir(relPath))`, and looks that string up in two **exact-match** maps — there is no prefix or subtree matching.
+  `fabricVocabularyOwners` (`enforcement_test.go:597`) holds `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine` and `internal/configsync`;
+  `weftnameImportOwners` (`enforcement_test.go:609`) holds only the first, second and fourth.
+  **`internal/fabricengine/fabrictest` is in neither**, and it is a directory of *non-test* `.go` files by the package-layout decision above — so every bare `warp`/`weft` identifier or comment in `hub.go`, `states.go`, `verbs.go`, `manifest.go` and `refusal.go` fails the bare-vocabulary rule, and importing `internal/weftname` (which the `-weft`-suffix hostile input needs) fails the import rule on top.
+  **Required in the same commit:** add `internal/fabricengine/fabrictest` as an owner row to **both** maps, and update `CONSTRAINTS.md`'s Fabric Vocabulary Invariant owner set to match.
+  This is not optional cleanup — without it the first `go test ./...` fails, and the failure surfaces in `internal/lyxcwd`, far from the code that caused it.
 - **CLI / Cobra Invariant** — `CloneAndWire`'s extraction must leave the `Command()`/`RunCLI` seam and every `Short` intact, and the help-tree tests must stay green.
 - **Documentation Lifecycle** — see the task-completion rule below.
 
@@ -416,7 +461,10 @@ TDD candidates, in build order, each independently verifiable before the matrix 
 **Scenarios that must be covered** — each traceable to the evidence table, so the matrix can be audited against it:
 
 - `pull` with a dirty tracked file in the warp worktree: refuses, and the uncommitted line survives (R2).
-- `remove ..`: refuses on **containment**, and the hub still exists (R5 — the worst defect in the campaign).
+- `remove ..`: refuses **at slug validation, not at the gate's containment check**, and the hub still exists (R5 — the worst defect in the campaign).
+  `Remove` calls `validateWorktreeSlug` at `remove.go:45` and returns `invalid slug "..": a slug must name a directory…` before any `pathRequest` is built, so the gate's containment refusal at `destroy.go:528` is **unreachable for this input**.
+  The cell uses `RefusedBefore`, not `RefusedByGate(containment)` — the latter would fail against a correct binary.
+  The survival assertion (the hub is still on disk) is what carries the R5 evidence, and it is unchanged either way.
 - `remove` with a slug ending in the weft suffix, a reserved hub name, `""`, `.`, `../x`, and a leading `-`.
 - `prune` against a hub child whose name ends in the weft suffix but which fabric never created — an ordinary user directory, and separately a real unrelated `git init` clone parked there (R4, two distinct states).
 - `prune` against a path git has just refused to remove, with untracked files present (R3).
@@ -442,7 +490,7 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Which states are in tranche 1? **A:** The eight defects' states plus the two link/foreign-path shapes, nine total, each citing its originating defect.
 - **Q:** Where does the matrix suite itself live, given `export_test.go` shims are unreachable from `fabrictest`? **A:** In `fabrictest`, mirroring `boardtest` — a cell needing an unexported shim is testing an internal, not the verb's public contract; those cases stay in `destructivegaps_integration_test.go` as an honest cost.
 - **Q:** How does a cell assert *which* of the four checks refused? **A:** Substring-match the refusal message via a `RefusedBy` helper — zero production churn, and the message is itself slice 12's stated honesty contract, which slice 14 will rewrite anyway.
-- **Q:** How much of the 102-call extraction lands here? **A:** Factory only, plus the one movable `gitStatusPorcelain`; converting 102 calls is a regression-risky diff against green tests and belongs elsewhere.
+- **Q:** How much of the call-site extraction lands here? **A:** Factory only, plus the one movable `gitStatusPorcelain`; converting the 100 calls in the 7 external files is a regression-risky diff against green tests and belongs elsewhere, and the 2 in the in-package `clone_test.go` can never import `fabrictest` at all.
 - **Q:** Does tranche 1 run cells on a `--subpath` hub? **A:** Yes, both anchors for the full matrix — `_portals`/`_launchers` paths are `AnchorRel`-interpolated, which is where a containment bug hides.
 - **Q:** Do clean-state cells assert the verb succeeds? **A:** Yes — without it an over-refusing gate is indistinguishable from a correct one, which defeats the matrix's purpose.
 - **Q:** Bare-remote template strategy and warp content shape? **A:** One `sync.Once` template pair carrying both a root `README` and `backend/`, copied per scenario; both gotchas encoded once.
@@ -451,3 +499,6 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Runtime budget and parallelism? **A:** Every cell parallel on its own hub, no hand-rolled cap, measured wall-clock recorded in `doc.go` rather than enforced by a flaky timing assertion.
 - **Q:** How is the Windows gap expressed? **A:** No `GOOS` skips and a `doc.go` note — the harness would run on Windows, only nobody has run it.
 - **Q:** Follow-up — the operator intends to run the whole suite on Win11 later and fix what breaks then. **A:** Decision unchanged, with an added build obligation: write the harness Windows-portable by construction (all links via `fslink`, GOOS-branched launcher extensions, `ToSlash` manifest keys, case-folding path compare, no file-mode dependence, short paths), and record the one genuine divergence — a git-tracked symlink materialises as a junction on Windows — in `doc.go` rather than behind a skip.
+- **Q:** Round 1 gap — most refusals never reach the gate (`remove.go:45`, `remove.go`'s own dirty pre-flight, `checkout.go:42-47` all return plain errors), so a single gate-shaped assertion mis-specifies. What is the second expectation kind? **A:** [auto-pick] Two expectation kinds, `RefusedByGate(check)` and `RefusedBefore(substring)`, declared per cell with the verb table recording which. **Why:** which layer refused is signal — R5's defect was a missing pre-flight and R3's a gate-side fallback, so a cell that pins the layer fails when a refactor moves a check across that boundary.
+- **Q:** Round 1 gap — `resetHub` declares `dirtinessNA`, so no dirtiness state can refuse `CloneHub{Reset:true}` and the permitted root is the whole hub, making the manifest diff vacuous. What does that column assert? **A:** [auto-pick] Re-scope the column to the ownership axis: drive `Reset` against a non-hub directory and a `<derived>-HUB`-named non-hub, assert refusal-by-ownership plus full survival, omit the dirtiness rows with the reason stated, and assert the rebuild through `CloneAndWire`. **Why:** that is exactly R4's `clone --reset` defect, and it converts ~18 vacuous cells into two that assert something.
+- **Q:** Round 1 gap — a leading `-` passes `validateWorktreeSlug` and `Checkout` validates no branch at all, leaving both cells' expected outcome undefined. **A:** [auto-pick] Assert survival and no-partial-mutation with no check-name assertion, writing the cell against the *safe* expectation (the argument must not reach git as a flag); use branch-shaped hostile inputs for `Checkout` plus a no-half-switched-pair assertion. **Why:** if the current code is unsafe the cell fails, and that failure is instance nine, which is the tranche's purpose — asserting current behaviour instead would assert nothing.
