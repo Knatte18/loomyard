@@ -18,7 +18,7 @@ A test that is merely slow — a big table-driven case, a large in-memory fixtur
 - **Tier 2 — the opt-in integration loop** (`go test -tags integration ./...`): Tier 1 **plus** the gated tests that spawn one of the substrate categories above — real `git` (worktrees, commits, pushes, junctions), real filesystem junctions/symlinks, real `tmux` sessions, real cross-compilation, or real external-binary spawn.
   It is slow **by design** — it does far more work.
   Measured median ~128 s on Windows (Cortex XDR), ~5 s on Linux.
-  Numbers and the full where-the-time-goes analysis: [test-suite-timing.md](test-suite-timing.md#current-best-times).
+  Numbers across machines and operating systems: [test-suite-timing.md](test-suite-timing.md#all-environments).
   Every git-spawning test package runs under the **Hermetic Git Test Environment Invariant** (`CONSTRAINTS.md`): a `TestMain` wires in `lyxtest.HermeticGitEnv()` before any test spawns git, which is what keeps this tier's git processes from inheriting the operator's global `~/.gitconfig` (and the `fsmonitor--daemon`/auto-`maintenance` spawns that config can trigger) — see [fixture-copy.md](fixture-copy.md) for the measured before/after.
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside the default loop and made it slow (~82 s historically); the two-tier split moved that work behind `-tags integration`. Same work, now off the default path. When reading a timing table, compare _down_ a column (is this package fast in the loop I run?), never _across_ (Tier 1 vs Tier 2 are not comparable — Tier 2 is the superset).
@@ -103,5 +103,5 @@ If the suite feels slow locally, the highest-leverage levers, in order:
    only changed packages re-run, so a no-op `go test ./...` returns in ~1 s.
 2. **Scope to the package you're editing** — `go test ./internal/fabricengine` beats the whole repo.
 3. **Stay in the offline tier.**
-   Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#current-best-times)).
+   Tier 1 (`go test ./...`) spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide (see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers)).
    Only reach for `-tags integration` when you are changing fabric / hubgeometry / board / ide git behaviour — and budget ~128 s (~2 min) for that tier.

@@ -67,6 +67,13 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
+	// Mirror CloneHub's post-clone state so the fixture matches a real fabric
+	// hub: the weft primary sits on the suffixed sibling of the warp's branch.
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	// The gate's ownedManagedBranch reaches primaryWeftBranch, which reads the branch checked out at
+	// _board — mirror newFabricFixture's setup (worktree add BEFORE seeding config into it) so that
+	// read succeeds instead of refusing the deletion outright for want of a readable primary.
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
 	// Card 20 folds RepoWiredNames(l) — WiredNames(fabricengine.BoardDir(l.HubPath))
 	// — into Add's eager-wiring step, hard-failing via rollbackAdd on a
 	// name-set load error, so the fixture must also materialize the
@@ -74,9 +81,6 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// base above. seedRepoWideFabricConfig is the same helper
 	// newFabricFixture uses for this (reconcile_stale_registration_test.go).
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-	// Mirror CloneHub's post-clone state so the fixture matches a real fabric
-	// hub: the weft primary sits on the suffixed sibling of the warp's branch.
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	l := fixture.Layout
 	weftBranch := fabricengine.WeftBranchName(slug)
@@ -104,7 +108,14 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 		t.Fatalf("create blocker: %v", err)
 	}
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	// The gate's ownedManagedBranch requires either a "-weft" suffix or a configured branch prefix
+	// to recognize a branch as fabric-managed; a bare slug carries neither, so rollbackAdd's warp
+	// branch deletion would be refused as unmanaged with an empty prefix. A nonempty BranchPrefix
+	// here makes the warp branch this Add creates recognizable to the gate, matching how a real
+	// deployment configures fabric.
+	const branchPrefix = "task/"
+	warpBranch := branchPrefix + slug
+	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
 		t.Fatalf("Add should have failed (portal blocker)")
 	}
@@ -126,8 +137,8 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
-	if branchExistsAt(t, l.WorktreePath(), slug) {
-		t.Errorf("warp branch %q still exists", slug)
+	if branchExistsAt(t, l.WorktreePath(), warpBranch) {
+		t.Errorf("warp branch %q still exists", warpBranch)
 	}
 }
 
@@ -195,8 +206,11 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: the gate's primaryWeftBranch read
+	// needs a real _board worktree to succeed, added BEFORE the config is seeded into it.
+	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
+	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
 	weftBranch := fabricengine.WeftBranchName(slug)
@@ -217,7 +231,11 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// already wired the junctions — the mid-add failure this test covers.
 	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
-	topology := fabricengine.NewTopology(fabricengine.Config{})
+	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: a configured branch prefix is what
+	// makes the warp branch this Add creates recognizable to the gate's ownedManagedBranch check.
+	const branchPrefix = "task/"
+	warpBranch := branchPrefix + slug
+	topology := fabricengine.NewTopology(fabricengine.Config{BranchPrefix: branchPrefix})
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{}); err == nil {
 		t.Fatalf("Add should have failed (broken origin remote)")
 	}
@@ -253,8 +271,8 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("warp worktree dir still exists at %s", fabricengine.WorktreePath(l, slug))
 	}
-	if branchExistsAt(t, l.WorktreePath(), slug) {
-		t.Errorf("warp branch %q still exists", slug)
+	if branchExistsAt(t, l.WorktreePath(), warpBranch) {
+		t.Errorf("warp branch %q still exists", warpBranch)
 	}
 }
 

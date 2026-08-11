@@ -1,8 +1,8 @@
 # Fabric crucible follow-ups — slices 12-15
 
-> **Status: none of the four slices is built.**
+> **Status: slice 12 landed (2026-08-11); slices 13-15 not yet built.**
 > This file is the durable, versioned source of truth for what each must do.
-> Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) it is deleted once all four have landed, with their durable rationale folded into `internal/fabricengine`'s package doc.
+> Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) it is deleted once all four have landed, with their durable rationale folded into `internal/fabricengine`'s package doc — slice 12's own share of that rationale already lives there (see doc.go's "The destruction chokepoint" section).
 
 The fabric v2 crucible campaign (slice 11, landed 2026-08-09) ran **six serial model-rotating review+fix rounds** against the slice 1-10 rewrite: R1 Opus high, R2 Fable high, R3 Opus high, R4 Opus medium, R5 Opus medium, R6 Fable high.
 It produced **81 findings, 9 BLOCKING, 8 of them data-loss**, and every round's verdict was independently verified by an orchestrator that re-ran the gates itself, sabotage-proved each new test, and re-drove BLOCKING fixes live — four of five verified rounds had something material the round's own report did not surface.
@@ -40,8 +40,19 @@ Two facts about this table drive the whole ordering below.
 
 ## Build order and why
 
-`12 → 13 → 14`, with `15` independent and parked at the tail.
+`12 → 13 → 14 → 15`, strictly serial — **one fabric slice in flight at a time**.
 The slice numbers are assigned in build order, so numeric order is always build order.
+
+The chain is serial for two independent reasons, and both have to hold before two slices may overlap:
+
+- **Logical** — each slice asserts on behaviour the previous one changes (argued per slice below).
+- **Mechanical** — every one of these slices edits `internal/fabricengine`, and slices 12 and 14 each rewrite it package-wide: 12 rewires roughly 29 destructive call sites and lands a static guard over the whole tree, 14 rewrites every verb's result path.
+  Two agents in that package at once is a merge conflict, not a schedule win.
+
+Slice 15 is the one whose serialisation rests only on the mechanical reason.
+It is logically independent of 12-14 — a locking race in `corrindex.go`, touching nothing the other three touch — and an earlier draft of this file therefore declared it free to pick up at any point.
+That was wrong: logical independence does not make it safe to edit the same package alongside a package-wide refactor.
+It is LOW and self-healing, so it loses nothing by waiting, and the tail is where it already sat.
 
 **The root-cause fix — the destructive-operation chokepoint — is slice 12, and it goes first.**
 It is the only slice that stops anything being destroyed;
@@ -78,15 +89,19 @@ The rest of the order:
   Note the division of proof: *no call site bypasses the gate* is slice 12's static guard;
   *the gate behaves correctly once reached* is the harness.
   Different mechanisms, both needed.
-- **Slice 14 third** — the envelope.
+- **Slice 14 third, and after 13 rather than beside it** — the envelope.
   It generalises slice 12's per-verb refusal reporting into one accumulate-as-you-mutate shape, and it completes slice 13: a harness cell is only fully meaningful when it asserts both "the operator's file is still on disk" *and* "the report was truthful", because case after case in the table above returned an error **and** destroyed something.
+  That is the same argument that puts 13 after 12, applied one slice later: 14 changes the report shape 13's cells assert on, so cells written beside it would be rewritten after it.
+  It also rewrites every verb's result path, which is the whole package 13's harness is built to drive.
 - **Slice 15 last** — LOW, self-healing, unrelated to the destruction class, and gated on a locking decision rather than on any of the others.
+  Serialised behind 14 on the mechanical reason alone (see above), not because it needs anything 14 produces.
 
-The chain is strict: 13 needs 12 landed, and 14 needs 12 landed.
-Only 15 is free of the others and can be picked up at any point.
+The chain is strict and total: `12 → 13 → 14 → 15`, one in flight at a time.
+Nothing here may be picked up beside an in-flight fabric slice.
 
 ## Slice 12 — route every destructive operation through one ownership-and-dirtiness gate
 
+**Landed 2026-08-11.**
 Issue #146 (`bug`).
 This is the root-cause slice.
 
@@ -202,16 +217,19 @@ That is the part that turns this from another fix into a closed class:
 `validateWorktreeSlug`'s two-of-eight call-site ratio was enumerated by crucible R6 as a separate class — validation asymmetry across entry points.
 Whatever R6 recorded is folded in **here** rather than fixed twice: the two classes meet at exactly the door where `remove ..` got in.
 
-### Open questions
+### Open questions — resolved on landing
 
-- **Does the gate belong in `internal/fabricengine`, or lower** — beside `internal/fslink` / `internal/gitrepo` — so non-fabric callers get it too?
-  Leaning fabricengine first, since all eight defects were fabric's, and generalising later is cheaper than a premature abstraction.
-- **The dirtiness probe is deliberately tracked-only today** (`git status --porcelain --untracked-files=no`).
-  That decision is reasoned and documented in `prune.go`;
-  the chokepoint inherits it rather than silently widening it, because refusing on untracked files would make `prune` useless on exactly the debris it exists to clear.
-- **How to enforce "no new raw destructive call" mechanically.**
-  Options: a test walking the AST, a `golangci-lint` forbidigo rule, or the existing grep-the-tree pattern.
-  The last is cheapest and matches the repo's existing guards — but see the Someday `lyx has ~15 home-grown static-analysis guards` item (issue #135) before adding a sixteenth hand-rolled walk.
+- **Does the gate belong in `internal/fabricengine`, or lower?**
+  Resolved: it stays in `internal/fabricengine`.
+  All eight defects were fabric's, and every predicate the gate resolves — hub geometry, the weft suffix, registered linked worktrees, `looksLikeHub` — is `fabricengine`-private;
+  generalising later, if a non-fabric caller ever appears, is cheaper than a premature abstraction now.
+- **~~The dirtiness probe is deliberately tracked-only today~~ — stale, corrected on landing.**
+  That earlier sentence over-generalised one verb's comment to the whole package, and the verified site-by-site split contradicts it: four of the eight `git status --porcelain` sites the gate consolidates are tracked-only and four are untracked-inclusive.
+  The decision actually taken: dirtiness scope is a caller-declared member of a closed sum type (`dirtyScopeTracked` / `dirtyScopeAll` / `dirtinessNA`), and every site keeps the scope it already had.
+  Normalising every site to tracked-only would have opened a new data-loss path: git's own untracked-file refusal on `git worktree remove` would then route into a directory-removal fallback with no equivalent protection.
+- **How to enforce "no new raw destructive call" mechanically?**
+  Resolved: the existing grep-the-tree pattern, matching the repo's other guards (`cmd/lyx/destructiveguard_test.go`).
+  The broader consolidation question — a shared static-analysis-guard framework rather than a sixteenth hand-rolled walk (issue #135) — is noted, not resolved, by this slice.
 
 ## Slice 13 — live-state integration harness
 
@@ -388,14 +406,16 @@ Confined to `internal/fabricengine` and `internal/fabriccli`.
 It changes JSON output shape, so anything parsing fabric's output is affected — enumerate the consumers before starting;
 within loomyard they are known, and `internal/boardengine` is the one to check first since it routes through `CommitWeftAt`/`PushWeftAt`.
 
-Sequenced **after** slice 12, not before: the gate's own refusal reporting (its step 5) lands in each verb's existing error shape first, and this slice is what generalises that into one accumulate-as-you-mutate envelope.
+Sequenced **after** slices 12 and 13, not before: the gate's own refusal reporting (its step 5) lands in each verb's existing error shape first, and this slice is what generalises that into one accumulate-as-you-mutate envelope.
 Deferring the envelope is a deliberate, bounded churn cost, paid so the safety half of the gate lands a slice earlier.
+Waiting for 13 as well is the mechanical half of the chain: this slice rewrites every verb's result path, which is the whole surface 13's harness drives.
 
 ## Slice 15 — corrindex two-phase read-modify-write races an unlocked RebuildIndex
 
 Issue #148 (`bug`), severity **LOW — self-healing**.
-Independent of slices 12-14;
-parked at the tail so it does not delay the class-closing work.
+Logically independent of slices 12-14, but sequenced **after** them all the same:
+it edits `internal/fabricengine`, and slices 12 and 14 rewrite that package wholesale, so overlapping it buys a merge conflict rather than a schedule win.
+Parked at the tail, where it costs nothing to wait.
 
 ### The mechanism
 
