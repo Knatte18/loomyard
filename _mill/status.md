@@ -79,6 +79,8 @@ batches:
     commit_sha: 4d72fa54fd5092f1661864577ac17a4512028648
     verify_baseline_failures: []
   - name: gap-integration-tests
-    state: pending
+    state: running
+    implementer_session: 5b4f4b2e-ecb1-4e25-be04-af46346bb1a6
+    start_sha: cc325b97f89defd225945a0ec19930011a8e810f
     verify_baseline_failures: []
 ```
