@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -39,6 +39,8 @@ approved-guard-and-docs  '2026-08-11T03:43:19Z'
 approved-gap-integration-tests  '2026-08-11T04:04:52Z'
 holistic-reviewing  '2026-08-11T04:05:15Z'
 holistic-fixing  '2026-08-11T04:13:14Z'
+nits-fixed-holistic  '2026-08-11T04:18:54Z'
+holistic-approved  '2026-08-11T04:19:01Z'
 ```
 
 ## Batches
