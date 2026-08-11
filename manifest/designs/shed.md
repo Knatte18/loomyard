@@ -4,7 +4,7 @@
 
 ## What it is
 
-**Revised model (2026-08-08), superseding "two swappable slots" below:** `Shed` has no predefined slots at all — no Preflight-slot, no Producer-slot, no shared Finalize.
+**Revised model (2026-08-08), superseding an earlier "two swappable slots" description:** `Shed` has no predefined slots at all — no Preflight-slot, no Producer-slot, no shared Finalize.
 It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across every entry.
 Everything that used to look "special" — Preflight, Finalize, review gates — is just a producer like any other in that list.
 What makes `loom` "loom" versus `Hardener` is purely which producers are in the list, in what order: pure configuration, not architecture.
@@ -15,8 +15,8 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
   Someday, deprioritized;
   not part of this doc's Planned scope.
 
-`Finalize` is not `Shed`'s own special code — it is an ordinary producer both `loom` and `Hardener` happen to reference (by *value* — the same producer definition named in both lists), not something `Shed` special-cases.
-**Raddle folds into `Finalize`'s own contract**, not a separate producer or a separate slot: updating Raddle before the Finalize merge is impractical given merge-conflict risk, so Raddle-regeneration is scoped as part of the merge itself (resolves the open question the pre-revision text below left open).
+`Finalize` is not `Shed`'s own special code — it is an ordinary producer both `loom` and `Hardener` happen to reference (by *reference* — the same producer definition named in both lists, so a change to `Finalize`'s definition is visible to both without either copying it), not something `Shed` special-cases.
+**Raddle folds into `Finalize`'s own contract**, not a separate producer or a separate slot: updating Raddle before the Finalize merge is impractical given merge-conflict risk, so Raddle-regeneration is scoped as part of the merge itself (resolves the open question an earlier draft left open).
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
 ### Producer contract vs. producer definition
@@ -60,7 +60,6 @@ Same reasoning as the combined `Treadle` + `perch`-rewrite task.
 
 `loom.md` is a mature, ~320-line, detailed design (crash recovery, pause semantics, session bootstrap, module decomposition) — this doc's own core model section is now the authoritative description of `Shed`'s generic mechanism (producers, contracts, engine adapters), and `loom.md`'s own [phase-machine section](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it.
 What this doc does *not* redo is `loom.md`'s remaining detail sections (crash recovery mechanics, pause, session bootstrap, module decomposition) — those stay in `loom.md`, described in `loom`-specific terms, and apply to `Shed`-based products generically without needing restating here.
-Wiki task `shed-producer-model-scoping` is the dedicated pass that reconciles any remaining detail mismatch between the two docs.
 
 ## Related
 
