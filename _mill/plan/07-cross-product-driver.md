@@ -62,6 +62,7 @@ A conditional in the driver would be the point at which the cross-product proper
   - `docs/benchmarks/running-tests.md`
 - **Edits:**
   - `internal/fabricengine/fabrictest/doc.go`
+  - `internal/fabricengine/fabrictest/verbs.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
