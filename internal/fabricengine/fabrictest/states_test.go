@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // structuralStateNames is the set of states this suite also proves against a manifest diff: applying
@@ -149,7 +150,7 @@ func assertCleanHubEstablished(t *testing.T, h *Hub) {
 
 	allowed := "?? " + h.Anchor + "/"
 	if h.Anchor == "." {
-		allowed = "?? _lyx/"
+		allowed = "?? " + lyxdirs.LyxDirName + "/"
 	}
 	for _, line := range strings.Split(weftStatus, "\n") {
 		if line == "" || line == allowed {

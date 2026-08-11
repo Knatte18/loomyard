@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // runGit runs a git subcommand in dir and returns its trimmed stdout, failing the test on a non-zero
@@ -121,7 +122,7 @@ func TestNewHub(t *testing.T) {
 				}
 			}
 
-			if _, err := os.Stat(filepath.Join(h.BoardDir(), "_lyx", "config", "fabric.yaml")); err != nil {
+			if _, err := os.Stat(filepath.Join(h.BoardDir(), lyxdirs.LyxDirName, "config", "fabric.yaml")); err != nil {
 				t.Errorf("repo-wide fabric.yaml missing at %s: %v", h.BoardDir(), err)
 			}
 
