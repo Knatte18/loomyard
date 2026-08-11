@@ -54,7 +54,16 @@ func removePortal(l *lyxcwd.Location, slug string) error {
 	if err := refuseUncontainedPath(PortalsDir(l), link, "portal"); err != nil {
 		return err
 	}
-	if err := fslink.Remove(link); err != nil {
+	req := pathRequest{
+		what:      "remove portal",
+		container: PortalsDir(l),
+		target:    link,
+		slug:      nil,
+		ownership: ownedWiredJunction([]string{PortalLink(l, slug)}, portalTarget(l, slug)),
+		dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
+		force:     false,
+	}
+	if err := removeLink(req); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)
 	}
 	// Successful/idempotent removal; prune empty ancestors

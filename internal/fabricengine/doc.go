@@ -510,4 +510,85 @@
 // rewords).
 // As an owner file, this doc comment — and every other file in this package — keeps `warp`/`weft`
 // vocabulary freely when explaining the mechanism the illusion sits on.
+//
+// # The destruction chokepoint
+//
+// `destroy.go` is the one file in this package permitted to perform a destructive primitive —
+// `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, and a warp
+// checkout's `ResetHard` — and every one of them runs its shared four-check pipeline first.
+// See `CONSTRAINTS.md`'s Fabric Destruction Chokepoint Invariant for the rules;
+// this section is the rationale the invariant deliberately omits.
+//
+// **Why a chokepoint at all.**
+// Eight data-loss defects across five review rounds were one shape, not eight mistakes: a
+// destructive operation acting on a path it does not own, or destroying it without checking
+// whether there is work there to lose.
+// Every one of the roughly 28 destructive call sites this slice consolidates already had the
+// freedom to write its own containment check, its own ownership check, its own dirtiness probe —
+// and that freedom, exercised inconsistently 28 separate times, is what produced the class.
+// A chokepoint does not add a check nobody thought of;
+// it removes the freedom to skip one.
+//
+// **Why the gate executes rather than approves.**
+// A gate a caller consults and then acts on independently is advice, not enforcement — the
+// caller can still reach `os.RemoveAll` directly, and nothing distinguishes "checked, then
+// destroyed" from "destroyed". `destroy.go`'s executors (`removePath`, `removeGitWorktree`,
+// `removeLink`, `repointLink`, `deleteBranch`, `resetHardTo`) run the pipeline and then perform
+// the primitive themselves, so the two can never come apart. This is also what makes the bypass
+// guard meaningful: a raw call to any of the five primitives is mechanically bannable everywhere
+// else in this package precisely because there is no legitimate reason for one to exist there —
+// the gate is not one way to destroy something, it is the only way.
+//
+// **Why ownership is a closed enum with no caller-supplied predicate.**
+// A `func() (bool, string)` ownership parameter would let a call site declare "trust me, this is
+// mine" — exactly the freedom that produced the class in the first place, relocated one layer
+// down rather than removed. Every ownership kind is instead resolved by the gate itself, against
+// a fixed, finite set of predicates it owns (`resolvePathOwnership`, `resolveBranchOwnership`):
+// a call site picks which kind applies, never what the kind checks.
+// A caller-supplied predicate, or an open interface with per-kind implementations, would both
+// re-admit the escape hatch — an interface doubly so, since Go interfaces are open sets unless
+// sealed with an unexported method, so closure would have to be re-established rather than
+// assumed.
+//
+// **Why dirtiness scope is a caller declaration, not a primitive-derived default.**
+// "Is there work here to lose" does not have one right scope: `ResetHard` and a linked-worktree
+// removal both discard tracked changes, so both probe tracked-only (`dirtyScopeTracked`) and
+// leave untracked debris alone;
+// a stale-pair removal takes the whole directory with it, so it probes tracked and untracked
+// alike (`dirtyScopeAll`).
+// `prune.go`'s two call sites are the worked example: `removeStalePair`'s worktree teardown
+// declares `dirtyScopeTracked`, matching `pull.go`'s `ResetHard` scope exactly, while
+// `weftwiring.go`'s `removeWeftWorktree` declares `dirtyScopeAll`, matching
+// `refuseDirtyWeftWorktree`'s pre-existing scope.
+// Deriving the scope from the primitive itself — "a removal is always untracked-inclusive" —
+// would have silently widened the tracked-only sites and opened a new data-loss path: git's own
+// untracked-file refusal on `git worktree remove` would then route into a directory-removal
+// fallback with no equivalent protection.
+// Scope is therefore a caller-declared member of a closed sum type
+// (`dirtyScopeTracked`/`dirtyScopeAll`/`dirtinessNA`), with every site keeping the scope it
+// already had, rather than a property the primitive silently picks.
+//
+// **Why the dirtiness probe lives beside the gate, in `dirtiness.go`, rather than inside
+// `destroy.go`.**
+// The gate calls it;
+// read-only callers (`warpclean.go`'s exported `Clean`, `reconcile.go`'s board-status check,
+// `checkout.go`'s pre-switch check) call it directly, bypassing the gate entirely, because
+// running `git status --porcelain` destroys nothing and gating it would be nonsense.
+// Keeping the probe out of `destroy.go` is what lets the bypass guard's allowlist mean "the only
+// file that destroys," not "the only file that also happens to run `git status`" — folding the
+// probe into the gate file would muddy the one property that file's contents exist to keep
+// precise.
+//
+// **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
+// `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
+// itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and
+// `Add`'s worktree rollback both need exactly that, and nothing weaker would do: a rollback site
+// that could destroy anything matching a *shape* rather than a specific gate-minted grant would
+// reopen the same freedom every other ownership kind exists to close.
+// `createdToken`'s two producers, `createExclusiveDir` and `createGitWorktree`, are declared only
+// in `destroy.go`, but being unexported does not by itself stop a same-package composite literal
+// — `createdToken{}` compiles anywhere in `package fabricengine`.
+// The property that a site cannot declare this kind for a path the gate did not create therefore
+// rests on the bypass guard's `createdToken{` ban, not on Go's type system;
+// a reader who believes the type system alone enforces it will eventually write one.
 package fabricengine

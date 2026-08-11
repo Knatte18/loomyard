@@ -42,7 +42,7 @@ func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 		{Name: "last", Link: lastLink, Target: lastTarget},
 	}
 
-	err := removeJunctionRecords(junctions)
+	err := removeJunctionRecords(root, junctions)
 	if err == nil {
 		t.Fatal("removeJunctionRecords = nil error; want a joined error from the middle junction")
 	}
@@ -63,7 +63,9 @@ func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
 func TestRemoveJunctionRecords_EmptyIsNoOp(t *testing.T) {
 	t.Parallel()
 
-	if err := removeJunctionRecords(nil); err != nil {
-		t.Errorf("removeJunctionRecords(nil) = %v; want nil", err)
+	root := t.TempDir()
+
+	if err := removeJunctionRecords(root, nil); err != nil {
+		t.Errorf("removeJunctionRecords(root, nil) = %v; want nil", err)
 	}
 }

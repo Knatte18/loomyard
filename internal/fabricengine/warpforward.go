@@ -27,9 +27,8 @@ func (f *Fabric) CurrentBranch() (string, error) {
 	return f.warp.CurrentBranch()
 }
 
-// ResetHard resets the warp checkout's HEAD, index, and working tree to sha, discarding any local
-// commits or uncommitted changes past that point.
-// It is a thin delegation to gitrepo.Repo.ResetHard on f.warp.
-func (f *Fabric) ResetHard(sha string) error {
-	return f.warp.ResetHard(sha)
-}
+// ResetHard has moved to destroy.go, where it becomes the gated executor for the ResetHard
+// primitive — see that file's own doc comment. It is not a thin delegation like its neighbours
+// above: there is exactly one correct ownership/dirtiness declaration for "reset this Fabric's warp
+// checkout", so the gated wrapper hardcodes it rather than exposing it, and it lives beside the rest
+// of the destructive surface instead of here.

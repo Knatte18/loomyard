@@ -211,3 +211,34 @@ func PointsTo(link string) (string, error) {
 	}
 	return target, nil
 }
+
+// RawTarget returns the literal, one-hop target recorded in link's own reparse point data — the
+// substitute name CreateDirLink wrote — without resolving it further, and without requiring that
+// target (or anything past it) to exist.
+// This is the ownership-check primitive PointsTo cannot serve: PointsTo fully resolves the chain, so
+// it fails outright when a later segment is gone (the legitimate case of a stale-pair prune, where
+// one side of a wired junction's chain no longer exists), and it silently walks past a
+// target that is itself a further symlink (a Fabric junction wired at a path whose own immediate
+// target is another Fabric junction, e.g. a portal pointing at a further Fabric junction that
+// itself points at the paired repository) — comparing that fully-resolved end state against the
+// ONE HOP a wiring call actually recorded is a mismatch by construction, not a drift.
+// Returns an error if link is not a link.
+func RawTarget(link string) (string, error) {
+	isLink, err := IsLink(link)
+	if err != nil {
+		return "", err
+	}
+	if !isLink {
+		return "", fmt.Errorf("RawTarget: %s is not a link", link)
+	}
+
+	data, err := readReparseData(link)
+	if err != nil {
+		return "", err
+	}
+	rawTarget, err := reparseSubstituteName(data)
+	if err != nil {
+		return "", fmt.Errorf("RawTarget(%s): %w", link, err)
+	}
+	return rawTarget, nil
+}

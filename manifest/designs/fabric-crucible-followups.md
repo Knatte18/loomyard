@@ -1,8 +1,8 @@
 # Fabric crucible follow-ups — slices 12-15
 
-> **Status: none of the four slices is built.**
+> **Status: slice 12 landed (2026-08-11); slices 13-15 not yet built.**
 > This file is the durable, versioned source of truth for what each must do.
-> Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) it is deleted once all four have landed, with their durable rationale folded into `internal/fabricengine`'s package doc.
+> Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) it is deleted once all four have landed, with their durable rationale folded into `internal/fabricengine`'s package doc — slice 12's own share of that rationale already lives there (see doc.go's "The destruction chokepoint" section).
 
 The fabric v2 crucible campaign (slice 11, landed 2026-08-09) ran **six serial model-rotating review+fix rounds** against the slice 1-10 rewrite: R1 Opus high, R2 Fable high, R3 Opus high, R4 Opus medium, R5 Opus medium, R6 Fable high.
 It produced **81 findings, 9 BLOCKING, 8 of them data-loss**, and every round's verdict was independently verified by an orchestrator that re-ran the gates itself, sabotage-proved each new test, and re-drove BLOCKING fixes live — four of five verified rounds had something material the round's own report did not surface.
@@ -101,6 +101,7 @@ Nothing here may be picked up beside an in-flight fabric slice.
 
 ## Slice 12 — route every destructive operation through one ownership-and-dirtiness gate
 
+**Landed 2026-08-11.**
 Issue #146 (`bug`).
 This is the root-cause slice.
 
@@ -216,16 +217,19 @@ That is the part that turns this from another fix into a closed class:
 `validateWorktreeSlug`'s two-of-eight call-site ratio was enumerated by crucible R6 as a separate class — validation asymmetry across entry points.
 Whatever R6 recorded is folded in **here** rather than fixed twice: the two classes meet at exactly the door where `remove ..` got in.
 
-### Open questions
+### Open questions — resolved on landing
 
-- **Does the gate belong in `internal/fabricengine`, or lower** — beside `internal/fslink` / `internal/gitrepo` — so non-fabric callers get it too?
-  Leaning fabricengine first, since all eight defects were fabric's, and generalising later is cheaper than a premature abstraction.
-- **The dirtiness probe is deliberately tracked-only today** (`git status --porcelain --untracked-files=no`).
-  That decision is reasoned and documented in `prune.go`;
-  the chokepoint inherits it rather than silently widening it, because refusing on untracked files would make `prune` useless on exactly the debris it exists to clear.
-- **How to enforce "no new raw destructive call" mechanically.**
-  Options: a test walking the AST, a `golangci-lint` forbidigo rule, or the existing grep-the-tree pattern.
-  The last is cheapest and matches the repo's existing guards — but see the Someday `lyx has ~15 home-grown static-analysis guards` item (issue #135) before adding a sixteenth hand-rolled walk.
+- **Does the gate belong in `internal/fabricengine`, or lower?**
+  Resolved: it stays in `internal/fabricengine`.
+  All eight defects were fabric's, and every predicate the gate resolves — hub geometry, the weft suffix, registered linked worktrees, `looksLikeHub` — is `fabricengine`-private;
+  generalising later, if a non-fabric caller ever appears, is cheaper than a premature abstraction now.
+- **~~The dirtiness probe is deliberately tracked-only today~~ — stale, corrected on landing.**
+  That earlier sentence over-generalised one verb's comment to the whole package, and the verified site-by-site split contradicts it: four of the eight `git status --porcelain` sites the gate consolidates are tracked-only and four are untracked-inclusive.
+  The decision actually taken: dirtiness scope is a caller-declared member of a closed sum type (`dirtyScopeTracked` / `dirtyScopeAll` / `dirtinessNA`), and every site keeps the scope it already had.
+  Normalising every site to tracked-only would have opened a new data-loss path: git's own untracked-file refusal on `git worktree remove` would then route into a directory-removal fallback with no equivalent protection.
+- **How to enforce "no new raw destructive call" mechanically?**
+  Resolved: the existing grep-the-tree pattern, matching the repo's other guards (`cmd/lyx/destructiveguard_test.go`).
+  The broader consolidation question — a shared static-analysis-guard framework rather than a sixteenth hand-rolled walk (issue #135) — is noted, not resolved, by this slice.
 
 ## Slice 13 — live-state integration harness
 

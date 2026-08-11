@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -140,20 +139,37 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 	return nil
 }
 
-// removeWarpJunction removes every warp junction for slug via fslink.Remove.
+// removeWarpJunction removes every warp junction for slug via the gate's removeLink executor.
 // Returns nil if all are absent (idempotent).
 func removeWarpJunction(l *lyxcwd.Location, slug string, names []string) error {
-	return removeJunctionRecords(WarpJunctions(l, slug, names))
+	return removeJunctionRecords(WorktreePath(l, slug), WarpJunctions(l, slug, names))
 }
 
-// removeJunctionRecords removes each junction via fslink.Remove in a
-// best-effort loop, continuing past per-junction failures and accumulating
-// errors. Returns nil if empty or all absent (idempotent); non-nil error does
-// not mean no junction was removed.
-func removeJunctionRecords(junctions []WarpJunction) error {
+// removeJunctionRecords removes each junction via the gate's removeLink executor in a best-effort
+// loop, continuing past per-junction failures and accumulating errors. Returns nil if empty or all
+// absent (idempotent); non-nil error does not mean no junction was removed.
+//
+// container is the containment boundary every junction in junctions must resolve strictly below —
+// a gated site cannot declare containment against a parent it never receives. Both of this
+// function's callers have l and slug in scope and pass WorktreePath(l, slug).
+func removeJunctionRecords(container string, junctions []WarpJunction) error {
+	links := make([]string, len(junctions))
+	for i, j := range junctions {
+		links[i] = j.Link
+	}
+
 	var errs []error
 	for _, j := range junctions {
-		if err := fslink.Remove(j.Link); err != nil {
+		req := pathRequest{
+			what:      "remove warp junction",
+			container: container,
+			target:    j.Link,
+			slug:      nil,
+			ownership: ownedWiredJunction(links, j.Target),
+			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
+			force:     false,
+		}
+		if err := removeLink(req); err != nil {
 			errs = append(errs, fmt.Errorf("remove warp junction %s: %w", j.Link, err))
 		}
 	}
@@ -163,7 +179,9 @@ func removeJunctionRecords(junctions []WarpJunction) error {
 // removeWeftWorktree tears down the weft worktree, optionally its branch, and
 // prunes stale worktree entries. Returns the first error encountered, or nil
 // if all steps succeed.
-func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBranch bool) error {
+// branchPrefix is the caller's configured warp branch prefix, forwarded to ownedManagedBranch — this
+// function has no config in scope of its own.
+func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch bool, branchPrefix string) error {
 	weftPath := WeftWorktreePath(l, slug)
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
@@ -172,12 +190,16 @@ func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBr
 
 	var firstErr error
 
-	args := []string{"worktree", "remove"}
-	if force {
-		args = append(args, "--force")
+	req := pathRequest{
+		what:      "remove weft worktree",
+		container: l.HubPath,
+		target:    weftPath,
+		slug:      nil,
+		ownership: ownedRegisteredLinkedWorktree(weftRoot),
+		dirtiness: dirtyScopeAll(),
+		force:     force,
 	}
-	args = append(args, weftPath)
-	_, _, exitCode, err := gitexec.RunGit(args, weftRoot)
+	exitCode, _, err := removeGitWorktree(req, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -188,8 +210,16 @@ func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, deleteBr
 		}
 	}
 
-	if deleteBranch {
-		_, _, exitCode, err = gitexec.RunGit([]string{"branch", "-D", branch}, weftRoot)
+	if alsoDeleteBranch {
+		branchReq := branchRequest{
+			what:      "delete weft branch",
+			repoDir:   weftRoot,
+			branch:    branch,
+			ownership: ownedManagedBranch(l, branchPrefix),
+			dirtiness: dirtyCheckedOutBranch(),
+			force:     false,
+		}
+		exitCode, _, err = deleteBranch(branchReq)
 		if err != nil || exitCode != 0 {
 			if firstErr == nil {
 				if err != nil {
