@@ -126,7 +126,17 @@ That property is what the current per-verb integration tests do not have.
 ### cross-product-shape
 
 - **Decision:** `[]State × []VerbCase`, one `t.Run(state.Name + "/" + verb.Name)` per cell, each cell `t.Parallel()` on its own freshly built hub.
-  Roughly: `State{Name string; Apply func(testing.TB, *Hub)}`, `VerbCase{Name string; Run func(testing.TB, *Hub) error}`, and a per-cell expectation carrying the permitted-removal roots, the optionally-expected refusing check, and the clean-state expected effect.
+  Roughly: `State{Name string; Apply func(testing.TB, *Hub)}`, `VerbCase{Name string; Arrange func(testing.TB, *Hub); Run func(testing.TB, *Hub) error; States []string}`, and a per-cell expectation carrying the permitted-removal roots, the expectation kind, and the expected effect.
+- **`Arrange` is a required third field, not an optional convenience.**
+  Most verbs need a fixture no state builds: `Remove` and `UnwireJunctions` need an added pair, `Prune` needs a *stale* pair, `Cleanup` needs an orphan managed branch, `Pull` needs an upstream advance, and `Add`'s rollback needs an induced post-creation failure.
+  Folding that work into `Run` would be a correctness bug, not a style choice: the before-manifest is captured before `Run`, so every arrangement mutation would show up in the diff as an unpermitted change and every such cell would fail.
+- **The five phases, in fixed order, stated so the capture points are unambiguous:**
+  1. **Build** — the factory clones a fresh hub at the cell's anchor.
+  2. **Arrange** — `VerbCase.Arrange` establishes the verb's own fixture.
+  3. **State** — `State.Apply` plants the hostile or dirty condition, and asserts it actually took.
+  4. **Capture (before)** — the manifest is taken here, *after* arrange and state, so both are baseline rather than diff noise.
+  5. **Run, then Capture (after), then diff and assert.**
+  State runs after arrange because several states plant *into* what arrange created — a dirty pair worktree does not exist until `Add` has made one.
 - **Rationale:** appending a verb to the table makes it inherit every state automatically, which is the stated property of the deliverable.
   Every cell already owns its own hub for correctness (independent bare pairs so pushes never race), so `t.Parallel()` is free.
 - **Rejected:** a flat explicit list of `{state, verb, expectation}` triples — more readable per cell, but a new verb does not inherit the states, forfeiting the cross-product property that is the whole point.
@@ -192,15 +202,38 @@ That property is what the current per-verb integration tests do not have.
   Instead this column drives `Reset` against two ownership-shaped targets and asserts refusal plus full survival: a directory that is not a hub at all, and a directory *named* `<derived>-HUB` that is not a hub — the exact shape of R4's `clone --reset` defect, which destroyed any directory matching a name fabric *derives* rather than one the operator types.
   The dirtiness rows for this column are **omitted with the reason stated in the table**, never silently present-and-vacuous.
   The rebuild half is asserted through `CloneAndWire`, so the hub that comes back is full-fidelity rather than `CloneHub`-partial.
+- **`Pull`'s `Arrange` must advance the warp bare, or the entire column is vacuous.**
+  `pull.go:210-212` returns early on `localHEAD == upstreamSHA` — **before** the dirty check at `:216` and before any `ResetHard`.
+  The template bare is never pushed to after cloning, so without an arrangement every `Pull` cell short-circuits into a no-op success: the `dirtyWarpTracked × Pull` cell would expect `ErrWarpDirty` and **fail against a correct binary**, and the clean-state effect "warp advanced to upstream" would be unreachable.
+  `Pull`'s `Arrange` therefore pushes a new commit to that scenario's **own** copy of the warp bare — which is exactly what per-scenario bare pairs were chosen for, and what `pull_integration_test.go:73,78` already does via a second clone.
+  This is recorded as a **precondition of the R2 scenario**, not an implementation detail: R2's defect is only reachable on an advance path.
+- **`Add`'s rollback needs an induced post-creation failure, and the arrangement is named.**
+  `rollbackAdd` fires only at post-creation sites (`add.go:139-204`), every one of them after `warpTok` is minted.
+  None of the nine states induces one — `Add`'s only probe reachable from the state matrix is its `scopeTracked` pre-flight at `add.go:43`, which returns a plain error long before `destroy.go` is involved.
+  So without an arrangement, `Add` would never reach the gate at all and the claim that every executor gets driven would be false.
+  `Add`'s `Arrange` **breaks the warp origin remote** (`git remote set-url origin <nonexistent>`), so the push at the end of `Add` fails after the branch and worktree already exist, triggering `rollbackAdd`.
+  This is the same injection `TestBranchOwnership_RefusalHoldsAtOtherDeletionSites` already uses, so it is a proven trigger rather than a guess.
 - **Hostile-input cells run in the `clean` state only, on both anchors.**
-  Crossing them with the full state matrix would give 7 inputs × 3 verbs × 9 states × 2 anchors ≈ **378 cells**, nearly all vacuous: `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows assert exactly what the ninth does.
+  Crossing them with the full state matrix would multiply out to hundreds of cells, nearly all vacuous: `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows would assert exactly what the ninth does.
   That is precisely the vacuity the `Reset` column was re-scoped to avoid, and permitting it here would contradict that decision one paragraph later.
   **Expressed without forfeiting the cross-product property:** a `VerbCase` carries an optional `States` restriction;
   when empty — the default, and what every ordinary verb uses — the case inherits **every** state, so a newly appended verb still gets the full matrix automatically.
   Only the hostile-input cases set it, to `clean`.
   The restriction is a property of the *case*, not a special path in the driver, so the driver stays one uniform loop.
-- **Resulting tranche-1 cell count:** 8 ordinary verbs × 9 states × 2 anchors = **144**, plus 7 hostile inputs × 3 verbs × 1 state × 2 anchors = **42**, plus the `Reset` column's 2 ownership targets × 2 anchors = **4**.
-  **190 cells total**, at roughly 24 ms of hub cost each, parallel.
+- **The per-verb hostile-input sets, since they are not uniform and the count is not derivable without them:**
+
+  | verb | input set | count |
+  |---|---|---|
+  | `Add` | the seven slug-shaped inputs: `""`, `.`, `..`, `../x`, `-weft`-suffixed, reserved hub name, leading `-` | 7 |
+  | `Remove` | the same seven slug-shaped inputs | 7 |
+  | `Checkout` | branch-shaped, not slug-shaped: a nonexistent branch and a flag-shaped name | 2 |
+  | `UnwireJunctions` | **in scope** — one junction name escaping its worktree (`../x`) | 1 |
+
+  `UnwireJunctions` is deliberately **in**, despite taking neither a slug nor a branch: its `names []string` is the only route to the link executor's containment check, and `TestUnwireJunctions_RefusesLinkOutsideItsWorktree` already proves that path is a live refusal surface rather than a hypothetical one.
+- **Resulting tranche-1 cell count:** 8 ordinary verbs × 9 states × 2 anchors = **144**;
+  plus 17 hostile-input cases (7 + 7 + 2 + 1) × 1 state × 2 anchors = **34**;
+  plus the `Reset` column's 2 ownership targets × 2 anchors = **4**.
+  **182 cells total**, at roughly 24 ms of hub cost each, parallel.
 - **Leading-`-` and `Checkout` hostile-input cells assert survival and no-partial-mutation, with no check-name assertion, and are written against the *safe* expectation.**
   A leading `-` passes `validateWorktreeSlug` untouched — it is not on any of that function's five rejection rules — so no gate check owns it and neither expectation kind from the refusal decision applies.
   The cell therefore asserts that the argument **does not reach git as a flag**, and that nothing outside the permitted roots is destroyed.
@@ -231,6 +264,16 @@ That property is what the current per-verb integration tests do not have.
 - **Rationale:** a tranche-1 hub has at least four checkouts (prime warp, prime weft sibling, `_board`, and each added pair's warp worktree plus weft sibling), and the gate probes a different one per verb.
   A state that dirties a checkout the verb never touches asserts nothing.
   R2 (`pull` discarding uncommitted tracked warp work) and R3 (`prune` removing a path git had just refused) were both about the verb's **own target** being dirty.
+- **The same rule extends to the four structural states, which otherwise have no defined placement.**
+  `trackedSymlinkAtWiredPath`, `foreignDirAtFabricOwnedPath`, `unrelatedGitCloneAtWeftNamedPath` and `staleWiredJunction` each name a *kind* of path, not a specific one — a wired junction path exists on the prime warp **and** on every pair worktree, and a "fabric-owned path" could be the pair worktree, its weft sibling, `_portals/<anchor>/<slug>` or `_launchers/<anchor>/<slug>`.
+  Without a rule, most of their cells would be undefined or vacuous in exactly the way the dirtiness states were before this decision.
+  **The rule is the same one:** plant at the path the verb under test actually acts on.
+  Resolved per verb: `Remove` and `UnwireJunctions` plant on the pair they are removing;
+  `Reconcile` plants on the prime warp's wired junction, the path its repair walk visits;
+  `Prune` plants at the stale pair's path — which is what makes `foreignDirAtFabricOwnedPath` and `unrelatedGitCloneAtWeftNamedPath` reproduce R4's two defects rather than merely resemble them;
+  `Cleanup` is branch-shaped and the structural states are **omitted** for it, with the reason recorded, rather than planted somewhere it never looks.
+- **Where a verb genuinely does not act on any path a structural state can name, the cell is omitted with its reason, never planted arbitrarily.**
+  An arbitrarily-planted structural state is worse than an absent one: it produces a green cell that proves nothing while reading like coverage.
 - **Rejected:** dirtying every checkout in the hub for every dirtiness cell (uniform and simple, but then no cell distinguishes "refused because my target was dirty" from "refused because something unrelated was dirty", which is most of the signal);
   a separate `dirtyElsewhere` state alongside `dirtyTarget` (a genuine assertion — a verb must *not* refuse over an unrelated dirty worktree — but it doubles the dirtiness rows, and over-refusal is already covered by the clean-state effect assertions below).
 
@@ -251,7 +294,8 @@ That property is what the current per-verb integration tests do not have.
   | `Checkout` | own pre-flight (`checkout.go:42`) | `scopeTracked` | weft worktree |
   | `Remove` | own pre-flight (`remove.go:69`) | `scopeAll` | the pair's warp worktree |
   | `Remove` | `refuseDirtyWeftWorktree` (`remove.go:79`, `:144`) | `scopeAll` | the pair's weft worktree |
-  | `Remove` | gate (`remove.go:196`, `:230`) | `dirtyScopeAll` | worktree / launchers |
+  | `Remove` | gate, `removeWarpWorktreeDir`'s primary and fallback requests (`remove.go:196`, `:230`) | `dirtyScopeAll` | the pair's warp worktree |
+  | `Remove` | gate, launcher script and launcher dir (`launchers.go:172`, `:193`) | `dirtinessNA` | n/a — generated artifacts, never edited content |
   | `Prune` | own pre-flight (`prune.go:214`) | `scopeTracked` | weft path |
   | `Prune` | gate (`prune.go:269`, `:292`) | `dirtyScopeTracked` | stale pair paths |
   | `Pull` | own pre-flight (`pull.go:143`) | `scopeTracked` | prime warp worktree |
@@ -543,7 +587,9 @@ TDD candidates, in build order, each independently verifiable before the matrix 
 
 **Scenarios that must be covered** — each traceable to the evidence table, so the matrix can be audited against it:
 
-- `pull` with a dirty tracked file in the warp worktree: refuses, and the uncommitted line survives (R2).
+- `pull` with a dirty tracked file in the warp worktree: refuses with `ErrWarpDirty`, and the uncommitted line survives (R2).
+  **Precondition, not optional:** the cell's `Arrange` must first push a new commit to that scenario's warp bare.
+  `pull.go:210-212` returns early when local HEAD already equals upstream, before the dirty check ever runs, so without the advance this cell asserts a no-op and would fail against a correct binary.
 - `remove ..`: refuses **at slug validation, not at the gate's containment check**, and the hub still exists (R5 — the worst defect in the campaign).
   `Remove` calls `validateWorktreeSlug` at `remove.go:45` and returns `invalid slug "..": a slug must name a directory…` before any `pathRequest` is built, so the gate's containment refusal at `destroy.go:528` is **unreachable for this input**.
   The cell uses `RefusedBefore`, not `RefusedByGate(containment)` — the latter would fail against a correct binary.
@@ -601,4 +647,8 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Round 2 gap — dirtiness scope is per-verb, so `dirtyWarpUntracked` against a `scopeTracked` verb like `Checkout` must *succeed*, an outcome the two-kind refusal scheme could not express. **A:** [auto-pick] Add a third expectation kind, `Proceeds` (verb succeeds, effect lands, planted content survives), and record the verified per-verb dirtiness-scope table so every cell's outcome is derived rather than guessed. **Why:** the scopeTracked-vs-scopeAll divergence against an untracked-only state is the one case proving dirtiness scope is a real per-request parameter, and without the table those cells would have been written from observed behaviour and asserted nothing.
 - **Q:** Round 3 gap — what does a manifest entry actually record, and how is `.git` handled, given that a blanket exclusion and a per-cell permit have opposite consequences? **A:** [auto-pick] Entry is path → kind + link raw target + file content hash, with no mode/mtime/size; `.git` gets a narrow allowlist recording only the `.git` entry itself and `.git/worktrees/<name>` at existence granularity. **Why:** a blanket `.git` exclusion would blind the harness to linked-worktree deregistration, which is R3's shape exactly, while hashing everything under `.git` would drown every cell in `index`/`logs`/`refs`/`objects` churn until the permit lists permitted everything.
 - **Q:** Round 3 gap — hostile inputs are scoped to three verbs but to no state set, so under `[]State × []VerbCase` they would inherit all nine states and both anchors (~378 cells), nearly all vacuous. **A:** [auto-pick] Hostile-input cells run in `clean` only, expressed as an optional `States` restriction on the `VerbCase` that is empty by default — so an ordinary newly-appended verb still inherits every state — giving 190 cells total. **Why:** `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows would assert exactly what the ninth does, which is the same vacuity the `Reset` column was re-scoped to avoid.
+- **Q:** Round 4 gap — `VerbCase{Name; Run}` gave no arrangement hook, yet most verbs need a fixture no state builds, and folding it into `Run` would put every arrangement mutation into the diff as an unpermitted change. **A:** [auto-pick] Add an `Arrange` field and fix the five-phase order — build, arrange, state, capture-before, run-then-capture-after. **Why:** the before-manifest must be taken after both arrange and state so each is baseline rather than noise, and state must follow arrange because several states plant into what arrange created (a dirty pair worktree does not exist until `Add` has made one).
+- **Q:** Round 4 gap — `pull.go:210-212` returns early when local HEAD equals upstream, before the dirty check, and the template bare is never advanced, so every `Pull` cell short-circuits. **A:** [auto-pick] `Pull`'s `Arrange` pushes a new commit to that scenario's own warp bare, recorded as a precondition of the R2 scenario. **Why:** without it the `dirtyWarpTracked × Pull` cell expects `ErrWarpDirty` and fails against a *correct* binary, and R2's defect is only reachable on an advance path at all.
+- **Q:** Round 4 gap — the four structural states name a kind of path rather than a specific one, and had no per-verb placement rule. **A:** [auto-pick] Extend `dirty-what-per-cell`'s rule to them — plant at the path the verb under test actually acts on — resolved per verb, and omit the cell with a recorded reason where no such path exists. **Why:** an arbitrarily-planted structural state is worse than an absent one, since it yields a green cell that proves nothing while reading like coverage.
+- **Q:** Round 4 gap — `Add`'s rollback fires only on post-creation failure, and no state induces one, so `Add` may never reach the gate. **A:** [auto-pick] `Add`'s `Arrange` breaks the warp origin remote so the closing push fails after the branch and worktree exist. **Why:** it is the same injection `TestBranchOwnership_RefusalHoldsAtOtherDeletionSites` already uses, so it is a proven trigger rather than a guess.
 - **Q:** Round 3 gap — sabotage-proving named no mechanism and no artifact, and neutering `destroy.go` is a production edit not in scope. **A:** [auto-pick] Name both: a temporary local working-tree edit per scenario, reverted immediately and never committed, scoped to the nine evidence-table scenarios only, with a `doc.go` table recording cell, neutered check and observed failure as the durable artifact, and all nine rows as a completion gate. **Why:** a permanent automated gate would need a per-check injection seam slice 12 deliberately did not build, and adding one would be production surface introduced by a test-only slice — but a harness whose cells were never made to fail would repeat the mistake it exists to correct.
