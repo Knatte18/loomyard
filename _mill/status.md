@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: gitexec-error-shape-decision
 branch: gitexec-error-shape-decision
-plan: null
+plan: _mill/plan
 parent: main
 task: 'gitexec: decide whether RunGit should return a typed error carrying stderr'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-10T18:03:47Z'
 discussion-fix-r5  '2026-08-11T03:37:56Z'
 discussed  '2026-08-11T03:37:56Z'
+planning  '2026-08-11T03:45:48Z'
 ```
