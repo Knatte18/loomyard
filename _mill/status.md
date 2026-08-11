@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-review-r2
 slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussed  '2026-08-11T10:21:34Z'
 planning  '2026-08-11T10:35:09Z'
 plan-review-r1  '2026-08-11T10:43:41Z'
 plan-fix-r1  '2026-08-11T10:43:41Z'
+plan-review-r2  '2026-08-11T10:51:33Z'
 ```

@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: live-state integration harness (slice 13)'
 slug: 'fabric-live-state-harness'
-approved: false
+approved: true
 started: '20260811-102636'
 parent: 'main'
 root: ""
