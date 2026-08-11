@@ -216,8 +216,9 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	}
 
 	// The default (empty) batcher name resolves to the identity batchifier
-	// -- exactly what PersistentPreRunE would have resolved and stored on
-	// c.batcher, bypassed here along with the rest of PersistentPreRunE.
+	// -- exactly what PersistentPreRunE would have resolved via Active and
+	// stored on c.batcher, bypassed here along with the rest of
+	// PersistentPreRunE.
 	activeBatcher, err := batcher.Select("")
 	if err != nil {
 		t.Fatalf("batcher.Select(\"\") error = %v", err)
@@ -675,38 +676,39 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 }
 
 // seedPersistentPreRunFixture returns a fresh warp-hub git fixture with
-// shuttle/reed/webster config seeded (webster.yaml's raw content is
-// caller-supplied, so a test can override its batcher: key) and chdir'd
+// shuttle/reed/webster/batcher config seeded (batcher.yaml's raw content is
+// caller-supplied, so a test can override its active: key) and chdir'd
 // into the warp hub -- unlike every other test in this file, this one
 // drives Command()'s real PersistentPreRunE (never bypassing it with a
 // hand-built *websterCLI literal), since load-time batcher selection is
-// wired there.
-func seedPersistentPreRunFixture(t *testing.T, websterConfig string) lyxtest.WarpFixture {
+// wired there (PersistentPreRunE, now via batcher.Active).
+func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) lyxtest.WarpFixture {
 	t.Helper()
 	fixture := lyxtest.CopyWarpHub(t)
 	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
-		"webster": websterConfig,
+		"webster": websterengine.ConfigTemplate(),
+		"batcher": batcherConfig,
 	})
 	t.Chdir(fixture.Hub)
 	return fixture
 }
 
 // TestPersistentPreRunE_UnknownBatcherFailsFast proves the load-time batcher selection
-// (batcher.Select(cfg.Batcher), wired into PersistentPreRunE) is a true fail-fast gate: an unknown
-// webster.yaml batcher: name aborts before any verb's RunE ever runs, with an output.Err envelope
+// (batcher.Active(baseDir), wired into PersistentPreRunE) is a true fail-fast gate: an unknown
+// batcher.yaml active: name aborts before any verb's RunE ever runs, with an output.Err envelope
 // naming the bad batcher key -- proven here via the `status` verb, which never itself touches the
 // batcher.
 func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
-	websterConfig := strings.Replace(websterengine.ConfigTemplate(), `batcher: ""`, `batcher: "bogus"`, 1)
-	seedPersistentPreRunFixture(t, websterConfig)
+	batcherConfig := strings.Replace(batcher.ConfigTemplate(), `active: ""`, `active: "bogus"`, 1)
+	seedPersistentPreRunFixture(t, batcherConfig)
 
 	var out strings.Builder
 	exitCode := RunCLI(&out, []string{"status"})
 
 	if exitCode != 1 {
-		t.Fatalf("status with an unknown batcher: name = %d; want 1, output: %s", exitCode, out.String())
+		t.Fatalf("status with an unknown batcher = %d; want 1, output: %s", exitCode, out.String())
 	}
 	got := out.String()
 	if !strings.Contains(got, `"ok":false`) {
@@ -719,17 +721,17 @@ func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 	}
 }
 
-// TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty) webster.yaml batcher: key
+// TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty) batcher.yaml active: key
 // resolves to the identity batchifier and the command proceeds normally through the rest of
 // PersistentPreRunE and into the verb's own RunE.
 func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
-	seedPersistentPreRunFixture(t, websterengine.ConfigTemplate())
+	seedPersistentPreRunFixture(t, batcher.ConfigTemplate())
 
 	var out strings.Builder
 	exitCode := RunCLI(&out, []string{"status"})
 
 	if exitCode != 0 {
-		t.Fatalf("status with the default batcher: name = %d; want 0, output: %s", exitCode, out.String())
+		t.Fatalf("status with the default batcher = %d; want 0, output: %s", exitCode, out.String())
 	}
 	if !strings.Contains(out.String(), `"initialized":false`) {
 		t.Errorf("output missing initialized:false; got %q", out.String())
