@@ -233,7 +233,12 @@ Card 3 therefore carries `Commit: none` and its verification is a read-back thro
   Content requirements for the three text fields:
   - **title** — names the build, not the decision: adding the checked `gitexec` entry point and migrating the call sites.
   - **brief** — one paragraph: what is added (the checked entry point returning stdout plus a typed error, the `gitrepo` checked sibling, the Checked-Call Invariant and its guard test), the size signal (roughly 70 call sites in the fabric engine plus a further fan-out behind the `gitrepo` helper, and the bulk of it a per-site two-message merge under a stated default rule rather than a sweep), and the two known guard-test collisions that must be fixed in the same commit.
-  - **body** — points at the design doc by path as the full specification, and records the three things the implementation commit must do beyond the migration itself: land the invariant text and its guard test, update the guards that key on the old literal token, and delete the design doc while removing the roadmap link to it in that same commit.
+  - **body** — points at the design doc by path as the full specification, and records the four things the implementation commit must do beyond the migration itself:
+    1. Land the Checked-Call Invariant's text and its guard test.
+    2. Fix the gitrepo Client Boundary Invariant guard, whose three assertions all break once the gitrepo checked sibling exists — the exactly-one-occurrence count, the requirement that the one occurrence sit inside the raw helper's body, and the pinned method set keyed on calls to the raw helper, from which every migrated method silently drops out.
+       This is the second of the two guard-test collisions the brief promises, and it is structurally distinct from item 3: it is keyed on occurrence counts and method names, not on a literal token.
+    3. Update the three guards that key on the old literal token and therefore go blind to the new entry point, including the grandfather exemption that names one file by hand.
+    4. Delete the design doc and remove the roadmap link to it in that same commit.
 
   Then verify by reading the record back with `get_task` for the same slug and confirming three things: the slug matches, the title is the one just written, and `depends_on` is exactly the one-element list naming the corrindex-race task.
   Print the read-back record.
