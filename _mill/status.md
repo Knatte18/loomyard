@@ -73,7 +73,9 @@ batches:
     commit_sha: 50709e8f98876445f76be60d91913ec7b44cff4f
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: cross-product-driver
-    state: pending
+    state: running
+    implementer_session: 8dbeb3e7-be0c-4632-a08e-f451b1b0414b
+    start_sha: 35ae0c0f0bbad2fc998f5ffa3190a8c8202e564e
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: sabotage-proof-and-docs
     state: pending
