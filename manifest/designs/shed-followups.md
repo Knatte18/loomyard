@@ -301,9 +301,9 @@ This was not left open for this task to re-derive — the real paths are already
 #### The `Discussion-Review-Gate` producer
 
 **`discussion-review-gate-exists`.**
-The `Discussion` side is not inherently asymmetric — scope a `Discussion-Review-Gate` mechanical producer, mirroring `Plan-Review-Gate`.
+The `Discussion` side is not inherently asymmetric — scope a `Discussion-Review-Gate` mechanical producer, mirroring `Plan-Validate`.
 It runs checks 1–2 of `discussion-format.md:80–82`: both files exist under `_lyx/discussion/`, and `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria).
-Both are per-run, artifact-observable properties of exactly the kind `Plan-Review-Gate` already hard-fails on, and both are already written down — this task names them as a producer, it does not design anything new.
+Both are per-run, artifact-observable properties of exactly the kind `Plan-Validate` already hard-fails on, and both are already written down — this task names them as a producer, it does not design anything new.
 
 **Check 3 is not a gate check.**
 `discussion-format.md:83`'s claim — that the Plan producer's declared input set never names `support-log.md` — is a property of the producer *definition*, not of any run's artifacts.
@@ -323,6 +323,11 @@ This task uses `:16`; the off-by-one from the discussion is not propagated into 
 Per `review-finding-classification.md` item 5, a "what NOT to look for" instruction must be written symmetrically into both the producer's own format-contract and the reviewing producer's rubric.
 Writing it into only one side recreates the non-convergent review loop that doc exists to prevent.
 This task honours that rule when writing the `Discussion-Review-Gate`'s rubric: whatever the gate is told not to look for must also be written into `discussion-format.md` itself, not only into the gate's own instructions.
+
+**Override recorded 2026-08-11 (task C, as landed).**
+The producer landed as `Discussion-Validate`, not `Discussion-Review-Gate`.
+Its `Plan`-side sibling above was renamed to `Plan-Validate` at the same time.
+Reason: `loom.md` overloads "gate" across two senses — perch's black-box review gate and this mechanical pre-check — so `-Validate` frees "gate" to mean perch alone.
 
 ### Scope
 

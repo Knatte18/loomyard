@@ -47,16 +47,17 @@ It is a generic engine that walks one ordered, flat list of **producers**, each 
 | # | Producer | Type | Input | Output |
 |---|---|---|---|---|
 | 1 | `Preflight` | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
-| 2 | `Discussion-Write` | LLM | — (starting point) | `discussion.md`, shape: `discussion-format.md` |
-| 3 | `Discussion-Review` | LLM/`perch` | `discussion.md` → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
-| 4 | `Plan-Sweep` | mechanical | `discussion.md` (approved) | scout inventory (internal artifact, not gated) |
-| 5 | `Plan-Write` | LLM | `discussion.md` + `Plan-Sweep`'s inventory | `plan.md`, shape: `plan-format.md` |
-| 6 | `Plan-Review-Gate` | mechanical | `plan.md` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
-| 7 | `Plan-Review` | LLM/`perch` | `plan.md` → `plan-format.md` | verdict + review file |
-| 8 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 9 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
-| 10 | `Webster-Review` | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 11 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+| 2 | `Discussion-Write` | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape: `discussion-format.md` |
+| 3 | `Discussion-Validate` | mechanical | `_lyx/discussion/` → `discussion-format.md`'s validation checks | pass/fail |
+| 4 | `Discussion-Review` | LLM/`perch` | `_lyx/discussion/` (both files) → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
+| 5 | `Plan-Sweep` | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
+| 6 | `Plan-Write` | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape: `plan-format.md` |
+| 7 | `Plan-Validate` | mechanical | `_lyx/plan/` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 8 | `Plan-Review` | LLM/`perch` | `_lyx/plan/` → `plan-format.md` | verdict + review file |
+| 9 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 10 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 11 | `Webster-Review` | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 12 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/status.json` exists and is a coherent fresh seed (no half-finished prior run).
@@ -72,7 +73,13 @@ Review is never a property attached to the producer it reviews — it is always 
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
 
-Open questions, not yet resolved: `Discussion` has no mechanical pre-gate the way `Plan-Review-Gate` mirrors `plan-format.md`'s `depends-on-order` check — asymmetric, possibly by nature (no structural check exists for `Discussion` the way order-validation exists for a card list) rather than an oversight, but worth deciding rather than assuming; and whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
+Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored `plan-format.md`'s `depends-on-order` check — is now resolved, not open.
+The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks `discussion-format.md`'s validation-checks section defines.
+The second open question stays open, untouched by this task: whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
+**Hand-off note (task C, as landed):** this task widens the second question's subject.
+`Plan-Validate` and the newly-inserted `Discussion-Validate` now share that same thin-Output property, so task E resolves the question over four producers — `Preflight`, `Plan-Validate`, `Discussion-Validate`, `Finalize` — not two.
+This task also repaired the first clause above in place, so task E does not need to go looking for it.
+The [`## The gate`](#the-gate) section below still uses "gate" in the perch sense (sense A) and is unchanged by this task — it remains task E's territory.
 Wiki task `shed-producer-model-scoping` is the dedicated survey pass that reconciles this table against `discussion-format.md`/`plan-format*.md` and `raddle.md`/`finalize.md`, and produces the actual buildable follow-up tasks — this table is settled on the model, not yet on every file-level detail.
 
 ## The gate
