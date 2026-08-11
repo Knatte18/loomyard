@@ -128,6 +128,7 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   - `internal/fabriccli/clone.go`
 - **Edits:**
   - `internal/fabricengine/fabrictest/verbs.go`
+  - `internal/fabricengine/fabrictest/verbs_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -149,6 +150,11 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   - `cloneHubResetRealHubCase` drives `fabriccli.CloneAndWire`, whose returned `CloneResult` carries the CLI layer's own record after batch 6 — so this cell's honesty diff includes the junctions, config writes and commits that happen above the engine.
 
   Where a `Run` closure fails early through `tb.Fatalf` before reaching the verb call, return the zero `fabricengine.Mutations` alongside its error — `tb.Fatalf` does not return, so the value is unreachable, but the compiler needs it.
+
+  **`VerbCase.Run` also has a caller outside `verbs.go`, and the arity change breaks it.** `internal/fabricengine/fabrictest/verbs_test.go` calls `err := vc.Run(t, h, fixture)` inside `TestVerbCases_CleanState`;
+  repoint it to `_, err := vc.Run(t, h, fixture)`, discarding the record with `_`.
+  That test asserts each case's own error shape, not its record — the record's assertions belong to card 31's cells — so discarding is correct here rather than a missed opportunity.
+  Grep the package for `.Run(` before finishing: the compiler is the authority, and this file is `integration`-tagged, so an untagged `go test` never sees the break.
 - **Commit:** `refactor(fabrictest): have VerbCase.Run return the mutation record`
 
 ### Card 31: wire the oracle into every cell

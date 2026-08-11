@@ -95,7 +95,12 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 
   Where a helper's caller is itself a helper, thread the parameter through rather than constructing a second recorder — there is exactly one `*Mutations` per verb invocation, and it is the one card 9 or card 10 built.
 
-  Three of these helpers have in-package test callers, which this card repoints by passing a throwaway `NewMutations("")` recorder so each assertion's meaning is unchanged: `removeLaunchers` in `internal/fabricengine/portallauncher_test.go` and `removeJunctionRecords` in `internal/fabricengine/weftwiring_test.go`.
+  **Four of these helpers are reached from inside `(*Topology).rollbackAdd`**, which card 15 gives its own leading `rec *Mutations` parameter: `removeWeftWorktree`, `removeWarpJunction`, `removePortal` and `removeLaunchers`.
+  Pass `rollbackAdd`'s `rec` at all four — passing `nil` there compiles and silently drops the entire rollback record, which **no** later assertion catches, because `Add`'s mint-then-rollback nets to zero in the manifest diff and batch 7's commission direction exempts exactly that shape.
+  Card 15 owns the parameter's introduction;
+  this card owns four of the six calls that record through it, and card 15 owns the other two (`removeGitWorktree`, `deleteBranch`). Six calls, one recorder, two cards — check all six are threaded before either card is considered done.
+
+  Two of these helpers have in-package test callers, which this card repoints by passing a throwaway `NewMutations("")` recorder so each assertion's meaning is unchanged: `removeLaunchers` in `internal/fabricengine/portallauncher_test.go` and `removeJunctionRecords` in `internal/fabricengine/weftwiring_test.go`.
   `teardownHub`'s own seam in `internal/fabricengine/export_test.go` is **not** repointed here — `teardownHub` does not gain its parameter until card 14, so card 14 owns that repoint and lists the file.
   Grep each renamed helper across `internal/fabricengine/*_test.go` before finishing the card rather than trusting this list — an unbuilt test file is invisible to `go build ./...` and only the widened `go vet -tags integration ./...` in this batch's verify catches it.
 
@@ -176,7 +181,7 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  - `internal/fabricengine/add.go`: pass the verb's recorder into the `createGitWorktree` call, and add a leading `rec *Mutations` parameter to `(*Topology).rollbackAdd`, threading it from each of its eleven call sites inside `Add`. The rollback's own `removeGitWorktree` and `deleteBranch` calls then record through the same recorder — which is the point: `Add`'s record must carry both the creations and the rollback's own destructions, in execution order.
+  - `internal/fabricengine/add.go`: pass the verb's recorder into the `createGitWorktree` call, and add a leading `rec *Mutations` parameter to `(*Topology).rollbackAdd`, threading it from each of its eleven call sites inside `Add`. `rollbackAdd` reaches **six** gate-bound calls through that parameter: its own `removeGitWorktree` and `deleteBranch`, plus the four helpers card 13 threads (`removeWeftWorktree`, `removeWarpJunction`, `removePortal`, `removeLaunchers`). All six must receive `rec`, not `nil` — that is the point: `Add`'s record must carry both the creations and the rollback's own destructions, in execution order, and a dropped rollback record is invisible to every later assertion because the mint-then-rollback pair nets to zero in the manifest diff.
   - `internal/fabricengine/checkout.go`: add a leading `rec *Mutations` parameter to `(*Topology).rollbackSwitch`, threading it from its three call sites inside `Checkout`, and switch the `WireJunctions` call to `WireJunctionsWith`, passing the recorder.
   - `internal/fabricengine/pull.go`: update the three `f.ResetHard(upstreamSHA)` call sites to `f.ResetHard(rec, upstreamSHA)`, using the recorder card 10 installed in `Pull`.
 

@@ -121,6 +121,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Write that reasoning into a comment at the call site so the next reader does not "fix" it by adding the entry.
 
   `runCloneWithReset` then emits through the card-23 helpers, keeping its four existing fields (`hub`, `anchor`, `warp`, `warp_binding_recorded`).
+  Those helpers take a `fabricengine.Mutations` **value**, while a CLI-layer recorder is a `*Mutations` — Go does not auto-dereference, so pass `rec.Snapshot()`, matching the `res.Mutated()` value form the engine-verb handlers use.
   Its `output.Err` **after** the `CloneAndWire` call becomes `errWithRecord(out, res.Mutated(), err)` — `CloneAndWire`'s defer has populated the result by then, and that failure path is precisely the mutated-then-errored case this slice exists to represent.
   The two returns before it — the `lyxcwd.Getwd()` failure and the `usage: ...` argument error — stay bare `output.Err`: nothing has been mutated at either.
 
@@ -131,7 +132,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   then record the `Bolt.Commit` backfill step as `KindCommitCreated` — **only when the returned `committed` flag is true**, exactly as the `CloneAndWire` half requires, since `Bolt.Commit` returns `("", false, nil)` on a no-op and an unconditional entry would record a commit that never happened — with the board worktree path (`fabricengine.BoardDir(l.HubPath)`) as its `Target` and the returned SHA as its `Detail`.
   Its `Bolt.Push` records nothing either, for the same unobservable-outcome reason spelled out above.
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
-  Emit through the card-23 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
+  Emit through the card-23 helpers — passing `rec.Snapshot()`, since they take a `Mutations` value and `rec` is a pointer — keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
 
   **The three post-`l` `output.Err` sites become `errWithRecord`, carrying `rec`'s accumulated entries** — the `ReconcileFabricAt` failure, the `LoadConfig` failure, and the `Reconcile` failure.
   The handler has **four** `output.Err` sites in total;
@@ -161,6 +162,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   In `internal/fabriccli/weft_verbs.go`, route `commit`, `push`, `pull` and `sync` through the card-23 helpers.
   The composition rule for the two composed verbs: concatenate the composed calls' records into **one flat** `mutations` array in execution order, and `partial` is true when any composed call returned an error and the **combined** record is non-empty.
   Build a local `rec := fabricengine.NewMutations(<hub root>)` per invocation and `rec.Extend(...)` each composed call's record as it returns, so a failure after the first call still emits the first call's record.
+  `rec` is a `*Mutations` while the card-23 helpers take a `Mutations` value, so every emission in this card passes `rec.Snapshot()`.
 
   - **`commit`** — one call, `fab.Commit(...)`. Keep the existing `committed` and `sha` fields.
   - **`push`** — two in-process calls in the default branch: `fab.Commit(...)` then `fab.PushWeft(opts)`. Its envelope is therefore already a concatenation — the commit record followed by the push record. A commit that lands followed by a push that fails is exactly "mutated, then errored", and the combined record is what makes it visible. The `--bypass` branch instead calls `CoalescePushBothAt` alone and carries that one record. Both branches keep their currently-empty field maps, which now gain `mutations` and `partial` and nothing else.

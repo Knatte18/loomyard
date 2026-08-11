@@ -175,6 +175,7 @@ batches:
 - `internal/fabricengine/fabrictest/refusal.go`
 - `internal/fabricengine/fabrictest/refusal_test.go`
 - `internal/fabricengine/fabrictest/verbs.go`
+- `internal/fabricengine/fabrictest/verbs_test.go`
 - `internal/fabricengine/gitexclude.go`
 - `internal/fabricengine/gitexclude_integration_test.go`
 - `internal/fabricengine/junction.go`

@@ -231,6 +231,11 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   - the `.lyx-anchor` marker write — `KindFileWritten`, **on the create branch only**. The adopt branch writes no marker (it found one already committed), so recording there would claim a write that never happened.
   - `writeWarpBinding`'s `.lyx-warp` record — `KindFileWritten`, on the `writeRecord` branch that actually calls it
 
+  **`writeWarpBinding` has a second production call site, in a different verb, and it needs the same entry.** `(*Topology).Reconcile`'s warp-binding backfill calls it from `internal/fabricengine/reconcile.go` (inside `reconcileWarpBinding`), writing the same `<boardDir>/.lyx-warp` file inside the hub, where `CaptureManifest` sees it.
+  Record `KindFileWritten` at that success site too, gated on the branch actually reaching the call, using the `Reconcile` verb's own recorder.
+  Without it the reconcile cells report an uncovered addition in batch 7's omission direction.
+  `internal/fabricengine/reconcile.go` is already in this card's `Edits:`.
+
   Record each only on the success of its own step, never before attempting it.
   `cloneRepo` itself stays unparameterised — it is a mechanism with no notion of a record;
   `CloneHub` records at the call site, where the destination path and the error are both in hand.
