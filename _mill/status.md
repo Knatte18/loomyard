@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: gitexec-error-shape-decision
 branch: gitexec-error-shape-decision
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-11T03:59:02Z'
 implementing  '2026-08-11T03:59:26Z'
 approved-verdict-record  '2026-08-11T04:06:14Z'
 holistic-reviewing  '2026-08-11T04:06:31Z'
+holistic-fixing  '2026-08-11T04:12:30Z'
 ```
 
 ## Batches
