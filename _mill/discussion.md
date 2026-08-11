@@ -147,15 +147,27 @@ The verdict is written down, the implementation is filed as its own task, and th
   return false, fmt.Errorf("gitrepo: merge-base --is-ancestor %s %s in %s: %w", sha, ref, r.path, err)
   ```
 
-  This is strictly better than today: the answer codes still answer, and the `default:` branch **gains** the stderr it currently throws away. `internal/gitrepo/gitrepo.go:140` and `:193` (`diff --cached --quiet`) are the same class and take the same treatment, though they already bind stderr in their default branch.
+  This is strictly better than today: the answer codes still answer, and the `default:` branch **gains** the stderr it currently throws away.
+
+  `internal/gitrepo/gitrepo.go:140` and `:193` are both `diff --cached --quiet` and both mixed, but **their answer codes are inverted** — transcribe the `errors.As` recovery per site, not once:
+
+  | site | exit 0 | exit 1 | default |
+  |---|---|---|---|
+  | `:140` (`CommitEmpty`) | falls through, proceeds to commit | `return "", ErrIndexNotEmpty` | error (already binds stderr) |
+  | `:193` (`StageAllAndCommit`) | `return "", false, nil` — nothing to commit | falls through, proceeds to commit | error (already binds stderr) |
+
+  Both take the same treatment as `IsAncestor`, differing only in which code the `errors.As` branch tests for and what it returns.
   The `errors.As` ceremony the [verdict](#verdict-second-entry-point) rejects for *pure* predicates is correct here, because a mixed site genuinely has both an answer and a failure to distinguish.
 - **Rejected:** Treating these as unmigrated debt to be swept later — they are not debt; sweeping them would be a regression.
   Folding mixed tri-states into "raw, permanently correct" — that is what an earlier draft did, and it silently preserved a bare-exit-code failure path inside a site labelled as needing no diagnostic.
 
 ### guard-test-with-justification-comments
 
-- **Decision:** A new CONSTRAINTS invariant, the **gitexec Checked-Call Invariant**, requiring every remaining raw `gitexec.RunGit` / `gitrepo.run` call site to carry an adjacent marker comment, `//gitexec:raw — <why a non-zero exit is not a failure here>`.
+- **Decision:** A new CONSTRAINTS invariant, the **gitexec Checked-Call Invariant**, requiring every remaining raw `gitexec.RunGit` / `gitrepo.run` call site to carry an adjacent marker comment, `//gitexec:raw — <why the raw form is correct here>`.
   Written and landed by the **implementation** task, not by this one.
+- **The justification is "why raw is correct", not "why non-zero is not a failure".** An earlier draft mandated the narrower wording, which cannot be truthfully filled at two of the sites it governs: `gitrepo.Pull` and `Fetch` are raw precisely *because* a non-zero exit **is** a failure whose stderr is deliberately withheld under a test-pinned contract. Since this wording is what lands in `CONSTRAINTS.md`, it has to cover both raw classes:
+  - **pure predicate** — every exit code is an answer (`rev-parse --verify` existence checks, `return exitCode == 0`, `HasUnpushed`);
+  - **pinned deliberate-suppression contract** — non-zero is a failure, but folding stderr into the message would break a documented, test-enforced surface (`pull.go:19`, `pull.go:33`).
 - **Keyed on the marker comment, not on a location.** The guard asserts that every raw call site has the marker, and separately pins a **per-package count** of raw sites as a drift tripwire. There is no file:line list and no enclosing-function list.
   Location keys rot on every unrelated edit above the line — the exact staleness this document designs around in [verdict-carries-shapes-and-a-regeneration-recipe-not-durable-line-numbers](#verdict-carries-shapes-and-a-regeneration-recipe-not-durable-line-numbers) — and an enclosing-function key churns on renames while still not enforcing the justification. Keying on the marker makes the justification requirement *be* the enforcement rather than a convention standing beside it, and the count keeps "a new raw site appeared" a visible diff.
 - **Test files are exempt from this invariant.** Roughly 50 `*_test.go` sites use `RunGit` for fixture setup where exit status is legitimately irrelevant; demanding a written justification at each is ceremony with no design weight. Test-side coverage comes instead from the three token guards below, which must learn the new entry point.
@@ -200,6 +212,7 @@ The verdict is written down, the implementation is filed as its own task, and th
 - **Decision:** `manifest/designs/gitexec-error-shape.md` is rewritten *in place* as the verdict by this task. The implementation task deletes it when it lands and moves the durable rationale into `internal/gitexec`'s package header comment.
 - **Rationale:** This is the Documentation Lifecycle rule for module-design docs verbatim — deleted when the work lands, with purpose and key rationale moving into the Go package header next to the code.
   The doc's current status line (`manifest/designs/gitexec-error-shape.md:5`) says "Deleted once the verdict is recorded, wherever it lands", which on its face means delete *now*. That line is **amended by this task**, not cited in support: the verdict is recorded *in* the doc, and the doc survives until the implementation lands, at which point it is deleted under the lifecycle rule. The retention rests on the lifecycle rule alone.
+- **Hand-off note for the deletion commit.** `manifest/roadmap.md:75` links to `designs/gitexec-error-shape.md`. This task keeps that link live, since the doc is rewritten rather than deleted. The **implementation task must remove the roadmap link in the same commit that deletes the doc**, or Markdown Link Integrity (`TestEnforcement_MarkdownLinks`) fails on a dangling relative link.
 - **Rejected:**
   - Promoting it to `docs/reference/` as a durable contract doc — it documents one package's error shape, not a cross-module *file* contract honoured by a real consumer, so it does not meet that bar.
   - Recording the verdict directly in the package comment now and deleting the doc — the package comment would describe a shape the code does not have.
@@ -428,6 +441,18 @@ If deliberate discard is meant to be *visible*, the **guard test is the mechanis
   `internal/gitrepo/pull_test.go:87` and `:119` **fail if `err.Error()` contains `"fatal:"`**, and separately require the `git -C` reproduction string. These two sites stay **raw** with a `//gitexec:raw` marker citing the pinned contract.
   This class matters beyond its two members: it is a live counter-example to "55 sites discard stderr because the API made it easy". Here the discard is a considered decision with a test behind it, and the verdict must not present every discard as an accident of the shape.
 
+  **Error-constructing helpers that take stderr and cause separately must be re-signatured.** The merge is not always between two `fmt.Errorf` calls at the call site — sometimes both branches call a shared helper, and the helper's own signature encodes the two-value split the change removes:
+
+  ```go
+  // internal/fabricengine/warpprobe.go:146 — takes stderr and cause as separate parameters,
+  // and picks between them: stderr wins, falling back to cause.Error(), then to a fixed string.
+  func wrapProbeError(weftURL, op, stderr string, cause error) error
+  ```
+
+  All four `warpprobe.go` exit paths route through it — `:71` and `:95` pass `(…, stderr, nil)`, `:69` and `:79` pass `(…, "", err)` — so the two call shapes collapse into one and the helper's internal stderr-vs-cause choice becomes dead.
+  **Decision: re-signature the helper to `wrapProbeError(weftURL, op string, cause error) error`** and drop its detail-selection branch, since `GitError.Error()` already renders the stderr it was choosing between. Feeding the old helper `err.Error()` as the `stderr` argument was rejected — it keeps a parameter whose reason for existing is gone, and stringifies an error that callers may want to `errors.As`.
+  This shape is not unique to `warpprobe.go`; the implementation task must check each error-constructing helper the merge touches for the same split.
+
   **Regeneration query for the merge count.** For each `gitexec.RunGit(` call in a non-test file under `internal/fabricengine`, inspect the following window (~20 lines, to the next call or function end) and count it as a merge site when the window contains **both** an `err != nil` guard and an exit-code comparison. A coarse 22-line window returns 63 of 70; the careful count that respects block boundaries returns ~51. Re-derive before quoting.
 
   > **Two different 51s — do not conflate them.** The ~51 *two-message merge sites* and the ~51 *error-returning exit-code comparisons* from the predicate classification are separate measurements over different units (call sites vs comparisons) that happen to land on the same number. Neither confirms the other, and a future pass that treats one as corroborating the other is reasoning from a coincidence.
@@ -455,7 +480,7 @@ From `CONSTRAINTS.md`:
 
 - **gitrepo Client Boundary Invariant** (`CONSTRAINTS.md:348`) — go-git owns local object and ref reads; `gitexec` is the only path to the git CLI, pinned to `StageAndCommit`, `CommitEmpty`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `PushRebaseFree`, `Pull`, `Fetch`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `IsAncestor`, `HasUnpushed`.
   Any new `gitexec` call inside `internal/gitrepo` must update that list in the same commit, and the pinned list is enforced by `TestGitrepoBoundary_PinnedRunCallSites`.
-  This task adds no call and so does not touch the list; the implementation task changes the *shape* of calls inside already-pinned methods, which the set-equality check tolerates — but it must confirm that, not assume it.
+  This task adds no call and so does not touch the list. The implementation task **does** break this guard on all three of its assertions — the exactly-one `gitexec.` count, the run-body requirement, and the `r.run`-keyed pinned method set (`bodyCallsMethodOnReceiver(…, "run")` does not match `r.runChecked(`, so every migrated method silently drops out of the set). All three change in that commit; see [guard-test-with-justification-comments](#guard-test-with-justification-comments) for the decided detail that makes this a fact rather than a risk.
 - **Documentation Lifecycle** (`CONSTRAINTS.md:368` → `docs/overview.md:86`) — module-design docs under `manifest/designs/` are deleted when their module lands, with rationale moving into the Go package header comment. This is the rule that governs [verdict-doc-lifecycle](#verdict-doc-lifecycle).
 - **Markdown Link Integrity** (`CONSTRAINTS.md:229`) — the rewritten design doc and the edited roadmap entry must keep every relative link resolving. The existing doc links to `fabric-crucible-followups.md` and `../../CONSTRAINTS.md#gitrepo-client-boundary-invariant`; the roadmap links to `designs/gitexec-error-shape.md`, and that link must survive this task (the doc is rewritten, not deleted, here).
 
@@ -538,4 +563,12 @@ Resolved in discussion review round 3:
 - **Q:** Does the gitrepo checked sibling call `gitexec.Run` directly or wrap `r.run`? **A:** Directly — `runChecked` becomes a second chokepoint beside `run`. Wrapping `r.run` would force `gitrepo` to construct `*gitexec.GitError` itself and would leave the boundary guard passing, but the invariant's point is funnelling git-CLI access through named helpers, which two helpers satisfy. This decision is what makes the "both boundary assertions change" claim a fact rather than an assumption.
 - **Q:** Is `HasUnpushed` a predicate? **A:** Yes — `push.go:133`, non-zero folds into `(true, nil)` per its godoc. It appeared only in the discard list, never in the shape list. Added, along with the standing note that gitrepo's 21 sites need **per-site dispositions, not a count**; this document fixes the classes, and the implementation task classifies each member.
 - **Q:** How does `Error()` join args? **A:** Space-separated, `%q`-quoted only for args containing whitespace or empty args. Unconditional quoting is noise on `git "status" "--porcelain"`; a bare join is ambiguous for commit messages, `--filter=` values and paths with spaces, all of which occur in this tree.
+
+Resolved in discussion review round 4:
+
+- **Q:** Does the merge rule cover branches that build their error through a shared helper? **A:** It did not. `warpprobe.go`'s four exit paths all route through `wrapProbeError(weftURL, op, stderr string, cause error)`, whose signature *encodes* the stderr-vs-cause split the change removes and whose body picks between them. Decision: re-signature it to `wrapProbeError(weftURL, op string, cause error) error` and drop the detail-selection branch. Feeding it `err.Error()` was rejected — it preserves a parameter with no remaining reason to exist and stringifies an error callers may want to `errors.As`. The implementation task checks every error-constructing helper the merge touches for the same shape.
+- **Q:** Does the Constraints section still say the boundary guard tolerates the change? **A:** It did, contradicting the decided fact. Rewritten: all **three** assertions break — the exactly-one `gitexec.` count, the run-body requirement, and the pinned method set (`bodyCallsMethodOnReceiver(…, "run")` does not match `r.runChecked(`, so migrated methods drop out silently).
+- **Q:** Can every raw site truthfully fill the marker comment? **A:** Not as originally worded. `Pull` and `Fetch` are raw *because* non-zero **is** a failure whose stderr is withheld under a pinned contract, so "why non-zero is not a failure" is unfillable there. Since that wording lands in `CONSTRAINTS.md`, it is broadened to "why the raw form is correct here", with the two raw classes named: pure predicate, and pinned deliberate-suppression contract.
+- **Q:** Do the two `diff --cached --quiet` sites share a mapping? **A:** No — they are **inverted**. At `:140` (`CommitEmpty`) exit 1 means `ErrIndexNotEmpty`; at `:193` (`StageAllAndCommit`) exit 0 means "nothing to commit" and exit 1 falls through to the commit. Tabulated separately so the `errors.As` recovery is not transcribed with the wrong code.
+- **Q:** What happens to the roadmap link when the doc is deleted? **A:** The implementation task removes `manifest/roadmap.md:75`'s link in the same commit as the deletion, or Markdown Link Integrity fails on a dangling relative link. Recorded as a hand-off note.
 
