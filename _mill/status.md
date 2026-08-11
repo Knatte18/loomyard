@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: gitexec-error-shape-decision
 branch: gitexec-error-shape-decision
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussed  '2026-08-11T03:37:56Z'
 planning  '2026-08-11T03:45:48Z'
 plan-review-r1  '2026-08-11T03:52:32Z'
 plan-fix-r1  '2026-08-11T03:52:32Z'
+plan-fix-r2  '2026-08-11T03:58:54Z'
 ```

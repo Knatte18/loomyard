@@ -106,7 +106,7 @@ Card 3 therefore carries `Commit: none` and its verification is a read-back thro
      the error-constructing-helper re-signature, with the decision to drop the helper's detail-selection branch and the standing instruction to check every error-constructing helper the merge touches for the same split;
      the `errors.As` predicate-recovery snippet as a Go fenced block;
      the content-sniffing class where stderr content rather than the exit code decides answer-versus-failure, with both worked examples and the disposition that the sniff moves onto the recovered error;
-     the mixed tri-state class with its `errors.As` recovery snippet and the inverted two-row disposition table for the two `diff --cached --quiet` sites;
+     the mixed tri-state class with its `errors.As` recovery snippet and the inverted two-row disposition table for the two `diff --cached --quiet` sites, carrying with it the two rejections from the discussion's `predicate-sites-are-real-and-must-stay-expressible` decision that explain why this class takes the checked form rather than staying raw — treating these sites as unmigrated debt to be swept later is rejected because they are not debt and sweeping them would be a regression, and folding mixed tri-states into "raw, permanently correct" is rejected because that is what an earlier draft did and it silently preserved a bare-exit-code failure path inside a site labelled as needing no diagnostic;
      the four outside-fabric dispositions as a table;
      the seven full-discard sites split into their two classes, with the note that `//nolint:errcheck` enforces nothing here because the repo has no external linter and the guard test is the mechanism instead;
      and the hand-read exceptions.

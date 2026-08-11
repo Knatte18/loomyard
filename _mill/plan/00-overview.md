@@ -3,7 +3,7 @@
 ```yaml
 task: 'gitexec: decide whether RunGit should return a typed error carrying stderr'
 slug: 'gitexec-error-shape-decision'
-approved: false
+approved: true
 started: '20260811-034300'
 parent: 'main'
 root: ""
