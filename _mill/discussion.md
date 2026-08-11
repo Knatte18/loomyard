@@ -419,6 +419,14 @@ If deliberate discard is meant to be *visible*, the **guard test is the mechanis
 
   `gitexec.Run` deletes the `exitCode` binding the `%d` consumes, so leaving the fragment in place is both unfillable and a duplicate of what `GitError.Error()` already renders. The merged form is `fmt.Errorf("warp switch to branch %q failed: %w", branch, err)`.
 
+  **Exception — a `%d` that cites a *prior* call's exit code is not a duplicate and must not be dropped.** `internal/fabricengine/reconcile.go:546` and `:550` render `exitCode` from the `rev-parse --abbrev-ref HEAD` call at `:528`, while the error being merged belongs to the *later* `branch --show-current` call at `:538`:
+
+  ```go
+  return "", fmt.Errorf("rev-parse exited %d and branch --show-current exited %d", exitCode, unbornExit)
+  ```
+
+  Deleting that fragment discards a second call's diagnostic rather than a duplicate of `GitError.Error()`. At such a site, keep the earlier call in the **raw** form (or capture its `*GitError` and cite it explicitly) so the combined message survives.
+
   **Sentinel-returning exit paths keep their sentinel identity.** The rule above assumes both branches carry a *message*; some carry a sentinel error instead, and `%w`-wrapping the `GitError` over the top of one would break `errors.Is` at its consumers. The clause: **the sentinel stays the `%w` verb**, and the `GitError` goes in as `%v` — which is a shape the tree already uses:
 
   ```go
@@ -449,7 +457,8 @@ If deliberate discard is meant to be *visible*, the **guard test is the mechanis
   func wrapProbeError(weftURL, op, stderr string, cause error) error
   ```
 
-  All four `warpprobe.go` exit paths route through it — `:71` and `:95` pass `(…, stderr, nil)`, `:69` and `:79` pass `(…, "", err)` — so the two call shapes collapse into one and the helper's internal stderr-vs-cause choice becomes dead.
+  **Seven call paths across two functions route through it** (call sites, 2026-08-11 snapshot) — `warpProbe` at `:69`, `:72`, `:79`, `:93`, `:96`, and `probeTreeHasPath` at `:134`, `:137`. Four pass `(…, "", err)` for the exec-path and three pass `(…, stderr, nil)` for the exit-path, so each pair collapses into one call and the helper's internal stderr-vs-cause choice becomes dead.
+  Regeneration: `grep -n 'wrapProbeError(' internal/fabricengine/warpprobe.go`, excluding the declaration at `:146`.
   **Decision: re-signature the helper to `wrapProbeError(weftURL, op string, cause error) error`** and drop its detail-selection branch, since `GitError.Error()` already renders the stderr it was choosing between. Feeding the old helper `err.Error()` as the `stderr` argument was rejected — it keeps a parameter whose reason for existing is gone, and stringifies an error that callers may want to `errors.As`.
   This shape is not unique to `warpprobe.go`; the implementation task must check each error-constructing helper the merge touches for the same split.
 
@@ -457,7 +466,19 @@ If deliberate discard is meant to be *visible*, the **guard test is the mechanis
 
   > **Two different 51s — do not conflate them.** The ~51 *two-message merge sites* and the ~51 *error-returning exit-code comparisons* from the predicate classification are separate measurements over different units (call sites vs comparisons) that happen to land on the same number. Neither confirms the other, and a future pass that treats one as corroborating the other is reasoning from a coincidence.
 - **Genuinely mechanical subset.** Sites with only one of the two blocks, and the four best-effort `worktree prune` discards. Small — this is the group the original "whole-tree sweep" framing mistook for the majority.
-- **Uniform prior shape for stderr binding.** Sites that *do* bind stderr follow one shape — each named `*Stderr` variable appears exactly twice, once bound and once used in an error message, and does nothing else with it. That uniformity is what makes the *binding* half of the rewrite safe; it says nothing about the merge.
+- **Near-uniform prior shape for stderr binding, with one enumerated exception class.** Sites that bind stderr almost all follow one shape — each named `*Stderr` variable appears exactly twice, once bound and once used in an error message, and does nothing else with it. That uniformity is what makes the *binding* half of the rewrite safe; it says nothing about the merge.
+  **Except at content-sniffing sites**, where the non-zero branch *reads* stderr to decide whether this is an answer or a failure. Two exist tree-wide (`grep -rn 'Contains(stderr\|Contains(.*Stderr' --include='*.go' internal/ | grep -v _test`, 2026-08-11):
+
+  ```go
+  // internal/fabricengine/index.go:217 — unborn HEAD is not a scan failure, it is an empty history
+  if strings.Contains(stderr, "does not have any commits yet") { return nil, nil }
+
+  // internal/gitrepo/push.go:64 — "no rebase in progress" means the abort had nothing to abort
+  if abortCode != 0 && !strings.Contains(strings.ToLower(abortStderr), "no rebase in progress") {
+  ```
+
+  **Disposition: the checked form**, with the sniff moved onto the recovered error — `errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, "…")`. These sites get *better* under the change: the string they inspect and the diagnostic they fall through to are now the same value, instead of a string that has to stay in scope alongside an exit code.
+  This is a distinct class from the pure predicate (exit code alone decides) and the mixed tri-state (exit code decides, some codes are failures): here **stderr content decides**, and the exit code alone is not enough.
 - **Predicate recovery**, for any site that needs the code back:
 
   ```go
@@ -571,4 +592,10 @@ Resolved in discussion review round 4:
 - **Q:** Can every raw site truthfully fill the marker comment? **A:** Not as originally worded. `Pull` and `Fetch` are raw *because* non-zero **is** a failure whose stderr is withheld under a pinned contract, so "why non-zero is not a failure" is unfillable there. Since that wording lands in `CONSTRAINTS.md`, it is broadened to "why the raw form is correct here", with the two raw classes named: pure predicate, and pinned deliberate-suppression contract.
 - **Q:** Do the two `diff --cached --quiet` sites share a mapping? **A:** No — they are **inverted**. At `:140` (`CommitEmpty`) exit 1 means `ErrIndexNotEmpty`; at `:193` (`StageAllAndCommit`) exit 0 means "nothing to commit" and exit 1 falls through to the commit. Tabulated separately so the `errors.As` recovery is not transcribed with the wrong code.
 - **Q:** What happens to the roadmap link when the doc is deleted? **A:** The implementation task removes `manifest/roadmap.md:75`'s link in the same commit as the deletion, or Markdown Link Integrity fails on a dangling relative link. Recorded as a hand-off note.
+
+Resolved in discussion review round 5 (APPROVE; NIT fixes recorded in `_mill/reviews/20260811-033900-discussion-fix-r5.md`):
+
+- **Q:** Is the "uniform stderr binding" claim true? **A:** No — a fourth class exists where **stderr content decides** answer-vs-failure, not the exit code. `index.go:217` treats "does not have any commits yet" as an empty history, and `push.go:64` treats "no rebase in progress" as nothing-to-abort. Both take the checked form with the sniff moved onto `gitErr.Stderr`, which is strictly cleaner: the string inspected and the diagnostic fallen through to become one value.
+- **Q:** Is every `(git exit %d)` fragment a duplicate of `GitError.Error()`? **A:** Not at `reconcile.go:546`/`:550`, which cite the exit code of an *earlier* call. Dropping the fragment there discards a second call's diagnostic, so that call keeps the raw form or captures its own `*GitError`.
+- **Q:** How many paths route through `wrapProbeError`? **A:** Seven across two functions, not four — `probeTreeHasPath` was unmentioned. Re-keyed to call sites with a regeneration query and a snapshot date.
 
