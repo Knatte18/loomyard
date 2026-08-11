@@ -76,6 +76,13 @@ Applied one level up, `Shed` needs a small `ProducerRunner`-shaped seam, and —
 
 So building this is **two new adapters**, not eleven, and not one-per-engine-type-times-producer-count.
 
+This split cuts on **engine type** — which code drives the producer, and therefore how many adapters must be built — whereas the simple/bespoke typology in [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) above cuts on **atomicity and crash-recovery ownership**.
+The two axes align on `Webster` and `perch` but not elsewhere: `Discussion-Validate` is mechanical *and* simple, while one `perch` adapter serves three separate bespoke producers.
+`Finalize` is the sharpest non-alignment case: it is **bespoke** on the typology axis and still adapter-free on the engine axis, so the mechanical Go-function producer list above correctly keeps listing it.
+Both hold at once because `Shed` drives `Finalize` by calling a plain Go function that already satisfies the `ProducerRunner` seam;
+the conflict-path LLM spawn and raddle's leaf forks happen *inside* that function through the existing `shuttle` layer, invisible to `Shed` — which is exactly what "bespoke" means (the producer owns its own internals, including recovery) rather than something that changes who drives it.
+`Finalize`'s reclassification adds no third adapter, so the count above is unchanged.
+
 ## Testable cheaply — a throwaway producer list proves the skeleton
 
 Building `Shed`'s skeleton doesn't need a real producer list to validate against.
