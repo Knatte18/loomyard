@@ -45,7 +45,9 @@ batches:
     commit_sha: 534960dbae2b751734b2ffd5955c976854704dca
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: manifest-capture-and-diff
-    state: pending
+    state: running
+    implementer_session: 9a2a1da9-5f0d-4840-ae3c-9c13e5fa8f2a
+    start_sha: f330f2210a5c523954afb2ccf78ed2e88678178d
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: refusal-expectation-helpers
     state: pending
