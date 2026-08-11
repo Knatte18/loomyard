@@ -1,0 +1,229 @@
+// Package fabrictest is the live-state integration harness for internal/fabricengine.
+//
+// # What this package is
+//
+// fabrictest drives fabric against a real cloned hub — a warp worktree and its paired weft sibling,
+// both backed by real bare git repositories on disk — rather than against hand-assembled fixtures.
+// It builds a named hostile-state matrix (fixtures that plant dirty, stale, or otherwise hostile
+// on-disk conditions before a verb runs), a verb table (the topology verbs under test, each with its
+// own Arrange step and its permitted-removal-roots), and drives the cross product of the two with
+// per-cell survival assertions: every cell names what is allowed to change, and anything outside that
+// is a failure.
+// The package exists because six prior hardening rounds on fabric found their defects exclusively by
+// driving real git against a real filesystem with hostile or dirty state — the hermetic suite alone
+// never found one.
+//
+// # Naming: manifest, never snapshot
+//
+// The filesystem capture this package takes before and after a verb runs is called a manifest —
+// Manifest, CaptureManifest, DiffManifest — and never a snapshot.
+// internal/fabricengine/snapshot.go already owns the word Snapshot in fabric's own vocabulary: it is
+// the `Snapshot: <tag>` trailer recording a warp SHA on the weft branch.
+// Reusing "snapshot" for a filesystem capture here would collide with that meaning inside the very
+// package this harness drives.
+//
+// # The Windows gap
+//
+// This harness carries no runtime.GOOS skip anywhere in its states, cells, or helpers, and would run
+// on Windows — but nobody has run it there yet.
+// See manifest/designs/fabric-windows-verification.md for the full account of that gap across six
+// crucible hardening rounds.
+// The one genuine divergence this package's design carries for Windows: the
+// trackedSymlinkAtWiredPath state models a git-tracked symlink, which on Windows materialises as a
+// junction because it is built through fslink.CreateDirLink rather than a raw os.Symlink.
+// The assertion keeps its shape regardless, because the gate's ownedWiredJunction check compares
+// fslink.RawTarget, not a platform-specific link representation.
+//
+// # The three-member Check set
+//
+// The exported Check set fabricengine's destructive gate carries has exactly three members:
+// CheckContainment, CheckOwnership, CheckDirtiness.
+// checkForce is declared at destroy.go:39 and rendered by String() at destroy.go:51, but it is never
+// constructed into a *destructiveRefusal anywhere in the tree — force is consulted only inside
+// checkPathDirtiness, where it makes the dirtiness check pass rather than fail.
+// A CheckForce constant could therefore never match a real refusal, and must not be added back.
+//
+// # One known refusal-with-side-effects anomaly
+//
+// Remove runs removePortal and removeLaunchers at remove.go:61-66, before its own dirty pre-flight at
+// remove.go:68-76.
+// A dirty-Remove cell that correctly refuses has therefore already destroyed the pair's portal and
+// launcher paths before the refusal is ever returned.
+// This is deliberate, documented behaviour, not a defect: the cell that exercises it declares
+// _portals/<anchor>/<slug> and _launchers/<anchor>/<slug> as permitted removal roots rather than
+// treating their disappearance as a failure.
+// It is flagged here for slice 14's truthfulness work, where "what did this call actually mutate
+// before it failed" becomes representable in a refusal's own shape.
+//
+// # Measured wall-clock
+//
+// A full run (`go test -tags integration ./internal/fabricengine/fabrictest/`, no -run filter,
+// exercising every test in the package including this file's own cross-product matrix) measures
+// consistently around 4.0-4.3s of package elapsed time (go test's own "ok ... Xs" line) across
+// repeated runs, on a 12-core x86_64 Linux machine, at the default -parallel value (12, unset,
+// derived from GOMAXPROCS on that machine). This number is recorded for a future reader to notice a
+// regression against, not asserted: a timing assertion fails on a loaded CI box rather than on a real
+// regression, which is why this repo rejects timing assertions elsewhere too.
+//
+// # Sabotage-proof table
+//
+// Batch 8 proved, by manual edit-run-revert cycle against a real checkout of this tree, that the check
+// each of the eight evidence-table defects was fixed by still fires today.
+// Every edit below was a temporary, uncommitted local working-tree change: the production diff this
+// task delivers touches no file this section names, per the no-production-behaviour-change Shared
+// Decision.
+// Each row names the cell as a (state, verb, anchor) triple, which check was neutered and where, and
+// the assertion that fired once it was.
+//
+//   - (1) trackedSymlinkAtWiredPath x UnwireJunctions x "." -- R1, reconcile destroyed a tracked
+//     symlink. The live cell this harness runs for the state is UnwireJunctions, not Reconcile:
+//     Reconcile's own WireJunctions/seedLyxJunction re-point path (junction.go) uses
+//     ownedDriftedWiredJunction, which never compares the resolved target -- drift is repointLink's own
+//     precondition for repair, not a disqualifier -- so no check exists there to neuter, and this state
+//     is (correctly) one of Reconcile's four omitted structural states. The load-bearing R1 fix instead
+//     lives in destroy.go's ownedWiredJunction target comparison (resolvePathOwnership,
+//     pathOwnershipWiredJunction), reached from unseedJunctionRecords (junction.go), which
+//     UnwireJunctions calls. Confirmed twice: first against fabricengine's own
+//     TestReconcile_PreservesUserSymlinkAtAnchor, by neutering reconcile.go's linkIsFabricOwned (forced
+//     to return (true, nil)) together with destroy.go's ownedWiredJunction target check (forced to skip
+//     its comparison) -- both were needed, since either check alone still refused (linkIsFabricOwned
+//     gates whether applyStaleRemoval enumerates the link at all; ownedWiredJunction's target check
+//     refuses it independently even once enumerated) -- and the test failed: "Reconcile removed the
+//     hand-authored symlink ...: lstat ...: no such file or directory; want it preserved". Second,
+//     independently, this package's own trackedSymlinkAtWiredPath state targets the exact wired path
+//     (not an unrelated name), and running it against UnwireJunctions requires no linkIsFabricOwned
+//     bypass at all -- unseedJunctionRecords's own inline target-resolution check
+//     ("points to unexpected target", junction.go) fires first every time, which is why that state's own
+//     UnwireJunctions cell asserts KindRefusedBefore rather than reaching the gate.
+//   - (2) dirtyWarpTracked x Pull x "." -- R2, pull discarded uncommitted tracked warp work. Neutered
+//     pull.go's own dirty-warp pre-flight (the `if dirty { return result, ErrWarpDirty }` guard in
+//     Fabric.Pull), by short-circuiting it to never fire. Ran
+//     `go test -tags integration ./internal/fabricengine/fabrictest/ -run 'TestCrossProduct/\./dirtyWarpTracked/Pull$'`:
+//     the cell failed with "expected pre-flight refusal containing \"warp worktree has uncommitted
+//     changes\"; got err = fabricengine: warp remote diverged and local warp has unpushed commits;
+//     aborting, no changes" -- Pull proceeded straight into the rewrite-detected branch instead of
+//     refusing.
+//   - (3) dirtyWarpUntracked x Remove x "." -- R3, remove destroyed the warp worktree directory via an
+//     os.RemoveAll fallback past a git refusal. Neutered remove.go's own dirty-warp pre-flight (the
+//     `if dirty { return ... "worktree has uncommitted changes; use --force" }` guard, remove.go:68-76).
+//     Ran the same cell's `-run 'TestCrossProduct/\./dirtyWarpUntracked/Remove$'`: it failed on the
+//     REFUSAL half, exactly as the batch's own extra requirement demands -- the error was
+//     "expected pre-flight refusal containing \"uncommitted changes\"; got err = run git worktree remove
+//     for ...: refusing to remove warp worktree: dirtiness check failed for ...: worktree has
+//     uncommitted changes; use --force", i.e. RefusedBefore's mandatory "check failed" exclusion is what
+//     makes this fail on the Kind mismatch (a gate refusal, not a pre-flight one) rather than passing
+//     because the substring still matched. It also failed on the manifest diff in this run (the pair's
+//     own junction links had already been swept by remove.go's own portal/launcher/junction teardown,
+//     which runs before the pre-flight per the one known tranche-1 anomaly doc.go's omission table
+//     records elsewhere), but the row's own requirement is that the refusal-kind failure alone would
+//     have been sufficient even had the diff stayed silent, which the "check failed" exclusion is what
+//     guarantees.
+//   - (4) clean x Cleanup x "." -- R3, cleanup deleted the primary weft branch. This defect is guarded
+//     in triplicate today: cleanup.go's own early primaryWeft carve-out (cleanup.go:154), the
+//     branch-space liveWarpBranches liveness check one line above it (cleanup.go:145, which alone
+//     already protects the primary in fabricengine's own TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut
+//     fixture, since that fixture only moves the WEFT side off main-weft and the warp side stays on
+//     "main"), and the gate's own independent primaryWeftBranch check inside resolveManagedBranch
+//     (destroy.go:486). Neutering any one alone left the branch protected by one of the other two, so
+//     the sabotage run neutered all three simultaneously (each short-circuited to never fire) and ran
+//     `go test -tags integration ./internal/fabricengine/ -run TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut`:
+//     it failed with "Cleanup reported/handled primary weft branch \"main-weft\"; want not reported (live
+//     pair)" and "main-weft branch deleted after force Cleanup with primary parked elsewhere; want
+//     intact (F1 regression)". fabrictest's own clean/Cleanup/"." cell exercises both Cleanup's ordinary
+//     orphan-deletion path (cleanupCase's own deliberately-orphaned branch) AND this defence
+//     independently: cleanupCase's Arrange also moves the prime pair off the hub's default branch
+//     (mirroring the hermetic fixture above), and its Effect asserts the primary weft branch still
+//     exists afterward, so this row now has two independent live proofs rather than only the hermetic
+//     one.
+//   - (5) dirtyWarpUntracked x Prune x "." -- R3 (found by the orchestrator), prune removed a path git
+//     had just refused. Recorded as NOT independently provable via this exact (state, verb, anchor)
+//     triple: pruneCase's own StateTarget.WarpCheckout resolves to the hub's PRIME worktree, a path
+//     Prune's own gate never inspects for the stale pair under test, so planting dirt there and
+//     neutering any Prune-reachable check leaves this cell's own assertions unchanged (confirmed: ran
+//     with prune.go's applyStalePairOwnership ownership check and destroy.go's checkPathDirtiness both
+//     neutered, and the cell still passed). The underlying R3 class this row names -- a destructive
+//     fallback proceeding past a git refusal without an independent ownership check -- is the same
+//     mechanism rows (6) and (7) below prove live and load-bearing for Prune (applyStalePairOwnership /
+//     isRegisteredLinkedWorktreeIn, gating removeStalePair's git-worktree-remove-then-fallback path);
+//     see those two rows for the actual neuter-run-revert evidence.
+//   - (6) foreignDirAtFabricOwnedPath x Prune x "." -- R4, prune removed an ordinary weft-suffixed user
+//     directory. Neutered destroy.go's isRegisteredLinkedWorktreeIn (forced to always return true) and
+//     checkPathDirtiness (forced to always return nil), together -- the ownership bypass alone left this
+//     specific state protected by an unrelated side effect (worktreeDirty erroring against a
+//     non-git-repo directory, which checkPathDirtiness turns into its own refusal), so both were
+//     neutered to isolate the ownership gate's own contribution. Ran
+//     `-run 'TestCrossProduct/\./foreignDirAtFabricOwnedPath/Prune$'`: the cell failed with
+//     "unpermitted change(s) outside permitted roots: verb-prune-structural-orphan-weft: removed (was
+//     dir) ... verb-prune-structural-orphan-weft/fabrictest-sentinel-foreignDirAtFabricOwnedPath.txt:
+//     removed (was file)" plus the assertPlantedContentSurvives failure naming the same missing sentinel.
+//   - (7) unrelatedGitCloneAtWeftNamedPath x Prune x "." -- R4, prune removed an unrelated git clone.
+//     Same two-check neutering as row (6). Ran `-run 'TestCrossProduct/\./unrelatedGitCloneAtWeftNamedPath/Prune$'`:
+//     the cell failed the same way, the offending paths additionally including the clone's own ".git"
+//     directory ("verb-prune-structural-orphan-weft/.git: removed (was dir)").
+//   - (8) the Reset column's non-hub target x CloneHub{Reset} x "." -- R4, `clone --reset` destroyed a
+//     non-hub `<derived>-HUB`. Neutered clone.go's resetHub own pre-flight (the `if !looksLikeHub(hubPath)`
+//     guard, short-circuited to never fire). Ran `-run 'TestCloneHubReset/\./CloneHubReset/NonHubTarget$'`:
+//     the cell failed with "expected pre-flight refusal containing \"is not a fabric hub\"; got err =
+//     reset: remove hub at ...: refusing to reset hub: ownership check failed for ...: ... does not look
+//     like a fabric hub (no _board entry and no weft sibling)" -- the gate's own ownedFabricHub check
+//     caught what the pre-flight was neutered out of catching, so the operator-content sentinel survived
+//     this particular run, but the cell still failed on the Kind mismatch (a gate refusal, not the
+//     pre-flight's), proving the pre-flight itself is load-bearing rather than redundant with the gate.
+//   - (9) hostile input ".." x Remove x "." -- R5, `remove ..` destroyed an entire hub. Neutered
+//     slug.go's validateWorktreeSlug relative-path-element guard (the
+//     `slug != filepath.Clean(slug) || slug == "." || slug == ".."` condition, short-circuited to never
+//     fire). Ran `-run 'TestCrossProduct/\./clean/Remove/DotDot$'`: the cell failed with "expected
+//     pre-flight refusal containing \"a slug must name a directory\"; got err = check warp worktree
+//     status at <hub's own parent dir>: git status --porcelain in <same path>: exit 128: fatal: not a
+//     git repository" -- validateWorktreeSlug no longer refused ".." before WorktreePath(l, "..")
+//     resolved onto the hub's own parent, and only worktreeDirty's own inability to run git against a
+//     non-repository path stopped the run before any further destructive call executed; no filesystem
+//     content was actually destroyed in this particular run, and the target directory involved was this
+//     one subtest's own isolated t.TempDir(), never a shared or system path.
+//
+// # Omission table
+//
+// The exported Omissions slice (verbs.go) names every verb/state pair excluded from the cross
+// product, with its reason, so a green matrix can be audited against what it did not run.
+// The plan's own cell-enumeration-and-omissions Shared Decision derived fifteen structural-state
+// omissions per anchor before batch 7's driver first ran: Cleanup and Checkout each omit all four
+// structural states (trackedSymlinkAtWiredPath, foreignDirAtFabricOwnedPath,
+// unrelatedGitCloneAtWeftNamedPath, staleWiredJunction) because their only gate call is the
+// branch-shaped deleteBranch; Pull omits the same four because its only gate call is
+// Fabric.ResetHard, a warp checkout reset rather than a path executor; Add omits
+// trackedSymlinkAtWiredPath and staleWiredJunction because its gate calls act on the pair it is
+// creating, whose junction paths do not exist before Run; UnwireJunctions omits
+// unrelatedGitCloneAtWeftNamedPath because its only gate call never visits a weft-named path.
+//
+// Batch 7's card 19 (the full-matrix run) found twelve further omissions per anchor while classifying
+// every failing cell against the actual pathRequest call sites each verb reaches, none of them
+// dirtiness-scope-table omissions in the sense the plan anticipated -- each is grounded in a verified
+// read of production code, never in what a run happened to produce:
+//   - Reconcile omits all four structural states: reconcile.go contains no pathRequest call at all,
+//     so no structural state, of any shape, names a path Reconcile's own pre-flight (scopeAll on the
+//     board) ever inspects.
+//   - Cleanup additionally omits dirtyWeftTracked, dirtyWeftUntracked and bothDirty: its own Arrange
+//     tears down the pair's weft worktree by hand before the state is applied, mirroring cleanup's own
+//     orphan-branch precondition, so no weft-targeted dirtiness state has a live checkout to plant
+//     into.
+//   - Remove omits foreignDirAtFabricOwnedPath and unrelatedGitCloneAtWeftNamedPath: its own
+//     path-executor gate calls (removeWarpWorktreeDir's ownedRegisteredLinkedWorktree check, and
+//     removeWarpJunction's ownership-filtered link sweep) never reach an independent foreign directory
+//     or unrelated clone at another path -- only the pair's own registered worktree and its own wired
+//     junctions, which the retained link-shaped states already cover.
+//   - Prune omits trackedSymlinkAtWiredPath and staleWiredJunction: its only path-executor gate call
+//     (ownedRegisteredLinkedWorktree, prune.go:264) targets a directory, never a link -- prune.go has
+//     no removeLink/repointLink call at all.
+//   - UnwireJunctions additionally omits foreignDirAtFabricOwnedPath: its StructuralPath, like
+//     Remove's, is the pair's own pre-existing wired junction link, and foreignDirAtFabricOwnedPathState's
+//     Apply does not remove that link first (only trackedSymlinkAtWiredPath and staleWiredJunction do),
+//     so its os.MkdirAll would silently no-op through the still-intact link rather than genuinely park
+//     a foreign directory at the path.
+//
+// Twenty-seven omission rows in total, fifty-four across both anchors, bringing the cross product's
+// audited total from the plan's originally-derived 168 cells down to 144 (140 run by TestCrossProduct
+// plus the four-cell CloneHub{Reset} column TestCloneHubReset drives separately) -- the count
+// assertion in matrix_test.go (assertCellTally) derives this total from the Verbs, States and
+// Omissions tables themselves, so it moves automatically with any future change to those tables
+// rather than needing to be kept in sync with this paragraph by hand.
+package fabrictest

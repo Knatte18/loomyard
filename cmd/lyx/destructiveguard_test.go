@@ -32,6 +32,13 @@
 // caught by this guard — the same limitation the file being cloned already has. The junction.go
 // and hook.go entries in particular are whole-file allowlists for exactly one already-audited
 // call each, not a blanket exemption for future removals in those files.
+//
+// This guard now carries two independent exemption mechanisms answering two different questions:
+// destructiveGuardAllowlist ("is this one file's one audited call site safe?") and
+// destructiveGuardExcludedDirs ("is this entire subdirectory a different package outside the
+// invariant's subject?"). The two are never interchangeable — a directory exclusion skips an
+// entire subtree at the walk level, where a growing set of per-file allowlist rows would not
+// restore the guard's package-scoped intent.
 
 package main
 
@@ -97,6 +104,16 @@ var destructiveGuardAllowlist = map[string]string{
 // size — it is not expected to track file-count churn as the package grows or shrinks.
 const destructiveGuardMinScannedFiles = 30
 
+// destructiveGuardExcludedDirs are module-relative, slash-separated directories the walk skips
+// entirely (filepath.SkipDir), keyed to the reason the directory falls outside package
+// fabricengine's scope even though it nests under internal/fabricengine on disk.
+var destructiveGuardExcludedDirs = map[string]string{
+	"internal/fabricengine/fabrictest": "a different package — a test-support package whose state builders must plant and tear down " +
+		"hostile filesystem shapes through fslink.Remove and os.Remove — excluding it restores the guard to exactly the scope its " +
+		"own invariant text already claims (\"the only file in package fabricengine\"), where per-file allowlist rows would punch " +
+		"a growing set of holes",
+}
+
 // TestNoDestructiveBypass_FabricengineProductionSource walks internal/fabricengine's non-test .go
 // files and fails if any of them (other than a destructiveGuardAllowlist entry) contains one of
 // destructiveGuardBannedTokens — the eight construction/call tokens a destructive primitive
@@ -131,6 +148,13 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 				return err
 			}
 			if d.IsDir() {
+				relDir, relErr := filepath.Rel(moduleRoot, path)
+				if relErr != nil {
+					return relErr
+				}
+				if _, excluded := destructiveGuardExcludedDirs[filepath.ToSlash(relDir)]; excluded {
+					return fs.SkipDir
+				}
 				return nil
 			}
 			if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {

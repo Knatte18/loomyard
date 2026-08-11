@@ -1,6 +1,6 @@
 # Fabric crucible follow-ups — slices 12-15
 
-> **Status: slice 12 landed (2026-08-11); slices 13-15 not yet built.**
+> **Status: slices 12-13 landed (2026-08-11); slices 14-15 not yet built.**
 > This file is the durable, versioned source of truth for what each must do.
 > Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) it is deleted once all four have landed, with their durable rationale folded into `internal/fabricengine`'s package doc — slice 12's own share of that rationale already lives there (see doc.go's "The destruction chokepoint" section).
 
@@ -233,6 +233,7 @@ Whatever R6 recorded is folded in **here** rather than fixed twice: the two clas
 
 ## Slice 13 — live-state integration harness
 
+**Landed 2026-08-11.**
 Issue #144 (`enhancement`).
 
 ### Why
@@ -350,6 +351,17 @@ parallelising per-hub is straightforward since every cell owns its own hub.
 
 **Known limitation, stated up front rather than discovered later:** Windows path behaviour (junctions vs symlinks, case-insensitive compare in `lyxcwd.samePath`) cannot be exercised on a Linux host.
 The campaign carried this as a permanent known gap across all six rounds rather than pretending to have verified it, and this harness inherits that gap honestly — see the Someday `fabric: Windows path behaviour is unverified` item and [fabric-windows-verification.md](fabric-windows-verification.md).
+
+### What shipped
+
+`internal/fabricengine/fabrictest`, mirroring `internal/boardengine/boardtest`'s package shape: a black-box hub factory (`NewHub`) backed by the extracted `fabriccli.CloneAndWire`, so every fixture is a real cloned hub rather than a hand-assembled one;
+a ten-state hostile/dirty state matrix and a verb table covering the eight destructive verbs plus the `CloneHub{Reset: true}` column, driven as a ten-state × nine-verb × two-anchor cross product with prefix-rooted manifest permits (a cell names what root a verb's own effect may touch, and anything else that changes is a failure);
+the two refusal-expectation helpers (`RefusedByGate`, `RefusedBefore`) that pin a refusal to the specific layer that produced it, gate versus pre-flight;
+and the nine-cell sabotage proof (`doc.go`'s own table) confirming each of the eight evidence-table defects still fails on demand when its guarding check is neutered.
+
+What it deliberately left out: the deferred matrix axes — concurrency between worktrees, the hook surface, and `_portals`/`_launchers` as a state axis — plus slice 14's truthfulness assertions (a cell asserting the result envelope was honest, not just that the filesystem survived), the 102 unconverted `CloneHub(` call sites across the existing test suite (the factory serves them, but converting them is a slice of its own), and the unclosed Windows verification gap this harness inherits honestly rather than closing (see [fabric-windows-verification.md](fabric-windows-verification.md)).
+
+Slice 14 is next.
 
 ## Slice 14 — accumulate the result envelope from mutations, not from control flow
 

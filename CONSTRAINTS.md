@@ -170,7 +170,8 @@ The bare word — the verb sense, the machine/OS sense, and the PowerShell `Writ
 Keep these lists verbatim: they are the ban list, and renaming them would delete the rule.
 
 - **Owner set carves out the bare weft/warp rule only, never the host rule.**
-  Owner set: `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers).
+  Owner set: `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers), `internal/fabricengine/fabrictest`.
+  `internal/fabricengine/fabrictest` is also an owner for the `weftname`-import rule, joining `internal/fabricengine`, `internal/fabriccli`, and `internal/lyxtest` in that narrower three-member subset rather than the wider bare-token owner set above.
   `tools/` and `sandbox/` are not in the owner set — they lie outside the enforcement walk entirely, since the Go walk covers `internal/` and `cmd/` only, so an owner-map row for them would be dead code that never matches.
   Vocabulary in `tools/` and `sandbox/` is a review obligation, not machine-checked.
 - **Prose-doc split — review obligation, not machine-checked:** a doc explaining fabric's own mechanism keeps the vocabulary;
@@ -230,6 +231,7 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 
 `internal/fabricengine/destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive: `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, and a warp checkout's `ResetHard`.
 
+- The guard's walk is package-scoped in intent: it names `internal/fabricengine/fabrictest` as an explicit subdirectory exclusion, because `fabrictest` is a separate test-support package whose state builders plant and tear down hostile filesystem shapes and is therefore outside this invariant's subject, even though it nests under `internal/fabricengine` on disk.
 - The banned bypass tokens are `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
 - Every destructive executor runs the gate's four checks first, always in this fixed order, stopping at the first failure: containment, ownership, dirtiness, force.
 - `--force` answers dirtiness only.

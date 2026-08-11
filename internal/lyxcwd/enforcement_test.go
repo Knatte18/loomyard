@@ -601,6 +601,10 @@ var fabricVocabularyOwners = map[string]bool{
 	"internal/lyxtest":      true,
 	"internal/boardengine":  true,
 	configsyncOwnerDir:      true,
+	// internal/fabricengine/fabrictest is a directory of non-test .go files (the hub factory
+	// must be non-test to be importable across packages) that names fabric's own geometry, so
+	// it is an owner for the bare weft/warp rule the same as internal/fabricengine itself.
+	"internal/fabricengine/fabrictest": true,
 }
 
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the
@@ -610,6 +614,9 @@ var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
 	"internal/lyxtest":      true,
+	// internal/fabricengine/fabrictest imports weftname for the weft-suffix hostile input its
+	// hostile-input cells construct, so it is an owner for this narrower import rule too.
+	"internal/fabricengine/fabrictest": true,
 }
 
 // weftnameImportPath is the fully-qualified import path TestEnforcement_FabricVocabulary's
