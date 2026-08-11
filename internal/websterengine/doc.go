@@ -23,15 +23,17 @@
 // A plan's flat, unordered Cards list is grouped into the execution units
 // Master actually forks by internal/batcher: a name-keyed registry of
 // Batcher implementations, selected once at config-load time via
-// webster.yaml's `batcher:` key (default: the identity batcher — one card,
-// one batch). Batching is 100% webster's own execution-policy decision,
-// never the plan's (a card carries no batch-membership field of its own)
-// and never an LLM's (no batchifier consults a fork's judgment). In v0 the
-// identity batcher is the only registered entry, so batch ≡ card
-// everywhere this package numbers or persists a "batch" — BatchState is
-// keyed by execution-batch number, which happens to coincide with card
-// number today; a future grouping batchifier changes that coincidence, not
-// this package's contract.
+// batcher.yaml's `active:` key (default: the identity batcher — one card,
+// one batch), resolved by internal/webstercli and handed to Run via
+// RunDeps.Batcher — this package loads no batcher config itself. Batching
+// is a standalone step webster consumes today, and one Shed will drive as
+// producer #8 once built, never the plan's (a card carries no
+// batch-membership field of its own) and never an LLM's (no batchifier
+// consults a fork's judgment). In v0 the identity batcher is the only
+// registered entry, so batch ≡ card everywhere this package numbers or
+// persists a "batch" — BatchState is keyed by execution-batch number,
+// which happens to coincide with card number today; a future grouping
+// batchifier changes that coincidence, not this package's contract.
 //
 // # Declared order now, a dead DAG seam for later
 //
