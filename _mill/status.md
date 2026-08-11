@@ -72,7 +72,9 @@ batches:
     commit_sha: 59917cd56bff892ef889cc84dc0c3a51d43731c4
     verify_baseline_failures: []
   - name: guard-and-docs
-    state: pending
+    state: running
+    implementer_session: 556e5735-846c-4bfa-8ed5-2edf9e4cfb8c
+    start_sha: a37945a2330883e23dba8a18380137a823d91213
     verify_baseline_failures: []
   - name: gap-integration-tests
     state: pending
