@@ -13,8 +13,8 @@ the LLM owns the thinking.
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the separate, generic **`perch`** module (`lyx perch run|pause` — see the `internal/perchengine` package documentation) — the iterative review loop, independent of loom but used by it between every phase. `perch` composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary, `loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
 **Naming note (later addition):** the generic outer phase-FSM this doc specifies — sequencing, resume, crash recovery, pause, the status-file contract — is being generalized for reuse by the Someday `Hardener` module under the name **`Shed`** (see [shed.md](shed.md));
-`loom` = `Shed` + loom's own Preflight + the Discussion/Plan/Webster producer.
-This doc has not been rewritten to extract `Shed` explicitly — it remains the authoritative design for the engine described here.
+`loom` = `Shed` + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+The extraction has since happened: `shed.md` is now the authoritative description of `Shed`'s own generic mechanism, and this doc is the authoritative description of `loom`'s specific producer list plus the engine-level detail (crash recovery, pause, session bootstrap) `shed.md` does not restate.
 
 ## Why — the inversion
 
@@ -41,23 +41,26 @@ So the design effort moves from writing long skills to pinning the contracts (`d
 ## The phase machine — a flat producer list, no predefined slots
 
 `Shed` (see [shed.md](shed.md)) has no predefined slots — no Preflight-slot, no Producer-slot, no shared Finalize.
-It is a generic engine that walks one ordered, flat list of **producers**, each an atomic mechanical action or LLM session, honoring resume/crash-recovery/pause uniformly across the whole list.
-`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order:
+It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across the whole list;
+atomicity — one mechanical action or LLM session — binds **simple** producers only, per the carve-out in [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
+`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order.
+The table's `Kind` column records each producer's simple/bespoke typology;
+see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the carve-out that defines it:
 
-| # | Producer | Type | Input | Output |
-|---|---|---|---|---|
-| 1 | `Preflight` | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
-| 2 | `Discussion-Write` | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape: `discussion-format.md` |
-| 3 | `Discussion-Validate` | mechanical | `_lyx/discussion/` → `discussion-format.md`'s validation checks | pass/fail |
-| 4 | `Discussion-Review` | LLM/`perch` | `_lyx/discussion/` (both files) → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
-| 5 | `Plan-Sweep` | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
-| 6 | `Plan-Write` | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape: `plan-format.md` |
-| 7 | `Plan-Validate` | mechanical | `_lyx/plan/` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
-| 8 | `Plan-Review` | LLM/`perch` | `_lyx/plan/` → `plan-format.md` | verdict + review file |
-| 9 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 10 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
-| 11 | `Webster-Review` | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 12 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+| # | Producer | Kind | Type | Input | Output |
+|---|---|---|---|---|---|
+| 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
+| 2 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape: `discussion-format.md` |
+| 3 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → `discussion-format.md`'s validation checks | pass/fail |
+| 4 | `Discussion-Review` | bespoke | LLM/`perch` | `_lyx/discussion/` (both files) → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
+| 5 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
+| 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape: `plan-format.md` |
+| 7 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 8 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `plan-format.md` | verdict + review file |
+| 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 12 | `Finalize` | bespoke | mechanical | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/status.json` exists and is a coherent fresh seed (no half-finished prior run).
@@ -67,20 +70,16 @@ On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-R
 Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the Finalize merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
-A producer's contract is exactly two parts — **Input** (a *pointer* to the format-contract file defining consumed artifact(s)' shape, never a restated copy of its content) and **Output** (same pointer discipline).
-**The pointer rule**: a producer's own instruction file (its prompt/skill) must never duplicate or paraphrase another producer's format-contract content, only point at it (e.g. "read `discussion-format.md`"), so editing that one file alone is sufficient to change what both its producer and its consumers do — the same discipline `mill-start` already applies by reading `task['body']` at runtime rather than embedding a copy of it.
+A producer's contract is, in the normal case, exactly two parts — **Input** (a *pointer* to the format-contract file defining consumed artifact(s)' shape, never a restated copy of its content) and **Output** (same pointer discipline) — with thin-Input and thin-Output carve-outs for the chain-head and gate producers;
+see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for both carve-outs rather than restating either here.
+**The pointer rule**, stated in full in [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition): a producer's own instruction file must never duplicate or paraphrase another producer's format-contract content, only point at it.
 Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
 
 Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored `plan-format.md`'s `depends-on-order` check — is now resolved, not open.
 The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks `discussion-format.md`'s validation-checks section defines.
-The second open question stays open, untouched by this task: whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition.
-**Hand-off note (task C, as landed):** this task widens the second question's subject.
-`Plan-Validate` and the newly-inserted `Discussion-Validate` now share that same thin-Output property, so task E resolves the question over four producers — `Preflight`, `Plan-Validate`, `Discussion-Validate`, `Finalize` — not two.
-This task also repaired the first clause above in place, so task E does not need to go looking for it.
-The [`## The gate`](#the-gate) section below still uses "gate" in the perch sense (sense A) and is unchanged by this task — it remains task E's territory.
-Wiki task `shed-producer-model-scoping` is the dedicated survey pass that reconciles this table against `discussion-format.md`/`plan-format*.md` and `raddle.md`/`finalize.md`, and produces the actual buildable follow-up tasks — this table is settled on the model, not yet on every file-level detail.
+The second question — whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition — is now resolved too, over all four producers that share some form of thin Output (`Preflight`, `Discussion-Validate`, `Plan-Validate`, `Finalize`): see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the two-case statement, rather than restating either case here.
 
 ## The gate
 

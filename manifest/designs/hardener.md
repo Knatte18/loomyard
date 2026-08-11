@@ -14,7 +14,7 @@ Earlier drafts of this doc used "hardener" for both the review mechanism and the
   Perch's direct structural sibling.
   Not separately runnable in isolation the simple way `perch` is, because behavior-review needs a live sandbox/worktree lifecycle around it.
 - **`Hardener`** — the full, on-demand, autonomous campaign: `Shed` (the generic outer phase-FSM — see [shed.md](shed.md)) wrapping `Tenter`, plus Hardener's own Preflight (sandbox provisioning, live-suite readiness).
-  This is what gets a worktree spawned for it (via `fabric`) and safe-merges back into parent when done, the same lifecycle `loom` uses, just with `Tenter` in the producer-slot instead of Discussion/Plan/Webster.
+  This is what gets a worktree spawned for it (via `fabric`) and safe-merges back into parent when done, the same lifecycle `loom` uses, just with `Hardener`'s own producer list carrying `Tenter` where `loom`'s list carries its Discussion, Plan and Webster producers.
 
 `Tenter` is a **behavior-based reviewer**: where `perch` (see the `internal/perchengine` package documentation) reads an artifact, `Tenter` **runs** a live-substrate module, reacts to what it observes, and builds bespoke adversarial scenarios to break it. `Hardener` is a separate, on-demand, **post-loom** campaign — not on the `shuttle → burler → perch → loom` spine — meant to harden a live-substrate module (the archetype: `reed` driving real tmux) before merge.
 
