@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
 plan: _mill/plan
@@ -32,6 +32,7 @@ holistic-fixing  '2026-08-11T15:45:54Z'
 nits-fixed-holistic  '2026-08-11T15:47:46Z'
 holistic-approved  '2026-08-11T15:47:56Z'
 done  '2026-08-11T15:49:04Z'
+pr-pending  '2026-08-11T15:49:45Z'
 ```
 
 ## Batches
