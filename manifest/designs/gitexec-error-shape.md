@@ -27,8 +27,7 @@ If `gitexec` may later be backed by `go-git` instead of shelling out, callers co
 ## The counter-argument, weighed
 
 This touches shared infrastructure to fix a **diagnostic-quality** problem, not a correctness one.
-No data was lost because of a missing stderr, and "not worth it, recorded" was a legitimate outcome under consideration — this is diagnostic quality, not correctness,
-and no data was lost.
+No data was lost because of a missing stderr, and "not worth it, recorded" was a legitimate outcome under consideration.
 
 It was weighed and not accepted, for two reasons.
 The 55-of-74 discard figure is what the API shape produces, not who wrote the lines — R5 fixed the sites, and without a shape change the next module to use `gitexec` starts the count over from zero.
