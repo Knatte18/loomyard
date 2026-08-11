@@ -35,7 +35,7 @@ That property is what the current per-verb integration tests do not have.
 - A **hub factory** that builds a real fabric hub by *running clone*, from local bare remotes, at full CLI fidelity (junctions wired, repo-wide `fabric.yaml` present).
 - A small production extraction in `internal/fabriccli`: the engine-y middle of `runCloneWithReset` becomes an exported `CloneAndWire`, called by both the cobra handler and the factory.
 - A **named hostile-state matrix** (9 states), a **verb table** (9 gate-reaching verbs plus hostile inputs), and the **cross product driven** with per-cell survival assertions.
-- A **whole-hub manifest snapshot/diff** with prefix-rooted permit lists — the mechanism that catches destruction nobody thought to assert on.
+- A **whole-hub manifest capture and diff** with prefix-rooted permit lists — the mechanism that catches destruction nobody thought to assert on.
 - Two refusal-expectation helpers — `RefusedByGate(err, check)` and `RefusedBefore(err, substring)` — since most tranche-1 refusals fire in a verb's own pre-flight and never reach the gate.
 - Owner rows for `internal/fabricengine/fabrictest` in `fabricVocabularyOwners` and `weftnameImportOwners` (`internal/lyxcwd/enforcement_test.go`), plus the matching `CONSTRAINTS.md` owner-set update — required in the same commit or `go test ./...` fails.
 - A `fabrictest` subdirectory exclusion in `cmd/lyx/destructiveguard_test.go`'s walk, plus the matching `CONSTRAINTS.md` scope clarification — likewise required in the same commit, and for the same reason.
@@ -78,8 +78,24 @@ That property is what the current per-verb integration tests do not have.
 ### survival-assertion-mechanism
 
 - **Decision:** Whole-hub **manifest diff** plus **planted sentinels**.
-  Snapshot the hub before the verb runs and again after; diff; fail on any disappearance or mutation the cell did not explicitly permit.
+  Capture the hub's manifest before the verb runs and again after; diff; fail on any disappearance or mutation the cell did not explicitly permit.
   Sentinels are named files planted by each state so failure messages are legible.
+- **The per-entry record, stated precisely.**
+  A manifest is a map from a `filepath.ToSlash`-normalised **hub-relative path** to an entry carrying exactly three things: the **kind** (`file`, `dir`, or `link`);
+  for a link, its **raw one-hop target** via `fslink.RawTarget` (not `PointsTo` — the same reason `ownedWiredJunction` uses the raw target: a fully-resolved chain fails outright when a later segment is gone, and silently walks past a target that is itself a further link);
+  and for a file, a **content hash**.
+  Deliberately **not** recorded: permission bits (meaningless on Windows), mtime, and size-without-hash.
+  This is the minimum that makes all three of "it vanished", "it was replaced by a different kind of thing", and "its content changed" observable, and nothing beyond it.
+- **The `.git` rule: a narrow allowlist, not a blanket exclusion.**
+  Inside any `.git` directory — or a `.git` *file*, which is what a linked worktree carries — the manifest records **only**: the `.git` entry itself, and each `.git/worktrees/<name>` directory, both at existence granularity with no content hash.
+  Everything else under `.git` is excluded.
+  A **blanket** `.git` exclusion was rejected because it would blind the harness to **linked-worktree deregistration**, and that is R3's shape exactly — `prune` removing a path git had just refused to remove leaves the registration behind or tears it out, and neither is visible if `.git` is invisible.
+  Hashing everything under `.git` was rejected for the opposite reason: `index`, `logs/**`, `refs/**`, `objects/**`, `FETCH_HEAD`, `ORIG_HEAD` and `packed-refs` all churn on ordinary reads and writes, so every cell would drown in diff noise and the permit lists would grow until they permitted everything.
+  **Git-admin paths that remain observable under this rule:** the presence of each repo's `.git`, and the presence of each linked worktree's registration directory.
+  Branch existence is deliberately **not** carried by the manifest — it is asserted through git itself in the per-verb effect assertions, where the answer is authoritative rather than inferred from a ref file.
+- **Naming: the harness operation is "manifest", never "snapshot".**
+  `internal/fabricengine/snapshot.go` already owns Snapshot in fabric's vocabulary — the `Snapshot: <tag>` trailer recording a warp SHA on the weft branch — and reusing the word for a filesystem capture would collide with it inside the very package the harness drives.
+  `doc.go` states the distinction so a reader arriving from `snapshot.go` is not misled.
 - **Rationale:** All eight data-loss defects destroyed something **nobody was asserting on**.
   A permit-list diff is what catches instance nine; a sentinel-only approach only ever catches what the test author already thought of, which is the model that missed eight defects.
   Sentinels alone would report "a path list changed"; the pair reports "the operator's uncommitted file is gone".
@@ -176,6 +192,15 @@ That property is what the current per-verb integration tests do not have.
   Instead this column drives `Reset` against two ownership-shaped targets and asserts refusal plus full survival: a directory that is not a hub at all, and a directory *named* `<derived>-HUB` that is not a hub — the exact shape of R4's `clone --reset` defect, which destroyed any directory matching a name fabric *derives* rather than one the operator types.
   The dirtiness rows for this column are **omitted with the reason stated in the table**, never silently present-and-vacuous.
   The rebuild half is asserted through `CloneAndWire`, so the hub that comes back is full-fidelity rather than `CloneHub`-partial.
+- **Hostile-input cells run in the `clean` state only, on both anchors.**
+  Crossing them with the full state matrix would give 7 inputs × 3 verbs × 9 states × 2 anchors ≈ **378 cells**, nearly all vacuous: `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows assert exactly what the ninth does.
+  That is precisely the vacuity the `Reset` column was re-scoped to avoid, and permitting it here would contradict that decision one paragraph later.
+  **Expressed without forfeiting the cross-product property:** a `VerbCase` carries an optional `States` restriction;
+  when empty — the default, and what every ordinary verb uses — the case inherits **every** state, so a newly appended verb still gets the full matrix automatically.
+  Only the hostile-input cases set it, to `clean`.
+  The restriction is a property of the *case*, not a special path in the driver, so the driver stays one uniform loop.
+- **Resulting tranche-1 cell count:** 8 ordinary verbs × 9 states × 2 anchors = **144**, plus 7 hostile inputs × 3 verbs × 1 state × 2 anchors = **42**, plus the `Reset` column's 2 ownership targets × 2 anchors = **4**.
+  **190 cells total**, at roughly 24 ms of hub cost each, parallel.
 - **Leading-`-` and `Checkout` hostile-input cells assert survival and no-partial-mutation, with no check-name assertion, and are written against the *safe* expectation.**
   A leading `-` passes `validateWorktreeSlug` untouched — it is not on any of that function's five rejection rules — so no gate check owns it and neither expectation kind from the refusal decision applies.
   The cell therefore asserts that the argument **does not reach git as a flag**, and that nothing outside the permitted roots is destroyed.
@@ -341,7 +366,8 @@ That property is what the current per-verb integration tests do not have.
 ### package-file-layout-and-build-tags
 
 - **Decision:** `fabrictest` is a **regular package with non-test `.go` files** (like `lyxtest`) that also holds its own `*_test.go` suites (like `boardtest`).
-  `doc.go` carries **no** build tag; every other file carries `//go:build integration`.
+  `doc.go` and `testmain_test.go` carry **no** build tag, matching `boardtest`;
+  every other file carries `//go:build integration`.
 - **Rationale, and this is load-bearing in two directions:**
   - The factory **must** live in a non-test `.go` file.
     `*_test.go` files are not importable across packages, and the successor task `lyxtest-real-hubs` needs `fabrictest` to be the landing zone for `fabricengine`'s 14 in-package `lyxtest` callers.
@@ -351,7 +377,7 @@ That property is what the current per-verb integration tests do not have.
     This is exactly `boardtest`'s shape.
 - **Suggested files** (mill-plan may adjust): `doc.go` (untagged: package doc, the measured wall-clock number, the Windows-gap section);
   `hub.go` (template-once bares, `CloneAndWire`-backed factory);
-  `manifest.go` (snapshot, diff, prefix-rooted permits, Windows-safe path compare);
+  `manifest.go` (capture, diff, prefix-rooted permits, the `.git` allowlist, Windows-safe path compare);
   `refusal.go` (the three `Check` constants, `RefusedByGate` and `RefusedBefore`);
   `states.go` (the 9 states);
   `verbs.go` (the 9 verb cases and their hostile-input sets);
@@ -485,7 +511,7 @@ Existing coverage in `internal/fabriccli/cli_test.go` and `pushbypass_integratio
 No new test is needed for the extraction itself beyond the matrix now exercising it on every cell.
 TDD is not the right shape here; extract, then run the existing suite.
 
-**`internal/fabrictest` — the harness.**
+**`internal/fabricengine/fabrictest` — the harness.**
 
 TDD candidates, in build order, each independently verifiable before the matrix exists:
 
@@ -496,12 +522,13 @@ TDD candidates, in build order, each independently verifiable before the matrix 
    For each anchor (`.` and `backend`), assert the built hub has: the prime warp worktree, the `<name>-weft` sibling, `_board`, a resolved `.lyx-anchor` matching the requested anchor, a recorded warp binding, wired junctions on the prime warp, and a repo-wide `fabric.yaml` at `BoardDir`.
    Then assert that adding a pair produces `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>`.
    This is what proves "real hub, not hand-assembled".
-3. **The manifest snapshot and diff.**
+3. **The manifest capture and diff.**
    Round-trip properties: an unchanged hub diffs empty;
    deleting a file outside every permitted root is reported;
    deleting a file *under* a permitted root is not;
-   a link whose raw target changes is reported;
-   `.git` internals churning does not produce noise.
+   a link whose raw one-hop target changes is reported;
+   a path replaced by a different kind (file where a link was) is reported.
+   Two `.git`-rule assertions, one per direction: running an ordinary `git status` and a commit against the hub produces an **empty** diff (the churn the allowlist excludes — `index`, `logs/**`, `refs/**`, `objects/**`), while removing a linked worktree's `.git/worktrees/<name>` registration **is** reported (the R3-shaped case the allowlist deliberately keeps observable).
    Path keys are `ToSlash`-normalised and comparison is case-folding on Windows.
 4. **`RefusedByGate` and `RefusedBefore`.**
    `RefusedByGate` against real gate refusals produced by driving a verb, one per reachable `Check`, plus a negative: a non-refusal error must not match any check.
@@ -529,9 +556,20 @@ TDD candidates, in build order, each independently verifiable before the matrix 
 - `clone --reset` against a directory named `<derived>-HUB` that is not a hub (R4).
 - Every `clean`-state cell: the verb succeeds and its intended effect landed.
 
-**Sabotage-proving.**
-Each of the nine evidence-table scenarios above should be confirmed to fail when the corresponding gate check is neutered.
-The campaign's own standard is that a test which has never been made to fail on demand is not yet proof, and this harness exists precisely because green suites were not evidence.
+**Sabotage-proving — mechanism and artifact, both named.**
+
+- **Scope:** the **nine evidence-table scenarios** listed above, and only those.
+  Not all 190 cells — proving a cell fails on demand costs a manual edit-run-revert cycle each, which is affordable nine times and not affordable 190 times.
+- **Mechanism:** during implementation, for each of the nine, temporarily neuter the specific check that scenario depends on — the pre-flight branch, or the gate check, whichever the cell's expectation kind names — run that one cell, and confirm it **fails**.
+  The edit is a **local working-tree change that is reverted immediately and never committed**;
+  it does not appear in any commit, and `destroy.go` is untouched in the delivered diff.
+  This is why sabotage-proving is not a permanent automated gate: proving it continuously would need a per-check injection seam that slice 12 deliberately did not build, and adding one now would be production surface added by a test-only slice.
+- **Durable artifact:** a table in `fabrictest`'s `doc.go` with one row per proved scenario, recording the cell, which check was neutered, and the observed failure.
+  That table is the evidence the exercise happened, and it is reviewable long after the temporary edits are gone.
+- **Completion gate:** all nine rows present and populated before the task is considered done.
+  A row that could not be proved is recorded as such with the reason, never silently omitted.
+- **Why this is not optional:** the campaign's own standard is that a test which has never been made to fail on demand is not yet proof, and this harness exists precisely because a green suite was not evidence.
+  A harness whose own cells were never made to fail would repeat the mistake it was built to correct.
 
 **What is deliberately not tested here.**
 "No call site bypasses the gate" — that is slice 12's static guard (`cmd/lyx/destructiveguard_test.go`), a different mechanism.
@@ -561,3 +599,6 @@ Duplicating it here would only risk diverging from it.
 - **Q:** Round 2 gap — the destructive bypass guard is directory-scoped (`filepath.WalkDir` over `internal/fabricengine`, skipping only `_test.go`), so it *does* reach `fabrictest`'s non-test files, contradicting this document's claim that it does not. **A:** [auto-pick] Exclude the `fabrictest` subdirectory from the guard's walk with a stated reason, and update `CONSTRAINTS.md`'s invariant text to name the exclusion. **Why:** a directory exclusion restores the guard to the scope its own invariant text already claims ("the only file in *package fabricengine*"), where per-file allowlist rows would punch a growing set of holes, and confining destructive tokens to `_test.go` would strand the state builders inside the test binary where `fabricengine_test` consumers cannot reach them.
 - **Q:** Round 2 gap — `Remove` deletes the portal and launchers at `remove.go:61-66`, *before* its dirty pre-flight at `:68-76`, so a correctly-refusing dirty-`Remove` cell has already destroyed two paths. Do refusal cells carry permit roots? **A:** [auto-pick] Yes — every expectation kind carries a permit-root field, those two paths are permitted on that cell, and the anomaly is recorded in `doc.go` and flagged for slice 14 rather than silently buried in a permit list. **Why:** "returned an error and destroyed something anyway" is the shape of all eight campaign defects, so a cell permitting it must say so out loud; but it is deliberate documented behaviour, and a harness task is the wrong place to reverse a production decision unilaterally.
 - **Q:** Round 2 gap — dirtiness scope is per-verb, so `dirtyWarpUntracked` against a `scopeTracked` verb like `Checkout` must *succeed*, an outcome the two-kind refusal scheme could not express. **A:** [auto-pick] Add a third expectation kind, `Proceeds` (verb succeeds, effect lands, planted content survives), and record the verified per-verb dirtiness-scope table so every cell's outcome is derived rather than guessed. **Why:** the scopeTracked-vs-scopeAll divergence against an untracked-only state is the one case proving dirtiness scope is a real per-request parameter, and without the table those cells would have been written from observed behaviour and asserted nothing.
+- **Q:** Round 3 gap — what does a manifest entry actually record, and how is `.git` handled, given that a blanket exclusion and a per-cell permit have opposite consequences? **A:** [auto-pick] Entry is path → kind + link raw target + file content hash, with no mode/mtime/size; `.git` gets a narrow allowlist recording only the `.git` entry itself and `.git/worktrees/<name>` at existence granularity. **Why:** a blanket `.git` exclusion would blind the harness to linked-worktree deregistration, which is R3's shape exactly, while hashing everything under `.git` would drown every cell in `index`/`logs`/`refs`/`objects` churn until the permit lists permitted everything.
+- **Q:** Round 3 gap — hostile inputs are scoped to three verbs but to no state set, so under `[]State × []VerbCase` they would inherit all nine states and both anchors (~378 cells), nearly all vacuous. **A:** [auto-pick] Hostile-input cells run in `clean` only, expressed as an optional `States` restriction on the `VerbCase` that is empty by default — so an ordinary newly-appended verb still inherits every state — giving 190 cells total. **Why:** `remove ..` refuses at `remove.go:45` before any hub state is consulted, so eight of its nine state rows would assert exactly what the ninth does, which is the same vacuity the `Reset` column was re-scoped to avoid.
+- **Q:** Round 3 gap — sabotage-proving named no mechanism and no artifact, and neutering `destroy.go` is a production edit not in scope. **A:** [auto-pick] Name both: a temporary local working-tree edit per scenario, reverted immediately and never committed, scoped to the nine evidence-table scenarios only, with a `doc.go` table recording cell, neutered check and observed failure as the durable artifact, and all nine rows as a completion gate. **Why:** a permanent automated gate would need a per-check injection seam slice 12 deliberately did not build, and adding one would be production surface introduced by a test-only slice — but a harness whose cells were never made to fail would repeat the mistake it exists to correct.
