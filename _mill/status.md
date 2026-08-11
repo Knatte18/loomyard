@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-enforcement-and-extraction
+phase: approved-package-skeleton-and-hub-factory
 slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-11T10:51:41Z'
 implementing  '2026-08-11T10:52:26Z'
 approved-enforcement-and-extraction  '2026-08-11T10:58:50Z'
 approved-enforcement-and-extraction  '2026-08-11T10:59:19Z'
+approved-package-skeleton-and-hub-factory  '2026-08-11T11:10:07Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     commit_sha: d9f68c3adb81d1f58b7c81e607a923b3d50cf6be
     verify_baseline_failures: []
   - name: package-skeleton-and-hub-factory
-    state: running
+    state: approved
     implementer_session: 68f6ca4c-2382-4ac3-bca8-734930ed2e8b
     start_sha: 439f31b09ed665ff4663fea5339619b82a4d246a
+    commit_sha: 534960dbae2b751734b2ffd5955c976854704dca
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: manifest-capture-and-diff
     state: pending
