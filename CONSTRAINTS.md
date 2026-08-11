@@ -330,9 +330,9 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 
 ## Batcher Registry+Config Invariant
 
-webster's execution unit is the batchifier-derived batch, not the raw plan card.
+webster's execution unit is the batchifier-derived batch, not the raw plan card — batching is a standalone step webster consumes, not webster's own execution-policy decision.
 
-- Batching is selected by `internal/batcher`'s name-keyed registry plus the `batcher:` webster.yaml config key (default `identity`) — no plan-supplied batching, no batch grouping in the plan format itself.
+- Batching is selected by `internal/batcher`'s name-keyed registry plus `batcher.yaml`'s `active:` config key (default `identity`), owned by `internal/batcher` rather than by webster — no plan-supplied batching, no batch grouping in the plan format itself.
 - **Enforced by** review obligation.
 
 ## GitHub Auth Invariant
