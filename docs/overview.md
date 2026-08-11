@@ -368,6 +368,10 @@ loom wants a plan-reviewer for worktree `feature-x`:
 Per-file unit tests sit next to the source they test (`store.go` ↔ `store_test.go`).
 The cross-cutting suites — benchmarks, concurrency stress, and git-backed integration — live in the black-box `internal/boardengine/boardtest` package.
 
+`internal/fabricengine/fabrictest` follows the same black-box convention, but it is a hybrid rather than a pure suite package: `boardtest` holds cross-cutting suites only, while `fabrictest` is also a non-test helper package — the hub factory (`NewHub`, backed by the extracted `fabriccli.CloneAndWire`), importable by `fabricengine_test` — that additionally carries its own `//go:build integration`-tagged suites.
+It is the **live-state integration harness**: it drives real cloned hubs, built by really cloning rather than hand-assembling a fixture, into dirty and hostile on-disk states and asserts what a destructive verb is and is not permitted to touch.
+See its own package doc for the state matrix, the verb table, and the sabotage-proof table recording that each of the crucible campaign's eight data-loss defects still fails on demand when its guarding check is neutered.
+
 ## Sandbox Hub
 
 The **sandbox Hub** is a dedicated bench for manual testing of lyx's core workflows — dogfooding lyx against itself.
