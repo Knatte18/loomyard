@@ -67,7 +67,7 @@ So this task is E's successor, not merely the atomicity carve-out.
 - **Concrete shape in `loom.md`'s producer table.** The existing **Type** column is left alone: it holds engine-type values (`mechanical`, `LLM`, `LLM/perch`, `black box …`) and stays on that axis.
   Add **one new `Kind` column** whose only values are `simple` and `bespoke`.
   Column order becomes `# | Producer | Kind | Type | Input | Output`.
-  Rows 4, 8, 10 and 11 (`Discussion-Review`, `Plan-Review`, `Webster`, `Webster-Review`) are `bespoke`; the other eight are `simple`.
+  Rows 4, 8, 10, 11 **and 12** (`Discussion-Review`, `Plan-Review`, `Webster`, `Webster-Review`, `Finalize`) are `bespoke`; the other seven are `simple`. See `finalize-is-bespoke` below for row 12, the one classification that is not carry-forward.
   **The anchor pointer into `shed.md` appears exactly once**, in the sentence introducing the table — not repeated per row, and not inside any cell.
   Cells carry the bare word only.
 - **Rationale for a separate column rather than augmenting `Type`:** merging both axes into one cell (e.g. `LLM/perch — bespoke`) is precisely the conflation `two-axes-cross-reference` exists to prevent, and it would make the engine axis unreadable at a glance.
@@ -107,6 +107,26 @@ So this task is E's successor, not merely the atomicity carve-out.
 - **Rejected:** merging into one taxonomy — destroys the section's point.
   Saying nothing — leaves the overlap for every future reader to work out unaided.
 
+### finalize-is-bespoke
+
+- **Decision:** `Finalize` is classified **bespoke**, not simple.
+- **This is the one `Kind` value that is not carry-forward.** `roadmap.md:58` names `Discussion-Write`/`Plan-Write` as simple and `Webster`/the three reviews as bespoke, and classifies `Finalize` **neither way**.
+  Adding the `Kind` column forces the call, so this task makes it and argues it rather than letting it fall out of a default.
+- **Rationale — `Finalize` owns an internal multi-spawn process, post-task-D:**
+  - `finalize.md:37–38` (landed by task D, `ab3d67b1`) puts raddle-regeneration *inside* the merge's critical section: **parallel leaf forks** plus a serial `Overview.md` step, then a `SyncWeft` commit.
+  - `finalize.md:38` requires the merge lock to span that whole critical section as one atomic unit — "never released and re-acquired partway through".
+    That is an explicit internal-atomicity obligation, which is exactly what the carve-out says `Shed` does **not** provide at sub-producer granularity.
+  - `finalize.md:9` spawns a fresh, higher-capability LLM in a clean session on merge conflict.
+  - `loom.md:60` already hedges the row as "mechanical (**mostly**)" — the hedge is this classification, unnamed.
+- **The happy path is genuinely pure Go with zero LLM spawns** (`finalize.md:8`), so `Finalize` looks simple most of the time.
+  Classify on the worst case regardless: the axis exists to say who owns crash-recovery, and a producer whose recovery obligation appears only on the unhappy path still owns it.
+- **Record, do not design, the gap this surfaces.** `Webster` and the `perch`-gated reviews both already ship their own internal crash-recovery (`websterengine`'s `state.json` re-drive; `treadleengine`'s locked run-dir). `Finalize` does **not**.
+  A crash inside its locked critical section is therefore unrecovered today.
+  State this in `shed.md` as an observation for the `Shed` build task and note that `finalize.md:40` already records "an alternative giving Raddle its own `Shed` producer, with merge-in and locking lifted into `Shed` itself" as a live candidate for a future task.
+  **Do not design that recovery here** — it is `Finalize`'s own contract, task D's territory, and outside this task's docs-only remit.
+- **Rejected:** classifying `simple` because the happy path is one mechanical action — makes the `Kind` column describe the common case rather than the contract, and would assert `Shed` covers a recovery obligation it does not.
+  Leaving row 12 blank or `simple/bespoke` — a table column that declines to answer on the one row where the answer is non-obvious is worse than no column.
+
 ### thin-input-carve-out
 
 - **Decision:** resolve `shed-followups.md`'s **Question 2** with a symmetric thin-**Input** carve-out, recorded in `shed.md`'s producer-contract section immediately beside the thin-Output carve-out it mirrors.
@@ -121,8 +141,13 @@ So this task is E's successor, not merely the atomicity carve-out.
 
 ### resolve-thin-output-over-four-producers
 
-- **Decision:** also discharge E's **Part five** thin-Output obligation, in the same `shed.md` section.
-  The Output contract permits a pass/fail gate signal with no artifact, because `Preflight`, `Discussion-Validate`, `Plan-Validate` and `Finalize` genuinely have no output artifact, and the resume-on-output-files rule degrades gracefully — a producer with no artifact simply re-runs on resume, which is correct for all four.
+- **Decision:** also discharge E's **Part five** thin-Output obligation, in the same `shed.md` section — but state it as **two cases, not one**, because the four producers do not share a single story:
+  - **The three gate producers** — `Preflight`, `Discussion-Validate`, `Plan-Validate` — genuinely emit nothing at all. The Output contract permits a bare pass/fail gate signal with no artifact, and the resume-on-output-files rule degrades gracefully: a producer with no artifact simply re-runs on resume, which is correct for all three because each is a cheap, idempotent re-check.
+  - **`Finalize` is a different case and must not be folded into that sentence.** `loom.md:60`'s Output cell reads "merge-back, PR", and `finalize.md` describes a real `SyncWeft` commit plus an optional PR — so it plainly *does* have effects.
+    What it has no instance of is a **contract-level output artifact**: nothing downstream consumes its output through a format pointer, because it is the terminal producer in the list.
+    Its thin Output is therefore "no *pointer target*", not "no effect".
+    And its resume story is **not** the graceful degradation above — a partially-completed merge is not a cheap idempotent re-run. That recovery is `Finalize`'s own obligation, per `finalize-is-bespoke`, and is explicitly not designed here.
+- **Rationale for splitting:** the original single sentence claimed all four "genuinely have no output artifact", which is false for `Finalize` in the plainest reading and would have written a wrong claim into `shed.md`'s contract section.
 - **Rationale:** `loom.md:78–82` currently states this question is open and explicitly hands it to task E over **four** producers (widened from two by task C's insertion of `Discussion-Validate`).
   Landing the Input carve-out while leaving its Output twin flagged open would be incoherent — they are one contract section.
 - **Rejected:** leaving thin-Output open — `loom.md:79–82`'s hand-off note names task E, which no longer exists, so it would dangle exactly like the other stale-owner claims this task retires.
@@ -215,12 +240,16 @@ Every number below was verified against the tree at branch point `c3af3c9c`.
 - `:19` — "(resolves the open question the pre-revision text **below** left open)" dangles the same way.
 - `:18` — "reference (by *value* — the same producer definition named in both lists)". Becomes **by reference**, per `shed-followups.md:378–383`'s `finalize-shared-by-reference` decision. Note the markdown italics make this **invisible to a plain `by value` grep**.
 - `:31–46` — the engine-adapter section that gains the two-axes sentence.
-- `:59–63` — `## Why this doc doesn't rewrite loom.md's full detail`, whose premise changed once C and this task ran.
-- `:63` — claims wiki task `shed-producer-model-scoping` "is the dedicated pass that reconciles any remaining detail mismatch". That task completed on 2026-08-09; the claim is stale.
+- `:59–63` — `## Why this doc doesn't rewrite loom.md's full detail`. **Disposition: the section stays; only `:63` is retired.**
+  `shed-followups.md:492` warns that the section's premise changes once C and E run, and it does shift — but only in the "who finishes the job" sense, not in the section's actual claim.
+  Its argument is that `loom.md` keeps its own detail sections (crash recovery, pause, session bootstrap, module decomposition) rather than having them duplicated into `shed.md`, and that division is unchanged by anything in this task.
+  Do not rewrite or delete the section.
+- `:63` — the one line inside it that must go: it claims wiki task `shed-producer-model-scoping` "is the dedicated pass that reconciles any remaining detail mismatch". That task completed on 2026-08-09 and this task is the last owner, so the claim is stale in the present tense.
 
 **`manifest/designs/loom.md`**
 
 - `:15–17` — the naming note still reads "`loom` = `Shed` + loom's own Preflight + the Discussion/Plan/Webster producer" (old slot framing, contradicting the table 25 lines below), and its "This doc has not been rewritten to extract `Shed` explicitly" claim is now false.
+- `:29` — **verify-only**, inherited from `shed-followups.md:446–449`: task B rewrote this line in full rather than leaving it self-contradicting, so E's obligation here was reduced to confirming the rewrite. It now names the live plan format with no v2 link and no "target format is changing" framing. Confirm and move on; no edit expected.
 - `:44` — the mirror of `shed.md:8`'s atomicity claim; gets the pointer to `shed.md`'s carve-out.
 - `:47–60` — the producer table, which gains a new `Kind` column per `shed-md-is-authoritative-loom-md-points`. The existing `Type` column is not touched.
 - `:57` — row 9, `Batchifier`. **Two stale artifact names**, both left behind because task C's scope was rows 2–7 only and task F did not edit `loom.md` at all (`shed-followups.md:618`): the Input cell reads "`plan.md` (approved) + `webster.yaml`'s `batcher:` key".
@@ -330,4 +359,5 @@ They are the same decision stated twice by necessity (roadmap item vs. design do
 - **Q:** Does `shed-followups.md` get a supersession record? **A:** Yes — one block at the head of section E, recording E's removal, this task's succession, and the resolution of all three of E's surfaced questions. Section E's body stays intact as the historical record.
 - **Q:** `roadmap.md:110`'s "deferred phase slot" and `overview.md:283`'s stale chain — open decisions or mechanical fixes? **A:** Mechanical. Task D already decided the Raddle fold; both sites just carry it forward. `:283` points at `loom.md`'s table rather than inlining a chain, so it cannot drift again.
 - **Q:** `loom.md`'s producer table Type column already holds engine-type values — does the typology replace them, augment them per row, or get its own column? **A:** [auto-pick] New `Kind` column holding `simple`/`bespoke`; `Type` left alone on the engine axis; column order `# | Producer | Kind | Type | Input | Output`; the `shed.md` anchor stated once above the table, never per row. **Why:** merging both axes into one cell is the exact conflation `two-axes-cross-reference` exists to prevent, and twelve identical anchor links would itself read as a pointer-rule violation.
+- **Q:** Is `Finalize` `simple` or `bespoke`? `roadmap.md:58` classifies it neither way, and adding the `Kind` column forces the call. **A:** [auto-pick] `bespoke`. **Why:** task D put raddle's parallel leaf forks plus a serial `Overview.md` step inside `Finalize`'s merge-lock critical section, which `finalize.md:38` requires be atomic end to end, and `finalize.md:9` spawns a fresh LLM on merge conflict — an internal multi-spawn process with a crash-recovery obligation `Shed` does not cover. The pure-Go happy path does not change the classification, since the axis is about who owns recovery. Unlike `Webster` and `perch`, `Finalize` does not ship that recovery today; that gap is recorded as an observation for the `Shed` build task, not designed here.
 - **Q:** What is the acceptance criterion? **A:** `TestEnforcement_MarkdownLinks` + a targeted grep set for the retired phrasings (excluding the permanently-exempt `shed-followups.md`) + `go test ./...` as a backstop. No new tests — `shed-followups.md:499` scopes the pointer rule as review-enforced.
