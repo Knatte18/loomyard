@@ -27,7 +27,7 @@ So this task is E's successor, not merely the atomicity carve-out.
 **In:**
 
 - `manifest/designs/shed.md` — the producer-typology carve-out (the authoritative, full statement), the thin-Input carve-out, the two-axes cross-reference in the engine-adapter section, plus E's own `shed.md` residue (`:7`, `:18`, `:19`, `:63`).
-- `manifest/designs/loom.md` — pointers to `shed.md`'s carve-out from the atomicity sentence and the producer table's Type column, plus E's `loom.md` residue (`:15–17`, `:78–83`).
+- `manifest/designs/loom.md` — pointers to `shed.md`'s carve-out from the atomicity sentence and the producer table's Type column, plus E's `loom.md` residue (`:15–17`, `:76–83`).
 - `CONSTRAINTS.md` — a new, short `## Producer Pointer-Rule Invariant`.
 - `docs/overview.md` — the `shed`/`glance` name-disambiguation note at `:300`, and the stale phase chain at `:283`.
 - `manifest/designs/hardener.md` — `:17`'s "producer-slot".
@@ -206,7 +206,7 @@ Every number below was verified against the tree at branch point `c3af3c9c`.
 - `:50` — `Discussion-Write`'s Input cell, "— (starting point)", is Question 2's subject; it stays as-is textually but now cites the thin-Input carve-out.
 - `:58` — the `Webster` row, which must cite the carve-out explicitly instead of reading as an unresolved conflict with atomicity.
 - `:70–72` — `loom.md`'s own copy of the two-part contract and the pointer rule.
-- `:76–83` — the open-questions paragraph. `:78` states thin-Output is open; `:79–82` is task C's hand-off note widening it to four producers and naming **task E**, which no longer exists; `:83` carries the stale `shed-producer-model-scoping` claim.
+- `:76–83` — the open-questions paragraph, cited as the whole paragraph for context. `:76–77` is the **already-resolved** first question (`Discussion-Validate` closed it, per task C) and needs no edit; the residue this task actually owns is `:78–83`. `:78` states thin-Output is open; `:79–82` is task C's hand-off note widening it to four producers and naming **task E**, which no longer exists; `:83` carries the stale `shed-producer-model-scoping` claim.
 
 **`CONSTRAINTS.md`** — `## Batcher Registry+Config Invariant` runs `:348–353`; the new invariant goes immediately after it.
 
@@ -216,7 +216,8 @@ Every number below was verified against the tree at branch point `c3af3c9c`.
 
 **`manifest/roadmap.md`** — `:110` (the raddle slot line). `:57–61` already carries the resolution and is **verify-only**; do not rewrite it, and prefer its wording when phrasing the design-doc text.
 
-**`manifest/designs/shed-followups.md`** — section E spans `:409–550`. The supersession block goes at its head, immediately under the `## E — shed-model-contradiction-sweep` heading.
+**`manifest/designs/shed-followups.md`** — section E starts at `:409` and runs up to (not including) `## F — batcher-standalone-split`'s heading at `:552`.
+The supersession block goes at section E's head, immediately under the `## E — shed-model-contradiction-sweep` heading.
 
 ### Gotchas
 
