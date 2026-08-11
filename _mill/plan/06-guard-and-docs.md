@@ -35,7 +35,9 @@ Batch-local decision beyond `## Shared Decisions`: the guard's banned-token set 
   - `internal/fabricengine/ancestors.go`
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/launchers.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fslink/fslink_linux.go`
+  - `internal/fslink/fslink_windows.go`
 - **Creates:**
   - `cmd/lyx/destructiveguard_test.go`
 - **Deletes:** none
@@ -59,6 +61,7 @@ Batch-local decision beyond `## Shared Decisions`: the guard's banned-token set 
   and the package doc file, because this slice writes destruction rationale into it and a raw substring match over prose would trip the guard from inside the document explaining the rule — its only non-comment line is the package clause, so it can never contain a real call.
   Note in the header that the junction and hook entries are whole-file allowlists, so a *new* raw removal added to either would not be caught, and that this is the same limitation the file being cloned already has.
   Set the vacuous-scan floor to a value comfortably below the package's current production file count and comfortably above zero, and state in a comment that its job is catching a misconfigured walk rather than tracking the package's size.
+  Running this batch's `verify:` also surfaced a pre-existing Fabric Vocabulary Invariant leak batch 3's `RawTarget` doc comment introduced in both `internal/fslink` platform files (bare `warp`/`weft` tokens outside the vocabulary's owner set, which `internal/fslink` is not a member of) — reword those two comments to drop the bare tokens without losing their meaning, since `go test ./internal/lyxcwd/...` is this batch's own verify command and the failure traces to a same-task commit.
 - **Commit:** `test(cmd/lyx): add the destructive-bypass guard over internal/fabricengine`
 
 ### Card 28: allowlist the guard for tier purity
