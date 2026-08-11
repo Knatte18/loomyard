@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hostile-state-matrix
+phase: approved-verb-table-and-expectations
 slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-package-skeleton-and-hub-factory  '2026-08-11T11:10:07Z'
 approved-manifest-capture-and-diff  '2026-08-11T11:19:29Z'
 approved-refusal-expectation-helpers  '2026-08-11T11:34:39Z'
 approved-hostile-state-matrix  '2026-08-11T11:49:32Z'
+approved-verb-table-and-expectations  '2026-08-11T12:14:22Z'
 ```
 
 ## Batches
@@ -66,9 +67,10 @@ batches:
     commit_sha: d576864f3d09b2377e1b5b74779760bc90ae1d58
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: verb-table-and-expectations
-    state: running
+    state: approved
     implementer_session: 333b871d-49ee-4846-9fda-738b9aed9200
     start_sha: 6fb63352201fc9337c80baa3783f9a02351a4983
+    commit_sha: 50709e8f98876445f76be60d91913ec7b44cff4f
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: cross-product-driver
     state: pending
