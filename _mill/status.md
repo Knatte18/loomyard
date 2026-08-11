@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-producer-table-and-rename-sweep
+phase: holistic-reviewing
 slug: format-docs-name-producers
 branch: format-docs-name-producers
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-08-11T05:10:14Z'
 implementing  '2026-08-11T05:20:33Z'
 approved-contract-docs-producer-model  '2026-08-11T05:26:37Z'
 approved-producer-table-and-rename-sweep  '2026-08-11T05:32:29Z'
+holistic-reviewing  '2026-08-11T05:32:53Z'
 ```
 
 ## Batches
