@@ -25,6 +25,17 @@ It runs last because both the guard and the docs describe the finished shape, an
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/add.go`
+  - `internal/fabricengine/remove.go`
+  - `internal/fabricengine/checkout.go`
+  - `internal/fabricengine/prune.go`
+  - `internal/fabricengine/cleanup.go`
+  - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/reconcile.go`
+  - `internal/fabricengine/commit.go`
+  - `internal/fabricengine/pull.go`
+  - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/status.go`
   - `internal/fabricengine/diff.go`
 - **Edits:**

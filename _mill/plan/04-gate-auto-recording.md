@@ -5,7 +5,7 @@ task: 'fabric: accumulate the result envelope from mutations, not control flow (
 batch: 'gate-auto-recording'
 number: 4
 cards: 5
-verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./internal/fabricengine/...
+verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./...
 depends-on: [2, 3]
 ```
 
@@ -20,6 +20,10 @@ This slice exists because a record was silently dropped, so the mechanism that t
 Batch-local decision: `repointLink` records nothing of its own beyond the `link_removed` its inner `removeLink` call already produces.
 There is deliberately no `link_repointed` kind — a repoint physically *is* a removal here plus a creation at the caller's own `fslink.CreateDirLink`, which batch 5 records.
 
+Batch-local decision: **the compiler-enforced-parameter rule applies to the eight gate executors, not to every function on the path to one.** The exported `WireJunctions(l, slug, names) error` keeps its current signature and gains a recording sibling instead — see card 14 for the exact shape and the reason.
+The gate executors are where a silently dropped record produced this slice's defects, and they are what the batch-8 guard pins;
+extending the same hard rule to an exported helper with roughly fifty existing test call sites would buy nothing and churn fifteen files.
+
 ## Cards
 
 ### Card 12: the eight gate executors take and use a recorder
@@ -30,6 +34,7 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
   - `_mill/discussion.md`
 - **Edits:**
   - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/warpforward_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -45,7 +50,8 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
   - `createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error)` — record `KindWorktreeCreated` with `target` only on the success path that mints the token.
   - `resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string) error` — record `KindWorktreeReset` with `req.target` and `sha` as the detail, on a nil error from `repo.ResetHard(sha)`. This is the primitive behind defect 1.
 
-  Also change the exported wrapper `(*Fabric).ResetHard(sha string) error` to `(*Fabric).ResetHard(rec *Mutations, sha string) error`, passing `rec` into `resetHardTo`. Its three callers in `internal/fabricengine/pull.go` are updated by card 15.
+  Also change the exported wrapper `(*Fabric).ResetHard(sha string) error` to `(*Fabric).ResetHard(rec *Mutations, sha string) error`, passing `rec` into `resetHardTo`. It has five callers, not three: the three production sites in `internal/fabricengine/pull.go` (updated by card 15) and two test sites in `internal/fabricengine/warpforward_integration_test.go`, which this card updates to pass a throwaway `NewMutations("")` recorder so the assertions they carry are unchanged.
+  `internal/gitrepo`'s own `(*Repo).ResetHard` is a different method on a different type and is not touched.
 
   Every executor records **after** the pipeline passed and the primitive succeeded, never before — a refusal records nothing, since nothing happened.
   Add a paragraph to `destroy.go`'s file header stating the recording contract and the record-only-on-observed-effect rule, and why it is what makes the truthfulness cross-check's commission direction sound.
@@ -67,6 +73,9 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
   - `internal/fabricengine/prune.go`
   - `internal/fabricengine/cleanup.go`
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/portallauncher_test.go`
+  - `internal/fabricengine/weftwiring_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -82,6 +91,10 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
   - `removeJunctionRecords` and `removeWeftWorktree` — `internal/fabricengine/weftwiring.go`; callers at `internal/fabricengine/add.go` and `internal/fabricengine/remove.go`
 
   Where a helper's caller is itself a helper, thread the parameter through rather than constructing a second recorder — there is exactly one `*Mutations` per verb invocation, and it is the one card 9 or card 10 built.
+
+  Three of these helpers have in-package test callers, which this card repoints by passing a throwaway `NewMutations("")` recorder so each assertion's meaning is unchanged: `removeLaunchers` in `internal/fabricengine/portallauncher_test.go`, `removeJunctionRecords` in `internal/fabricengine/weftwiring_test.go`, and `teardownHub` through the seam in `internal/fabricengine/export_test.go`.
+  Grep each renamed helper across `internal/fabricengine/*_test.go` before finishing the card rather than trusting this list — an unbuilt test file is invisible to `go build ./...` and only the widened `go vet -tags integration ./...` in this batch's verify catches it.
+
   No behaviour, ordering, or error text changes anywhere in this card.
 - **Commit:** `refactor(fabricengine): thread the recorder through the removal helpers`
 
@@ -90,6 +103,8 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
 - **Context:**
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/mutation.go`
+  - `internal/configcli/configcli_integration_test.go`
+  - `internal/loomengine/preflight_integration_test.go`
 - **Edits:**
   - `internal/fabricengine/junction.go`
   - `internal/fabricengine/unwire.go`
@@ -98,6 +113,8 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/checkout.go`
   - `internal/fabriccli/clone.go`
+  - `internal/fabricengine/clone_reset_guard_test.go`
+  - `internal/fabricengine/junction_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -105,13 +122,29 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
   Add a leading `rec *Mutations` parameter to:
 
   - `seedLyxJunction` and `unseedJunctionRecords` and `wireBoardLink` — `internal/fabricengine/junction.go`
-  - the exported `WireJunctions(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error` — `internal/fabricengine/junction.go`; callers at `internal/fabricengine/add.go`, `internal/fabricengine/checkout.go`, `internal/fabricengine/reconcile.go`, and `internal/fabriccli/clone.go`
   - `unwireBoardLink` — `internal/fabricengine/unwire.go`
   - `resetHub` and `teardownHub` — `internal/fabricengine/clone.go`
-  - `(*Topology).repairPairWiring` — `internal/fabricengine/reconcile.go`, since it reaches `WireJunctions`
+  - `(*Topology).repairPairWiring` — `internal/fabricengine/reconcile.go`, since it reaches the junction wiring
+
+  **`WireJunctions` is the one exception to the leading-parameter rule, and the shape is exact.** It keeps its current signature and gains a recording sibling:
+
+  ```go
+  func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error
+  func WireJunctions(l *lyxcwd.Location, slug string, names []string) error {
+  	return WireJunctionsWith(nil, l, slug, names)
+  }
+  ```
+
+  `WireJunctionsWith` carries the whole body;
+  `WireJunctions` is a thin nil-recorder delegation and its doc comment says so, naming `WireJunctionsWith` as the form production code calls.
+  The four production callers — `internal/fabricengine/add.go`, `internal/fabricengine/checkout.go`, `internal/fabricengine/reconcile.go` and `internal/fabriccli/clone.go` — switch to `WireJunctionsWith`; card 15 owns the `add.go` and `checkout.go` half.
+
+  This split exists because the bare `WireJunctions` has roughly fifty existing call sites across fifteen test files (`internal/fabricengine`'s own junction, unwire, reconcile, checkout, dotlyxjunction and healthreason suites, plus `internal/configcli/configcli_integration_test.go` and `internal/loomengine/preflight_integration_test.go`), none of which have a recorder to pass and none of which assert anything about the record.
+  Changing the exported signature would churn all fifteen files for no coverage gain, and the two outside `internal/fabricengine` sit outside every batch's own verify scope — which is exactly why this card's verify is widened to `go vet -tags integration ./...` rather than the package-scoped form batch 3 uses.
+  Verify the wrapper is complete by grepping the tree for `WireJunctions(` after the edit: every remaining hit must be either the wrapper's own declaration or a `_test.go` file.
 
   At `internal/fabriccli/clone.go`, `CloneAndWire` has no recorder of its own yet — batch 6 gives it one.
-  For this batch, pass the record already carried by the `fabricengine.CloneResult` the preceding `CloneHub` call returned: build a local `rec := fabricengine.NewMutations(res.HubPath)`, seed it with `rec.Extend(res.Mutated())`, pass it into `WireJunctions`, and leave it otherwise unused.
+  For this batch, pass the record already carried by the `fabricengine.CloneResult` the preceding `CloneHub` call returned: build a local `rec := fabricengine.NewMutations(res.HubPath)`, seed it with `rec.Extend(res.Mutated())`, pass it into `WireJunctionsWith`, and leave it otherwise unused.
   Batch 6 is what folds that recorder into the returned result and the envelope;
   doing it here would mean editing `CloneAndWire`'s return shape twice.
 
@@ -138,7 +171,7 @@ There is deliberately no `link_repointed` kind — a repoint physically *is* a r
 - **Moves:** none
 - **Requirements:**
   - `internal/fabricengine/add.go`: pass the verb's recorder into the `createGitWorktree` call, and add a leading `rec *Mutations` parameter to `(*Topology).rollbackAdd`, threading it from each of its eleven call sites inside `Add`. The rollback's own `removeGitWorktree` and `deleteBranch` calls then record through the same recorder — which is the point: `Add`'s record must carry both the creations and the rollback's own destructions, in execution order.
-  - `internal/fabricengine/checkout.go`: add a leading `rec *Mutations` parameter to `(*Topology).rollbackSwitch`, threading it from its three call sites inside `Checkout`, and pass the recorder into the `WireJunctions` call.
+  - `internal/fabricengine/checkout.go`: add a leading `rec *Mutations` parameter to `(*Topology).rollbackSwitch`, threading it from its three call sites inside `Checkout`, and switch the `WireJunctions` call to `WireJunctionsWith`, passing the recorder.
   - `internal/fabricengine/pull.go`: update the three `f.ResetHard(upstreamSHA)` call sites to `f.ResetHard(rec, upstreamSHA)`, using the recorder card 10 installed in `Pull`.
 
   No behaviour, ordering, or error text changes.

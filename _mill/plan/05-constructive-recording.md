@@ -95,6 +95,8 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Context:**
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/fabric.go`
+  - `internal/gitrepo/push.go`
+  - `internal/gitrepo/gitrepo.go`
 - **Edits:**
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/weftgit.go`
@@ -112,14 +114,21 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   The `Target` is the worktree the commit landed in (a path, so `Append`) and the `Detail` is the SHA.
   A `PartialCommitError` is an ordinary error like any other — it is **not** a second trigger for `partial`, and it needs no special case here beyond making sure the record is appended on the path that returns it.
 
-  In the three push entry points, record `rec.AppendRef(KindBranchPushed, <branch>, "")` on success:
+  **The three push entry points need an explicit resolution and an explicit success predicate, because neither is in scope at the call site today.** `(*Fabric).PushWeft` is `return f.weft.PushCoalesced()`, `PushWarpAt` is `return gitrepo.New(warpPath).PushCoalesced()`, and `CoalescePushBothAt` pushes through `pushRebaseFreeLogged` — none of them names a branch, and `PushCoalesced` returns a bare `error` that is `nil` both when a push landed and when there was nothing to push.
+  Worse, `pushRebaseFreeLogged` maps `gitrepo.ErrPushRejected` to a warning and a `nil` return (commits left unpushed, per fabric's contract), so a naive "record on nil error" would append `branch_pushed` for a push the remote **rejected** — the exact lie of commission this slice exists to kill.
 
-  - `(*Fabric).PushWeft` — `internal/fabricengine/weftgit.go`
-  - `PushWarpAt` — `internal/fabricengine/spawn.go`
-  - `CoalescePushBothAt` — `internal/fabricengine/coalesce.go`, which pushes both sides and therefore records **two** `branch_pushed` entries, one per side that actually progressed
+  Use the two `gitrepo` accessors that already exist, and nothing else:
 
-  Where the pushed branch name is not already in hand at the success site, resolve it the way the surrounding code already resolves branch names rather than inventing a new derivation;
-  where a push is a genuine no-op (nothing unpushed, or `CoalescePushBothAt`'s empty-`warpPath` no-op), record **nothing** for that side.
+  - **Resolution:** `(*gitrepo.Repo).CurrentBranch()` gives the ref name to pass to `AppendRef`.
+  - **Success predicate:** `(*gitrepo.Repo).HasUnpushed()` sampled **before** and **after** the push call. Record `branch_pushed` only on a `true` → `false` transition. That is a real observation of a state change, matching the record-only-on-observed-effect Shared Decision, and it is the same before/after shape `CoalescePushBothAt`'s own loop already uses with `headOrEmpty`. Nothing-to-push (`false` before) and rejected (`true` still after) both correctly record nothing.
+
+  Apply it at:
+
+  - `(*Fabric).PushWeft` — `internal/fabricengine/weftgit.go`, against `f.weft`
+  - `PushWarpAt` — `internal/fabricengine/spawn.go`, against the `gitrepo.New(warpPath)` handle it already builds
+  - `CoalescePushBothAt` — `internal/fabricengine/coalesce.go`, per side inside the existing `step` closure, beside the `beforeWarp`/`beforeWeft` sampling that is already there. It can therefore record up to **two** `branch_pushed` entries, one per side that genuinely advanced, and none for a side whose path is empty or whose HEAD is unborn.
+
+  If either accessor errors, record nothing for that side and do **not** propagate the error — a failure to *observe* is not a failure to push, and turning an observation error into a verb failure would change behaviour this card is forbidden to change.
   Do not change any behaviour, ordering, or error text.
 - **Commit:** `feat(fabricengine): record commit_created and branch_pushed on the commit and push paths`
 
@@ -171,7 +180,9 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Create `internal/fabricengine/mutation_record_integration_test.go` behind the `integration` build tag, in `package fabricengine`, following the fixture conventions of `internal/fabricengine/remove_guard_integration_test.go` (the package's `TestMain` already calls `lyxtest.HermeticGitEnv()`, per the Hermetic Git Test Environment Invariant).
+  Create `internal/fabricengine/mutation_record_integration_test.go` behind the `integration` build tag, in `package fabricengine_test` — the **external** test package, matching `internal/fabricengine/remove_guard_integration_test.go`, whose fixture builder `newFabricFixture` is declared there and is unreachable from the internal package.
+  Everything this card asserts is exported (`RefusalOf`, `Mutated()`, `Topology.Remove`, `Topology.Add`), so the external package costs nothing.
+  The package's `TestMain` already calls `lyxtest.HermeticGitEnv()`, per the Hermetic Git Test Environment Invariant.
 
   Every test function name starts with `TestMutationRecord` so the batch's `-run TestMutationRecord` verify selects exactly this file's tests and nothing else.
 

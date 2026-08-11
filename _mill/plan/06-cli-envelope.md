@@ -12,7 +12,7 @@ depends-on: [5]
 ## Batch Scope
 
 This batch is where the record becomes visible to the operator: `internal/fabriccli` emits `mutations` and `partial` on both the success and the failure path of all twelve mutating verbs, plus a structured `refusal` object when the returned error carries a gate refusal.
-It also records the CLI's own layer — `CloneAndWire` and `runReconcile` mutate substantially above the engine and return five-plus zero results today, which is the same defect one layer up.
+It also records the CLI's own layer — `CloneAndWire` and `runReconcile` mutate substantially above the engine, and `CloneAndWire` alone returns a bare zero `CloneResult` at eight sites today, which is the same defect one layer up.
 It is one batch because the emission helper, the CLI-layer recording, and the assertions all describe one envelope contract, and a half-applied contract is worse than none: a consumer that finds `mutations` on eight verbs and not on the other four learns nothing it can rely on.
 
 Batch-local decision: the emission goes through one small helper pair in `internal/fabriccli` rather than being open-coded at each of the twenty-odd `output.Ok`/`output.Err` sites, so the fixed key set is declared once and cannot vary by verb.
@@ -63,7 +63,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 - **Requirements:**
   Route these handlers' verb-result output through the card-22 helpers, keeping every existing top-level field byte-identical:
 
-  - `runAdd`, `runCheckout`, `runReconcile`, `runPruneWithFlags`, `runCleanupWithFlags`, `runRemoveWithFlag` — `internal/fabriccli/fabric.go`
+  - `runAdd`, `runCheckout`, `runPruneWithFlags`, `runCleanupWithFlags`, `runRemoveWithFlag` — `internal/fabriccli/fabric.go`
   - the unwire handler — `internal/fabriccli/unwire.go`
 
   For each: the `output.Ok(out, map[string]any{...})` success return becomes `okWithRecord(out, r.Mutated(), map[string]any{...})` with the same fields, and the `output.Err(out, err.Error())` return that follows the **verb call** becomes `errWithRecord(out, r.Mutated(), err)`.
@@ -72,7 +72,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Nothing has been mutated at those points, there is no result to read a record from, and inventing an empty record for them would put `mutations` on an envelope that is not a verb outcome at all.
   Add a one-line comment at the first such site in each handler saying so, so the asymmetry reads as a decision.
 
-  `runReconcile`'s handler is the one exception to "keep every existing field": it also does its own mutating (card 24), so leave its emission alone in this card and let card 24 convert it.
+  `runReconcile` is deliberately absent from that list: it does its own CLI-layer mutating, so card 24 both records and converts it in one place rather than this card converting an emission card 24 would immediately rewrite.
 
   The read-only handlers `runList` and `runPairs` (`internal/fabriccli/fabric.go`) are **not** touched — no `mutations`, no `partial`.
 - **Commit:** `feat(fabriccli): emit mutations and partial from the topology verb handlers`
@@ -96,16 +96,23 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   Two verbs mutate substantially *above* the engine, and their zero-result returns are the same defect one layer up.
   The rule for both: the CLI owns a recorder for its own layer, seeds it with the engine call's record, appends its own steps in execution order, and returns the accumulated record on every path — including the failure paths that return a bare zero result today.
 
-  **`CloneAndWire`** — `internal/fabriccli/clone.go`. Convert it to named results (`func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.CloneResult, err error)`), build `rec := fabricengine.NewMutations(res.HubPath)` once `CloneHub` has returned, seed it with `rec.Extend(res.Mutated())`, and install `defer func() { res.Mutations = rec.Snapshot() }()` so the five `return fabricengine.CloneResult{}, err` sites carry the accumulated record without being individually rewritten.
+  **`CloneAndWire`** — `internal/fabriccli/clone.go`. Convert it to named results (`func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.CloneResult, err error)`), build `rec := fabricengine.NewMutations(res.HubPath)` once `CloneHub` has returned, seed it with `rec.Extend(res.Mutated())`, and install `defer func() { res.Mutations = rec.Snapshot() }()` so all eight `return fabricengine.CloneResult{}, err` sites carry the accumulated record without being individually rewritten.
   Note the ordering constraint: the defer can only be installed after `rec` exists, so the first return (the `CloneHub` failure itself) instead returns `res, err` directly — `CloneHub`'s own record is already in `res` at that point, and dropping it there would discard the hub the clone had just minted.
-  Hand-record the CLI-layer steps at their success sites: the two `configsync` calls as `KindFileWritten` on the config path each wrote, `WireJunctions` needs no entry of its own (it records `link_created` internally from batch 5), and the `Bolt.Commit` / `Bolt.Push` call sites as `KindCommitCreated` (detail: the SHA `Commit` already returns) and `KindBranchPushed`.
+  Hand-record the CLI-layer steps at their success sites: the two `configsync` calls as `KindFileWritten` on the config path each wrote, and the `Bolt.Commit` call site as `KindCommitCreated` with the SHA `Commit` already returns as its detail.
+  The `WireJunctionsWith` call needs no entry of its own — it records `link_created` internally from batch 5.
   `fabricengine.Bolt` itself is **out of scope as a type** — it keeps its `(sha, committed, err)` signature untouched;
   what records is its *call site* here, which already has the SHA and the committed flag in hand.
   Record the commit only when the returned `committed` flag is true.
 
+  **`Bolt.Push` records nothing, and that is deliberate.** It returns a bare `error` and reaches `gitrepo.PushCoalesced`, which returns `nil` both when a push landed and when `HasUnpushed` was already false and nothing was contacted — so a `KindBranchPushed` there would assert an outcome this call did not observe.
+  That is the lie of commission this slice exists to eliminate, and it is worse than the entry's absence: the commit is already recorded, and `branch_pushed` is a git-state kind exempt from the oracle's commission direction, so omitting it costs the cross-check nothing.
+  The before/after `HasUnpushed` predicate batch 5 card 19 uses is not available here without reaching past `Bolt` to a `gitrepo` handle, which would widen this card into the type the discussion scoped out.
+  Write that reasoning into a comment at the call site so the next reader does not "fix" it by adding the entry.
+
   `runCloneWithReset` then emits through the card-22 helpers, keeping its four existing fields (`hub`, `anchor`, `warp`, `warp_binding_recorded`).
 
-  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten`, and record the `Bolt.Commit` / `Bolt.Push` backfill steps as `KindCommitCreated` / `KindBranchPushed` at their success sites.
+  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten`, and record the `Bolt.Commit` backfill step as `KindCommitCreated` at its success site.
+  Its `Bolt.Push` records nothing either, for the same unobservable-outcome reason spelled out above.
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
   Emit through the card-22 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
 
@@ -120,9 +127,9 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/coalesce.go`
   - `internal/fabricengine/spawn.go`
+  - `internal/fabriccli/spawn.go`
 - **Edits:**
   - `internal/fabriccli/weft_verbs.go`
-  - `internal/fabriccli/spawn.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -140,8 +147,7 @@ Batch-local decision: the emission goes through one small helper pair in `intern
   the combined record plus `partial` carries the same information without a new error type.
 
   The hub root for these handlers is the parent of the warp worktree path the command already resolves — derive it the way the surrounding handler code already derives warp/weft paths, and do not introduce a new geometry helper.
-  `internal/fabriccli/spawn.go`'s `spawnPush` keeps its `error`-only signature;
-  the `push_spawned` entry is appended by its caller, which owns the recorder.
+  `internal/fabriccli/spawn.go` is deliberately **not** edited: `spawnPush` keeps its `error`-only signature, and the `push_spawned` entry is appended by its caller in `internal/fabriccli/weft_verbs.go`, which owns the recorder.
 
   The read-only `status` and `diff` subcommands in this file are **not** touched.
 - **Commit:** `feat(fabriccli): emit mutations and partial from the weft verb handlers`

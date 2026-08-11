@@ -36,17 +36,17 @@ batches:
     name: gate-auto-recording
     file: 04-gate-auto-recording.md
     depends-on: [2, 3]
-    verify: go test ./internal/fabricengine/ ./internal/fabriccli/
+    verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go vet -tags integration ./...
   - number: 5
     name: constructive-recording
     file: 05-constructive-recording.md
     depends-on: [4]
-    verify: go test ./internal/fabricengine/ ./internal/fabriccli/
+    verify: go test ./internal/fabricengine/ ./internal/fabriccli/ && go test -tags integration -run TestMutationRecord ./internal/fabricengine/
   - number: 6
     name: cli-envelope
     file: 06-cli-envelope.md
     depends-on: [5]
-    verify: go test ./internal/fabriccli/ ./internal/output/
+    verify: go test ./internal/fabriccli/ ./internal/output/ && go test -tags integration ./internal/fabriccli/
   - number: 7
     name: fabrictest-truthfulness-oracle
     file: 07-fabrictest-truthfulness-oracle.md
@@ -97,7 +97,8 @@ batches:
 
 ### Decision: `ok` is unchanged; `mutations` and `partial` are always present
 
-- **Decision:** `ok` keeps meaning "no error was returned". Every mutating verb's envelope always carries `mutations` (an array, empty rather than `null`) and `partial` (a bool, `false` rather than absent), on success and failure alike. `partial` is true from exactly one rule: `error ≠ nil ∧ record non-empty`. The four read-only verbs (`list`, `pairs`, `status`, `diff`) carry neither key.
+- **Decision:** `ok` keeps meaning "no error was returned". Every envelope emitted from a **verb outcome** always carries `mutations` (an array, empty rather than `null`) and `partial` (a bool, `false` rather than absent), on success and failure alike. `partial` is true from exactly one rule: `error ≠ nil ∧ record non-empty`. The four read-only verbs (`list`, `pairs`, `status`, `diff`) carry neither key.
+- **The pre-flight failure class is explicitly outside the fixed key set.** A handler that fails *before* calling its verb — cwd/location resolution, `LoadConfig`, an argument `usage: …` error — keeps emitting a bare `output.Err` with neither key. Nothing has been mutated at those points and there is no result to read a record from, so an invented empty record would put `mutations` on an envelope that is not a verb outcome at all. Every statement of the fixed-key-set rule — card 22's doc comment and card 33's `CONSTRAINTS.md` wording — must carry this carve-out in the same breath, or the invariant is machine-quotable and false.
 - **Rationale:** `_mill/discussion.md`'s `ok-semantics-and-error-path-fields` Decision. A fixed key set means a consumer never distinguishes absent from false, and redefining `ok` in place would silently change a field every existing consumer already reads.
 - **Applies to:** batch 6.
 
@@ -129,18 +130,18 @@ batches:
 - `CONSTRAINTS.md`
 - `cmd/lyx/destructiveguard_test.go`
 - `docs/overview.md`
-- `internal/fabriccli/clone.go`
 - `internal/fabriccli/cli_test.go`
+- `internal/fabriccli/clone.go`
 - `internal/fabriccli/envelope.go`
 - `internal/fabriccli/envelope_test.go`
 - `internal/fabriccli/fabric.go`
-- `internal/fabriccli/spawn.go`
 - `internal/fabriccli/unwire.go`
 - `internal/fabriccli/weft_verbs.go`
 - `internal/fabricengine/add.go`
 - `internal/fabricengine/checkout.go`
 - `internal/fabricengine/cleanup.go`
 - `internal/fabricengine/clone.go`
+- `internal/fabricengine/clone_reset_guard_test.go`
 - `internal/fabricengine/coalesce.go`
 - `internal/fabricengine/coalesce_integration_test.go`
 - `internal/fabricengine/commit.go`
@@ -149,7 +150,6 @@ batches:
 - `internal/fabricengine/doc.go`
 - `internal/fabricengine/export_test.go`
 - `internal/fabricengine/fabrictest/doc.go`
-- `internal/fabricengine/fabrictest/manifest.go`
 - `internal/fabricengine/fabrictest/matrix_test.go`
 - `internal/fabricengine/fabrictest/mutationoracle.go`
 - `internal/fabricengine/fabrictest/mutationoracle_test.go`
@@ -157,10 +157,12 @@ batches:
 - `internal/fabricengine/fabrictest/refusal_test.go`
 - `internal/fabricengine/fabrictest/verbs.go`
 - `internal/fabricengine/junction.go`
+- `internal/fabricengine/junction_test.go`
 - `internal/fabricengine/launchers.go`
 - `internal/fabricengine/mutation.go`
 - `internal/fabricengine/mutation_record_integration_test.go`
 - `internal/fabricengine/mutation_test.go`
+- `internal/fabricengine/portallauncher_test.go`
 - `internal/fabricengine/portals.go`
 - `internal/fabricengine/prune.go`
 - `internal/fabricengine/pull.go`
@@ -170,8 +172,10 @@ batches:
 - `internal/fabricengine/spawn.go`
 - `internal/fabricengine/spawn_test.go`
 - `internal/fabricengine/unwire.go`
+- `internal/fabricengine/warpforward_integration_test.go`
 - `internal/fabricengine/weftgit.go`
 - `internal/fabricengine/weftwiring.go`
+- `internal/fabricengine/weftwiring_test.go`
 - `internal/output/output.go`
 - `internal/output/output_test.go`
 - `manifest/designs/fabric-crucible-followups.md`

@@ -16,7 +16,7 @@ The harness already captures a before/after manifest at every cell, so the oracl
 the record side needs real plumbing, and that plumbing is what this batch delivers.
 It also deletes `internal/fabricengine/fabrictest`'s duplicate check enum in favour of the exported one batch 2 introduced, since emitting `refusal.check` as a machine-readable JSON field promotes the enum's rendered values to part of fabric's public contract and two encodings of one public contract is exactly where drift starts.
 
-It is one batch because `VerbCase.Run`'s signature change touches all thirteen `Run` closures at once and cannot be landed partially.
+It is one batch because `VerbCase.Run`'s signature change touches all fourteen `Run` closures at once and cannot be landed partially.
 It depends on batch 6 rather than batch 5 for a substantive reason, not sequencing tidiness: the `CloneHubReset`/`RealHub` cell drives `fabriccli.CloneAndWire`, so until batch 6 records the CLI layer's own config writes, junction wiring and `Bolt` commits, that cell's unfiltered honesty diff carries changes no record entry covers and the omission direction fires on correct behaviour.
 
 Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictest/mutationoracle.go` rather than inside `manifest.go`, matching the package's one-concern-per-file layout and keeping `DiffManifest`'s own surface unchanged.
@@ -55,12 +55,12 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
 ### Card 28: the oracle
 
 - **Context:**
+  - `internal/fabricengine/fabrictest/manifest.go`
   - `internal/fabricengine/fabrictest/hub.go`
   - `internal/fabricengine/fabrictest/verbs.go`
   - `internal/fabricengine/mutation.go`
   - `_mill/discussion.md`
-- **Edits:**
-  - `internal/fabricengine/fabrictest/manifest.go`
+- **Edits:** none
 - **Creates:**
   - `internal/fabricengine/fabrictest/mutationoracle.go`
 - **Deletes:** none
@@ -82,8 +82,8 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
 
   **Omission direction — over raw entries, all kinds.** Every change in `unfiltered` must be covered by some record entry's **coverage set**. Matching is segment-wise subtree containment, never path equality: one `worktree_created` or `path_removed` names a single root while `DiffManifest` emits one `Change` per path beneath it, so a normal `Add` yields dozens of diff entries against one record entry.
   Reuse the segment matching `pathPermitted`/`pathAtOrBelowRoot` already implement in `internal/fabricengine/fabrictest/manifest.go` rather than writing a second matcher — a root of `_portals/x` must never match `_portalsfoo/y`, and the two mechanisms must stay consistent.
-  Export or otherwise expose the existing helper from `manifest.go` for this file's use;
-  that is the only edit `manifest.go` needs.
+  `mutationoracle.go` is in the same `package fabrictest`, so it calls the unexported `pathAtOrBelowRoot` directly;
+  `manifest.go` needs no edit and must not be widened — exporting a helper only to reach it from a sibling file in the same package would grow the harness's public surface for nothing.
 
   **Coverage rule.** An entry whose `Target` is a worktree root — `worktree_created`, `worktree_removed`, `worktree_reset`, `worktree_switched`, `repo_advanced` — covers both (i) every path at or beneath that worktree root and (ii) the corresponding `<prime>/.git/worktrees/<slug>` admin entry, where `<slug>` is derived from the worktree path exactly as the harness's own `primeWorktreeAdminPermittedRoot` / `primeWeftAdminPermittedRoot` helpers in `internal/fabricengine/fabrictest/verbs.go` already derive it.
   Every other kind covers its `Target` subtree alone.
@@ -119,9 +119,10 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   `func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error)`,
   and update its doc comment to say why: the twelve verbs return twelve heterogeneous result types, so a cell needs one accessor — `Mutated()` — to read them uniformly, and discarding the typed result left nothing for a cell to cross-check against.
 
-  Update all thirteen `Run` closures in this file to return `res.Mutated()` alongside their error instead of discarding the result with `_`.
-  Every one is currently the two-line shape `_, err := <call>; return err` and becomes `res, err := <call>; return res.Mutated(), err`.
-  The closures, by the case that owns them: `addCase`, `removeCase`, `pruneCase`, `cleanupCase`, `checkoutCase`, `reconcileCase`, `unwireJunctionsCase`, `pullCase`, `cloneHubResetNonHubCase`, `cloneHubResetRealHubCase`, and the four hostile cases (`addHostileCases`, `removeHostileCases`, `checkoutHostileCases`, `unwireJunctionsHostileCase`).
+  Update all fourteen `Run` closures in this file to return `res.Mutated()` alongside their error instead of discarding the result with `_`.
+  Most are the two-line shape `_, err := <call>; return err` and become `res, err := <call>; return res.Mutated(), err`, but do not assume that shape uniformly: `pullCase` and `unwireJunctionsCase` both do `_, err = <call>` after an earlier assignment in the same closure, so their conversion is `res, err := <call>` with a fresh local rather than a reassignment.
+  Grep the file for `Run: func(tb testing.TB` and convert every hit — the count is the authority, not this list.
+  The closures, by the case that owns them: `addCase`, `removeCase`, `pruneCase`, `cleanupCase`, `checkoutCase`, `reconcileCase`, `unwireJunctionsCase`, `pullCase`, `cloneHubResetNonHubCase`, `cloneHubResetRealHubCase`, and the hostile cases (`addHostileCases`, `removeHostileCases`, `checkoutHostileCases`, `unwireJunctionsHostileCase`), two of which declare more than one case.
 
   Two need care:
 

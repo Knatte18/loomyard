@@ -39,6 +39,10 @@ Batch-local decision: `Mutations` is a value type carrying an unexported `hubRoo
   `KindPathRemoved = "path_removed"`, `KindWorktreeRemoved = "worktree_removed"`, `KindLinkRemoved = "link_removed"`, `KindBranchDeleted = "branch_deleted"`, `KindWorktreeReset = "worktree_reset"`, `KindDirCreated = "dir_created"`, `KindWorktreeCreated = "worktree_created"`, `KindBranchCreated = "branch_created"`, `KindBranchPushed = "branch_pushed"`, `KindCommitCreated = "commit_created"`, `KindLinkCreated = "link_created"`, `KindFileWritten = "file_written"`, `KindPushSpawned = "push_spawned"`, `KindWorktreeSwitched = "worktree_switched"`, `KindRepoAdvanced = "repo_advanced"`.
   The type's doc comment states the single-declarer rule: a new member lands in the same commit as its recording site and its `cmd/lyx/destructiveguard_test.go` guard entry, and no other file declares a kind string literal.
 
+  `KindRepoAdvanced`'s doc comment must additionally state that "repo" is **deliberately side-agnostic** here and is not vocabulary drift: the kind is recorded for both the weft fast-forward pull and the warp advance, and the entry's `Target` — the advanced worktree root — is what tells the two sides apart.
+  The Fabric Vocabulary Invariant polices `host`-compounded phrases, not the bare word "repo", so this neither breaks the build nor bends the rule;
+  the comment exists so the reviewer of the next slice reads it as the decision it is rather than as a warp/weft naming lapse.
+
   Declare `type Mutation struct` with exactly three exported fields and these JSON tags: `Kind Kind \`json:"kind"\``, `Target string \`json:"target"\``, `Detail string \`json:"detail,omitempty"\``.
   Ordering is carried by array order alone — do not add a sequence field.
 
@@ -50,7 +54,7 @@ Batch-local decision: `Mutations` is a value type carrying an unexported `hubRoo
   - `func (m *Mutations) Entries() []Mutation` — returns a copy, never the internal slice, and never `nil`: an empty record returns an empty non-nil slice.
   - `func (m *Mutations) Snapshot() Mutations` — returns a value copy whose `entries` is a freshly allocated copy of the current entries, so later appends through the recorder cannot mutate an already-returned result.
   - `func (m Mutations) MarshalJSON() ([]byte, error)` — marshals to a JSON array of entries, emitting `[]` rather than `null` for an empty or zero-value record. Declared on the value receiver so both `Mutations` and `*Mutations` marshal identically.
-  - `func (m Mutations) Len() int` — the entry count, so callers can test "record non-empty" without copying the slice.
+  - `func (m *Mutations) Len() int` — the entry count, so callers can test "record non-empty" without copying the slice. The receiver is a **pointer**, not a value, because card 7 requires `Len()` to be nil-safe and a value receiver would dereference a nil pointer and panic. One consequence the implementer must carry into batch 6: `res.Mutated()` returns a non-addressable `Mutations` value, so `res.Mutated().Len()` does not compile — `errWithRecord` takes the record as a parameter and calls `Len()` on its own addressable local.
 
   A nil `*Mutations` receiver must be safe on `Append` and `AppendRef` (both return without panicking), so a not-yet-threaded call site degrades to recording nothing rather than crashing.
 
