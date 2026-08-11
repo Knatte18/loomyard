@@ -12,10 +12,13 @@ depends-on: [1]
 ## Batch Scope
 
 This batch moves the batchifier selection off `webster.yaml` and onto `batcher.yaml`: the `Batcher` field leaves `websterengine.Config` and its template, `runlevel.go`'s `batcher.Select` block becomes a nil-guard over a new injected `RunDeps.Batcher`, and `webstercli`'s `PersistentPreRunE` calls `batcher.Active` instead of `batcher.Select`.
-It is one batch because removing a struct field is an atomic compile unit — production code, the untagged test that constructs a `Config` literal, and the two `//go:build integration` test files that construct `RunDeps` and string-replace against the old template literal all stop compiling together and must move together.
+It is one batch because it is an atomic *correctness* unit, which is a wider boundary than the compile boundary and the reason the batch does not stop at card 5.
+Card 5 alone compiles under both build tags, so a green build after it would be misleading: `newRunFixture`'s `Config{}` literal never set a `Batcher:` key and `verbs_test.go`'s only `Config.Batcher` mention is inside a comment, so nothing in the two `//go:build integration` files breaks the compiler.
+What breaks is behaviour — every `TestRun_*` would hit the new `ErrNilBatcher` guard with an unpopulated `RunDeps.Batcher`, and `verbs_test.go`'s `strings.Replace` against the removed `batcher: ""` literal would silently no-op and leave the gate pair asserting nothing.
+Cards 6–8 repair exactly that, so the batch is only correct as a whole.
 
-Card 5 is deliberately one large card rather than several: every file it names stops compiling the moment `Config.Batcher` is deleted, so splitting it would leave `go build ./...` broken at an intermediate commit.
-Cards 6–8 are separate because each targets a distinct `//go:build integration` file (and card 7 adds new evidence rather than repairing existing evidence), and the untagged build stays green across all three regardless of order.
+Card 5 is deliberately one large card rather than several: every *production* file it names, plus the untagged `internal/websterengine/config_test.go`, stops compiling the moment `Config.Batcher` is deleted, so splitting it would leave `go build ./...` broken at an intermediate commit.
+Cards 6–8 are separate because each targets a distinct `//go:build integration` file (and card 7 adds new evidence rather than repairing existing evidence), and both the untagged build and the untagged test run stay green across all three regardless of order.
 
 The external interface batch 3 documents is the finished state: `batcher.yaml`'s `active:` key, `batcher.Active`, `RunDeps.Batcher`, and the fact that no webster code calls `batcher.Select` any more.
 

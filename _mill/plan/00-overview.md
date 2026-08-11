@@ -3,7 +3,7 @@
 ```yaml
 task: 'batcher: split out of webster into a standalone configreg module with its own batcher.yaml'
 slug: 'batcher-standalone-split'
-approved: false
+approved: true
 started: '20260811-044213'
 parent: 'main'
 root: ""
@@ -31,7 +31,7 @@ batches:
     name: documentation
     file: 03-documentation.md
     depends-on: [2]
-    verify: go build ./... && go test ./internal/websterengine/... ./internal/configcli/...
+    verify: go build ./... && go test ./internal/websterengine/...
 ```
 
 ## Shared Decisions
@@ -126,7 +126,8 @@ Batch-local decisions live in each batch file._
   No site count is asserted here — several files carry more than one falsified clause, so a file count and a clause count disagree, and the per-card `Requirements:` are self-contained.
 - **Rationale:** the enumeration method, not a number, is what makes the completeness claim checkable: grep `batcher.Select`, `batcher:`, and `batcher.yaml` across *all* production Go and markdown, not a `doc.go`-and-`.md`-only sweep, then read the surrounding paragraph of every hit for the two recurring claims (webster ownership; the `webster.yaml` key pin).
   An earlier discussion draft enumerated only package docs and reference docs and therefore missed three in-code file-header/struct-doc comments.
-  Two sites were found by applying the stated rule during planning and plan review: `internal/configcli/configcli_test.go`'s "The other nine modules are absent" comment (registering `batcher` makes it ten), and `internal/websterengine/template.go`'s `ConfigTemplate` doc, which says "batchifier selection" and so is reachable only by reading around the grep hits, never by the grep itself.
+  One further site was found by applying the stated rule during plan review: `internal/websterengine/template.go`'s `ConfigTemplate` doc, which says "batchifier selection" and so is reachable only by reading around the grep hits, never by the grep itself.
+  One candidate was examined and rejected: `internal/configcli/configcli_test.go`'s "The other nine modules are absent" comment counts total-minus-the-one-seeded module, so batch 1's registration makes the existing word correct rather than falsifying it — see batch 3 card 12's do-not-edit instruction.
 - **Applies to:** documentation, call-site-migration
 
 ### Decision: no-cobra-command-no-sandbox-tag
@@ -160,7 +161,6 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/batcher/registry.go`
 - `internal/batcher/template.go`
 - `internal/batcher/template.yaml`
-- `internal/configcli/configcli_test.go`
 - `internal/configreg/configreg.go`
 - `internal/configreg/configreg_test.go`
 - `internal/planparser/doc.go`

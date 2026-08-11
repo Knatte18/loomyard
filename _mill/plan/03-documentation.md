@@ -5,13 +5,13 @@ task: 'batcher: split out of webster into a standalone configreg module with its
 batch: 'documentation'
 number: 3
 cards: 4
-verify: go build ./... && go test ./internal/websterengine/... ./internal/configcli/...
+verify: go build ./... && go test ./internal/websterengine/...
 depends-on: [2]
 ```
 
 ## Batch Scope
 
-This batch amends the documentation sites whose claims batches 1–2 falsify, across the thirteen files its four cards name.
+This batch amends the documentation sites whose claims batches 1–2 falsify, across the twelve files its four cards edit.
 It is one batch because every card is the same operation — a prose correction with no behaviour change — and because the sites are only correct to write once the code they describe has landed, which is why the whole batch depends on batch 2 rather than interleaving with it.
 Two further corrections are deliberately NOT here: `websterengine/config.go`'s `Config` type doc and `websterengine/template.go`'s `ConfigTemplate` doc are fixed inline by batch 2 card 5, because that card's own edits are what falsify them.
 
@@ -104,16 +104,16 @@ Do not touch it in any card.
   a one-clause fix naming `batcher.yaml` as the config source is enough.
 - **Commit:** `docs: repoint the batcher config key at batcher.yaml across constraints and reference docs`
 
-### Card 12: the embedded prompt, the sandbox suite, and two remaining comments
+### Card 12: the embedded prompt, the sandbox suite, and the planparser doc
 
 - **Context:**
   - `internal/batcher/template.yaml`
   - `internal/configreg/configreg.go`
+  - `internal/configcli/configcli_test.go`
 - **Edits:**
   - `internal/websterengine/master-template.md`
   - `tools/sandbox/SANDBOX-WEBSTER-SUITE.md`
   - `internal/planparser/doc.go`
-  - `internal/configcli/configcli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -128,10 +128,12 @@ Do not touch it in any card.
   In `internal/planparser/doc.go`, the phrase "every consumer (webster's batcher, master, and fork prompt rendering) goes through planparser.ParsePlan" carries the same ownership claim this task removes everywhere else.
   Reword it to "the batcher, webster's master, and fork prompt rendering".
   A one-word fix, listed rather than swept silently because the site list claims completeness.
-  In `internal/configcli/configcli_test.go`, the comment "The other nine modules are absent; their sections must each say # (not configured)" is falsified by batch 1's registration — there are ten now.
-  Update the count in the comment only.
-  Do NOT touch the assertion beneath it (`strings.Count(got, "# (not configured)") < 2`), which is deliberately a lower bound and is already correct.
-  Change no code in any of these four files.
+  Do NOT edit `internal/configcli/configcli_test.go`.
+  Its comment "The other nine modules are absent; their sections must each say # (not configured)" looks like a count this task falsifies, and it is not: that test seeds `board` and leaves the rest absent, so "other" means total minus one.
+  With today's nine registered modules "other" is eight and the word "nine" is already a pre-existing off-by-one;
+  batch 1's registration makes the total ten and "other" nine, so the existing word becomes correct untouched.
+  Bumping it to "ten" would introduce the error this card would be claiming to fix.
+  Change no code in any of these three files.
 - **Commit:** `docs: fix the remaining batcher-ownership claims across prompt, sandbox, and comments`
 
 ## Batch Tests
@@ -141,8 +143,6 @@ This is a prose-only batch — no card changes a line of executable code — so 
 `go build ./...` catches a malformed Go comment (an accidentally unterminated block comment or a stray character in a package doc) across the four `.go` files cards 9, 10, and 12 touch.
 
 `go test ./internal/websterengine/...` is the real gate: `internal/websterengine/master-template.md` is `//go:embed`-ed, and `internal/websterengine/template_test.go` pins its rendered content by substring, so an edit that removes more of the "navigation source" line than intended fails there rather than silently degrading a live agent prompt.
-`go test ./internal/configcli/...` covers the file card 12 edits in that package;
-no assertion there depends on the corrected comment, so the run proves the edit broke nothing rather than proving the edit landed.
 
 There is no runnable surface for `CONSTRAINTS.md`, `docs/overview.md`, `docs/reference/plan-format.md`, `docs/reference/webster-contract.md`, or `tools/sandbox/SANDBOX-WEBSTER-SUITE.md` — those five are review-obligation documents, verified by reading rather than by a command.
 The task's repo-wide done gate (`go test ./... && go test -tags integration ./...`) is the backstop for anything this batch's scoped verify does not reach.
