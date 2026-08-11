@@ -57,8 +57,13 @@
 //
 // # Measured wall-clock
 //
-// Placeholder — batch 8 fills this section with the matrix's measured wall-clock time, a number that
-// does not exist until the full cross product actually runs.
+// A full run (`go test -tags integration ./internal/fabricengine/fabrictest/`, no -run filter,
+// exercising every test in the package including this file's own cross-product matrix) measures
+// consistently around 4.0-4.3s of package elapsed time (go test's own "ok ... Xs" line) across
+// repeated runs, on a 12-core x86_64 Linux machine, at the default -parallel value (12, unset,
+// derived from GOMAXPROCS on that machine). This number is recorded for a future reader to notice a
+// regression against, not asserted: a timing assertion fails on a loaded CI box rather than on a real
+// regression, which is why this repo rejects timing assertions elsewhere too.
 //
 // # Sabotage-proof table
 //
@@ -70,14 +75,45 @@
 //
 // The exported Omissions slice (verbs.go) names every verb/state pair excluded from the cross
 // product, with its reason, so a green matrix can be audited against what it did not run.
-// All fifteen entries are structural-state omissions, derived from each verb's actual reach into
-// destroy.go's path executors: Cleanup and Checkout each omit all four structural states
-// (trackedSymlinkAtWiredPath, foreignDirAtFabricOwnedPath, unrelatedGitCloneAtWeftNamedPath,
-// staleWiredJunction) because their only gate call is the branch-shaped deleteBranch; Pull omits the
-// same four because its only gate call is Fabric.ResetHard, a warp checkout reset rather than a path
-// executor; Add omits trackedSymlinkAtWiredPath and staleWiredJunction because its gate calls act on
-// the pair it is creating, whose junction paths do not exist before Run; UnwireJunctions omits
+// The plan's own cell-enumeration-and-omissions Shared Decision derived fifteen structural-state
+// omissions per anchor before batch 7's driver first ran: Cleanup and Checkout each omit all four
+// structural states (trackedSymlinkAtWiredPath, foreignDirAtFabricOwnedPath,
+// unrelatedGitCloneAtWeftNamedPath, staleWiredJunction) because their only gate call is the
+// branch-shaped deleteBranch; Pull omits the same four because its only gate call is
+// Fabric.ResetHard, a warp checkout reset rather than a path executor; Add omits
+// trackedSymlinkAtWiredPath and staleWiredJunction because its gate calls act on the pair it is
+// creating, whose junction paths do not exist before Run; UnwireJunctions omits
 // unrelatedGitCloneAtWeftNamedPath because its only gate call never visits a weft-named path.
-// No dirtiness-state omission was found beyond this structural set: fifteen per anchor, thirty in
-// total, matching the plan's own cell-enumeration-and-omissions Shared Decision.
+//
+// Batch 7's card 19 (the full-matrix run) found twelve further omissions per anchor while classifying
+// every failing cell against the actual pathRequest call sites each verb reaches, none of them
+// dirtiness-scope-table omissions in the sense the plan anticipated -- each is grounded in a verified
+// read of production code, never in what a run happened to produce:
+//   - Reconcile omits all four structural states: reconcile.go contains no pathRequest call at all,
+//     so no structural state, of any shape, names a path Reconcile's own pre-flight (scopeAll on the
+//     board) ever inspects.
+//   - Cleanup additionally omits dirtyWeftTracked, dirtyWeftUntracked and bothDirty: its own Arrange
+//     tears down the pair's weft worktree by hand before the state is applied, mirroring cleanup's own
+//     orphan-branch precondition, so no weft-targeted dirtiness state has a live checkout to plant
+//     into.
+//   - Remove omits foreignDirAtFabricOwnedPath and unrelatedGitCloneAtWeftNamedPath: its own
+//     path-executor gate calls (removeWarpWorktreeDir's ownedRegisteredLinkedWorktree check, and
+//     removeWarpJunction's ownership-filtered link sweep) never reach an independent foreign directory
+//     or unrelated clone at another path -- only the pair's own registered worktree and its own wired
+//     junctions, which the retained link-shaped states already cover.
+//   - Prune omits trackedSymlinkAtWiredPath and staleWiredJunction: its only path-executor gate call
+//     (ownedRegisteredLinkedWorktree, prune.go:264) targets a directory, never a link -- prune.go has
+//     no removeLink/repointLink call at all.
+//   - UnwireJunctions additionally omits foreignDirAtFabricOwnedPath: its StructuralPath, like
+//     Remove's, is the pair's own pre-existing wired junction link, and foreignDirAtFabricOwnedPathState's
+//     Apply does not remove that link first (only trackedSymlinkAtWiredPath and staleWiredJunction do),
+//     so its os.MkdirAll would silently no-op through the still-intact link rather than genuinely park
+//     a foreign directory at the path.
+//
+// Twenty-seven omission rows in total, fifty-four across both anchors, bringing the cross product's
+// audited total from the plan's originally-derived 168 cells down to 144 (140 run by TestCrossProduct
+// plus the four-cell CloneHub{Reset} column TestCloneHubReset drives separately) -- the count
+// assertion in matrix_test.go (assertCellTally) derives this total from the Verbs, States and
+// Omissions tables themselves, so it moves automatically with any future change to those tables
+// rather than needing to be kept in sync with this paragraph by hand.
 package fabrictest

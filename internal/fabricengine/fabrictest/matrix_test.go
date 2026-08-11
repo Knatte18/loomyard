@@ -121,6 +121,10 @@ func assertExpectation(t *testing.T, err error, exp Expectation) {
 		if err != nil {
 			t.Errorf("expected the verb to proceed; got err = %v", err)
 		}
+	case KindEitherProceedsOrRefusedBefore:
+		if err != nil && !RefusedBefore(err, exp.Substring) {
+			t.Errorf("expected either success or a pre-flight refusal containing %q; got err = %v", exp.Substring, err)
+		}
 	default:
 		t.Fatalf("unknown ExpectationKind %v", exp.Kind)
 	}

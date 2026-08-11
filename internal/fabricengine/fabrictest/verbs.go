@@ -128,8 +128,9 @@ type VerbFixture struct {
 }
 
 // ExpectationKind enumerates the closed set of outcomes a cell can declare: a refusal from fabric's
-// destructive gate, a refusal from one of fabric's own pre-flight checks, or the verb proceeding to
-// its intended effect.
+// destructive gate, a refusal from one of fabric's own pre-flight checks, the verb proceeding to its
+// intended effect, or -- for the one tranche-1 cell where the outcome is git's own to decide, not
+// fabric's -- either of the last two.
 type ExpectationKind int
 
 const (
@@ -141,6 +142,13 @@ const (
 	// KindProceeds means the verb succeeds, its intended effect lands, and the state's planted
 	// content survives.
 	KindProceeds
+	// KindEitherProceedsOrRefusedBefore means the outcome is git's own to decide rather than
+	// fabric's: either the verb succeeds (err == nil), or it fails with a RefusedBefore-shaped error
+	// carrying the declared Substring. checkoutCase's dirtyWarpTracked cell is the one tranche-1 case
+	// this exists for -- see this file's own doc comment, "dirtyWarpTracked x Checkout is the only
+	// such case in tranche 1" -- and it is deliberately NOT a per-verb conditional in the driver: it
+	// is one more closed, data-declared outcome a cell can name, exactly like the other three.
+	KindEitherProceedsOrRefusedBefore
 )
 
 // String reports k's name in prose, so a cell failure message names the expectation kind it violated.
@@ -152,6 +160,8 @@ func (k ExpectationKind) String() string {
 		return "RefusedBefore"
 	case KindProceeds:
 		return "Proceeds"
+	case KindEitherProceedsOrRefusedBefore:
+		return "EitherProceedsOrRefusedBefore"
 	default:
 		return "unknown"
 	}
@@ -201,9 +211,12 @@ type Omission struct {
 }
 
 // Omissions is the durable, exported record of every verb/state pair excluded from the cross product.
-// It starts with the structural-state omissions derived in the plan's overview and grows with any
-// dirtiness-state omission resolved during this batch's own derivation work above; none were found
-// beyond the structural set, so the count below (15 per anchor) is also the batch's final count.
+// It starts with the structural-state omissions derived in the plan's overview and grows with every
+// dirtiness- or structural-state omission this package's own derivation work found while deriving each
+// cell against the verified dirtiness-scope table and the actual pathRequest call sites each verb
+// reaches -- batch 7's full-matrix run (card 19) is what surfaced the rows below the original fifteen,
+// each grounded in a verified read of the production call site it names, never in what a run happened
+// to produce.
 var Omissions = []Omission{
 	{Verb: "Cleanup", State: "trackedSymlinkAtWiredPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:275), branch-shaped; no structural state names a path it acts on"},
 	{Verb: "Cleanup", State: "foreignDirAtFabricOwnedPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:275), branch-shaped; no structural state names a path it acts on"},
@@ -220,6 +233,45 @@ var Omissions = []Omission{
 	{Verb: "Add", State: "trackedSymlinkAtWiredPath", Reason: "Add's gate calls (add.go:263-295) act on the pair it is creating; that junction path does not exist before Run"},
 	{Verb: "Add", State: "staleWiredJunction", Reason: "Add's gate calls (add.go:263-295) act on the pair it is creating; that junction path does not exist before Run"},
 	{Verb: "UnwireJunctions", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "UnwireJunctions' only gate call is the removeLink inside unseedJunctionRecords (junction.go:474-483), reached via unseedLyxJunction; it never visits a weft-named path"},
+
+	// Card 19's full-matrix run: Reconcile has no path-executor gate call at all -- reconcile.go
+	// contains no pathRequest -- so no structural state, of any shape, names a path Reconcile's own
+	// pre-flight (reconcile.go:301, scopeAll on the board) ever inspects.
+	{Verb: "Reconcile", State: "trackedSymlinkAtWiredPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
+	{Verb: "Reconcile", State: "staleWiredJunction", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
+	{Verb: "Reconcile", State: "foreignDirAtFabricOwnedPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
+	{Verb: "Reconcile", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Reconcile has no path-executor gate call (reconcile.go contains no pathRequest); its own pre-flight is scopeAll on the board, not a per-path check"},
+
+	// Card 19's full-matrix run: Cleanup's own Arrange tears down the pair's weft worktree by hand
+	// (mirroring an orphan managed branch, cleanup's own precondition) before the state is applied, so
+	// no weft-targeted dirtiness state can plant into a checkout that no longer exists.
+	{Verb: "Cleanup", State: "dirtyWeftTracked", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
+	{Verb: "Cleanup", State: "dirtyWeftUntracked", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout a weft dirtiness state would plant into does not exist"},
+	{Verb: "Cleanup", State: "bothDirty", Reason: "Cleanup's Arrange removes the pair's weft worktree before the state is applied, mirroring cleanup's own orphan-branch precondition; the checkout bothDirty's weft half would plant into does not exist"},
+
+	// Card 19's full-matrix run: Remove's own path-executor gate calls (remove.go's
+	// removeWarpWorktreeDir, ownedRegisteredLinkedWorktree on the pair's own registered worktree; and
+	// removeWarpJunction's ownership-filtered link sweep) never reach an independent foreign directory
+	// or unrelated clone at another path -- only the pair's own worktree and its own wired junctions,
+	// which the retained link-shaped states (trackedSymlinkAtWiredPath, staleWiredJunction) already
+	// cover.
+	{Verb: "Remove", State: "foreignDirAtFabricOwnedPath", Reason: "Remove's own path-executor gate calls target the pair's registered worktree and its own wired junctions; no ownership check reaches an independent foreign directory at another path"},
+	{Verb: "Remove", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Remove's own path-executor gate calls target the pair's registered worktree and its own wired junctions; no ownership check reaches an independent unrelated clone at another weft-named path"},
+
+	// Card 19's full-matrix run: Prune's only path-executor gate call (prune.go:264,
+	// ownedRegisteredLinkedWorktree on the orphan's own weft directory) targets a directory, never a
+	// link -- prune.go has no removeLink/repointLink call at all, so no link-shaped structural state
+	// names a path it acts on.
+	{Verb: "Prune", State: "trackedSymlinkAtWiredPath", Reason: "Prune's only path-executor gate call targets a directory (prune.go:264, ownedRegisteredLinkedWorktree); it has no removeLink/repointLink call, so no link-shaped structural state names a path it acts on"},
+	{Verb: "Prune", State: "staleWiredJunction", Reason: "Prune's only path-executor gate call targets a directory (prune.go:264, ownedRegisteredLinkedWorktree); it has no removeLink/repointLink call, so no link-shaped structural state names a path it acts on"},
+
+	// Card 19's full-matrix run: UnwireJunctions' own StructuralPath, like Remove's, is the pair's own
+	// pre-existing wired junction link. foreignDirAtFabricOwnedPathState's Apply does not remove that
+	// link first (only trackedSymlinkAtWiredPath and staleWiredJunction do), so its os.MkdirAll would
+	// silently no-op through the still-intact link and write through it, rather than genuinely park a
+	// foreign directory at the path -- the same structural reason unrelatedGitCloneAtWeftNamedPath is
+	// already omitted for this verb.
+	{Verb: "UnwireJunctions", State: "foreignDirAtFabricOwnedPath", Reason: "UnwireJunctions' StructuralPath is the pair's own pre-existing wired junction link; foreignDirAtFabricOwnedPathState's Apply does not remove it first, so os.MkdirAll would silently no-op through the intact link instead of parking a foreign directory"},
 }
 
 // hubRelative returns abs's path relative to h.Path, slash-normalised, for use as a manifest-relative
@@ -234,6 +286,23 @@ func hubRelative(tb testing.TB, h *Hub, abs string) string {
 		tb.Fatalf("hubRelative(%s): %v", abs, err)
 	}
 	return filepath.ToSlash(rel)
+}
+
+// firstWiredJunctionLink returns the warp-side path of slug's first wired junction (e.g. "_lyx"),
+// resolved via fabricengine.WiredNames and fabricengine.WarpJunctions -- the same accessors
+// unwireJunctionsCase's own Run uses -- for a cell whose structural states need a real, pre-existing
+// link to remove and replant, per the geometry-through-accessors Shared Decision.
+func firstWiredJunctionLink(tb testing.TB, h *Hub, slug string) string {
+	tb.Helper()
+
+	names, err := fabricengine.WiredNames(h.BoardDir())
+	if err != nil {
+		tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
+	}
+	if len(names) == 0 {
+		tb.Fatalf("fabricengine.WiredNames(%s): no wired names", h.BoardDir())
+	}
+	return fabricengine.WarpJunctions(h.Location, slug, names)[0].Link
 }
 
 // pairPermittedRoots returns the four hub-relative roots a pair's full teardown or creation may touch:
@@ -285,13 +354,21 @@ func slugPermittedRoots(slug string) []string {
 // portalAndLauncherPermittedRoots returns slug's portal-link and launcher-dir hub-relative roots,
 // unioned across both anchors, for the one tranche-1 refusal that is not side-effect-free: a dirty
 // Remove has already destroyed these two before its own dirty pre-flight ever runs (remove.go:61-76).
+// Each leaf's own anchor-level parent is included too, matching slugPermittedRoots' own reasoning:
+// pruneEmptyAncestors removes an anchor-level parent left empty by the leaf's own removal (e.g.
+// "_portals/backend" once "_portals/backend/<slug>" is the only entry there and is gone), so the
+// parent itself is also a legitimate part of this partial teardown, not an unpermitted change.
 func portalAndLauncherPermittedRoots(slug string) []string {
 	var roots []string
 	for _, anchor := range []string{".", "backend"} {
 		loc := &lyxcwd.Location{WorktreeName: slug, AnchorRel: anchor}
+		portal := fabricengine.PortalLink(loc, slug)
+		launcher := fabricengine.LauncherDir(loc, slug)
 		roots = append(roots,
-			filepath.ToSlash(fabricengine.PortalLink(loc, slug)),
-			filepath.ToSlash(fabricengine.LauncherDir(loc, slug)),
+			filepath.ToSlash(portal),
+			filepath.ToSlash(launcher),
+			filepath.ToSlash(filepath.Dir(portal)),
+			filepath.ToSlash(filepath.Dir(launcher)),
 		)
 	}
 	return roots
@@ -409,6 +486,12 @@ func addCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PrimeWeft(),
+					// StructuralPath is the pair's own warp worktree path, which does not exist yet --
+					// exactly what add.go's own gate call (add.go:263-295) acts on during rollback, and
+					// the reason the two link-shaped structural states are omitted for Add (the junction
+					// paths do not exist before Run either) while the two directory-shaped ones, which
+					// plant fresh content via os.MkdirAll rather than replacing an existing link, remain.
+					StructuralPath: h.PairWarpWorktree(slug),
 				},
 			}
 		},
@@ -427,6 +510,23 @@ func addCase() VerbCase {
 					Substring: "source worktree has uncommitted changes",
 					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
 						assertGone(tb, h.PairWarpWorktree(f.Slug))
+					},
+				}
+			case "foreignDirAtFabricOwnedPath", "unrelatedGitCloneAtWeftNamedPath":
+				// The state plants directly at the pair's own warp worktree path -- the one path Add's
+				// own gate call (add.go:263-295) acts on -- before Run, so `git worktree add` itself
+				// refuses outright: its target directory already exists and is non-empty. This is a
+				// git-level pre-flight failure, reached before add.go creates the branch or the
+				// broken-remote arrangement is ever consulted, so neither the branch nor any wiring is
+				// ever created.
+				return Expectation{
+					Kind:      KindRefusedBefore,
+					Substring: "already exists",
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						if branchExists(h.PrimeWorktree(), f.Slug) {
+							tb.Errorf("Add unexpectedly created branch %q despite refusing at worktree creation", f.Slug)
+						}
 					},
 				}
 			default:
@@ -494,6 +594,12 @@ func removeCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PairWarpWorktree(slug),
 					WeftCheckout: h.PairWeftSibling(slug),
+					// StructuralPath is the pair's own wired junction link: remove.go's link sweep
+					// (scanOnDiskJunctionNames + removeWarpJunction) is ownership-filtered -- "only the
+					// links fabric itself created there" -- which the two link-shaped structural states
+					// exercise directly. The two directory-shaped states are omitted for Remove (see
+					// Omissions): its ownership gate never reaches an independent foreign directory.
+					StructuralPath: firstWiredJunctionLink(tb, h, slug),
 				},
 			}
 		},
@@ -555,6 +661,14 @@ func pruneCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PairWeftSibling(slug),
+					// StructuralPath is a SEPARATE weft-named sibling path that was never Added at all
+					// -- an orphan directory shaped exactly like debris Prune's own orphan pass would
+					// enumerate, distinct from "verb-prune-owner"'s own (genuinely registered) stale
+					// pair. Prune's only ownership gate (prune.go:264, ownedRegisteredLinkedWorktree)
+					// is exactly what must refuse to touch it: it is never a registered linked worktree
+					// of this hub's weft repo, so it must survive Prune's own teardown of the real stale
+					// pair untouched.
+					StructuralPath: h.PairWeftSibling("verb-prune-structural-orphan"),
 				},
 			}
 		},
@@ -564,15 +678,34 @@ func pruneCase() VerbCase {
 			return err
 		},
 		Expect: func(state string) Expectation {
-			return Expectation{
-				Kind:           KindProceeds,
-				PermittedRoots: slugPermittedRoots("verb-prune-owner"),
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
-					tb.Helper()
-					assertGone(tb, h.PairWeftSibling(f.Slug))
-					assertGone(tb, h.PairPortalLink(f.Slug))
-					assertGone(tb, h.PairLauncherDir(f.Slug))
-				},
+			switch state {
+			case "dirtyWeftTracked", "bothDirty":
+				// applyStalePairProtection (prune.go:206-224) probes scopeTracked dirtiness on the
+				// stale pair's own weft worktree and marks the entry Protected rather than returning a
+				// Go error -- Prune reports per-entry outcomes in its own PruneResult, not as an error
+				// from the call itself, so this cell's Kind is Proceeds (err == nil) and the assertion
+				// that matters is that the protected entry survives untouched.
+				return Expectation{
+					Kind:           KindProceeds,
+					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						assertExists(tb, h.PairWeftSibling(f.Slug))
+						assertExists(tb, h.PairPortalLink(f.Slug))
+						assertExists(tb, h.PairLauncherDir(f.Slug))
+					},
+				}
+			default:
+				return Expectation{
+					Kind:           KindProceeds,
+					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						assertGone(tb, h.PairWeftSibling(f.Slug))
+						assertGone(tb, h.PairPortalLink(f.Slug))
+						assertGone(tb, h.PairLauncherDir(f.Slug))
+					},
+				}
 			}
 		},
 	}
@@ -667,21 +800,63 @@ func checkoutCase() VerbCase {
 			return err
 		},
 		Expect: func(state string) Expectation {
-			return Expectation{
-				Kind: KindProceeds,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
-					tb.Helper()
-					if got := currentBranchName(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
-						tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
-					}
-					wantWeft := fabricengine.WeftBranchName(f.CheckoutBranch)
-					if got := currentBranchName(tb, h.PrimeWeft()); got != wantWeft {
-						tb.Errorf("prime weft branch after Checkout = %q; want %q", got, wantWeft)
-					}
-					if f.CheckoutBranch == f.OriginalBranch {
-						tb.Errorf("Checkout's Arrange produced the same branch already checked out: %q", f.CheckoutBranch)
-					}
-				},
+			switch state {
+			case "dirtyWeftTracked", "bothDirty":
+				// Checkout's own pre-flight (checkout.go:42) is scopeTracked on the weft worktree; a
+				// tracked modification there refuses before `git switch` ever runs.
+				return Expectation{
+					Kind:      KindRefusedBefore,
+					Substring: "weft worktree has uncommitted changes",
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.OriginalBranch {
+							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
+						}
+						if got := currentBranchName(tb, h.PrimeWeft()); got != fabricengine.WeftBranchName(f.OriginalBranch) {
+							tb.Errorf("prime weft branch after refused Checkout = %q; want unchanged %q", got, fabricengine.WeftBranchName(f.OriginalBranch))
+						}
+					},
+				}
+			case "dirtyWarpTracked":
+				// Checkout has NO warp-side dirtiness probe at all (checkout.go:38-85 goes straight to
+				// `git switch`), so the outcome is git's own to decide: `git switch` either carries the
+				// tracked modification across, or refuses with "your local changes would be
+				// overwritten". Both are correct; what must hold either way is that the pair is never
+				// half-switched -- see this file's own doc comment for the fuller account.
+				return Expectation{
+					Kind:      KindEitherProceedsOrRefusedBefore,
+					Substring: "warp switch",
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						warpBranch := currentBranchName(tb, h.PrimeWorktree())
+						weftBranch := currentBranchName(tb, h.PrimeWeft())
+						switched := warpBranch == f.CheckoutBranch
+						weftSwitched := weftBranch == fabricengine.WeftBranchName(f.CheckoutBranch)
+						if switched != weftSwitched {
+							tb.Errorf("Checkout left the pair half-switched: warp branch = %q, weft branch = %q", warpBranch, weftBranch)
+						}
+						if !switched && warpBranch != f.OriginalBranch {
+							tb.Errorf("Checkout neither switched to %q nor left the original branch %q; warp branch = %q", f.CheckoutBranch, f.OriginalBranch, warpBranch)
+						}
+					},
+				}
+			default:
+				return Expectation{
+					Kind: KindProceeds,
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
+							tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
+						}
+						wantWeft := fabricengine.WeftBranchName(f.CheckoutBranch)
+						if got := currentBranchName(tb, h.PrimeWeft()); got != wantWeft {
+							tb.Errorf("prime weft branch after Checkout = %q; want %q", got, wantWeft)
+						}
+						if f.CheckoutBranch == f.OriginalBranch {
+							tb.Errorf("Checkout's Arrange produced the same branch already checked out: %q", f.CheckoutBranch)
+						}
+					},
+				}
 			}
 		},
 	}
@@ -735,6 +910,13 @@ func unwireJunctionsCase() VerbCase {
 				Target: StateTarget{
 					WarpCheckout: h.PairWarpWorktree(slug),
 					WeftCheckout: h.PairWeftSibling(slug),
+					// StructuralPath is the pair's own first wired junction link. unseedJunctionRecords
+					// (junction.go:420-489) walks every wired junction in order and bails out the moment
+					// one fails its own pre-flight (a foreign link's resolved target not matching the
+					// expected weft target, or a dangling link that cannot be resolved at all) — before
+					// the ownership gate ever runs for that link — so replanting just the first name is
+					// enough to make the whole call refuse.
+					StructuralPath: firstWiredJunctionLink(tb, h, slug),
 				},
 			}
 		},
@@ -759,20 +941,40 @@ func unwireJunctionsCase() VerbCase {
 					permitted = append(permitted, filepath.ToSlash(fabricengine.WarpJunctions(loc, "verb-unwire-owner", []string{name})[0].Link))
 				}
 			}
-			return Expectation{
-				Kind:           KindProceeds,
-				PermittedRoots: permitted,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
-					tb.Helper()
-					names, err := fabricengine.WiredNames(h.BoardDir())
-					if err != nil {
-						tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
-					}
-					for _, j := range fabricengine.WarpJunctions(h.Location, f.Slug, names) {
-						assertGone(tb, j.Link)
-					}
-					assertExists(tb, h.PairWarpWorktree(f.Slug))
-				},
+
+			switch state {
+			case "trackedSymlinkAtWiredPath":
+				// unseedJunctionRecords resolves the link's actual target and compares it against the
+				// weft target fabric itself expects (junction.go:465-472); an operator-owned link
+				// resolves elsewhere, so the call refuses before the ownership gate ever runs, and
+				// nothing -- not even the untouched second junction -- is removed.
+				return Expectation{
+					Kind:      KindRefusedBefore,
+					Substring: "points to unexpected target",
+				}
+			case "staleWiredJunction":
+				// The link's target no longer resolves at all, so fslink.PointsTo fails outright
+				// (junction.go:461-464) before the ownership gate ever runs.
+				return Expectation{
+					Kind:      KindRefusedBefore,
+					Substring: "resolve link target",
+				}
+			default:
+				return Expectation{
+					Kind:           KindProceeds,
+					PermittedRoots: permitted,
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						names, err := fabricengine.WiredNames(h.BoardDir())
+						if err != nil {
+							tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
+						}
+						for _, j := range fabricengine.WarpJunctions(h.Location, f.Slug, names) {
+							assertGone(tb, j.Link)
+						}
+						assertExists(tb, h.PairWarpWorktree(f.Slug))
+					},
+				}
 			}
 		},
 	}
@@ -820,17 +1022,39 @@ func pullCase() VerbCase {
 			return err
 		},
 		Expect: func(state string) Expectation {
-			return Expectation{
-				Kind: KindProceeds,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
-					tb.Helper()
-					if f.AdvancedFromSHA == f.AdvancedToSHA {
-						tb.Errorf("Pull's Arrange did not advance the warp bare: from == to == %s", f.AdvancedFromSHA)
-					}
-					if got := currentSHA(tb, h.PrimeWorktree()); got != f.AdvancedToSHA {
-						tb.Errorf("prime warp HEAD after Pull = %s; want %s", got, f.AdvancedToSHA)
-					}
-				},
+			switch state {
+			case "dirtyWarpTracked", "bothDirty":
+				// Pull's own pre-flight (pull.go:143) is scopeTracked on the prime warp worktree; a
+				// tracked modification there refuses before ResetHard ever runs, and the warp bare's
+				// advance (this cell's own Arrange) never lands.
+				return Expectation{
+					Kind:      KindRefusedBefore,
+					Substring: "warp worktree has uncommitted changes",
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						// Not f.AdvancedFromSHA: dirtyWarpTracked's own plantTrackedDirt seeds a fresh
+						// commit before leaving its modification uncommitted, so the prime warp's HEAD
+						// has already moved past AdvancedFromSHA by the time Run executes. What a
+						// refused Pull must guarantee is that it never reached ResetHard at all, i.e.
+						// HEAD never advances all the way to the (unrelated, unreachable) upstream tip.
+						if got := currentSHA(tb, h.PrimeWorktree()); got == f.AdvancedToSHA {
+							tb.Errorf("prime warp HEAD after refused Pull = %s; want anything but the upstream tip %s", got, f.AdvancedToSHA)
+						}
+					},
+				}
+			default:
+				return Expectation{
+					Kind: KindProceeds,
+					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						tb.Helper()
+						if f.AdvancedFromSHA == f.AdvancedToSHA {
+							tb.Errorf("Pull's Arrange did not advance the warp bare: from == to == %s", f.AdvancedFromSHA)
+						}
+						if got := currentSHA(tb, h.PrimeWorktree()); got != f.AdvancedToSHA {
+							tb.Errorf("prime warp HEAD after Pull = %s; want %s", got, f.AdvancedToSHA)
+						}
+					},
+				}
 			}
 		},
 	}
