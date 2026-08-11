@@ -26,9 +26,19 @@ Batch-local decisions beyond the overview's shared set, each recorded so no card
   It uses "gate" in sense A (perch), was already ambiguous before this task ran, and is task E's territory — E must re-read `loom.md` end to end anyway (`shed-followups.md:486`).
 - **The rename crosses task-ownership boundaries deliberately.**
   `shed.md`, `roadmap.md`, and `shed-followups.md` are touched even though task E owns the first two and the third is the spec file.
-  Only the literal token is replaced;
+  Outside the two `shed.md` insertions named in the next bullet, only the literal token is replaced;
   no surrounding prose is rewritten.
   This is the precedent task A set and recorded at `shed-followups.md:449–453`.
+- **Card 10 also *inserts* `Discussion-Validate` into `shed.md:13` and `:41` — this is more than a token rename, and it is deliberate.**
+  `shed-followups.md:423–424` frames the insertion as task E's action item, but its own stated reason is that the two docs "silently disagree about what `loom`'s list contains" the moment task C inserts the producer into `loom.md`'s table.
+  Card 8 performs exactly that insertion, so leaving `:13`/`:41` for E would ship the self-contradicting interim state for the duration of at least one more task — precisely what task B did at `loom.md:29` and what the spec then had to schedule a repair for.
+  `_mill/discussion.md`'s Scope "In" therefore assigns both insertions to this task explicitly.
+  No surrounding prose in `shed.md` is rewritten;
+  task E still owns this file's producer-contract section.
+- **Card 9 repairs `loom.md:75`, which is outside the spec's "producer table rows 2–7 only" grant.**
+  Deliberate, and driven by self-consistency: card 8's own insertion is what falsifies the line, and task A's override precedent (`shed-followups.md:449–453`) makes a consequence of your own edit yours to repair regardless of whose ownership list the line sits on.
+  Only the first of `:75`'s two open questions is rewritten;
+  the second (the thin-Output carve-out) stays task E's, per `shed-followups.md:482`.
 
 ## Cards
 
@@ -144,7 +154,8 @@ Batch-local decisions beyond the overview's shared set, each recorded so no card
   `:306` carries only `Plan-Review-Gate` and is a plain rename site.
   (b) All nine `Discussion-Review-Gate` occurrences — `:265`, `:281`, `:283`, `:301`, `:304`, `:325`, `:329`, `:342`, `:424` — keep their original wording.
   This file is a task-body archive, not live documentation: it records what was *specified*, and rewriting those nine would falsify the record and make the spec's own reasoning at `:301–312` read incoherently.
-  (c) Add exactly one new note under section C's `#### The `Discussion-Review-Gate` producer` subsection at `:301`, opening with the bolded lead-in `**Override recorded 2026-08-11 (task C, as landed).**` — the same convention already used at `:289`, `:296`, `:441`, `:449`, `:462`, and `:470`.
+  (c) Add exactly one new note under section C's `#### The `Discussion-Review-Gate` producer` subsection at `:301`, opening with the bolded lead-in `**Override recorded 2026-08-11 (task C, as landed).**` — the same convention already used at `:296`, `:441`, `:449`, `:462`, and `:470`.
+  Do not cite `:289` as a precedent for this lead-in: it reads `**Instruction repaired 2026-08-09 (task A, as landed).**`, a related but distinct convention (also at `:92`), and `_mill/discussion.md`'s Decision `discussion-review-gate-name-disposition` lists it in error.
   The note states that the producer landed as `Discussion-Validate` rather than `Discussion-Review-Gate`, and that `Plan-Review-Gate` was renamed to `Plan-Validate` at the same time, with the reason: `loom.md` overloads "gate" across perch's black-box review gate and the mechanical pre-check, so `-Validate` frees "gate" to mean perch alone.
 - **Commit:** `docs(shed-followups): sweep Plan-Review-Gate to Plan-Validate and record task C's naming override`
 

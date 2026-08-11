@@ -68,7 +68,7 @@ Pre-decided at `shed-followups.md:314–320` and recorded so no card reopens it.
 - **Moves:** none
 - **Requirements:** Replace every generic phase/producer phrase in the body with the named producer.
   This is substitution, not deletion and not a rewrite — each site keeps its sentence, and every sentence must still read correctly after the substitution.
-  The enumerated sites, by their pre-edit line numbers and quoted text: "the Plan producer" at `:7`, `:10`, `:14`, `:15`, `:31`, `:54`, `:83` → **`Plan-Write`**;
+  The enumerated sites, by their pre-edit line numbers and quoted text: "the Plan producer" at `:7`, `:10`, `:14`, `:15`, `:31`, `:54`, `:56`, `:83` → **`Plan-Write`**;
   "the Discussion producer" at `:47` and `:71` → **`Discussion-Write`**;
   "the perch discussion-review gate" at `:72` → **`Discussion-Review`**.
   `:3`'s "the Discussion phase" and "the Plan producer" are already handled by card 1 and must not be re-edited here.
