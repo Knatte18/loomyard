@@ -82,17 +82,17 @@ func TestNewHub(t *testing.T) {
 
 			h := NewHub(t, anchor)
 
-			if _, err := os.Stat(h.PrimeWarpWorktree()); err != nil {
-				t.Errorf("prime warp worktree missing at %s: %v", h.PrimeWarpWorktree(), err)
+			if _, err := os.Stat(h.PrimeWorktree()); err != nil {
+				t.Errorf("prime warp worktree missing at %s: %v", h.PrimeWorktree(), err)
 			}
-			if _, err := os.Stat(h.PrimeWeftSibling()); err != nil {
-				t.Errorf("weft sibling missing at %s: %v", h.PrimeWeftSibling(), err)
+			if _, err := os.Stat(h.PrimeWeft()); err != nil {
+				t.Errorf("weft sibling missing at %s: %v", h.PrimeWeft(), err)
 			}
 			if _, err := os.Stat(h.BoardDir()); err != nil {
 				t.Errorf("board dir missing at %s: %v", h.BoardDir(), err)
 			}
 
-			primeCwd := filepath.Join(h.PrimeWarpWorktree(), h.Anchor)
+			primeCwd := filepath.Join(h.PrimeWorktree(), h.Anchor)
 			l, err := lyxcwd.Resolve(primeCwd)
 			if err != nil {
 				t.Fatalf("lyxcwd.Resolve(%s): %v", primeCwd, err)
@@ -110,7 +110,7 @@ func TestNewHub(t *testing.T) {
 				t.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 			}
 			for _, name := range names {
-				link := filepath.Join(h.PrimeWarpWorktree(), h.Anchor, name)
+				link := filepath.Join(h.PrimeWorktree(), h.Anchor, name)
 				isLink, err := fslink.IsLink(link)
 				if err != nil {
 					t.Errorf("fslink.IsLink(%s): %v", link, err)

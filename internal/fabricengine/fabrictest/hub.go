@@ -23,6 +23,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
+// GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath, calling tb.Fatalf on
+// failure — non-empty means the worktree has uncommitted changes (staged, unstaged, or untracked).
+// It is the movable half of the gitStatusPorcelain duplicate: the same body
+// internal/fabricengine/weftgit_exclude_test.go's own gitStatusPorcelain carried, widened from
+// *testing.T to testing.TB so states and cells can use it too.
+// internal/fabricengine/commitweftat_test.go carries a second, permanently stuck copy: that file is
+// in-package (package fabricengine), so importing fabrictest there would close the
+// fabricengine → fabrictest → fabricengine cycle.
+func GitStatusPorcelain(tb testing.TB, repoPath string) string {
+	tb.Helper()
+
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		tb.Fatalf("git status --porcelain in %s: %v", repoPath, err)
+	}
+	return string(out)
+}
+
 // bareTemplateOnce guards buildBareTemplate so the warp/weft bare pair is built exactly once per test
 // binary; warpBareTemplate and weftBareTemplate hold the resulting paths.
 var (
