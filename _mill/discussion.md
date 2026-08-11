@@ -36,7 +36,8 @@ Both predecessors are merged;
 - `internal/fabriccli` emits `mutations` on both the success and the failure path, plus `partial: true` when an error is returned with a non-empty record, plus a structured `refusal: {check, what, target, reason}` object when the error carries a `*destructiveRefusal`.
 - A new **Mutation Record Invariant** in `CONSTRAINTS.md`, machine-guarded by an extension to `cmd/lyx/destructiveguard_test.go`.
 - Truthfulness assertions across the existing `internal/fabricengine/fabrictest` matrix: every cell cross-checks the result envelope's record against the manifest diff.
-- Doc updates in the same commit: `internal/fabricengine/doc.go` (or the package docs that describe result shapes), `internal/fabricengine/fabrictest/doc.go`'s deferred-work note, `CONSTRAINTS.md`, and a correction to the stale consumer claim in `manifest/designs/fabric-crucible-followups.md`.
+- Export of `fabricengine`'s check enum as the single declarer, with `internal/fabricengine/fabrictest/refusal.go`'s string-backed copy deleted and its consumers repointed.
+- Doc updates in the same commit: `internal/fabricengine/doc.go` (or the package docs that describe result shapes), `internal/fabricengine/fabrictest/doc.go`'s deferred-work note, `CONSTRAINTS.md`, and two corrections to `manifest/designs/fabric-crucible-followups.md` — the stale consumer claim at `:419`, and requirement 2 at `:406`, which this discussion supersedes (see the `ok-semantics-and-error-path-fields` Decision).
 
 **Out:**
 
@@ -58,7 +59,35 @@ Both predecessors are merged;
 
 ### mutation-entry-shape
 
-- **Decision:** each `Mutation` carries exactly three flat fields — `Kind` (a fixed enum string), `Target` (a `filepath.ToSlash` absolute path, or a git ref), and `Detail` (optional, kind-specific free string). Ordering is carried by array order alone.
+- **Decision:** each `Mutation` carries exactly three flat fields — `Kind` (a fixed enum string), `Target`, and `Detail` (optional, kind-specific free string). Ordering is carried by array order alone.
+
+  **`Target` convention**, resolving the contradiction between this decision and the harness cross-check:
+  - A path **at or below the hub root** is **hub-relative, `filepath.ToSlash`'d** — byte-identical to `CaptureManifest`'s own keying (`fabrictest/manifest.go:133-137` does `filepath.Rel(hubRoot, path)` then `filepath.ToSlash`). This is the case for every mutation `fabrictest` can observe, so the oracle cross-check is a direct string comparison with no normalisation step.
+  - A path **outside the hub root** — `clone`'s cwd-side paths, which exist before the hub does — is **absolute, `filepath.ToSlash`'d**. These are never captured by a manifest, so they never enter the cross-check.
+  - A **git ref** target is the bare ref name as the executor received it (e.g. `feature-x-weft`), never a path.
+
+  **Initial `Kind` members**, each mapped to its recording site:
+
+  | `Kind` | Recorded at | Notes |
+  | --- | --- | --- |
+  | `path_removed` | `removePath` (`destroy.go:610`) | `Detail` is `recursive` (the `RemoveAll` branch, `:624`) or `single` (the `os.Remove` branch, `:630`) |
+  | `worktree_removed` | `removeGitWorktree` (`:640`) | |
+  | `link_removed` | `removeLink` (`:657`) | |
+  | `link_repointed` | `repointLink` (`:668`) | `Detail` carries the new target |
+  | `branch_deleted` | `deleteBranch` (`:683`) | `Target` is the ref name |
+  | `worktree_reset` | `resetHardTo` (`:739`) | `Detail` carries the SHA reset to; the primitive behind defect 1 |
+  | `dir_created` | `createExclusiveDir` (`:703`) | constructive minter |
+  | `worktree_created` | `createGitWorktree` (`:721`) | constructive minter |
+  | `branch_created` | verb success sites | `Target` is the ref name |
+  | `branch_pushed` | verb success sites | `Target` is the ref name |
+  | `commit_created` | verb success sites | `Detail` carries the SHA |
+  | `link_created` | verb success sites (junction wiring) | |
+  | `file_written` | verb success sites (`.git/info/exclude`, config rewrites) | |
+
+  The first eight are auto-recorded inside `destroy.go`;
+  the last five are hand-recorded at their success sites, since no chokepoint covers them.
+
+  **Rule for adding a member:** a new `Kind` lands in the same commit as its recording site and its guard-test entry, never ahead of either. `mutation.go` is the single declarer of the enum — no other file declares a kind string literal.
 - **Rationale:** JSON-stable, trivially assertable, and the enum is precisely what a guard test can pin. It mirrors `PruneEntry`'s existing flat-fields-plus-a-string-reason shape rather than introducing nested payloads into a package whose result types are all currently flat.
 - **Rejected:** adding a `Sequence` int (array order already carries ordering; a second encoding of the same fact can only disagree with the first); typed per-kind payloads via a union or `any` field (richest, but yields an unstable JSON shape and forces a type switch at every consumer, for a record whose whole point is being readable at a glance).
 
@@ -72,7 +101,15 @@ Both predecessors are merged;
 
 ### gate-auto-records
 
-- **Decision:** the destruction gate records every destructive primitive it executes, into the recorder threaded through its request types (`pathRequest`, `branchRequest`). Constructive mutations are still recorded by hand at each success site.
+- **Decision:** the destruction gate records every destructive primitive it executes. Constructive mutations outside `destroy.go` are still recorded by hand at each success site.
+
+  **Threading mechanism — an explicit `rec *Mutations` parameter on all eight sites, not a request-type field.**
+  Three of the eight take neither request type today: `repointLink(what, container, target string, own pathOwnership)` (`:668`), `createExclusiveDir(path string)` (`:703`) and `createGitWorktree(repoDir string, addArgs []string, target string)` (`:721`).
+  Rather than split the mechanism — a struct field for the five request-shaped sites and a parameter for the three others — every one of the eight takes `rec *Mutations` as an explicit leading parameter.
+  **Rationale:** a missing struct field is a silent zero value the compiler accepts;
+  a missing parameter does not compile. Given that this entire slice exists because a record was silently dropped, the mechanism that makes dropping it a build failure is the right one, and one uniform rule beats two.
+  **Rejected:** adding `rec` to `pathRequest`/`branchRequest` and giving the other three a parameter anyway (less churn at the five request-shaped call sites, but two mechanisms to remember and a silently-omissible field on the majority of them);
+  adopting the request types into the three outliers (uniform shape, but `createExclusiveDir` and `createGitWorktree` are constructive minters that have no ownership or dirtiness to declare, so the request fields would be dead weight carried purely for shape).
 - **Rationale:** the **Fabric Destruction Chokepoint Invariant** already guarantees, machine-checked by `cmd/lyx/destructiveguard_test.go`, that every destructive primitive in `package fabricengine` routes through `destroy.go`. Recording there makes destructive-mutation coverage *provably total by construction* rather than a per-call-site review obligation. This is the one place in the codebase where that guarantee already exists, and declining to use it would be throwing it away.
 - **Rejected:** recording every mutation explicitly at its own success site, destructive included (uniform and obvious to read, but discards the existing total-coverage guarantee and makes a missed destructive site a silent, unguarded gap).
 
@@ -80,6 +117,9 @@ Both predecessors are merged;
 
 - **Decision:** `ok` keeps its current meaning — "no error was returned". The envelope additionally always carries `mutations: [...]`, and carries `partial: true` when an error is returned *and* the record is non-empty. `internal/output` gains an additive error-path function taking fields.
 - **Rationale:** requirement 3 of the task is that a verb returning an error with a non-empty mutation record "must say so explicitly" — `partial: true` is that explicit statement, in one unambiguous field. Keeping `ok` unchanged means no existing consumer has to re-learn what it means, and the `internal/output` change being purely additive means no other module is touched. `ok` still isn't a synonym for "nothing happened", but it no longer has to be: `mutations` and `partial` answer that question directly.
+- **`partial` derives from exactly one rule:** `error ≠ nil ∧ record non-empty`. Nothing else sets it.
+  `PartialCommitError` and `PartialPullError` are **not** a second trigger — they are errors like any other, and when either is returned the record is non-empty anyway (a landed commit is a recorded `commit_created`), so they satisfy the one rule without needing a special case. `PartialPullError.Stage` surfaces as the `Detail` of the relevant mutation rather than as a top-level envelope field, keeping the envelope's key set fixed across verbs.
+- **This supersedes requirement 2 of the design doc, and says so.** `manifest/designs/fabric-crucible-followups.md:406` states requirement 2 as "`ok` becomes a statement about that record plus the error, not a synonym for 'no error was returned'". This decision deliberately does the opposite for `ok` itself, and satisfies the *intent* behind requirement 2 — that the envelope as a whole stop lying — through `mutations` and `partial` instead. Redefining `ok` in place would silently change the meaning of a field every existing consumer already reads, which trades one dishonesty for another. That doc line is amended in the same commit as the `:419` consumer-claim correction, so the design doc and the implementation do not disagree.
 - **Rejected:** a `status` string (`ok`/`partial`/`refused`/`failed`) with `ok` derived from it (richer and self-describing, but a second source of truth alongside `ok` invites the two to disagree, which is the original defect in a new costume); leaving `internal/output` untouched and having `fabriccli` emit its own envelope (leaves the shared package alone, at the cost of fabric's JSON drifting from every other module's plus a second envelope implementation to keep in sync).
 
 ### structured-refusal
@@ -107,6 +147,24 @@ Both predecessors are merged;
   `Remove`'s ordering is left exactly as it is. File a separate issue for the reorder.
 - **Rationale:** slice 14 is the truthfulness slice, and this is the canonical "mutated, then refused" case it exists to make representable — it is the best live test case in the tree for the whole slice. Reordering is a behaviour change that belongs next to the gate, not here.
 - **Rejected:** represent *and* reorder (fixes the underlying wrong too, but changes `Remove`'s observable behaviour and invalidates the `fabrictest` cell that currently declares those paths as permitted removal roots); reorder only (makes the anomaly disappear rather than representable, destroying the slice's best test case).
+
+### check-enum-single-declarer
+
+- **Decision:** export the check enum from `internal/fabricengine` as the single declarer, and have `fabrictest` consume it and delete its own copy. Not deliberate parallel copies.
+- **Rationale:** emitting `refusal.check` as a machine-readable JSON field promotes the enum's rendered values to part of fabric's public contract. Two encodings of a public contract — one production, one test-support — is precisely the setup where the test copy drifts and the harness starts asserting against a vocabulary production no longer emits. The repo already has this exact pattern in the **Lyxdirs Single-Declarer Invariant**, and `fabrictest` already imports `fabricengine` (`fabrictest/hub.go:22`), so consuming the exported enum costs nothing structurally.
+- **Carried into the winner:** the `checkForce` non-membership rule moves onto the exported enum's own doc comment — force is consulted only inside `checkPathDirtiness`, where it makes the dirtiness check *pass*, so it can never be attributed a refusal and must never be added as a member. `fabrictest/refusal.go`'s standing comment saying the same thing goes with the copy it documents;
+  the rule must not be lost in the move.
+- **Rejected:** deliberate parallel copies (zero churn, and `fabrictest`'s string-backed matching keeps working untouched — but it leaves two vocabularies for one public contract, with nothing to keep them equal);
+  leaving it undecided for mill-plan (which is what round 1 correctly rejected — this decides whether a production type gets exported, which is a design decision, not a planning detail).
+
+### permitted-roots-and-the-oracle
+
+- **Decision:** permitted removal roots suppress **diff noise only**, and never suppress the honesty assertion. The record must still name a permitted-root mutation positively. Concretely, each cell runs `DiffManifest` **twice**: once with the cell's permitted roots, feeding the existing survival assertion (what was allowed to change), and once with a `nil` permitted list, feeding the new honesty assertion (what the record must account for).
+- **Rationale:** this is the difference between the slice's headline case asserting something and asserting nothing. The `Remove` anomaly cell declares `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>` as permitted precisely *because* they do get destroyed before the refusal — so if permitted roots also suppressed the honesty check, the one cell that reproduces "mutated, then refused" would assert exactly nothing about the record. Separating the two questions is what makes the cell say: those deletions were allowed to happen **and** the envelope admitted to them.
+- **Mechanically free:** `DiffManifest(before, after Manifest, permitted []string)` (`fabrictest/manifest.go:289`) already takes the permitted list as a parameter, so calling it a second time with `nil` needs no API change.
+- **The cross-check, stated in both directions:** every change in the unfiltered diff must have a matching record entry (a lie of omission — defect 2's shape), and every record entry must have a matching unfiltered-diff change (a lie of commission).
+- **Rejected:** excluding permitted-root changes from the cross-check (simpler, one `DiffManifest` call — and it silently guts the `Remove` anomaly cell, the best live test case the slice has);
+  asserting the record only against the filtered diff (same defect, less obviously).
 
 ### fabrictest-truthfulness-oracle
 
@@ -140,6 +198,15 @@ Both predecessors are merged;
 
 Note that `push` and `sync` currently return bare `error` with no result type at all (`output.Ok(out, map[string]any{})` at `weft_verbs.go:183,196,265`) — they need a result type introduced, not just extended.
 
+**`push`/`sync` composition, spelled out** (the verb table's `push` row maps to three engine functions, and `sync` has no engine function of its own):
+
+- `PushResult` is introduced once and returned by all three push entry points — `(*Fabric).PushWeft` (`weftgit.go:269`), `PushWarpAt` (`spawn.go:89`), and `CoalescePushBothAt` (`coalesce.go:86`). One type, three producers;
+  `CoalescePushBothAt` pushes both sides, so its record simply carries two `branch_pushed` entries.
+- `sync` gets **no** engine result type, because it has no engine function — it is composed in `internal/fabriccli/weft_verbs.go:243-265` from a commit call followed by a push call. The CLI concatenates the two records **in execution order** (commit's entries first, then push's) into one flat `mutations` array.
+- The composition rule for `sync`'s envelope: `partial` is true when either composed call returned an error and the **combined** record is non-empty. This is the case that matters — a commit that lands followed by a push that fails is exactly "mutated, then errored", and the combined record is what makes it visible.
+- `sync` therefore has no `PartialSyncError` and needs none;
+  the combined record plus `partial` carries the same information without a fourth partial-error type.
+
 **The gate's destructive executors** (all in `internal/fabricengine/destroy.go`), which are the auto-record sites:
 
 - `removePath(req pathRequest) error` — `:610`, wrapping `RemoveAll` (`:624`) and `os.Remove` (`:630`)
@@ -164,14 +231,16 @@ A `CheckForce` constant could therefore never match a real refusal and must not 
 `fabrictest/refusal.go` carries this as a standing comment, and `fabrictest/doc.go` documents it again;
 the new refusal-serialisation code must not reintroduce it.
 
-There is a live consistency question here for mill-plan: once `refusal.check` is emitted as a machine-readable JSON field, the unexported enum's `String()` output becomes part of fabric's public contract, and fabrictest's string-backed copy becomes a second encoding of it.
-Whether the two are reconciled (e.g. by exporting the enum from `fabricengine` and having fabrictest consume it) or deliberately left as parallel copies is a decision to make explicitly, not by default.
+Once `refusal.check` is emitted as a machine-readable JSON field, the enum's rendered output becomes part of fabric's public contract and fabrictest's copy becomes a second encoding of it.
+This is settled in the `check-enum-single-declarer` Decision above: export the enum from `fabricengine`, have `fabrictest` consume it and delete its copy, and carry the `checkForce` non-membership rule onto the exported enum's own doc comment.
 
 **Prior art to mirror, not duplicate:** `PruneEntry` (`prune.go:38`) carries `WarpWorktree`/`WeftWorktree`/`Reason`/`Removed`/`Protected`/`Unowned`/`Error`;
 `CleanupBranchEntry` (`cleanup.go:65`) carries `Branch`/`Deleted`/`Protected`/`Error`.
 These per-item rows stay as they are — the new top-level `mutations` record is a different axis (one row per mutation performed, not one row per item enumerated) and coexists with them.
 
-**Existing partial-failure types to align with, not replace:** `PartialCommitError` (`commit.go`, private fields, matched via `errors.As`) and `PartialPullError` (`pull.go`, with a `Stage` naming which warp-side step failed). Both already express "one side landed, the other didn't". They are the closest thing in the tree to the new `partial: true` semantics and their relationship to it should be stated, not left implicit.
+**Existing partial-failure types to align with, not replace:** `PartialCommitError` (`commit.go`, private fields, matched via `errors.As`) and `PartialPullError` (`pull.go`, with a `Stage` naming which warp-side step failed). Both already express "one side landed, the other didn't". They are the closest thing in the tree to the new `partial: true` semantics, and their relationship to it is stated in the `ok-semantics-and-error-path-fields` Decision above: they are ordinary errors, not a second trigger for `partial`, which derives solely from `error ≠ nil ∧ record non-empty`.
+They satisfy that rule without a special case, because a landed commit is itself a recorded mutation. `PartialPullError.Stage` surfaces as the `Detail` of the relevant mutation, not as a top-level envelope field.
+Neither type is replaced or reshaped by this slice.
 
 **The harness:** `internal/fabricengine/fabrictest` (build tag `integration`).
 `CaptureManifest(tb, hubRoot) Manifest` at `manifest.go:121`, `DiffManifest(before, after Manifest, permitted []string) []Change` at `manifest.go:289`. `Change` carries `Path`, `Kind` (`ChangeRemoved`/`ChangeAdded`/…), `Before`, `After`, sorted by `Path` for stable output. Cells are built from `VerbFixture` (`verbs.go:102`) and `VerbCase` (`verbs.go:195`), driven as a cross product in `matrix_test.go`, each cell declaring its permitted removal roots.
@@ -246,7 +315,8 @@ Key scenarios, each of which is a mutated-then-errored path that today returns a
 
 - Every existing matrix cell gains the cross-check: the mutation record from the verb's result must correspond exactly to the manifest diff between the before and after captures. A path in the diff with no matching record entry is a lie of omission (defect 2's shape);
   a record entry with no matching diff change is a lie of commission.
-- The permitted-removal-roots mechanism interacts with this: a cell's permitted roots suppress the diff's noise, and the record should still name what happened inside them. Whether permitted-root changes are excluded from the cross-check or asserted positively against the record is a real design point for mill-plan to settle — the `Remove` anomaly cell is exactly the case that turns on it, since `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>` are declared permitted there precisely because they *do* get destroyed.
+- The permitted-removal-roots interaction is settled by the `permitted-roots-and-the-oracle` Decision above: each cell calls `DiffManifest` twice — once with its permitted roots for the existing survival assertion, once with `nil` for the honesty assertion — so permitted roots suppress diff noise without ever suppressing the record check. The `Remove` anomaly cell is the case that turns on this, since `_portals/<anchor>/<slug>` and `_launchers/<anchor>/<slug>` are declared permitted there precisely because they *do* get destroyed;
+  under this rule that cell asserts both that the deletions were allowed and that the envelope admitted to them.
 - The nine-cell sabotage proof in `fabrictest/doc.go`'s own table should gain the truthfulness dimension: with a guarding check neutered, the cell must now fail on *both* the survival assertion and the honesty assertion.
 
 **`cmd/lyx` — the guard.**
@@ -278,3 +348,12 @@ Key scenarios, each of which is a mutated-then-errored path that today returns a
 - **Q:** [auto-pick] Do the constructive minters in `destroy.go` (`createExclusiveDir`, `createGitWorktree`) auto-record too? **A:** Yes. **Why:** they already sit inside the gate file and are the creation counterparts of the executors;
   recording them there is free and keeps creation/destruction symmetric in the record.
 - **Q:** [auto-pick] Do `push` and `sync` get result types introduced? **A:** Yes, in this slice. **Why:** they return bare `error` and emit `output.Ok(out, map[string]any{})` today, so there is nowhere to put the record without one — deferring it would leave two of the twelve verbs unfixed.
+
+Review round 1 gaps (auto-picked at the recommended resolution):
+
+- **Q:** [auto-pick] How does the recorder reach `repointLink`, `createExclusiveDir` and `createGitWorktree`, which take neither request type? **A:** An explicit `rec *Mutations` leading parameter on all eight gate sites, rather than a request-type field for five and a parameter for three. **Why:** a missing struct field is a silent zero value the compiler accepts;
+  a missing parameter does not compile. This slice exists because a record was silently dropped, so the mechanism that turns dropping it into a build failure is the right one — and one uniform rule beats two.
+- **Q:** [auto-pick] What are the initial `Kind` members? **A:** Thirteen, tabulated in the `mutation-entry-shape` Decision — eight auto-recorded inside `destroy.go` (one per executor and minter) plus five hand-recorded constructive kinds (`branch_created`, `branch_pushed`, `commit_created`, `link_created`, `file_written`). **Why:** the guard test can only pin an enumerated set, and `Kind` was described as "precisely what a guard test can pin" while naming no member. Adding a member requires its recording site and guard entry in the same commit;
+  `mutation.go` is the single declarer.
+- **Q:** [auto-pick] Do permitted removal roots suppress the truthfulness cross-check as well as the diff noise? **A:** No — permitted roots suppress diff noise only;
+  the record must still name a permitted-root mutation positively. Each cell calls `DiffManifest` twice, once with its permitted roots (survival) and once with `nil` (honesty). **Why:** the `Remove` anomaly cell declares the portal and launcher paths permitted precisely because they get destroyed before the refusal, so suppressing the honesty check there would leave the slice's headline case asserting nothing at all.
