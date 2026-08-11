@@ -123,7 +123,8 @@ Pre-decided at `shed-followups.md:314–320` and recorded so no card reopens it.
 Two files, not two sections of one file, on purpose: a distilled digest, never raw prose, is what the Plan producer should ever see.
   ```
 
-  (Card 2 has already substituted `Plan-Write` for "the Plan producer" by the time this card runs.)
+  The fence above quotes the line as it reads in the **pre-batch** file, byte-exact, and is deliberately not updated to post-card-2 text — it is an anchor into the file as committed, not a prediction of the line's state.
+  By the time this card runs, card 2 has already substituted `Plan-Write` for "the Plan producer" there, so locate the line by the "a distilled digest, never raw prose" clause, which no earlier card touches.
   This is an **addition, not a repair** — `shed-followups.md:286` describes the line as citing the deleted `builder-contract.md`, but task A's commit `0149776a` already stripped that citation outright.
   There is no dangling pointer to fix.
   Keep the "a distilled digest, never raw prose" rule exactly as it stands and **add** the attribution it currently lacks, restating the sentence in producer-model terms while doing so.

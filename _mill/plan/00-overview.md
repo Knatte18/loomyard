@@ -3,7 +3,7 @@
 ```yaml
 task: 'format docs: name their producers and contracts in producer-model terms, add Discussion-Review-Gate'
 slug: 'format-docs-name-producers'
-approved: false
+approved: true
 started: '20260811-043750'
 parent: 'main'
 root: ""
