@@ -1,0 +1,48 @@
+MILL_REVIEW_BEGIN
+# Review: fabric: accumulate the result envelope from mutations, not control flow (slice 14) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-opus-5 (Anthropic Claude Opus 5)
+reviewed_file: plan/
+date: 2026-08-11
+```
+
+## Findings
+
+### [BLOCKING:consistency] runReconcile's CLI record is built out of execution order
+**Location:** batch 6, card 25 (`runReconcile` half)
+**Issue:** The card says "Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, [then] record the leading `configsync.ReconcileFabricAt` rewrite" — but that call is at `internal/fabriccli/fabric.go:568`, *before* `top.Reconcile(l)` at `:579`, so the emitted array claims the config rewrite happened after the engine's mutations. This contradicts the same card's own rule ("appends its own steps in execution order") and card 22's "array order is the only thing carrying ordering", in a vocabulary with no sequence field.
+**Fix:** Have the card build the recorder immediately after `l` resolves (`l.HubPath` is in hand at `:562`), append the `ReconcileFabricAt` entry at its own call site, then `rec.Extend(r.Mutated())` after `:579`.
+
+### [NIT:scope] Card 14 omits `unseedLyxJunction` from the threading list
+**Location:** batch 4, card 14
+**Issue:** `unseedJunctionRecords` (`junction.go:420`) is reachable only through `unseedLyxJunction` (`:392`), which the card never names; card 13 names its equivalent intermediates (`removeWarpJunction`, `applyStaleRemoval`) explicitly. Passing `nil` through the unnamed intermediate compiles and would silently drop every `link_removed` from the unwire verb.
+**Fix:** Add `unseedLyxJunction` to card 14's threading list, as card 13 already does for its own chain.
+
+### [NIT:consistency] The `"."`-target coverage rationale is false against `pathAtOrBelowRoot`
+**Location:** batch 7, card 29 (`"."` split)
+**Issue:** The card asserts a `"."` target "would make every path in the diff a segment-wise descendant", but `pathAtOrBelowRoot(path, ".")` (`fabrictest/manifest.go:357`) compares the literal segment `"."` against the first segment of a hub-relative key and returns false for every one — so the mandated "`path_removed` with `Target: "."` counts" needs an explicit `"."`→hub-root normalisation, which the card does not state while also directing the implementer not to write a second matcher.
+**Fix:** State that `"."` is normalised to the hub root before the segment match, since the reused helper does not do it.
+
+### [NIT:consistency] Card 21 misplaces the menu launcher, then hedges it
+**Location:** batch 5, card 21 (`writeLaunchers`)
+**Issue:** The card lists the menu launcher among "the three files it writes inside that directory", but `menuLauncherPath` is `<hub>/_launchers/<anchor>/menu.<ext>` (`launchers.go:40`) — a sibling of `LauncherDir` (`:33`), never inside it — so the following conditional ("if the menu launcher is written outside…") always resolves to "it needs its own entry", a fact the plan could settle rather than defer.
+**Fix:** Delete the wrong parenthetical and state the menu launcher's own `KindFileWritten` entry unconditionally.
+
+### [NIT:consistency] Card 11 miscounts the `CoalescePushBothAt` call sites
+**Location:** batch 3, card 11
+**Issue:** The card says `internal/fabricengine/coalesce_integration_test.go` has "four `CoalescePushBothAt` call sites"; it has three (`:101`, `:150`, `:200`) — the other token hits are `t.Fatalf` message text.
+**Fix:** Say three, or drop the number and let the chained `go vet -tags integration` be the authority, as cards 13/18/30 already do for their own lists.
+
+### [NIT:scope] Card 7 edits `mutation_test.go` but files it under Context
+**Location:** batch 3, card 7
+**Issue:** The Requirements extend `internal/fabricengine/mutation_test.go`, yet the file appears only in `Context:`, not `Edits:` — card 3 correctly lists `internal/output/output_test.go` under `Edits:` for the same shape of change.
+**Fix:** Move `internal/fabricengine/mutation_test.go` into card 7's `Edits:`.
+
+## Verdict
+
+REQUEST_CHANGES
+One ordering defect in card 25; the rest are small factual corrections.
+MILL_REVIEW_END

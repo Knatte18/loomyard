@@ -25,9 +25,10 @@ Batch-local decision: the existing `return XResult{}, err` sites are **left exac
 ### Card 7: `Mutations.Extend` for composed records
 
 - **Context:**
-  - `internal/fabricengine/mutation_test.go`
+  - `internal/fabricengine/testmain_test.go`
 - **Edits:**
   - `internal/fabricengine/mutation.go`
+  - `internal/fabricengine/mutation_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -204,7 +205,7 @@ Batch-local decision: the existing `return XResult{}, err` sites are **left exac
   - `internal/fabriccli/weft_verbs.go:179` — `CoalescePushBothAt` in the `push --bypass` branch, currently `if err := ...; err != nil`
   - `internal/fabriccli/weft_verbs.go:192` — `fab.PushWeft(opts)` in the ordinary `push` branch
   - `internal/fabricengine/spawn_test.go:50` — `PushWarpAt("/nonexistent-warp-path", tt.opts)`
-  - `internal/fabricengine/coalesce_integration_test.go` — its four `CoalescePushBothAt` call sites
+  - `internal/fabricengine/coalesce_integration_test.go` — its `CoalescePushBothAt` call sites. Do not work from a count: several further hits on that token in the file are `t.Fatalf` message text rather than calls, and the chained `go vet -tags integration` is the authority, exactly as cards 13, 18 and 30 treat their own lists.
 
   At the two `internal/fabriccli/weft_verbs.go` sites, discard the result with `_` for now — batch 6 is what threads it into the envelope.
   Preserve every existing assertion's meaning in the two test files;

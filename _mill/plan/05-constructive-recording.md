@@ -202,10 +202,10 @@ Batch 6 emits it, batch 7 asserts it against the filesystem.
   Every one is recorded at the **coarsest covering root**, per the derived-inventory Shared Decision — one entry per thing created, never one per file.
 
   `writeLaunchers` — `internal/fabricengine/launchers.go` — gains a leading `rec *Mutations` parameter, threaded from its two callers: `internal/fabricengine/add.go`, and `restorePortalAndLaunchers` in `internal/fabricengine/reconcile.go` (the intermediate `repairPairWiring` reaches it through, rather than calling it directly).
-  It records **one** `KindDirCreated` for the launcher directory it minted, on success.
-  The three files it writes inside that directory (the IDE launcher, the fabric-checkout launcher, and the menu launcher) get no entries of their own — the coverage rule accounts for every path beneath the recorded root.
-  If the menu launcher is written outside the launcher directory, it needs its own `KindFileWritten` entry;
-  check the path before deciding, and state which case held in the commit body.
+  It records **two** entries on success:
+
+  - one `KindDirCreated` for the launcher directory it minted — `LauncherDir(l, slug)`, i.e. `<hub>/_launchers/<anchorRel>/<slug>`. The two scripts it writes inside that directory, the IDE launcher and the fabric-checkout launcher, get no entries of their own: the coverage rule accounts for every path beneath the recorded root.
+  - one `KindFileWritten` for the **menu launcher**, which is *not* inside that directory. `menuLauncherPath` resolves to `<hub>/_launchers/<anchorRel>/menu.<ext>` — a sibling of the launcher directory, one level up — so no recorded root covers it and it needs its own entry.
 
   `CloneHub` — `internal/fabricengine/clone.go` — records at each of its construction steps, using the recorder card 10 installed:
 

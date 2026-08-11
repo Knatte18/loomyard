@@ -127,7 +127,7 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 - **Requirements:**
   Add a leading `rec *Mutations` parameter to:
 
-  - `seedLyxJunction` and `unseedJunctionRecords` and `wireBoardLink` — `internal/fabricengine/junction.go`
+  - `seedLyxJunction`, `unseedJunctionRecords` and `wireBoardLink` — `internal/fabricengine/junction.go`. `unseedJunctionRecords` is reachable only through the intermediate `unseedLyxJunction` (also `internal/fabricengine/junction.go`), which must be threaded too — passing `nil` through it compiles and would silently drop every `link_removed` the unwire verb produces.
   - `unwireBoardLink` — `internal/fabricengine/unwire.go`; it has **two** callers, `internal/fabricengine/unwire.go` and `internal/fabricengine/remove.go`, both of which this card updates
   - `resetHub` and `teardownHub` — `internal/fabricengine/clone.go`. Both have in-package test callers this card repoints with a throwaway `NewMutations("")` recorder: `resetHub` in `internal/fabricengine/clone_reset_guard_test.go`, and `teardownHub` through the seam in `internal/fabricengine/export_test.go`.
   - `(*Topology).repairPairWiring` — `internal/fabricengine/reconcile.go`, since it reaches the junction wiring

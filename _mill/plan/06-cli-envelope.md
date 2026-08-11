@@ -119,7 +119,11 @@ Batch-local decision: the emission goes through one small helper pair in `intern
 
   `runCloneWithReset` then emits through the card-23 helpers, keeping its four existing fields (`hub`, `anchor`, `warp`, `warp_binding_recorded`).
 
-  **`runReconcile`** — `internal/fabriccli/fabric.go`. Build a recorder seeded from `r.Mutated()` after `top.Reconcile(l)` returns, record the leading `configsync.ReconcileFabricAt` rewrite as `KindFileWritten` when its returned `Result.Applied` is true, and record the `Bolt.Commit` backfill step as `KindCommitCreated` — **only when the returned `committed` flag is true**, exactly as the `CloneAndWire` half requires, since `Bolt.Commit` returns `("", false, nil)` on a no-op and an unconditional entry would record a commit that never happened — with the board worktree path (`fabricengine.BoardDir(l.HubPath)`) as its `Target` and the returned SHA as its `Detail`.
+  **`runReconcile`** — `internal/fabriccli/fabric.go`. **Build the recorder before the first mutation, not after the engine call**, or the emitted array misstates the order: `configsync.ReconcileFabricAt` runs *before* `top.Reconcile(l)` in this handler, so seeding from `r.Mutated()` first and appending the config rewrite afterwards would claim the rewrite happened after the engine's mutations — and array order is the only thing carrying ordering in this vocabulary.
+  The sequence is: construct `rec := fabricengine.NewMutations(l.HubPath)` as soon as `l` resolves;
+  append the `configsync.ReconcileFabricAt` entry at its own call site as `KindFileWritten` when its returned `Result.Applied` is true;
+  then `rec.Extend(r.Mutated())` once `top.Reconcile(l)` returns;
+  then record the `Bolt.Commit` backfill step as `KindCommitCreated` — **only when the returned `committed` flag is true**, exactly as the `CloneAndWire` half requires, since `Bolt.Commit` returns `("", false, nil)` on a no-op and an unconditional entry would record a commit that never happened — with the board worktree path (`fabricengine.BoardDir(l.HubPath)`) as its `Target` and the returned SHA as its `Detail`.
   Its `Bolt.Push` records nothing either, for the same unobservable-outcome reason spelled out above.
   Its existing "a failed backfill commit or push is non-fatal and downgrades the reported outcome, never the exit code" behaviour is unchanged — the record simply carries whichever steps did land.
   Emit through the card-23 helpers, keeping `pairs`, `warp_binding` and the conditional `warp_binding_detail`.
