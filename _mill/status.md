@@ -6,6 +6,7 @@ slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: accumulate the result envelope from mutations, not control flow (slice 14)'
 task_description: |
   fabric: accumulate the result envelope from mutations, not control flow (slice 14)
@@ -44,19 +45,29 @@ implementing  '2026-08-11T17:14:53Z'
 ```yaml
 batches:
   - name: mutation-vocabulary
-    state: pending
+    state: running
+    implementer_session: 7fbfc33c-d7c4-40ce-a6c3-f2e24da3eaea
+    start_sha: 380ea7539678305889c2377a2cdc400bc6364af2
+    verify_baseline_failures: []
   - name: exported-check-enum
     state: pending
+    verify_baseline_failures: []
   - name: result-types-carry-record
     state: pending
+    verify_baseline_failures: []
   - name: gate-auto-recording
     state: pending
+    verify_baseline_failures: []
   - name: constructive-recording
     state: pending
+    verify_baseline_failures: []
   - name: cli-envelope
     state: pending
+    verify_baseline_failures: []
   - name: fabrictest-truthfulness-oracle
     state: pending
+    verify_baseline_failures: []
   - name: guard-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
