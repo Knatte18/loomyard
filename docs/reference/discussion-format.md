@@ -1,6 +1,15 @@
-# Discussion format — the `discussion.md` ↔ Plan contract
+# Discussion format — the `_lyx/discussion/` ↔ `Plan-Write` contract
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/discussion/` directory contract: the artifact the Discussion phase produces and the Plan producer consumes. Durable reference doc — kept, not deleted on landing — the loom analogue of [plan-format.md](plan-format.md).
+> **Status: Contract — pinned.** This doc pins the `_lyx/discussion/` directory contract: the artifact `Discussion-Write` produces and `Plan-Write` consumes. Durable reference doc — kept, not deleted on landing — the loom analogue of [plan-format.md](plan-format.md).
+
+## Producer and contract
+
+`_lyx/discussion/` is produced by `Discussion-Write`, validated by `Discussion-Validate` (see [Validation checks](#validation-checks-spec-for-the-future-validator) below, this file's own validation-checks section), and reviewed by `Discussion-Review`.
+
+- **`decision-record.md`** — Output, shape pinned in [`decision-record.md` shape](#decision-recordmd-shape) below.
+  Consumed as Input by `Plan-Sweep` and `Plan-Write`.
+- **`support-log.md`** — Output, shape pinned in [`support-log.md` shape](#support-logmd-shape) below.
+  Consumed as Input by `Discussion-Review` only.
 
 ## What it is, and who consumes it
 
