@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
@@ -90,6 +91,16 @@ func TestGate_Containment(t *testing.T) {
 			},
 		},
 		{
+			// Card 12 names "." explicitly, distinct from EqualToContainer: this exercises
+			// filepath.Join's Clean folding a literal "." component down to the container itself,
+			// which happens to produce the same resolved path as EqualToContainer but through the
+			// Clean path rather than an already-bare container string.
+			name: "DotOnly",
+			buildTarget: func(container string) string {
+				return filepath.Join(container, ".")
+			},
+		},
+		{
 			name: "AbsoluteOutsideContainer",
 			buildTarget: func(container string) string {
 				outside := t.TempDir()
@@ -130,6 +141,69 @@ func TestGate_Containment(t *testing.T) {
 		err := checkPathRequest(req)
 		// Containment passes; ownership then fails (not a hub) — proves containment did not refuse.
 		assertRefusalCheck(t, err, checkOwnership)
+	})
+
+	// Card 12 names "both platform separators": refuseUncontainedPath resolves through
+	// filepath.Rel, which is separator-native, so the forward slash and the backslash do not carry
+	// the same escaping meaning on every OS. Each subtest below asserts the behaviour that is
+	// actually correct for the separator it names, on whichever OS the test runs.
+	t.Run("EscapeWithForwardSlash", func(t *testing.T) {
+		container := t.TempDir()
+		sibling := filepath.Join(filepath.Dir(container), "sibling-fwd")
+		if err := os.Mkdir(sibling, 0o755); err != nil && !os.IsExist(err) {
+			t.Fatalf("mkdir sibling: %v", err)
+		}
+		// "/" is a path separator on every OS Go supports (including Windows), so this must
+		// escape the container everywhere.
+		target := container + "/../" + filepath.Base(sibling)
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtyScopeTracked(),
+		}
+		err := checkPathRequest(req)
+		assertRefusalCheck(t, err, checkContainment)
+	})
+
+	t.Run("EscapeWithBackslash", func(t *testing.T) {
+		container := t.TempDir()
+		// filepath.Join places one real "/" between container and the backslash sequence, so on a
+		// platform where "\" is not a separator, this names a single, literally-backslashed child
+		// of container rather than escaping it.
+		target := filepath.Join(container, `..\sibling-back`)
+		if runtime.GOOS == "windows" {
+			// "\" is a path separator on Windows: create the real sibling directory the resolved
+			// path points at, so the gate's absent-target no-op does not mask the containment check.
+			sibling := filepath.Join(filepath.Dir(container), "sibling-back")
+			if err := os.Mkdir(sibling, 0o755); err != nil && !os.IsExist(err) {
+				t.Fatalf("mkdir sibling: %v", err)
+			}
+		} else {
+			// On every other OS "\" is an ordinary filename character, not a separator, so the
+			// literal string names a single oddly-named child directory of container.
+			// Create that literal entry so the gate's absent-target no-op does not mask the check.
+			if err := os.Mkdir(target, 0o755); err != nil && !os.IsExist(err) {
+				t.Fatalf("mkdir literal target: %v", err)
+			}
+		}
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtyScopeTracked(),
+		}
+		err := checkPathRequest(req)
+		if runtime.GOOS == "windows" {
+			// "\" is a path separator on Windows, so this escapes the container just like "/".
+			assertRefusalCheck(t, err, checkContainment)
+		} else {
+			// The literal entry does not actually leave the container — containment must pass,
+			// and ownership fails next (not a hub), same as WithinContainerPassesContainment above.
+			assertRefusalCheck(t, err, checkOwnership)
+		}
 	})
 }
 
