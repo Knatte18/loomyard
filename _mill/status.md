@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-guard-and-docs
+phase: approved-gap-integration-tests
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-path-callsites  '2026-08-10T18:40:06Z'
 approved-clone-callsites  '2026-08-10T18:44:45Z'
 approved-branch-callsites  '2026-08-10T18:57:50Z'
 approved-guard-and-docs  '2026-08-11T03:43:19Z'
+approved-gap-integration-tests  '2026-08-11T04:04:52Z'
 ```
 
 ## Batches
@@ -79,8 +80,9 @@ batches:
     commit_sha: 4d72fa54fd5092f1661864577ac17a4512028648
     verify_baseline_failures: []
   - name: gap-integration-tests
-    state: running
+    state: approved
     implementer_session: 5b4f4b2e-ecb1-4e25-be04-af46346bb1a6
     start_sha: cc325b97f89defd225945a0ec19930011a8e810f
+    commit_sha: 47d231a7ba3ec00273abbac25de1d093035979ac
     verify_baseline_failures: []
 ```
