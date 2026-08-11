@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gap-integration-tests
+phase: holistic-reviewing
 slug: fabric-destructive-chokepoint
 branch: fabric-destructive-chokepoint
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-clone-callsites  '2026-08-10T18:44:45Z'
 approved-branch-callsites  '2026-08-10T18:57:50Z'
 approved-guard-and-docs  '2026-08-11T03:43:19Z'
 approved-gap-integration-tests  '2026-08-11T04:04:52Z'
+holistic-reviewing  '2026-08-11T04:05:15Z'
 ```
 
 ## Batches
