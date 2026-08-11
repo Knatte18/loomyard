@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-batcher-config-module
+phase: approved-call-site-migration
 slug: batcher-standalone-split
 branch: batcher-standalone-split
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r2  '2026-08-11T05:06:04Z'
 planned  '2026-08-11T05:06:14Z'
 implementing  '2026-08-11T05:06:47Z'
 approved-batcher-config-module  '2026-08-11T05:12:04Z'
+approved-call-site-migration  '2026-08-11T05:17:59Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: 3ee8da05e6ad991590ce2e59f1fb9083a96a5a37
     verify_baseline_failures: []
   - name: call-site-migration
-    state: running
+    state: approved
     implementer_session: fdc6f31b-f3e1-4b43-9002-dcbd2badd601
     start_sha: 9564254ce40fab440d8c9d14023b8ceb463cb9cc
+    commit_sha: c692d54c7fb7fd3241349453db452645c302f9d2
     verify_baseline_failures: []
   - name: documentation
     state: pending
