@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: gitexec-error-shape-decision
 branch: gitexec-error-shape-decision
 plan: _mill/plan
@@ -22,4 +22,13 @@ plan-review-r1  '2026-08-11T03:52:32Z'
 plan-fix-r1  '2026-08-11T03:52:32Z'
 plan-fix-r2  '2026-08-11T03:58:54Z'
 planned  '2026-08-11T03:59:02Z'
+implementing  '2026-08-11T03:59:26Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: verdict-record
+    state: pending
 ```
