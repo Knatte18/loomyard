@@ -6,6 +6,7 @@ slug: fabric-live-state-harness
 branch: fabric-live-state-harness
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'fabric: live-state integration harness (slice 13)'
 task_description: |
   fabric: live-state integration harness (slice 13)
@@ -29,19 +30,29 @@ implementing  '2026-08-11T10:52:26Z'
 ```yaml
 batches:
   - name: enforcement-and-extraction
-    state: pending
+    state: running
+    implementer_session: f2c07416-cc62-4138-a66a-b12e9aea25f2
+    start_sha: 25db31fc7c284d4fd34cc1c4e760cd659b8f3815
+    verify_baseline_failures: []
   - name: package-skeleton-and-hub-factory
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: manifest-capture-and-diff
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: refusal-expectation-helpers
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: hostile-state-matrix
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: verb-table-and-expectations
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: cross-product-driver
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: sabotage-proof-and-docs
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
 ```
