@@ -129,10 +129,12 @@
 //     `go test -tags integration ./internal/fabricengine/ -run TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut`:
 //     it failed with "Cleanup reported/handled primary weft branch \"main-weft\"; want not reported (live
 //     pair)" and "main-weft branch deleted after force Cleanup with primary parked elsewhere; want
-//     intact (F1 regression)". fabrictest's own clean/Cleanup/"." cell exercises Cleanup's ordinary
-//     orphan-deletion path (cleanupCase's own deliberately-orphaned branch) but does not itself move the
-//     prime warp worktree off its default branch, so it does not independently exercise this defence;
-//     the hermetic regression test above is the tree's live proof for this row.
+//     intact (F1 regression)". fabrictest's own clean/Cleanup/"." cell exercises both Cleanup's ordinary
+//     orphan-deletion path (cleanupCase's own deliberately-orphaned branch) AND this defence
+//     independently: cleanupCase's Arrange also moves the prime pair off the hub's default branch
+//     (mirroring the hermetic fixture above), and its Effect asserts the primary weft branch still
+//     exists afterward, so this row now has two independent live proofs rather than only the hermetic
+//     one.
 //   - (5) dirtyWarpUntracked x Prune x "." -- R3 (found by the orchestrator), prune removed a path git
 //     had just refused. Recorded as NOT independently provable via this exact (state, verb, anchor)
 //     triple: pruneCase's own StateTarget.WarpCheckout resolves to the hub's PRIME worktree, a path

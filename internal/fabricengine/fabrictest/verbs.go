@@ -714,6 +714,14 @@ func pruneCase() VerbCase {
 // cleanupCase builds Topology.Cleanup's VerbCase.
 // Arrange produces an orphan managed branch: a pair is created, then its warp side (worktree and
 // branch) is torn down by hand, leaving the weft branch with no live warp sibling.
+// Arrange also moves the prime pair off the hub's default branch, exactly as
+// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout (cleanup_primary_integration_test.go) does: the
+// <Hub>/_board worktree stays on the original branch, which is what fabricengine.primaryWeftBranch
+// reads to determine the repo's primary weft line (cleanup.go:206), so it alone still records the
+// primary after the move. Without this, branch-space liveness alone would still protect the primary
+// weft branch (some warp worktree is checked out on it), leaving this cell unable to independently
+// exercise cleanup.go's own primaryWeft carve-out or the gate's primaryWeftBranch check -- both of
+// which only matter once liveness alone stops protecting the primary line.
 //
 // Run calls Cleanup with force=true, not the force=false this batch's own dirtiness-scope table
 // otherwise describes: raddleFoldedBack (cleanup.go:91) unconditionally returns false today, so
@@ -726,6 +734,8 @@ func cleanupCase() VerbCase {
 		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
 			tb.Helper()
 
+			original := currentBranchName(tb, h.PrimeWorktree())
+
 			slug := "verb-cleanup-owner"
 			AddPair(tb, h, slug)
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairWarpWorktree(slug))
@@ -735,8 +745,16 @@ func cleanupCase() VerbCase {
 			// still on it after only the warp side is torn down.
 			mustGit(h.PrimeWeft(), "worktree", "remove", "--force", h.PairWeftSibling(slug))
 
+			// Move the prime pair off the default branch. The _board worktree (never touched here)
+			// keeps recording "original" as the primary warp branch, so the primary weft branch is
+			// now neither the checked-out weft worktree's own branch nor named by any live pair --
+			// exactly the condition that makes Cleanup's primaryWeft carve-out load-bearing.
+			mustGit(h.PrimeWorktree(), "checkout", "-b", "verb-cleanup-alt")
+			mustGit(h.PrimeWeft(), "checkout", "-b", fabricengine.WeftBranchName("verb-cleanup-alt"))
+
 			return VerbFixture{
-				Slug: slug,
+				Slug:           slug,
+				OriginalBranch: original,
 				Target: StateTarget{
 					WarpCheckout: h.PrimeWorktree(),
 					WeftCheckout: h.PairWeftSibling(slug),
@@ -756,6 +774,14 @@ func cleanupCase() VerbCase {
 					orphan := fabricengine.WeftBranchName(f.Slug)
 					if branchExists(h.PairWeftSibling(f.Slug), orphan) {
 						tb.Errorf("Cleanup left orphan branch %q behind", orphan)
+					}
+					// Card 16's clean-state effect: "orphan managed branches gone, primary weft
+					// branch intact." Arrange moved the prime pair off f.OriginalBranch precisely so
+					// this assertion is independently provable here rather than only in
+					// fabricengine_test's hermetic TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout.
+					primary := fabricengine.WeftBranchName(f.OriginalBranch)
+					if !branchExists(h.PrimeWeft(), primary) {
+						tb.Errorf("Cleanup deleted the primary weft branch %q", primary)
 					}
 				},
 			}
