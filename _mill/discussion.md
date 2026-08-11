@@ -18,7 +18,7 @@ It is a gap in what the hermetic suite is *able* to express: it never builds a r
 The `//go:build integration` tier covers that ground today, but per-verb and ad hoc — only where someone thought to write a test.
 That is precisely how `remove ..` escaped four consecutive review rounds before destroying an entire hub and then reporting `{"error":"failed to check worktree status","ok":false}` — claiming it had done nothing.
 
-**Why now:** slice 12 (`fabric-destructive-chokepoint`) landed 2026-08-11 at `HEAD~1`, routing roughly 29 destructive call sites through one four-check gate in `internal/fabricengine/destroy.go`.
+**Why now:** slice 12 (`fabric-destructive-chokepoint`) landed 2026-08-11 as `3184cd5a`, routing roughly 29 destructive call sites through one four-check gate in `internal/fabricengine/destroy.go`.
 Slice 12's own static guard proves *no call site bypasses the gate*.
 Nothing yet proves *the gate behaves correctly once reached*.
 That is this task, and it is the reason the fabric chain is serial: cells asserting on refusal behaviour could not have been written before the gate that produces that behaviour existed.
@@ -274,7 +274,7 @@ That property is what the current per-verb integration tests do not have.
 
 ## Technical context
 
-**The gate this harness validates** — `internal/fabricengine/destroy.go`, landed by slice 12 at `HEAD~1` (`3184cd5a`).
+**The gate this harness validates** — `internal/fabricengine/destroy.go`, landed by slice 12 as `3184cd5a`.
 
 - One error type: `destructiveRefusal{Check, What, Target, Reason}`, unexported.
   `Error()` renders `refusing to <what>: <check> check failed for <target>: <reason>`.
@@ -353,7 +353,9 @@ From `CONSTRAINTS.md`:
 - **lyxtest Leaf Invariant** — `lyxtest` must not import `fabricengine`.
   Machine-enforced by `internal/lyxtest/leaf_enforcement_test.go`.
   This is why the factory lives in `fabrictest`.
-- **Fabric Destruction Chokepoint Invariant** — `destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive; banned bypass tokens include `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `fslink.Remove(`, `createdToken{`.
+- **Fabric Destruction Chokepoint Invariant** — `destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive.
+  The banned bypass tokens are all eight of `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
+  The two `ResetHard` tokens matter here specifically: `Fabric.Pull`'s `ResetHard` is what tranche 1's `Pull` cell exercises, and it is the primitive R2's defect discarded uncommitted tracked warp work through on every advance path.
   **This does not apply to `fabrictest`** (a different package), but states that need to plant hostile filesystem shapes should still prefer `fslink` and ordinary `os` calls in test code without pretending to be gated.
   Enforced by `cmd/lyx/destructiveguard_test.go`.
 - **Cwd Resolution Invariant** — `internal/lyxcwd` alone owns cwd resolution.
