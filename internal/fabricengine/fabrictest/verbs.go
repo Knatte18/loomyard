@@ -218,10 +218,10 @@ type Omission struct {
 // each grounded in a verified read of the production call site it names, never in what a run happened
 // to produce.
 var Omissions = []Omission{
-	{Verb: "Cleanup", State: "trackedSymlinkAtWiredPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:275), branch-shaped; no structural state names a path it acts on"},
-	{Verb: "Cleanup", State: "foreignDirAtFabricOwnedPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:275), branch-shaped; no structural state names a path it acts on"},
-	{Verb: "Cleanup", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:275), branch-shaped; no structural state names a path it acts on"},
-	{Verb: "Cleanup", State: "staleWiredJunction", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:275), branch-shaped; no structural state names a path it acts on"},
+	{Verb: "Cleanup", State: "trackedSymlinkAtWiredPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:283), branch-shaped; no structural state names a path it acts on"},
+	{Verb: "Cleanup", State: "foreignDirAtFabricOwnedPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:283), branch-shaped; no structural state names a path it acts on"},
+	{Verb: "Cleanup", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:283), branch-shaped; no structural state names a path it acts on"},
+	{Verb: "Cleanup", State: "staleWiredJunction", Reason: "Cleanup's only gate call is deleteBranch (cleanup.go:283), branch-shaped; no structural state names a path it acts on"},
 	{Verb: "Checkout", State: "trackedSymlinkAtWiredPath", Reason: "Checkout's only gate call is deleteBranch (checkout.go:195-203), branch-shaped; no structural state names a path it acts on"},
 	{Verb: "Checkout", State: "foreignDirAtFabricOwnedPath", Reason: "Checkout's only gate call is deleteBranch (checkout.go:195-203), branch-shaped; no structural state names a path it acts on"},
 	{Verb: "Checkout", State: "unrelatedGitCloneAtWeftNamedPath", Reason: "Checkout's only gate call is deleteBranch (checkout.go:195-203), branch-shaped; no structural state names a path it acts on"},
@@ -534,7 +534,7 @@ func addCase() VerbCase {
 				// creation and wiring; the broken-remote arrangement then fails the push
 				// unconditionally, and rollbackAdd reverts every step it can.
 				// The warp branch is the one artifact rollback cannot revert: rollbackAdd's own
-				// branch-delete step (add.go:286-308) gates on ownedManagedBranch, whose
+				// branch-delete step (add.go:287-308) gates on ownedManagedBranch, whose
 				// resolveManagedBranch (destroy.go:471-499) requires either a non-empty
 				// BranchPrefix or a "-weft" suffix — this hub's Topology carries an empty
 				// BranchPrefix (fabricengine.Config{}), so a bare warp branch name never matches
