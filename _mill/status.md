@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: planned
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
 plan: _mill/plan
@@ -22,4 +22,5 @@ planning  '2026-08-11T15:05:45Z'
 plan-review-r1  '2026-08-11T15:14:40Z'
 plan-fix-r1  '2026-08-11T15:16:18Z'
 plan-fix-r2  '2026-08-11T15:23:18Z'
+planned  '2026-08-11T15:23:30Z'
 ```
