@@ -31,7 +31,7 @@ import (
 var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-batch record for this batch")
 
 // RecordDeps carries every seam RecordBatch needs, so a test can fake each one independently:
-// Batches is the batchifier-derived execution batches (see internal/batcher.Select) `run` computed
+// Batches is the batchifier-derived execution batches (see RunDeps.Batcher) `run` computed
 // once at entry;
 // State is the already-loaded run state RecordBatch reads and mutates;
 // Config is the loaded webster.yaml;

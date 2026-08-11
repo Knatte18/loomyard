@@ -17,8 +17,8 @@ import (
 )
 
 // Config represents the resolved webster.yaml configuration: the two role model-specs (see
-// docs/reference/model-spec.md's "Roles that use this notation" section), the batchifier selection,
-// and the numeric knobs the Master session's bracket verbs consult.
+// docs/reference/model-spec.md's "Roles that use this notation" section) and the numeric knobs the
+// Master session's bracket verbs consult.
 type Config struct {
 	// Master is the model-spec for the long-lived Master session that reads
 	// the plan once and forks one implementer per batch in-session.
@@ -26,12 +26,6 @@ type Config struct {
 	// Recovery is the model-spec for the cold, fresh recovery strand
 	// recover-batch spawns when a fork reports stuck or writes no report.
 	Recovery string `yaml:"recovery"`
-
-	// Batcher names the active batchifier (see internal/batcher.Select) that
-	// groups the plan's flat card list into execution batches. Empty
-	// resolves to batcher.DefaultName (the identity batchifier — one card,
-	// one batch) at the cli wiring site.
-	Batcher string `yaml:"batcher"`
 
 	// SelfFixCap is the maximum number of self-fix attempts a forked
 	// implementer makes before reporting stuck.

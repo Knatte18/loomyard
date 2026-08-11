@@ -155,7 +155,7 @@ Verbs:
 				return nil
 			}
 
-			activeBatcher, err := batcher.Select(websterCfg.Batcher)
+			activeBatcher, err := batcher.Active(layout.AnchorPath())
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)

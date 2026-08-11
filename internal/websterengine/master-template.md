@@ -34,7 +34,7 @@ You never run git against `_lyx`; it is committed for you.
 {{.batch_index}}
 
 This ordered list is the plan's own flat card list — every card, in declared order, one line each: number, slug, one-line intent.
-It is your navigation source, not the execution unit: `lyx webster` groups this flat list into execution batches via the plan's configured batchifier (one card per batch under the default identity batchifier) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
+It is your navigation source, not the execution unit: `lyx webster` groups this flat list into execution batches via `batcher.yaml`'s configured batchifier (one card per batch under the default identity batchifier) — you drive the loop below by BATCH number, not by reasoning about grouping yourself.
 Drive it STRICTLY in order — batch N assumes every batch before it is already committed;
 there is no DAG here to reorder around,
 and no batch is ever skipped or reordered because it "looks independent."

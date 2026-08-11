@@ -11,7 +11,7 @@ Everything about *how* webster reaches those shapes — the fork mechanism, the 
 ## Plan input
 
 Webster consumes the pinned flat card-list [plan-format](plan-format.md) via `internal/planparser`, the sole parser of `_lyx/plan/`.
-webster groups a plan's cards into execution batches via a config-selected batcher.
+webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
 
 ## `_lyx/webster/` as an ownership boundary
 

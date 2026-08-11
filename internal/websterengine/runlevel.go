@@ -44,6 +44,12 @@ const runLockName = "run.lock"
 // mid-run and owns the state — so webstercli must not run its own exit-time fabric backstop for it.
 var ErrRunBusy = errors.New("webster: run is already in progress")
 
+// ErrNilBatcher marks Run's refusal when RunDeps.Batcher was never populated
+// by the caller. Population is webstercli's obligation (PersistentPreRunE
+// resolves it via batcher.Active); a nil interface here would panic inside
+// Batch rather than surface a diagnosable error.
+var ErrNilBatcher = errors.New("webster: RunDeps.Batcher not populated")
+
 // RunActive reports whether a live `lyx webster run` currently holds scratchDir's run.lock.
 // It probes non-blocking: if the lock can be acquired, no run owns it and the probe returns false;
 // otherwise it returns true.
@@ -92,7 +98,8 @@ type MasterStarter interface {
 // RunDeps carries every seam Run needs for testing.
 // Starter spawns Master; Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
 // PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir, WorktreeRoot are lyxcwd- resolved paths;
-// Config and Roles carry the loaded configuration and pre-flight-resolved role->model-spec map.
+// Config, Roles, and Batcher carry the loaded configuration, pre-flight-resolved role->model-spec
+// map, and CLI-pre-resolved active batchifier.
 type RunDeps struct {
 	Starter    MasterStarter
 	Reed       shuttleengine.ReedOps
@@ -101,6 +108,10 @@ type RunDeps struct {
 	Layout     *lyxcwd.Location
 	Roles      map[Role]modelspec.Resolved
 	Config     Config
+	// Batcher is the CLI-resolved active batchifier (batcher.Active),
+	// populated by webstercli's PersistentPreRunE before Run is called. Run
+	// refuses with ErrNilBatcher when it is nil.
+	Batcher    batcher.Batcher
 	PlanDir    string
 	WebsterDir string
 	ReportsDir string
@@ -324,11 +335,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("webster: plan validation refused this run (%d finding(s)): %s", len(findings), strings.Join(msgs, "; "))
 	}
 
-	active, err := batcher.Select(deps.Config.Batcher)
-	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: %w", err)
+	if deps.Batcher == nil {
+		return RunResult{}, ErrNilBatcher
 	}
-	batches := active.Batch(plan.Cards)
+	batches := deps.Batcher.Batch(plan.Cards)
 
 	// nothing-to-build is a malformed plan, never a vacuous outcome: done —
 	// webster's own pre-flight over the batchifier's own output, per

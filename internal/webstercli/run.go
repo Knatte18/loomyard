@@ -62,6 +62,7 @@ Example:
 				Layout:       c.layout,
 				Roles:        c.roles,
 				Config:       c.cfg,
+				Batcher:      c.batcher,
 				PlanDir:      c.planDir,
 				WebsterDir:   c.websterDir,
 				ReportsDir:   c.reportsDir,

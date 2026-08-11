@@ -58,7 +58,6 @@ func TestConfigTemplate_RoundTripsThroughLoadConfig(t *testing.T) {
 	want := websterengine.Config{
 		Master:             "sonnet",
 		Recovery:           "opus[effort=high]",
-		Batcher:            "",
 		SelfFixCap:         2,
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
@@ -103,7 +102,6 @@ func TestLoadConfig_OverridesRoundTrip(t *testing.T) {
 	baseDir := t.TempDir()
 	override := `master: opus[effort=high]
 recovery: opus[effort=max]
-batcher: identity
 self_fix_cap: 5
 master_timeout_min: 120
 recovery_timeout_min: 30
@@ -122,9 +120,6 @@ poll_wait_s: 60
 	if cfg.Recovery != "opus[effort=max]" {
 		t.Errorf("Recovery = %q, want %q", cfg.Recovery, "opus[effort=max]")
 	}
-	if cfg.Batcher != "identity" {
-		t.Errorf("Batcher = %q, want %q", cfg.Batcher, "identity")
-	}
 	if cfg.SelfFixCap != 5 {
 		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 5)
 	}
@@ -136,7 +131,6 @@ func TestLoadConfig_BadRoleGrammarNamesTheKey(t *testing.T) {
 	// a spec string.
 	badRole := `master: sonnet
 recovery: "opus "
-batcher: identity
 self_fix_cap: 2
 master_timeout_min: 480
 recovery_timeout_min: 60
