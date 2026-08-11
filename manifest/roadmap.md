@@ -9,10 +9,10 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **fabric: crucible follow-ups — slices 13-15** — the three remaining defect *shapes* the fabric v2 crucible campaign (slice 11) surfaced but did not close, each filed by the campaign orchestrator as a GitHub issue (#144, #143, #148) and folded in here.
+1. **fabric: crucible follow-ups — slices 14-15** — the two remaining defect *shapes* the fabric v2 crucible campaign (slice 11) surfaced but did not close, each filed by the campaign orchestrator as a GitHub issue (#143, #148) and folded in here.
    The campaign ran six serial model-rotating review+fix rounds and produced 81 findings, 9 BLOCKING, **8 of them data-loss** — and the finding count per round never converged, because it was draining a class instance by instance.
    Every individual defect is fixed;
-   the shapes that keep producing them are not, except slice 12's — see Done below for the root-cause fix.
+   the shapes that keep producing them are not, except slices 12's and 13's — see Done below for the root-cause fix and the harness that validates it.
    Slice numbers are assigned in build order.
    **Slice 12, the root-cause fix, has landed** — see Done below: one containment/ownership/dirtiness/force gate every destructive operation routes through, with a `CONSTRAINTS.md` invariant and a static bypass guard in the same commit.
    It was the only slice that stops anything being destroyed;
@@ -21,13 +21,12 @@ Committed to, in this order, next.
    An earlier draft put the harness first on the grounds that the gate is a consolidating refactor with no tier able to observe destruction — **that was wrong**,
    and the design doc records why rather than deleting it: the campaign left a named, sabotage-proved regression test for every one of the eight defects across ~29 destructive-verb integration files, which is exactly the cover a consolidating refactor needs,
    and the gate's own completeness proof is a static tree walk needing no fixtures at all.
-   **Slice 13** (the live-state integration harness against real git in dirty and hostile state) is next and depends on the slice that has landed, slice 12: its cells assert on refusal behaviour — that a verb refuses instead of destroying, and which check refused — which is exactly what slice 12 changed, so cells written before it would have been rewritten after.
-   Its first job is to validate the gate, its second to find instance number nine.
-   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is after that, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction,
+   **Slice 13, the live-state integration harness against real git in dirty and hostile state, has also landed** — see Done below: it validated slice 12's gate live and left a nine-cell sabotage proof recording that each of the eight evidence-table defects still fails on demand.
+   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is next, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction,
    and its step 5 already landed in each verb's existing error shape, to be generalised here.
    **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last — logically independent of the other two, but sequenced behind them anyway.
-   The chain among the three remaining slices is strict and total: `13 → 14 → 15`, **one fabric slice in flight at a time**.
-   Two reasons, and both must hold before any two overlap: logically each slice asserts on behaviour the previous one changes, and mechanically all three edit `internal/fabricengine` while 14 rewrites it package-wide (every verb's result path).
+   The chain among the two remaining slices is strict and total: `14 → 15`, **one fabric slice in flight at a time**.
+   Two reasons, and both must hold before any two overlap: logically each slice asserts on behaviour the previous one changes, and mechanically both edit `internal/fabricengine` while 14 rewrites it package-wide (every verb's result path).
    An earlier draft declared 15 free to pick up at any point on its logical independence alone — **that was wrong**: logical independence does not make it safe to edit the same package alongside a package-wide refactor, and 15 is LOW and self-healing, so it loses nothing by waiting.
    Placed ahead of `Shed` because fabric is the module every other worktree's work stands on,
    and this is a data-loss class in it — not because `Shed` slipped;
@@ -43,7 +42,7 @@ Committed to, in this order, next.
    The real cost is migrating whichever assertions break on the true hub shape,
    and each such break marks a test currently asserting against an invented one.
    Windows is unmeasured and is the one open question.
-   Builds on the fabric campaign's slice 13 above, which creates the `fabrictest` package this needs as a landing zone.
+   Builds on the fabric campaign's landed slice 13 (see Done below), which created the `fabrictest` package this needs as a landing zone.
    See [designs/lyxtest-real-hubs.md](designs/lyxtest-real-hubs.md).
 
 1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
@@ -100,7 +99,7 @@ No build order is implied between these items.
 
 1. **fabric: Windows path behaviour is unverified after six hardening rounds** — the platform sibling of `Real-Linux validation` above.
    All six crucible rounds ran on Linux, so `lyxcwd.ValidateAnchorRel`'s volume-rooted rejection, `excludePatternFor`'s separator handling, `lyxcwd.samePath`'s case-insensitive branch and every line of `internal/fslink`'s junction path have never executed — and the campaign's eight data-loss defects all lived exactly where platform behaviour lives (path composition, link creation, filesystem semantics).
-   Someday rather than Planned because closing it needs a Windows host rather than a design, and because it gets much cheaper once Planned slice 13's live-state harness exists: at that point it is largely a matter of running the harness there.
+   Someday rather than Planned because closing it needs a Windows host rather than a design — slice 13's live-state harness now exists (see Done below) carrying no `runtime.GOOS` skip anywhere in its states, cells, or helpers, so closing this gap is now largely a run-and-fix exercise on a Windows host rather than new design work.
    Deciding that Windows is not a goal is a legitimate resolution — but then `internal/fslink`'s existence and CLAUDE.md's "junctions are the only link type guaranteed everywhere" claim must be retired in the same breath.
    See [designs/fabric-windows-verification.md](designs/fabric-windows-verification.md).
 
@@ -192,7 +191,14 @@ No build order is implied between these items.
 
 1. **fabric: crucible follow-ups — slice 12** — the root-cause fix for the eight data-loss defects the v2 crucible campaign (slice 11) surfaced: one containment/ownership/dirtiness/force gate (`internal/fabricengine/destroy.go`) every destructive operation now routes through, landed with a `CONSTRAINTS.md` invariant (the Fabric Destruction Chokepoint Invariant) and a static bypass guard (`cmd/lyx/destructiveguard_test.go`) in the same commit.
    Dirtiness scope is a caller-declared member of a closed sum type, and every one of the roughly 29 converted call sites kept the scope it already had.
-   Slices 13-15 remain — see Planned above.
+   Slices 14-15 remain — see Planned above.
+
+1. **fabric: crucible follow-ups — slice 13** — the live-state integration harness (`internal/fabricengine/fabrictest`, `//go:build integration`) that validates slice 12's gate against real cloned hubs in dirty and hostile on-disk state, and finds instances beyond the eight the campaign already found.
+   The hub factory drives real clones through the extracted `fabriccli.CloneAndWire`, never a hand-assembled fixture;
+   the ten-state × nine-verb × two-anchor cross product runs with prefix-rooted manifest permits, so a cell asserts "the operator's content is still on disk," not merely "the verb returned an error";
+   the two refusal-expectation helpers pin a refusal to the exact layer that produced it, gate versus pre-flight;
+   and a nine-cell sabotage proof, recorded in `doc.go`, confirms each of the eight evidence-table defects still fails on demand when its guarding check is neutered.
+   Full task body lives at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
 
 1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface `gitrepo` uses (reads and writes, including the `Push` rebase-retry path).
    Recommendation: ADOPT-PARTIAL — the read surface, both commit methods, and `SetSnapshotSHA` migrate cleanly;
