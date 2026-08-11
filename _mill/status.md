@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: format-docs-name-producers
 branch: format-docs-name-producers
 plan: _mill/plan
@@ -24,4 +24,15 @@ plan-fix-r1  '2026-08-11T04:51:32Z'
 plan-fix-r2  '2026-08-11T05:01:35Z'
 plan-fix-r3  '2026-08-11T05:09:55Z'
 planned  '2026-08-11T05:10:14Z'
+implementing  '2026-08-11T05:20:33Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: contract-docs-producer-model
+    state: pending
+  - name: producer-table-and-rename-sweep
+    state: pending
 ```
