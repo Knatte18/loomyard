@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: batcher-standalone-split
 branch: batcher-standalone-split
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-batcher-config-module  '2026-08-11T05:12:04Z'
 approved-call-site-migration  '2026-08-11T05:17:59Z'
 approved-documentation  '2026-08-11T05:22:20Z'
 holistic-reviewing  '2026-08-11T05:22:45Z'
+holistic-approved  '2026-08-11T05:25:27Z'
 ```
 
 ## Batches
