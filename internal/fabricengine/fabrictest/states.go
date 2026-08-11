@@ -282,7 +282,10 @@ func trackedSymlinkAtWiredPathState() State {
 			if err != nil {
 				tb.Fatalf("trackedSymlinkAtWiredPath: relativize %s against %s: %v", target.StructuralPath, target.WarpCheckout, err)
 			}
-			mustGit(target.WarpCheckout, "add", rel)
+			// WireJunctions seeded this exact path into .git/info/exclude so fabric's OWN junction
+			// never shows as untracked; "-f" is what an operator committing a link of their own at that
+			// same path would need too, and is exactly the shape this state models.
+			mustGit(target.WarpCheckout, "add", "-f", rel)
 			mustGit(target.WarpCheckout, "commit", "-m", "fabrictest: track operator-owned link at wired path")
 
 			assertLinkTarget(tb, target.StructuralPath, operatorOwned)
