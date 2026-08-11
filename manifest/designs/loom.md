@@ -47,16 +47,17 @@ It is a generic engine that walks one ordered, flat list of **producers**, each 
 | # | Producer | Type | Input | Output |
 |---|---|---|---|---|
 | 1 | `Preflight` | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
-| 2 | `Discussion-Write` | LLM | — (starting point) | `discussion.md`, shape: `discussion-format.md` |
-| 3 | `Discussion-Review` | LLM/`perch` | `discussion.md` → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
-| 4 | `Plan-Sweep` | mechanical | `discussion.md` (approved) | scout inventory (internal artifact, not gated) |
-| 5 | `Plan-Write` | LLM | `discussion.md` + `Plan-Sweep`'s inventory | `plan.md`, shape: `plan-format.md` |
-| 6 | `Plan-Review-Gate` | mechanical | `plan.md` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
-| 7 | `Plan-Review` | LLM/`perch` | `plan.md` → `plan-format.md` | verdict + review file |
-| 8 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 9 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
-| 10 | `Webster-Review` | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 11 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+| 2 | `Discussion-Write` | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape: `discussion-format.md` |
+| 3 | `Discussion-Validate` | mechanical | `_lyx/discussion/` → `discussion-format.md`'s validation checks | pass/fail |
+| 4 | `Discussion-Review` | LLM/`perch` | `_lyx/discussion/` (both files) → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
+| 5 | `Plan-Sweep` | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
+| 6 | `Plan-Write` | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape: `plan-format.md` |
+| 7 | `Plan-Validate` | mechanical | `_lyx/plan/` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 8 | `Plan-Review` | LLM/`perch` | `_lyx/plan/` → `plan-format.md` | verdict + review file |
+| 9 | `Batchifier` | mechanical | `plan.md` (approved) + `webster.yaml`'s `batcher:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 10 | `Webster` | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 11 | `Webster-Review` | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 12 | `Finalize` | mechanical (mostly) | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/status.json` exists and is a coherent fresh seed (no half-finished prior run).
