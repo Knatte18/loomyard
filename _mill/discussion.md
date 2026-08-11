@@ -33,6 +33,8 @@ Both predecessors are merged;
 - Every mutating verb's result type gains the record, and every failure return in those verbs changes from `return ZeroResult{}, err` to `return res, err` with `res` carrying whatever was recorded before the failure.
 - The mutating verbs are: `clone`, `add`, `remove`, `checkout`, `prune`, `cleanup`, `unwire`, `reconcile`, `commit`, `push`, `pull`, `sync`.
 - `internal/output` gains one additive error-path function that can carry fields alongside `ok:false` and `error` — today `output.Err` can carry nothing but the message.
+- Recording of the CLI-layer mutations in `CloneAndWire` and `runReconcile`, whose five-plus zero-result returns become populated returns (see the CLI-layer composition rule under Technical context).
+- An exported `fabricengine.RefusalOf(err) (Refusal, bool)` accessor, since `*destructiveRefusal` is unexported and `fabriccli` cannot `errors.As` it.
 - `internal/fabriccli` emits `mutations` on both the success and the failure path, plus `partial: true` when an error is returned with a non-empty record, plus a structured `refusal: {check, what, target, reason}` object when the error carries a `*destructiveRefusal`.
 - A new **Mutation Record Invariant** in `CONSTRAINTS.md`, machine-guarded by an extension to `cmd/lyx/destructiveguard_test.go`.
 - Truthfulness assertions across the existing `internal/fabricengine/fabrictest` matrix: every cell cross-checks the result envelope's record against the manifest diff.
@@ -92,6 +94,7 @@ Both predecessors are merged;
   | `file_written` | verb success sites (`.git/info/exclude`, config rewrites) | |
   | `push_spawned` | `sync`'s detached-push call site | a push was *launched*, not observed — see the composition section |
   | `worktree_switched` | `Checkout`'s two `git switch` sites (`checkout.go:82-91,131-148`) | `Target` is the switched worktree root, `Detail` the branch switched to |
+  | `repo_advanced` | `PullWeft` success (`pull.go:185-190`) and the warp advance | `Target` is the advanced worktree root, `Detail` the new tip when known |
 
   Seven are auto-recorded inside `destroy.go` (`path_removed`, `worktree_removed`, `link_removed`, `branch_deleted`, `worktree_reset`, `dir_created`, `worktree_created`);
   the remaining six are hand-recorded at their success sites, since no chokepoint covers them.
@@ -147,13 +150,28 @@ Both predecessors are merged;
   **Reserved keys:** `ok` and `error` are injected by the function *after* the caller's fields are laid down, so they always win over a caller-supplied key of the same name — matching `Ok`'s existing in-place `fields["ok"] = true` mutation rather than inventing a second collision policy. Fabric never supplies either key itself;
   the rule exists so the envelope's two invariant fields cannot be shadowed by accident.
 - **`partial` derives from exactly one rule:** `error ≠ nil ∧ record non-empty`. Nothing else sets it.
-  `PartialCommitError` and `PartialPullError` are **not** a second trigger — they are errors like any other, and when either is returned the record is non-empty anyway (a landed commit is a recorded `commit_created`), so they satisfy the one rule without needing a special case. `PartialPullError.Stage` surfaces as the `Detail` of the relevant mutation rather than as a top-level envelope field, keeping the envelope's key set fixed across verbs.
+  `PartialCommitError` and `PartialPullError` are **not** a second trigger — they are errors like any other, and the one rule already covers them **provided the mutation they report is actually recorded**. `PartialPullError.Stage` surfaces as the `Detail` of the relevant mutation rather than as a top-level envelope field, keeping the envelope's key set fixed across verbs.
+
+  **This is exactly where an earlier version of this rationale was wrong, and the correction matters.** The claim that a `PartialPullError` always has a non-empty record "because a landed commit is a recorded `commit_created`" is false for that type. `Pull` sets `result.WeftPulled = true` after the weft ff-pull (`pull.go:190`) and can then return `&PartialPullError{Stage: "unpushed-check"}` or `{Stage: "fetch"}` (`:193,197`) having created **no commit and executed no gate primitive** — so under the round-2 kind set the record was empty and `partial` would have been `false` while the weft worktree had genuinely been advanced.
+  That is this slice's own defect class, reproduced inside the very verb that produced defect 1.
+  The `repo_advanced` kind closes it: the weft advance is recorded at `PullWeft`'s success, so the record is non-empty on every `PartialPullError` path and `partial` is correctly `true`. `partial`'s derivation itself needs no special case — the kind set simply has to be complete enough for the rule to be true.
 - **This supersedes requirement 2 of the design doc, and says so.** `manifest/designs/fabric-crucible-followups.md:406` states requirement 2 as "`ok` becomes a statement about that record plus the error, not a synonym for 'no error was returned'". This decision deliberately does the opposite for `ok` itself, and satisfies the *intent* behind requirement 2 — that the envelope as a whole stop lying — through `mutations` and `partial` instead. Redefining `ok` in place would silently change the meaning of a field every existing consumer already reads, which trades one dishonesty for another. That doc line is amended in the same commit as the `:419` consumer-claim correction, so the design doc and the implementation do not disagree.
 - **Rejected:** a `status` string (`ok`/`partial`/`refused`/`failed`) with `ok` derived from it (richer and self-describing, but a second source of truth alongside `ok` invites the two to disagree, which is the original defect in a new costume); leaving `internal/output` untouched and having `fabriccli` emit its own envelope (leaves the shared package alone, at the cost of fabric's JSON drifting from every other module's plus a second envelope implementation to keep in sync).
 
 ### structured-refusal
 
-- **Decision:** when the returned error carries a `*destructiveRefusal` (found via `errors.As`), the envelope adds a `refusal: {check, what, target, reason}` object alongside the existing flattened `error` string. The `error` string is retained unchanged.
+- **Decision:** when the returned error carries a gate refusal, the envelope adds a `refusal: {check, what, target, reason}` object alongside the existing flattened `error` string. The `error` string is retained unchanged.
+- **Access mechanism — an exported accessor, not an exported struct.** `*destructiveRefusal` is unexported (`destroy.go:62`), so `internal/fabriccli` cannot name it and therefore cannot `errors.As` it — this is the same wall that forced `fabrictest` into substring matching (`fabrictest/refusal.go:46-49`). `fabricengine` gains:
+
+  ```go
+  func RefusalOf(err error) (Refusal, bool)
+  ```
+
+  with an exported `Refusal{Check Check; What, Target, Reason string}` value type. `RefusalOf` performs the `errors.As` against the unexported type internally and converts;
+  `destructiveRefusal` itself stays unexported.
+  All four fields cross the boundary, which is exactly the set the `refusal` object emits.
+  **Rejected:** exporting `destructiveRefusal` directly (fewer moving parts, but it publishes a mutable pointer type whose identity callers could start switching on, when the envelope only ever needs its four values).
+- **Bonus, not required:** `fabrictest`'s `RefusedByGate` can drop substring matching in favour of `RefusalOf`, which is strictly more precise. Worth doing in this slice since the accessor exists, but the cross-check does not depend on it.
 - **Rationale:** `*destructiveRefusal` (`destroy.go:62`) already holds `Check`, `What`, `Target` and `Reason` as separate fields;
   `Error()` flattens all four into one string, and `output.Err` then re-flattens that into the envelope. Un-flattening it is the second half of the honesty story — "three pairs removed, then the ownership check refused on *this* target" is exactly the sentence the task wants representable, and every field needed already exists.
 - **Rejected:** flattened-only (smallest surface, but hands the operator a sentence to parse instead of a field to read — precisely the asymmetry `PruneEntry` already fixed at the per-entry level); dropping the flattened `error` when a refusal is present (no duplicated information, but breaks the "every failure carries an `error` string" contract every other module's envelope holds).
@@ -199,6 +217,8 @@ Both predecessors are merged;
 - **The record side does need plumbing, and it is not free.** `VerbCase.Run func(tb, h, f) error` (`fabrictest/verbs.go:195-201`) discards the typed result, and the twelve verbs return twelve heterogeneous result types, so there is nothing for a cell to cross-check against today. The seam:
   - Every mutating result type **embeds** the record and exposes a common accessor `Mutated() Mutations`, so a cell can read the record without knowing which of the twelve types it holds.
   - `VerbCase.Run`'s signature becomes `func(tb, h, f) (fabricengine.Mutations, error)`, and each existing cell's `Run` closure returns `res.Mutated()` alongside its error.
+  - **The record must reach every result type the cells actually read, not only the twelve verb-level ones.** A cell drives `fabricengine.UnwireJunctions` (`junction.go:368`, from `verbs.go:960`), which returns `UnwireResult` — the *inner* type, not the `Unwire` verb's `UnwireVerbResult`. `UnwireResult` therefore embeds the record too, or that cell will not compile.
+    The general rule: any result type a matrix cell reads carries the record, whether or not it sits at the verb boundary. mill-plan should sweep `verbs.go`'s `Run` closures for inner-type calls rather than working from the twelve-verb list alone.
 
   The round-2 claim that the oracle "costs nothing to apply everywhere" was true of the diff side only;
   this is the real cost, and it is a mechanical edit across the existing cells rather than a design problem.
@@ -206,7 +226,8 @@ Both predecessors are merged;
   it is asserted through git itself in the per-verb effect assertions" (`fabrictest/manifest.go:109-118,184-213`). Splitting the enum accordingly:
   - **Manifest-observable — cross-checked both ways:** `path_removed`, `worktree_removed`, `worktree_created`, `dir_created`, `link_removed`, `link_created`, and `file_written` **when its target is outside `.git/`**.
   - **Git-state — exempt from the *commission* direction, asserted against git itself** via the existing per-verb effect assertions, which is the authoritative oracle rather than an inference from a ref file: `branch_created`, `branch_deleted`, `branch_pushed`, `commit_created`, `worktree_reset`, `worktree_switched`, `push_spawned`, and `file_written` **when its target is under `.git/`** (e.g. `.git/info/exclude`, which the manifest deliberately excludes).
-    Note this exemption is one-directional by design: a git-state entry is not *required* to show a diff change, but `worktree_reset` and `worktree_switched` still **provide coverage** for the omission direction, since the working-tree rewrites they cause are real and must be accounted for.
+    `repo_advanced` joins them.
+    Note this exemption is one-directional by design: a git-state entry is not *required* to show a diff change, but `worktree_reset`, `worktree_switched` and `repo_advanced` still **provide coverage** for the omission direction, since the working-tree rewrites they cause are real and must be accounted for.
 
   Without this split the stated reverse direction would fail on every cell that creates a branch or lands a commit — the record would carry entries the manifest can never corroborate, and the assertion would be reporting a lie of commission on entirely correct behaviour.
 - **The cross-check, stated in both directions, over the manifest-observable kinds only:** every change in the unfiltered diff must be covered by some record entry (a lie of omission — defect 2's shape), and every manifest-observable record entry must have at least one corresponding unfiltered-diff change (a lie of commission).
@@ -217,7 +238,7 @@ Both predecessors are merged;
   - **Git-driven working-tree rewrites.** `Checkout` runs `git switch` in both worktrees (`checkout.go:82-91,131-148`) and `Pull` advances warp by reset — each rewriting tracked files across the worktree. Those emit content/add/remove changes that no `Target` covers. The git-state split exempts entries from *commission* only;
     it never exempted diff changes from *omission*, which was an asymmetry in the round-2 rule rather than a decision.
 
-  **Coverage rule:** an entry whose `Target` is a worktree root — `worktree_created`, `worktree_removed`, `worktree_reset`, `worktree_switched` — covers, for the omission direction, both (i) every path at or beneath that worktree root, and (ii) the corresponding `<prime>/.git/worktrees/<slug>` admin entry, where `<slug>` is derived from the worktree path exactly as the harness's own two helpers already derive it.
+  **Coverage rule:** an entry whose `Target` is a worktree root — `worktree_created`, `worktree_removed`, `worktree_reset`, `worktree_switched`, `repo_advanced` — covers, for the omission direction, both (i) every path at or beneath that worktree root, and (ii) the corresponding `<prime>/.git/worktrees/<slug>` admin entry, where `<slug>` is derived from the worktree path exactly as the harness's own two helpers already derive it.
   Every other kind covers its `Target` subtree alone.
   This is one rule rather than two exemption lists, and it is honest about *why* the admin entry changed: because a worktree was created or destroyed, which the record does state.
   - *Commission:* every manifest-observable record entry's `Target` must have at least one unfiltered-diff change at or beneath it — **except entries inverted later in the same record** (see below).
@@ -280,6 +301,18 @@ Note that `push` and `sync` currently return bare `error` with no result type at
   `partial` is true when any composed call returned an error and the **combined** record is non-empty. A commit that lands followed by a push that fails is exactly "mutated, then errored", and the combined record is what makes it visible.
 - Neither verb needs a `PartialSyncError`/`PartialPushError`;
   the combined record plus `partial` carries the same information without a new error type.
+
+**`clone` and `reconcile` mutate in the CLI layer too, and the same composition rule applies.**
+The model is otherwise engine-verb-owned, but two verbs do substantial mutation *above* the engine:
+
+- `CloneAndWire` (`fabriccli/clone.go:29-67`) runs `CloneHub` and then `configsync.ReconcileFabricAt`, `Bolt.Commit`, `Bolt.Push`, `WireJunctions`, and `configsync.ReconcileAll` — and returns a bare `fabricengine.CloneResult{}` at **five** failure sites, which is precisely the zero-result pattern this slice exists to kill, sitting one layer above where the slice was originally scoped.
+- `runReconcile` (`fabriccli/fabric.go:568,588-621`) performs a config rewrite plus `Bolt.Commit`/`Bolt.Push`.
+
+**Rule:** the CLI owns a recorder for its own layer and concatenates engine-record-then-CLI-entries in execution order, exactly as `push`/`sync` do. Those five `return fabricengine.CloneResult{}, err` sites become `return res, err` with the accumulated record, under the same named-result discipline as the engine verbs.
+The CLI-layer steps hand-record: `configsync` rewrites as `file_written`, `WireJunctions` as `link_created`, and the `Bolt.Commit`/`Bolt.Push` call sites as `commit_created`/`branch_pushed`.
+**`Bolt` remains out of scope as a type** — it keeps its `(sha, committed, err)` signature untouched;
+what records is its *call site* in the CLI, which already has the returned SHA and committed flag in hand. Scoping out the type never meant scoping out the mutations made through it.
+This is not optional polish: the `CloneHubReset`/`RealHub` cell (`fabrictest/verbs.go:1162`) drives `CloneAndWire`, so its unfiltered honesty diff contains those junctions, config writes and commits, and the omission direction would fire on them.
 
 **The gate's destructive executors** (all in `internal/fabricengine/destroy.go`), which are the auto-record sites:
 

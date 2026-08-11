@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-11T14:11:42Z'
+discussion-fix-r5  '2026-08-11T14:57:52Z'
+discussed  '2026-08-11T14:57:52Z'
 ```
