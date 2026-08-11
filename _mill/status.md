@@ -31,9 +31,14 @@ implementing  '2026-08-11T15:24:04Z'
 ```yaml
 batches:
   - name: shed-md-and-constraints
-    state: pending
+    state: running
+    implementer_session: 6bd04042-902c-4e13-a604-ce35240ea6fe
+    start_sha: d86e1ff8721d4cfc817e2d644781d7eed1364dab
+    verify_baseline_failures: []
   - name: loom-md-pointers-and-kind-column
     state: pending
+    verify_baseline_failures: []
   - name: roadmap-overview-hardener-followups
     state: pending
+    verify_baseline_failures: []
 ```
