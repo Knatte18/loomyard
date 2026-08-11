@@ -66,7 +66,9 @@ batches:
     commit_sha: d576864f3d09b2377e1b5b74779760bc90ae1d58
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: verb-table-and-expectations
-    state: pending
+    state: running
+    implementer_session: 333b871d-49ee-4846-9fda-738b9aed9200
+    start_sha: 6fb63352201fc9337c80baa3783f9a02351a4983
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: cross-product-driver
     state: pending
