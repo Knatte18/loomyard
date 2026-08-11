@@ -30,5 +30,8 @@ implementing  '2026-08-11T03:59:26Z'
 ```yaml
 batches:
   - name: verdict-record
-    state: pending
+    state: running
+    implementer_session: 92dc2aca-9401-43e4-8805-c409320f3bac
+    start_sha: ad1b449133f8afc21f3b5cf9fdf6ce6b23be017b
+    verify_baseline_failures: []
 ```
