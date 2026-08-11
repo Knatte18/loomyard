@@ -1,6 +1,7 @@
 // registry.go implements the package's name-keyed Batcher registry: library members self-register
 // via their own init() (see identity.go),
-// and webster resolves the config-chosen active batcher back out by name via the exported Select.
+// and Active (this package's own config entry point, config.go) resolves the config-chosen batcher
+// back out by name via the exported Select, the name-level lookup Active and tests call directly.
 
 package batcher
 

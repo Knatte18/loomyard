@@ -25,7 +25,7 @@ Before starting a session:
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a webster defect** -- the `**Covers:** webster` tag on W1 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/webster.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lyx shuttle`/`lyx burler` do.
+4. **Wired worktree required.** `lyx webster` requires a worktree wired by `lyx fabric clone`/`lyx fabric add` -- which materializes `_lyx/config/webster.yaml`, `batcher.yaml`, plus `shuttle.yaml`/`reed.yaml` since webster branches off shuttle directly -- exactly like `lyx shuttle`/`lyx burler` do.
 5. **`lyx reed up` before any spawn.** `webster run` spawns the Master session through shuttle into an existing reed session and does not boot one itself;
    without it the spawn fails loud with `no reed session; run "lyx reed up"`.
 6. **Attached interactive terminal.**

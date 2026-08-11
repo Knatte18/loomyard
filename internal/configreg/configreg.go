@@ -6,6 +6,7 @@
 package configreg
 
 import (
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -39,6 +40,7 @@ type Module struct {
 // Keep new entries in sort order.
 func Modules() []Module {
 	return []Module{
+		{Name: "batcher", Template: batcher.ConfigTemplate},
 		{Name: "board", Template: boardengine.ConfigTemplate},
 		{Name: "burler", Template: burlerengine.ConfigTemplate, SeedOnly: true},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate},

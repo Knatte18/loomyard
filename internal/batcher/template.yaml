@@ -1,0 +1,1 @@
+active: ""  # name of the active batchifier (internal/batcher.Active) that groups the plan's flat card list into execution batches; empty (the default) resolves to the identity batchifier (one card, one batch)

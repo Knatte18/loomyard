@@ -28,9 +28,9 @@ The DAG is a **consequence** of the compile-validity requirement, not a separate
 
 ## Batch is gone / the card is the unit
 
-**Batching is a webster-internal execution-policy optimization, not a plan-schema concept.**
+**Batching is a step outside the plan schema, not a plan-schema concept.**
 The plan's unit is always the individual **card** — the smallest, most precise, independently verifiable unit.
-Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared file-op fields) is a later, measured, entirely internal decision, not something the plan format needs to express or `Plan-Write` needs to decide.
+Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared file-op fields) is a later, measured decision made outside the plan format, not something the plan format needs to express or `Plan-Write` needs to decide.
 
 There is no batch-level "declared ownership" `## Scope` concept.
 A card's own typed file-op fields (`Context:`/`Edits:`/`Creates:`/ `Deletes:`/`Moves:`) *are* its declared footprint;

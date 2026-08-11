@@ -4,9 +4,10 @@
 // docs/benchmarks/running-tests.md): a real scratch git repo backs
 // WorktreeRoot and a real on-disk plan directory backs PlanDir (so
 // ParsePlan/Validate/the batchifier/fingerprint all run for real, against
-// the real identity batchifier — Config.Batcher is left empty in every
-// fixture, resolving to internal/batcher's own DefaultName), while the
-// Master spawn itself is a local, fully-scripted fake (MasterStarter/
+// the real identity batchifier — newRunFixture injects it into
+// RunDeps.Batcher directly, since Run itself does no config I/O and needs no
+// _lyx/ tree on WorktreeRoot), while the Master spawn itself is a local,
+// fully-scripted fake (MasterStarter/
 // MasterHandle) whose Wait method can carry an onWait
 // side effect that writes outcome.yaml/summary.md the instant before it
 // returns — modeling the real ordering (Master writes its two contract
@@ -33,6 +34,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -265,6 +267,15 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		websterengine.RoleRecovery: {Engine: "claude", Model: "recovery-model", Params: map[string]string{"effort": "high"}},
 	}
 
+	// Select("") is the right call here rather than Active: the fixture's
+	// WorktreeRoot is a bare scratch git repo with no _lyx/ tree, and the
+	// point of the runlevel-call-site decision is that Run needs no config
+	// tree.
+	activeBatcher, err := batcher.Select("")
+	if err != nil {
+		t.Fatalf("batcher.Select(\"\") error = %v", err)
+	}
+
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Reed:       reed,
@@ -272,6 +283,7 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		ShuttleCfg: shuttleCfg,
 		Layout:     layout,
 		Roles:      roles,
+		Batcher:    activeBatcher,
 		Config: websterengine.Config{
 			SelfFixCap:       2,
 			MasterTimeoutMin: 480,
@@ -325,6 +337,19 @@ func TestRun_ErrRunBusy(t *testing.T) {
 	}
 	if fx.Starter.callCount() != 0 {
 		t.Errorf("Starter was reached (%d calls) while run.lock was held; want zero", fx.Starter.callCount())
+	}
+}
+
+// TestRun_NilBatcherRefuses proves Run refuses with ErrNilBatcher when the caller never populated
+// RunDeps.Batcher — webstercli always populates the field, so this test is the sentinel's only
+// evidence.
+func TestRun_NilBatcherRefuses(t *testing.T) {
+	fx := newRunFixture(t, 1)
+	fx.Deps.Batcher = nil
+
+	_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if !errors.Is(err, websterengine.ErrNilBatcher) {
+		t.Fatalf("Run() error = %v; want errors.Is(err, ErrNilBatcher)", err)
 	}
 }
 

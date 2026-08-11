@@ -49,7 +49,7 @@ type Injector interface {
 
 // BeginDeps carries every seam BeginBatch needs, so a test can fake each one independently: Plan is
 // the already-parsed plan;
-// Batches is the batchifier-derived execution batches (see internal/batcher.Select) `run` computed
+// Batches is the batchifier-derived execution batches (see RunDeps.Batcher) `run` computed
 // once at entry and threads through every bracket verb call;
 // State is the already-loaded run state BeginBatch reads and mutates;
 // Roles is the pre-flight-resolved role->model-spec map (see ResolveRoles);
