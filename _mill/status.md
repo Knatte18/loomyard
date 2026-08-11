@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loom-md-pointers-and-kind-column
+phase: approved-roadmap-overview-hardener-followups
 slug: shed-producer-typology-sweep
 branch: shed-producer-typology-sweep
 plan: _mill/plan
@@ -26,6 +26,7 @@ planned  '2026-08-11T15:23:30Z'
 implementing  '2026-08-11T15:24:04Z'
 approved-shed-md-and-constraints  '2026-08-11T15:29:15Z'
 approved-loom-md-pointers-and-kind-column  '2026-08-11T15:33:09Z'
+approved-roadmap-overview-hardener-followups  '2026-08-11T15:39:07Z'
 ```
 
 ## Batches
@@ -45,8 +46,9 @@ batches:
     commit_sha: cc0f12e7f0b2ff43d6e03b75ab5b8cddddc95167
     verify_baseline_failures: []
   - name: roadmap-overview-hardener-followups
-    state: running
+    state: approved
     implementer_session: d8338de8-1a3c-438b-9d8e-0d3a17e6f570
     start_sha: ffb70d97c7553e8cf7850abb24f165975bf51afd
+    commit_sha: 739131efd6264d9b31443d061ec269add70fac09
     verify_baseline_failures: []
 ```
