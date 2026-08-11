@@ -18,7 +18,8 @@
 - **`decision-record.md`** — the distilled record.
   `Plan-Write`'s **sole** input: it never reads anything else out of `_lyx/discussion/`.
 - **`support-log.md`** — the raw support log.
-  Read by the **Discussion-review gate**, **never** by the Plan producer.
+  Opened and reasoned over by **`Discussion-Review`** — the LLM/`perch` producer that reads it for the anti-circling Review-rounds ledger below — and only existence-checked, never read, by `Discussion-Validate`.
+  **Never** read by `Plan-Write`.
 
 Two files, not two sections of one file, on purpose: a distilled digest, never raw prose, is what `Plan-Write` should ever see.
 A hard filesystem boundary is stronger than a convention about which section an agent may read — `Plan-Write` cannot accidentally ingest the raw interview transcript, or pay its token cost, because the file isn't in its input set.
