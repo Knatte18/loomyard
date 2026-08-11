@@ -35,7 +35,16 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/prune_unowned_integration_test.go`
   - `internal/fabricengine/testmain_test.go`
-- **Edits:** none
+  - `internal/fabricengine/export_test.go`
+- **Edits:**
+  - `internal/fabricengine/export_test.go` — every unexported gate/predicate hook this batch's three
+    cards need to drive directly (rather than through an application-level verb whose own
+    higher-level checks would short-circuit before ever reaching the gate) has no exported path
+    today: `teardownHub`, `removeWarpWorktreeDir`, `looksLikeHub`, `isWarpCheckout`,
+    `isRegisteredLinkedWorktreeIn`, `worktreeDirty`, and `deleteBranch`'s branch-ownership request
+    shape. This follows the file's existing `NewPairedForTest`/`WarpForTest`/`ExcludePatternForTest`
+    idiom: a thin re-export or wrapper per hook, added once here since all three cards need the same
+    file.
 - **Creates:**
   - `internal/fabricengine/destructivegaps_integration_test.go`
 - **Deletes:** none
@@ -58,6 +67,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/clone.go`
   - `internal/fabricengine/prune_unowned_integration_test.go`
   - `internal/fabricengine/testmain_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Edits:**
   - `internal/fabricengine/destructivegaps_integration_test.go`
 - **Creates:** none
@@ -83,6 +93,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/add.go`
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/testmain_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Edits:**
   - `internal/fabricengine/destructivegaps_integration_test.go`
 - **Creates:** none
