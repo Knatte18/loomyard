@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -223,4 +224,253 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	if !strings.Contains(string(content), sentinel) {
 		t.Fatalf("untracked content lost: %q no longer contains %q", content, sentinel)
 	}
+}
+
+// TestOwnership_RegisteredLinkedWorktreeKind covers the git-touching predicate behind
+// ownedRegisteredLinkedWorktree — isRegisteredLinkedWorktreeIn — against every shape its own doc
+// comment names.
+func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
+	t.Parallel()
+
+	const slug = "ownership-registered"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	repoDir := l.WorktreePath()
+
+	t.Run("AcceptsRegisteredLinkedWorktree", func(t *testing.T) {
+		linked := fabricengine.WorktreePath(l, slug)
+		if !fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, linked) {
+			t.Errorf("IsRegisteredLinkedWorktreeInForTest(%s) = false; want true for a real registered linked worktree", linked)
+		}
+	})
+
+	t.Run("RefusesMainWorktree", func(t *testing.T) {
+		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, repoDir) {
+			t.Errorf("IsRegisteredLinkedWorktreeInForTest(main) = true; want false — the main worktree is not a linked one")
+		}
+	})
+
+	t.Run("RefusesUnrelatedGitCloneAtFabricShapedPath", func(t *testing.T) {
+		// A real, independently-initialised clone parked at a "*-weft"-shaped path inside the hub —
+		// one of the eight original defects this slice closes — not merely an empty directory.
+		clone := filepath.Join(l.HubPath, "unrelated-weft")
+		if err := os.MkdirAll(clone, 0o755); err != nil {
+			t.Fatalf("mkdir clone: %v", err)
+		}
+		lyxtest.MustRun(t, clone, "git", "init", "-b", "main", ".")
+		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, clone) {
+			t.Errorf("IsRegisteredLinkedWorktreeInForTest(unrelated clone) = true; want false")
+		}
+	})
+
+	t.Run("RefusesPlainDirectory", func(t *testing.T) {
+		plain := filepath.Join(l.HubPath, "plain-dir")
+		if err := os.MkdirAll(plain, 0o755); err != nil {
+			t.Fatalf("mkdir plain: %v", err)
+		}
+		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, plain) {
+			t.Errorf("IsRegisteredLinkedWorktreeInForTest(plain dir) = true; want false")
+		}
+	})
+
+	t.Run("UnenumerableRepoAnswersFalse", func(t *testing.T) {
+		notARepo := t.TempDir()
+		target := filepath.Join(notARepo, "child")
+		if err := os.MkdirAll(target, 0o755); err != nil {
+			t.Fatalf("mkdir target: %v", err)
+		}
+		if fabricengine.IsRegisteredLinkedWorktreeInForTest(notARepo, target) {
+			t.Errorf("IsRegisteredLinkedWorktreeInForTest(unenumerable repo) = true; want false, the conservative direction")
+		}
+	})
+}
+
+// TestOwnership_WarpCheckoutKind covers isWarpCheckout — deliberately the counterpart, not a
+// synonym, of isRegisteredLinkedWorktreeIn: it admits the hub's prime warp worktree, which the
+// registered-linked kind deliberately excludes, and that single divergence is why the two kinds
+// exist as separate closed-enum members rather than one.
+func TestOwnership_WarpCheckoutKind(t *testing.T) {
+	t.Parallel()
+
+	const slug = "ownership-warpcheckout"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	repoDir := l.WorktreePath()
+	linked := fabricengine.WorktreePath(l, slug)
+
+	t.Run("AcceptsPrimeWarpWorktree", func(t *testing.T) {
+		if !fabricengine.IsWarpCheckoutForTest(repoDir, repoDir) {
+			t.Errorf("IsWarpCheckoutForTest(prime) = false; want true — the case the registered-linked kind deliberately refuses")
+		}
+	})
+
+	t.Run("AcceptsLinkedWorktreeOfSameRepo", func(t *testing.T) {
+		if !fabricengine.IsWarpCheckoutForTest(repoDir, linked) {
+			t.Errorf("IsWarpCheckoutForTest(linked) = false; want true")
+		}
+	})
+
+	t.Run("RefusesPathNotAWorktreeOfThisRepoAtAll", func(t *testing.T) {
+		outsider := t.TempDir()
+		if fabricengine.IsWarpCheckoutForTest(repoDir, outsider) {
+			t.Errorf("IsWarpCheckoutForTest(outsider) = true; want false")
+		}
+	})
+
+	// The one assertion that stops a future edit collapsing the two kinds into one.
+	t.Run("DisagreesWithRegisteredLinkedKindOnMainWorktree", func(t *testing.T) {
+		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, repoDir) {
+			t.Fatalf("precondition failed: main worktree unexpectedly accepted by the registered-linked kind")
+		}
+		if !fabricengine.IsWarpCheckoutForTest(repoDir, repoDir) {
+			t.Fatalf("precondition failed: main worktree unexpectedly refused by the warp-checkout kind")
+		}
+	})
+}
+
+// TestOwnership_FabricHubKind covers looksLikeHub, the predicate behind ownedFabricHub, against
+// every shape resetHub's guard names: either structural mark is enough, and an unreadable directory
+// is refused rather than treated as absent.
+func TestOwnership_FabricHubKind(t *testing.T) {
+	t.Parallel()
+
+	t.Run("AcceptsRealHub", func(t *testing.T) {
+		t.Parallel()
+		fixture := newFabricFixture(t)
+		if !fabricengine.LooksLikeHubForTest(fixture.Layout.HubPath) {
+			t.Errorf("LooksLikeHubForTest(real hub) = false; want true")
+		}
+	})
+
+	t.Run("AcceptsBoardEntryOnly", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(hub, fabricengine.BoardDirName), 0o755); err != nil {
+			t.Fatalf("mkdir board: %v", err)
+		}
+		if !fabricengine.LooksLikeHubForTest(hub) {
+			t.Errorf("LooksLikeHubForTest(board-entry-only) = false; want true")
+		}
+	})
+
+	t.Run("AcceptsWeftSiblingOnly", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(hub, "warp-weft"), 0o755); err != nil {
+			t.Fatalf("mkdir weft sibling: %v", err)
+		}
+		if !fabricengine.LooksLikeHubForTest(hub) {
+			t.Errorf("LooksLikeHubForTest(weft-sibling-only) = false; want true")
+		}
+	})
+
+	t.Run("RefusesNeitherMarker", func(t *testing.T) {
+		t.Parallel()
+		hub := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(hub, "not-a-fabric-marker"), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if fabricengine.LooksLikeHubForTest(hub) {
+			t.Errorf("LooksLikeHubForTest(neither marker) = true; want false")
+		}
+	})
+
+	t.Run("RefusesUnreadableDirectory", func(t *testing.T) {
+		t.Parallel()
+		if runtime.GOOS == "windows" {
+			t.Skip("os.Chmod does not restrict directory listing on Windows")
+		}
+		if os.Geteuid() == 0 {
+			t.Skip("running as root; a 0o000 directory is still readable")
+		}
+		parent := t.TempDir()
+		hub := filepath.Join(parent, "unreadable"+fabricengine.HubSuffix)
+		if err := os.MkdirAll(hub, 0o755); err != nil {
+			t.Fatalf("mkdir hub: %v", err)
+		}
+		if err := os.Chmod(hub, 0o000); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(hub, 0o755) })
+		if fabricengine.LooksLikeHubForTest(hub) {
+			t.Errorf("LooksLikeHubForTest(unreadable) = true; want false, the conservative direction")
+		}
+	})
+}
+
+// TestWorktreeDirty_BothScopesAcrossFourStates asserts scopeTracked and scopeAll separately against
+// four worktree states, so the one case that justifies dirtiness scope being a declared per-request
+// parameter rather than a constant — untracked-only — is proven to actually differ between them,
+// not merely assumed.
+func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	dir := fixture.Layout.WorktreePath()
+
+	assertScopes := func(t *testing.T, wantTracked, wantAll bool) {
+		t.Helper()
+		trackedDirty, _, err := fabricengine.WorktreeDirtyTrackedForTest(dir)
+		if err != nil {
+			t.Fatalf("WorktreeDirtyTrackedForTest: %v", err)
+		}
+		if trackedDirty != wantTracked {
+			t.Errorf("scopeTracked dirty = %v; want %v", trackedDirty, wantTracked)
+		}
+		allDirty, _, err := fabricengine.WorktreeDirtyAllForTest(dir)
+		if err != nil {
+			t.Fatalf("WorktreeDirtyAllForTest: %v", err)
+		}
+		if allDirty != wantAll {
+			t.Errorf("scopeAll dirty = %v; want %v", allDirty, wantAll)
+		}
+	}
+
+	t.Run("Clean", func(t *testing.T) {
+		assertScopes(t, false, false)
+	})
+
+	t.Run("UntrackedFileOnly", func(t *testing.T) {
+		untracked := filepath.Join(dir, "scratch-untracked.txt")
+		if err := os.WriteFile(untracked, []byte("scratch\n"), 0o644); err != nil {
+			t.Fatalf("write untracked: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Remove(untracked) })
+		// The proof case: scopeTracked must not see it, scopeAll must.
+		assertScopes(t, false, true)
+	})
+
+	t.Run("TrackedModification", func(t *testing.T) {
+		readme := filepath.Join(dir, "README")
+		original, err := os.ReadFile(readme)
+		if err != nil {
+			t.Fatalf("read README: %v", err)
+		}
+		if err := os.WriteFile(readme, append(append([]byte{}, original...), []byte("\nmodified\n")...), 0o644); err != nil {
+			t.Fatalf("modify README: %v", err)
+		}
+		t.Cleanup(func() { _ = os.WriteFile(readme, original, 0o644) })
+		assertScopes(t, true, true)
+	})
+
+	t.Run("StagedChange", func(t *testing.T) {
+		staged := filepath.Join(dir, "staged-new.txt")
+		if err := os.WriteFile(staged, []byte("staged\n"), 0o644); err != nil {
+			t.Fatalf("write staged file: %v", err)
+		}
+		lyxtest.MustRun(t, dir, "git", "add", "staged-new.txt")
+		t.Cleanup(func() {
+			lyxtest.MustRun(t, dir, "git", "reset", "--", "staged-new.txt")
+			_ = os.Remove(staged)
+		})
+		assertScopes(t, true, true)
+	})
 }
