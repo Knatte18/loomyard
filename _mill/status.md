@@ -80,6 +80,8 @@ batches:
     commit_sha: e7b3e0e278bbb4795cb2c56feb9149e05b06f204
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
   - name: sabotage-proof-and-docs
-    state: pending
+    state: running
+    implementer_session: ba0b5a5b-34ea-4f96-bfbf-1d6f07e1c3e5
+    start_sha: 605ab35977cb27aaa2eac89a8eeb76df09deb37d
     verify_baseline_failures: ["FAIL\t./internal/fabricengine/fabrictest [setup failed]"]
 ```
