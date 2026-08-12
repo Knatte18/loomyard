@@ -507,7 +507,7 @@ The implementation task deletes this doc and removes the roadmap's link to it **
 
 ## Related
 
-- [fabric-crucible-followups.md](fabric-crucible-followups.md) — the four fabric-local classes from the same campaign, scoped as slices 12-15.
+- [internal/fabricengine](../../internal/fabricengine/doc.go) package documentation — the four fabric-local classes from the same campaign, scoped as slices 12-15 and now landed.
   This one was split out because `internal/gitexec` is shared by every module that touches git, so its blast radius is much larger than theirs.
 - [CONSTRAINTS.md](../../CONSTRAINTS.md#gitrepo-client-boundary-invariant) — the gitrepo Client Boundary Invariant pins which `gitrepo` methods reach `gitexec`;
   that pinned list is the starting inventory for the outside-fabric caller count.
