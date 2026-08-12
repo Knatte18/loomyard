@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabrictest-truthfulness-oracle
+phase: approved-guard-and-docs
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -45,6 +45,7 @@ approved-gate-auto-recording  '2026-08-12T06:47:21Z'
 approved-constructive-recording  '2026-08-12T07:03:45Z'
 approved-cli-envelope  '2026-08-12T07:15:04Z'
 approved-fabrictest-truthfulness-oracle  '2026-08-12T07:48:03Z'
+approved-guard-and-docs  '2026-08-12T07:55:06Z'
 ```
 
 ## Batches
@@ -94,9 +95,10 @@ batches:
     commit_sha: 9f8785c526629ad9b91504cedaa47d1db2a3b06d
     verify_baseline_failures: []
   - name: guard-and-docs
-    state: running
+    state: approved
     implementer_session: 63e381bc-abd6-4dd0-831d-a708172a4d14
     start_sha: 73933be0e76a4bc78f248276bdbbfe1a1ec03ace
+    commit_sha: ed53335955c7309f7ff35ec7c3541e3fe024f14d
     verify_baseline_failures: []
 ```
 ## Inferred-success log
