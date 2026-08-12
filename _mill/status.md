@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mutation-vocabulary
+phase: approved-exported-check-enum
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -39,6 +39,7 @@ plan-review-r9  '2026-08-11T17:11:03Z'
 planned  '2026-08-11T17:11:20Z'
 implementing  '2026-08-11T17:14:53Z'
 approved-mutation-vocabulary  '2026-08-11T17:20:19Z'
+approved-exported-check-enum  '2026-08-12T06:24:33Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     commit_sha: 86edec587d5dc3c7bff556681c9ccd653d895165
     verify_baseline_failures: []
   - name: exported-check-enum
-    state: running
+    state: approved
     implementer_session: 47e38dd8-9d9e-4da3-81e8-f723dc7ed7e1
     start_sha: 635e17757f69e5b058faf360b84c20934b1d1d72
+    commit_sha: 6e5949bf4719a7e2e50ccc047764a19fffc6e9a2
     verify_baseline_failures: []
   - name: result-types-carry-record
     state: pending
