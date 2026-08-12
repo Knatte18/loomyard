@@ -186,20 +186,21 @@ The **primitives** it fronts split three ways, and only the middle row is an ope
 | primitive | home | why |
 |---|---|---|
 | `ResetHard` | **already `gitrepo`** | `gitrepo/reset.go`, SHA-validated, with its data-loss surface documented at `gitrepo/doc.go:227`; `fabricengine.ResetHard` is thin delegation. The precedent that makes this question worth asking. |
-| tracked-only dirtiness probe | **candidate for `gitrepo`** | see below |
+| scope-declaring dirtiness probe | **candidate for `gitrepo`** | see below |
 | `git worktree remove --force`, `git branch -D` | **stays in `fabricengine`** | `gitrepo.Repo` models *one local checkout*; both act on a path other than the repo they run from, so they are topology, not checkout, operations. Pushing them down grows gitrepo a worktree-topology surface for a single consumer, against its own documented boundary. |
 | `os.RemoveAll` / `os.Remove` | **`fabricengine`** | not a git operation at all. |
 
-**The one deferred decision, with its criterion stated so the implementing agent applies a rule rather than a preference.**
-`gitrepo` nearly has the dirtiness probe already: `WorktreeChangedFiles()` (`gitrepo/worktree.go`) returns every uncommitted change but **includes untracked files**, while this gate's probe is deliberately tracked-only.
-A tracked-only variant is trivial in go-git — skip `git.Untracked` entries — so it needs no `gitexec` call and therefore no update to the [gitrepo Client Boundary Invariant](../../CONSTRAINTS.md#gitrepo-client-boundary-invariant)'s pinned list.
+**The consolidation half landed; the promotion decision is still deferred, with its criterion restated against the shape that actually shipped.**
+`fabricengine` used to hand-roll `git status --porcelain` at **eight** sites — `add.go`, `checkout.go`, `prune.go`, `pull.go`, `remove.go` (twice), `warpclean.go`, `reconcile.go` — four of them with `--untracked-files=no`.
+That was the same "every call site rolls its own check" disease this slice exists to cure, one layer down, and it is cured: `dirtiness.go`'s `worktreeDirty(scope, dir)` is now the package's sole probe, and `warpclean.go`'s `dirtyReason` delegates to it.
 
-Meanwhile `fabricengine` hand-rolls `git status --porcelain` at **eight** sites — `add.go`, `checkout.go`, `prune.go`, `pull.go`, `remove.go` (twice), `warpclean.go`, `reconcile.go` — four of them with `--untracked-files=no`.
-That is the same "every call site rolls its own check" disease this slice exists to cure, one layer down.
+What remains open is only whether that probe belongs one layer further down.
+Note the premise here changed on landing, and the earlier phrasing of this paragraph is what [the corrected open question below](#open-questions--resolved-on-landing) struck: the probe is **not** tracked-only, so this is not a question about adding a tracked-only variant to `gitrepo`.
+`gitrepo.WorktreeChangedFiles()` (`gitrepo/worktree.go`) already answers `scopeAll` exactly;
+what a promotion would have to carry down is the **scope parameter itself** — `scopeTracked` as a second mode, trivial in go-git by skipping `git.Untracked` entries, so still no `gitexec` call and therefore still no update to the [gitrepo Client Boundary Invariant](../../CONSTRAINTS.md#gitrepo-client-boundary-invariant)'s pinned list.
 
 Promote the probe into `gitrepo` **if** the gate ends up needing it against both warp and weft through a `Repo` handle it already holds;
 keep it fabric-local **if** the gate only ever probes paths it resolves itself, since a `gitrepo` method would then need a `Repo` constructed solely to answer one question.
-Either way the eight hand-rolled probes collapse to one implementation — that part is not optional, and is the smaller half of this slice.
 
 ### Prove no call site bypasses it
 
