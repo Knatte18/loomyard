@@ -84,7 +84,11 @@ func pushRebaseFreeLogged(path string) error {
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.
 func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
-	rec := NewMutations(filepath.Dir(warpPath))
+	hubRoot := ""
+	if warpPath != "" {
+		hubRoot = filepath.Dir(warpPath)
+	}
+	rec := NewMutations(hubRoot)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	if opts.SkipGit || opts.SkipPush {
