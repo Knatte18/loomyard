@@ -45,6 +45,8 @@ batches:
     commit_sha: 413ae4809325cef1b7afb8ba394e1b43e4d5936a
     verify_baseline_failures: []
   - name: campaign-docs-fold
-    state: pending
+    state: running
+    implementer_session: 3cb8ca32-202a-43cd-9555-549d3e1dc4d5
+    start_sha: 4ef08258d20518a9e81084925ce46876e9abafc9
     verify_baseline_failures: []
 ```
