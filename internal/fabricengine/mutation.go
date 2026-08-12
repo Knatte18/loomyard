@@ -142,6 +142,18 @@ func hubRelativeTarget(hubRoot, target string) string {
 	return rel
 }
 
+// Extend appends every entry of other to m verbatim, performing no path conversion: other's entries
+// were already converted by whichever Mutations produced them.
+// This is the composition primitive for a verb that calls another recording entry point (Unwire
+// over UnwireJunctions), and for the CLI layer's concatenate-engine-record-then-CLI-entries rule.
+// A nil receiver is safe, and an empty other is a no-op.
+func (m *Mutations) Extend(other Mutations) {
+	if m == nil {
+		return
+	}
+	m.entries = append(m.entries, other.entries...)
+}
+
 // AppendRef records one entry with Target set to ref verbatim, performing no path arithmetic at
 // all. This is the git-ref recording path (branch_created, branch_deleted, branch_pushed).
 // A nil receiver is safe: it returns without panicking, so a not-yet-threaded call site degrades to

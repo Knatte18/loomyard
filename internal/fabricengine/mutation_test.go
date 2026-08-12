@@ -255,6 +255,61 @@ func TestMutations_NilReceiver_DoesNotPanic(t *testing.T) {
 	m.AppendRef(KindBranchCreated, "feature-x", "")
 }
 
+// TestMutations_Extend covers that Extend appends other's entries verbatim in order, that it is a
+// no-op on an empty source, and that it is safe on a nil receiver.
+func TestMutations_Extend(t *testing.T) {
+	t.Parallel()
+
+	m := NewMutations("")
+	m.Append(KindDirCreated, "/hub/one", "")
+
+	other := NewMutations("")
+	other.Append(KindFileWritten, "/hub/two", "")
+	other.AppendRef(KindBranchCreated, "feature-x", "")
+
+	m.Extend(other.Snapshot())
+
+	got := m.Entries()
+	want := []Mutation{
+		{Kind: KindDirCreated, Target: "/hub/one"},
+		{Kind: KindFileWritten, Target: "/hub/two"},
+		{Kind: KindBranchCreated, Target: "feature-x"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Entries() = %d entries; want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Entries()[%d] = %+v; want %+v", i, got[i], want[i])
+		}
+	}
+
+	empty := NewMutations("")
+	m2 := NewMutations("")
+	m2.Append(KindDirCreated, "/hub/one", "")
+	m2.Extend(empty.Snapshot())
+	if m2.Len() != 1 {
+		t.Errorf("Extend(empty).Len() = %d; want unaffected 1", m2.Len())
+	}
+
+	var nilRec *Mutations
+	nilRec.Extend(other.Snapshot())
+}
+
+// TestMutations_Snapshot_NilReceiver covers that Snapshot is safe on a nil *Mutations receiver,
+// returning the zero Mutations rather than panicking — CloneHub and Unwire both install their
+// populating defer before the recorder exists, so the defer can observe a nil recorder on the
+// earliest failure paths.
+func TestMutations_Snapshot_NilReceiver(t *testing.T) {
+	t.Parallel()
+
+	var m *Mutations
+	got := m.Snapshot()
+	if got.Len() != 0 {
+		t.Errorf("nil.Snapshot().Len() = %d; want 0", got.Len())
+	}
+}
+
 // mutationsFromFunc returns a non-addressable Mutations value, mirroring the shape batches 5-7 rely
 // on: a result type's Mutated() accessor returns Mutations, not *Mutations.
 func mutationsFromFunc() Mutations {
