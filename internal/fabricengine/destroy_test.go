@@ -39,7 +39,7 @@ func TestGate_CheckOrdering(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkContainment)
+		assertRefusalCheck(t, err, CheckContainment)
 	})
 
 	t.Run("OwnershipBeforeDirtiness", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestGate_CheckOrdering(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 }
 
@@ -121,7 +121,7 @@ func TestGate_Containment(t *testing.T) {
 				dirtiness: dirtyScopeTracked(),
 			}
 			err := checkPathRequest(req)
-			assertRefusalCheck(t, err, checkContainment)
+			assertRefusalCheck(t, err, CheckContainment)
 		})
 	}
 
@@ -140,7 +140,7 @@ func TestGate_Containment(t *testing.T) {
 		}
 		err := checkPathRequest(req)
 		// Containment passes; ownership then fails (not a hub) — proves containment did not refuse.
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
 	// Card 12 names "both platform separators": refuseUncontainedPath resolves through
@@ -164,7 +164,7 @@ func TestGate_Containment(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkContainment)
+		assertRefusalCheck(t, err, CheckContainment)
 	})
 
 	t.Run("EscapeWithBackslash", func(t *testing.T) {
@@ -198,11 +198,11 @@ func TestGate_Containment(t *testing.T) {
 		err := checkPathRequest(req)
 		if runtime.GOOS == "windows" {
 			// "\" is a path separator on Windows, so this escapes the container just like "/".
-			assertRefusalCheck(t, err, checkContainment)
+			assertRefusalCheck(t, err, CheckContainment)
 		} else {
 			// The literal entry does not actually leave the container — containment must pass,
 			// and ownership fails next (not a hub), same as WithinContainerPassesContainment above.
-			assertRefusalCheck(t, err, checkOwnership)
+			assertRefusalCheck(t, err, CheckOwnership)
 		}
 	})
 }
@@ -237,7 +237,7 @@ func TestGate_SlugValidation(t *testing.T) {
 				dirtiness: dirtyScopeTracked(),
 			}
 			err := checkPathRequest(req)
-			assertRefusalCheck(t, err, checkContainment)
+			assertRefusalCheck(t, err, CheckContainment)
 		})
 	}
 }
@@ -278,7 +278,7 @@ func TestGate_Force(t *testing.T) {
 			force:     true,
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkContainment)
+		assertRefusalCheck(t, err, CheckContainment)
 	})
 
 	t.Run("DoesNotSatisfyOwnership", func(t *testing.T) {
@@ -296,7 +296,7 @@ func TestGate_Force(t *testing.T) {
 			force:     true,
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 }
 
@@ -315,7 +315,7 @@ func TestGate_DirtinessNAEmptyReason(t *testing.T) {
 		dirtiness: dirtinessNA(""),
 	}
 	err := checkPathRequest(req)
-	assertRefusalCheck(t, err, checkDirtiness)
+	assertRefusalCheck(t, err, CheckDirtiness)
 }
 
 // TestGate_ZeroValueDeclarationsAreRefusals proves an omitted ownership or dirtiness declaration is a
@@ -334,7 +334,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
 	t.Run("PathZeroDirtiness", func(t *testing.T) {
@@ -350,7 +350,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			ownership: ownedFabricHub(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkDirtiness)
+		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 
 	t.Run("BranchZeroOwnership", func(t *testing.T) {
@@ -361,7 +361,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			dirtiness: dirtyCheckedOutBranch(),
 		}
 		err := checkBranchRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
 	t.Run("BranchZeroDirtiness", func(t *testing.T) {
@@ -375,7 +375,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			ownership: ownedManagedBranch(l, ""),
 		}
 		err := checkBranchRequest(req)
-		assertRefusalCheck(t, err, checkDirtiness)
+		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 }
 
@@ -576,14 +576,14 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 	})
 
 	t.Run("RefusalIsSurfaced", func(t *testing.T) {
-		refusal := &destructiveRefusal{Check: checkOwnership, What: "test", Target: "x", Reason: "no"}
+		refusal := &destructiveRefusal{Check: CheckOwnership, What: "test", Target: "x", Reason: "no"}
 		if got := surfaceRefusal(refusal); got != refusal {
 			t.Errorf("surfaceRefusal(refusal) = %v; want the same refusal unchanged", got)
 		}
 	})
 
 	t.Run("WrappedRefusalIsSurfaced", func(t *testing.T) {
-		refusal := &destructiveRefusal{Check: checkDirtiness, What: "test", Target: "x", Reason: "no"}
+		refusal := &destructiveRefusal{Check: CheckDirtiness, What: "test", Target: "x", Reason: "no"}
 		wrapped := fmt.Errorf("context: %w", refusal)
 		got := surfaceRefusal(wrapped)
 		if got != wrapped {
@@ -593,7 +593,7 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 }
 
 // assertRefusalCheck fails the test unless err is a *destructiveRefusal carrying want as its Check.
-func assertRefusalCheck(t *testing.T, err error, want destructiveCheck) {
+func assertRefusalCheck(t *testing.T, err error, want Check) {
 	t.Helper()
 	var refusal *destructiveRefusal
 	if !errors.As(err, &refusal) {
