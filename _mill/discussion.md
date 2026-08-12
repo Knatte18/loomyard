@@ -37,7 +37,7 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
 - Unit tests for `state.UpdateJSON` in `internal/state`, including its own concurrency property.
 - Document the read-modify-write rule in `internal/state`'s package header.
 - Fold the durable rationale of `manifest/designs/fabric-crucible-followups.md` into `internal/fabricengine/doc.go`, delete that design file, and resolve all **nine** inbound references — per-reference, with an explicit verb each (repoint / rewrite / delete), per the table in Technical context.
-- Move `manifest/roadmap.md`'s slice-15 entry from Planned to Done, worded to say the `record()` side is closed rather than that the race is closed.
+- Resolve `manifest/roadmap.md`'s campaign disposition: delete the whole "slices 14-15" Planned item, add a slice-15 Done entry worded to say the `record()` side is closed rather than that the race is closed, and fix slice 12's stale "Slices 14-15 remain" line — see the roadmap inventory in Technical context.
 
 **Out:**
 
@@ -48,7 +48,9 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
   This task closes the opposite direction only (*rebuild writes → `record()` writes from a pre-rebuild base*), which `UpdateJSON` fixes by re-reading under the lock.
   Same shape, same LOW severity, same self-healing property — accepted, not overlooked.
 - `refreshCorrIndexAfterSwitch`'s unlocked `os.Remove` + rebuild (`internal/fabricengine/index.go:315-318`) is left as-is, deliberately (see Decisions).
-- The other locked-JSON read-modify-write sites are **not** migrated to `state.UpdateJSON` — **five sites across four files**: `internal/treadleengine/state.go:110`→`117` and `:151`→`172`, `internal/boardengine/store.go:55`→`76`, `internal/reedengine/state.go:57`→`71`, `internal/websterengine/state.go:216`→`236`.
+- The other locked-JSON load-then-write flows are **not** migrated to `state.UpdateJSON` — **four packages**, one state file each: `internal/treadleengine` (`state.go:110` reads, `:117` and `saveState` at `:172` write), `internal/boardengine` (`store.go:55`→`76`), `internal/reedengine` (`state.go:57`→`71`), `internal/websterengine` (`state.go:216`→`236`).
+  Treat this as an inventory of packages, not a precise site count: `treadleengine/state.go:151` is `TerminalOutcome`, a read-only accessor with no write partner, so it is not a read-modify-write pair.
+  The disposition — migrate none — is unaffected either way, but a later migration task will work from this list and should re-derive the pairs itself.
 - No new `CONSTRAINTS.md` invariant.
 - No change to the correspondence index's on-disk JSON format, to `corrEntry`, or to `exact`/`nearestAtOrBefore`/`entries`.
 - No change to any call site of `record()`, `RecordCorrespondence`, `WeftSHAForWarpSHA`, or `resolveRevertTarget`.
@@ -83,11 +85,14 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
 ### updatejson-signature-mirrors-readjson
 
 - Decision: `func UpdateJSON[T any](path, lockPath string, mutate func(cur T, found bool) (T, error)) error`.
-  It acquires one exclusive lock on `lockPath`, reads `path` (missing file yields the zero `T` and `found=false`), calls `mutate`, writes the returned value atomically, and releases.
+  It follows `ReadJSON`/`WriteJSON`'s precedent on directory creation — `os.MkdirAll(filepath.Dir(path))` **before** acquiring the lock (`state.go:29-32` and `:53-56` both do this;
+  `ReadJSONStrict` at `:82` deliberately does not) — because `flock.New(lockPath).Lock()` fails outright when the parent directory is absent.
+  Note the limit that precedent carries and `UpdateJSON` inherits unchanged: it creates the parent of `path`, never the parent of a `lockPath` living in a sibling tree, which is why `treadleengine`'s `saveState` (`state.go:166-169`) `MkdirAll`s its scratch dir itself.
+  It then acquires one exclusive lock on `lockPath`, reads `path` (missing file yields the zero `T` and `found=false`), calls `mutate`, writes the returned value atomically, and releases.
   A `mutate` error aborts with no write.
 - Rationale: the flag carries information the callback cannot otherwise recover.
   For a slice type like `[]corrEntry`, a missing file and an on-disk empty array both arrive as an empty `cur`, so without `found` the mutate function is structurally unable to tell them apart.
-  That argument is local and survives "we never migrate the other five sites."
+  That argument is local and survives "we never migrate the other four packages."
   Mirroring `ReadJSON`'s existing `(T, bool, error)` shape is a secondary benefit — it keeps the un-migrated read-modify-write sites migratable later without a signature change (`internal/treadleengine/state.go:110` branches on exactly that flag) — but it is not the load-bearing reason, since speculative generality for a flag the only current consumer discards would not justify it on its own.
   `corrindex` does discard it, as it already does at `corrindex.go:36`.
 - Rejected: dropping the `found` parameter (one param leaner for the only current consumer, but forecloses the sites that need the distinction);
@@ -103,7 +108,10 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
   One behavioural consequence must be documented rather than left implicit: after a successful `record()`, `ix.recs` now reflects on-disk truth and may therefore contain entries another process recorded, where previously it could only contain the loading snapshot plus this call's own entry.
   That is a strict improvement — the handle converges on the file rather than drifting from it — and no caller depends on the narrower behaviour.
 - Rejected: replacing the method with a free `recordCorrEntry(path, e)` function.
-  It is more honest that `ix.recs` is no longer a write base, but it churns every call site and test for no behavioural gain, and the handle is still needed for `exact`/`nearestAtOrBefore`/`entries`.
+  It is more honest that `ix.recs` is no longer a write base, and it churns every call site and test for no behavioural gain.
+  One consequence is accepted explicitly rather than argued away: at `record()`'s sole production caller, `RecordCorrespondence` (`index.go:118-123`), the handle is used for nothing but `record`, so after the fix that `loadCorrIndex` is a redundant read plus lock acquisition.
+  It is kept anyway — removing it means changing that call site for no correctness or measurable gain on a path that runs once per weft commit.
+  The receiver-still-needed argument holds at the *other* call sites (`WeftSHAForWarpSHA`, `resolveRevertTarget`, and `pull.go`'s anchor walk, which use `exact`/`nearestAtOrBefore`/`entries`), and must not be offered as a justification at `RecordCorrespondence`, where it is false.
 
 ### refresh-after-switch-window-stays-open
 
@@ -117,8 +125,8 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
 ### updatejson-adoption-stays-at-one-consumer
 
 - Decision: add the primitive and use it in `corrindex.go` only;
-  do not migrate the other five read-modify-write sites in this task — five sites across four files, since `internal/treadleengine/state.go` carries two independent pairs.
-- Rationale: each of the five has its own concurrency story to establish, and this slice is explicitly scoped LOW.
+  do not migrate the load-then-write flows in the other four packages in this task.
+- Rationale: each has its own concurrency story to establish, and this slice is explicitly scoped LOW.
   Widening it to four further packages inverts the risk/payoff of a self-healing race fix.
 - Rejected: migrating every read-modify-write site in one pass.
 
@@ -128,11 +136,11 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
   State the rule — a locked-JSON read-modify-write must hold one lock across read and write, which is what `UpdateJSON` is for — in `internal/state`'s package header comment instead.
 - Rationale: because adoption stays at one consumer, an invariant of the form "every locked-JSON read-modify-write goes through `UpdateJSON`" would be false on the day it lands, and a false invariant is worse than none.
   The package header is where the next author writing a read-modify-write over `internal/state` actually meets the rule.
-- Rejected: adding the invariant, which would force migrating the other five sites and reopen the adoption decision.
+- Rejected: adding the invariant, which would force migrating the other four packages' flows and reopen the adoption decision.
 
 ### fold-and-delete-the-design-file
 
-- Decision: fold a **trimmed** rationale from `manifest/designs/fabric-crucible-followups.md` into `internal/fabricengine/doc.go`, delete the design file, resolve each of the nine inbound references individually (repoint / rewrite / delete — see the table in Technical context), and move `manifest/roadmap.md`'s slice-15 entry from Planned to Done — all in this task's commits.
+- Decision: fold a **trimmed** rationale from `manifest/designs/fabric-crucible-followups.md` into `internal/fabricengine/doc.go`, delete the design file, resolve each of the nine inbound references individually (repoint / rewrite / delete — see the table in Technical context), and resolve `manifest/roadmap.md`'s campaign disposition (delete the Planned item, add a slice-15 Done entry, fix slice 12's stale cross-reference) — all in this task's commits.
   Two sub-decisions matter more than the headline.
   **The fold is rationale-only, not forensics.**
   Slice 12's existing fold (`doc.go:564-644`) is the house style, and it contains no evidence table, no round numbers and no campaign process history — it compresses all eight defects into one sentence at `doc.go:573`.
@@ -175,7 +183,19 @@ That mutual exclusion is also what makes the reproducing test in Testing below w
 - `internal/fabricengine/corrindex_test.go` — add the concurrency test.
 - `internal/fabricengine/doc.go` — fold in the durable campaign rationale.
 - `manifest/designs/fabric-crucible-followups.md` — delete.
-- `manifest/roadmap.md` — slice 15 Planned → Done, plus the three pointer sentences at lines 33, 208, 215.
+- `manifest/roadmap.md` — the campaign's roadmap disposition, which is larger than a one-line move (see the roadmap inventory below).
+
+**The roadmap inventory.**
+Slice 15 is **not** a discrete Planned bullet.
+It lives inside one Planned item titled "fabric: crucible follow-ups — slices 14-15" (`manifest/roadmap.md:12-33`), whose framing goes stale the moment slice 15 lands: `:26` "**Slice 15** … is next in the chain", `:27` "the two remaining slices", `:29`'s earlier-draft correction, and `:30-32`'s "Placed ahead of `Shed`" sequencing argument.
+The disposition is therefore:
+
+- **Delete the whole Planned item** (`:12-33`) rather than shrinking it.
+  With all four slices landed there is no planned work left to describe, and the per-slice Done entries already carry the as-built summaries.
+  Do **not** leave a residual Planned entry for the still-open `RebuildIndex` scan-then-write window: it is an accepted residual of a LOW self-healing defect, documented in `internal/fabricengine/doc.go` by the fold, not a scheduled item.
+- **Add a Done entry for slice 15**, worded to say the `record()` side is closed rather than that the race is closed, and naming the residual window explicitly.
+- **Fix `manifest/roadmap.md:201`** — slice 12's Done entry ends "Slices 14-15 remain — see Planned above", which is false once the Planned item is gone.
+- Plus the three pointer sentences at lines 33, 208, 215 (see the reference table below).
 - `manifest/designs/fabric-windows-verification.md` (lines 34, 73), `manifest/designs/gitexec-error-shape.md` (line 510), `manifest/designs/fabric-unified-view.md` (line 228), `manifest/designs/lyxtest-real-hubs.md` (lines 7, 20) — per the reference table below.
 
 **The nine inbound references, with the verb for each.**
@@ -298,7 +318,7 @@ Batch the plan accordingly.
 
 - **Q:** Which fix shape — a `state`-level update primitive, or the weft write lock on `RebuildIndex`/`refreshCorrIndexAfterSwitch`? **A:** The `state`-level primitive. The weft-lock version rests on a whole-package deadlock claim every future caller must preserve, and leaves `record()` two-phase against non-weft-locked writers.
 - **Q:** Close `refreshCorrIndexAfterSwitch`'s unlocked delete-then-rebuild window too? **A:** No — leave it and document why. The discard is intended to drop entries, so a concurrent `record()` losing its entry there is designed behaviour, not this bug.
-- **Q:** How far does `state.UpdateJSON` adoption go — corrindex only, or every locked-JSON read-modify-write site? **A:** corrindex only. The other five (across four files — `treadleengine` has two pairs) each have their own concurrency story, and this slice is scoped LOW.
+- **Q:** How far does `state.UpdateJSON` adoption go — corrindex only, or every locked-JSON read-modify-write site? **A:** corrindex only. The other four packages each have their own concurrency story, and this slice is scoped LOW. Round 1 review corrected the inventory: `treadleengine/state.go:151` is a read-only accessor, not a second read-modify-write pair, so the list is by package, not by site count.
 - **Q:** Does a race never reproduced at runtime get a test that drives it? **A:** Yes — a Tier-1 test that fails today and passes after. Orchestrator review corrected its shape: the original goroutine `record()`-versus-`record()` design proved nothing, because every `record()` path runs under the weft write lock and cannot overlap in production. The test is `record()` versus an external write, sequential and deterministic; goroutines belong in `state.UpdateJSON`'s own cover.
 - **Q:** Does this task close the race outright? **A:** No, and the discussion must not imply it does. It closes `record()`'s two-phase window; `RebuildIndex`'s scan-then-write span leaves a structurally identical window open, named in `Out` and reflected in the roadmap Done wording. Leaving it is a fine call for a LOW self-healing defect; implying it is fixed is not.
 - **Q:** Slice 15 is the last of the four — does the fold-and-delete of `manifest/designs/fabric-crucible-followups.md` happen in this task? **A:** Yes, including resolving all **nine** inbound references and moving the roadmap entry to Done. The file's own lifecycle statement mandates it and nothing else will pick it up.
