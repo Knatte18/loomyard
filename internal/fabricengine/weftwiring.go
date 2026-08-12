@@ -97,7 +97,15 @@ func weftBranchExists(l *lyxcwd.Location, branch string) bool {
 
 // createWeftWorktree creates a new weft worktree on branch, forking from
 // startPoint to preserve the merge-base for future squash-merge-back.
-func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) error {
+// On success it records KindWorktreeCreated at the created weft worktree path and, unconditionally,
+// KindBranchCreated for branch via AppendRef: the git invocation below always runs `worktree add -b
+// <branch>`, so reaching a zero exit means the branch was created, and the adopt-vs-create decision
+// (whether the branch already existed) lives in the caller, not here — this function has no way to
+// observe it.
+// This site does NOT route through the destruction gate: createGitWorktree in destroy.go is the
+// gate's minter for the warp side, and the Fabric Destruction Chokepoint Invariant governs
+// destruction, not creation, so this hand-written record is by design, not an oversight.
+func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startPoint string) error {
 	weftPath := WeftWorktreePath(l, slug)
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
@@ -114,11 +122,14 @@ func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) err
 		return fmt.Errorf("create weft worktree %q for branch %q failed (git exit %d): %s",
 			weftPath, branch, exitCode, strings.TrimSpace(createStderr))
 	}
+	rec.Append(KindWorktreeCreated, weftPath, "")
+	rec.AppendRef(KindBranchCreated, branch, "")
 	return nil
 }
 
 // pushWeftBranch pushes the weft branch to origin, honoring SkipGit/SkipPush.
-func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) error {
+// On success it records KindBranchPushed for branch via AppendRef.
+func pushWeftBranch(rec *Mutations, l *lyxcwd.Location, slug, branch string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
@@ -135,6 +146,7 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 		return fmt.Errorf("push weft branch %q failed (git exit %d): %s",
 			branch, exitCode, strings.TrimSpace(pushStderr))
 	}
+	rec.AppendRef(KindBranchPushed, branch, "")
 
 	return nil
 }

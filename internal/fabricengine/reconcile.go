@@ -196,7 +196,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		}
 
 		if !weftWorktreeExists {
-			pr.Action = t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
+			pr.Action = t.reconcileMissingWeft(rec, warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
 		}
 
 		// A pair whose weft worktree was just recreated has its junctions still pointing at
@@ -413,6 +413,7 @@ func restorePortalAndLaunchers(rec *Mutations, warpLayout *lyxcwd.Location, slug
 // reported by name — every corrective branch below needs the weft repo, and without this check each
 // of them failed with a raw chdir error that named a path instead of the actual problem.
 func (t *Topology) reconcileMissingWeft(
+	rec *Mutations,
 	warpLayout *lyxcwd.Location,
 	warpPath, weftPath, slug, warpBranch string,
 	pr *ReconcilePairResult,
@@ -446,7 +447,7 @@ func (t *Topology) reconcileMissingWeft(
 
 	isRaw := isRawWarpWorktree(warpLayout)
 	if isRaw {
-		if err := createDormantWeftForRawWarp(warpLayout, slug, weftBranch); err != nil {
+		if err := createDormantWeftForRawWarp(rec, warpLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw warp worktree: %v", err)
 			return ReconcileActionRawAdopted
 		}
@@ -497,7 +498,8 @@ func isRawWarpWorktree(warpLayout *lyxcwd.Location) bool {
 // createDormantWeftForRawWarp creates a weft branch and worktree for a raw warp
 // worktree, leaving it dormant (no junction wiring). The weft branch forks from
 // the current weft HEAD.
-func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch string) error {
+// rec is Reconcile's own recorder, threaded through to createWeftWorktree.
+func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, slug, weftBranch string) error {
 	weftRoot, err := WeftRepoRoot(warpLayout)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
@@ -516,7 +518,7 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 
-	if err := createWeftWorktree(warpLayout, slug, weftBranch, parentWeftBranch); err != nil {
+	if err := createWeftWorktree(rec, warpLayout, slug, weftBranch, parentWeftBranch); err != nil {
 		return fmt.Errorf("create dormant weft worktree: %w", err)
 	}
 
