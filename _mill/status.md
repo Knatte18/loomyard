@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-exported-check-enum
+phase: approved-result-types-carry-record
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -40,6 +40,7 @@ planned  '2026-08-11T17:11:20Z'
 implementing  '2026-08-11T17:14:53Z'
 approved-mutation-vocabulary  '2026-08-11T17:20:19Z'
 approved-exported-check-enum  '2026-08-12T06:24:33Z'
+approved-result-types-carry-record  '2026-08-12T06:31:51Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     commit_sha: 6e5949bf4719a7e2e50ccc047764a19fffc6e9a2
     verify_baseline_failures: []
   - name: result-types-carry-record
-    state: running
+    state: approved
     implementer_session: ead2ce3c-f69d-4d6e-bdc2-ea2092a01c23
     start_sha: cc21b6ef68cf8a9ae37159166821d701ec1ca110
+    commit_sha: 61a97742b14cba0ddb807e5449d9440b2dce840b
     verify_baseline_failures: []
   - name: gate-auto-recording
     state: pending
