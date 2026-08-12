@@ -38,7 +38,9 @@ batches:
     commit_sha: 827ae12da0f48627cb53275c34b7f5afc9da2173
     verify_baseline_failures: []
   - name: corrindex-record-single-phase
-    state: pending
+    state: running
+    implementer_session: 86a933c1-db48-414f-a416-4980bc444b75
+    start_sha: c06555caf84120ab6f5238a1862037300b48abf4
     verify_baseline_failures: []
   - name: campaign-docs-fold
     state: pending
