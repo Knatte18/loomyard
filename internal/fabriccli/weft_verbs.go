@@ -152,10 +152,10 @@ Related commands:
 			out := cmd.OutOrStdout()
 			res, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{"committed": res.WeftCommitted, "sha": res.WeftSHA}))
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{"committed": res.WeftCommitted, "sha": res.WeftSHA}))
 			return nil
 		},
 	}
@@ -176,24 +176,40 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				if _, err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{}); err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				// The bypass branch has no *lyxcwd.Location in scope (it takes the injected
+				// --warp-path/--weft-path values and returns before resolveWarpLocation runs), so its
+				// recorder is built with an empty hub root: it appends no path-targeted entries of
+				// its own, only Extends CoalescePushBothAt's already-converted record, and Extend
+				// performs no conversion — the hub root is never consulted on this path.
+				rec := fabricengine.NewMutations("")
+				res, err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{})
+				rec.Extend(res.Mutated())
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 					return nil
 				}
-				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{}))
+				clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 				return nil
 			}
 
+			// The ordinary branch's envelope concatenates the commit call's record with the push
+			// call's record, in execution order: a commit that lands followed by a push that fails is
+			// "mutated, then errored", and only the combined record makes that visible.
+			rec := fabricengine.NewMutations(l.HubPath)
 			opts := fabricengine.EnvSyncOptions()
-			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, opts)
+			rec.Extend(commitRes.Mutated())
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			if _, err := fab.PushWeft(opts); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+			pushRes, err := fab.PushWeft(opts)
+			rec.Extend(pushRes.Mutated())
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{}))
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 			return nil
 		},
 	}
@@ -231,10 +247,10 @@ tracking ref:
 			out := cmd.OutOrStdout()
 			result, err := fab.Pull(fabricengine.EnvSyncOptions())
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, result.Mutated(), err))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, pullResultMap(result)))
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, result.Mutated(), pullResultMap(result)))
 			return nil
 		},
 	}
@@ -254,15 +270,23 @@ Related commands:
 				return nil
 			}
 			out := cmd.OutOrStdout()
-			if _, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions()); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+			rec := fabricengine.NewMutations(l.HubPath)
+			commitRes, err := fab.Commit(pathspec, fabricengine.DefaultCommitMessage, nil, fabricengine.EnvSyncOptions())
+			rec.Extend(commitRes.Mutated())
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			if err := spawnPush(fabricengine.WeftWorktree(l)); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+			weftWorktree := fabricengine.WeftWorktree(l)
+			if err := spawnPush(weftWorktree); err != nil {
+				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{}))
+			// The push happens in a detached child process after this one returns, so its outcome is
+			// unobservable here: record exactly one KindPushSpawned entry, never branch_pushed, which
+			// would assert an outcome this process did not observe.
+			rec.Append(fabricengine.KindPushSpawned, weftWorktree, "detached")
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 			return nil
 		},
 	}
