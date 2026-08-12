@@ -97,6 +97,8 @@ func WorktreeDirtyAllForTest(dir string) (dirty bool, detail string, err error) 
 // integration tests that need to drive the branch-ownership gate directly rather than through
 // Cleanup's application-level orphan/liveness filtering — which never reaches the gate at all for
 // the primary weft branch or a branch checked out at some worktree.
+// It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its
+// own and its callers assert nothing about the record.
 func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix string, force bool) (exitCode int, stderr string, err error) {
 	req := branchRequest{
 		what:      "test delete branch",
@@ -106,5 +108,5 @@ func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix strin
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     force,
 	}
-	return deleteBranch(req)
+	return deleteBranch(NewMutations(""), req)
 }
