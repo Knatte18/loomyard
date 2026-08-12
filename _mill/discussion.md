@@ -35,7 +35,7 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
 - New package `internal/gitkit`: the below-fabric leaf, holding what is left of `lyxtest` — `MustRun`, `SeedConfig`, `HermeticGitEnv`, `GitStatusPorcelain`, and one primitive repo fixture.
 - Delete `internal/lyxtest` and `internal/fabricengine/fabrictest` as package names;
   no package by either name survives.
-- Migrate all 154 above-fabric `Copy*` call sites onto `hubforge.NewHub`.
+- Migrate all 132 above-fabric `Copy*` call sites onto `hubforge.NewHub`.
 - Move `fabrictest`'s live-state machinery (`states.go`, `verbs.go`, `manifest.go`, `mutationoracle.go`, `refusal.go` and their tests, ~4960 lines) into `package fabricengine_test` files inside `internal/fabricengine/`.
 - Move `internal/fabricengine`'s 14 in-package `lyxtest` callers off the leaf, and the two stuck in-package files in `treadleengine`/`loomengine` to external test packages with an `export_test.go` shim.
 - Delete `CopyPaired`, `CopyPairedLocal`, `CopyWeft`, and `NewPairedForTest`.
@@ -43,7 +43,8 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
 - `CONSTRAINTS.md` rewrite — **already applied in this worktree**, see "Constraints" below.
 - Module docs for `hubforge` and `gitkit`;
   `docs/overview.md` module table.
-- Delete `manifest/designs/lyxtest-real-hubs.md` per the documentation lifecycle.
+- Delete `manifest/designs/lyxtest-real-hubs.md` per the documentation lifecycle, and move `manifest/roadmap.md`'s Planned item 1 to Done, repairing the inbound link.
+- Update the 10 markdown files naming `lyxtest`/`fabrictest` (see Technical context).
 
 **Out:**
 
@@ -115,7 +116,7 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   Bare repos contain zero symlinks, so the existing recursive copy handles them (~2 ms per pair).
   A hub cannot be copied: its junctions carry absolute targets, so a filesystem copy leaves every link aimed at the template.
   Measured 2026-08-10 on Linux/WSL2 (Core Ultra 7 155U, 14 logical CPUs): full fixture 24 ms concurrent, against today's `CopyPaired` at 2.3 ms.
-  154 sites × 24 ms ≈ 3.7 s against today's ≈ 0.35 s, so about +3.4 s on Tier 2's ~132 s — roughly 2.6%.
+  132 sites × 24 ms ≈ 3.2 s against today's ≈ 0.30 s, so about +2.9 s on Tier 2's ~132 s — roughly 2.2%.
 - **Two recipe gotchas belong in the factory, not at call sites:**
   `git init --bare` leaves `HEAD` on `master` even when the branch pushed is `main`, fixed with `git -C <bare> symbolic-ref HEAD refs/heads/main`;
   and the weft bare must stay genuinely empty and never be pushed to, or `CloneHub`'s bootstrap guard (`clone.go:172`, `!probe.WeftLooksLikeWeft`) refuses it.
@@ -133,21 +134,25 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   The repo already relies on this: `pull_integration_test.go:73,78` force-pushes from a second clone to build the diverged upstream `Fabric.Pull` re-anchors from, and `coalesce_integration_test.go:128-138` forces a genuine non-fast-forward through `gitrepo.Push`'s rebase-retry.
   Set `protocol.file.allow always` in the hermetic git env defensively.
 - **Rejected:**
-  Any real-remote fixture substrate — it would make 154 fixtures slow, flaky and credential-dependent for no gain in fabric coverage.
+  Any real-remote fixture substrate — it would make 132 fixtures slow, flaky and credential-dependent for no gain in fabric coverage.
 
-### Migrate all 154 above-fabric sites; delete three helpers
+### Migrate all 132 above-fabric sites; delete three helpers, rename the fourth
 
 - **Decision:**
-  Every `Copy*` call site outside `internal/lyxcwd` moves to `hubforge.NewHub`.
-  `CopyPaired` (57), `CopyPairedLocal` (34) and `CopyWeft` (51) are deleted outright.
-  `CopyWarpHub` (23) survives in `gitkit`, narrowed to `internal/lyxcwd` and `internal/gitrepo`, renamed to something that does not advertise itself as a hub.
+  Every `Copy*` call site outside `internal/lyxcwd` moves to `hubforge.NewHub` — 132 of 141.
+  `CopyPaired` (49), `CopyPairedLocal` (29) and `CopyWeft` (42) are deleted outright.
+  `CopyWarpHub` (21) is **not** a primitive: it is hub-shaped, and 12 of its 21 sites are above fabric and migrate to `hubforge` like the rest.
+  Its surviving 9 `lyxcwd` sites become `gitkit.CopyRepo`, returning `RepoFixture{Repo, Bare}`.
+- **The rename is not cosmetic.**
+  Today's `CopyWarpHub` returns `WarpFixture{Hub, Bare}`, and the field named `Hub` holds a directory that is not a hub — the field name is itself part of the invented shape this task removes.
+  `CopyRepo`/`RepoFixture{Repo, Bare}` names what it actually is: a git repo with a bare origin.
 - **Rationale:**
   A surviving general-purpose helper restores exactly the discipline-not-construction failure mode this task exists to remove.
-  After migration the only remaining demand is `lyxcwd`'s 9 `CopyWarpHub` calls.
-  A guard test should pin the allowed caller set so drift back is a test failure.
+  A guard test pins `CopyRepo`'s caller set to `internal/lyxcwd` and `internal/gitrepo` so drift back is a test failure.
 - **Rejected:**
   Keeping all four as a cheap tier;
-  migrating only the hub-shape-sensitive packages.
+  migrating only the hub-shape-sensitive packages;
+  keeping the `CopyWarpHub` name on the narrowed helper.
 
 ### `gitrepo` and `lyxcwd` keep primitive fixtures
 
@@ -174,6 +179,18 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   the subpackage does not solve the cycle, moving the test file does.
   Leaving both on primitive fixtures.
 
+### The fixture benchmarks are retargeted, not deleted
+
+- **Decision:**
+  `internal/lyxtest/bench_test.go`'s four benchmarks move to `internal/hubforge` and are retargeted:
+  `BenchmarkNewHub` and `BenchmarkNewHubParallel` measure the full fixture (bare copy plus clone plus wire), and `BenchmarkCopyBares` measures the bare-copy step alone.
+  `gitkit` keeps one benchmark for the surviving `CopyRepo`.
+- **Rationale:**
+  The benchmarks are what produced the numbers this whole design rests on, and the clone-versus-copy comparison stays live precisely because the runtime cost is the standing objection.
+  Deleting them would leave the +2.9 s claim unfalsifiable from inside the repo.
+- **`docs/benchmarks/fixture-copy.md` is updated in the same commit:**
+  its Reproducing section names the new benchmark identifiers, and its recorded measurements are kept as historical rows with their date and hardware intact rather than rewritten.
+
 ### Junction-safe teardown lives in `hubforge`
 
 - **Decision:**
@@ -181,7 +198,7 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   Cleanup is LIFO, so registering after `TempDir` is what orders it correctly.
 - **Rationale:**
   `fslink.Remove` is documented to remove only the link entry, never the target, and `fslink` is the repo's mandated cross-OS link primitive.
-  This is the Win11 safety requirement: a hub fixture contains junctions inside a temp dir that Go will `os.RemoveAll`, 154 times per suite run.
+  This is the Win11 safety requirement: a hub fixture contains junctions inside a temp dir that Go will `os.RemoveAll`, 132 times per suite run.
 - **Rejected:**
   `fabricengine.Unwire` — it is per-warp-worktree rather than per-hub, it deliberately never touches repo-wide `weft:main` records or weft-side content, and it carries refusal semantics that would fail teardown on exactly the deliberately-corrupt fixtures the live-state matrix plants.
   Adding a hub-teardown verb to `fabricengine` — new production code, out of scope.
@@ -222,6 +239,9 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
 - `internal/lyxtest/hermetic.go` (70) — `HermeticGitEnv`;
   `reexecguard.go` (50) — `refuseCLIReexec`;
   `leaf_enforcement_test.go` (94) — `TestLeafInvariant_AllowlistOnly`, an AST-based import allowlist walk that becomes `gitkit`'s.
+- `internal/lyxtest/bench_test.go` (48) — `BenchmarkCopyPaired`, `BenchmarkCopyPairedLocal`, `BenchmarkCopyPairedParallel`, `BenchmarkCopyPairedLocalParallel`.
+  All four call helpers this task deletes, and they are the permanent probes `docs/benchmarks/fixture-copy.md` documents a Reproducing section for.
+  Disposition below.
 - `internal/fabricengine/fabrictest/hub.go` (361 lines) — **the model to promote.**
   `buildBareTemplate`, `copyBares`, `Hub` + geometry accessors (`PrimeWorktree`, `PrimeWeft`, `BoardDir`, `PairWarpWorktree`, `PairWeftSibling`, `PairPortalLink`, `PairLauncherDir`), `NewHub(tb, anchor)`, `AddPair`, `GitStatusPorcelain`.
   Its private `mustGit`, `copyDirRecursive`, `initBareRepo`, `initScratchRepo`, `commitAll`, `stripHookSamples` are, by its own comments, copies of `lyxtest`'s — the merge deletes one side of each.
@@ -238,7 +258,7 @@ In-package test files calling `lyxtest.*` inside `fabriccli`'s set, measured 202
 
 | package | files | what they use | disposition |
 |---|---|---|---|
-| `fabricengine` | 14 | 101× `MustRun`, 43× `CopyWeft`, 5× `CopyWarpHub`, 4× `HermeticGitEnv`, 2× `CopyPairedLocal` | primitives stay on `gitkit`; hub-needing ones move to `package fabricengine_test` |
+| `fabricengine` | 14 | 101× `MustRun`, 43× `CopyWeft`, 5× `CopyWarpHub`, 4× `HermeticGitEnv`, 2× `CopyPairedLocal` | only `MustRun`/`SeedConfig`/`HermeticGitEnv` stay on `gitkit`; every `Copy*` site moves to `package fabricengine_test` + `hubforge` |
 | `gitrepo/gogit_test.go` | 1 | 18× `MustRun` | `gitkit`, unchanged |
 | `lyxcwd/gate_test.go` | 1 | 1 call | `gitkit`, unchanged |
 | `boardengine` | 2 | 4× `MustRun`, `HermeticGitEnv` | `gitkit`, unchanged |
@@ -248,31 +268,44 @@ In-package test files calling `lyxtest.*` inside `fabriccli`'s set, measured 202
 
 `burlerengine`'s two `CopyPaired` sites are already in `package burlerengine_test` and are not stuck.
 
+**`CopyWarpHub` is hub-shaped, not primitive.**
+Its 21 sites split 5 in-package `fabricengine` (`hook_test.go` 4, `warplayout_test.go` 1), 2 external `fabricengine_test` (`unwire_test.go`, `worktreelist_test.go`), 2 `fabriccli`, 2 `idecli`, 1 `webstercli`, and 9 `lyxcwd`.
+The first 12 migrate to `hubforge`;
+the 5 in-package ones move to `package fabricengine_test` on the way.
+Only `lyxcwd`'s 9 stay behind, as `gitkit.CopyRepo`.
+Reading the row above as "all `fabricengine` primitives stay on `gitkit`" would leave those 5 sites calling a helper the `gitkit` caller-set guard test forbids.
+
 ### `Copy*` call sites, measured 2026-08-12
 
-163 real call sites (an earlier count of 167/170 included guard-token string literals in `cmd/lyx/tierpurity_test.go` and `cmd/lyx/hermeticenv_test.go`, plus comment mentions).
+**Counting method — reproduce before trusting these numbers.**
+Count *call expressions*, not matching lines:
+`grep -rho "lyxtest\.<Helper>(" --include=*.go internal cmd | wc -l` per helper, and the same with `find <pkg> -maxdepth 1 -name '*.go'` per package.
+The trailing `(` is what excludes doc-comment mentions.
+A line-based count over-reports by 22: `internal/fabricengine` alone carries 11 comment mentions, and `cmd/lyx` carries 6 that are entirely comment text plus two guard-token string literals.
 
 | package | CopyPaired | CopyPairedLocal | CopyWarpHub | CopyWeft | total |
 |---|---|---|---|---|---|
-| `internal/fabricengine` | 14 | 28 | 7 | 46 | 95 |
-| `internal/reedcli` | 21 | — | — | — | 21 |
-| `internal/fabriccli` | 8 | — | 3 | 1 | 12 |
+| `internal/fabricengine` | 10 | 25 | 7 | 40 | 82 |
+| `internal/reedcli` | 20 | — | — | — | 20 |
+| `internal/fabriccli` | 8 | — | 2 | 1 | 11 |
 | `internal/lyxcwd` | — | — | 9 | — | 9 |
-| `internal/perchcli` | 3 | 5 | — | — | 8 |
+| `internal/perchcli` | 2 | 4 | — | — | 6 |
 | `internal/shuttlecli` | 4 | — | — | — | 4 |
-| `internal/configcli` | 2 | — | — | — | 2 |
 | `internal/burlerengine` | 2 | — | — | — | 2 |
 | `internal/idecli` | — | — | 2 | — | 2 |
-| `internal/boardengine/boardtest` | — | — | — | 2 | 2 |
-| `cmd/lyx` | — | 1 | — | 1 | 2 |
-| `internal/webstercli` | — | — | 1 | — | 1 |
+| `internal/configcli` | 1 | — | — | — | 1 |
 | `internal/loomengine` | 1 | — | — | — | 1 |
 | `internal/treadleengine` | 1 | — | — | — | 1 |
-| **total** | **57** | **34** | **23** | **51** | **163** |
+| `internal/boardengine/boardtest` | — | — | — | 1 | 1 |
+| `internal/webstercli` | — | — | 1 | — | 1 |
+| **total** | **49** | **29** | **21** | **42** | **141** |
 
-154 of these are above fabric and migrate;
-`lyxcwd`'s 9 stay.
-The count is high because it is one fixture per test function for isolation — 279 test functions and 116 local setup helpers live in these files.
+Row totals and column totals both sum to 141.
+
+**`cmd/lyx` has zero call sites** and is absent from this table deliberately — its only occurrences are comment text and the two guard-token string literals in `tierpurity_test.go:57` and `hermeticenv_test.go:51`, which are still updated under "Files naming the old packages by path" below.
+
+**132 sites migrate** — 141 minus `internal/lyxcwd`'s 9, which stay on `gitkit` per the scoping rule.
+The count is high because it is one fixture per test function for isolation: 279 test functions and 116 local setup helpers live in these files.
 
 ### Assertion migration is the real work
 
@@ -282,7 +315,7 @@ Directory listings, file counts and "this path should not exist" assertions will
 
 Two specific shapes to expect:
 
-- The 46 `CopyWeft` sites in `fabricengine` pair an unrelated weft with a `newWarpFixture` warp via `NewPairedForTest`, a shim in `internal/fabricengine/export_test.go` with 22 call sites across 4 files (`warpforward_integration_test.go` 10, `weftgit_exclude_test.go` 4, `fabric_test.go` 4, `checkout_index_refresh_test.go` 2).
+- The 40 `CopyWeft` sites in `fabricengine` pair an unrelated weft with a `newWarpFixture` warp via `NewPairedForTest`, a shim in `internal/fabricengine/export_test.go` with 22 call sites across 4 files (`warpforward_integration_test.go` 10, `weftgit_exclude_test.go` 4, `fabric_test.go` 4, `checkout_index_refresh_test.go` 2).
   A real hub's `PrimeWorktree`/`PrimeWeft` is a genuine pair, so the shim is deleted.
 - Sites that seed config into a fixture's parent directory as a stand-in hub (`weftgit_exclude_test.go`, `loomengine/preflight_integration_test.go`) drop that scaffolding entirely.
 
@@ -296,12 +329,37 @@ These reference `internal/lyxtest` or `internal/fabricengine/fabrictest` as stri
 - `cmd/lyx/tierpurity_test.go:50,57` and `cmd/lyx/hermeticenv_test.go:51` — banned-token string data (`"lyxtest.Copy"`).
 - `internal/fabriccli/clone.go:26` and `internal/fabricengine/mutation.go:214` — comments naming `fabrictest`.
 
+### Markdown naming the old packages — 10 files, one of them a build break
+
+The Go sweep above is not the whole surface.
+Reproduce with `grep -rln "lyxtest\|fabrictest" --include=*.md .` (excluding `_mill/`):
+
+- `manifest/roadmap.md` — **the build break.**
+  Line 22 sits under `## Planned` and links `[designs/lyxtest-real-hubs.md](designs/lyxtest-real-hubs.md)`.
+  Deleting that design doc without moving the entry breaks the machine-checked Markdown Link Integrity invariant (`CONSTRAINTS.md:280`).
+  Line 21 also names `fabrictest` as the landing zone slice 13 created.
+  This resolves the roadmap question outright: `lyxtest-real-hubs` **is** Planned item 1, so moving it Planned → Done with the link repaired is in scope, not optional.
+- `docs/benchmarks/fixture-copy.md` — 13 references including a Reproducing section;
+  updated with the retargeted benchmarks per the Decision above.
+- `docs/benchmarks/running-tests.md`, `docs/benchmarks/test-suite-timing.md`, `docs/benchmarks/scout-vs-grep.md` — tier and timing prose naming `lyxtest.Copy*`.
+- `docs/shared-libs/lyxcwd.md` — names lyxtest's synthetic hubs as the `ResolveWithAnchor` bypass caller;
+  must match the `CONSTRAINTS.md` wording already changed to `gitkit`'s primitive repo fixtures.
+- `docs/overview.md` — the module table, already in scope.
+- `manifest/designs/fabric-unified-view.md` — prose reference.
+- `crucible/review-prompt-template.md` — names the retired "lyxtest Leaf" invariant;
+  must name the `gitkit` Leaf and `hubforge` Fabric-Fixture invariants instead, or reviewers will keep checking against a rule that no longer exists.
+- `CLAUDE.md` — prose reference.
+
+`manifest/designs/lyxtest-real-hubs.md` is deleted, so it needs no rewrite — only the inbound link from `roadmap.md`.
+
 ### Reusable pieces
 
 - `internal/fslink` — `Remove` (link-only, idempotent), `RemoveLinksIn` (immediate children of one dir only), `IsLink`, `PointsTo`, `RawTarget`, `CreateDirLink`.
 - `internal/fabricengine` — `WiredNames(baseDir)`, `RepoWiredNames(l)`, `HubReservedNames()`, `BoardDir(hub)`, `WorktreePath`, `WeftWorktreePath`, `PortalLink`, `LauncherDir`.
   A teardown walk needs more than `RemoveLinksIn` on one directory: junctions sit at `<hub>/_portals/<slug>`, `<hub>/_launchers/<slug>`, `<worktree>/_lyx`, `<worktree>/.lyx`, `<worktree>/_board`.
-- `fabriccli.CloneAndWire(container, fabricengine.CloneOptions{WeftURL, WarpURL, Subpath})` returns `HubPath`, `Anchor`, `PrimeCwd`.
+- `fabriccli.CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.CloneResult, error)` — note the first parameter is `cwd`, not a container.
+  `CloneResult` carries an embedded `MutationRecord` plus `HubPath`, `Anchor`, `BoardDir`, `WeftBase`, `PrimeCwd`, `WarpURL`, `WarpBindingRecorded`.
+  `hubforge`'s accessors should take `BoardDir` and `WeftBase` from the result rather than re-deriving them.
 - `internal/fabricengine/export_test.go` — the `export_test.go` shim precedent.
 - `internal/boardengine/boardtest` — precedent for a test-only sibling package.
 
@@ -344,7 +402,7 @@ Unchanged invariants this task must still respect:
 
 ## Testing
 
-`hubforge` and `gitkit` are test infrastructure, so "tests" here means both tests *of* the new packages and the migration of the 154 tests that consume them.
+`hubforge` and `gitkit` are test infrastructure, so "tests" here means both tests *of* the new packages and the migration of the 132 sites that consume them.
 
 **`internal/hubforge` — TDD candidates, write these first:**
 
@@ -364,13 +422,14 @@ Unchanged invariants this task must still respect:
 
 - `TestLeafInvariant_AllowlistOnly` ported from `internal/lyxtest/leaf_enforcement_test.go` — the AST import-allowlist walk.
   This is the machine half of the leaf invariant and must exist before the migration starts, or nothing stops `gitkit` from growing a fabric import.
-- A guard test pinning the surviving primitive fixture's caller set to `internal/gitrepo` and `internal/lyxcwd`.
+- A guard test pinning `gitkit.CopyRepo`'s caller set to `internal/gitrepo` and `internal/lyxcwd`.
+  This is what catches a migration that leaves one of `fabricengine`'s 5 in-package `CopyWarpHub` sites behind.
 - Existing `lyxtest_test.go` (389 lines) and `reexecguard_test.go` coverage carries over for the retained helpers.
 
-**Migration of the 154 sites:**
+**Migration of the 132 sites:**
 
-- Migrate package by package, smallest first, so the pattern is settled before `fabricengine`'s 95 sites.
-  Suggested order: `webstercli`/`loomengine`/`treadleengine`/`configcli`/`idecli`/`boardtest`/`cmd/lyx`/`burlerengine` (13 sites) → `shuttlecli`/`perchcli` (12) → `reedcli` (21) → `fabriccli` (12) → `fabricengine` (95).
+- Migrate package by package, smallest first, so the pattern is settled before `fabricengine`'s 82 sites.
+  Suggested order, summing to 132: `webstercli`/`loomengine`/`treadleengine`/`configcli`/`boardtest` (1 each) plus `idecli`/`burlerengine` (2 each) = 9 → `shuttlecli` (4) + `perchcli` (6) = 10 → `reedcli` (20) → `fabriccli` (11) → `fabricengine` (82).
 - Each broken assertion is read and re-expressed against the real shape, never silenced.
   A migration that deletes an assertion rather than re-pointing it needs an explicit note saying why.
 - `internal/fabricengine`'s live-state machinery moves to `package fabricengine_test` in the same batch as its `fabrictest` deletion, so the tree never has both.
@@ -379,7 +438,7 @@ Unchanged invariants this task must still respect:
 **Regression gates:**
 
 - Full Tier 2 run green (`go test -tags integration ./...`), and its wall-clock recorded against the ~132 s baseline.
-  A delta materially worse than the predicted +3.4 s is a finding worth investigating, not a timing assertion to encode.
+  A delta materially worse than the predicted +2.9 s is a finding worth investigating, not a timing assertion to encode.
 - `cmd/lyx/tierpurity_test.go` and `cmd/lyx/hermeticenv_test.go` pass with their updated token data.
 - `cmd/lyx/destructiveguard_test.go` passes with the `fabrictest` exclusion removed.
 - `internal/lyxcwd/enforcement_test.go` passes with its two allowlist maps updated.
@@ -388,9 +447,9 @@ Unchanged invariants this task must still respect:
 ## Q&A log
 
 - **Q:** Where do repo-wide hub fixtures live, given `fabrictest.NewHub` already exists and needs `fabriccli`? **A:** A dedicated factory module separate from both `lyxtest` and the fabric module — inverting `lyxtest` in place buys nothing because the stuck-file set is identical either way.
-- **Q:** Is it really 163 `Copy*` calls, and why so many? **A:** Yes;
-  one fixture per test function for isolation, across 279 test functions.
-  Not duplication.
+- **Q:** Is it really 163 `Copy*` calls, and why so many? **A:** No — 163 was a line-based count that included doc-comment mentions.
+  The correct figure is 141 call expressions, of which 132 migrate.
+  The count is high because it is one fixture per test function for isolation, across 279 test functions — not duplication.
 - **Q:** Do we keep all four `Copy*` helpers if something better exists? **A:** No.
   Delete `CopyPaired`, `CopyPairedLocal`, `CopyWeft`;
   keep only the primitive one, narrowed to `gitrepo`/`lyxcwd`.
@@ -415,3 +474,8 @@ Unchanged invariants this task must still respect:
   Hence `hubforge` (factory) and `gitkit` (leaf).
 - **Q:** Should `CONSTRAINTS.md` be rewritten now or when the code lands? **A:** Now, before reviewers run, since they anchor on it and would otherwise flag `discussion.md` as contradicting a stale invariant.
   Keep it to short bullets — rules only, no rationale.
+- **Q:** The `Copy*` table did not reconcile — how is the count re-derived? (discussion review r1, BLOCKING) **A:** Count call expressions (`lyxtest.<Helper>(`), never matching lines;
+  the trailing paren excludes doc-comment mentions.
+  141 call expressions, 132 migrating, `cmd/lyx` dropping out with zero real sites.
+  Method stated in Technical context so it is reproducible.
+- **Q:** Should all rounds' recommended resolutions be applied without asking? **A:** Yes — operator granted blanket approval for the recommended option in every review round.
