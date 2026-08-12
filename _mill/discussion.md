@@ -36,6 +36,7 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
 - Delete `internal/lyxtest` and `internal/fabricengine/fabrictest` as package names;
   no package by either name survives.
 - Migrate all 132 above-fabric `Copy*` call sites onto `hubforge.NewHub`.
+- Retarget or delete the 56 `SeedConfig` call sites — a second migration axis, not a subset of the 132.
 - Move `fabrictest`'s live-state machinery (`states.go`, `verbs.go`, `manifest.go`, `mutationoracle.go`, `refusal.go` and their tests, ~4960 lines) into `package fabricengine_test` files inside `internal/fabricengine/`.
 - Move `internal/fabricengine`'s 14 in-package `lyxtest` callers off the leaf, and the two stuck in-package files in `treadleengine`/`loomengine` to external test packages with an `export_test.go` shim.
 - Delete `CopyPaired`, `CopyPairedLocal`, `CopyWeft`, and `NewPairedForTest`.
@@ -117,6 +118,11 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   A hub cannot be copied: its junctions carry absolute targets, so a filesystem copy leaves every link aimed at the template.
   Measured 2026-08-10 on Linux/WSL2 (Core Ultra 7 155U, 14 logical CPUs): full fixture 24 ms concurrent, against today's `CopyPaired` at 2.3 ms.
   132 sites × 24 ms ≈ 3.2 s against today's ≈ 0.30 s, so about +2.9 s on Tier 2's ~132 s — roughly 2.2%.
+- **Template temp-dir lifetime:**
+  `buildBareTemplate` allocates via `os.MkdirTemp` with no cleanup and deliberately keeps it that way — one template pair per test binary, left to the OS temp reaper.
+  This matches today's behaviour in both `lyxtest` and `fabrictest/hub.go:73`.
+  It cannot be `tb.TempDir()`: the template outlives any single test, and a `TestMain` cleanup would race the `sync.Once` under parallel packages.
+  Only the per-fixture copies are owned by `tb`.
 - **Two recipe gotchas belong in the factory, not at call sites:**
   `git init --bare` leaves `HEAD` on `master` even when the branch pushed is `main`, fixed with `git -C <bare> symbolic-ref HEAD refs/heads/main`;
   and the weft bare must stay genuinely empty and never be pushed to, or `CloneHub`'s bootstrap guard (`clone.go:172`, `!probe.WeftLooksLikeWeft`) refuses it.
@@ -143,6 +149,7 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   `CopyPaired` (49), `CopyPairedLocal` (29) and `CopyWeft` (42) are deleted outright.
   `CopyWarpHub` (21) is **not** a primitive: it is hub-shaped, and 12 of its 21 sites are above fabric and migrate to `hubforge` like the rest.
   Its surviving 9 `lyxcwd` sites become `gitkit.CopyRepo`, returning `RepoFixture{Repo, Bare}`.
+  The caller allowlist is `internal/lyxcwd` **alone** — `internal/gitrepo` has zero `Copy*` sites today (18× `MustRun` only), so listing it would pre-authorise exactly the drift this task forbids.
 - **The rename is not cosmetic.**
   Today's `CopyWarpHub` returns `WarpFixture{Hub, Bare}`, and the field named `Hub` holds a directory that is not a hub — the field name is itself part of the invented shape this task removes.
   `CopyRepo`/`RepoFixture{Repo, Bare}` names what it actually is: a git repo with a bare origin.
@@ -178,6 +185,50 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   A `loomtest`/`treadletest` fixture subpackage — it would import `hubforge` → `fabriccli` → the parent package, so an in-package test still could not reach it;
   the subpackage does not solve the cycle, moving the test file does.
   Leaving both on primitive fixtures.
+
+### Config seeding on a real hub — 56 sites, and most of them shrink
+
+- **The problem.**
+  `lyxtest.SeedConfig(tb, repoDir, …)` writes `<repoDir>/_lyx/config/<module>.yaml` then runs `git add .` + `git commit` in `repoDir` (`internal/lyxtest/lyxtest.go:38-58`).
+  On a real hub neither of its two current arguments works.
+  32 of the 56 call sites pass `fixture.Hub`, which on a real hub is the `<name>-HUB` container — **not a git repo at all**, so the commit fails outright.
+  The other 21 pass `fixture.WeftPrime`, and 3 pass an ad-hoc path (`warpSubdir`, `sibling`, `nested`).
+  Seeding into the *warp* worktree would also fail: `<worktree>/_lyx` is a weft junction excluded from the warp's index via `.git/info/exclude`, so `git add .` stages nothing and the commit errors.
+- **Decision — three-way split:**
+  1. **Most sites stop seeding entirely.**
+     `fabriccli.CloneAndWire` already runs `configsync.ReconcileAll(res.WeftBase, true)` and `configsync.ReconcileFabricAt(res.BoardDir, true)`, so a real hub arrives with materialized default config for every registered module.
+     The fake fixture carried only a placeholder, which is the sole reason these sites seed at all.
+     A site that seeds a module's plain `ConfigTemplate()` can simply delete the call.
+  2. **Sites that override a value** call a new `hubforge.SeedConfig(tb, h *Hub, map[string]string)`, which writes into `h.PrimeWeft()` — the weft sibling, where `_lyx/config` is native and committable — and commits there.
+     This is `res.WeftBase`, the same base `CloneAndWire` reconciles into.
+  3. **Repo-wide fabric config** goes to `res.BoardDir` via a separate `hubforge.SeedFabricConfig`, matching `repoWideFabricBase(l) = BoardDir(l.HubPath)`.
+- **`gitkit.SeedConfig` keeps its current body unchanged**, restricted to primitive repos alongside `CopyRepo`.
+- **Rationale:**
+  The 32 `fixture.Hub` sites are the same stand-in-hub lie as the fixtures themselves — config seeded at a container path that no production code would ever read from.
+  Retargeting them onto the weft is not a mechanical rename;
+  each one needs its intent read, which is why this is called out as its own migration axis rather than folded into the `Copy*` count.
+- **Rejected:**
+  Keeping a single `SeedConfig` that guesses its base from the path shape — it would silently pick wrong on the ad-hoc sites.
+  Seeding through the warp-side `_lyx` junction — excluded from the warp index by design.
+
+### Teardown discovers junctions by walking, not by slug
+
+- **The problem.**
+  The junction inventory (`<hub>/_portals/<slug>`, `<hub>/_launchers/<slug>`, `<worktree>/_lyx`, `<worktree>/.lyx`, `<worktree>/_board`) is slug-parameterised, but `hubforge` does not know the slug set at cleanup time: for fabric's own live-state tests the pairs are created by the verb under test, and some are destroyed by it.
+  `fslink.RemoveLinksIn` covers only the immediate children of one directory.
+- **Decision:**
+  Teardown does a `filepath.WalkDir` from the hub root, calling `fslink.IsLink` on every entry and `fslink.Remove` on each link found.
+  **It never descends into a link** — on encountering one it removes it and returns `filepath.SkipDir`, so the walk can never wander into a junction's target and delete links belonging to something else.
+  Errors are logged, never fatal: teardown must not fail a test that already passed.
+- **Behaviour on a hand-removed worktree:**
+  nothing special — a missing directory simply yields no entries, and `fslink.Remove` is documented idempotent (returns nil when the link is absent).
+- **Rationale:**
+  Slug-free discovery is the only mechanism that survives the deliberately-corrupt hubs fabric's live-state matrix plants.
+  Enumerating worktrees from fabric and applying `RepoWiredNames` per worktree requires fabric to still be functional against that hub, which is exactly what those tests break.
+  Walking ~155 entries per fixture is negligible beside the 24 ms clone.
+- **Rejected:**
+  Enumerate-worktrees-then-`RepoWiredNames`;
+  `RemoveLinksIn` on a hardcoded site list.
 
 ### The fixture benchmarks are retargeted, not deleted
 
@@ -307,6 +358,23 @@ Row totals and column totals both sum to 141.
 **132 sites migrate** — 141 minus `internal/lyxcwd`'s 9, which stay on `gitkit` per the scoping rule.
 The count is high because it is one fixture per test function for isolation: 279 test functions and 116 local setup helpers live in these files.
 
+### `SeedConfig` call sites, measured 2026-08-12
+
+Same counting method as the `Copy*` table: 56 call expressions of `lyxtest.SeedConfig(`.
+
+| package | sites |
+|---|---|
+| `internal/reedcli` | 21 |
+| `internal/fabricengine` | 19 |
+| `internal/perchcli` | 6 |
+| `internal/shuttlecli` | 4 |
+| `internal/burlerengine` | 2 |
+| `internal/configcli`, `internal/loomengine`, `internal/treadleengine`, `internal/webstercli` | 1 each |
+| **total** | **56** |
+
+By base argument: 32 pass `fixture.Hub`, 21 pass `fixture.WeftPrime` (or `f.WeftPrime`), 3 pass an ad-hoc path (`warpSubdir`, `sibling`, `nested`).
+The 32 `fixture.Hub` sites are the ones that cannot survive unchanged — see the Decision above.
+
 ### Assertion migration is the real work
 
 A real hub is ~155 files against the templates' ~36, and carries `_board`, `_portals`, `_launchers`, junctions, an anchor marker, hub-level `.lyx` and repo-wide `fabric.yaml` that today's fixtures lack.
@@ -422,9 +490,16 @@ Unchanged invariants this task must still respect:
 
 - `TestLeafInvariant_AllowlistOnly` ported from `internal/lyxtest/leaf_enforcement_test.go` — the AST import-allowlist walk.
   This is the machine half of the leaf invariant and must exist before the migration starts, or nothing stops `gitkit` from growing a fabric import.
-- A guard test pinning `gitkit.CopyRepo`'s caller set to `internal/gitrepo` and `internal/lyxcwd`.
+- A guard test pinning `gitkit.CopyRepo`'s caller set to `internal/lyxcwd` alone.
   This is what catches a migration that leaves one of `fabricengine`'s 5 in-package `CopyWarpHub` sites behind.
 - Existing `lyxtest_test.go` (389 lines) and `reexecguard_test.go` coverage carries over for the retained helpers.
+
+**`SeedConfig` migration — verify per site, do not sweep:**
+
+- For each of the 56 sites, decide which of the three outcomes applies (drop / `hubforge.SeedConfig` into the weft / `hubforge.SeedFabricConfig` into the board).
+  A site whose seeded YAML equals the module's plain `ConfigTemplate()` is a drop candidate, since `CloneAndWire` already materialises it.
+- `hubforge` needs a test proving a real hub arrives with materialised config for a registered module *without* any seeding, since that is what licenses the drops.
+- `hubforge.SeedConfig` needs a test proving the value it writes is what the module's config loader reads back through the warp-side `_lyx` junction — the seed goes in on the weft side and must be visible from the warp side.
 
 **Migration of the 132 sites:**
 
@@ -479,3 +554,7 @@ Unchanged invariants this task must still respect:
   141 call expressions, 132 migrating, `cmd/lyx` dropping out with zero real sites.
   Method stated in Technical context so it is reproducible.
 - **Q:** Should all rounds' recommended resolutions be applied without asking? **A:** Yes — operator granted blanket approval for the recommended option in every review round.
+- **Q:** What does `SeedConfig` mean on a real hub, where its 32 `fixture.Hub` sites point at a non-repo container? (discussion review r2, BLOCKING) **A:** Three-way split — drop the call where `CloneAndWire` already materialises the module's default config, else `hubforge.SeedConfig` into `PrimeWeft`/`WeftBase`, or `hubforge.SeedFabricConfig` into `BoardDir` for repo-wide fabric config.
+  `gitkit.SeedConfig` keeps its body, restricted to primitive repos.
+- **Q:** How does teardown discover junction sites when the slug set is created by the verb under test? (discussion review r2, BLOCKING) **A:** A slug-free `filepath.WalkDir` from the hub root using `fslink.IsLink`, never descending into a link (`SkipDir` on encountering one).
+  Slug-free is the only mechanism that survives the deliberately-corrupt hubs fabric's live-state matrix plants.
