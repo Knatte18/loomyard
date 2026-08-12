@@ -73,7 +73,9 @@ batches:
     commit_sha: 4f22c75326cb59a07ee3ab04f3ab461986116d8f
     verify_baseline_failures: []
   - name: constructive-recording
-    state: pending
+    state: running
+    implementer_session: 192d532e-5ea9-4463-967e-70f5c7b274c4
+    start_sha: a0e70f2ca2b8c58bd29d5eb84cd2d019865c7787
     verify_baseline_failures: []
   - name: cli-envelope
     state: pending
