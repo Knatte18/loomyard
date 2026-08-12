@@ -188,7 +188,7 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupRe
 			continue
 		}
 
-		entry.Deleted = deleteWeftBranch(l, branch, t.cfg.BranchPrefix, &entry)
+		entry.Deleted = deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry)
 		result.Entries = append(result.Entries, entry)
 	}
 
@@ -271,7 +271,8 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 // in entry. force is always false here even when Topology.Cleanup was called with force true:
 // --force there answers the folded-back-raddle gate above, evaluated before this call is reached, and
 // may not answer the gate's own primary-weft carve-out or checked-out check.
-func deleteWeftBranch(l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
+// rec is the calling verb's own recorder, passed straight through to deleteBranch.
+func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
@@ -285,7 +286,7 @@ func deleteWeftBranch(l *lyxcwd.Location, branch, branchPrefix string, entry *Cl
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}
-	exitCode, deleteStderr, err := deleteBranch(req)
+	exitCode, deleteStderr, err := deleteBranch(rec, req)
 	if err != nil {
 		entry.Error = fmt.Sprintf("git branch -D %s: %v", branch, err)
 		return false

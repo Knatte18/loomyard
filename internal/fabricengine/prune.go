@@ -111,7 +111,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 			applyStalePairOwnership(l, weftPath, &pe)
 			applyStalePairProtection(weftPath, force, &pe)
 			if apply && !pe.Protected && !pe.Unowned {
-				pe.Removed = removeStalePair(l, slug, weftPath, &pe)
+				pe.Removed = removeStalePair(rec, l, slug, weftPath, &pe)
 			}
 
 			pass1Slugs[slug] = true
@@ -154,7 +154,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 		applyStalePairOwnership(l, weftPath, &pe)
 		applyStalePairProtection(weftPath, force, &pe)
 		if apply && !pe.Protected && !pe.Unowned {
-			pe.Removed = removeStalePair(l, warpSlug, weftPath, &pe)
+			pe.Removed = removeStalePair(rec, l, warpSlug, weftPath, &pe)
 		}
 
 		result.Entries = append(result.Entries, pe)
@@ -244,7 +244,8 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // slug they are keyed on is derived from a directory name the orphan pass chose: tearing them down
 // first meant a stray `<hub>/my-task-weft/` directory removed the LIVE `my-task` pair's portal
 // junction and launcher directory before anything had established the entry was fabric's at all.
-func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
+// rec is the calling verb's own recorder, threaded through every gate call this helper makes.
+func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
@@ -254,11 +255,11 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 	// The portal and launcher teardown here is keyed on a slug the orphan pass derived from a
 	// directory name — precisely the input a refusal is most likely to be about — so a refusal must
 	// be recorded rather than swallowed alongside an ordinary operational failure.
-	if err := surfaceRefusal(removePortal(l, slug)); err != nil {
+	if err := surfaceRefusal(removePortal(rec, l, slug)); err != nil {
 		pe.Error = err.Error()
 		return false
 	}
-	if err := surfaceRefusal(removeLaunchers(l, slug)); err != nil {
+	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		pe.Error = err.Error()
 		return false
 	}
@@ -274,7 +275,7 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 			dirtiness: dirtyScopeTracked(),
 			force:     true,
 		}
-		exitCode, stderr, err := removeGitWorktree(req, weftRepoRoot)
+		exitCode, stderr, err := removeGitWorktree(rec, req, weftRepoRoot)
 		if err != nil {
 			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
 			return false
@@ -296,7 +297,7 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 				ownership: ownedRegisteredLinkedWorktree(weftRepoRoot),
 				dirtiness: dirtyScopeTracked(),
 			}
-			if removeErr := removePath(fallbackReq); removeErr != nil {
+			if removeErr := removePath(rec, fallbackReq); removeErr != nil {
 				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
 				return false
 			}

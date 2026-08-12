@@ -229,7 +229,7 @@ func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, warpBranch, weftBranch,
 
 	// (1) Remove the weft worktree; delete the weft branch only when this Add
 	// created it, so a rollback never destroys pre-existing weft history.
-	if err := removeWeftWorktree(l, slug, weftBranch, true, !weftBranchAdopted, t.cfg.BranchPrefix); err != nil {
+	if err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, t.cfg.BranchPrefix); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
@@ -244,21 +244,21 @@ func (t *Topology) rollbackAdd(l *lyxcwd.Location, slug, warpBranch, weftBranch,
 	if namesErr != nil {
 		names = nil
 	}
-	if err := removeWarpJunction(l, slug, names); err != nil {
+	if err := removeWarpJunction(rec, l, slug, names); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	// (2) Remove warp portal
-	if err := removePortal(l, slug); err != nil {
+	if err := removePortal(rec, l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
 	// (3) Remove warp launchers
-	if err := removeLaunchers(l, slug); err != nil {
+	if err := removeLaunchers(rec, l, slug); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}

@@ -154,7 +154,11 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 // while the portal half of the same teardown (fslink.Remove) correctly declines to delete a
 // non-empty real directory. A leftover file is reported by the directory removal below, never
 // silently swept.
-func removeLaunchers(l *lyxcwd.Location, slug string) error {
+// rec is the calling verb's own recorder: the script removals route through removePath, which
+// records for itself, but the directory removal below stays a plain os.Remove — allowlisted for
+// exactly that reason — so it records KindPathRemoved with detail "single" itself, at its own
+// success site, using the same record-only-on-observed-effect rule the gate executors follow.
+func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	launcherDir := LauncherDir(l, slug)
 	if err := refuseUncontainedPath(launchersDir(l), launcherDir, "launcher dir"); err != nil {
 		return err
@@ -172,7 +176,7 @@ func removeLaunchers(l *lyxcwd.Location, slug string) error {
 			dirtiness: dirtinessNA("launcher scripts are generated artifacts, never edited content"),
 			force:     false,
 		}
-		if err := removePath(req); err != nil && !os.IsNotExist(err) {
+		if err := removePath(rec, req); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove launcher script %s: %w", target, err)
 		}
 	}
@@ -196,8 +200,12 @@ func removeLaunchers(l *lyxcwd.Location, slug string) error {
 	if err := checkPathRequest(dirReq); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
-	if err := os.Remove(launcherDir); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
+	removeErr := os.Remove(launcherDir)
+	if removeErr != nil && !os.IsNotExist(removeErr) {
+		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, removeErr)
+	}
+	if removeErr == nil {
+		rec.Append(KindPathRemoved, launcherDir, "single")
 	}
 
 	// Prune empty ancestors up to but not including launchersDir

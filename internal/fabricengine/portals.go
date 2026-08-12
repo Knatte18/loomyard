@@ -49,7 +49,8 @@ func createPortal(l *lyxcwd.Location, slug string) error {
 
 // removePortal removes the portal junction, deletes only the link (not the
 // target), and prunes empty ancestors. Returns nil if the link does not exist.
-func removePortal(l *lyxcwd.Location, slug string) error {
+// rec is the calling verb's own recorder, passed straight through to removeLink.
+func removePortal(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	link := PortalLink(l, slug)
 	if err := refuseUncontainedPath(PortalsDir(l), link, "portal"); err != nil {
 		return err
@@ -63,7 +64,7 @@ func removePortal(l *lyxcwd.Location, slug string) error {
 		dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
 		force:     false,
 	}
-	if err := removeLink(req); err != nil {
+	if err := removeLink(rec, req); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)
 	}
 	// Successful/idempotent removal; prune empty ancestors

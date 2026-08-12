@@ -361,7 +361,7 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 		pr.Action = ReconcileActionPortalRestored
 	}
 
-	applyStaleRemoval(warpLayout, slug, pr)
+	applyStaleRemoval(rec, warpLayout, slug, pr)
 }
 
 // restorePortalAndLaunchers recreates the pair's hub-level portal junction and launcher directory
@@ -708,7 +708,8 @@ func appendPrDetail(pr *ReconcilePairResult, text string) {
 // applyStaleRemoval converges warpLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
-func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
+// rec is the calling verb's own recorder, threaded through to removeWarpJunction.
+func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
 	desired, err := RepoWiredNames(warpLayout)
 	if err != nil {
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
@@ -738,7 +739,7 @@ func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 
 	var removed []string
 	for _, name := range stale {
-		removeErr := removeWarpJunction(warpLayout, slug, []string{name})
+		removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name})
 		_, _ = unseedGitExclude(warpLayout, slug, []string{name})
 
 		var refusal *destructiveRefusal
