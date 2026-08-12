@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-constructive-recording
+phase: approved-cli-envelope
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-exported-check-enum  '2026-08-12T06:24:33Z'
 approved-result-types-carry-record  '2026-08-12T06:31:51Z'
 approved-gate-auto-recording  '2026-08-12T06:47:21Z'
 approved-constructive-recording  '2026-08-12T07:03:45Z'
+approved-cli-envelope  '2026-08-12T07:15:04Z'
 ```
 
 ## Batches
@@ -80,9 +81,10 @@ batches:
     commit_sha: 223f79bd84dea86e62ddf75c932f0c717eedeff2
     verify_baseline_failures: []
   - name: cli-envelope
-    state: running
+    state: approved
     implementer_session: ac031fe0-5c08-4f56-b701-9f109fe3f0df
     start_sha: ab7852447d57da83750df80b79485849d3d7beea
+    commit_sha: 91a1a35df0360f7d0256e3cf4204ca1e856e5dec
     verify_baseline_failures: []
   - name: fabrictest-truthfulness-oracle
     state: pending
