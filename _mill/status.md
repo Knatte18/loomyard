@@ -87,7 +87,9 @@ batches:
     commit_sha: 91a1a35df0360f7d0256e3cf4204ca1e856e5dec
     verify_baseline_failures: []
   - name: fabrictest-truthfulness-oracle
-    state: pending
+    state: running
+    implementer_session: 19e6e8c6-5bec-4997-b3a0-edb603d5ca65
+    start_sha: 5cb56196fdc884320d5a94093bb563f0d09dd5e6
     verify_baseline_failures: []
   - name: guard-and-docs
     state: pending
