@@ -170,7 +170,10 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // reconciling weft's correspondence when warp's history has been rewritten.
 // A warp-side failure reports the accumulated result rather than unwinding the weft pull
 // (weft-first-ordering / report-not-rollback).
-func (f *Fabric) Pull(opts SyncOptions) (PullResult, error) {
+func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if opts.SkipGit {
 		return PullResult{}, nil
 	}

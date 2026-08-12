@@ -123,7 +123,10 @@ type CloneResult struct {
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
 // original failure and the residual Hub path.
-func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
+func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
+	var rec *Mutations
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
@@ -153,6 +156,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", opts.WarpURL)
 		}
 		hubPath = HubPath(cwd, name)
+		rec = NewMutations(hubPath)
 		if opts.Reset {
 			if err := resetHub(cwd, hubPath); err != nil {
 				return CloneResult{}, err
@@ -198,6 +202,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s recorded in the %s binding on weft:main", effective, WarpBindingFileName)
 		}
 		hubPath = HubPath(cwd, name)
+		rec = NewMutations(hubPath)
 		if opts.Reset {
 			if err := resetHub(cwd, hubPath); err != nil {
 				return CloneResult{}, err
