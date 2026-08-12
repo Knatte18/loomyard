@@ -216,7 +216,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		result.Pairs = append(result.Pairs, pr)
 	}
 
-	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(l)
+	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
 
 	return result, nil
 }
@@ -258,7 +258,11 @@ func refuseEmptyAnchorMarker(l *lyxcwd.Location) error {
 // returns an error: like wireBoardLink's board-junction repair, a binding backfill is a convenience
 // that may never fail or downgrade a reconcile verdict, so any failure is folded into a Deferred
 // outcome instead.
-func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome, string) {
+// rec is Reconcile's own recorder; it records KindFileWritten at the boardDir's .lyx-warp path on the
+// branch that actually calls writeWarpBinding, mirroring CloneHub's own record for the same file —
+// without it a reconcile-driven backfill is an uncovered hub-visible addition batch 7's omission
+// direction would catch.
+func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lyxcwd.Location) (WarpBindingOutcome, string) {
 	boardDir := BoardDir(l.HubPath)
 
 	// Re-seed the weft repo's operational excludes on every reconcile pass. The seeding is
@@ -314,6 +318,7 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 	if err := writeWarpBinding(boardDir, origin); err != nil {
 		return WarpBindingOutcomeDeferred, fmt.Sprintf("write warp binding: %v", err)
 	}
+	rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
 	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
 }
 
@@ -395,7 +400,7 @@ func restorePortalAndLaunchers(rec *Mutations, warpLayout *lyxcwd.Location, slug
 	}
 
 	if _, err := os.Stat(LauncherDir(warpLayout, slug)); os.IsNotExist(err) {
-		if launcherErr := writeLaunchers(warpLayout, slug); launcherErr != nil {
+		if launcherErr := writeLaunchers(rec, warpLayout, slug); launcherErr != nil {
 			appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
 		} else {
 			appendPrDetail(pr, "launcher scripts restored")

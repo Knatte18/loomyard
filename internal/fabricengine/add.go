@@ -165,7 +165,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		return AddResult{}, err
 	}
 
-	if err := writeLaunchers(l, slug); err != nil {
+	if err := writeLaunchers(rec, l, slug); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, err
 	}

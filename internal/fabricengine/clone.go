@@ -243,9 +243,11 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// here returns directly rather than through teardownHub, matching the surrounding
 	// step-4 posture — the hub directory it would need to tear down was itself just
 	// created and holds nothing yet worth cleaning up specially.
-	if err := os.MkdirAll(filepath.Join(hubPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
+	dotLyxPath := filepath.Join(hubPath, lyxdirs.DotLyxDirName)
+	if err := os.MkdirAll(dotLyxPath, 0o755); err != nil {
 		return CloneResult{}, err
 	}
+	rec.Append(KindDirCreated, dotLyxPath, "")
 
 	// Step 5: Clone warp repo
 	warpWorktreePath := filepath.Join(hubPath, name)
@@ -257,6 +259,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		}
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
+	// A clone genuinely brings a worktree into being, and one entry covers the whole cloned tree —
+	// the coarsest-covering-root rule, mirroring cloneRepo's own single-call-site posture.
+	rec.Append(KindWorktreeCreated, warpWorktreePath, "")
 
 	// Install the post-checkout hook after the warp worktree exists so drift
 	// warnings fire on every subsequent git checkout within this repo.
@@ -280,6 +285,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	if err := cloneRepo(opts.WeftURL, weftPath); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
+	rec.Append(KindWorktreeCreated, weftPath, "")
 
 	// Step 6b: Rename the weft primary's freshly-cloned branch onto its
 	// WeftBranchName-suffixed pairing, so weft:<branch> is never claimed
@@ -300,6 +306,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	if err := ensureBoardWorktree(weftPath, warpBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
+	rec.Append(KindWorktreeCreated, boardDir, "")
 
 	// Step 8: Resolve the lyx-anchor subpath adopt-or-create, and write the
 	// marker to the board worktree ON DISK. The CLI layer commits it onto
@@ -361,6 +368,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("write %s: %w", markerPath, err))
 		}
+		// Create branch only: the adopt branch above found a marker already committed and wrote
+		// nothing, so recording there would claim a write that never happened.
+		rec.Append(KindFileWritten, markerPath, "")
 	}
 
 	// Immediately after the anchor block writes .lyx-anchor (both the adopt and the create branch
@@ -373,6 +383,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if err := writeWarpBinding(boardDir, effective); err != nil {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
+		rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
 		warpBindingRecorded = true
 	}
 

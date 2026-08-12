@@ -81,13 +81,34 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 // writeLaunchers writes per-worktree launcher scripts (ide and fabric-checkout)
 // and ensures the menu launcher exists. The .cmd/.sh extension depends on GOOS;
 // .sh files are written executable.
-func writeLaunchers(l *lyxcwd.Location, slug string) error {
+//
+// rec is the calling verb's own recorder. Every entry here is conditional on an observation, never
+// on plain success, because writeLaunchers doubles as the repair path (reconcile.go's
+// restorePortalAndLaunchers calls it against an already-wired pair): an unconditional record would
+// claim writes that did not happen on that path.
+//   - The launcher directory: os.MkdirAll succeeds on an already-existing directory, so the path is
+//     stat'd BEFORE the MkdirAll and KindDirCreated is recorded only when it was absent.
+//   - The two scripts: written unconditionally with deterministic content, so a repair-path call
+//     rewrites them byte-identically. Each is recorded with KindFileWritten only when the write
+//     actually changes its bytes (absent counts as changed) — read-before-write is what decides,
+//     not "did the write succeed".
+//   - The menu launcher: never-clobber (writeLaunchers returns early when it already exists, and
+//     removeLaunchers deliberately leaves it in place), so it is recorded only on the branch that
+//     actually reaches its os.WriteFile.
+func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	ext := launcherExt(runtime.GOOS)
 
-	// Create the mirrored launcher directory
+	// Create the mirrored launcher directory, recording only when this call is the one that minted
+	// it — a repair-path call against an already-wired pair must not claim a directory creation that
+	// happened on an earlier call.
 	launcherDir := LauncherDir(l, slug)
+	_, statErr := os.Stat(launcherDir)
+	dirWasAbsent := os.IsNotExist(statErr)
 	if err := os.MkdirAll(launcherDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir launcher dir %s: %w", launcherDir, err)
+	}
+	if dirWasAbsent {
+		rec.Append(KindDirCreated, launcherDir, "")
 	}
 
 	// Build and write the ide launcher from launcherSpawnRel
@@ -97,7 +118,7 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	}
 	ideContent, ideMode := launcherScript(runtime.GOOS, spawnRel, "ide spawn "+slug)
 	idePath := filepath.Join(launcherDir, "ide"+ext)
-	if err := os.WriteFile(idePath, ideContent, ideMode); err != nil {
+	if err := writeLauncherScriptIfChanged(rec, idePath, ideContent, ideMode); err != nil {
 		return fmt.Errorf("write ide%s: %w", ext, err)
 	}
 
@@ -107,7 +128,7 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	// directory.
 	fabricCheckoutContent, fabricCheckoutMode := launcherScript(runtime.GOOS, spawnRel, "fabric checkout")
 	fabricCheckoutPath := filepath.Join(launcherDir, "fabric-checkout"+ext)
-	if err := os.WriteFile(fabricCheckoutPath, fabricCheckoutContent, fabricCheckoutMode); err != nil {
+	if err := writeLauncherScriptIfChanged(rec, fabricCheckoutPath, fabricCheckoutContent, fabricCheckoutMode); err != nil {
 		return fmt.Errorf("write fabric-checkout%s: %w", ext, err)
 	}
 
@@ -141,7 +162,25 @@ func writeLaunchers(l *lyxcwd.Location, slug string) error {
 	if err := os.WriteFile(menuPath, menuContent, menuMode); err != nil {
 		return fmt.Errorf("write menu launcher: %w", err)
 	}
+	rec.Append(KindFileWritten, menuPath, "")
 
+	return nil
+}
+
+// writeLauncherScriptIfChanged writes content to path with the given mode, recording KindFileWritten
+// against rec only when the bytes actually change — an absent file counts as changed. This is what
+// lets writeLaunchers' repair-path call (an already-wired pair, rewritten byte-identically) report no
+// change at all, since the deterministic content it writes is otherwise indistinguishable from a
+// fresh authoring by exit code alone.
+func writeLauncherScriptIfChanged(rec *Mutations, path string, content []byte, mode os.FileMode) error {
+	existing, err := os.ReadFile(path)
+	changed := err != nil || string(existing) != string(content)
+	if err := os.WriteFile(path, content, mode); err != nil {
+		return err
+	}
+	if changed {
+		rec.Append(KindFileWritten, path, "")
+	}
 	return nil
 }
 
