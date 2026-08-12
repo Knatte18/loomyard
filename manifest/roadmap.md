@@ -9,29 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **fabric: crucible follow-ups — slices 14-15** — the two remaining defect *shapes* the fabric v2 crucible campaign (slice 11) surfaced but did not close, each filed by the campaign orchestrator as a GitHub issue (#143, #148) and folded in here.
-   The campaign ran six serial model-rotating review+fix rounds and produced 81 findings, 9 BLOCKING, **8 of them data-loss** — and the finding count per round never converged, because it was draining a class instance by instance.
-   Every individual defect is fixed;
-   the shapes that keep producing them are not, except slices 12's and 13's — see Done below for the root-cause fix and the harness that validates it.
-   Slice numbers are assigned in build order.
-   **Slice 12, the root-cause fix, has landed** — see Done below: one containment/ownership/dirtiness/force gate every destructive operation routes through, with a `CONSTRAINTS.md` invariant and a static bypass guard in the same commit.
-   It was the only slice that stops anything being destroyed;
-   the rest are instrumentation, truthfulness,
-   and a self-healing race.
-   An earlier draft put the harness first on the grounds that the gate is a consolidating refactor with no tier able to observe destruction — **that was wrong**,
-   and the design doc records why rather than deleting it: the campaign left a named, sabotage-proved regression test for every one of the eight defects across ~29 destructive-verb integration files, which is exactly the cover a consolidating refactor needs,
-   and the gate's own completeness proof is a static tree walk needing no fixtures at all.
-   **Slice 13, the live-state integration harness against real git in dirty and hostile state, has also landed** — see Done below: it validated slice 12's gate live and left a nine-cell sabotage proof recording that each of the eight evidence-table defects still fails on demand.
-   **Slice 14, accumulating the result envelope from actual mutations rather than from control flow, has also landed** — see Done below: every mutating verb's result type now carries the accumulated `mutations`/`partial` record, and every destructive executor's own recording is machine-pinned by a guard test.
-   **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) is next in the chain — logically independent of the other two, but sequenced behind them anyway.
-   The chain was strict and total across the two remaining slices: `14 → 15`, **one fabric slice in flight at a time**.
-   Two reasons, and both had to hold before any two overlapped: logically each slice asserts on behaviour the previous one changes, and mechanically both edit `internal/fabricengine` while 14 rewrote it package-wide (every verb's result path).
-   An earlier draft declared 15 free to pick up at any point on its logical independence alone — **that was wrong**: logical independence does not make it safe to edit the same package alongside a package-wide refactor, and 15 is LOW and self-healing, so it loses nothing by waiting.
-   Placed ahead of `Shed` because fabric is the module every other worktree's work stands on,
-   and this is a data-loss class in it — not because `Shed` slipped;
-   `Shed` → `loom` keeps its own order below.
-   Full task bodies live at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
-
 1. **lyxtest builds real fabric hubs — invert the dependency** — `internal/lyxtest`'s fixtures are hand-assembled approximations of a fabric hub, never produced by `CloneHub`: no `_board`, no junctions, no `.lyx-anchor`, no warp binding.
    Every test built on them asserts against a shape someone wrote down rather than the shape fabric produces, and nothing detects drift between the two.
    Invert it — `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning — so drift becomes impossible by construction instead of by discipline.
@@ -198,21 +175,24 @@ No build order is implied between these items.
 
 1. **fabric: crucible follow-ups — slice 12** — the root-cause fix for the eight data-loss defects the v2 crucible campaign (slice 11) surfaced: one containment/ownership/dirtiness/force gate (`internal/fabricengine/destroy.go`) every destructive operation now routes through, landed with a `CONSTRAINTS.md` invariant (the Fabric Destruction Chokepoint Invariant) and a static bypass guard (`cmd/lyx/destructiveguard_test.go`) in the same commit.
    Dirtiness scope is a caller-declared member of a closed sum type, and every one of the roughly 29 converted call sites kept the scope it already had.
-   Slices 14-15 remain — see Planned above.
+   All four fabric crucible follow-up slices (12-15) have now landed — see below.
 
 1. **fabric: crucible follow-ups — slice 13** — the live-state integration harness (`internal/fabricengine/fabrictest`, `//go:build integration`) that validates slice 12's gate against real cloned hubs in dirty and hostile on-disk state, broadening coverage to ten states, nine verbs, and hostile inputs.
    The hub factory drives real clones through the extracted `fabriccli.CloneAndWire`, never a hand-assembled fixture;
    the ten-state × nine-verb × two-anchor cross product runs with prefix-rooted manifest permits, so a cell asserts "the operator's content is still on disk," not merely "the verb returned an error";
    the two refusal-expectation helpers pin a refusal to the exact layer that produced it, gate versus pre-flight;
    and a nine-cell sabotage proof, recorded in `doc.go`, confirms each of the eight evidence-table defects still fails on demand when its guarding check is neutered.
-   Full task body lives at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
 
 1. **fabric: crucible follow-ups — slice 14** — accumulates the result envelope from actual mutations rather than from control flow, closing the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub.
    Every mutating verb's result type now embeds `MutationRecord`, populated via a verb-owned `*Mutations` recorder threaded into everything the call performs and snapshotted onto the named result through a populating `defer`, so a newly added early return can never silently drop it;
    `internal/fabricengine`'s destructive gate (`destroy.go`) auto-records seven of its executors' kinds, with the remaining kinds hand-recorded at their own success sites.
    `ok` keeps meaning "no error was returned" — it is not redefined — and the CLI envelope instead gains two fixed, always-present keys on every verb outcome: `mutations` (an array, empty rather than `null`) and `partial` (a bool, `false` rather than absent, true from exactly one rule: `error ≠ nil ∧ record non-empty`).
    Landed with a `CONSTRAINTS.md` invariant (the Mutation Record Invariant) and a machine guard (`cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource`) pinning that every destructive executor takes the recorder parameter and every mutating result type carries the record, in the same commit.
-   Full task body lives at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
+
+1. **fabric: crucible follow-ups — slice 15** — closes the `record()` side of the correspondence index's two-phase read-modify-write race against a concurrent write to the same file.
+   `internal/state.UpdateJSON` is the new read-modify-write primitive: it holds one exclusive lock across the read, the mutate, and the atomic write, so `corrIndex.record` now applies its upsert to the freshly-read on-disk base rather than a stale in-memory snapshot a concurrent writer could already have superseded.
+   The residual is named, not overlooked: `RebuildIndex`'s own scan-then-write span is still two-phase, so the reverse interleaving — a scan racing an in-flight `record()` — can still lose an entry, accepted as a LOW self-healing residual since the weft commit trailers are the sole source of truth and the index is an explicitly rebuildable cache; documented in `internal/fabricengine`'s package doc.
+   No `CONSTRAINTS.md` invariant was added — adoption of `UpdateJSON` is deliberately one consumer today, so a universal-use invariant would be false on landing — and the read-modify-write rule instead lives as a godoc package comment in `internal/state`'s own package doc.
 
 1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface `gitrepo` uses (reads and writes, including the `Push` rebase-retry path).
    Recommendation: ADOPT-PARTIAL — the read surface, both commit methods, and `SetSnapshotSHA` migrate cleanly;

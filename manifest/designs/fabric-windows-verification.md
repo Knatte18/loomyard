@@ -31,7 +31,7 @@ Beyond the named four: the entire anchor/subpath mechanism — the campaign's nu
 ## Why this is worse than a normal coverage gap
 
 The campaign's eight data-loss defects were **all** found by driving real git against a real filesystem with hostile or dirty state;
-the hermetic suite was green throughout and found none of them (see [fabric-crucible-followups.md](fabric-crucible-followups.md)'s slice 13).
+the hermetic suite was green throughout and found none of them (see [internal/fabricengine](../../internal/fabricengine/doc.go)'s package doc, "The destruction chokepoint" section).
 That is direct evidence that fabric's defects live exactly where platform behaviour lives: in path composition, link creation, and filesystem semantics.
 
 Windows is where all three differ.
@@ -70,7 +70,7 @@ Deciding to drop Windows means retiring that claim too, not just skipping the te
 
 ## Related
 
-- [fabric-crucible-followups.md](fabric-crucible-followups.md) — the four Planned slices from the same campaign;
+- [internal/fabricengine](../../internal/fabricengine/doc.go) package documentation — the four slices of the fabric crucible follow-up campaign, all landed;
   slice 13's harness inherits this gap honestly rather than closing it.
 - [warp-visibility.md](warp-visibility.md) — the other open item carrying a Windows-specific caveat (Developer Mode for symlinks, with a copy fallback).
 - `internal/fslink` package documentation — the junction-vs-symlink contract this item would verify.

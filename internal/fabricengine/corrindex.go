@@ -44,19 +44,30 @@ func loadCorrIndex(path string) (*corrIndex, error) {
 
 // record upserts e by WarpSHA: replaces existing or appends new,
 // re-sorting by WarpSeq so "last recorded wins" for same-seq entries.
-// Persists before in-memory update so write failure leaves index unchanged.
+// The upsert base is the freshly-read on-disk file, via state.UpdateJSON, never ix.recs — ix.recs
+// can be stale relative to a write another process made after this handle was loaded, and composing
+// from a stale base would silently clobber that write.
+// Persists before in-memory update so write failure leaves index unchanged;
+// after a successful record(), ix.recs reflects on-disk truth and may therefore contain entries
+// another process recorded.
+// This serialises record() against every other write to the file, but not against RebuildIndex's
+// scan-to-write span, so the reverse interleaving — a scan that read before this record()'s write,
+// followed by RebuildIndex's own later write — still loses an entry.
 func (ix *corrIndex) record(e corrEntry) error {
-	next := make([]corrEntry, 0, len(ix.recs)+1)
-	for _, existing := range ix.recs {
-		if existing.WarpSHA == e.WarpSHA {
-			continue
+	var next []corrEntry
+	err := state.UpdateJSON(ix.path, ix.path+".lock", func(cur []corrEntry, _ bool) ([]corrEntry, error) {
+		next = make([]corrEntry, 0, len(cur)+1)
+		for _, existing := range cur {
+			if existing.WarpSHA == e.WarpSHA {
+				continue
+			}
+			next = append(next, existing)
 		}
-		next = append(next, existing)
-	}
-	next = append(next, e)
-	sort.SliceStable(next, func(i, j int) bool { return next[i].WarpSeq < next[j].WarpSeq })
-
-	if err := state.WriteJSON(ix.path, ix.path+".lock", next); err != nil {
+		next = append(next, e)
+		sort.SliceStable(next, func(i, j int) bool { return next[i].WarpSeq < next[j].WarpSeq })
+		return next, nil
+	})
+	if err != nil {
 		return err
 	}
 	ix.recs = next
