@@ -138,7 +138,10 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
 - **Rationale:**
   A bare repo reached by path is a first-class remote with identical refs, fast-forward rules, rejections and rebase-retry behaviour, and fabric cannot tell the difference — its push goes `gitrepo.Push` → `gitexec` → the git CLI.
   The repo already relies on this: `pull_integration_test.go:73,78` force-pushes from a second clone to build the diverged upstream `Fabric.Pull` re-anchors from, and `coalesce_integration_test.go:128-138` forces a genuine non-fast-forward through `gitrepo.Push`'s rebase-retry.
-  Set `protocol.file.allow always` in the hermetic git env defensively.
+  **`protocol.file.allow` is deliberately not set.**
+  That restriction targets submodule cloning (CVE-2022-39253), not ordinary clone/fetch/push against a path-reached bare, and `internal/lyxtest/hermetic.go:33-43`'s neutral config sets only user/init/core/maintenance/gc.
+  `fabrictest/hub.go` already clones and pushes local bares today without it.
+  Adding it would be an unlisted edit to `HermeticGitEnv`, which this task otherwise carries over unchanged.
 - **Rejected:**
   Any real-remote fixture substrate — it would make 132 fixtures slow, flaky and credential-dependent for no gain in fabric coverage.
 
@@ -214,8 +217,11 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
      `fabriccli.CloneAndWire` already runs `configsync.ReconcileAll(res.WeftBase, true)` and `configsync.ReconcileFabricAt(res.BoardDir, true)`, so a real hub arrives with materialized default config for every registered module.
      The fake fixture carried only a placeholder, which is the sole reason these sites seed at all.
      A site that seeds a module's plain `ConfigTemplate()` can simply delete the call.
-  2. **Sites that override a value** call a new `hubforge.SeedConfig(tb, h *Hub, map[string]string)`, which writes into `h.PrimeWeft()` — the weft sibling, where `_lyx/config` is native and committable — and commits there.
-     This is `res.WeftBase`, the same base `CloneAndWire` reconciles into.
+  2. **Sites that override a value** call a new `hubforge.SeedConfig(tb, h *Hub, map[string]string)`, which writes into **`h.WeftBase`** — a new field populated verbatim from `res.WeftBase` — and commits in the weft worktree.
+     `WeftBase` is **anchor-joined**: `internal/fabricengine/clone.go:406` computes it as `filepath.Join(WeftWorktree(l), l.AnchorRel)`.
+     It is **not** `PrimeWeft()`, which returns the un-anchored weft sibling (`fabricengine.WeftWorktree(h.Location)`).
+     At the `"backend"` anchor the two differ, and seeding into the un-anchored path would write `<weft>/_lyx/config` while every module loader reads `<weft>/backend/_lyx/config` — the override would silently not take effect, with no error.
+     Since `NewHub` supports both anchors, this distinction is load-bearing, not theoretical.
   3. **Repo-wide fabric config** goes to `res.BoardDir` via a separate `hubforge.SeedFabricConfig`, matching `repoWideFabricBase(l) = BoardDir(l.HubPath)`.
      **It commits**, through `fabricengine.NewBolt(BoardDir).Commit(...)` — the same path `CloneAndWire` itself uses at `internal/fabriccli/clone.go:57-58` to leave the board clean after `ReconcileFabricAt`.
      Leaving the board dirty is not safe: `BoardDir` is the `weft:main` checkout the destruction gate's dirtiness check observes, so an uncommitted seed would silently change verb outcomes in fabric's own live-state cells.
@@ -312,6 +318,11 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   Disposition below.
 - `internal/fabricengine/fabrictest/hub.go` (361 lines) — **the model to promote.**
   `buildBareTemplate`, `copyBares`, `Hub` + geometry accessors (`PrimeWorktree`, `PrimeWeft`, `BoardDir`, `PairWarpWorktree`, `PairWeftSibling`, `PairPortalLink`, `PairLauncherDir`), `NewHub(tb, anchor)`, `AddPair`, `GitStatusPorcelain`.
+  **Anchored vs un-anchored, on both sides.**
+  `PrimeWorktree()` and `PrimeWeft()` both return worktree *roots*, not anchor paths.
+  At a `"backend"` anchor the anchored warp path is `Location.AnchorPath()` and the anchored weft path is `res.WeftBase`.
+  `hubforge.Hub` therefore carries `WeftBase` as its own field, populated verbatim from `CloneResult`, and anything reading or writing `_lyx/config` uses the anchored form.
+  Getting this wrong fails silently rather than loudly, which is why it is called out here.
   Its private `mustGit`, `copyDirRecursive`, `initBareRepo`, `initScratchRepo`, `commitAll`, `stripHookSamples` are, by its own comments, copies of `lyxtest`'s — the merge deletes one side of each.
 - `internal/fabricengine/fabrictest/` remainder (~4960 lines) — `states.go` (422), `verbs.go` (1409), `manifest.go` (461), `mutationoracle.go` (371), `refusal.go` (56), `doc.go` (317), plus 1394 lines of tests of the harness itself.
   `doc.go` is a substantial design document and must survive the move, retargeted;
@@ -445,7 +456,10 @@ Reproduce with `grep -rln "lyxtest\|fabrictest" --include=*.md .` (excluding `_m
 - `fabriccli.CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.CloneResult, error)` — note the first parameter is `cwd`, not a container.
   `CloneResult` carries an embedded `MutationRecord` plus `HubPath`, `Anchor`, `BoardDir`, `WeftBase`, `PrimeCwd`, `WarpURL`, `WarpBindingRecorded`.
   `hubforge`'s accessors should take `BoardDir` and `WeftBase` from the result rather than re-deriving them.
-- `internal/fabricengine/export_test.go` — the `export_test.go` shim precedent.
+- `internal/fabricengine/export_test.go` — the shim precedent, and itself in scope.
+  It is **extended as needed** for the 14 in-package files becoming `package fabricengine_test`: each unexported identifier they reach gets an exported alias there.
+  In the same pass `NewPairedForTest` is deleted from it.
+  The shim's growth is planned work, not something the implementer discovers mid-migration.
 - `internal/boardengine/boardtest` — precedent for a test-only sibling package.
 
 ## Constraints
@@ -458,7 +472,9 @@ Changes already applied:
 
 - **`lyxtest` Leaf Invariant → `gitkit` Leaf Invariant.**
   Same allowlist (stdlib + `lyxcwd`, `weftname`, `configengine`, `lyxdirs`);
-  adds that `gitkit` owns `MustRun`/`SeedConfig`/`HermeticGitEnv`/`GitStatusPorcelain` and that its primitive repo fixtures serve `gitrepo` and `lyxcwd` only.
+  adds that `gitkit` owns `MustRun`/`SeedConfig`/`HermeticGitEnv`/`GitStatusPorcelain`, and that `gitkit.CopyRepo` alone is pinned — callable from `internal/lyxcwd` only.
+  The other helpers are unpinned;
+  `internal/gitrepo` is a `MustRun` consumer with no fixture call.
   Enforced by `internal/gitkit/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) — **must be created**, ported from `internal/lyxtest/leaf_enforcement_test.go`.
 - **New: `hubforge` Fabric-Fixture Invariant.**
   Every hub fixture is built by `hubforge` through `fabriccli.CloneAndWire`;
@@ -517,6 +533,8 @@ Unchanged invariants this task must still respect:
   A site whose seeded YAML equals the module's plain `ConfigTemplate()` is a drop candidate, since `CloneAndWire` already materialises it.
 - `hubforge` needs a test proving a real hub arrives with materialised config for a registered module *without* any seeding, since that is what licenses the drops.
 - `hubforge.SeedConfig` needs a test proving the value it writes is what the module's config loader reads back through the warp-side `_lyx` junction — the seed goes in on the weft side and must be visible from the warp side.
+- **The same test must run at the `"backend"` anchor, not only at `"."`.**
+  This is the regression test for the anchored-base error: seeding into the un-anchored weft sibling writes a file no loader ever reads, and a `"."`-only test passes anyway because the two paths coincide there.
 
 **Migration of the 132 sites:**
 
@@ -578,3 +596,9 @@ Unchanged invariants this task must still respect:
 - **Q:** Which build tags do the merged `hubforge`/`gitkit` files carry, given they merge an untagged and an integration-tagged source? (discussion review r3) **A:** Production untagged, git-spawning tests `//go:build integration`, one untagged `doc.go` each — `fabrictest`'s own existing pattern, and what keeps `go vet ./...` from seeing a package with zero untagged files.
 - **Q:** Does `SeedFabricConfig` commit in `BoardDir`? (discussion review r3) **A:** Yes, via `fabricengine.NewBolt(BoardDir).Commit(...)`, matching `CloneAndWire`.
   An uncommitted seed would leave the `weft:main` checkout dirty, which the destruction gate's dirtiness check observes and which would silently change verb outcomes in fabric's live-state cells.
+- **Q:** Is `hubforge.SeedConfig`'s base `PrimeWeft()`? (discussion review r4, BLOCKING) **A:** No — it is `res.WeftBase`, which is anchor-joined (`clone.go:406`), whereas `PrimeWeft()` is the un-anchored weft sibling.
+  They coincide at `"."` and diverge at `"backend"`, where seeding the un-anchored path writes a file no module loader reads, silently.
+  `Hub` carries `WeftBase` as its own field, and the seeding test runs at both anchors.
+- **Q:** Does the hermetic git env need `protocol.file.allow always`? (discussion review r4) **A:** No.
+  That restriction targets submodule cloning, not path-reached bares, and `fabrictest` already clones and pushes local bares without it.
+  Dropped explicitly rather than left as an unlisted edit to `HermeticGitEnv`.
