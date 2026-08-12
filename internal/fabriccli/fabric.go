@@ -422,6 +422,7 @@ func resolveWarpLocation() (cwd string, l *lyxcwd.Location, err error) {
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
 func runAdd(out io.Writer, args []string) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -442,9 +443,9 @@ func runAdd(out io.Writer, args []string) int {
 	slug := args[0]
 	r, err := top.Add(l, slug, addOptionsFromEnv())
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, r.Mutated(), err)
 	}
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, r.Mutated(), map[string]any{
 		"slug":   r.Slug,
 		"branch": r.Branch,
 		"path":   r.Path,
@@ -479,6 +480,7 @@ func runList(out io.Writer, _ []string) int {
 // supplied, it resolves the current warp branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
 func runCheckout(out io.Writer, args []string) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -514,9 +516,9 @@ func runCheckout(out io.Writer, args []string) int {
 
 	r, err := top.Checkout(l, branch)
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, r.Mutated(), err)
 	}
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, r.Mutated(), map[string]any{
 		"branch":        r.Branch,
 		"weft_worktree": r.WeftWorktree,
 	})
@@ -633,6 +635,7 @@ func runReconcile(out io.Writer, _ []string) int {
 
 // runPruneWithFlags executes the prune logic with the resolved apply and force flags.
 func runPruneWithFlags(out io.Writer, apply, force bool) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -647,9 +650,9 @@ func runPruneWithFlags(out io.Writer, apply, force bool) int {
 
 	r, err := top.Prune(l, apply, force)
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, r.Mutated(), err)
 	}
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, r.Mutated(), map[string]any{
 		"entries": r.Entries,
 	})
 }
@@ -657,6 +660,7 @@ func runPruneWithFlags(out io.Writer, apply, force bool) int {
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and
 // force flags.
 func runCleanupWithFlags(out io.Writer, apply, force bool) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -671,15 +675,16 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 
 	r, err := top.Cleanup(l, apply, force)
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, r.Mutated(), err)
 	}
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, r.Mutated(), map[string]any{
 		"entries": r.Entries,
 	})
 }
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
 func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -700,9 +705,9 @@ func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
 
 	r, err := top.Remove(l, slug, force)
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, r.Mutated(), err)
 	}
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, r.Mutated(), map[string]any{
 		"slug":          r.Slug,
 		"path":          r.Path,
 		"links_removed": r.LinksRemoved,
