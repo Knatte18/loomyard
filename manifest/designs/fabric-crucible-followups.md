@@ -403,8 +403,10 @@ Make the result value accumulate as work completes, instead of being composed at
 
 1. Each verb's result type gains a record of what was actually mutated — worktrees removed, directories deleted, branches moved, files rewritten.
    Appended at the point the mutation succeeds, never inferred afterwards.
-2. `ok` becomes a statement about that record plus the error, not a synonym for "no error was returned".
-   A verb that removed three of five pairs and then failed reports the three, the failure, and `ok:false` — which is the honest answer and is currently unrepresentable.
+2. **Amended on landing.** `ok` stays a synonym for "no error was returned" — it is not redefined in place.
+   Redefining a field every existing consumer already reads would silently trade one dishonesty for another.
+   The *intent* behind this requirement — that the envelope as a whole stop lying — ships instead through two new, always-present keys: `mutations` (the accumulated record, an array, empty rather than `null`) and `partial` (a bool, `false` rather than absent, true from exactly one rule: `error ≠ nil ∧ record non-empty`).
+   A verb that removed three of five pairs and then failed reports the three in `mutations`, `partial:true`, and `ok:false` — the honest answer this requirement asked for, now representable without `ok` itself changing meaning.
 3. A verb that returns an error while its mutation record is non-empty must say so explicitly.
    Today that combination is silently indistinguishable from a clean refusal, which is exactly what made case 2 so dangerous.
 
@@ -415,8 +417,10 @@ Generalise it rather than inventing a second vocabulary.
 ### Scope and risk
 
 Confined to `internal/fabricengine` and `internal/fabriccli`.
-It changes JSON output shape, so anything parsing fabric's output is affected — enumerate the consumers before starting;
-within loomyard they are known, and `internal/boardengine` is the one to check first since it routes through `CommitWeftAt`/`PushWeftAt`.
+It changes JSON output shape, so anything parsing fabric's output is affected — enumerate the consumers before starting.
+No **exported** `CommitWeftAt`/`PushWeftAt` remains: the unexported `commitWeftAt`/`pushWeftAt` pair still exists, and is exactly what `fabricengine.Bolt`'s `Commit`/`Push` methods delegate to.
+`internal/boardengine` (`internal/boardengine/sync.go`) reaches that unexported pair *through* `Bolt`, an in-process Go API returning `(sha, committed, err)` — no JSON involved, and deliberately out of this slice's scope.
+Exploration for this slice found no programmatic parser of fabric's JSON output anywhere in the tree: the sandbox suites drive `lyx fabric` as prose read by an agent, not as parsed JSON, so the JSON-shape risk this paragraph originally flagged is materially lower than it assumed.
 
 Sequenced **after** slices 12 and 13, not before: the gate's own refusal reporting (its step 5) lands in each verb's existing error shape first, and this slice is what generalises that into one accumulate-as-you-mutate envelope.
 Deferring the envelope is a deliberate, bounded churn cost, paid so the safety half of the gate lands a slice earlier.
