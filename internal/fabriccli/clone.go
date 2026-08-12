@@ -11,6 +11,7 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -26,20 +27,47 @@ import (
 // drift this extraction exists to prevent.
 //
 // On error, the clone is left intact; the operator completes wiring with reconcile.
-func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.CloneResult, error) {
-	res, err := fabricengine.CloneHub(cwd, opts)
+//
+// CloneAndWire owns a recorder for this CLI-layer sequence itself: CloneHub's own record is already
+// on res the moment it returns, so the recorder is seeded from res.Mutated() and every step below
+// appends its own entry in execution order. Named results plus a defer installed right after the
+// recorder exists is what carries the accumulated record through every subsequent
+// `return fabricengine.CloneResult{}, err` site without editing each one individually — see this
+// package's Decision doc for the idiom. The one return that precedes the recorder's existence (the
+// CloneHub failure itself) returns res, err directly instead: CloneHub's own record is already in res
+// at that point, and a zero return there would discard the hub the clone had just minted.
+func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.CloneResult, err error) {
+	res, err = fabricengine.CloneHub(cwd, opts)
+	if err != nil {
+		return res, err
+	}
+
+	rec := fabricengine.NewMutations(res.HubPath)
+	rec.Extend(res.Mutated())
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	fabricResult, err := configsync.ReconcileFabricAt(res.BoardDir, true)
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-
-	if _, err := configsync.ReconcileFabricAt(res.BoardDir, true); err != nil {
-		return fabricengine.CloneResult{}, err
+	if fabricResult.Applied {
+		rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, fabricResult.Module), "")
 	}
 
 	b := fabricengine.NewBolt(res.BoardDir)
-	if _, _, err := b.Commit("fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{}); err != nil {
+	sha, committed, err := b.Commit("fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{})
+	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
+	if committed {
+		rec.Append(fabricengine.KindCommitCreated, res.BoardDir, sha)
+	}
+	// Bolt.Push records nothing, and that is deliberate: it returns a bare error and reaches
+	// gitrepo.PushCoalesced, which returns nil both when a push landed and when nothing was
+	// unpushed to begin with, so a KindBranchPushed entry here would assert an outcome this call did
+	// not observe. The commit above is already recorded, and branch_pushed is a git-state kind exempt
+	// from the truthfulness oracle's commission direction, so omitting it costs the cross-check
+	// nothing.
 	if err := b.Push(fabricengine.SyncOptions{}); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
@@ -52,7 +80,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.Clon
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	if err := fabricengine.WireJunctions(l, filepath.Base(l.WorktreePath()), names); err != nil {
+	// WireJunctionsWith needs no entry of its own beyond what it records internally: it appends
+	// link_created directly into rec.
+	if err := fabricengine.WireJunctionsWith(rec, l, filepath.Base(l.WorktreePath()), names); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 
@@ -60,8 +90,18 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.Clon
 	// not through a tracked .gitignore entry in the user's own repo: a committed
 	// entry would advertise that LYX is in use, and a warp→weft junction must never
 	// leave a tracked artifact behind in the user's repo.
-	if _, err := configsync.ReconcileAll(res.WeftBase, true); err != nil {
+	//
+	// ReconcileAll returns one Result per registered module, each reporting whether that module's own
+	// file was written — record one KindFileWritten per Result whose Applied is true, not one entry
+	// for the call as a whole, so every materialised per-worktree config file is individually covered.
+	results, err := configsync.ReconcileAll(res.WeftBase, true)
+	if err != nil {
 		return fabricengine.CloneResult{}, err
+	}
+	for _, r := range results {
+		if r.Applied {
+			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.WeftBase, r.Module), "")
+		}
 	}
 
 	return res, nil
@@ -75,6 +115,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.Clon
 // derived) and "warp_binding_recorded" (whether this clone wrote the .lyx-warp record) — both
 // always present so a consumer never has to distinguish absent from false.
 func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool) int {
+	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
 	cwd, err := lyxcwd.Getwd()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -97,10 +138,12 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string,
 		ForceBootstrap: forceBootstrap,
 	})
 	if err != nil {
-		return output.Err(out, err.Error())
+		// CloneAndWire's defer has already populated res by the time it returns, so this failure
+		// path carries whatever the mutated-then-errored sequence accumulated.
+		return errWithRecord(out, res.Mutated(), err)
 	}
 
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, res.Mutated(), map[string]any{
 		"hub":                   res.HubPath,
 		"anchor":                res.Anchor,
 		"warp":                  res.WarpURL,

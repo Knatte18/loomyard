@@ -21,7 +21,9 @@ import (
 )
 
 // RemoveResult contains the result of successfully removing a worktree pair.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type RemoveResult struct {
+	MutationRecord
 	Slug         string `json:"slug"`
 	Path         string `json:"path"`
 	LinksRemoved int    `json:"links_removed"`
@@ -38,7 +40,10 @@ type RemoveResult struct {
 // licence to delete the clone.
 // Portal and launcher cleanup run after those checks but before the git removal, so they still run
 // when the worktree directory is already gone.
-func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveResult, error) {
+func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res RemoveResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(warpBranch)
 
@@ -58,10 +63,10 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
 	// came from.
-	if err := surfaceRefusal(removePortal(l, slug)); err != nil {
+	if err := surfaceRefusal(removePortal(rec, l, slug)); err != nil {
 		return RemoveResult{}, err
 	}
-	if err := surfaceRefusal(removeLaunchers(l, slug)); err != nil {
+	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		return RemoveResult{}, err
 	}
 
@@ -88,7 +93,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 	// user's own checked-in symlinks alongside fabric's.
 	linksRemoved := 0
 	if ownedNames, scanErr := scanOnDiskJunctionNames(l, slug); scanErr == nil {
-		removeErr := removeWarpJunction(l, slug, ownedNames)
+		removeErr := removeWarpJunction(rec, l, slug, ownedNames)
 		if err := surfaceRefusal(removeErr); err != nil {
 			return RemoveResult{}, err
 		}
@@ -96,7 +101,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 			linksRemoved = len(ownedNames)
 		}
 	}
-	boardRemoved, boardErr := unwireBoardLink(l, slug)
+	boardRemoved, boardErr := unwireBoardLink(rec, l, slug)
 	if err := surfaceRefusal(boardErr); err != nil {
 		return RemoveResult{}, err
 	}
@@ -104,14 +109,14 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveRe
 		linksRemoved++
 	}
 
-	if err := removeWarpWorktreeDir(l, target, force); err != nil {
+	if err := removeWarpWorktreeDir(rec, l, target, force); err != nil {
 		return RemoveResult{}, err
 	}
 
 	// A weft-teardown failure is tolerated only when the weft worktree is actually gone (already
 	// absent, or removed with just a branch/prune step failing) — a weft worktree still on disk
 	// after a "successful" Remove is a half-torn pair the operator was never told about.
-	weftErr := removeWeftWorktree(l, slug, weftBranch, force, true, t.cfg.BranchPrefix)
+	weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, t.cfg.BranchPrefix)
 	if weftErr != nil {
 		weftTarget := WeftWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
@@ -186,7 +191,7 @@ func refusePrimeSlug(l *lyxcwd.Location, slug string) error {
 // The fallback is itself gated because it fires on ANY nonzero exit from `git worktree remove`, and
 // `git worktree remove` without `--force` refuses on untracked files — an ungated fallback would
 // therefore delete exactly the untracked files git had just declined to discard.
-func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error {
+func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, force bool) error {
 	req := pathRequest{
 		what:      "remove warp worktree",
 		container: l.HubPath,
@@ -197,7 +202,7 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 		force:     force,
 	}
 
-	exitCode, stderr, err := removeGitWorktree(req, l.WorktreePath())
+	exitCode, stderr, err := removeGitWorktree(rec, req, l.WorktreePath())
 	if err != nil {
 		var refusal *destructiveRefusal
 		if errors.As(err, &refusal) && !isRegisteredLinkedWorktree(l, target) {
@@ -229,7 +234,7 @@ func removeWarpWorktreeDir(l *lyxcwd.Location, target string, force bool) error 
 		ownership: ownedRegisteredLinkedWorktree(l.WorktreePath()),
 		dirtiness: dirtyScopeAll(),
 	}
-	if removeErr := removePath(fallbackReq); removeErr != nil {
+	if removeErr := removePath(rec, fallbackReq); removeErr != nil {
 		// A *destructiveRefusal propagates unwrapped so errors.As still works at the caller; only an
 		// operational failure gets the "fallback removal failed" wrapper.
 		var refusal *destructiveRefusal

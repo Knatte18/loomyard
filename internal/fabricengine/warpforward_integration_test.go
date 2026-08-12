@@ -131,7 +131,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	laterPath := filepath.Join(fixture.Layout.WorktreePath(), "reset-hard-later.txt")
 	commitFile(t, fixture.Layout.WorktreePath(), "reset-hard-later.txt", "committed", "later commit past olderSHA")
 
-	if err := f.ResetHard(olderSHA); err != nil {
+	if err := f.ResetHard(fabricengine.NewMutations(""), olderSHA); err != nil {
 		t.Fatalf("ResetHard(%q): %v", olderSHA, err)
 	}
 
@@ -168,7 +168,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 		t.Fatalf("write uncommitted change: %v", err)
 	}
 
-	err = f.ResetHard(olderSHA)
+	err = f.ResetHard(fabricengine.NewMutations(""), olderSHA)
 	if err == nil {
 		t.Fatalf("ResetHard(%q) on dirty warp checkout error = nil; want a refusal", olderSHA)
 	}

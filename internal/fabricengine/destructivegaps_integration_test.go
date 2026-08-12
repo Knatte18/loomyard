@@ -213,7 +213,7 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 		t.Fatalf("write untracked file: %v", err)
 	}
 
-	err := fabricengine.RemoveWarpWorktreeDirForTest(l, target, false)
+	err := fabricengine.RemoveWarpWorktreeDirForTest(fabricengine.NewMutations(""), l, target, false)
 	if err == nil {
 		t.Fatalf("RemoveWarpWorktreeDirForTest on a registered worktree with an untracked file, no force = nil; want a refusal")
 	}

@@ -14,6 +14,7 @@ import (
 // fabric junction for this worktree. Weft-side content, including _lyx and
 // .lyx, is never touched.
 func runUnwire(out io.Writer, _ []string) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	cwd, _, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
@@ -21,9 +22,9 @@ func runUnwire(out io.Writer, _ []string) int {
 
 	res, err := fabricengine.Unwire(cwd)
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, res.Mutated(), err)
 	}
-	return output.Ok(out, map[string]any{
+	return okWithRecord(out, res.Mutated(), map[string]any{
 		"junctions_removed": res.JunctionsRemoved,
 		"weft_content":      res.WeftContent,
 		"git_exclude":       res.GitExclude,

@@ -123,7 +123,9 @@ type ReconcilePairResult struct {
 }
 
 // ReconcileResult is the top-level result returned by Reconcile.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type ReconcileResult struct {
+	MutationRecord
 	// Pairs is the ordered list of per-worktree reconcile outcomes.
 	Pairs []ReconcilePairResult `json:"pairs"`
 
@@ -147,7 +149,10 @@ type ReconcileResult struct {
 // For each warp worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
-func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
+func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if err := refuseEmptyAnchorMarker(l); err != nil {
 		return ReconcileResult{}, err
 	}
@@ -191,7 +196,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		}
 
 		if !weftWorktreeExists {
-			pr.Action = t.reconcileMissingWeft(warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
+			pr.Action = t.reconcileMissingWeft(rec, warpLayout, warpPath, weftPath, slug, warpBranch, &pr)
 		}
 
 		// A pair whose weft worktree was just recreated has its junctions still pointing at
@@ -205,13 +210,13 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
 		// dormant by design and wired by the next pass.
 		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
 		if repairWiring {
-			t.repairPairWiring(warpLayout, slug, &pr, weftWorktreeExists)
+			t.repairPairWiring(rec, warpLayout, slug, &pr, weftWorktreeExists)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
 	}
 
-	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(l)
+	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
 
 	return result, nil
 }
@@ -253,7 +258,11 @@ func refuseEmptyAnchorMarker(l *lyxcwd.Location) error {
 // returns an error: like wireBoardLink's board-junction repair, a binding backfill is a convenience
 // that may never fail or downgrade a reconcile verdict, so any failure is folded into a Deferred
 // outcome instead.
-func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome, string) {
+// rec is Reconcile's own recorder; it records KindFileWritten at the boardDir's .lyx-warp path on the
+// branch that actually calls writeWarpBinding, mirroring CloneHub's own record for the same file —
+// without it a reconcile-driven backfill is an uncovered hub-visible addition batch 7's omission
+// direction would catch.
+func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lyxcwd.Location) (WarpBindingOutcome, string) {
 	boardDir := BoardDir(l.HubPath)
 
 	// Re-seed the weft repo's operational excludes on every reconcile pass. The seeding is
@@ -309,6 +318,7 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 	if err := writeWarpBinding(boardDir, origin); err != nil {
 		return WarpBindingOutcomeDeferred, fmt.Sprintf("write warp binding: %v", err)
 	}
+	rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
 	return WarpBindingOutcomeRecorded, fmt.Sprintf("recorded warp binding %s", origin)
 }
 
@@ -326,7 +336,8 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 // link is _board reports healthy and would never be repaired if this call sat inside the
 // unhealthy branch. A wiring failure there is surfaced as a Detail note, never as an Error or a
 // changed Action — this convenience link must never be able to downgrade a reconcile verdict.
-func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
+// rec is Reconcile's own recorder, threaded through to every gate-reaching call this helper makes.
+func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
 	junctionHealthy, unhealthyReason := checkJunctionHealth(warpLayout)
 
 	if !junctionHealthy {
@@ -339,7 +350,7 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 		names, namesErr := RepoWiredNames(warpLayout)
 		if namesErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
-		} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
+		} else if wireErr := WireJunctionsWith(rec, warpLayout, slug, names); wireErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
 		} else {
 			appendPrDetail(pr, junctionRepointedDetail(warpLayout))
@@ -348,15 +359,15 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 		pr.Action = ReconcileActionAlreadyHealthy
 	}
 
-	if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
+	if boardErr := wireBoardLink(rec, warpLayout, slug); boardErr != nil {
 		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
 	}
 
-	if restorePortalAndLaunchers(warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
+	if restorePortalAndLaunchers(rec, warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
 		pr.Action = ReconcileActionPortalRestored
 	}
 
-	applyStaleRemoval(warpLayout, slug, pr)
+	applyStaleRemoval(rec, warpLayout, slug, pr)
 }
 
 // restorePortalAndLaunchers recreates the pair's hub-level portal junction and launcher directory
@@ -369,7 +380,9 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 // place, and Reconcile is a repair verb, not the place to start creating artefacts Clone does not.
 // A restore failure is a Detail note, never an Error or a changed Action: the portal is convenience
 // plumbing, and failing to rebuild it must not downgrade a verdict about the pair's git topology.
-func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
+// rec is Reconcile's own recorder, threaded through to createPortal (and, from batch 5's card 21
+// onward, writeLaunchers).
+func restorePortalAndLaunchers(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
 	primeName, primeErr := PrimeName(warpLayout)
 	if primeErr != nil || slug == primeName {
 		return false
@@ -378,7 +391,7 @@ func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *Rec
 	restored := false
 
 	if _, err := os.Lstat(PortalLink(warpLayout, slug)); os.IsNotExist(err) {
-		if portalErr := createPortal(warpLayout, slug); portalErr != nil {
+		if portalErr := createPortal(rec, warpLayout, slug); portalErr != nil {
 			appendPrDetail(pr, fmt.Sprintf("portal restore failed: %v", portalErr))
 		} else {
 			appendPrDetail(pr, "portal junction restored")
@@ -387,7 +400,7 @@ func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *Rec
 	}
 
 	if _, err := os.Stat(LauncherDir(warpLayout, slug)); os.IsNotExist(err) {
-		if launcherErr := writeLaunchers(warpLayout, slug); launcherErr != nil {
+		if launcherErr := writeLaunchers(rec, warpLayout, slug); launcherErr != nil {
 			appendPrDetail(pr, fmt.Sprintf("launcher restore failed: %v", launcherErr))
 		} else {
 			appendPrDetail(pr, "launcher scripts restored")
@@ -405,6 +418,7 @@ func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *Rec
 // reported by name — every corrective branch below needs the weft repo, and without this check each
 // of them failed with a raw chdir error that named a path instead of the actual problem.
 func (t *Topology) reconcileMissingWeft(
+	rec *Mutations,
 	warpLayout *lyxcwd.Location,
 	warpPath, weftPath, slug, warpBranch string,
 	pr *ReconcilePairResult,
@@ -438,7 +452,7 @@ func (t *Topology) reconcileMissingWeft(
 
 	isRaw := isRawWarpWorktree(warpLayout)
 	if isRaw {
-		if err := createDormantWeftForRawWarp(warpLayout, slug, weftBranch); err != nil {
+		if err := createDormantWeftForRawWarp(rec, warpLayout, slug, weftBranch); err != nil {
 			pr.Error = fmt.Sprintf("adopt raw warp worktree: %v", err)
 			return ReconcileActionRawAdopted
 		}
@@ -489,7 +503,8 @@ func isRawWarpWorktree(warpLayout *lyxcwd.Location) bool {
 // createDormantWeftForRawWarp creates a weft branch and worktree for a raw warp
 // worktree, leaving it dormant (no junction wiring). The weft branch forks from
 // the current weft HEAD.
-func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch string) error {
+// rec is Reconcile's own recorder, threaded through to createWeftWorktree.
+func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, slug, weftBranch string) error {
 	weftRoot, err := WeftRepoRoot(warpLayout)
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
@@ -508,7 +523,7 @@ func createDormantWeftForRawWarp(warpLayout *lyxcwd.Location, slug, weftBranch s
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 
-	if err := createWeftWorktree(warpLayout, slug, weftBranch, parentWeftBranch); err != nil {
+	if err := createWeftWorktree(rec, warpLayout, slug, weftBranch, parentWeftBranch); err != nil {
 		return fmt.Errorf("create dormant weft worktree: %w", err)
 	}
 
@@ -703,7 +718,8 @@ func appendPrDetail(pr *ReconcilePairResult, text string) {
 // applyStaleRemoval converges warpLayout's on-disk junctions to the repo-wide pathspec
 // by removing any junction present on disk but absent from RepoWiredNames. Fail-closed:
 // if repo-wide fabric.yaml cannot be loaded or the on-disk scan fails, nothing is removed.
-func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
+// rec is the calling verb's own recorder, threaded through to removeWarpJunction.
+func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) {
 	desired, err := RepoWiredNames(warpLayout)
 	if err != nil {
 		appendPrDetail(pr, fmt.Sprintf("stale-removal skipped: cannot load repo-wide fabric.yaml: %v", err))
@@ -733,8 +749,8 @@ func applyStaleRemoval(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePa
 
 	var removed []string
 	for _, name := range stale {
-		removeErr := removeWarpJunction(warpLayout, slug, []string{name})
-		_, _ = unseedGitExclude(warpLayout, slug, []string{name})
+		removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name})
+		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
 
 		var refusal *destructiveRefusal
 		if errors.As(removeErr, &refusal) {

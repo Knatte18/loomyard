@@ -295,7 +295,7 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 
 	// The directory cannot be removed while the operator's file is in it, and that refusal is the
 	// point: teardown reports it rather than deleting what it does not own.
-	if err := removeLaunchers(l, slug); err == nil {
+	if err := removeLaunchers(NewMutations(""), l, slug); err == nil {
 		t.Error("removeLaunchers() = nil; want the non-empty-directory refusal to be reported")
 	}
 

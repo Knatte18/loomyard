@@ -870,3 +870,113 @@ func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
 		t.Errorf("repo-wide fabric config not materialized at %s: %v", cfgPath, err)
 	}
 }
+
+// TestRunCLI_ReadOnlyVerbsOmitMutationsKey asserts the four read-only verbs — list, pairs, status and
+// diff — never carry a "mutations" key in their envelope: nothing was mutated, so the which-verbs
+// scope decision is machine-held rather than a convention. All four are driven against one real,
+// paired hub, since the weft-verb pair (status, diff) resolves its Fabric handle through the
+// PersistentPreRunE that only a real hub satisfies.
+func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	warpSHA := strings.TrimSpace(gitOutputCLI(t, fixture.Hub, "rev-parse", "HEAD"))
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "List", args: []string{"list"}},
+		{name: "Pairs", args: []string{"pairs"}},
+		{name: "Status", args: []string{"status"}},
+		{name: "Diff", args: []string{"diff", warpSHA}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := fabriccli.RunCLI(&out, tt.args)
+			if exitCode != 0 {
+				t.Fatalf("RunCLI(%v) = %d; want 0\noutput: %s", tt.args, exitCode, out.String())
+			}
+			result := decodeResult(t, &out)
+			if _, present := result["mutations"]; present {
+				t.Errorf("RunCLI(%v) output has a 'mutations' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
+			}
+			if _, present := result["partial"]; present {
+				t.Errorf("RunCLI(%v) output has a 'partial' key; want it absent from a read-only verb's envelope: %v", tt.args, result)
+			}
+		})
+	}
+}
+
+// TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject drives a real gate refusal through
+// "fabric unwire", reached via fabricengine.RefusalOf's own contract rather than a hand-rolled stub:
+// the _board link is hand-wired pointing at a directory OTHER than this hub's real board dir, so
+// unwireBoardLink's ownedWiredJunction ownership check refuses — its error propagates through
+// Unwire's %w-wrapped chain all the way to runUnwire's errWithRecord call. Asserts the "refusal"
+// object carries all four keys (check, what, target, reason), and that the flattened "error" string is
+// still present alongside it.
+func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T) {
+	fixture := lyxtest.CopyPaired(t)
+
+	boardDir := fabricengine.BoardDir(fixture.Container)
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("create board config dir: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
+		t.Fatalf("write board fabric.yaml: %v", err)
+	}
+
+	// Wire the _board link at a WRONG target — anywhere other than the real board dir — so
+	// unwireBoardLink's ownership check (raw target must equal BoardDir(l.HubPath)) refuses.
+	wrongTarget := t.TempDir()
+	boardLink := filepath.Join(fixture.Hub, fabricengine.BoardDirName)
+	if err := fslink.CreateDirLink(boardLink, wrongTarget); err != nil {
+		t.Fatalf("create drifted board link: %v", err)
+	}
+
+	t.Chdir(fixture.Hub)
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
+	if exitCode != 1 {
+		t.Fatalf("RunCLI(unwire) = %d; want 1 (a drifted board junction must be refused)\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); ok {
+		t.Errorf("RunCLI(unwire) ok = true; want false")
+	}
+	if errMsg, _ := result["error"].(string); errMsg == "" {
+		t.Errorf("RunCLI(unwire) output missing non-empty 'error'; want the flattened error string alongside the refusal object")
+	}
+	refusal, ok := result["refusal"].(map[string]any)
+	if !ok {
+		t.Fatalf("RunCLI(unwire) output missing 'refusal' object; got %v", result)
+	}
+	for _, key := range []string{"check", "what", "target", "reason"} {
+		val, present := refusal[key]
+		if !present {
+			t.Errorf("refusal object missing key %q: %v", key, refusal)
+			continue
+		}
+		if s, _ := val.(string); s == "" {
+			t.Errorf("refusal[%q] = %q; want a non-empty string", key, s)
+		}
+	}
+	if check, _ := refusal["check"].(string); check != string(fabricengine.CheckOwnership) {
+		t.Errorf("refusal[\"check\"] = %q; want %q", check, fabricengine.CheckOwnership)
+	}
+	if _, present := result["mutations"]; !present {
+		t.Errorf("RunCLI(unwire) output missing 'mutations' key on the failure path")
+	}
+}

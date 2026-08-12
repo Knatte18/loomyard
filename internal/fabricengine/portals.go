@@ -41,15 +41,22 @@ func portalTarget(l *lyxcwd.Location, slug string) string {
 //
 // Delegates to fslink.CreateDirLink with the computed link and target paths.
 // fslink.CreateDirLink already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
-func createPortal(l *lyxcwd.Location, slug string) error {
+// rec is the calling verb's own recorder; on success it records KindLinkCreated with the link path
+// (never the link's own target) as the Target.
+func createPortal(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	link := PortalLink(l, slug)
 	target := portalTarget(l, slug)
-	return fslink.CreateDirLink(link, target)
+	if err := fslink.CreateDirLink(link, target); err != nil {
+		return err
+	}
+	rec.Append(KindLinkCreated, link, "")
+	return nil
 }
 
 // removePortal removes the portal junction, deletes only the link (not the
 // target), and prunes empty ancestors. Returns nil if the link does not exist.
-func removePortal(l *lyxcwd.Location, slug string) error {
+// rec is the calling verb's own recorder, passed straight through to removeLink.
+func removePortal(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	link := PortalLink(l, slug)
 	if err := refuseUncontainedPath(PortalsDir(l), link, "portal"); err != nil {
 		return err
@@ -63,7 +70,7 @@ func removePortal(l *lyxcwd.Location, slug string) error {
 		dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
 		force:     false,
 	}
-	if err := removeLink(req); err != nil {
+	if err := removeLink(rec, req); err != nil {
 		return fmt.Errorf("remove portal %s: %w", link, err)
 	}
 	// Successful/idempotent removal; prune empty ancestors

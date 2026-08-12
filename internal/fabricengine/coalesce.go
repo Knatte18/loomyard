@@ -83,17 +83,24 @@ func pushRebaseFreeLogged(path string) error {
 // warpPath may still be empty when weftPath is present — that pushes only the weft side;
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.
-func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error {
+func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
+	hubRoot := ""
+	if warpPath != "" {
+		hubRoot = filepath.Dir(warpPath)
+	}
+	rec := NewMutations(hubRoot)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if opts.SkipGit || opts.SkipPush {
-		return nil
+		return PushResult{}, nil
 	}
 	if weftPath == "" {
-		return fmt.Errorf("fabricengine: CoalescePushBothAt requires a weft path for the absorbing push lock")
+		return PushResult{}, fmt.Errorf("fabricengine: CoalescePushBothAt requires a weft path for the absorbing push lock")
 	}
 
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
-		return err
+		return PushResult{}, err
 	}
 	lockPath := filepath.Join(lockDir, weftPushLockFile)
 
@@ -110,12 +117,22 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error {
 		// A side with an empty path or an unborn HEAD has nothing to push;
 		// skip it, but it still participates in the before/after HEAD
 		// comparison below (its empty-string HEAD is trivially stable).
+		// warpRepo/weftRepo and their HasUnpushed samples are only taken for a side that is actually
+		// attempted this iteration, beside the beforeWarp/beforeWeft HEAD sampling already here — the
+		// same before/after shape card 19 uses for PushWeft and PushWarpAt, applied per side.
+		var warpRepo, weftRepo *gitrepo.Repo
+		var warpHadUnpushed, weftHadUnpushed bool
+		var warpUnpushedErr, weftUnpushedErr error
 		if warpPath != "" && beforeWarp != "" {
+			warpRepo = gitrepo.New(warpPath)
+			warpHadUnpushed, warpUnpushedErr = warpRepo.HasUnpushed()
 			if err := pushRebaseFreeLogged(warpPath); err != nil {
 				return false, err
 			}
 		}
 		if weftPath != "" && beforeWeft != "" {
+			weftRepo = gitrepo.New(weftPath)
+			weftHadUnpushed, weftUnpushedErr = weftRepo.HasUnpushed()
 			if err := pushRebaseFreeLogged(weftPath); err != nil {
 				return false, err
 			}
@@ -130,8 +147,15 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error {
 			return false, err
 		}
 
+		if warpRepo != nil {
+			recordPushIfAdvanced(rec, warpRepo, warpHadUnpushed, warpUnpushedErr)
+		}
+		if weftRepo != nil {
+			recordPushIfAdvanced(rec, weftRepo, weftHadUnpushed, weftUnpushedErr)
+		}
+
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil
 	}
 
-	return coalescePush(lockPath, step)
+	return PushResult{}, coalescePush(lockPath, step)
 }

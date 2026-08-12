@@ -34,7 +34,7 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 		t.Fatalf("write %s: %v", precious, err)
 	}
 
-	err := resetHub(parent, hubPath)
+	err := resetHub(NewMutations(""), parent, hubPath)
 	if err == nil {
 		t.Fatalf("resetHub(%s) = nil; want a refusal for a directory that is not a fabric hub", hubPath)
 	}
@@ -75,7 +75,7 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 				t.Fatalf("seed hub: %v", err)
 			}
 
-			if err := resetHub(parent, hubPath); err != nil {
+			if err := resetHub(NewMutations(""), parent, hubPath); err != nil {
 				t.Fatalf("resetHub(%s) = %v; want nil for a directory carrying %s", hubPath, err, tt.child)
 			}
 			if _, statErr := os.Stat(hubPath); !os.IsNotExist(statErr) {
@@ -92,7 +92,7 @@ func TestResetHub_AbsentPathIsANoop(t *testing.T) {
 
 	parent := t.TempDir()
 	hubPath := filepath.Join(parent, "never-created"+HubSuffix)
-	if err := resetHub(parent, hubPath); err != nil {
+	if err := resetHub(NewMutations(""), parent, hubPath); err != nil {
 		t.Fatalf("resetHub(absent) = %v; want nil", err)
 	}
 }

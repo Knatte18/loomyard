@@ -49,8 +49,11 @@ var RemoveWarpWorktreeDirForTest = removeWarpWorktreeDir
 // It mints the createdToken teardownHub requires by creating hubPath itself via createExclusiveDir
 // (hubPath must not already exist), running seed against the freshly-created directory before
 // teardownHub runs, if seed is non-nil.
+// It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its
+// own and its callers assert nothing about the record.
 func TeardownHubForTest(cwd, hubPath string, seed func(hubPath string) error, cause error) error {
-	tok, err := createExclusiveDir(hubPath)
+	rec := NewMutations("")
+	tok, err := createExclusiveDir(rec, hubPath)
 	if err != nil {
 		return err
 	}
@@ -59,7 +62,7 @@ func TeardownHubForTest(cwd, hubPath string, seed func(hubPath string) error, ca
 			return err
 		}
 	}
-	return teardownHub(cwd, hubPath, tok, cause)
+	return teardownHub(rec, cwd, hubPath, tok, cause)
 }
 
 // LooksLikeHubForTest re-exports looksLikeHub for package fabricengine_test integration tests
@@ -94,6 +97,8 @@ func WorktreeDirtyAllForTest(dir string) (dirty bool, detail string, err error) 
 // integration tests that need to drive the branch-ownership gate directly rather than through
 // Cleanup's application-level orphan/liveness filtering — which never reaches the gate at all for
 // the primary weft branch or a branch checked out at some worktree.
+// It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its
+// own and its callers assert nothing about the record.
 func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix string, force bool) (exitCode int, stderr string, err error) {
 	req := branchRequest{
 		what:      "test delete branch",
@@ -103,5 +108,5 @@ func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix strin
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     force,
 	}
-	return deleteBranch(req)
+	return deleteBranch(NewMutations(""), req)
 }

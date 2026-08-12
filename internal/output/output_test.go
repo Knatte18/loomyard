@@ -128,3 +128,83 @@ func TestOk_MutatesFieldsMap(t *testing.T) {
 		t.Errorf("expected Ok to mutate fields map by adding ok=true, got: %v", fields)
 	}
 }
+
+// TestErrFields_EmitsOkFalseMessageAndFields asserts that ErrFields emits ok:false, the trimmed
+// message, and the supplied fields.
+func TestErrFields_EmitsOkFalseMessageAndFields(t *testing.T) {
+	buf := &bytes.Buffer{}
+	fields := map[string]any{"mutations": []string{"a", "b"}, "partial": true}
+
+	exitCode := output.ErrFields(buf, "  something failed\n", fields)
+
+	if exitCode != 1 {
+		t.Errorf("ErrFields(...) = %d; want 1", exitCode)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("ErrFields(...) output is not valid JSON: %v; output: %q", err, buf.String())
+	}
+
+	if ok, exists := result["ok"]; !exists || ok != false {
+		t.Errorf("ErrFields(...) ok = %v; want false", result["ok"])
+	}
+	if errField, _ := result["error"].(string); errField != "something failed" {
+		t.Errorf("ErrFields(...) error = %q; want %q", errField, "something failed")
+	}
+	if partial, exists := result["partial"]; !exists || partial != true {
+		t.Errorf("ErrFields(...) partial = %v; want true", result["partial"])
+	}
+	if _, exists := result["mutations"]; !exists {
+		t.Errorf("ErrFields(...) missing supplied field %q, got: %v", "mutations", result)
+	}
+}
+
+// TestErrFields_NilFieldsMatchesErr asserts that ErrFields with a nil map emits byte-identical
+// output to Err for the same message.
+func TestErrFields_NilFieldsMatchesErr(t *testing.T) {
+	msg := "something went wrong"
+
+	errBuf := &bytes.Buffer{}
+	output.Err(errBuf, msg)
+
+	errFieldsBuf := &bytes.Buffer{}
+	output.ErrFields(errFieldsBuf, msg, nil)
+
+	if errBuf.String() != errFieldsBuf.String() {
+		t.Errorf("ErrFields(w, msg, nil) = %q; want byte-identical to Err(w, msg) = %q", errFieldsBuf.String(), errBuf.String())
+	}
+}
+
+// TestErrFields_ReservedKeysOverrideCallerSupplied asserts that a caller supplying "ok" or "error"
+// in fields is overridden by the injected values.
+func TestErrFields_ReservedKeysOverrideCallerSupplied(t *testing.T) {
+	buf := &bytes.Buffer{}
+	fields := map[string]any{"ok": true, "error": "caller-supplied"}
+
+	output.ErrFields(buf, "the real error", fields)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("ErrFields(...) output is not valid JSON: %v; output: %q", err, buf.String())
+	}
+
+	if ok, exists := result["ok"]; !exists || ok != false {
+		t.Errorf("ErrFields(...) ok = %v; want false (caller-supplied true must be overridden)", result["ok"])
+	}
+	if errField, _ := result["error"].(string); errField != "the real error" {
+		t.Errorf("ErrFields(...) error = %q; want %q (caller-supplied value must be overridden)", errField, "the real error")
+	}
+}
+
+// TestErrFields_ReturnsOneExitCode is the explicitly-named regression case for ErrFields alongside
+// TestErr_ReturnsOneExitCode: ErrFields keeps returning exit code 1.
+func TestErrFields_ReturnsOneExitCode(t *testing.T) {
+	buf := &bytes.Buffer{}
+
+	exitCode := output.ErrFields(buf, "error", map[string]any{"key": "value"})
+
+	if exitCode != 1 {
+		t.Errorf("ErrFields(...) = %d; want 1", exitCode)
+	}
+}

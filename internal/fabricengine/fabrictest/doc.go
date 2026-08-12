@@ -36,12 +36,9 @@
 //
 // # The three-member Check set
 //
-// The exported Check set fabricengine's destructive gate carries has exactly three members:
-// CheckContainment, CheckOwnership, CheckDirtiness.
-// checkForce is declared at destroy.go:39 and rendered by String() at destroy.go:51, but it is never
-// constructed into a *destructiveRefusal anywhere in the tree — force is consulted only inside
-// checkPathDirtiness, where it makes the dirtiness check pass rather than fail.
-// A CheckForce constant could therefore never match a real refusal, and must not be added back.
+// fabrictest consumes fabricengine.Check directly — CheckContainment, CheckOwnership, CheckDirtiness —
+// rather than carrying a copy of its own; there is deliberately no CheckForce member, and fabricengine.
+// Check's own doc comment (internal/fabricengine/destroy.go) is this rule's one declarer, not this file.
 //
 // # One known refusal-with-side-effects anomaly
 //
@@ -52,8 +49,45 @@
 // This is deliberate, documented behaviour, not a defect: the cell that exercises it declares
 // _portals/<anchor>/<slug> and _launchers/<anchor>/<slug> as permitted removal roots rather than
 // treating their disappearance as a failure.
-// It is flagged here for slice 14's truthfulness work, where "what did this call actually mutate
-// before it failed" becomes representable in a refusal's own shape.
+// "What did this call actually mutate before it failed" is what slice 14's truthfulness work made
+// representable in a refusal's own shape: it landed as AssertRecordMatchesDiff (mutationoracle.go),
+// wired into every cell in this package (batch 7 card 31).
+// This cell's own record now names the portal and launcher deletions RefusedBefore's own path took
+// before returning, so the cell asserts both halves at once — that the deletions were allowed under this
+// cell's permitted roots, and that the envelope admitted to them.
+//
+// # Honesty is a distinct property from survival, not a restatement of it
+//
+// AssertRecordMatchesDiff's own unit tests (mutationoracle_test.go) exercise its rules directly.
+// This section is about how it relates to the sabotage table below, because the relationship is easy to
+// get wrong.
+// destroy.go's chokepoint records a destructive primitive's entry AFTER the primitive succeeds,
+// unconditionally on whether the gate that authorised it should have refused — recording is
+// check-independent by design, so a caller can trust that a record entry's presence means the primitive
+// really ran.
+// One consequence follows directly from that design: neutering one of the nine checks below does NOT, on
+// its own, produce a lie.
+// The sabotaged primitive still runs through the same chokepoint, which still records it honestly — the
+// record correctly names an unauthorised destruction, and it is AssertNoUnpermittedChange (survival,
+// keyed on permitted roots) that catches the authorisation failure each of the nine rows documents,
+// exactly as it already did before this batch.
+// Re-neutering any of the nine checks and re-running its cell fails the SAME way it always has; the
+// honesty assertion adds no second failure there, because there is no lie for it to catch in that defect
+// class.
+//
+// The defect class the honesty assertion exists for is a different one: a destructive primitive that
+// bypasses the recording chokepoint entirely, independent of any authorisation question — an omission,
+// not a bad authorisation.
+// Batch 7's own cross-product run (card 31) found a real, live instance of exactly that, not a
+// hypothetical one: prune.go's removeStalePair calls `git worktree prune` to clear a stale warp-side
+// `.git/worktrees/<slug>` admin registration left behind when a pair's warp worktree directory is removed
+// by hand, and that call recorded nothing.
+// Survival passed every one of those cells — the admin directory is not a path any cell declares (or
+// needs to declare) a permitted root over, so nothing about the sweep looked unauthorised.
+// The honesty assertion failed instead, with a lie of omission naming the exact uncovered path:
+// `warp-bare/.git/worktrees/<slug>: removed (was dir), but no record entry covers it`.
+// The fix — recording KindWorktreeRemoved when a before/after probe of the admin path confirms the
+// primitive actually cleared it — landed in the same batch, alongside this note.
 //
 // # Measured wall-clock
 //
@@ -226,4 +260,58 @@
 // assertion in matrix_test.go (assertCellTally) derives this total from the Verbs, States and
 // Omissions tables themselves, so it moves automatically with any future change to those tables
 // rather than needing to be kept in sync with this paragraph by hand.
+//
+// # The truthfulness oracle's own contract
+//
+// AssertRecordMatchesDiff (mutationoracle.go) is a second, independent assertion every cell runs
+// beside survival (AssertNoUnpermittedChange): survival asks whether an authorised change stayed
+// inside its permitted roots, the oracle asks whether the record the call itself returned honestly
+// names what the manifest diff shows actually happened. The two catch different defect classes --
+// see "Honesty is a distinct property from survival, not a restatement of it" above -- and both run
+// on every cell, unconditionally.
+//
+// The oracle cross-checks in both directions. Omission asks whether every diff change is accounted
+// for by some record entry (assertOmission, over the record's raw, unfolded entries -- a change a
+// later entry undid must still have been named by something, since the record's job is naming what
+// ran, not what survives to the end). Commission asks whether every manifest-observable record
+// entry is backed by a real diff change (assertCommission, over the record's net effect after
+// netCommissionEffect folds away a mint-then-undo pair -- a rollback that creates and then destroys
+// the same path inside one call nets to zero in the before/after manifest even though the record
+// correctly carries both entries, and folding first is what keeps that legitimate case from reading
+// as a lie).
+//
+// Not every fabricengine.Kind is judged the same way in the commission direction. manifestObservableKind
+// splits the vocabulary into manifest-observable kinds (path_removed, worktree_removed,
+// worktree_created, dir_created, link_removed, link_created -- a real filesystem change
+// CaptureManifest would see) and git-state kinds (branch_created, branch_deleted, branch_pushed,
+// commit_created, worktree_reset, worktree_switched, push_spawned, repo_advanced -- git-internal
+// state CaptureManifest's filesystem walk never fully captures, branch existence being the sharpest
+// example: a branch is git bookkeeping, not a manifest-visible file). A git-state kind is exempt from
+// commission and is instead asserted through the per-verb Expectation.Effect assertions, which read
+// git directly rather than infer state from a manifest that was never going to carry it.
+// KindFileWritten is the one kind decided by its Target rather than by this table alone
+// (participatesInCommission): a file_written under ".git" records git-state bookkeeping
+// CaptureManifest excludes wholesale, so only a file_written outside ".git" participates.
+//
+// The coverage rule a record entry's Target extends over, in both directions, is wider than "this
+// exact path": entryCovers admits segment-wise subtree containment (pathAtOrBelowRoot) plus two
+// widenings. A worktree-rooted kind (worktreeRootedKind: worktree_created, worktree_removed,
+// worktree_reset, worktree_switched, repo_advanced) additionally covers the derived
+// <prime>/.git/worktrees/<name> admin registration -- the stale bookkeeping entry `git worktree
+// prune` clears, which a worktree's own creation or destruction can plausibly touch without a
+// separate record entry naming that exact admin path (see the omission table's `removeStalePair`
+// worked example above). And an ancestor directory of a recorded Target is covered too, when the diff
+// change is itself a directory -- the implicit ancestor chains fslink.CreateDirLink and
+// writeLaunchers MkdirAll materialise around the roots fabric actually records, and
+// pruneEmptyAncestors reaps on the way out, per the record-at-the-covering-root Shared Decision.
+//
+// DiffManifest is deliberately called twice per cell, against the same before/after manifest pair,
+// for two different questions neither call can answer for the other. The first call, filtered
+// through the cell's own exp.PermittedRoots, feeds AssertNoUnpermittedChange -- "did an authorised
+// change stay where it was allowed to". The second call, always with a nil permitted list
+// (`unfiltered := DiffManifest(before, after, nil)`), feeds AssertRecordMatchesDiff -- "does the
+// record honestly name what changed, full stop". Permitted roots suppress diff noise for the first
+// question only; they never suppress the second, since narrowing the oracle's own input by the same
+// allowlist would let a permitted-but-unrecorded change escape both assertions at once, precisely the
+// gap the oracle exists to close.
 package fabrictest

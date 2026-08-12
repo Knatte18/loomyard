@@ -18,7 +18,9 @@ import (
 // CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was
 // made, mirroring gitrepo.StageAndCommit and commitWeftLocked since unchanged content is a
 // legitimate no-op.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type CommitResult struct {
+	MutationRecord
 	WarpSHA       string
 	WarpCommitted bool
 	WeftSHA       string
@@ -104,7 +106,10 @@ var spawnDetachedPushFn = SpawnDetachedPush
 // skip-env gating (WEFT_SKIP_GIT/WEFT_SKIP_PUSH) is handled inside SpawnDetachedPush itself, per
 // the async-push-both-sides-via-detached-child Shared Decision — the WarpCommitted || WeftCommitted
 // guard here is a separate "did anything land" gate, not an opts gate.
-func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (CommitResult, error) {
+func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts SyncOptions) (res CommitResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	l, err := lyxcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
@@ -124,6 +129,16 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	result, partialErr, err := f.commitBothSides(warpFiles, weftFiles, weftSide, msg, snapshotTags, opts)
 	if err != nil {
 		return result, err
+	}
+
+	// Record from the already-populated CommitResult fields, not from control flow, so a partial
+	// commit (below) still records whichever side actually landed. The Target is the worktree the
+	// commit landed in (a path, so Append); the Detail is the SHA.
+	if result.WarpCommitted {
+		rec.Append(KindCommitCreated, f.warpPath, result.WarpSHA)
+	}
+	if result.WeftCommitted {
+		rec.Append(KindCommitCreated, f.weftPath, result.WeftSHA)
 	}
 
 	if result.WarpCommitted || result.WeftCommitted {

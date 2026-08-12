@@ -485,6 +485,56 @@
 // substring-match, so a caller like `loomengine.Preflight` switches on `HealthReason.Cause` instead
 // of parsing prose.
 //
+// # The mutation record
+//
+// Every mutating verb accumulates a `*Mutations` record (mutation.go) naming, in order, the
+// primitives it actually performed — not the primitives it attempted, and not what its own success
+// return value implies happened. `ok` (or, at this layer, a nil error) means only "no error was
+// returned"; it has never meant "nothing happened", and mixing the two up is what `mutations` and
+// `partial` exist to stop a consumer from doing by accident.
+//
+// The vocabulary is `Kind` (mutation.go's closed, string-backed enum — `path_removed`,
+// `worktree_removed`, `link_removed`, `branch_deleted`, `worktree_reset`, `dir_created`,
+// `worktree_created`, `branch_created`, `branch_pushed`, `commit_created`, `link_created`,
+// `file_written`, `push_spawned`, `worktree_switched`, `repo_advanced`), a flat `Mutation` entry
+// (kind, target, optional detail), and `Mutations`, the ordered accumulator a verb call threads
+// through everything it performs.
+//
+// The accumulate-as-you-mutate rule is simple and has no exception: append an entry immediately
+// after a primitive observably changed state, never before, and never for a no-op or a refusal.
+// destroy.go's eight gate executors auto-record seven of the sixteen kinds this way, since every
+// one of them already funnels through the one chokepoint the Fabric Destruction Chokepoint
+// Invariant names; the remaining kinds have no such chokepoint and are hand-recorded at their own
+// success sites instead.
+//
+// Every mutating entry point owns exactly one recorder: it constructs one via `NewMutations`,
+// threads it as a `*Mutations` parameter into everything the call performs (gate executors
+// included), and — per the record-survives-the-error-return decision — installs
+// `defer func() { res.Mutations = rec.Snapshot() }()` immediately after construction, so the
+// record reaches the caller through every return statement, including an existing
+// `return XResult{}, err` early-return site that predates this mechanism and was never
+// individually rewritten.
+//
+// Every mutating verb's result type embeds `MutationRecord` (mutation.go), exposing the
+// accumulated record through one accessor, `Mutated() Mutations`; the four read-only verbs' result
+// types (`StatusResult`, `DiffResult`, and their siblings for `list`/`pairs`) do not, since nothing
+// was mutated and there is no record to carry.
+//
+// At the CLI envelope layer (`internal/fabriccli`), every mutating verb's JSON output therefore
+// always carries two fixed keys on top of its own fields, present on both the success and the
+// failure path alike: `"mutations"`, always a JSON array (empty, never `null`), and `"partial"`,
+// always a bool (`false`, never absent). `partial` derives from exactly one rule — `error != nil
+// AND record non-empty` — the shape a caller reads to answer the question `ok` cannot: not "did an
+// error come back", but "did this call leave the hub in a state some but not all of the intended
+// change landed in". A handler that fails before ever calling its verb (cwd/location resolution,
+// `LoadConfig`, an argument usage error) carries neither key, since nothing was mutated and there
+// is no result to read a record from — see `internal/fabriccli`'s `envelope.go` for the two
+// helpers, `okWithRecord`/`errWithRecord`, that are this rule's one implementation.
+//
+// See CONSTRAINTS.md's Mutation Record Invariant for the machine-enforced half of this rule, and
+// `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
+// guard itself.
+//
 // # The fabric vocabulary rule
 //
 // In production code, the tokens `weft`, `warp`, and the fabric-sense phrase form of `warp` (`warp

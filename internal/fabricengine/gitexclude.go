@@ -51,46 +51,49 @@ func resolveGitExcludePath(repoDir string) (string, error) {
 // mutateGitExclude applies rewrite to the `.git/info/exclude` of the repository checked out at
 // repoDir, serialised against every other fabric process editing the same repo and replaced
 // atomically.
-// It reports whether the file's content actually changed;
+// It returns the exclude file's own resolved path on every return, including the error ones where it
+// is known, and reports whether the file's content actually changed;
 // a rewrite that returns its input unchanged writes nothing.
+// The resolved path is what a caller needs to record a KindFileWritten mutation entry against the
+// file actually written, since resolveGitExcludePath's result never otherwise leaves this function.
 //
 // rewrite is called with the file's current content ("" when the file does not exist yet) while the
 // lock is held, so any decision it makes about the repo's state — a sibling-worktree census, say —
 // is made under the same serialisation as the write it feeds.
-func mutateGitExclude(repoDir string, rewrite func(content string) (string, error)) (bool, error) {
-	excludePath, err := resolveGitExcludePath(repoDir)
+func mutateGitExclude(repoDir string, rewrite func(content string) (string, error)) (excludePath string, changed bool, err error) {
+	excludePath, err = resolveGitExcludePath(repoDir)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	excludeDir := filepath.Dir(excludePath)
 	if err := os.MkdirAll(excludeDir, 0o755); err != nil {
-		return false, fmt.Errorf("mkdir for exclude file: %w", err)
+		return excludePath, false, fmt.Errorf("mkdir for exclude file: %w", err)
 	}
 
 	excludeLock, err := lock.AcquireWriteLock(filepath.Join(excludeDir, gitExcludeLockFileName))
 	if err != nil {
-		return false, fmt.Errorf("lock exclude file: %w", err)
+		return excludePath, false, fmt.Errorf("lock exclude file: %w", err)
 	}
 	defer func() { _ = excludeLock.Release() }()
 
 	existing, err := os.ReadFile(excludePath)
 	if err != nil && !os.IsNotExist(err) {
-		return false, fmt.Errorf("read exclude file: %w", err)
+		return excludePath, false, fmt.Errorf("read exclude file: %w", err)
 	}
 
 	updated, err := rewrite(string(existing))
 	if err != nil {
-		return false, err
+		return excludePath, false, err
 	}
 	if updated == string(existing) {
-		return false, nil
+		return excludePath, false, nil
 	}
 
 	if err := writeFileAtomically(excludePath, []byte(updated)); err != nil {
-		return false, err
+		return excludePath, false, err
 	}
-	return true, nil
+	return excludePath, true, nil
 }
 
 // writeFileAtomically replaces path with content via a same-directory temp file and a rename, so a

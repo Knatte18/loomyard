@@ -241,7 +241,25 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 - **Known guard blind spot:** the check is raw substring matching, so an alternative argument-slice spelling with different spacing, a dynamically built argument slice, and aliasing a raw repo handle to a local all evade it, and the allowlist is per-file, so a new raw call added inside an already-allowlisted file is not caught.
   A shared static-analysis-guard framework (issue #135) would close this class of blind spot repo-wide;
   this invariant does not resolve that question.
+- The recorder (`rec *Mutations`) is threaded **into** `destroy.go` and must never be worked around by recording at a call site outside it — that is what makes destructive coverage provably total rather than a per-call-site review obligation;
+  see the Mutation Record Invariant below.
 - **Enforced by** `cmd/lyx/destructiveguard_test.go` (`TestNoDestructiveBypass_FabricengineProductionSource`).
+
+## Mutation Record Invariant
+
+Every mutating fabric verb accumulates a `*Mutations` record of the primitives it actually performed, and every mutating result type exposes that record under a fixed, always-present envelope key set — so a consumer can tell "no error was returned" apart from "something was actually mutated" without parsing prose.
+
+- Every destructive executor in `internal/fabricengine/destroy.go` takes a `rec *Mutations` parameter and appends its own primitive to it, **after** the primitive observably changed state — never on a no-op, never on a refusal, never before the act.
+- Every mutating verb's result type embeds `MutationRecord`;
+  the four read-only verbs' result types must not.
+- `internal/fabricengine/mutation.go` is the single declarer of the `Kind` enum.
+  A new member lands in the same commit as its recording site and its guard-test entry, never ahead of either.
+- A `CheckForce` member must never be added to `Check`: force is consulted only inside `checkPathDirtiness`, where it makes the dirtiness check *pass* rather than fail, so a refusal can never be attributed to it.
+- The envelope's key set is fixed for every envelope emitted from a **verb outcome**: `mutations` is always an array (empty, never `null`) and `partial` always a bool (`false`, never absent), on success and failure alike;
+  `partial` derives from exactly one rule, `error ≠ nil ∧ record non-empty`.
+  **Pre-flight carve-out:** a handler that fails before calling its verb (cwd/location resolution, `LoadConfig`, an argument `usage: …` error) emits a bare `output.Err` with neither key, because nothing was mutated and there is no result to read a record from.
+  Without that clause this rule is machine-quotable and false against the shipped envelope.
+- **Enforced by** `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource`, with its blind spots named honestly: it pins the parameter and the embed by raw source inspection, not the correctness of any recording call, and a new `Kind` with no recording site is caught by review, not by the guard.
 
 ## Markdown Link Integrity
 

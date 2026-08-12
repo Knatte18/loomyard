@@ -98,7 +98,7 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	weftFixture := lyxtest.CopyWeft(t)
 	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change")
 
-	if err := CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{}); err != nil {
+	if _, err := CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{}); err != nil {
 		t.Fatalf("CoalescePushBothAt() error = %v; want nil", err)
 	}
 
@@ -147,7 +147,8 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	}
 
 	callErr := runWithDeadline(t, 30*time.Second, func() error {
-		return CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{})
+		_, err := CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{})
+		return err
 	})
 	if callErr != nil {
 		t.Fatalf("CoalescePushBothAt() error = %v; want nil (a rejected push is not a genuine failure)", callErr)
@@ -197,7 +198,7 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 	weftFixture := lyxtest.CopyWeft(t)
 	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change, no warp")
 
-	if err := CoalescePushBothAt("", weftFixture.WeftPath, SyncOptions{}); err != nil {
+	if _, err := CoalescePushBothAt("", weftFixture.WeftPath, SyncOptions{}); err != nil {
 		t.Fatalf("CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
 	}
 

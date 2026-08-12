@@ -80,8 +80,10 @@ type CleanupBranchEntry struct {
 }
 
 // CleanupResult is the top-level result type returned by Cleanup.
-// It lists every orphaned weft branch, whether deleted, protected, or reported only.
+// It lists every orphaned weft branch, whether deleted, protected, or reported only, and embeds
+// MutationRecord, which carries the mutation record accumulated over the call.
 type CleanupResult struct {
+	MutationRecord
 	// Entries lists the orphaned weft branches and their dispositions.
 	Entries []CleanupBranchEntry `json:"entries"`
 }
@@ -97,7 +99,10 @@ func raddleFoldedBack(_ string) bool {
 // _lyx/raddle/ merge-back gate, checked-out branches are always protected.
 // The repo's primary weft branch is protected unconditionally, in every mode — see
 // primaryWeftBranch for why branch-space liveness alone cannot protect it.
-func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
+func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	// Enumerate warp worktrees using git-registered entries only.
 	entries, err := List(l.WorktreePath())
 	if err != nil {
@@ -183,7 +188,7 @@ func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult
 			continue
 		}
 
-		entry.Deleted = deleteWeftBranch(l, branch, t.cfg.BranchPrefix, &entry)
+		entry.Deleted = deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry)
 		result.Entries = append(result.Entries, entry)
 	}
 
@@ -266,7 +271,8 @@ func listWeftBranches(l *lyxcwd.Location) ([]weftBranchCheckout, error) {
 // in entry. force is always false here even when Topology.Cleanup was called with force true:
 // --force there answers the folded-back-raddle gate above, evaluated before this call is reached, and
 // may not answer the gate's own primary-weft carve-out or checked-out check.
-func deleteWeftBranch(l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
+// rec is the calling verb's own recorder, passed straight through to deleteBranch.
+func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
@@ -280,7 +286,7 @@ func deleteWeftBranch(l *lyxcwd.Location, branch, branchPrefix string, entry *Cl
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}
-	exitCode, deleteStderr, err := deleteBranch(req)
+	exitCode, deleteStderr, err := deleteBranch(rec, req)
 	if err != nil {
 		entry.Error = fmt.Sprintf("git branch -D %s: %v", branch, err)
 		return false

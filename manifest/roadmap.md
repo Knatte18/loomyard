@@ -22,11 +22,10 @@ Committed to, in this order, next.
    and the design doc records why rather than deleting it: the campaign left a named, sabotage-proved regression test for every one of the eight defects across ~29 destructive-verb integration files, which is exactly the cover a consolidating refactor needs,
    and the gate's own completeness proof is a static tree walk needing no fixtures at all.
    **Slice 13, the live-state integration harness against real git in dirty and hostile state, has also landed** — see Done below: it validated slice 12's gate live and left a nine-cell sabotage proof recording that each of the eight evidence-table defects still fails on demand.
-   **Slice 14** (accumulate the result envelope from actual mutations rather than from control flow — the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub) is next, because it is truthfulness rather than safety: slice 12's steps 1-4 are what stop destruction,
-   and its step 5 already landed in each verb's existing error shape, to be generalised here.
-   **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) last — logically independent of the other two, but sequenced behind them anyway.
-   The chain among the two remaining slices is strict and total: `14 → 15`, **one fabric slice in flight at a time**.
-   Two reasons, and both must hold before any two overlap: logically each slice asserts on behaviour the previous one changes, and mechanically both edit `internal/fabricengine` while 14 rewrites it package-wide (every verb's result path).
+   **Slice 14, accumulating the result envelope from actual mutations rather than from control flow, has also landed** — see Done below: every mutating verb's result type now carries the accumulated `mutations`/`partial` record, and every destructive executor's own recording is machine-pinned by a guard test.
+   **Slice 15** (the LOW, self-healing `corrindex` two-phase read-modify-write race) is next in the chain — logically independent of the other two, but sequenced behind them anyway.
+   The chain was strict and total across the two remaining slices: `14 → 15`, **one fabric slice in flight at a time**.
+   Two reasons, and both had to hold before any two overlapped: logically each slice asserts on behaviour the previous one changes, and mechanically both edit `internal/fabricengine` while 14 rewrote it package-wide (every verb's result path).
    An earlier draft declared 15 free to pick up at any point on its logical independence alone — **that was wrong**: logical independence does not make it safe to edit the same package alongside a package-wide refactor, and 15 is LOW and self-healing, so it loses nothing by waiting.
    Placed ahead of `Shed` because fabric is the module every other worktree's work stands on,
    and this is a data-loss class in it — not because `Shed` slipped;
@@ -206,6 +205,13 @@ No build order is implied between these items.
    the ten-state × nine-verb × two-anchor cross product runs with prefix-rooted manifest permits, so a cell asserts "the operator's content is still on disk," not merely "the verb returned an error";
    the two refusal-expectation helpers pin a refusal to the exact layer that produced it, gate versus pre-flight;
    and a nine-cell sabotage proof, recorded in `doc.go`, confirms each of the eight evidence-table defects still fails on demand when its guarding check is neutered.
+   Full task body lives at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
+
+1. **fabric: crucible follow-ups — slice 14** — accumulates the result envelope from actual mutations rather than from control flow, closing the class where `pull` reported `ok:true` after discarding uncommitted work and `remove ..` reported `ok:false` after deleting a whole hub.
+   Every mutating verb's result type now embeds `MutationRecord`, populated via a verb-owned `*Mutations` recorder threaded into everything the call performs and snapshotted onto the named result through a populating `defer`, so a newly added early return can never silently drop it;
+   `internal/fabricengine`'s destructive gate (`destroy.go`) auto-records seven of its executors' kinds, with the remaining kinds hand-recorded at their own success sites.
+   `ok` keeps meaning "no error was returned" — it is not redefined — and the CLI envelope instead gains two fixed, always-present keys on every verb outcome: `mutations` (an array, empty rather than `null`) and `partial` (a bool, `false` rather than absent, true from exactly one rule: `error ≠ nil ∧ record non-empty`).
+   Landed with a `CONSTRAINTS.md` invariant (the Mutation Record Invariant) and a machine guard (`cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource`) pinning that every destructive executor takes the recorder parameter and every mutating result type carries the record, in the same commit.
    Full task body lives at [designs/fabric-crucible-followups.md](designs/fabric-crucible-followups.md).
 
 1. **git-native-library: feasibility spike** — empirical spike evaluating a native Go git library (`go-git`) as a replacement for `internal/gitexec`'s shell-out plumbing, across the full surface `gitrepo` uses (reads and writes, including the `Push` rebase-retry path).
