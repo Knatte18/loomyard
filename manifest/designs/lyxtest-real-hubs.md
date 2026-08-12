@@ -4,7 +4,7 @@
 > Depends on `fabric-live-state-harness` (slice 13), which creates the `fabrictest` package this task needs as a landing zone — but sequenced behind the **whole** fabric chain (`12 → 13 → 14 → 15`), not just slice 13.
 > It moves `fabricengine`'s 14 in-package `lyxtest` callers and migrates their assertions, which is the same package slice 14 rewrites every verb's result path in;
 > only one of those may be in flight at a time.
-> See [fabric-crucible-followups.md](fabric-crucible-followups.md)'s build order.
+> The full chain has now landed, so that sequencing constraint is satisfied.
 > Deleted once landed, per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle);
 > the durable half becomes the rewritten lyxtest invariant in `CONSTRAINTS.md` and `internal/lyxtest`'s own package doc.
 
@@ -17,7 +17,7 @@ Neither has `_board`, `_portals`, `_launchers`, a hub-level `.lyx`, junctions, a
 
 Every test built on those fixtures therefore asserts against **a shape someone wrote down**, not the shape fabric produces.
 Nothing detects drift between the two.
-That is the same class of blindness the fabric v2 crucible campaign found at the tier level — see [fabric-crucible-followups.md](fabric-crucible-followups.md)'s slice 13, where the hermetic suite stayed green through eight data-loss defects because it could not express the state that exposed them.
+That is the same class of blindness the fabric v2 crucible campaign found at the tier level — see [internal/fabricengine](../../internal/fabricengine/doc.go)'s package doc, "The destruction chokepoint" section, where the hermetic suite stayed green through eight data-loss defects because it could not express the state that exposed them.
 
 The fix is to invert the dependency: `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning.
 Every fixture in the repo then *is* a hub, and drift becomes impossible by construction rather than by discipline.

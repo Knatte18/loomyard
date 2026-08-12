@@ -641,4 +641,44 @@
 // The property that a site cannot declare this kind for a path the gate did not create therefore
 // rests on the bypass guard's `createdToken{` ban, not on Go's type system;
 // a reader who believes the type system alone enforces it will eventually write one.
+//
+// # The correspondence index's write path
+//
+// This section, together with "The destruction chokepoint" above, closes out the fabric crucible
+// campaign's four follow-up slices (12-15), all now landed.
+//
+// **Why `record()` is single-phase.**
+// `corrIndex.record` used to compose its upsert from an in-memory snapshot loaded earlier under a
+// read lock already released by the time the write happened — a two-phase load-then-write window
+// a concurrent writer could land inside, clobbering it. `state.UpdateJSON` closes that window: it
+// re-reads the on-disk base under the same exclusive lock it writes under, so `record()`'s upsert
+// composes from a base no other writer can have superseded mid-call.
+//
+// **Why not "re-read under the write lock `record()` already takes."**
+// That was the preferred shape on paper, but `record()` takes no write lock in its own frame:
+// `state.WriteJSON` acquires and releases the lock internally, and `lock.AcquireWriteLock` opens a
+// fresh `flock` handle on every call, so a nested acquire from `corrindex.go` self-deadlocks rather
+// than serializing.
+//
+// **Why `RebuildIndex` and `refreshCorrIndexAfterSwitch` were left alone.**
+// Giving them the weft write lock is a claim about every call path that every future caller must
+// preserve, not a local fact `corrindex.go` can establish on its own, and it would still leave
+// `record()` two-phase against any writer that does not take the weft lock.
+//
+// **Why `refreshCorrIndexAfterSwitch`'s unlocked `os.Remove`-then-rebuild window is designed, not
+// defective.**
+// The discard is intended to drop cross-branch entries that would otherwise keep passing
+// `SHAExists`, so a concurrent `record()` losing its entry there is the intended behaviour, not an
+// oversight.
+//
+// **The residual window, by name.**
+// `RebuildIndex` is itself two-phase — `scanWarpSHATrailers` reads git, then `state.WriteJSON`
+// writes, with the scan outside the file's lock — so the interleaving scan → `record()` writes →
+// rebuild writes still loses the recorded entry.
+// This is accepted, not overlooked: LOW severity and self-healing, because the weft commit
+// trailers are the sole source of truth and the index is an explicitly rebuildable cache, so the
+// worst observable effect is one spurious `no_weft_correspondence` from `lyx fabric diff` that a
+// re-run clears.
+// `record()`'s side of the race is closed; the reverse direction, against `RebuildIndex`'s own
+// scan-to-write span, is not.
 package fabricengine

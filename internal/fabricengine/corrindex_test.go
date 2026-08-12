@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through one corrIndex handle
@@ -169,6 +171,40 @@ func TestCorrIndex_NearestAtOrBefore_SharedSeqLastRecordedWins(t *testing.T) {
 	}
 	if got.WarpSHA != "second" {
 		t.Errorf("nearestAtOrBefore(10) = %q; want %q (last recorded)", got.WarpSHA, "second")
+	}
+}
+
+// TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite asserts that record() upserts against
+// the freshly-read on-disk base rather than the handle's own possibly-stale in-memory snapshot: an
+// external state.WriteJSON call (standing in for RebuildIndex's write) that lands after the handle
+// is loaded but before record() runs must not be lost when record() persists.
+func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "corr.json")
+
+	ix, err := loadCorrIndex(path)
+	if err != nil {
+		t.Fatalf("loadCorrIndex() error = %v", err)
+	}
+
+	other := corrEntry{WarpSHA: "other", WeftSHA: "other-weft", WarpSeq: 1}
+	if err := state.WriteJSON(path, path+".lock", []corrEntry{other}); err != nil {
+		t.Fatalf("state.WriteJSON() error = %v", err)
+	}
+
+	mine := corrEntry{WarpSHA: "mine", WeftSHA: "mine-weft", WarpSeq: 2}
+	if err := ix.record(mine); err != nil {
+		t.Fatalf("record() error = %v", err)
+	}
+
+	reloaded, err := loadCorrIndex(path)
+	if err != nil {
+		t.Fatalf("loadCorrIndex() (reload) error = %v", err)
+	}
+	if got, ok := reloaded.exact("other"); !ok || got.WeftSHA != "other-weft" {
+		t.Errorf("reloaded.exact(other) = %+v, %v; want {other-weft ...}, true", got, ok)
+	}
+	if got, ok := reloaded.exact("mine"); !ok || got.WeftSHA != "mine-weft" {
+		t.Errorf("reloaded.exact(mine) = %+v, %v; want {mine-weft ...}, true", got, ok)
 	}
 }
 
