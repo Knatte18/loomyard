@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-state-updatejson
+phase: approved-corrindex-record-single-phase
 slug: fabric-corrindex-record-race
 branch: fabric-corrindex-record-race
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-review-r2  '2026-08-12T10:44:07Z'
 planned  '2026-08-12T10:44:15Z'
 implementing  '2026-08-12T10:44:37Z'
 approved-state-updatejson  '2026-08-12T10:48:48Z'
+approved-corrindex-record-single-phase  '2026-08-12T10:50:59Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ batches:
     commit_sha: 827ae12da0f48627cb53275c34b7f5afc9da2173
     verify_baseline_failures: []
   - name: corrindex-record-single-phase
-    state: running
+    state: approved
     implementer_session: 86a933c1-db48-414f-a416-4980bc444b75
     start_sha: c06555caf84120ab6f5238a1862037300b48abf4
+    commit_sha: 413ae4809325cef1b7afb8ba394e1b43e4d5936a
     verify_baseline_failures: []
   - name: campaign-docs-fold
     state: pending
