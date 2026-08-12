@@ -49,8 +49,45 @@
 // This is deliberate, documented behaviour, not a defect: the cell that exercises it declares
 // _portals/<anchor>/<slug> and _launchers/<anchor>/<slug> as permitted removal roots rather than
 // treating their disappearance as a failure.
-// It is flagged here for slice 14's truthfulness work, where "what did this call actually mutate
-// before it failed" becomes representable in a refusal's own shape.
+// "What did this call actually mutate before it failed" is what slice 14's truthfulness work made
+// representable in a refusal's own shape: it landed as AssertRecordMatchesDiff (mutationoracle.go),
+// wired into every cell in this package (batch 7 card 31).
+// This cell's own record now names the portal and launcher deletions RefusedBefore's own path took
+// before returning, so the cell asserts both halves at once — that the deletions were allowed under this
+// cell's permitted roots, and that the envelope admitted to them.
+//
+// # Honesty is a distinct property from survival, not a restatement of it
+//
+// AssertRecordMatchesDiff's own unit tests (mutationoracle_test.go) exercise its rules directly.
+// This section is about how it relates to the sabotage table below, because the relationship is easy to
+// get wrong.
+// destroy.go's chokepoint records a destructive primitive's entry AFTER the primitive succeeds,
+// unconditionally on whether the gate that authorised it should have refused — recording is
+// check-independent by design, so a caller can trust that a record entry's presence means the primitive
+// really ran.
+// One consequence follows directly from that design: neutering one of the nine checks below does NOT, on
+// its own, produce a lie.
+// The sabotaged primitive still runs through the same chokepoint, which still records it honestly — the
+// record correctly names an unauthorised destruction, and it is AssertNoUnpermittedChange (survival,
+// keyed on permitted roots) that catches the authorisation failure each of the nine rows documents,
+// exactly as it already did before this batch.
+// Re-neutering any of the nine checks and re-running its cell fails the SAME way it always has; the
+// honesty assertion adds no second failure there, because there is no lie for it to catch in that defect
+// class.
+//
+// The defect class the honesty assertion exists for is a different one: a destructive primitive that
+// bypasses the recording chokepoint entirely, independent of any authorisation question — an omission,
+// not a bad authorisation.
+// Batch 7's own cross-product run (card 31) found a real, live instance of exactly that, not a
+// hypothetical one: prune.go's removeStalePair calls `git worktree prune` to clear a stale warp-side
+// `.git/worktrees/<slug>` admin registration left behind when a pair's warp worktree directory is removed
+// by hand, and that call recorded nothing.
+// Survival passed every one of those cells — the admin directory is not a path any cell declares (or
+// needs to declare) a permitted root over, so nothing about the sweep looked unauthorised.
+// The honesty assertion failed instead, with a lie of omission naming the exact uncovered path:
+// `warp-bare/.git/worktrees/<slug>: removed (was dir), but no record entry covers it`.
+// The fix — recording KindWorktreeRemoved when a before/after probe of the admin path confirms the
+// primitive actually cleared it — landed in the same batch, alongside this note.
 //
 // # Measured wall-clock
 //
