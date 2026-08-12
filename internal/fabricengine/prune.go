@@ -63,8 +63,10 @@ type PruneEntry struct {
 }
 
 // PruneResult is the top-level result type returned by Prune.
-// It lists every stale or orphaned pair, whether or not they were removed.
+// It lists every stale or orphaned pair, whether or not they were removed, and embeds
+// MutationRecord, which carries the mutation record accumulated over the call.
 type PruneResult struct {
+	MutationRecord
 	// Entries lists the pairs that were identified (and optionally removed).
 	Entries []PruneEntry `json:"entries"`
 }

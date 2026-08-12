@@ -64,7 +64,9 @@ type CloneOptions struct {
 // route through internal/configsync, which fabricengine must never import (see the fabricengine →
 // configsync → configreg → fabricengine cycle documented in this file's clone-does-everything batch
 // scope).
+// It also embeds MutationRecord, which carries the mutation record accumulated over the call.
 type CloneResult struct {
+	MutationRecord
 	HubPath  string // HubPath is the created <name>-HUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
 	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.

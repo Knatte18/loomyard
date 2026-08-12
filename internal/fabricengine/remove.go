@@ -21,7 +21,9 @@ import (
 )
 
 // RemoveResult contains the result of successfully removing a worktree pair.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type RemoveResult struct {
+	MutationRecord
 	Slug         string `json:"slug"`
 	Path         string `json:"path"`
 	LinksRemoved int    `json:"links_removed"`

@@ -123,7 +123,9 @@ type ReconcilePairResult struct {
 }
 
 // ReconcileResult is the top-level result returned by Reconcile.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type ReconcileResult struct {
+	MutationRecord
 	// Pairs is the ordered list of per-worktree reconcile outcomes.
 	Pairs []ReconcilePairResult `json:"pairs"`
 

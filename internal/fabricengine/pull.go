@@ -23,7 +23,9 @@ import (
 // PullResult reports what Fabric.Pull actually did, on both sides independently, and — when a warp
 // history rewrite forced a reconcile — the re-anchor baseline and the weft content a caller should
 // treat as PATTERN-residue (potentially replayed against the wrong warp baseline).
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type PullResult struct {
+	MutationRecord
 	// WeftPulled reports whether the weft ff-pull (PullWeft) ran and
 	// succeeded — or was skipped as a vacuous no-op because the weft branch
 	// has no upstream yet (a freshly bootstrapped hub whose suffixed primary

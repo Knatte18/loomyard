@@ -18,7 +18,9 @@ import (
 // CommitResult reports what Fabric.Commit did on each side: landed SHA and whether a commit was
 // made, mirroring gitrepo.StageAndCommit and commitWeftLocked since unchanged content is a
 // legitimate no-op.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type CommitResult struct {
+	MutationRecord
 	WarpSHA       string
 	WarpCommitted bool
 	WeftSHA       string

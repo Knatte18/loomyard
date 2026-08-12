@@ -333,7 +333,9 @@ func wireBoardLink(l *lyxcwd.Location, slug string) error {
 
 // UnwireResult reports which parts of UnwireJunctions actually changed state, distinguishing a real
 // reversal from a no-op on an already-clean (or never-wired) worktree.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type UnwireResult struct {
+	MutationRecord
 	// JunctionsRemoved lists the Name of each junction that was actually present
 	// and removed, in WarpJunctions(l, slug) order. A name slice, not a count or
 	// a bool: which junction(s) were removed is CLI-observable, and "1 of 2

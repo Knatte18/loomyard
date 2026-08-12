@@ -22,7 +22,9 @@ import (
 )
 
 // UnwireVerbResult summarizes what Unwire changed.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type UnwireVerbResult struct {
+	MutationRecord
 	// JunctionsRemoved lists the Name of each warp junction that was actually
 	// present and removed. Empty when no junction was wired.
 	JunctionsRemoved []string

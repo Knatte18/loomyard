@@ -80,8 +80,10 @@ type CleanupBranchEntry struct {
 }
 
 // CleanupResult is the top-level result type returned by Cleanup.
-// It lists every orphaned weft branch, whether deleted, protected, or reported only.
+// It lists every orphaned weft branch, whether deleted, protected, or reported only, and embeds
+// MutationRecord, which carries the mutation record accumulated over the call.
 type CleanupResult struct {
+	MutationRecord
 	// Entries lists the orphaned weft branches and their dispositions.
 	Entries []CleanupBranchEntry `json:"entries"`
 }

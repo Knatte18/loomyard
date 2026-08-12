@@ -23,7 +23,9 @@ import (
 )
 
 // CheckoutResult contains the fields produced by a successful Checkout.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type CheckoutResult struct {
+	MutationRecord
 	// Branch is the warp branch the warp worktree now points to (the weft
 	// worktree points to WeftBranchName(Branch)).
 	Branch string `json:"branch"`

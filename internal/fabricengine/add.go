@@ -24,7 +24,9 @@ import (
 type AddOptions = SyncOptions
 
 // AddResult contains the result of successfully adding a new worktree pair.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type AddResult struct {
+	MutationRecord
 	Slug   string `json:"slug"`
 	Branch string `json:"branch"`
 	Path   string `json:"path"`
