@@ -66,7 +66,9 @@ batches:
     commit_sha: 61a97742b14cba0ddb807e5449d9440b2dce840b
     verify_baseline_failures: []
   - name: gate-auto-recording
-    state: pending
+    state: running
+    implementer_session: 202aa53e-e5ac-407a-abf9-239fa0082e68
+    start_sha: 51ebff65213dacadd22db9ab9fffca47528de69c
     verify_baseline_failures: []
   - name: constructive-recording
     state: pending
