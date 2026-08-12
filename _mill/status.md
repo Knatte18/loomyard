@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -47,6 +47,7 @@ approved-cli-envelope  '2026-08-12T07:15:04Z'
 approved-fabrictest-truthfulness-oracle  '2026-08-12T07:48:03Z'
 approved-guard-and-docs  '2026-08-12T07:55:06Z'
 holistic-reviewing  '2026-08-12T07:55:19Z'
+holistic-fixing  '2026-08-12T08:00:00Z'
 ```
 
 ## Batches
