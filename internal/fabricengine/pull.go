@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -149,6 +150,36 @@ func (f *Fabric) warpWorktreeDirty() (bool, error) {
 	return dirty, nil
 }
 
+// weftSHAOrEmpty returns f's weft repo's current HEAD SHA, mapping an unborn HEAD (no commits) to
+// ("", nil) — mirroring coalesce.go's headOrEmpty, the in-repo precedent for this exact tolerance,
+// adapted to a repo handle already in hand rather than a path.
+func weftSHAOrEmpty(f *Fabric) (string, error) {
+	sha, err := f.weft.CurrentSHA()
+	if err == nil {
+		return sha, nil
+	}
+	if errors.Is(err, gitrepo.ErrNoCommits) {
+		return "", nil
+	}
+	return "", err
+}
+
+// recordWarpAdvance records KindRepoAdvanced at f.warpPath with the new warp HEAD as Detail when a
+// ResetHard call this method's caller just made genuinely moved HEAD past before — the same
+// before/after CurrentSHA() predicate card 19 uses for push, applied to the warp advance here.
+// A reset to the SHA warp already carries advances nothing and must record nothing: ResetHard's own
+// worktree_reset entry (destroy.go) still fires either way, since that primitive ran regardless of
+// whether it moved anything — this entry names the effect, that one names the primitive.
+// If the after-sample errors, nothing is recorded and the error is not propagated: a failure to
+// observe is not a failure to advance.
+func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
+	after, err := f.warp.CurrentSHA()
+	if err != nil || after == before {
+		return
+	}
+	rec.Append(KindRepoAdvanced, f.warpPath, after)
+}
+
 // warpUpstreamSHA resolves the warp repo's already-fetched upstream tracking
 // ref (`@{u}`) to a plain hex SHA, via `git rev-parse @{u}` in f.warpPath.
 // Fabric.Pull calls this AFTER f.warp.Fetch has refreshed the remote-tracking
@@ -188,8 +219,24 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
 	}
 	if weftHasUpstream {
+		// Sample the weft SHA before and after the pull, and record KindRepoAdvanced only on a
+		// change — PullWeft's own f.weft.Pull() also returns nil when the weft is already up to
+		// date, so an unconditional entry would fabricate a mutation on that no-op path.
+		// This is load-bearing: PullWeft can succeed (result.WeftPulled = true below) and Pull can
+		// then still return a *PartialPullError on the warp side with no commit ever created and no
+		// gate primitive ever run — without this entry the record would be empty and partial would
+		// read false while the weft worktree had genuinely been advanced.
+		// gitrepo.ErrNoCommits is tolerated exactly as headOrEmpty (coalesce.go) tolerates it: an
+		// unborn weft HEAD reports as "" rather than an error, so a genuinely-empty repo before the
+		// pull is a legitimate before-sample rather than an observation failure.
+		beforeWeftSHA, beforeErr := weftSHAOrEmpty(f)
 		if err := f.PullWeft(opts); err != nil {
 			return PullResult{}, fmt.Errorf("fabricengine: weft pull: %w", err)
+		}
+		if beforeErr == nil {
+			if afterWeftSHA, afterErr := weftSHAOrEmpty(f); afterErr == nil && afterWeftSHA != beforeWeftSHA {
+				rec.Append(KindRepoAdvanced, f.weftPath, afterWeftSHA)
+			}
 		}
 	}
 	result.WeftPulled = true
@@ -235,6 +282,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		if err := f.ResetHard(rec, upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
+		f.recordWarpAdvance(rec, localHEAD)
 		result.WarpAdvanced = true
 		result.NewWarpHEAD = upstreamSHA
 		return result, nil
@@ -269,6 +317,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		if err := f.ResetHard(rec, upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
+		f.recordWarpAdvance(rec, localHEAD)
 		result.WarpAdvanced = true
 		result.NewWarpHEAD = upstreamSHA
 		return result, nil
@@ -287,6 +336,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	if err := f.ResetHard(rec, upstreamSHA); err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 	}
+	f.recordWarpAdvance(rec, localHEAD)
 	result.WarpAdvanced = true
 	result.NewWarpHEAD = upstreamSHA
 	result.AnchorWarpSHA = anchor.WarpSHA

@@ -94,10 +94,11 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	if exitCode != 0 {
 		return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed (git exit %d): %s", branch, exitCode, strings.TrimSpace(switchStderr))
 	}
+	rec.Append(KindWorktreeSwitched, l.WorktreePath(), branch)
 
 	// Resolve the weft sibling branch; roll back warp on failure.
 	slug := filepath.Base(l.WorktreePath())
-	weftForked, err := t.switchOrForkWeft(l, branch)
+	weftForked, err := t.switchOrForkWeft(rec, l, branch)
 	if err != nil {
 		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, "")
 		return CheckoutResult{}, err
@@ -133,7 +134,10 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 
 // switchOrForkWeft switches or forks the weft branch to match the warp target,
 // reporting whether a new branch was created (forked) so rollback can clean it up.
-func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked bool, err error) {
+// rec is Checkout's own recorder; it records KindWorktreeSwitched at the weft worktree root with the
+// branch switched to as Detail on either branch, and additionally records KindBranchCreated for the
+// forked branch on the fork branch, since `switch -c` creates it.
+func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch string) (forked bool, err error) {
 	weftWorktree := WeftWorktree(l)
 	weftBranch := WeftBranchName(branch)
 
@@ -149,6 +153,7 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 		if exitCode != 0 {
 			return false, fmt.Errorf("weft switch to branch %q failed (git exit %d): %s", weftBranch, exitCode, strings.TrimSpace(switchStderr))
 		}
+		rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
 		return false, nil
 	}
 
@@ -177,6 +182,8 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 	if exitCode != 0 {
 		return false, fmt.Errorf("fork weft branch %q from %q failed (git exit %d): %s", weftBranch, parentWeftBranch, exitCode, strings.TrimSpace(forkStderr))
 	}
+	rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
+	rec.AppendRef(KindBranchCreated, weftBranch, "")
 
 	return true, nil
 }
@@ -191,11 +198,20 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 // function cannot return an error without widening its signature (out of scope — it runs on paths
 // where Checkout is already failing, and turning a best-effort rollback into a hard failure is a
 // behaviour change this slice does not make), a refusal is logged via logger.Warn instead.
-// rec is Checkout's own recorder, threaded through to the gate's deleteBranch executor.
+// rec is Checkout's own recorder, threaded through to the gate's deleteBranch executor, and also
+// records KindWorktreeSwitched for either of this function's own git switch calls that succeeds — a
+// rollback switch is a real mutation of the working tree, and the record must carry it, in order,
+// which is the whole point of Checkout's both-sides-rollback case.
 func (t *Topology) rollbackSwitch(rec *Mutations, l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
-	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
+	_, _, warpExitCode, warpErr := gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
+	if warpErr == nil && warpExitCode == 0 {
+		rec.Append(KindWorktreeSwitched, l.WorktreePath(), originalBranch)
+	}
 	if originalWeftBranch != "" {
-		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
+		_, _, weftExitCode, weftErr := gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
+		if weftErr == nil && weftExitCode == 0 {
+			rec.Append(KindWorktreeSwitched, WeftWorktree(l), originalWeftBranch)
+		}
 	}
 	if forkedWeftBranch != "" {
 		req := branchRequest{
