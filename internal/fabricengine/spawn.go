@@ -93,8 +93,13 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	if opts.SkipGit || opts.SkipPush {
 		return PushResult{}, nil
 	}
-	if err := gitrepo.New(warpPath).PushCoalesced(); err != nil {
+
+	repo := gitrepo.New(warpPath)
+	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
+	if err := repo.PushCoalesced(); err != nil {
 		return PushResult{}, err
 	}
+	recordPushIfAdvanced(rec, repo, hadUnpushed, hadUnpushedErr)
+
 	return PushResult{}, nil
 }

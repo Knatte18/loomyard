@@ -131,6 +131,16 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 		return result, err
 	}
 
+	// Record from the already-populated CommitResult fields, not from control flow, so a partial
+	// commit (below) still records whichever side actually landed. The Target is the worktree the
+	// commit landed in (a path, so Append); the Detail is the SHA.
+	if result.WarpCommitted {
+		rec.Append(KindCommitCreated, f.warpPath, result.WarpSHA)
+	}
+	if result.WeftCommitted {
+		rec.Append(KindCommitCreated, f.weftPath, result.WeftSHA)
+	}
+
 	if result.WarpCommitted || result.WeftCommitted {
 		_ = spawnDetachedPushFn(f.warpPath, f.weftPath)
 	}

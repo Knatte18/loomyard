@@ -113,12 +113,22 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 		// A side with an empty path or an unborn HEAD has nothing to push;
 		// skip it, but it still participates in the before/after HEAD
 		// comparison below (its empty-string HEAD is trivially stable).
+		// warpRepo/weftRepo and their HasUnpushed samples are only taken for a side that is actually
+		// attempted this iteration, beside the beforeWarp/beforeWeft HEAD sampling already here — the
+		// same before/after shape card 19 uses for PushWeft and PushWarpAt, applied per side.
+		var warpRepo, weftRepo *gitrepo.Repo
+		var warpHadUnpushed, weftHadUnpushed bool
+		var warpUnpushedErr, weftUnpushedErr error
 		if warpPath != "" && beforeWarp != "" {
+			warpRepo = gitrepo.New(warpPath)
+			warpHadUnpushed, warpUnpushedErr = warpRepo.HasUnpushed()
 			if err := pushRebaseFreeLogged(warpPath); err != nil {
 				return false, err
 			}
 		}
 		if weftPath != "" && beforeWeft != "" {
+			weftRepo = gitrepo.New(weftPath)
+			weftHadUnpushed, weftUnpushedErr = weftRepo.HasUnpushed()
 			if err := pushRebaseFreeLogged(weftPath); err != nil {
 				return false, err
 			}
@@ -131,6 +141,13 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushRe
 		afterWeft, err := headOrEmpty(weftPath)
 		if err != nil {
 			return false, err
+		}
+
+		if warpRepo != nil {
+			recordPushIfAdvanced(rec, warpRepo, warpHadUnpushed, warpUnpushedErr)
+		}
+		if weftRepo != nil {
+			recordPushIfAdvanced(rec, weftRepo, weftHadUnpushed, weftUnpushedErr)
 		}
 
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil
