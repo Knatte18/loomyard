@@ -95,3 +95,9 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-08-12T07:47:50Z'  fabrictest-truthfulness-oracle  round 1
+```
