@@ -210,7 +210,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		// dormant by design and wired by the next pass.
 		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
 		if repairWiring {
-			t.repairPairWiring(warpLayout, slug, &pr, weftWorktreeExists)
+			t.repairPairWiring(rec, warpLayout, slug, &pr, weftWorktreeExists)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -331,7 +331,8 @@ func (t *Topology) reconcileWarpBinding(l *lyxcwd.Location) (WarpBindingOutcome,
 // link is _board reports healthy and would never be repaired if this call sat inside the
 // unhealthy branch. A wiring failure there is surfaced as a Detail note, never as an Error or a
 // changed Action — this convenience link must never be able to downgrade a reconcile verdict.
-func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
+// rec is Reconcile's own recorder, threaded through to every gate-reaching call this helper makes.
+func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
 	junctionHealthy, unhealthyReason := checkJunctionHealth(warpLayout)
 
 	if !junctionHealthy {
@@ -344,7 +345,7 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 		names, namesErr := RepoWiredNames(warpLayout)
 		if namesErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: load fabric config: %v", namesErr)
-		} else if wireErr := WireJunctions(warpLayout, slug, names); wireErr != nil {
+		} else if wireErr := WireJunctionsWith(rec, warpLayout, slug, names); wireErr != nil {
 			pr.Error = fmt.Sprintf("re-point junction: %v", wireErr)
 		} else {
 			appendPrDetail(pr, junctionRepointedDetail(warpLayout))
@@ -353,7 +354,7 @@ func (t *Topology) repairPairWiring(warpLayout *lyxcwd.Location, slug string, pr
 		pr.Action = ReconcileActionAlreadyHealthy
 	}
 
-	if boardErr := wireBoardLink(warpLayout, slug); boardErr != nil {
+	if boardErr := wireBoardLink(rec, warpLayout, slug); boardErr != nil {
 		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
 	}
 

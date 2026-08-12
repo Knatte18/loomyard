@@ -83,7 +83,7 @@ func Unwire(cwd string) (res UnwireVerbResult, err error) {
 	// entry (_board included), so the generic sweep above can never see or
 	// remove it — the same skip that keeps reconcile's stale sweep from
 	// touching it (see reconcile.go's scanOnDiskJunctionNames doc).
-	boardRemoved, err := unwireBoardLink(l, slug)
+	boardRemoved, err := unwireBoardLink(rec, l, slug)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
@@ -133,7 +133,8 @@ func Unwire(cwd string) (res UnwireVerbResult, err error) {
 // present real directory (not a link) is refused, matching
 // unseedJunctionRecords' refusal to delete user content sitting where a
 // junction belongs.
-func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) {
+// rec is the calling verb's own recorder, threaded through to removeLink.
+func unwireBoardLink(rec *Mutations, l *lyxcwd.Location, slug string) (removed bool, err error) {
 	link := filepath.Join(WorktreePath(l, slug), l.AnchorRel, BoardDirName)
 
 	if _, statErr := os.Lstat(link); statErr == nil {
@@ -156,7 +157,7 @@ func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) 
 			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
 			force:     false,
 		}
-		if err := removeLink(req); err != nil {
+		if err := removeLink(rec, req); err != nil {
 			return false, fmt.Errorf("remove board junction %s: %w", link, err)
 		}
 		removed = true

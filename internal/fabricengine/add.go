@@ -187,7 +187,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	// case, alongside the pathspec junctions above — see junction.go's
 	// wireBoardLink doc for why it is wired unconditionally rather than
 	// folded into names.
-	if err := wireBoardLink(l, slug); err != nil {
+	if err := wireBoardLink(rec, l, slug); err != nil {
 		_ = t.rollbackAdd(l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, fmt.Errorf("wire board junction: %w", err)
 	}

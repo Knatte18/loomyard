@@ -52,7 +52,13 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (fabricengine.Clon
 	if err != nil {
 		return fabricengine.CloneResult{}, err
 	}
-	if err := fabricengine.WireJunctions(l, filepath.Base(l.WorktreePath()), names); err != nil {
+	// CloneAndWire has no recorder of its own yet — batch 6 gives it one and folds this record into
+	// the returned result and the envelope. For now, seed a local recorder from the record CloneHub
+	// already accumulated (res.Mutated()) so WireJunctionsWith's own entries are not silently
+	// dropped, and leave it otherwise unused.
+	rec := fabricengine.NewMutations(res.HubPath)
+	rec.Extend(res.Mutated())
+	if err := fabricengine.WireJunctionsWith(rec, l, filepath.Base(l.WorktreePath()), names); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
 
