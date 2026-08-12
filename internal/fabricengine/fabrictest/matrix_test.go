@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // anchors is the two anchor values every ordinary and hostile-input cell in the cross product runs
@@ -105,7 +107,7 @@ func assertExpectation(t *testing.T, err error, exp Expectation) {
 		if !RefusedByGate(err, exp.Check) {
 			t.Errorf("expected refusal by gate check %q; got err = %v", exp.Check, err)
 		}
-		for _, other := range []Check{CheckContainment, CheckOwnership, CheckDirtiness} {
+		for _, other := range []fabricengine.Check{fabricengine.CheckContainment, fabricengine.CheckOwnership, fabricengine.CheckDirtiness} {
 			if other == exp.Check {
 				continue
 			}

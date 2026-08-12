@@ -135,7 +135,7 @@ func TestRefusedByGate(t *testing.T) {
 		if err == nil {
 			t.Fatalf("driveContainmentGateRefusal: want a refusal, got nil")
 		}
-		if !RefusedByGate(err, CheckContainment) {
+		if !RefusedByGate(err, fabricengine.CheckContainment) {
 			t.Errorf("RefusedByGate(%v, CheckContainment) = false; want true", err)
 		}
 	})
@@ -148,7 +148,7 @@ func TestRefusedByGate(t *testing.T) {
 		if err == nil {
 			t.Fatalf("driveOwnershipGateRefusal: want a refusal, got nil")
 		}
-		if !RefusedByGate(err, CheckOwnership) {
+		if !RefusedByGate(err, fabricengine.CheckOwnership) {
 			t.Errorf("RefusedByGate(%v, CheckOwnership) = false; want true", err)
 		}
 	})
@@ -161,7 +161,7 @@ func TestRefusedByGate(t *testing.T) {
 		if err == nil {
 			t.Fatalf("driveDirtinessGateRefusal: want a refusal, got nil")
 		}
-		if !RefusedByGate(err, CheckDirtiness) {
+		if !RefusedByGate(err, fabricengine.CheckDirtiness) {
 			t.Errorf("RefusedByGate(%v, CheckDirtiness) = false; want true", err)
 		}
 	})
@@ -187,7 +187,7 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 			t.Fatalf("Add(%s) a second time: want an error, got nil", slug)
 		}
 
-		for _, check := range []Check{CheckContainment, CheckOwnership, CheckDirtiness} {
+		for _, check := range []fabricengine.Check{fabricengine.CheckContainment, fabricengine.CheckOwnership, fabricengine.CheckDirtiness} {
 			if RefusedByGate(err, check) {
 				t.Errorf("RefusedByGate(%v, %s) = true; want false for an ordinary non-refusal error", err, check)
 			}
@@ -205,17 +205,17 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 		cases := []struct {
 			name string
 			err  error
-			want Check
+			want fabricengine.Check
 		}{
-			{"Containment", containmentErr, CheckContainment},
-			{"Ownership", ownershipErr, CheckOwnership},
-			{"Dirtiness", dirtinessErr, CheckDirtiness},
+			{"Containment", containmentErr, fabricengine.CheckContainment},
+			{"Ownership", ownershipErr, fabricengine.CheckOwnership},
+			{"Dirtiness", dirtinessErr, fabricengine.CheckDirtiness},
 		}
 		for _, tt := range cases {
 			if tt.err == nil {
 				t.Fatalf("%s: want a refusal, got nil", tt.name)
 			}
-			for _, check := range []Check{CheckContainment, CheckOwnership, CheckDirtiness} {
+			for _, check := range []fabricengine.Check{fabricengine.CheckContainment, fabricengine.CheckOwnership, fabricengine.CheckDirtiness} {
 				got := RefusedByGate(tt.err, check)
 				want := check == tt.want
 				if got != want {
@@ -270,7 +270,7 @@ func TestRefusedBefore(t *testing.T) {
 		if RefusedBefore(err, "worktree has uncommitted changes; use --force") {
 			t.Errorf("RefusedBefore(%v, ...) = true; want false for a GATE dirtiness refusal carrying the identical reason text", err)
 		}
-		if !RefusedByGate(err, CheckDirtiness) {
+		if !RefusedByGate(err, fabricengine.CheckDirtiness) {
 			t.Errorf("RefusedByGate(%v, CheckDirtiness) = false; want true for the same error", err)
 		}
 	})

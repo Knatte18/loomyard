@@ -9,51 +9,30 @@
 
 package fabrictest
 
-import "strings"
+import (
+	"strings"
 
-// Check names one of the three destructive-gate checks a *destructiveRefusal can be attributed to:
-// containment, ownership, or dirtiness.
-// It is a fabrictest-owned copy of fabricengine's own unexported destructiveCheck enum, string-backed
-// so RefusedByGate can match it against an error's rendered message without importing the unexported
-// type.
-type Check string
-
-const (
-	// CheckContainment names the gate's containment check: the target must resolve strictly below
-	// its declared container.
-	CheckContainment Check = "containment"
-	// CheckOwnership names the gate's ownership check: the target must satisfy one of the closed set
-	// of ownership predicates declared for the request.
-	CheckOwnership Check = "ownership"
-	// CheckDirtiness names the gate's dirtiness check: the target must be clean, or the caller must
-	// have passed --force.
-	CheckDirtiness Check = "dirtiness"
-
-	// There is deliberately no CheckForce constant. checkForce is declared in destroy.go and rendered
-	// by destructiveCheck.String(), but it is never constructed into a *destructiveRefusal anywhere in
-	// the tree: force is consulted only inside checkPathDirtiness, where it makes the dirtiness check
-	// PASS rather than fail, so a refusal is never attributed to it. A CheckForce constant could
-	// therefore never match a real refusal — do not add it back believing the gate simply forgot to
-	// emit it.
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // RefusedByGate reports whether err is a refusal from fabric's destructive gate for the given check.
 //
-// The gate renders every refusal as "refusing to <what>: <check> check failed for <target>: <reason>"
-// (destroy.go:70-72), so matching on the substring "<check> check failed" is unambiguous and survives
-// call-site wrapping (fmt.Errorf("...: %w", err) and its %v cousin), because RefusedByGate searches the
-// full rendered error string rather than unwrapping.
-// Matching is done by substring rather than errors.As because the gate's one error type,
-// *destructiveRefusal, is unexported and therefore unreachable from this package — the rendered
-// message IS the gate's honest-reporting contract, so pinning it here tests something real rather than
-// a proxy for it.
+// It is built on fabricengine.RefusalOf, the exported accessor onto the gate's own *destructiveRefusal:
+// RefusalOf unwraps err via errors.As and, when it finds one, returns a Refusal carrying the exact Check
+// that refused. RefusedByGate compares that Refusal.Check against the wanted check directly, rather than
+// matching a rendered "<check> check failed" substring — strictly more precise than substring matching,
+// and what RefusalOf exists for.
 // RefusedByGate reports false for a nil err, so a cell that expected a refusal and instead got a
 // success fails on the expectation rather than panicking on a nil dereference.
-func RefusedByGate(err error, check Check) bool {
+func RefusedByGate(err error, check fabricengine.Check) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), string(check)+" check failed")
+	refusal, ok := fabricengine.RefusalOf(err)
+	if !ok {
+		return false
+	}
+	return refusal.Check == check
 }
 
 // RefusedBefore reports whether err is a refusal from one of fabric's own pre-flight checks — the

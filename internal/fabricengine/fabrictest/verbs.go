@@ -174,7 +174,7 @@ func (k ExpectationKind) String() string {
 // extra, verb-specific check beyond the generic error-shape and manifest-diff checks every cell gets.
 type Expectation struct {
 	Kind           ExpectationKind
-	Check          Check
+	Check          fabricengine.Check
 	Substring      string
 	PermittedRoots []string
 	Effect         func(tb testing.TB, h *Hub, f VerbFixture)
@@ -1369,7 +1369,7 @@ func unwireJunctionsHostileCase() VerbCase {
 		Expect: func(state string) Expectation {
 			return Expectation{
 				Kind:  KindRefusedByGate,
-				Check: CheckContainment,
+				Check: fabricengine.CheckContainment,
 				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
 					tb.Helper()
 					assertExists(tb, filepath.Join(h.Path, escapeName))

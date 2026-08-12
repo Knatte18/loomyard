@@ -36,12 +36,9 @@
 //
 // # The three-member Check set
 //
-// The exported Check set fabricengine's destructive gate carries has exactly three members:
-// CheckContainment, CheckOwnership, CheckDirtiness.
-// checkForce is declared at destroy.go:39 and rendered by String() at destroy.go:51, but it is never
-// constructed into a *destructiveRefusal anywhere in the tree — force is consulted only inside
-// checkPathDirtiness, where it makes the dirtiness check pass rather than fail.
-// A CheckForce constant could therefore never match a real refusal, and must not be added back.
+// fabrictest consumes fabricengine.Check directly — CheckContainment, CheckOwnership, CheckDirtiness —
+// rather than carrying a copy of its own; there is deliberately no CheckForce member, and fabricengine.
+// Check's own doc comment (internal/fabricengine/destroy.go) is this rule's one declarer, not this file.
 //
 // # One known refusal-with-side-effects anomaly
 //
