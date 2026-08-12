@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: fabric-corrindex-record-race
 branch: fabric-corrindex-record-race
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-state-updatejson  '2026-08-12T10:48:48Z'
 approved-corrindex-record-single-phase  '2026-08-12T10:50:59Z'
 approved-campaign-docs-fold  '2026-08-12T10:55:13Z'
 holistic-reviewing  '2026-08-12T10:55:33Z'
+holistic-approved  '2026-08-12T10:58:28Z'
 ```
 
 ## Batches
