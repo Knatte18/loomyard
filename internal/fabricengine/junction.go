@@ -112,7 +112,7 @@ func WireJunctionsWith(rec *Mutations, l *lyxcwd.Location, slug string, names []
 	}
 
 	// Append junction names to git-exclude
-	if err := seedGitExclude(l, slug, names); err != nil {
+	if err := seedGitExclude(rec, l, slug, names); err != nil {
 		return err
 	}
 
@@ -180,6 +180,7 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 				if createErr := fslink.CreateDirLink(link, target); createErr != nil {
 					return createErr
 				}
+				rec.Append(KindLinkCreated, link, "")
 				continue
 			}
 
@@ -198,7 +199,7 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 			// `reconcile` after `.lyx` joined the wired name-set would
 			// hard-error everywhere.
 			if j.Name == lyxdirs.DotLyxDirName {
-				if err := adoptDotLyxContent(link, target); err != nil {
+				if err := adoptDotLyxContent(rec, link, target); err != nil {
 					return err
 				}
 				continue
@@ -220,6 +221,7 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 		if err := fslink.CreateDirLink(link, target); err != nil {
 			return err
 		}
+		rec.Append(KindLinkCreated, link, "")
 	}
 
 	return nil
@@ -244,7 +246,12 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 //
 // Idempotent: a second call finds a link, not a real directory, so seedLyxJunction never reaches this
 // helper again for an already-adopted `.lyx`.
-func adoptDotLyxContent(link, target string) error {
+// rec is the calling verb's own recorder. It records one KindFileWritten at target with Detail
+// "adopted" once the rename loop completes and before the link is created — the moved tree is a
+// hub-visible addition at the destination, and one entry at the destination root covers the whole
+// moved tree under the coverage rule. It then records KindLinkCreated for the link created in the
+// now-empty source's place, mirroring seedLyxJunction's own creation sites.
+func adoptDotLyxContent(rec *Mutations, link, target string) error {
 	entries, err := os.ReadDir(link)
 	if err != nil {
 		return fmt.Errorf("read %s for adoption: %w", link, err)
@@ -272,11 +279,17 @@ func adoptDotLyxContent(link, target string) error {
 		}
 	}
 
+	rec.Append(KindFileWritten, target, "adopted")
+
 	if err := os.Remove(link); err != nil {
 		return fmt.Errorf("remove now-empty %s after adoption: %w", link, err)
 	}
 
-	return fslink.CreateDirLink(link, target)
+	if err := fslink.CreateDirLink(link, target); err != nil {
+		return err
+	}
+	rec.Append(KindLinkCreated, link, "")
+	return nil
 }
 
 // wireBoardLink creates or repairs the operator-convenience `_board` junction
@@ -331,16 +344,18 @@ func wireBoardLink(rec *Mutations, l *lyxcwd.Location, slug string) error {
 			if createErr := fslink.CreateDirLink(link, target); createErr != nil {
 				return createErr
 			}
+			rec.Append(KindLinkCreated, link, "")
 		}
 	} else if os.IsNotExist(err) {
 		if createErr := fslink.CreateDirLink(link, target); createErr != nil {
 			return createErr
 		}
+		rec.Append(KindLinkCreated, link, "")
 	} else {
 		return fmt.Errorf("lstat %s: %w", link, err)
 	}
 
-	return seedGitExclude(l, slug, []string{BoardDirName})
+	return seedGitExclude(rec, l, slug, []string{BoardDirName})
 }
 
 // UnwireResult reports which parts of UnwireJunctions actually changed state, distinguishing a real
@@ -388,7 +403,7 @@ func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (res Unwir
 		return UnwireResult{JunctionsRemoved: removed}, err
 	}
 
-	changed, err := unseedGitExclude(l, slug, names)
+	changed, err := unseedGitExclude(rec, l, slug, names)
 	if err != nil {
 		return UnwireResult{JunctionsRemoved: removed}, err
 	}
@@ -527,8 +542,10 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 //
 // Returns (false, nil) without touching the file if the exclude file does not
 // exist, or if no matching line was found — both are legitimate no-op cases.
-func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
-	return mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+// rec is the calling verb's own recorder; it records KindFileWritten at the exclude file's own
+// resolved path via Append only when the rewrite reports changed.
+func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string) (changed bool, err error) {
+	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
 		// The sibling census runs INSIDE the lock, so the answer it gives cannot be invalidated by a
 		// concurrent wire in another worktree between the census and the write it feeds.
 		keep := namesWiredInSiblingWorktrees(l, slug, names)
@@ -557,6 +574,13 @@ func unseedGitExclude(l *lyxcwd.Location, slug string, names []string) (changed 
 		}
 		return strings.Join(kept, "\n"), nil
 	})
+	if err != nil {
+		return false, err
+	}
+	if changed {
+		rec.Append(KindFileWritten, excludePath, "")
+	}
+	return changed, nil
 }
 
 // namesWiredInSiblingWorktrees reports, per name, whether some OTHER warp worktree registered in
@@ -627,8 +651,10 @@ func excludePatternFor(anchorRel, name string) string {
 // left beside it, so an existing hub converges on the narrower exclusion the first time anything
 // re-wires it.
 // Idempotent: re-running when all junction patterns are already present is a no-op.
-func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
-	_, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
+// rec is the calling verb's own recorder; it records KindFileWritten at the exclude file's own
+// resolved path via Append only when the rewrite reports changed.
+func seedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
 		// Drop any legacy bare-name line for a junction being seeded, so the anchored pattern
 		// replaces it rather than accumulating beside it.
 		legacy := make(map[string]bool, len(names))
@@ -670,5 +696,11 @@ func seedGitExclude(l *lyxcwd.Location, slug string, names []string) error {
 
 		return content, nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if changed {
+		rec.Append(KindFileWritten, excludePath, "")
+	}
+	return nil
 }

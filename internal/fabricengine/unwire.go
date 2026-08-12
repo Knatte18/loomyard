@@ -165,7 +165,7 @@ func unwireBoardLink(rec *Mutations, l *lyxcwd.Location, slug string) (removed b
 		return false, fmt.Errorf("lstat %s: %w", link, statErr)
 	}
 
-	if _, err := unseedGitExclude(l, slug, []string{BoardDirName}); err != nil {
+	if _, err := unseedGitExclude(rec, l, slug, []string{BoardDirName}); err != nil {
 		return removed, err
 	}
 

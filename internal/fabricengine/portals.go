@@ -41,10 +41,16 @@ func portalTarget(l *lyxcwd.Location, slug string) string {
 //
 // Delegates to fslink.CreateDirLink with the computed link and target paths.
 // fslink.CreateDirLink already MkdirAll's filepath.Dir(link), creating the mirrored _portals/<RelPath>/ chain.
-func createPortal(l *lyxcwd.Location, slug string) error {
+// rec is the calling verb's own recorder; on success it records KindLinkCreated with the link path
+// (never the link's own target) as the Target.
+func createPortal(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	link := PortalLink(l, slug)
 	target := portalTarget(l, slug)
-	return fslink.CreateDirLink(link, target)
+	if err := fslink.CreateDirLink(link, target); err != nil {
+		return err
+	}
+	rec.Append(KindLinkCreated, link, "")
+	return nil
 }
 
 // removePortal removes the portal junction, deletes only the link (not the

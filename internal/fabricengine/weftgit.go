@@ -81,7 +81,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // where a prior sync already committed them; see commitWeft's doc comment
 // for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
-	_, err := mutateGitExclude(weftPath, func(content string) (string, error) {
+	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
 		entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", lockFilePattern, swapLockFilePattern}
 		for _, entry := range entries {
 			present := false

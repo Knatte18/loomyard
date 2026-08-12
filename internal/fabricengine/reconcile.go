@@ -358,7 +358,7 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location,
 		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
 	}
 
-	if restorePortalAndLaunchers(warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
+	if restorePortalAndLaunchers(rec, warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
 		pr.Action = ReconcileActionPortalRestored
 	}
 
@@ -375,7 +375,9 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location,
 // place, and Reconcile is a repair verb, not the place to start creating artefacts Clone does not.
 // A restore failure is a Detail note, never an Error or a changed Action: the portal is convenience
 // plumbing, and failing to rebuild it must not downgrade a verdict about the pair's git topology.
-func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
+// rec is Reconcile's own recorder, threaded through to createPortal (and, from batch 5's card 21
+// onward, writeLaunchers).
+func restorePortalAndLaunchers(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult) bool {
 	primeName, primeErr := PrimeName(warpLayout)
 	if primeErr != nil || slug == primeName {
 		return false
@@ -384,7 +386,7 @@ func restorePortalAndLaunchers(warpLayout *lyxcwd.Location, slug string, pr *Rec
 	restored := false
 
 	if _, err := os.Lstat(PortalLink(warpLayout, slug)); os.IsNotExist(err) {
-		if portalErr := createPortal(warpLayout, slug); portalErr != nil {
+		if portalErr := createPortal(rec, warpLayout, slug); portalErr != nil {
 			appendPrDetail(pr, fmt.Sprintf("portal restore failed: %v", portalErr))
 		} else {
 			appendPrDetail(pr, "portal junction restored")
@@ -741,7 +743,7 @@ func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string,
 	var removed []string
 	for _, name := range stale {
 		removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name})
-		_, _ = unseedGitExclude(warpLayout, slug, []string{name})
+		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
 
 		var refusal *destructiveRefusal
 		if errors.As(removeErr, &refusal) {

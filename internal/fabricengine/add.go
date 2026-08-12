@@ -157,7 +157,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	if err := createPortal(l, slug); err != nil {
+	if err := createPortal(rec, l, slug); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 		return AddResult{}, err
 	}

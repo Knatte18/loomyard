@@ -55,11 +55,11 @@ func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.
 			defer waitGroup.Done()
 			pattern := fmt.Sprintf("/junction-%d", writer)
 			for range iterations {
-				if _, err := mutateGitExclude(repoDir, appendPatternOnce(pattern)); err != nil {
+				if _, _, err := mutateGitExclude(repoDir, appendPatternOnce(pattern)); err != nil {
 					failures <- fmt.Errorf("seed %q: %w", pattern, err)
 					return
 				}
-				if _, err := mutateGitExclude(repoDir, removePattern(pattern)); err != nil {
+				if _, _, err := mutateGitExclude(repoDir, removePattern(pattern)); err != nil {
 					failures <- fmt.Errorf("unseed %q: %w", pattern, err)
 					return
 				}
@@ -89,7 +89,7 @@ func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.
 func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 	repoDir := newGitRepoForExcludeTest(t)
 
-	changed, err := mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
+	_, changed, err := mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
 	if err != nil {
 		t.Fatalf("first mutateGitExclude = %v; want nil", err)
 	}
@@ -97,7 +97,7 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 		t.Error("first mutateGitExclude reported changed=false; want true")
 	}
 
-	changed, err = mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
+	_, changed, err = mutateGitExclude(repoDir, appendPatternOnce("/_lyx"))
 	if err != nil {
 		t.Fatalf("second mutateGitExclude = %v; want nil", err)
 	}
