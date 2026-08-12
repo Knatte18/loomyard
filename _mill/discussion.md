@@ -598,7 +598,8 @@ Unchanged invariants this task must still respect:
 - **Q:** Should all rounds' recommended resolutions be applied without asking? **A:** Yes — operator granted blanket approval for the recommended option in every review round.
 - **Q:** What does `SeedConfig` mean on a real hub, where its 32 `fixture.Hub` sites point at a non-repo container? (discussion review r2, BLOCKING) **A:** Three-way split — drop the call where `CloneAndWire` already materialises the module's default config, else `hubforge.SeedConfig` into `PrimeWeft`/`WeftBase`, or `hubforge.SeedFabricConfig` into `BoardDir` for repo-wide fabric config.
   `gitkit.SeedConfig` keeps its body, restricted to primitive repos.
-- **Q:** How does teardown discover junction sites when the slug set is created by the verb under test? (discussion review r2, BLOCKING) **A:** A slug-free `filepath.WalkDir` from the hub root using `fslink.IsLink`, never descending into a link (`SkipDir` on encountering one).
+- **Q:** How does teardown discover junction sites when the slug set is created by the verb under test? (discussion review r2, BLOCKING) **A:** A slug-free `filepath.WalkDir` from the hub root using `fslink.IsLink`.
+  Non-descent is automatic — see the r5 entry below for the `SkipDir` correction.
   Slug-free is the only mechanism that survives the deliberately-corrupt hubs fabric's live-state matrix plants.
 - **Q:** Which build tags do the merged `hubforge`/`gitkit` files carry, given they merge an untagged and an integration-tagged source? (discussion review r3) **A:** Production untagged, git-spawning tests `//go:build integration`, one untagged `doc.go` each — `fabrictest`'s own existing pattern, and what keeps `go vet ./...` from seeing a package with zero untagged files.
 - **Q:** Does `SeedFabricConfig` commit in `BoardDir`? (discussion review r3) **A:** Yes, via `fabricengine.NewBolt(BoardDir).Commit(...)`, matching `CloneAndWire`.
