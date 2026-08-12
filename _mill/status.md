@@ -94,7 +94,9 @@ batches:
     commit_sha: 9f8785c526629ad9b91504cedaa47d1db2a3b06d
     verify_baseline_failures: []
   - name: guard-and-docs
-    state: pending
+    state: running
+    implementer_session: 63e381bc-abd6-4dd0-831d-a708172a4d14
+    start_sha: 73933be0e76a4bc78f248276bdbbfe1a1ec03ace
     verify_baseline_failures: []
 ```
 ## Inferred-success log
