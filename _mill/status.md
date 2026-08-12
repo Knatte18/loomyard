@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: fabric-corrindex-record-race
 branch: fabric-corrindex-record-race
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-12T08:37:02Z'
 discussion-fix-r1  '2026-08-12T10:22:01Z'
+discussion-fix-r2  '2026-08-12T10:26:35Z'
+discussed  '2026-08-12T10:26:35Z'
 ```

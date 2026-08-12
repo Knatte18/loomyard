@@ -89,6 +89,8 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
   `ReadJSONStrict` at `:82` deliberately does not) — because `flock.New(lockPath).Lock()` fails outright when the parent directory is absent.
   Note the limit that precedent carries and `UpdateJSON` inherits unchanged: it creates the parent of `path`, never the parent of a `lockPath` living in a sibling tree, which is why `treadleengine`'s `saveState` (`state.go:166-169`) `MkdirAll`s its scratch dir itself.
   It then acquires one exclusive lock on `lockPath`, reads `path` (missing file yields the zero `T` and `found=false`), calls `mutate`, writes the returned value atomically, and releases.
+  An existing file that fails to unmarshal is an **error, aborting with no write** — `ReadJSON`'s precedent (`state.go:73-75`), inherited unchanged.
+  It must not hand `mutate` the zero value and let it overwrite: that would turn one corrupt index file into a silent, permanent discard of every entry in it, and `record()`'s error now propagates into the weft-commit path where a caller sees it.
   A `mutate` error aborts with no write.
 - Rationale: the flag carries information the callback cannot otherwise recover.
   For a slice type like `[]corrEntry`, a missing file and an on-disk empty array both arrive as an empty `cur`, so without `found` the mutate function is structurally unable to tell them apart.
@@ -135,7 +137,8 @@ Because it is the last of the four, landing it also triggers `manifest/designs/f
 - Decision: add no invariant to `CONSTRAINTS.md`.
   State the rule — a locked-JSON read-modify-write must hold one lock across read and write, which is what `UpdateJSON` is for — in `internal/state`'s package header comment instead.
 - Rationale: because adoption stays at one consumer, an invariant of the form "every locked-JSON read-modify-write goes through `UpdateJSON`" would be false on the day it lands, and a false invariant is worse than none.
-  The package header is where the next author writing a read-modify-write over `internal/state` actually meets the rule.
+  It lands in a **new `internal/state/doc.go`** as a godoc package comment, not in `state.go`'s existing header block — that block is detached from the package clause by a blank line (`state.go:6`) and so never surfaces in `go doc`, which would defeat the whole reason for choosing it over an invariant.
+  A godoc package comment is where the next author writing a read-modify-write over `internal/state` actually meets the rule.
 - Rejected: adding the invariant, which would force migrating the other four packages' flows and reopen the adoption decision.
 
 ### fold-and-delete-the-design-file
@@ -178,6 +181,10 @@ That mutual exclusion is also what makes the reproducing test in Testing below w
 
 - `internal/state/state.go` — extract lock-free cores from `ReadJSON`/`WriteJSON` (their bodies change, their behaviour does not), add `UpdateJSON` on top of those cores, and extend the package header comment with the read-modify-write rule.
   Do **not** implement `UpdateJSON` as acquire-then-call-`ReadJSON`/`WriteJSON`: both acquire `lockPath` internally, so that composition hangs rather than failing.
+- `internal/state/doc.go` — **new file**, carrying the read-modify-write rule as a real godoc package comment.
+  `state.go:1-5`'s existing header block is separated from `package state` at `:7` by a blank line at `:6`, so it is a detached file comment that never appears in `go doc` — and the package has no `doc.go` today.
+  Writing the rule there would leave it invisible exactly where the decision below claims the next author meets it.
+  A separate `doc.go` is the in-repo analog (`internal/fabricengine/doc.go` is the same pattern) and leaves the per-file header convention that `state.go` and `lock.go` both follow untouched.
 - `internal/state/state_test.go` (or a new sibling) — unit cover for `UpdateJSON`.
 - `internal/fabricengine/corrindex.go` — rewrite `record`'s body; update its doc comment, which currently says "Persists before in-memory update so write failure leaves index unchanged" and must now also state that the upsert base is the on-disk file and that `ix.recs` converges on disk truth.
 - `internal/fabricengine/corrindex_test.go` — add the concurrency test.
@@ -196,7 +203,9 @@ The disposition is therefore:
 - **Add a Done entry for slice 15**, worded to say the `record()` side is closed rather than that the race is closed, and naming the residual window explicitly.
 - **Fix `manifest/roadmap.md:201`** — slice 12's Done entry ends "Slices 14-15 remain — see Planned above", which is false once the Planned item is gone.
 - Plus the three pointer sentences at lines 33, 208, 215 (see the reference table below).
-- `manifest/designs/fabric-windows-verification.md` (lines 34, 73), `manifest/designs/gitexec-error-shape.md` (line 510), `manifest/designs/fabric-unified-view.md` (line 228), `manifest/designs/lyxtest-real-hubs.md` (lines 7, 20) — per the reference table below.
+- `manifest/designs/fabric-windows-verification.md` (lines 34, 73), `manifest/designs/gitexec-error-shape.md` (line 510), `manifest/designs/fabric-unified-view.md` (line 228), `manifest/designs/lyxtest-real-hubs.md` (lines 7, 20) — four further edited files, carrying six of the nine references.
+  The reference table below is the authoritative file list for the docs half;
+  this bullet is its summary, not a second inventory.
 
 **The nine inbound references, with the verb for each.**
 There are **nine**, not eight — the count is easy to get wrong because two files carry two each and the roadmap carries three.
@@ -273,6 +282,7 @@ Scenarios that must be covered:
 - Missing file: `mutate` receives the zero value with `found=false`, and the returned value is created on disk.
 - Existing file: `mutate` receives the decoded value with `found=true`, and the returned value replaces it atomically.
 - A `mutate` that returns an error aborts with the file unchanged (and, for the missing-file case, still absent).
+- An existing file that fails to unmarshal aborts with an error, `mutate` never runs, and the file is left untouched — the `ReadJSON`-inherited disposition recorded in the signature decision.
 - Concurrent `UpdateJSON` calls against one path from many goroutines, each appending a distinct element, all survive — this is `UpdateJSON`'s own concurrency property, and this is the right home for a goroutine test.
   Distinct `flock` handles mutually exclude in-process (see Technical context), so the exclusion under test is real.
   If this test is written as "each goroutine reads then updates", put a barrier between the read phase and the update phase — without one the pre-fix failure is only probabilistic, since a goroutine that reads after another's write sees that write and preserves it.
@@ -326,5 +336,7 @@ Batch the plan accordingly.
 - **Q:** Do the nine inbound references all repoint the same way? **A:** No. Four repoint cleanly, two need rewriting (`doc.go` has no build order and the "four Planned slices" phrasing is stale on landing), and the three roadmap "full task bodies live at …" sentences are deleted, since after the delete those bodies live nowhere and the Done entries already carry the summaries.
 - **Q:** `UpdateJSON`'s signature — keep `ReadJSON`'s `found` flag? **A:** Yes, `mutate func(cur T, found bool) (T, error)`. The load-bearing reason is local: for a slice type, a missing file and an empty array are indistinguishable in `cur`. Keeping the un-migrated sites migratable is a secondary benefit, not the justification.
 - **Q:** Can `UpdateJSON` be built from `ReadJSON` + `WriteJSON`? **A:** No — both acquire the lock internally, so that composition hangs rather than fails. It requires extracting lock-free cores, which changes those two functions' bodies (not their behaviour).
+- **Q:** What does `UpdateJSON` do with an existing file it cannot decode? **A:** Errors out with no write, inheriting `ReadJSON`'s precedent. Handing `mutate` the zero value would silently discard every entry in a corrupt index.
+- **Q:** Where does the read-modify-write rule land so it is actually visible? **A:** A new `internal/state/doc.go`. Round 2 review caught that `state.go`'s header block is detached from the package clause and never appears in `go doc`, so writing the rule there would have made the no-invariant decision rest on a doc nobody reads.
 - **Q:** Does `record()` stay a method on `*corrIndex`? **A:** Yes. No call site or existing test changes; the receiver is still needed for `exact`/`nearestAtOrBefore`/`entries`.
 - **Q:** New `CONSTRAINTS.md` invariant for the read-modify-write rule? **A:** No — with one consumer, "every locked-JSON RMW goes through `UpdateJSON`" would be false on landing. The rule goes in `internal/state`'s package header.
