@@ -10,6 +10,9 @@
 // --force answers dirtiness only: it never satisfies containment and never satisfies ownership, so a
 // containment failure — the class of defect that once destroyed an entire hub — can never be
 // overridden by a flag.
+// The Check enum below names only the three checks a refusal can ever be attributed to —
+// containment, ownership, dirtiness — because force never fails: it is consulted only to make the
+// dirtiness check pass, never to cause a refusal of its own.
 //
 // See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
@@ -29,38 +32,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// destructiveCheck enumerates the four checks the gate's pipeline runs, always in this fixed order.
-type destructiveCheck int
+// Check names one of the three checks a destructive-gate refusal can be attributed to: containment,
+// ownership, or dirtiness. It is string-backed so a refusal renders and marshals without a
+// conversion step, and so RefusalOf's caller can read it with no import of anything unexported.
+//
+// There is deliberately no CheckForce member, and one must never be added: force is consulted only
+// inside checkPathDirtiness, where it makes the dirtiness check PASS rather than fail, so a refusal
+// can never be attributed to it.
+type Check string
 
 const (
-	checkContainment destructiveCheck = iota
-	checkOwnership
-	checkDirtiness
-	checkForce
+	// CheckContainment names the gate's containment check: the target must resolve strictly below
+	// its declared container.
+	CheckContainment Check = "containment"
+	// CheckOwnership names the gate's ownership check: the target must satisfy one of the closed set
+	// of ownership predicates declared for the request.
+	CheckOwnership Check = "ownership"
+	// CheckDirtiness names the gate's dirtiness check: the target must be clean, or the caller must
+	// have passed --force.
+	CheckDirtiness Check = "dirtiness"
 )
 
-// String reports the check's name in prose, so a refusal message names the check that failed.
-func (c destructiveCheck) String() string {
-	switch c {
-	case checkContainment:
-		return "containment"
-	case checkOwnership:
-		return "ownership"
-	case checkDirtiness:
-		return "dirtiness"
-	case checkForce:
-		return "force"
-	default:
-		return "unknown"
-	}
-}
-
-// destructiveRefusal is the gate's one error type: it names which of the four checks refused a
+// destructiveRefusal is the gate's one error type: it names which of the three checks refused a
 // destructive request, the requested act, the target (a path or a branch name), and a human reason.
 // Every refusal in this file is returned as *destructiveRefusal, never as a bare fmt.Errorf, so a
 // caller can always test for one with errors.As.
 type destructiveRefusal struct {
-	Check  destructiveCheck
+	Check  Check
 	What   string
 	Target string
 	Reason string
@@ -81,6 +79,32 @@ func surfaceRefusal(err error) error {
 		return err
 	}
 	return nil
+}
+
+// Refusal is the value form of a destructive-gate refusal: the check that refused, the requested
+// act, the target, and a human reason.
+// RefusalOf is the only producer, and it exists rather than exporting *destructiveRefusal itself
+// because *destructiveRefusal is a mutable pointer type whose identity callers could start
+// switching on, when the envelope only ever needs its four values.
+type Refusal struct {
+	Check  Check
+	What   string
+	Target string
+	Reason string
+}
+
+// RefusalOf reports whether err carries a *destructiveRefusal anywhere in its chain, unwrapping via
+// errors.As so a refusal wrapped several layers deep (fmt.Errorf("...: %w", ...)) is still found.
+// It returns the zero Refusal and false for a nil error and for an error carrying no refusal.
+func RefusalOf(err error) (Refusal, bool) {
+	if err == nil {
+		return Refusal{}, false
+	}
+	var refusal *destructiveRefusal
+	if !errors.As(err, &refusal) {
+		return Refusal{}, false
+	}
+	return Refusal{Check: refusal.Check, What: refusal.What, Target: refusal.Target, Reason: refusal.Reason}, true
 }
 
 // slugSpec carries the two halves validateWorktreeSlug needs, for a pathRequest whose target is
@@ -514,27 +538,27 @@ func checkPathRequest(req pathRequest) error {
 	}
 
 	if req.ownership.kind == pathOwnershipUnset {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
 	}
 	if req.dirtiness.kind == pathDirtinessUnset {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "no dirtiness declared"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "no dirtiness declared"}
 	}
 	if req.dirtiness.kind == pathDirtinessNA && req.dirtiness.reason == "" {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "dirtinessNA requires a non-empty reason"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "dirtinessNA requires a non-empty reason"}
 	}
 
 	if req.slug != nil {
 		if err := validateWorktreeSlug(req.slug.name, req.slug.junctionNames); err != nil {
-			return &destructiveRefusal{Check: checkContainment, What: req.what, Target: req.target, Reason: err.Error()}
+			return &destructiveRefusal{Check: CheckContainment, What: req.what, Target: req.target, Reason: err.Error()}
 		}
 	}
 
 	if err := refuseUncontainedPath(req.container, req.target, req.what); err != nil {
-		return &destructiveRefusal{Check: checkContainment, What: req.what, Target: req.target, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckContainment, What: req.what, Target: req.target, Reason: err.Error()}
 	}
 
 	if ok, reason := resolvePathOwnership(req.ownership, req.target); !ok {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.target, Reason: reason}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: reason}
 	}
 
 	return checkPathDirtiness(req)
@@ -558,10 +582,10 @@ func checkPathDirtiness(req pathRequest) error {
 
 	dirty, _, err := worktreeDirty(req.dirtiness.scope, req.target)
 	if err != nil {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: err.Error()}
 	}
 	if dirty {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
 	}
 	return nil
 }
@@ -570,14 +594,14 @@ func checkPathDirtiness(req pathRequest) error {
 // minus containment and minus the absent-target rule, neither of which has meaning for a ref.
 func checkBranchRequest(req branchRequest) error {
 	if req.ownership.kind == branchOwnershipUnset {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
 	}
 	if req.dirtiness.kind == branchDirtinessUnset {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
 	}
 
 	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.branch, Reason: reason}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: reason}
 	}
 
 	return checkBranchDirtiness(req)
@@ -592,11 +616,11 @@ func checkBranchRequest(req branchRequest) error {
 func checkBranchDirtiness(req branchRequest) error {
 	branches, err := listWeftBranches(req.ownership.location)
 	if err != nil {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: err.Error()}
 	}
 	for _, b := range branches {
 		if b.Branch == req.branch && b.WorktreePath != "" {
-			return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
 		}
 	}
 	return nil
