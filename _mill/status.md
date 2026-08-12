@@ -80,7 +80,9 @@ batches:
     commit_sha: 223f79bd84dea86e62ddf75c932f0c717eedeff2
     verify_baseline_failures: []
   - name: cli-envelope
-    state: pending
+    state: running
+    implementer_session: ac031fe0-5c08-4f56-b701-9f109fe3f0df
+    start_sha: ab7852447d57da83750df80b79485849d3d7beea
     verify_baseline_failures: []
   - name: fabrictest-truthfulness-oracle
     state: pending
