@@ -305,8 +305,25 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 		removed = true
 	}
 
+	// The warp repo's own ".git/worktrees/<slug>" registration can outlive the physical warp worktree
+	// directory it describes -- the pass-1 "warp worktree directory missing" case's own precondition
+	// -- and `git worktree prune` below clears it. That is an observable primitive effect per the
+	// record-only-after-observed-effect Shared Decision, so it is recorded like every other executor's
+	// effect in this call: probe the admin path immediately before the best-effort prune calls, and
+	// append KindWorktreeRemoved, at the pair's own warp worktree path, only when the probe found it
+	// present and it is gone afterward.
+	warpAdminPath := filepath.Join(l.WorktreePath(), ".git", "worktrees", slug)
+	_, warpAdminStatErr := os.Lstat(warpAdminPath)
+	warpAdminWasRegistered := warpAdminStatErr == nil
+
 	gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)     //nolint:errcheck
 	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath()) //nolint:errcheck
+
+	if warpAdminWasRegistered {
+		if _, statErr := os.Lstat(warpAdminPath); os.IsNotExist(statErr) {
+			rec.Append(KindWorktreeRemoved, filepath.Join(l.HubPath, slug), "git worktree prune")
+		}
+	}
 
 	return removed
 }

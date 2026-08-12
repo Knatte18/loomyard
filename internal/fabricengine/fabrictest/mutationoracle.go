@@ -53,12 +53,39 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 // correctly carries both entries.
 // A worktree_created or dir_created is undone by either a worktree_removed or a path_removed at the
 // same Target -- Add's mint-then-rollbackAdd tears a freshly minted worktree back down through
-// removePath's os.RemoveAll fallback, not always through removeGitWorktree -- while a link_created is
-// undone only by a link_removed, matching reconcile's own dangling-link repoint.
+// removePath's os.RemoveAll fallback, not always through removeGitWorktree -- a link_created is undone
+// only by a link_removed, matching reconcile's own dangling-link repoint, and a file_written is undone
+// by a path_removed at the same Target: removeLaunchers' own script teardown (launchers.go) removes
+// each generated script individually via removePath before removing the launcher directory itself, so
+// Add's own rollback writes and then removes each launcher script at the identical target.
 var invertedBy = map[fabricengine.Kind][]fabricengine.Kind{
 	fabricengine.KindDirCreated:      {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
 	fabricengine.KindWorktreeCreated: {fabricengine.KindPathRemoved, fabricengine.KindWorktreeRemoved},
 	fabricengine.KindLinkCreated:     {fabricengine.KindLinkRemoved},
+	fabricengine.KindFileWritten:     {fabricengine.KindPathRemoved},
+}
+
+// subtreeDestroyingKind reports whether e's primitive removed everything beneath its own Target, not
+// merely the Target path itself: worktree_removed always does (`git worktree remove` deletes the whole
+// checkout), and path_removed does only when its own Detail says "recursive" (removePath's
+// os.RemoveAll branch) rather than "single" (os.Remove, a leaf file only).
+func subtreeDestroyingKind(e fabricengine.Mutation) bool {
+	switch e.Kind {
+	case fabricengine.KindWorktreeRemoved:
+		return true
+	case fabricengine.KindPathRemoved:
+		return e.Detail == "recursive"
+	default:
+		return false
+	}
+}
+
+// constructiveKind reports whether kind is one invertedBy ever maps as a key -- the closed set of
+// kinds netCommissionEffect's ancestor-sweep pass considers for exemption when a later entry destroys
+// their whole containing subtree, rather than their own exact Target.
+func constructiveKind(kind fabricengine.Kind) bool {
+	_, ok := invertedBy[kind]
+	return ok
 }
 
 // AssertRecordMatchesDiff cross-checks rec against unfiltered, the manifest diff computed with a nil
@@ -79,13 +106,31 @@ func AssertRecordMatchesDiff(tb testing.TB, rec fabricengine.Mutations, unfilter
 	assertCommission(tb, entries, unfiltered)
 }
 
-// netCommissionEffect returns entries with every mint-then-undo pair invertedBy names removed, in
-// order: for each constructive entry, the earliest later, not-yet-consumed entry at the same Target
-// whose Kind appears in invertedBy[entry.Kind] is paired with it, and both are dropped from the net
-// effect. A mutation performed and then undone inside one call would otherwise report a false lie of
-// commission, since the before/after manifest nets to zero for a path the record still names twice.
+// netCommissionEffect returns entries with every mint-then-undo pair removed, via two independent
+// consumption passes over the original entries, in order.
+//
+// Pass one is invertedBy's exact-Target pairing: for each constructive entry, the earliest later,
+// not-yet-consumed entry at the SAME Target whose Kind appears in invertedBy[entry.Kind] is paired with
+// it, and both are dropped.
+//
+// Pass two widens this to ancestor sweep: a constructive entry with no exact-Target pairing is ALSO
+// dropped when a later entry destroys its whole containing subtree -- worktree_removed, or a
+// path_removed whose own Detail is "recursive" (removePath's os.RemoveAll branch, never its
+// single-file os.Remove branch) -- at or above the constructive entry's own Target. This is what nets
+// Add's own mint-then-rollbackAdd to zero for a warp junction wired inside the pair's own worktree: the
+// junction's own link_removed can legitimately never fire (removeWarpJunction's best-effort call falls
+// back to removing nothing when RepoWiredNames can't be read, per add.go's own doc comment), yet the
+// junction is physically swept away regardless the moment rollback's `git worktree remove` deletes the
+// whole worktree tree it lives inside. Only the constructive (earlier) entry is dropped by this pass --
+// the destroying entry itself keeps its own, independent commission obligation (or is itself netted by
+// pass one against its own same-Target mint, e.g. the worktree_created/worktree_removed pair).
+//
+// Either way, a mutation performed and then undone inside one call would otherwise report a false lie
+// of commission, since the before/after manifest nets to zero for a path (or subtree) the record still
+// names.
 func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutation {
 	consumed := make([]bool, len(entries))
+
 	for i, e := range entries {
 		if consumed[i] {
 			continue
@@ -100,6 +145,19 @@ func netCommissionEffect(entries []fabricengine.Mutation) []fabricengine.Mutatio
 			}
 			consumed[i] = true
 			consumed[j] = true
+			break
+		}
+	}
+
+	for i, e := range entries {
+		if consumed[i] || !constructiveKind(e.Kind) {
+			continue
+		}
+		for j := i + 1; j < len(entries); j++ {
+			if !subtreeDestroyingKind(entries[j]) || !pathAtOrBelowRoot(e.Target, entries[j].Target) {
+				continue
+			}
+			consumed[i] = true
 			break
 		}
 	}
@@ -126,14 +184,29 @@ func containsKind(kinds []fabricengine.Kind, want fabricengine.Kind) bool {
 // assertCommission asserts the commission direction over entries' net effect (see
 // netCommissionEffect): every surviving manifest-observable entry must be backed by at least one
 // change in unfiltered at or beneath its Target.
+//
+// An entry recorded after a whole-hub teardown (a path_removed at ".", resetHub's own
+// removePath(hubPath) call) is exempt too, for the same mechanical reason the "." target itself is:
+// once nothing survives for a finer entry to name, a reconstruction that happens to land back on
+// byte-identical content -- CloneHub{Reset: true} against an unchanged upstream, the steady-state case
+// cloneHubResetRealHubCase exists to prove is not trivially refused -- is indistinguishable from a
+// no-op to a content-hash diff, even though every recorded primitive genuinely ran. Nothing before a
+// whole-hub teardown loses this exemption; only entries recorded at or after it do.
 func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered []Change) {
 	tb.Helper()
 
+	wholeHubTornDown := false
 	for _, e := range netCommissionEffect(entries) {
 		if e.Target == "." {
 			// A "." target is always exempt from commission, unconditionally and mechanically:
 			// CaptureManifest never emits a "." key (it returns early at path == hubRoot), so no
 			// "."-targeted entry could ever find a matching change regardless of what it claims.
+			if e.Kind == fabricengine.KindPathRemoved {
+				wholeHubTornDown = true
+			}
+			continue
+		}
+		if wholeHubTornDown {
 			continue
 		}
 
@@ -146,9 +219,17 @@ func assertCommission(tb testing.TB, entries []fabricengine.Mutation, unfiltered
 			continue
 		}
 
-		if !anyChangeAtOrBelow(unfiltered, e.Target) {
-			tb.Errorf("AssertRecordMatchesDiff: record claims %s at %q, but the manifest diff shows no change at or beneath it (lie of commission)", e.Kind, e.Target)
+		if anyChangeAtOrBelow(unfiltered, e.Target) {
+			continue
 		}
+		// A worktree-rooted kind's own change can land entirely on its derived admin entry rather than
+		// on its own Target -- a stale registration a physically-already-absent worktree directory
+		// leaves behind, which Prune's own removeStalePair clears via `git worktree prune` -- so the
+		// same widening entryCovers applies for omission also applies here.
+		if worktreeRootedKind[e.Kind] && anyChangeAtOrBelow(unfiltered, worktreeAdminTarget(e.Target)) {
+			continue
+		}
+		tb.Errorf("AssertRecordMatchesDiff: record claims %s at %q, but the manifest diff shows no change at or beneath it (lie of commission)", e.Kind, e.Target)
 	}
 }
 
