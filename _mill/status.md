@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: fabric-corrindex-record-race
 branch: fabric-corrindex-record-race
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-08-12T10:22:01Z'
 discussion-fix-r2  '2026-08-12T10:26:35Z'
 discussed  '2026-08-12T10:26:35Z'
 planning  '2026-08-12T10:32:12Z'
+plan-fix-r1  '2026-08-12T10:39:41Z'
 ```

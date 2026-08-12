@@ -82,6 +82,10 @@ It inherits that precedent's limit unchanged — it creates the parent of `path`
   State the rule: a locked-JSON read-modify-write must hold one lock across the read and the write, and `UpdateJSON` is the primitive for it — reading with `ReadJSON`, mutating, and writing with `WriteJSON` releases the lock between the two and lets a concurrent writer's value be clobbered by a payload composed from a superseded base.
   Record why `UpdateJSON` is not composed from `ReadJSON` + `WriteJSON` (both acquire the lock path internally, so that composition hangs rather than failing), and that this is why the two exported functions sit on lock-free cores.
   State plainly that adoption is deliberately at one consumer today (`internal/fabricengine`'s correspondence index), which is why no `CONSTRAINTS.md` invariant asserts universal use — an invariant would be false on the day it landed.
+  State the limit of what `UpdateJSON` guarantees, in consumer-agnostic terms and without naming `internal/fabricengine`'s internals: it serialises its caller against every other *write* to the file, so that caller can never compose its payload from a base another writer has already superseded — but it cannot serialise a *different* writer that computes its own payload outside the lock and then writes under it.
+  Such a two-phase writer still loses whatever landed while it was computing, and closing that requires the other writer to route through `UpdateJSON` as well.
+  This is the honest one-direction reading of the guarantee the `## Shared Decisions` entry "this task closes one direction of the race, not both" commits every doc in this task to;
+  do not write anything implying the primitive makes a file race-free on its own.
   Follow `internal/fabricengine/doc.go`'s house voice: rationale the reader cannot recover from the code, not a restatement of the signature.
   Keep it short — this is a small leaf package.
 - **Commit:** `docs(state): add package doc carrying the locked read-modify-write rule`
