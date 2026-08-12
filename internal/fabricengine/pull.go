@@ -232,7 +232,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	}
 
 	if isFF {
-		if err := f.ResetHard(upstreamSHA); err != nil {
+		if err := f.ResetHard(rec, upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
 		result.WarpAdvanced = true
@@ -266,7 +266,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	entries := ix.entries()
 
 	if len(entries) == 0 {
-		if err := f.ResetHard(upstreamSHA); err != nil {
+		if err := f.ResetHard(rec, upstreamSHA); err != nil {
 			return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 		}
 		result.WarpAdvanced = true
@@ -284,7 +284,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		return result, ErrNoSurvivingAnchor
 	}
 
-	if err := f.ResetHard(upstreamSHA); err != nil {
+	if err := f.ResetHard(rec, upstreamSHA); err != nil {
 		return result, &PartialPullError{WeftPulled: true, Stage: "reset", Err: err}
 	}
 	result.WarpAdvanced = true

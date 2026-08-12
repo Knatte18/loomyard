@@ -99,7 +99,7 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	slug := filepath.Base(l.WorktreePath())
 	weftForked, err := t.switchOrForkWeft(l, branch)
 	if err != nil {
-		t.rollbackSwitch(l, originalBranch, originalWeftBranch, "")
+		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, "")
 		return CheckoutResult{}, err
 	}
 
@@ -112,11 +112,11 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	// Re-point junctions; roll back both sides on failure (weft already switched).
 	names, err := RepoWiredNames(l)
 	if err != nil {
-		t.rollbackSwitch(l, originalBranch, originalWeftBranch, forkedWeftBranch)
+		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, forkedWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: load fabric config: %w", err)
 	}
-	if err := WireJunctions(l, slug, names); err != nil {
-		t.rollbackSwitch(l, originalBranch, originalWeftBranch, forkedWeftBranch)
+	if err := WireJunctionsWith(rec, l, slug, names); err != nil {
+		t.rollbackSwitch(rec, l, originalBranch, originalWeftBranch, forkedWeftBranch)
 		return CheckoutResult{}, fmt.Errorf("re-point junctions: %w", err)
 	}
 
@@ -191,7 +191,8 @@ func (t *Topology) switchOrForkWeft(l *lyxcwd.Location, branch string) (forked b
 // function cannot return an error without widening its signature (out of scope — it runs on paths
 // where Checkout is already failing, and turning a best-effort rollback into a hard failure is a
 // behaviour change this slice does not make), a refusal is logged via logger.Warn instead.
-func (t *Topology) rollbackSwitch(l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
+// rec is Checkout's own recorder, threaded through to the gate's deleteBranch executor.
+func (t *Topology) rollbackSwitch(rec *Mutations, l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
 	_, _, _, _ = gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
 	if originalWeftBranch != "" {
 		_, _, _, _ = gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
@@ -205,7 +206,7 @@ func (t *Topology) rollbackSwitch(l *lyxcwd.Location, originalBranch, originalWe
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}
-		if _, _, err := deleteBranch(req); err != nil {
+		if _, _, err := deleteBranch(rec, req); err != nil {
 			var refusal *destructiveRefusal
 			if errors.As(err, &refusal) {
 				logger.Warn("fabricengine: rollbackSwitch's branch deletion was refused by the destructive gate", "branch", forkedWeftBranch, "check", string(refusal.Check))
