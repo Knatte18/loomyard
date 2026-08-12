@@ -59,7 +59,9 @@ batches:
     commit_sha: 6e5949bf4719a7e2e50ccc047764a19fffc6e9a2
     verify_baseline_failures: []
   - name: result-types-carry-record
-    state: pending
+    state: running
+    implementer_session: ead2ce3c-f69d-4d6e-bdc2-ea2092a01c23
+    start_sha: cc21b6ef68cf8a9ae37159166821d701ec1ca110
     verify_baseline_failures: []
   - name: gate-auto-recording
     state: pending
