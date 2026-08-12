@@ -47,7 +47,7 @@ func TestPushWarpAt_Gating(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := PushWarpAt("/nonexistent-warp-path", tt.opts); err != nil {
+			if _, err := PushWarpAt("/nonexistent-warp-path", tt.opts); err != nil {
 				t.Errorf("PushWarpAt(%+v) = %v; want nil", tt.opts, err)
 			}
 		})

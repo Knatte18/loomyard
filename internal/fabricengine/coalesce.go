@@ -83,17 +83,20 @@ func pushRebaseFreeLogged(path string) error {
 // warpPath may still be empty when weftPath is present — that pushes only the weft side;
 // a warp-only push (warpPath set, weftPath empty) is not a supported coalescing entry and is
 // rejected by the same guard.
-func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error {
+func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) (res PushResult, err error) {
+	rec := NewMutations(filepath.Dir(warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if opts.SkipGit || opts.SkipPush {
-		return nil
+		return PushResult{}, nil
 	}
 	if weftPath == "" {
-		return fmt.Errorf("fabricengine: CoalescePushBothAt requires a weft path for the absorbing push lock")
+		return PushResult{}, fmt.Errorf("fabricengine: CoalescePushBothAt requires a weft path for the absorbing push lock")
 	}
 
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {
-		return err
+		return PushResult{}, err
 	}
 	lockPath := filepath.Join(lockDir, weftPushLockFile)
 
@@ -133,5 +136,5 @@ func CoalescePushBothAt(warpPath, weftPath string, opts SyncOptions) error {
 		return afterWarp != beforeWarp || afterWeft != beforeWeft, nil
 	}
 
-	return coalescePush(lockPath, step)
+	return PushResult{}, coalescePush(lockPath, step)
 }

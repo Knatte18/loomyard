@@ -86,9 +86,15 @@ func SpawnDetachedPush(warpPath, weftPath string) error {
 // seedWeftArtifactExcludes, the warp repo has no such entry — so wiring this function into a live
 // path would start leaving untracked residue in the user's own repo, which fabric's whole junction
 // design exists to avoid. Any future caller must seed the warp-side exclude first.
-func PushWarpAt(warpPath string, opts SyncOptions) error {
+func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
+	rec := NewMutations(filepath.Dir(warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if opts.SkipGit || opts.SkipPush {
-		return nil
+		return PushResult{}, nil
 	}
-	return gitrepo.New(warpPath).PushCoalesced()
+	if err := gitrepo.New(warpPath).PushCoalesced(); err != nil {
+		return PushResult{}, err
+	}
+	return PushResult{}, nil
 }

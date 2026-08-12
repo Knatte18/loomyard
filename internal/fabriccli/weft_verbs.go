@@ -176,7 +176,7 @@ Related commands:
 			out := cmd.OutOrStdout()
 
 			if bypass {
-				if err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{}); err != nil {
+				if _, err := fabricengine.CoalescePushBothAt(warpPath, weftPath, fabricengine.SyncOptions{}); err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
 				}
@@ -189,7 +189,7 @@ Related commands:
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
-			if err := fab.PushWeft(opts); err != nil {
+			if _, err := fab.PushWeft(opts); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}

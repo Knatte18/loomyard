@@ -265,12 +265,26 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
+// PushResult exists solely to carry the mutation record: push had no result type at all before this
+// slice, which is why its envelope had nowhere to put one.
+// All three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt — return this same type,
+// so a composed push verb concatenates homogeneous records.
+type PushResult struct {
+	MutationRecord
+}
+
 // PushWeft pushes unpushed weft commits via PushCoalesced, honoring SkipGit/SkipPush gating.
-func (f *Fabric) PushWeft(opts SyncOptions) error {
+func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if opts.SkipGit || opts.SkipPush {
-		return nil
+		return PushResult{}, nil
 	}
-	return f.weft.PushCoalesced()
+	if err := f.weft.PushCoalesced(); err != nil {
+		return PushResult{}, err
+	}
+	return PushResult{}, nil
 }
 
 // PullWeft fast-forwards the weft worktree from its upstream, honoring SkipGit gating.
