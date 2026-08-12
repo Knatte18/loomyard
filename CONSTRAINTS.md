@@ -18,7 +18,7 @@ Fuller design/how-to lives in godoc and `docs/`.
   and the two derived accessors (`WorktreePath()`, `AnchorPath()`) built from them.
   It never resolves or exposes a weft path, a junction path, or any per-module subdirectory — those are not geometry `lyxcwd` owns.
 - cwd must equal `AnchorPath()` exactly;
-  `Resolve` returns `ErrCwdOutsideAnchor` otherwise. `ResolveWithAnchor` and `ResolveWorktree` are ungated — `ResolveWithAnchor` is a documented bypass, used only by callers that legitimately stand somewhere the gate would reject (fabric's clone, lyxtest's synthetic hubs).
+  `Resolve` returns `ErrCwdOutsideAnchor` otherwise. `ResolveWithAnchor` and `ResolveWorktree` are ungated — `ResolveWithAnchor` is a documented bypass, used only by callers that legitimately stand somewhere the gate would reject (fabric's clone, `gitkit`'s primitive repo fixtures).
 - A module's own durable-storage subdirectory (e.g. `_lyx/plan`, `_lyx/webster`) is that module's own private relative-path constant, joined onto `AnchorPath()` directly — never a `lyxcwd` function call.
   Adding a module's own subdirectory is never a `lyxcwd` change.
   Its ephemeral twin is the Durable-vs-Ephemeral State Invariant below.
@@ -56,13 +56,28 @@ Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_ly
 - **Enforced by** `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `internal/fabricengine/structuraldirs_test.go`, `template_test.go`, `dotlyxjunction_integration_test.go`.
   A newly added transient's mirrored-subpath placement is a review obligation.
 
-## lyxtest Leaf Invariant
+## gitkit Leaf Invariant
 
-`internal/lyxtest` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, `internal/configengine`, and `internal/lyxdirs`.
-`internal/configreg` and every feature package (`boardengine`/`boardcli`, `ideengine`/`idecli`, `selfreportengine`/`selfreportcli`, `fabricengine`/`fabriccli`) are excluded by construction — feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle.
+`internal/gitkit` production code imports only stdlib, `internal/lyxcwd`, `internal/weftname`, `internal/configengine`, and `internal/lyxdirs` — never `internal/configreg`, never a feature package.
 
-- Tests needing real config call `lyxtest.SeedConfig(tb, dir, map[string]string{...})`.
-- **Enforced by** `internal/lyxtest/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
+- `gitkit` owns `MustRun`, `SeedConfig`, `HermeticGitEnv`, `GitStatusPorcelain`, and the primitive repo fixtures.
+- Its primitive repo fixtures serve `internal/gitrepo` and `internal/lyxcwd` only;
+  every other package takes a real hub from `internal/hubforge`.
+- Tests needing real config call `gitkit.SeedConfig(tb, dir, map[string]string{...})`.
+- **Enforced by** `internal/gitkit/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
+
+## hubforge Fabric-Fixture Invariant
+
+Every hub fixture in the repo is built by `internal/hubforge` through `fabriccli.CloneAndWire`.
+No hub is hand-assembled.
+
+- `hubforge` builds fixtures only;
+  it asserts nothing about fabric.
+- No package inside `internal/fabriccli`'s dependency set may import `hubforge`.
+  Such tests use an external `*_test` package, or `gitkit`.
+- `hubforge.NewHub` is safe under concurrent use.
+- Fixture teardown removes junctions via `internal/fslink` before `tb.TempDir()` cleanup.
+- **Self-enforcing:** an in-package test importing `hubforge` from inside fabric's dependency set is a compile error.
 
 ## Modelspec Leaf Invariant
 
@@ -170,8 +185,8 @@ The bare word — the verb sense, the machine/OS sense, and the PowerShell `Writ
 Keep these lists verbatim: they are the ban list, and renaming them would delete the rule.
 
 - **Owner set carves out the bare weft/warp rule only, never the host rule.**
-  Owner set: `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/lyxtest`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers), `internal/fabricengine/fabrictest`.
-  `internal/fabricengine/fabrictest` is also an owner for the `weftname`-import rule, joining `internal/fabricengine`, `internal/fabriccli`, and `internal/lyxtest` in that narrower three-member subset rather than the wider bare-token owner set above.
+  Owner set: `internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/gitkit`, `internal/hubforge`, `internal/boardengine`, `internal/configsync` (string literals and comments, never identifiers).
+  The narrower `weftname`-import subset is `internal/fabricengine`, `internal/fabriccli`, `internal/gitkit`, and `internal/hubforge`.
   `tools/` and `sandbox/` are not in the owner set — they lie outside the enforcement walk entirely, since the Go walk covers `internal/` and `cmd/` only, so an owner-map row for them would be dead code that never matches.
   Vocabulary in `tools/` and `sandbox/` is a review obligation, not machine-checked.
 - **Prose-doc split — review obligation, not machine-checked:** a doc explaining fabric's own mechanism keeps the vocabulary;
@@ -231,7 +246,8 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
 
 `internal/fabricengine/destroy.go` is the only file in `package fabricengine` permitted to perform a destructive primitive: `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, and a warp checkout's `ResetHard`.
 
-- The guard's walk is package-scoped in intent: it names `internal/fabricengine/fabrictest` as an explicit subdirectory exclusion, because `fabrictest` is a separate test-support package whose state builders plant and tear down hostile filesystem shapes and is therefore outside this invariant's subject, even though it nests under `internal/fabricengine` on disk.
+- The guard's walk skips `*_test.go`;
+  the live-state builders in `package fabricengine_test` are outside this invariant's subject.
 - The banned bypass tokens are `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
 - Every destructive executor runs the gate's four checks first, always in this fixed order, stopping at the first failure: containment, ownership, dirtiness, force.
 - `--force` answers dirtiness only.
@@ -303,7 +319,7 @@ The durable Info+ trace-file sink captures these regardless of verbosity or env-
 
 - A new spawn point for a live-substrate module must add its own `logger.Info`/`Warn` call in the same change — review obligation, not machine-enforced.
 - A spawned pane/child must never re-exec `os.Executable()` while running under `go test`: a Go test binary invoked with positional arguments does not error on them, so the arguments are silently ignored and the full suite runs unfiltered.
-  Guarded by `reedengine`'s `headerLaunchLine` (suppresses header re-exec when `testing.Testing()`) and `lyxtest.HermeticGitEnv` (`refuseCLIReexec` refuses any test binary invoked with a leading positional argument).
+  Guarded by `reedengine`'s `headerLaunchLine` (suppresses header re-exec when `testing.Testing()`) and `gitkit.HermeticGitEnv` (`refuseCLIReexec` refuses any test binary invoked with a leading positional argument).
 - A retry loop around a real process spawn must cap attempt COUNT, not only elapsed time — a fast-failing spawn burns a time-only budget in far more attempts than it was sized for. `maxBootAttempts` in `internal/reedengine/lifecycle.go` is the pattern: track an attempt counter, exit on whichever of (time, count) is hit first.
 - Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/burlerengine/engine.go`, `internal/scoutengine/ensureserver.go`.
 
@@ -325,7 +341,7 @@ Every registered lyx module must be exercised by the black-box sandbox suite or 
 Untagged test files perform no expensive spawns — no `git init`/`git worktree add`/fixture-tree copies;
 Tier 1 stays offline and fast.
 
-- A test file whose first non-empty line is not a `//go:build` constraint mentioning `integration`, `smoke`, or `scout` is "untagged" and must not call `gitexec.RunGit`, `exec.Command`/`exec.CommandContext`, or `lyxtest.Copy*`.
+- A test file whose first non-empty line is not a `//go:build` constraint mentioning `integration`, `smoke`, or `scout` is "untagged" and must not call `gitexec.RunGit`, `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
   Raw substring match — a comment or string-literal mention also trips it.
 - Substrate definition (real git/tmux/filesystem/cross-compile/external-binary spawn) lives in `docs/benchmarks/running-tests.md`'s "## The two tiers" section.
 - Allowlist: `internal/proc` (its tests must spawn), `cmd/lyx/tierpurity_test.go` itself (carries the banned tokens as test data).
@@ -335,10 +351,10 @@ Tier 1 stays offline and fast.
 
 ## Hermetic Git Test Environment Invariant
 
-Every test package whose tests spawn git — directly or via lyxtest fixture helpers — runs under the hermetic git test environment, so no test behaviour depends on the operator's `~/.gitconfig` or the system gitconfig.
+Every test package whose tests spawn git — directly or via a `gitkit`/`hubforge` fixture helper — runs under the hermetic git test environment, so no test behaviour depends on the operator's `~/.gitconfig` or the system gitconfig.
 
-- A package is "git-spawning" when any `*_test.go` file spawns git directly (`gitexec.RunGit`, `exec.Command`/`exec.CommandContext`) or indirectly via a lyxtest fixture helper (`lyxtest.Copy*`, `lyxtest.MustRun`, `lyxtest.SeedConfig`).
-  Every such package must have a `TestMain` calling `lyxtest.HermeticGitEnv()` before `m.Run()`, or be allowlisted.
+- A package is "git-spawning" when any `*_test.go` file spawns git directly (`gitexec.RunGit`, `exec.Command`/`exec.CommandContext`) or indirectly via a fixture helper (`gitkit.Copy*`, `gitkit.MustRun`, `gitkit.SeedConfig`, `hubforge.NewHub`).
+  Every such package must have a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, or be allowlisted.
 - Allowlist: `internal/proc` (spawns non-git processes).
 - **Enforced by** `cmd/lyx/hermeticenv_test.go` (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) — proves presence of the call only;
   a real, correctly-ordered `TestMain` is a review obligation.
