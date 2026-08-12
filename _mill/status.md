@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: fabric-corrindex-record-race
 branch: fabric-corrindex-record-race
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-campaign-docs-fold  '2026-08-12T10:55:13Z'
 holistic-reviewing  '2026-08-12T10:55:33Z'
 holistic-approved  '2026-08-12T10:58:28Z'
 done  '2026-08-12T11:00:38Z'
+pr-pending  '2026-08-12T11:01:14Z'
 ```
 
 ## Batches
