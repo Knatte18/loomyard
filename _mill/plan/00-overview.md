@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: close the corrindex two-phase read-modify-write race (slice 15)'
 slug: 'fabric-corrindex-record-race'
-approved: false
+approved: true
 started: '20260812-102844'
 parent: 'main'
 root: ""
