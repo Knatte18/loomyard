@@ -76,7 +76,10 @@ type PruneResult struct {
 // A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
 // removal is a forced one that would discard them without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
-func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (PruneResult, error) {
+func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)

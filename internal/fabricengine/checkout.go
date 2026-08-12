@@ -37,7 +37,10 @@ type CheckoutResult struct {
 // an all-or-nothing operation, refusing if the weft worktree has uncommitted changes, forking new
 // weft branches when their suffixed siblings don't exist, re-pointing junctions, and refreshing the
 // correspondence index — rolling back both sides on failure to preserve all-or-nothing semantics.
-func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (CheckoutResult, error) {
+func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	weftWorktree := WeftWorktree(l)
 
 	// Refuse if the weft worktree is dirty to prevent half-switched pairs.

@@ -36,7 +36,10 @@ type AddResult struct {
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, and pushes branches, rolling back
 // all changes on any failure.
-func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
+func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	// (0) Slug validation, shared with Remove via slug.go's single validator.
 	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
 		return AddResult{}, err

@@ -367,7 +367,10 @@ type UnwireResult struct {
 // fails after junction removal completed.
 // A zero UnwireResult on a mid-loop failure would misreport a partial removal as untouched — with
 // two or more junctions, the first may already be gone before the second fails.
-func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (UnwireResult, error) {
+func UnwireJunctions(l *lyxcwd.Location, slug string, names []string) (res UnwireResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	removed, err := unseedLyxJunction(l, slug, names)
 	if err != nil {
 		return UnwireResult{JunctionsRemoved: removed}, err

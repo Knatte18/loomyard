@@ -40,7 +40,10 @@ type RemoveResult struct {
 // licence to delete the clone.
 // Portal and launcher cleanup run after those checks but before the git removal, so they still run
 // when the worktree directory is already gone.
-func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (RemoveResult, error) {
+func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res RemoveResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(warpBranch)
 

@@ -55,11 +55,15 @@ type UnwireVerbResult struct {
 // It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
 // Unwire never touches the repo-wide weft:main records;
 // a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring.
-func Unwire(cwd string) (UnwireVerbResult, error) {
+func Unwire(cwd string) (res UnwireVerbResult, err error) {
+	var rec *Mutations
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
+	rec = NewMutations(l.HubPath)
 
 	slug := filepath.Base(l.WorktreePath())
 
@@ -69,6 +73,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 	}
 
 	junctionResult, err := UnwireJunctions(l, slug, names)
+	rec.Extend(junctionResult.Mutated())
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}

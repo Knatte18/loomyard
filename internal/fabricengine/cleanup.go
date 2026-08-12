@@ -99,7 +99,10 @@ func raddleFoldedBack(_ string) bool {
 // _lyx/raddle/ merge-back gate, checked-out branches are always protected.
 // The repo's primary weft branch is protected unconditionally, in every mode — see
 // primaryWeftBranch for why branch-space liveness alone cannot protect it.
-func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (CleanupResult, error) {
+func (t *Topology) Cleanup(l *lyxcwd.Location, apply, force bool) (res CleanupResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	// Enumerate warp worktrees using git-registered entries only.
 	entries, err := List(l.WorktreePath())
 	if err != nil {

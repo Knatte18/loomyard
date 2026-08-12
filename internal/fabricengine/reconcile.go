@@ -149,7 +149,10 @@ type ReconcileResult struct {
 // For each warp worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
-func (t *Topology) Reconcile(l *lyxcwd.Location) (ReconcileResult, error) {
+func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	if err := refuseEmptyAnchorMarker(l); err != nil {
 		return ReconcileResult{}, err
 	}
