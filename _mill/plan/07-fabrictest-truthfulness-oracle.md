@@ -165,10 +165,14 @@ Batch-local decision: the oracle lives in a new `internal/fabricengine/fabrictes
   - `internal/fabricengine/fabrictest/manifest.go`
 - **Edits:**
   - `internal/fabricengine/fabrictest/matrix_test.go`
+  - `internal/fabricengine/prune.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
+  Wiring the oracle into every cell surfaced a real, pre-existing recording gap in `internal/fabricengine/prune.go`: `removeStalePair`'s own `gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())` (prune.go) clears the WARP repo's own dangling `.git/worktrees/<slug>` registration for a stale pair — an observable primitive effect per the record-only-after-observed-effect Shared Decision — but records nothing, unlike every other executor in the same call.
+  `removeStalePair` now checks whether that admin path exists immediately before the two best-effort `git worktree prune` calls and, if it existed and is gone afterward, appends `KindWorktreeRemoved` at the pair's own warp worktree path (hub-relative, matching every other `worktree_removed` entry's Target shape) — no new `Kind` member, so no new `cmd/lyx/destructiveguard_test.go` guard entry is needed.
+
   In `internal/fabricengine/fabrictest/matrix_test.go`, both `runCell` and `TestCloneHubReset`'s inline cell body now:
 
   1. capture `rec, err := vc.Run(t, h, fixture)` instead of `err := vc.Run(...)`;
