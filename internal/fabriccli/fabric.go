@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configsync"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -558,30 +559,47 @@ func runPairs(out io.Writer, _ []string) int {
 // is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
 // downgrade a reconcile verdict.
 func runReconcile(out io.Writer, _ []string) int {
+	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation()
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
+	// The recorder is built here, as soon as l resolves, and not after top.Reconcile(l) returns:
+	// configsync.ReconcileFabricAt below runs before top.Reconcile in this handler and may already
+	// have written a file, so seeding from r.Mutated() first would misstate the array's order — array
+	// order is the only thing carrying ordering in this vocabulary. This is the one handler where
+	// "pre-flight" and "pre-mutation" come apart: none of the three output.Err sites below qualifies
+	// for the ordinary pre-flight carve-out, since ReconcileFabricAt may already have mutated state by
+	// the time any of them is reached.
+	rec := fabricengine.NewMutations(l.HubPath)
+
 	// Reconcile is the repair verb, so a missing repo-wide fabric config is healed here rather
 	// than reported: without this, LoadConfig's "not initialized here; run \"lyx fabric
 	// reconcile\"" remedy was circular when reconcile itself emitted it.
 	// ReconcileFabricAt only adds absent keys and never rewrites a recorded pathspec.
-	if _, err := configsync.ReconcileFabricAt(fabricengine.BoardDir(l.HubPath), true); err != nil {
-		return output.Err(out, err.Error())
+	fabricResult, err := configsync.ReconcileFabricAt(fabricengine.BoardDir(l.HubPath), true)
+	if err != nil {
+		// ReconcileFabricAt can fail after a partial write, so this emits whatever rec holds rather
+		// than a bare error.
+		return errWithRecord(out, rec.Snapshot(), err)
+	}
+	if fabricResult.Applied {
+		rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(fabricengine.BoardDir(l.HubPath), fabricResult.Module), "")
 	}
 
 	cfg, err := fabricengine.LoadConfig(fabricengine.BoardDir(l.HubPath))
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, rec.Snapshot(), err)
 	}
 
 	top := fabricengine.NewTopology(cfg)
 
 	r, err := top.Reconcile(l)
 	if err != nil {
-		return output.Err(out, err.Error())
+		return errWithRecord(out, rec.Snapshot(), err)
 	}
+	rec.Extend(r.Mutated())
 
 	binding := r.WarpBinding
 	detail := r.WarpBindingDetail
@@ -590,9 +608,12 @@ func runReconcile(out io.Writer, _ []string) int {
 		b := fabricengine.NewBolt(fabricengine.BoardDir(l.HubPath))
 
 		if binding == fabricengine.WarpBindingOutcomeRecorded {
-			if _, _, commitErr := b.Commit("fabric reconcile: record warp binding", fabricengine.SyncOptions{}); commitErr != nil {
+			sha, committed, commitErr := b.Commit("fabric reconcile: record warp binding", fabricengine.SyncOptions{})
+			if commitErr != nil {
 				binding = fabricengine.WarpBindingOutcomeRecordFailed
 				detail = commitErr.Error()
+			} else if committed {
+				rec.Append(fabricengine.KindCommitCreated, fabricengine.BoardDir(l.HubPath), sha)
 			}
 		}
 
@@ -610,6 +631,12 @@ func runReconcile(out io.Writer, _ []string) int {
 		// bootstrapped against a genuinely empty weft remote, whose board branch is orphan-created
 		// with no upstream at all. The attempt is harmless: it either succeeds or yields
 		// record_failed with the error in the detail.
+		//
+		// This push records nothing, and that is deliberate: a nil error from Bolt.Push means either
+		// a push landed or nothing was unpushed to begin with, an unobservable-outcome distinction
+		// that makes a KindBranchPushed entry here a lie of commission — the commit above is already
+		// recorded, and branch_pushed is exempt from the truthfulness oracle's commission direction,
+		// so omitting it costs the cross-check nothing.
 		if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
 			if pushErr := b.Push(fabricengine.SyncOptions{}); pushErr != nil {
 				wasPresent := binding == fabricengine.WarpBindingOutcomePresent
@@ -630,7 +657,7 @@ func runReconcile(out io.Writer, _ []string) int {
 	if detail != "" {
 		envelope["warp_binding_detail"] = detail
 	}
-	return output.Ok(out, envelope)
+	return okWithRecord(out, rec.Snapshot(), envelope)
 }
 
 // runPruneWithFlags executes the prune logic with the resolved apply and force flags.
