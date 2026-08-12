@@ -155,7 +155,9 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   `CopyRepo`/`RepoFixture{Repo, Bare}` names what it actually is: a git repo with a bare origin.
 - **Rationale:**
   A surviving general-purpose helper restores exactly the discipline-not-construction failure mode this task exists to remove.
-  A guard test pins `CopyRepo`'s caller set to `internal/lyxcwd` and `internal/gitrepo` so drift back is a test failure.
+  A guard test pins `CopyRepo`'s caller set to `internal/lyxcwd` alone so drift back is a test failure.
+  Do not confuse that allowlist with `gitkit`'s broader consumer set: `MustRun`, `SeedConfig`, `HermeticGitEnv` and `GitStatusPorcelain` are used by many packages including `internal/gitrepo` (18× `MustRun`), and are not pinned.
+  Only `CopyRepo` — the fixture that could reintroduce a hand-assembled hub — carries the one-package allowlist.
 - **Rejected:**
   Keeping all four as a cheap tier;
   migrating only the hub-shape-sensitive packages;
@@ -186,6 +188,19 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   the subpackage does not solve the cycle, moving the test file does.
   Leaving both on primitive fixtures.
 
+### Build tags on the merged packages
+
+- **The problem.**
+  `hubforge` merges an untagged source (`internal/lyxtest/lyxtest.go`) with an integration-tagged one (`internal/fabricengine/fabrictest/hub.go:1` is `//go:build integration`).
+  Tagging every file `integration` would leave `internal/hubforge` with zero files in the untagged build, which the stated `go vet ./...` gate runs.
+- **Decision:**
+  `hubforge` and `gitkit` production code is **untagged**, exactly as `internal/lyxtest/lyxtest.go` is today.
+  Each package's own git-spawning tests carry `//go:build integration` per the Test Tier Purity Invariant.
+  Each keeps an untagged `doc.go`, which is `fabrictest`'s own existing pattern — every file there is integration-tagged except `doc.go`.
+- **Why untagged production is safe:**
+  the Test Tier Purity Invariant bans untagged *tests* from calling `gitkit.Copy*` and `hubforge.NewHub` by token, not by build tag, and CONSTRAINTS already carries those tokens.
+  Verified: all 132 current `Copy*` call sites already sit in tagged files, so nothing regresses.
+
 ### Config seeding on a real hub — 56 sites, and most of them shrink
 
 - **The problem.**
@@ -202,6 +217,8 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   2. **Sites that override a value** call a new `hubforge.SeedConfig(tb, h *Hub, map[string]string)`, which writes into `h.PrimeWeft()` — the weft sibling, where `_lyx/config` is native and committable — and commits there.
      This is `res.WeftBase`, the same base `CloneAndWire` reconciles into.
   3. **Repo-wide fabric config** goes to `res.BoardDir` via a separate `hubforge.SeedFabricConfig`, matching `repoWideFabricBase(l) = BoardDir(l.HubPath)`.
+     **It commits**, through `fabricengine.NewBolt(BoardDir).Commit(...)` — the same path `CloneAndWire` itself uses at `internal/fabriccli/clone.go:57-58` to leave the board clean after `ReconcileFabricAt`.
+     Leaving the board dirty is not safe: `BoardDir` is the `weft:main` checkout the destruction gate's dirtiness check observes, so an uncommitted seed would silently change verb outcomes in fabric's own live-state cells.
 - **`gitkit.SeedConfig` keeps its current body unchanged**, restricted to primitive repos alongside `CopyRepo`.
 - **Rationale:**
   The 32 `fixture.Hub` sites are the same stand-in-hub lie as the fixtures themselves — config seeded at a container path that no production code would ever read from.
@@ -558,3 +575,6 @@ Unchanged invariants this task must still respect:
   `gitkit.SeedConfig` keeps its body, restricted to primitive repos.
 - **Q:** How does teardown discover junction sites when the slug set is created by the verb under test? (discussion review r2, BLOCKING) **A:** A slug-free `filepath.WalkDir` from the hub root using `fslink.IsLink`, never descending into a link (`SkipDir` on encountering one).
   Slug-free is the only mechanism that survives the deliberately-corrupt hubs fabric's live-state matrix plants.
+- **Q:** Which build tags do the merged `hubforge`/`gitkit` files carry, given they merge an untagged and an integration-tagged source? (discussion review r3) **A:** Production untagged, git-spawning tests `//go:build integration`, one untagged `doc.go` each — `fabrictest`'s own existing pattern, and what keeps `go vet ./...` from seeing a package with zero untagged files.
+- **Q:** Does `SeedFabricConfig` commit in `BoardDir`? (discussion review r3) **A:** Yes, via `fabricengine.NewBolt(BoardDir).Commit(...)`, matching `CloneAndWire`.
+  An uncommitted seed would leave the `weft:main` checkout dirty, which the destruction gate's dirtiness check observes and which would silently change verb outcomes in fabric's live-state cells.

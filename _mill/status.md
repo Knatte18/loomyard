@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r3
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-12T12:12:27Z'
+discussion-fix-r3  '2026-08-12T17:42:51Z'
 ```
