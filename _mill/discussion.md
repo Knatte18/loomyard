@@ -241,7 +241,10 @@ The fix is to make every hub fixture in the repo come out of fabric's own clone 
   `fslink.RemoveLinksIn` covers only the immediate children of one directory.
 - **Decision:**
   Teardown does a `filepath.WalkDir` from the hub root, calling `fslink.IsLink` on every entry and `fslink.Remove` on each link found.
-  **It never descends into a link** — on encountering one it removes it and returns `filepath.SkipDir`, so the walk can never wander into a junction's target and delete links belonging to something else.
+  **It never descends into a link, and it must not return `filepath.SkipDir` for one.**
+  `WalkDir` reports a link as a *non-directory* entry and never follows it, so non-descent is already guaranteed by construction — nothing has to be done to get it.
+  Returning `SkipDir` from a non-directory callback skips **the remaining entries of the containing directory**, which would abandon every sibling junction: removing `<hub>/_portals/<slug1>` would leave `<slug2>` onward wired, and removing `<worktree>/.lyx` would leave `_lyx` and `_board` behind.
+  The callback removes the link and returns `nil`.
   Errors are logged, never fatal: teardown must not fail a test that already passed.
 - **Behaviour on a hand-removed worktree:**
   nothing special — a missing directory simply yields no entries, and `fslink.Remove` is documented idempotent (returns nil when the link is absent).
@@ -337,7 +340,7 @@ In-package test files calling `lyxtest.*` inside `fabriccli`'s set, measured 202
 
 | package | files | what they use | disposition |
 |---|---|---|---|
-| `fabricengine` | 14 | 101× `MustRun`, 43× `CopyWeft`, 5× `CopyWarpHub`, 4× `HermeticGitEnv`, 2× `CopyPairedLocal` | only `MustRun`/`SeedConfig`/`HermeticGitEnv` stay on `gitkit`; every `Copy*` site moves to `package fabricengine_test` + `hubforge` |
+| `fabricengine` | 14 | 100× `MustRun`, 38× `CopyWeft`, 5× `CopyWarpHub`, 4× `HermeticGitEnv`, 2× `CopyPairedLocal`, 0× `SeedConfig` | only `MustRun`/`HermeticGitEnv` stay on `gitkit`; all 45 in-package `Copy*` sites move to `package fabricengine_test` + `hubforge` |
 | `gitrepo/gogit_test.go` | 1 | 18× `MustRun` | `gitkit`, unchanged |
 | `lyxcwd/gate_test.go` | 1 | 1 call | `gitkit`, unchanged |
 | `boardengine` | 2 | 4× `MustRun`, `HermeticGitEnv` | `gitkit`, unchanged |
@@ -346,6 +349,10 @@ In-package test files calling `lyxtest.*` inside `fabriccli`'s set, measured 202
 | `loomengine/preflight_integration_test.go` | 1 | `CopyPaired`, 11× `PairedFixture`, 8× `MustRun` | external test package + `export_test.go` |
 
 `burlerengine`'s two `CopyPaired` sites are already in `package burlerengine_test` and are not stuck.
+
+**This row is re-derived with the same call-expression method as the `Copy*` table, and reconciles with it.**
+`internal/fabricengine`'s 82 `Copy*` sites split in-package/external as: `CopyWeft` 38/2, `CopyPairedLocal` 2/23, `CopyWarpHub` 5/2, `CopyPaired` 0/10 — 45 in-package, 37 already external.
+`SeedConfig` has **zero** in-package sites in `fabricengine`; all 19 are already in external test packages, so that package's share of the seeding migration needs no file moves.
 
 **`CopyWarpHub` is hub-shaped, not primitive.**
 Its 21 sites split 5 in-package `fabricengine` (`hook_test.go` 4, `warplayout_test.go` 1), 2 external `fabricengine_test` (`unwire_test.go`, `worktreelist_test.go`), 2 `fabriccli`, 2 `idecli`, 1 `webstercli`, and 9 `lyxcwd`.
@@ -602,3 +609,6 @@ Unchanged invariants this task must still respect:
 - **Q:** Does the hermetic git env need `protocol.file.allow always`? (discussion review r4) **A:** No.
   That restriction targets submodule cloning, not path-reached bares, and `fabrictest` already clones and pushes local bares without it.
   Dropped explicitly rather than left as an unlisted edit to `HermeticGitEnv`.
+- **Q:** Should teardown return `filepath.SkipDir` after removing a link? (discussion review r5, BLOCKING) **A:** No — it returns `nil`.
+  `WalkDir` reports a link as a non-directory and never follows it, so non-descent is free;
+  `SkipDir` from a non-directory callback skips the containing directory's remaining entries, which would leave every sibling junction wired.
