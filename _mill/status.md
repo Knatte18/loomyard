@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gate-auto-recording
+phase: approved-constructive-recording
 slug: fabric-mutation-record-envelope
 branch: fabric-mutation-record-envelope
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-mutation-vocabulary  '2026-08-11T17:20:19Z'
 approved-exported-check-enum  '2026-08-12T06:24:33Z'
 approved-result-types-carry-record  '2026-08-12T06:31:51Z'
 approved-gate-auto-recording  '2026-08-12T06:47:21Z'
+approved-constructive-recording  '2026-08-12T07:03:45Z'
 ```
 
 ## Batches
@@ -73,9 +74,10 @@ batches:
     commit_sha: 4f22c75326cb59a07ee3ab04f3ab461986116d8f
     verify_baseline_failures: []
   - name: constructive-recording
-    state: running
+    state: approved
     implementer_session: 192d532e-5ea9-4463-967e-70f5c7b274c4
     start_sha: a0e70f2ca2b8c58bd29d5eb84cd2d019865c7787
+    commit_sha: 223f79bd84dea86e62ddf75c932f0c717eedeff2
     verify_baseline_failures: []
   - name: cli-envelope
     state: pending
