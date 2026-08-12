@@ -199,11 +199,14 @@ extending the same hard rule to an exported helper with roughly fifty existing t
 - **Edits:**
   - `internal/fabricengine/destroy_test.go`
   - `internal/fabricengine/export_test.go`
+  - `internal/fabricengine/destructivegaps_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
   Repoint every executor call in `internal/fabricengine/destroy_test.go` and `internal/fabricengine/export_test.go` to the new leading-`rec` signatures, preserving each assertion's current meaning.
+
+  `internal/fabricengine/destructivegaps_integration_test.go` calls `RemoveWarpWorktreeDirForTest` directly (a re-exported `var` alias of `removeWarpWorktreeDir`, whose own leading-`rec` parameter card 13 already added) — its one call site is repointed with a throwaway `NewMutations("")` recorder, same as every other in-package test caller in this batch, so the assertion's meaning is unchanged.
 
   Add untagged table tests to `internal/fabricengine/destroy_test.go` covering the record-only-on-observed-effect rule, using only filesystem primitives already reachable from an untagged test in this package (`removePath`, `removeLink`, `createExclusiveDir` — no git spawn, per the Test Tier Purity Invariant):
 
