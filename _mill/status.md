@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: fabric-corrindex-record-race
 branch: fabric-corrindex-record-race
 plan: _mill/plan
@@ -22,4 +22,17 @@ planning  '2026-08-12T10:32:12Z'
 plan-fix-r1  '2026-08-12T10:39:41Z'
 plan-review-r2  '2026-08-12T10:44:07Z'
 planned  '2026-08-12T10:44:15Z'
+implementing  '2026-08-12T10:44:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: state-updatejson
+    state: pending
+  - name: corrindex-record-single-phase
+    state: pending
+  - name: campaign-docs-fold
+    state: pending
 ```
