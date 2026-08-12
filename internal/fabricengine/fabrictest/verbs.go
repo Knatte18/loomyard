@@ -174,7 +174,7 @@ func (k ExpectationKind) String() string {
 // extra, verb-specific check beyond the generic error-shape and manifest-diff checks every cell gets.
 type Expectation struct {
 	Kind           ExpectationKind
-	Check          Check
+	Check          fabricengine.Check
 	Substring      string
 	PermittedRoots []string
 	Effect         func(tb testing.TB, h *Hub, f VerbFixture)
@@ -192,10 +192,14 @@ type Expectation struct {
 // Only the hostile-input cases and the CloneHub{Reset} column set it, always to a State whose Apply is
 // itself never invoked for a hostile case ("clean" — a no-op — or, for CloneHub{Reset}, a case-specific
 // pseudo-state name resolved entirely by Arrange).
+// Run returns the call's own fabricengine.Mutations record alongside its error: the twelve verbs under
+// test return twelve heterogeneous result types, so a cell needs one uniform accessor —
+// MutationRecord.Mutated() — to read whichever one it drove, and discarding the typed result the way
+// this field used to would leave nothing for a cell to cross-check against the manifest diff.
 type VerbCase struct {
 	Name    string
 	Arrange func(tb testing.TB, h *Hub) VerbFixture
-	Run     func(tb testing.TB, h *Hub, f VerbFixture) error
+	Run     func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error)
 	States  []string
 	Expect  func(state string) Expectation
 }
@@ -495,10 +499,10 @@ func addCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
-			return err
+			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			switch state {
@@ -603,10 +607,10 @@ func removeCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := h.Topology.Remove(h.Location, f.Slug, false)
-			return err
+			res, err := h.Topology.Remove(h.Location, f.Slug, false)
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			switch state {
@@ -672,10 +676,10 @@ func pruneCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := h.Topology.Prune(h.Location, true, false)
-			return err
+			res, err := h.Topology.Prune(h.Location, true, false)
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			switch state {
@@ -761,10 +765,10 @@ func cleanupCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := h.Topology.Cleanup(h.Location, true, true)
-			return err
+			res, err := h.Topology.Cleanup(h.Location, true, true)
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			return Expectation{
@@ -820,10 +824,10 @@ func checkoutCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
-			return err
+			res, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			switch state {
@@ -907,10 +911,10 @@ func reconcileCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := h.Topology.Reconcile(h.Location)
-			return err
+			res, err := h.Topology.Reconcile(h.Location)
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			return Expectation{
@@ -951,14 +955,14 @@ func unwireJunctionsCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			names, err := fabricengine.WiredNames(h.BoardDir())
 			if err != nil {
 				tb.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
 			}
-			_, err = fabricengine.UnwireJunctions(h.Location, f.Slug, names)
-			return err
+			res, err := fabricengine.UnwireJunctions(h.Location, f.Slug, names)
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			// The wired junction names are structural (lyxdirs.LyxDirName, lyxdirs.DotLyxDirName),
@@ -1043,14 +1047,14 @@ func pullCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			fab, err := fabricengine.Open(h.Location)
 			if err != nil {
 				tb.Fatalf("fabricengine.Open: %v", err)
 			}
-			_, err = fab.Pull(fabricengine.SyncOptions{})
-			return err
+			res, err := fab.Pull(fabricengine.SyncOptions{})
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			switch state {
@@ -1120,14 +1124,14 @@ func cloneHubResetNonHubCase() VerbCase {
 				ResetHubPath: hubPath,
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := fabricengine.CloneHub(f.ResetCwd, fabricengine.CloneOptions{
+			res, err := fabricengine.CloneHub(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
 				WarpURL: f.ResetWarpURL,
 				Reset:   true,
 			})
-			return err
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			return Expectation{
@@ -1157,14 +1161,14 @@ func cloneHubResetRealHubCase() VerbCase {
 				ResetHubPath: h.Path,
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := fabriccli.CloneAndWire(f.ResetCwd, fabricengine.CloneOptions{
+			res, err := fabriccli.CloneAndWire(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
 				WarpURL: f.ResetWarpURL,
 				Reset:   true,
 			})
-			return err
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			return Expectation{
@@ -1214,10 +1218,10 @@ func addHostileCases() []VerbCase {
 			Arrange: func(tb testing.TB, h *Hub) VerbFixture {
 				return VerbFixture{Slug: in.input}
 			},
-			Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+			Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
-				_, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
-				return err
+				res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
+				return res.Mutated(), err
 			},
 			Expect: func(state string) Expectation {
 				if in.want != "" {
@@ -1262,10 +1266,10 @@ func removeHostileCases() []VerbCase {
 			Arrange: func(tb testing.TB, h *Hub) VerbFixture {
 				return VerbFixture{Slug: in.input}
 			},
-			Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+			Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
-				_, err := h.Topology.Remove(h.Location, f.Slug, false)
-				return err
+				res, err := h.Topology.Remove(h.Location, f.Slug, false)
+				return res.Mutated(), err
 			},
 			Expect: func(state string) Expectation {
 				want := in.want
@@ -1314,10 +1318,10 @@ func checkoutHostileCases() []VerbCase {
 					CheckoutBranch: in.input,
 				}
 			},
-			Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+			Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
-				_, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
-				return err
+				res, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
+				return res.Mutated(), err
 			},
 			Expect: func(state string) Expectation {
 				return Expectation{
@@ -1361,15 +1365,15 @@ func unwireJunctionsHostileCase() VerbCase {
 			}
 			return VerbFixture{Slug: slug}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) error {
+		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
-			_, err := fabricengine.UnwireJunctions(h.Location, f.Slug, []string{escapeRelName(h.Anchor, escapeName)})
-			return err
+			res, err := fabricengine.UnwireJunctions(h.Location, f.Slug, []string{escapeRelName(h.Anchor, escapeName)})
+			return res.Mutated(), err
 		},
 		Expect: func(state string) Expectation {
 			return Expectation{
 				Kind:  KindRefusedByGate,
-				Check: CheckContainment,
+				Check: fabricengine.CheckContainment,
 				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
 					tb.Helper()
 					assertExists(tb, filepath.Join(h.Path, escapeName))

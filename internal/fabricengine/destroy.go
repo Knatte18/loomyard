@@ -10,9 +10,25 @@
 // --force answers dirtiness only: it never satisfies containment and never satisfies ownership, so a
 // containment failure — the class of defect that once destroyed an entire hub — can never be
 // overridden by a flag.
+// The Check enum below names only the three checks a refusal can ever be attributed to —
+// containment, ownership, dirtiness — because force never fails: it is consulted only to make the
+// dirtiness check pass, never to cause a refusal of its own.
 //
 // See CONSTRAINTS.md's Fabric Destruction Chokepoint Invariant (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
+//
+// Recording contract: every one of the eight executors below takes a leading `rec *Mutations`
+// parameter and appends its own primitive's entry itself, after the primitive observably changed
+// state — never before, and never for a no-op. A refusal records nothing, since nothing happened;
+// removeGitWorktree and deleteBranch record only when the underlying git command both returned a
+// nil error AND exited zero, since a nonzero exit with a nil error is reachable and would otherwise
+// claim a destruction that never occurred. The parameter is explicit, never a request-type field,
+// because a missing struct field is a silent zero value the compiler accepts while a missing
+// parameter does not compile — this slice exists because a record was silently dropped, so the
+// mechanism that turns dropping it into a build failure is the one this file uses.
+// This record-only-on-observed-effect rule is what makes the truthfulness cross-check's commission
+// direction sound: every entry this file ever appends corresponds to a real, completed effect, so a
+// consumer of the record can trust that its presence means the primitive actually ran.
 
 package fabricengine
 
@@ -29,38 +45,33 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// destructiveCheck enumerates the four checks the gate's pipeline runs, always in this fixed order.
-type destructiveCheck int
+// Check names one of the three checks a destructive-gate refusal can be attributed to: containment,
+// ownership, or dirtiness. It is string-backed so a refusal renders and marshals without a
+// conversion step, and so RefusalOf's caller can read it with no import of anything unexported.
+//
+// There is deliberately no CheckForce member, and one must never be added: force is consulted only
+// inside checkPathDirtiness, where it makes the dirtiness check PASS rather than fail, so a refusal
+// can never be attributed to it.
+type Check string
 
 const (
-	checkContainment destructiveCheck = iota
-	checkOwnership
-	checkDirtiness
-	checkForce
+	// CheckContainment names the gate's containment check: the target must resolve strictly below
+	// its declared container.
+	CheckContainment Check = "containment"
+	// CheckOwnership names the gate's ownership check: the target must satisfy one of the closed set
+	// of ownership predicates declared for the request.
+	CheckOwnership Check = "ownership"
+	// CheckDirtiness names the gate's dirtiness check: the target must be clean, or the caller must
+	// have passed --force.
+	CheckDirtiness Check = "dirtiness"
 )
 
-// String reports the check's name in prose, so a refusal message names the check that failed.
-func (c destructiveCheck) String() string {
-	switch c {
-	case checkContainment:
-		return "containment"
-	case checkOwnership:
-		return "ownership"
-	case checkDirtiness:
-		return "dirtiness"
-	case checkForce:
-		return "force"
-	default:
-		return "unknown"
-	}
-}
-
-// destructiveRefusal is the gate's one error type: it names which of the four checks refused a
+// destructiveRefusal is the gate's one error type: it names which of the three checks refused a
 // destructive request, the requested act, the target (a path or a branch name), and a human reason.
 // Every refusal in this file is returned as *destructiveRefusal, never as a bare fmt.Errorf, so a
 // caller can always test for one with errors.As.
 type destructiveRefusal struct {
-	Check  destructiveCheck
+	Check  Check
 	What   string
 	Target string
 	Reason string
@@ -81,6 +92,32 @@ func surfaceRefusal(err error) error {
 		return err
 	}
 	return nil
+}
+
+// Refusal is the value form of a destructive-gate refusal: the check that refused, the requested
+// act, the target, and a human reason.
+// RefusalOf is the only producer, and it exists rather than exporting *destructiveRefusal itself
+// because *destructiveRefusal is a mutable pointer type whose identity callers could start
+// switching on, when the envelope only ever needs its four values.
+type Refusal struct {
+	Check  Check
+	What   string
+	Target string
+	Reason string
+}
+
+// RefusalOf reports whether err carries a *destructiveRefusal anywhere in its chain, unwrapping via
+// errors.As so a refusal wrapped several layers deep (fmt.Errorf("...: %w", ...)) is still found.
+// It returns the zero Refusal and false for a nil error and for an error carrying no refusal.
+func RefusalOf(err error) (Refusal, bool) {
+	if err == nil {
+		return Refusal{}, false
+	}
+	var refusal *destructiveRefusal
+	if !errors.As(err, &refusal) {
+		return Refusal{}, false
+	}
+	return Refusal{Check: refusal.Check, What: refusal.What, Target: refusal.Target, Reason: refusal.Reason}, true
 }
 
 // slugSpec carries the two halves validateWorktreeSlug needs, for a pathRequest whose target is
@@ -514,27 +551,27 @@ func checkPathRequest(req pathRequest) error {
 	}
 
 	if req.ownership.kind == pathOwnershipUnset {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
 	}
 	if req.dirtiness.kind == pathDirtinessUnset {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "no dirtiness declared"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "no dirtiness declared"}
 	}
 	if req.dirtiness.kind == pathDirtinessNA && req.dirtiness.reason == "" {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "dirtinessNA requires a non-empty reason"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "dirtinessNA requires a non-empty reason"}
 	}
 
 	if req.slug != nil {
 		if err := validateWorktreeSlug(req.slug.name, req.slug.junctionNames); err != nil {
-			return &destructiveRefusal{Check: checkContainment, What: req.what, Target: req.target, Reason: err.Error()}
+			return &destructiveRefusal{Check: CheckContainment, What: req.what, Target: req.target, Reason: err.Error()}
 		}
 	}
 
 	if err := refuseUncontainedPath(req.container, req.target, req.what); err != nil {
-		return &destructiveRefusal{Check: checkContainment, What: req.what, Target: req.target, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckContainment, What: req.what, Target: req.target, Reason: err.Error()}
 	}
 
 	if ok, reason := resolvePathOwnership(req.ownership, req.target); !ok {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.target, Reason: reason}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: reason}
 	}
 
 	return checkPathDirtiness(req)
@@ -558,10 +595,10 @@ func checkPathDirtiness(req pathRequest) error {
 
 	dirty, _, err := worktreeDirty(req.dirtiness.scope, req.target)
 	if err != nil {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: err.Error()}
 	}
 	if dirty {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "worktree has uncommitted changes; use --force"}
 	}
 	return nil
 }
@@ -570,14 +607,14 @@ func checkPathDirtiness(req pathRequest) error {
 // minus containment and minus the absent-target rule, neither of which has meaning for a ref.
 func checkBranchRequest(req branchRequest) error {
 	if req.ownership.kind == branchOwnershipUnset {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: "no ownership kind declared"}
 	}
 	if req.dirtiness.kind == branchDirtinessUnset {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no dirtiness declared"}
 	}
 
 	if ok, reason := resolveBranchOwnership(req.ownership, req.branch); !ok {
-		return &destructiveRefusal{Check: checkOwnership, What: req.what, Target: req.branch, Reason: reason}
+		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.branch, Reason: reason}
 	}
 
 	return checkBranchDirtiness(req)
@@ -592,11 +629,11 @@ func checkBranchRequest(req branchRequest) error {
 func checkBranchDirtiness(req branchRequest) error {
 	branches, err := listWeftBranches(req.ownership.location)
 	if err != nil {
-		return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: err.Error()}
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: err.Error()}
 	}
 	for _, b := range branches {
 		if b.Branch == req.branch && b.WorktreePath != "" {
-			return &destructiveRefusal{Check: checkDirtiness, What: req.what, Target: req.branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
+			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: fmt.Sprintf("branch is checked out at %s", b.WorktreePath)}
 		}
 	}
 	return nil
@@ -607,7 +644,10 @@ func checkBranchDirtiness(req branchRequest) error {
 // already-absent target on either path.
 // It is named removePath, not removeDir, because removeLaunchers deletes script FILES as well as
 // their directory, and both must route through one executor.
-func removePath(req pathRequest) error {
+// On success it appends KindPathRemoved to rec, with detail "recursive" for the RemoveAll branch and
+// "single" for the os.Remove branch; the already-absent early return records nothing, since that is
+// a successful no-op, not a removal.
+func removePath(rec *Mutations, req pathRequest) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
 	}
@@ -624,12 +664,14 @@ func removePath(req pathRequest) error {
 		if err := RemoveAll(req.target); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove %s: %w", req.target, err)
 		}
+		rec.Append(KindPathRemoved, req.target, "recursive")
 		return nil
 	}
 
 	if err := os.Remove(req.target); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove %s: %w", req.target, err)
 	}
+	rec.Append(KindPathRemoved, req.target, "single")
 	return nil
 }
 
@@ -637,7 +679,9 @@ func removePath(req pathRequest) error {
 // then runs git worktree remove [--force] from repoDir. It returns git's own exit code and stderr
 // rather than swallowing them, because three of its four call sites build distinct error messages
 // from both.
-func removeGitWorktree(req pathRequest, repoDir string) (exitCode int, stderr string, err error) {
+// It appends KindWorktreeRemoved to rec only when err is nil AND exitCode is zero — a nonzero exit
+// with a nil error is reachable here and must never be recorded as a completed removal.
+func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) (exitCode int, stderr string, err error) {
 	if checkErr := checkPathRequest(req); checkErr != nil {
 		return 0, "", checkErr
 	}
@@ -649,23 +693,43 @@ func removeGitWorktree(req pathRequest, repoDir string) (exitCode int, stderr st
 	args = append(args, req.target)
 
 	_, stderr, exitCode, err = gitexec.RunGit(args, repoDir)
+	if err == nil && exitCode == 0 {
+		rec.Append(KindWorktreeRemoved, req.target, "")
+	}
 	return exitCode, stderr, err
 }
 
 // removeLink is the executor for the fslink.Remove primitive: it runs the pipeline, then removes
 // req.target via fslink.Remove.
-func removeLink(req pathRequest) error {
+// It appends KindLinkRemoved to rec only when the link was actually there: fslink.Remove is
+// documented as idempotent and returns nil for an already-absent target, so a nil error alone is not
+// sufficient evidence of a real removal. The probe uses os.Lstat, not os.Stat, for the same reason
+// checkPathRequest does: a dangling link is present as a link even though its target is not.
+func removeLink(rec *Mutations, req pathRequest) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
 	}
-	return fslink.Remove(req.target)
+
+	_, statErr := os.Lstat(req.target)
+	wasPresent := statErr == nil
+
+	if err := fslink.Remove(req.target); err != nil {
+		return err
+	}
+	if wasPresent {
+		rec.Append(KindLinkRemoved, req.target, "")
+	}
+	return nil
 }
 
 // repointLink is the executor for a junction re-point: it removes a drifted or dangling link so the
 // caller can recreate it, enforcing containment and ownership but declaring dirtiness N/A — a
 // re-point is repair, not teardown, and has no force semantics at all, so it takes no force
 // parameter: a repair site can never be handed a teardown site's force flag.
-func repointLink(what, container, target string, own pathOwnership) error {
+// It passes rec straight through to removeLink and appends nothing of its own: there is deliberately
+// no link_repointed kind, since a repoint physically is a removal here plus a creation at the
+// caller's own fslink.CreateDirLink.
+func repointLink(rec *Mutations, what, container, target string, own pathOwnership) error {
 	req := pathRequest{
 		what:      what,
 		container: container,
@@ -674,18 +738,23 @@ func repointLink(what, container, target string, own pathOwnership) error {
 		dirtiness: dirtinessNA("re-pointing a drifted or dangling link is repair, not teardown; there is no work to lose"),
 		force:     false,
 	}
-	return removeLink(req)
+	return removeLink(rec, req)
 }
 
 // deleteBranch is the executor for the git branch -D primitive: it runs the pipeline, then runs git
 // branch -D from req.repoDir, with the same return shape and the same reason removeGitWorktree has
 // for keeping git's own exit code and stderr rather than swallowing them.
-func deleteBranch(req branchRequest) (exitCode int, stderr string, err error) {
+// It appends KindBranchDeleted to rec via AppendRef, not Append, only when err is nil AND exitCode is
+// zero: a branch name is a ref, not a path, so it carries no hub-relative conversion.
+func deleteBranch(rec *Mutations, req branchRequest) (exitCode int, stderr string, err error) {
 	if checkErr := checkBranchRequest(req); checkErr != nil {
 		return 0, "", checkErr
 	}
 
 	_, stderr, exitCode, err = gitexec.RunGit([]string{"branch", "-D", req.branch}, req.repoDir)
+	if err == nil && exitCode == 0 {
+		rec.AppendRef(KindBranchDeleted, req.branch, "")
+	}
 	return exitCode, stderr, err
 }
 
@@ -700,10 +769,12 @@ func deleteBranch(req branchRequest) (exitCode int, stderr string, err error) {
 // `createdToken{` outside this file, with destroy.go itself on the guard's allowlist — being
 // unexported does not by itself stop a same-package composite literal, and a reader who believes
 // otherwise will eventually write one.
-func createExclusiveDir(path string) (createdToken, error) {
+// On success it appends KindDirCreated to rec, never before attempting the Mkdir.
+func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		return createdToken{}, err
 	}
+	rec.Append(KindDirCreated, path, "")
 	return createdToken{path: filepath.Clean(path), worktree: false}, nil
 }
 
@@ -718,11 +789,13 @@ func createExclusiveDir(path string) (createdToken, error) {
 //
 // On a nonzero exit or a spawn error it returns the zero token, which no ownership kind accepts — see
 // createExclusiveDir's doc comment for why createdToken is unforgeable outside this file.
-func createGitWorktree(repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error) {
+// It appends KindWorktreeCreated to rec only on the success path that mints the token.
+func createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error) {
 	_, stderr, exitCode, err = gitexec.RunGit(addArgs, repoDir)
 	if err != nil || exitCode != 0 {
 		return createdToken{}, exitCode, stderr, err
 	}
+	rec.Append(KindWorktreeCreated, target, "")
 	return createdToken{path: filepath.Clean(target), worktree: true}, exitCode, stderr, nil
 }
 
@@ -736,11 +809,17 @@ var RemoveAll = os.RemoveAll
 // only once that passes does it call repo's own ResetHard(sha) — repo is the raw gitrepo.Repo handle
 // the pipeline's ownership check has just proven req.target actually belongs to, and sha is the
 // commit the caller wants the checkout rewound to.
-func resetHardTo(req pathRequest, repo *gitrepo.Repo, sha string) error {
+// On a nil error from repo.ResetHard it appends KindWorktreeReset to rec, with sha as the detail —
+// this is the primitive behind defect 1.
+func resetHardTo(rec *Mutations, req pathRequest, repo *gitrepo.Repo, sha string) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
 	}
-	return repo.ResetHard(sha)
+	if err := repo.ResetHard(sha); err != nil {
+		return err
+	}
+	rec.Append(KindWorktreeReset, req.target, sha)
+	return nil
 }
 
 // ResetHard resets the warp checkout's HEAD, index, and working tree to sha, discarding any local
@@ -753,7 +832,8 @@ func resetHardTo(req pathRequest, repo *gitrepo.Repo, sha string) error {
 // the hub's ordinary prime-worktree target still passes, dirtiness is dirtyScopeTracked to match
 // warpWorktreeDirty exactly, and force is always false — Pull exposes no force flag, and this is the
 // primitive R2's defect discarded uncommitted tracked work through on every advance path.
-func (f *Fabric) ResetHard(sha string) error {
+// rec is the caller's recorder; resetHardTo appends the resulting worktree_reset entry to it.
+func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 	req := pathRequest{
 		what:      "reset warp checkout",
 		container: filepath.Dir(f.warpPath),
@@ -762,5 +842,5 @@ func (f *Fabric) ResetHard(sha string) error {
 		dirtiness: dirtyScopeTracked(),
 		force:     false,
 	}
-	return resetHardTo(req, f.warp, sha)
+	return resetHardTo(rec, req, f.warp, sha)
 }

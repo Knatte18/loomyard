@@ -81,7 +81,7 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 // where a prior sync already committed them; see commitWeft's doc comment
 // for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
-	_, err := mutateGitExclude(weftPath, func(content string) (string, error) {
+	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
 		entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lyxdirs.DotLyxDirName + "/", lockFilePattern, swapLockFilePattern}
 		for _, entry := range entries {
 			present := false
@@ -265,12 +265,55 @@ func (f *Fabric) commitWeft(pathspec []string, message string, opts SyncOptions,
 	return f.commitWeftLocked(pathspec, message, opts, snapshotTags...)
 }
 
-// PushWeft pushes unpushed weft commits via PushCoalesced, honoring SkipGit/SkipPush gating.
-func (f *Fabric) PushWeft(opts SyncOptions) error {
-	if opts.SkipGit || opts.SkipPush {
-		return nil
+// PushResult exists solely to carry the mutation record: push had no result type at all before this
+// slice, which is why its envelope had nowhere to put one.
+// All three push entry points — PushWeft, PushWarpAt, and CoalescePushBothAt — return this same type,
+// so a composed push verb concatenates homogeneous records.
+type PushResult struct {
+	MutationRecord
+}
+
+// recordPushIfAdvanced records KindBranchPushed for repo's current branch when hasUnpushedBefore and
+// hasUnpushedErr together prove a real true -> false transition across the push call already made:
+// hasUnpushedErr must be nil, hasUnpushedBefore must be true (there was something to push), and
+// repo.HasUnpushed() sampled now must report false (nothing is unpushed any more).
+// Bare "the push call returned nil" is not sufficient evidence: PushCoalesced also returns nil when
+// there was nothing to push, and pushRebaseFreeLogged maps a remote rejection to a warning and a nil
+// return, so either would otherwise be recorded as a push that never actually happened — the
+// commission-direction lie this slice exists to kill.
+// If either HasUnpushed sample or CurrentBranch errors, nothing is recorded and the error is not
+// propagated: a failure to observe is not a failure to push.
+func recordPushIfAdvanced(rec *Mutations, repo *gitrepo.Repo, hasUnpushedBefore bool, hasUnpushedErr error) {
+	if hasUnpushedErr != nil || !hasUnpushedBefore {
+		return
 	}
-	return f.weft.PushCoalesced()
+	stillUnpushed, err := repo.HasUnpushed()
+	if err != nil || stillUnpushed {
+		return
+	}
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		return
+	}
+	rec.AppendRef(KindBranchPushed, branch, "")
+}
+
+// PushWeft pushes unpushed weft commits via PushCoalesced, honoring SkipGit/SkipPush gating.
+func (f *Fabric) PushWeft(opts SyncOptions) (res PushResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	if opts.SkipGit || opts.SkipPush {
+		return PushResult{}, nil
+	}
+
+	hadUnpushed, hadUnpushedErr := f.weft.HasUnpushed()
+	if err := f.weft.PushCoalesced(); err != nil {
+		return PushResult{}, err
+	}
+	recordPushIfAdvanced(rec, f.weft, hadUnpushed, hadUnpushedErr)
+
+	return PushResult{}, nil
 }
 
 // PullWeft fast-forwards the weft worktree from its upstream, honoring SkipGit gating.

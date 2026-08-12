@@ -97,7 +97,15 @@ func weftBranchExists(l *lyxcwd.Location, branch string) bool {
 
 // createWeftWorktree creates a new weft worktree on branch, forking from
 // startPoint to preserve the merge-base for future squash-merge-back.
-func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) error {
+// On success it records KindWorktreeCreated at the created weft worktree path and, unconditionally,
+// KindBranchCreated for branch via AppendRef: the git invocation below always runs `worktree add -b
+// <branch>`, so reaching a zero exit means the branch was created, and the adopt-vs-create decision
+// (whether the branch already existed) lives in the caller, not here — this function has no way to
+// observe it.
+// This site does NOT route through the destruction gate: createGitWorktree in destroy.go is the
+// gate's minter for the warp side, and the Fabric Destruction Chokepoint Invariant governs
+// destruction, not creation, so this hand-written record is by design, not an oversight.
+func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startPoint string) error {
 	weftPath := WeftWorktreePath(l, slug)
 	weftRepoRoot, err := WeftRepoRoot(l)
 	if err != nil {
@@ -114,11 +122,14 @@ func createWeftWorktree(l *lyxcwd.Location, slug, branch, startPoint string) err
 		return fmt.Errorf("create weft worktree %q for branch %q failed (git exit %d): %s",
 			weftPath, branch, exitCode, strings.TrimSpace(createStderr))
 	}
+	rec.Append(KindWorktreeCreated, weftPath, "")
+	rec.AppendRef(KindBranchCreated, branch, "")
 	return nil
 }
 
 // pushWeftBranch pushes the weft branch to origin, honoring SkipGit/SkipPush.
-func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) error {
+// On success it records KindBranchPushed for branch via AppendRef.
+func pushWeftBranch(rec *Mutations, l *lyxcwd.Location, slug, branch string, opts SyncOptions) error {
 	if opts.SkipGit || opts.SkipPush {
 		return nil
 	}
@@ -135,14 +146,16 @@ func pushWeftBranch(l *lyxcwd.Location, slug, branch string, opts SyncOptions) e
 		return fmt.Errorf("push weft branch %q failed (git exit %d): %s",
 			branch, exitCode, strings.TrimSpace(pushStderr))
 	}
+	rec.AppendRef(KindBranchPushed, branch, "")
 
 	return nil
 }
 
 // removeWarpJunction removes every warp junction for slug via the gate's removeLink executor.
 // Returns nil if all are absent (idempotent).
-func removeWarpJunction(l *lyxcwd.Location, slug string, names []string) error {
-	return removeJunctionRecords(WorktreePath(l, slug), WarpJunctions(l, slug, names))
+// rec is the calling verb's own recorder, threaded straight through to removeJunctionRecords.
+func removeWarpJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []string) error {
+	return removeJunctionRecords(rec, WorktreePath(l, slug), WarpJunctions(l, slug, names))
 }
 
 // removeJunctionRecords removes each junction via the gate's removeLink executor in a best-effort
@@ -152,7 +165,8 @@ func removeWarpJunction(l *lyxcwd.Location, slug string, names []string) error {
 // container is the containment boundary every junction in junctions must resolve strictly below —
 // a gated site cannot declare containment against a parent it never receives. Both of this
 // function's callers have l and slug in scope and pass WorktreePath(l, slug).
-func removeJunctionRecords(container string, junctions []WarpJunction) error {
+// rec is the calling verb's own recorder, passed straight through to removeLink for each junction.
+func removeJunctionRecords(rec *Mutations, container string, junctions []WarpJunction) error {
 	links := make([]string, len(junctions))
 	for i, j := range junctions {
 		links[i] = j.Link
@@ -169,7 +183,7 @@ func removeJunctionRecords(container string, junctions []WarpJunction) error {
 			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
 			force:     false,
 		}
-		if err := removeLink(req); err != nil {
+		if err := removeLink(rec, req); err != nil {
 			errs = append(errs, fmt.Errorf("remove warp junction %s: %w", j.Link, err))
 		}
 	}
@@ -181,7 +195,9 @@ func removeJunctionRecords(container string, junctions []WarpJunction) error {
 // if all steps succeed.
 // branchPrefix is the caller's configured warp branch prefix, forwarded to ownedManagedBranch — this
 // function has no config in scope of its own.
-func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch bool, branchPrefix string) error {
+// rec is the calling verb's own recorder, threaded through to both removeGitWorktree and
+// deleteBranch below.
+func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string, force, alsoDeleteBranch bool, branchPrefix string) error {
 	weftPath := WeftWorktreePath(l, slug)
 	weftRoot, err := WeftRepoRoot(l)
 	if err != nil {
@@ -199,7 +215,7 @@ func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, alsoDele
 		dirtiness: dirtyScopeAll(),
 		force:     force,
 	}
-	exitCode, _, err := removeGitWorktree(req, weftRoot)
+	exitCode, _, err := removeGitWorktree(rec, req, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
@@ -219,7 +235,7 @@ func removeWeftWorktree(l *lyxcwd.Location, slug, branch string, force, alsoDele
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}
-		exitCode, _, err = deleteBranch(branchReq)
+		exitCode, _, err = deleteBranch(rec, branchReq)
 		if err != nil || exitCode != 0 {
 			if firstErr == nil {
 				if err != nil {

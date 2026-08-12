@@ -63,8 +63,10 @@ type PruneEntry struct {
 }
 
 // PruneResult is the top-level result type returned by Prune.
-// It lists every stale or orphaned pair, whether or not they were removed.
+// It lists every stale or orphaned pair, whether or not they were removed, and embeds
+// MutationRecord, which carries the mutation record accumulated over the call.
 type PruneResult struct {
+	MutationRecord
 	// Entries lists the pairs that were identified (and optionally removed).
 	Entries []PruneEntry `json:"entries"`
 }
@@ -74,7 +76,10 @@ type PruneResult struct {
 // A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
 // removal is a forced one that would discard them without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
-func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (PruneResult, error) {
+func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult, err error) {
+	rec := NewMutations(l.HubPath)
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	entries, err := List(l.WorktreePath())
 	if err != nil {
 		return PruneResult{}, fmt.Errorf("list worktrees: %w", err)
@@ -106,7 +111,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (PruneResult, er
 			applyStalePairOwnership(l, weftPath, &pe)
 			applyStalePairProtection(weftPath, force, &pe)
 			if apply && !pe.Protected && !pe.Unowned {
-				pe.Removed = removeStalePair(l, slug, weftPath, &pe)
+				pe.Removed = removeStalePair(rec, l, slug, weftPath, &pe)
 			}
 
 			pass1Slugs[slug] = true
@@ -149,7 +154,7 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (PruneResult, er
 		applyStalePairOwnership(l, weftPath, &pe)
 		applyStalePairProtection(weftPath, force, &pe)
 		if apply && !pe.Protected && !pe.Unowned {
-			pe.Removed = removeStalePair(l, warpSlug, weftPath, &pe)
+			pe.Removed = removeStalePair(rec, l, warpSlug, weftPath, &pe)
 		}
 
 		result.Entries = append(result.Entries, pe)
@@ -239,7 +244,8 @@ func applyStalePairProtection(weftPath string, force bool, pe *PruneEntry) {
 // slug they are keyed on is derived from a directory name the orphan pass chose: tearing them down
 // first meant a stray `<hub>/my-task-weft/` directory removed the LIVE `my-task` pair's portal
 // junction and launcher directory before anything had established the entry was fabric's at all.
-func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
+// rec is the calling verb's own recorder, threaded through every gate call this helper makes.
+func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) bool {
 	weftRepoRoot, weftRepoRootErr := WeftRepoRoot(l)
 	if weftRepoRootErr != nil {
 		pe.Error = fmt.Sprintf("resolve weft repo root: %v", weftRepoRootErr)
@@ -249,11 +255,11 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 	// The portal and launcher teardown here is keyed on a slug the orphan pass derived from a
 	// directory name — precisely the input a refusal is most likely to be about — so a refusal must
 	// be recorded rather than swallowed alongside an ordinary operational failure.
-	if err := surfaceRefusal(removePortal(l, slug)); err != nil {
+	if err := surfaceRefusal(removePortal(rec, l, slug)); err != nil {
 		pe.Error = err.Error()
 		return false
 	}
-	if err := surfaceRefusal(removeLaunchers(l, slug)); err != nil {
+	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
 		pe.Error = err.Error()
 		return false
 	}
@@ -269,7 +275,7 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 			dirtiness: dirtyScopeTracked(),
 			force:     true,
 		}
-		exitCode, stderr, err := removeGitWorktree(req, weftRepoRoot)
+		exitCode, stderr, err := removeGitWorktree(rec, req, weftRepoRoot)
 		if err != nil {
 			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
 			return false
@@ -291,7 +297,7 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 				ownership: ownedRegisteredLinkedWorktree(weftRepoRoot),
 				dirtiness: dirtyScopeTracked(),
 			}
-			if removeErr := removePath(fallbackReq); removeErr != nil {
+			if removeErr := removePath(rec, fallbackReq); removeErr != nil {
 				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
 				return false
 			}
@@ -299,8 +305,25 @@ func removeStalePair(l *lyxcwd.Location, slug, weftPath string, pe *PruneEntry) 
 		removed = true
 	}
 
+	// The warp repo's own ".git/worktrees/<slug>" registration can outlive the physical warp worktree
+	// directory it describes -- the pass-1 "warp worktree directory missing" case's own precondition
+	// -- and `git worktree prune` below clears it. That is an observable primitive effect per the
+	// record-only-after-observed-effect Shared Decision, so it is recorded like every other executor's
+	// effect in this call: probe the admin path immediately before the best-effort prune calls, and
+	// append KindWorktreeRemoved, at the pair's own warp worktree path, only when the probe found it
+	// present and it is gone afterward.
+	warpAdminPath := filepath.Join(l.WorktreePath(), ".git", "worktrees", slug)
+	_, warpAdminStatErr := os.Lstat(warpAdminPath)
+	warpAdminWasRegistered := warpAdminStatErr == nil
+
 	gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)     //nolint:errcheck
 	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath()) //nolint:errcheck
+
+	if warpAdminWasRegistered {
+		if _, statErr := os.Lstat(warpAdminPath); os.IsNotExist(statErr) {
+			rec.Append(KindWorktreeRemoved, filepath.Join(l.HubPath, slug), "git worktree prune")
+		}
+	}
 
 	return removed
 }

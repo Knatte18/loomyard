@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // anchors is the two anchor values every ordinary and hostile-input cell in the cross product runs
@@ -105,7 +107,7 @@ func assertExpectation(t *testing.T, err error, exp Expectation) {
 		if !RefusedByGate(err, exp.Check) {
 			t.Errorf("expected refusal by gate check %q; got err = %v", exp.Check, err)
 		}
-		for _, other := range []Check{CheckContainment, CheckOwnership, CheckDirtiness} {
+		for _, other := range []fabricengine.Check{fabricengine.CheckContainment, fabricengine.CheckOwnership, fabricengine.CheckDirtiness} {
 			if other == exp.Check {
 				continue
 			}
@@ -218,7 +220,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 	before := CaptureManifest(t, h.Path)
 
 	// Run, then capture (after).
-	err := vc.Run(t, h, fixture)
+	rec, err := vc.Run(t, h, fixture)
 	after := CaptureManifest(t, h.Path)
 
 	exp := vc.Expect(state.Name)
@@ -229,7 +231,14 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 	if exp.Kind == KindProceeds {
 		assertPlantedContentSurvives(t, h, state.Name, fixture.Target, exp.PermittedRoots)
 	}
+	// Permitted removal roots suppress diff noise only, never the honesty assertion: exp.PermittedRoots
+	// narrows what AssertNoUnpermittedChange treats as an unpermitted survival failure, but the
+	// truthfulness oracle below always runs against the unfiltered (nil-permitted) diff, so a cell
+	// whose own intended effect destroys something inside a permitted root still has its record checked
+	// against that destruction rather than having it silently suppressed too.
 	AssertNoUnpermittedChange(t, before, after, exp.PermittedRoots)
+	unfiltered := DiffManifest(before, after, nil)
+	AssertRecordMatchesDiff(t, rec, unfiltered)
 }
 
 // TestCrossProduct drives the ordinary verbs and the hostile-input cases against every state each
@@ -331,7 +340,7 @@ func TestCloneHubReset(t *testing.T) {
 				fixture := verbCase.Arrange(t, h)
 
 				before := CaptureManifest(t, fixture.ResetHubPath)
-				err := verbCase.Run(t, h, fixture)
+				rec, err := verbCase.Run(t, h, fixture)
 				after := CaptureManifest(t, fixture.ResetHubPath)
 
 				exp := verbCase.Expect("clean")
@@ -340,6 +349,8 @@ func TestCloneHubReset(t *testing.T) {
 					exp.Effect(t, h, fixture)
 				}
 				AssertNoUnpermittedChange(t, before, after, exp.PermittedRoots)
+				unfiltered := DiffManifest(before, after, nil)
+				AssertRecordMatchesDiff(t, rec, unfiltered)
 			})
 		}
 	}

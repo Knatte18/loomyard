@@ -22,7 +22,9 @@ import (
 )
 
 // UnwireVerbResult summarizes what Unwire changed.
+// It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type UnwireVerbResult struct {
+	MutationRecord
 	// JunctionsRemoved lists the Name of each warp junction that was actually
 	// present and removed. Empty when no junction was wired.
 	JunctionsRemoved []string
@@ -53,11 +55,15 @@ type UnwireVerbResult struct {
 // It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
 // Unwire never touches the repo-wide weft:main records;
 // a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring.
-func Unwire(cwd string) (UnwireVerbResult, error) {
+func Unwire(cwd string) (res UnwireVerbResult, err error) {
+	var rec *Mutations
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
+	rec = NewMutations(l.HubPath)
 
 	slug := filepath.Base(l.WorktreePath())
 
@@ -67,6 +73,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 	}
 
 	junctionResult, err := UnwireJunctions(l, slug, names)
+	rec.Extend(junctionResult.Mutated())
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
@@ -76,7 +83,7 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 	// entry (_board included), so the generic sweep above can never see or
 	// remove it — the same skip that keeps reconcile's stale sweep from
 	// touching it (see reconcile.go's scanOnDiskJunctionNames doc).
-	boardRemoved, err := unwireBoardLink(l, slug)
+	boardRemoved, err := unwireBoardLink(rec, l, slug)
 	if err != nil {
 		return UnwireVerbResult{}, err
 	}
@@ -126,7 +133,8 @@ func Unwire(cwd string) (UnwireVerbResult, error) {
 // present real directory (not a link) is refused, matching
 // unseedJunctionRecords' refusal to delete user content sitting where a
 // junction belongs.
-func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) {
+// rec is the calling verb's own recorder, threaded through to removeLink.
+func unwireBoardLink(rec *Mutations, l *lyxcwd.Location, slug string) (removed bool, err error) {
 	link := filepath.Join(WorktreePath(l, slug), l.AnchorRel, BoardDirName)
 
 	if _, statErr := os.Lstat(link); statErr == nil {
@@ -149,7 +157,7 @@ func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) 
 			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
 			force:     false,
 		}
-		if err := removeLink(req); err != nil {
+		if err := removeLink(rec, req); err != nil {
 			return false, fmt.Errorf("remove board junction %s: %w", link, err)
 		}
 		removed = true
@@ -157,7 +165,7 @@ func unwireBoardLink(l *lyxcwd.Location, slug string) (removed bool, err error) 
 		return false, fmt.Errorf("lstat %s: %w", link, statErr)
 	}
 
-	if _, err := unseedGitExclude(l, slug, []string{BoardDirName}); err != nil {
+	if _, err := unseedGitExclude(rec, l, slug, []string{BoardDirName}); err != nil {
 		return removed, err
 	}
 

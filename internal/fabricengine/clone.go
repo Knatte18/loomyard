@@ -64,7 +64,9 @@ type CloneOptions struct {
 // route through internal/configsync, which fabricengine must never import (see the fabricengine →
 // configsync → configreg → fabricengine cycle documented in this file's clone-does-everything batch
 // scope).
+// It also embeds MutationRecord, which carries the mutation record accumulated over the call.
 type CloneResult struct {
+	MutationRecord
 	HubPath  string // HubPath is the created <name>-HUB container directory.
 	Anchor   string // Anchor is the resolved lyx-anchor subpath (e.g. "backend" or ".").
 	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
@@ -121,7 +123,10 @@ type CloneResult struct {
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
 // original failure and the residual Hub path.
-func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
+func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
+	var rec *Mutations
+	defer func() { res.Mutations = rec.Snapshot() }()
+
 	// Normalize cwd to an absolute path
 	cwd = filepath.Clean(cwd)
 
@@ -151,8 +156,9 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s", opts.WarpURL)
 		}
 		hubPath = HubPath(cwd, name)
+		rec = NewMutations(hubPath)
 		if opts.Reset {
-			if err := resetHub(cwd, hubPath); err != nil {
+			if err := resetHub(rec, cwd, hubPath); err != nil {
 				return CloneResult{}, err
 			}
 		}
@@ -196,8 +202,9 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 			return CloneResult{}, fmt.Errorf("could not derive repo name from warp URL %s recorded in the %s binding on weft:main", effective, WarpBindingFileName)
 		}
 		hubPath = HubPath(cwd, name)
+		rec = NewMutations(hubPath)
 		if opts.Reset {
-			if err := resetHub(cwd, hubPath); err != nil {
+			if err := resetHub(rec, cwd, hubPath); err != nil {
 				return CloneResult{}, err
 			}
 		}
@@ -222,7 +229,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// it follows — it closes a real time-of-check-to-time-of-use window that exists between a stat and
 	// a plain os.MkdirAll, in which a concurrent process can create the hub in between and have
 	// MkdirAll silently accept it.
-	hubTok, err := createExclusiveDir(hubPath)
+	hubTok, err := createExclusiveDir(rec, hubPath)
 	if err != nil {
 		return CloneResult{}, err
 	}
@@ -236,9 +243,11 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// here returns directly rather than through teardownHub, matching the surrounding
 	// step-4 posture — the hub directory it would need to tear down was itself just
 	// created and holds nothing yet worth cleaning up specially.
-	if err := os.MkdirAll(filepath.Join(hubPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
+	dotLyxPath := filepath.Join(hubPath, lyxdirs.DotLyxDirName)
+	if err := os.MkdirAll(dotLyxPath, 0o755); err != nil {
 		return CloneResult{}, err
 	}
+	rec.Append(KindDirCreated, dotLyxPath, "")
 
 	// Step 5: Clone warp repo
 	warpWorktreePath := filepath.Join(hubPath, name)
@@ -246,10 +255,13 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		if derivedFromRecord {
 			// The derive path names its source so a failure here is traceable back to the
 			// binding that produced it, not just the bare URL.
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf("clone warp %s (from the %s binding on weft:main): %w", warpURL, WarpBindingFileName, err))
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("clone warp %s (from the %s binding on weft:main): %w", warpURL, WarpBindingFileName, err))
 		}
-		return CloneResult{}, teardownHub(cwd, hubPath, hubTok, err)
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
+	// A clone genuinely brings a worktree into being, and one entry covers the whole cloned tree —
+	// the coarsest-covering-root rule, mirroring cloneRepo's own single-call-site posture.
+	rec.Append(KindWorktreeCreated, warpWorktreePath, "")
 
 	// Install the post-checkout hook after the warp worktree exists so drift
 	// warnings fire on every subsequent git checkout within this repo.
@@ -271,8 +283,9 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// Step 6: Clone weft repo
 	weftPath := weftname.SiblingPath(hubPath, name)
 	if err := cloneRepo(opts.WeftURL, weftPath); err != nil {
-		return CloneResult{}, teardownHub(cwd, hubPath, hubTok, err)
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
+	rec.Append(KindWorktreeCreated, weftPath, "")
 
 	// Step 6b: Rename the weft primary's freshly-cloned branch onto its
 	// WeftBranchName-suffixed pairing, so weft:<branch> is never claimed
@@ -282,7 +295,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// after the rename (which would incorrectly see the suffixed branch).
 	warpBranch, err := suffixWeftPrimaryBranch(weftPath)
 	if err != nil {
-		return CloneResult{}, teardownHub(cwd, hubPath, hubTok, err)
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 
 	// Step 7: Materialize <Hub>/_board as a second weft worktree, checked out
@@ -291,8 +304,9 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	// weft remote).
 	boardDir := BoardDir(hubPath)
 	if err := ensureBoardWorktree(weftPath, warpBranch, boardDir); err != nil {
-		return CloneResult{}, teardownHub(cwd, hubPath, hubTok, err)
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
+	rec.Append(KindWorktreeCreated, boardDir, "")
 
 	// Step 8: Resolve the lyx-anchor subpath adopt-or-create, and write the
 	// marker to the board worktree ON DISK. The CLI layer commits it onto
@@ -311,7 +325,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 			// clone, so telling the operator to clone again just reproduces it. The record lives on
 			// weft:main, so migrating it is a rename plus a commit in an existing hub's board
 			// worktree, after which this clone succeeds.
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf(
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf(
 				"found stale %s marker with no %s beside it at %s; in an existing hub's %s worktree run `git mv %s %s` and commit, then retry this clone",
 				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir,
 				BoardDirName, staleFabricAnchorName, lyxcwd.AnchorFileName))
@@ -328,7 +342,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		// fails.
 		recorded, recordedErr := lyxcwd.ValidateAnchorRel(strings.TrimSpace(string(data)))
 		if recordedErr != nil {
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf("recorded anchor in %s on weft:main is unusable: %w", lyxcwd.AnchorFileName, recordedErr))
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("recorded anchor in %s on weft:main is unusable: %w", lyxcwd.AnchorFileName, recordedErr))
 		}
 		if subpathRequestedExplicitly && requestedAnchor != recorded {
 			// An explicitly requested subpath disagrees with the recorded anchor: never silently
@@ -338,7 +352,7 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 			// subpath was silently adopted, the one value that escaped the never-silently-re-anchor
 			// rule. The flag now defaults to the empty string, which normalises to "." with
 			// subpathRequestedExplicitly false, so an explicit "." can be honoured as explicit here.
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf(
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf(
 				"requested --subpath %q does not match the recorded anchor %q for this hub", requestedAnchor, recorded))
 		}
 		anchor = recorded
@@ -349,11 +363,14 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 		// silently anchoring to a directory that was never there.
 		anchor = requestedAnchor
 		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf("subpath %q does not exist as a directory in the cloned warp repo", anchor))
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("subpath %q does not exist as a directory in the cloned warp repo", anchor))
 		}
 		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf("write %s: %w", markerPath, err))
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("write %s: %w", markerPath, err))
 		}
+		// Create branch only: the adopt branch above found a marker already committed and wrote
+		// nothing, so recording there would claim a write that never happened.
+		rec.Append(KindFileWritten, markerPath, "")
 	}
 
 	// Immediately after the anchor block writes .lyx-anchor (both the adopt and the create branch
@@ -364,8 +381,9 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	var warpBindingRecorded bool
 	if writeRecord {
 		if err := writeWarpBinding(boardDir, effective); err != nil {
-			return CloneResult{}, teardownHub(cwd, hubPath, hubTok, err)
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
+		rec.Append(KindFileWritten, filepath.Join(boardDir, WarpBindingFileName), "")
 		warpBindingRecorded = true
 	}
 
@@ -374,15 +392,15 @@ func CloneHub(cwd string, opts CloneOptions) (CloneResult, error) {
 	primeCwd := filepath.Join(warpWorktreePath, anchor)
 	l, err := lyxcwd.Resolve(primeCwd)
 	if err != nil {
-		return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("resolve prime layout at %s: %w", primeCwd, err))
 	}
 
 	// Wire the operator-convenience _board junction as a named special case,
 	// the same point pathspec junctions are wired at the CLI layer (see
 	// internal/fabriccli/clone.go) — but here directly, since _board needs no
 	// fabric.yaml load and CloneHub must not import configsync.
-	if err := wireBoardLink(l, filepath.Base(warpWorktreePath)); err != nil {
-		return CloneResult{}, teardownHub(cwd, hubPath, hubTok, fmt.Errorf("wire board junction: %w", err))
+	if err := wireBoardLink(rec, l, filepath.Base(warpWorktreePath)); err != nil {
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("wire board junction: %w", err))
 	}
 
 	weftBase := filepath.Join(WeftWorktree(l), l.AnchorRel)
@@ -558,7 +576,9 @@ func cloneRepo(url, dest string) error {
 // Either is enough — a hub whose `_board` worktree was hand-deleted is still recognisably a hub, and
 // so is one mid-clone whose board has not been materialised yet.
 // An absent path stays a silent no-op, so --reset remains idempotent.
-func resetHub(cwd, hubPath string) error {
+// rec is CloneHub's own recorder, already non-nil at both call sites (see this function's callers'
+// own comment) — threaded through to removePath.
+func resetHub(rec *Mutations, cwd, hubPath string) error {
 	info, statErr := os.Stat(hubPath)
 	if os.IsNotExist(statErr) {
 		return nil
@@ -585,7 +605,7 @@ func resetHub(cwd, hubPath string) error {
 		dirtiness: dirtinessNA("--reset is the operator explicitly asking for this hub to be replaced; ownership is the check that matters here"),
 		force:     false,
 	}
-	if err := removePath(req); err != nil {
+	if err := removePath(rec, req); err != nil {
 		return fmt.Errorf("reset: remove hub at %s: %w", hubPath, err)
 	}
 	return nil
@@ -629,7 +649,9 @@ func looksLikeHub(hubPath string) bool {
 // If removePath succeeds, teardownHub returns cause unchanged. If removePath fails — whether an
 // operational failure or a gate refusal — teardownHub returns an error combining cause with a
 // message about the residual Hub.
-func teardownHub(cwd, hubPath string, tok createdToken, cause error) error {
+// rec is CloneHub's own recorder — every one of teardownHub's thirteen call sites sits inside
+// CloneHub, whose recorder card 10 installed, so rec is passed through at each.
+func teardownHub(rec *Mutations, cwd, hubPath string, tok createdToken, cause error) error {
 	req := pathRequest{
 		what:      "teardown hub",
 		container: cwd,
@@ -639,7 +661,7 @@ func teardownHub(cwd, hubPath string, tok createdToken, cause error) error {
 		dirtiness: dirtinessNA("gate-created within this invocation; nothing pre-existing to lose"),
 		force:     false,
 	}
-	if err := removePath(req); err != nil {
+	if err := removePath(rec, req); err != nil {
 		return fmt.Errorf("%w; residual hub left at %s; remove it manually before retrying", cause, hubPath)
 	}
 	return cause

@@ -74,8 +74,10 @@ func TestVerbCases_CleanState(t *testing.T) {
 					// Phase 4: capture (before) — after both arrange and state.
 					before := CaptureManifest(t, h.Path)
 
-					// Phase 5: run, then capture (after).
-					err := vc.Run(t, h, fixture)
+					// Phase 5: run, then capture (after). This test asserts each case's own error shape,
+					// not its record -- the record's assertions belong to card 31's cells -- so the
+					// returned Mutations is discarded rather than a missed opportunity.
+					_, err := vc.Run(t, h, fixture)
 					exp := vc.Expect("clean")
 
 					switch exp.Kind {

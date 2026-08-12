@@ -39,7 +39,7 @@ func TestGate_CheckOrdering(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkContainment)
+		assertRefusalCheck(t, err, CheckContainment)
 	})
 
 	t.Run("OwnershipBeforeDirtiness", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestGate_CheckOrdering(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 }
 
@@ -121,7 +121,7 @@ func TestGate_Containment(t *testing.T) {
 				dirtiness: dirtyScopeTracked(),
 			}
 			err := checkPathRequest(req)
-			assertRefusalCheck(t, err, checkContainment)
+			assertRefusalCheck(t, err, CheckContainment)
 		})
 	}
 
@@ -140,7 +140,7 @@ func TestGate_Containment(t *testing.T) {
 		}
 		err := checkPathRequest(req)
 		// Containment passes; ownership then fails (not a hub) — proves containment did not refuse.
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
 	// Card 12 names "both platform separators": refuseUncontainedPath resolves through
@@ -164,7 +164,7 @@ func TestGate_Containment(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkContainment)
+		assertRefusalCheck(t, err, CheckContainment)
 	})
 
 	t.Run("EscapeWithBackslash", func(t *testing.T) {
@@ -198,11 +198,11 @@ func TestGate_Containment(t *testing.T) {
 		err := checkPathRequest(req)
 		if runtime.GOOS == "windows" {
 			// "\" is a path separator on Windows, so this escapes the container just like "/".
-			assertRefusalCheck(t, err, checkContainment)
+			assertRefusalCheck(t, err, CheckContainment)
 		} else {
 			// The literal entry does not actually leave the container — containment must pass,
 			// and ownership fails next (not a hub), same as WithinContainerPassesContainment above.
-			assertRefusalCheck(t, err, checkOwnership)
+			assertRefusalCheck(t, err, CheckOwnership)
 		}
 	})
 }
@@ -237,7 +237,7 @@ func TestGate_SlugValidation(t *testing.T) {
 				dirtiness: dirtyScopeTracked(),
 			}
 			err := checkPathRequest(req)
-			assertRefusalCheck(t, err, checkContainment)
+			assertRefusalCheck(t, err, CheckContainment)
 		})
 	}
 }
@@ -278,7 +278,7 @@ func TestGate_Force(t *testing.T) {
 			force:     true,
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkContainment)
+		assertRefusalCheck(t, err, CheckContainment)
 	})
 
 	t.Run("DoesNotSatisfyOwnership", func(t *testing.T) {
@@ -296,7 +296,7 @@ func TestGate_Force(t *testing.T) {
 			force:     true,
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 }
 
@@ -315,7 +315,7 @@ func TestGate_DirtinessNAEmptyReason(t *testing.T) {
 		dirtiness: dirtinessNA(""),
 	}
 	err := checkPathRequest(req)
-	assertRefusalCheck(t, err, checkDirtiness)
+	assertRefusalCheck(t, err, CheckDirtiness)
 }
 
 // TestGate_ZeroValueDeclarationsAreRefusals proves an omitted ownership or dirtiness declaration is a
@@ -334,7 +334,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			dirtiness: dirtyScopeTracked(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
 	t.Run("PathZeroDirtiness", func(t *testing.T) {
@@ -350,7 +350,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			ownership: ownedFabricHub(),
 		}
 		err := checkPathRequest(req)
-		assertRefusalCheck(t, err, checkDirtiness)
+		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 
 	t.Run("BranchZeroOwnership", func(t *testing.T) {
@@ -361,7 +361,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			dirtiness: dirtyCheckedOutBranch(),
 		}
 		err := checkBranchRequest(req)
-		assertRefusalCheck(t, err, checkOwnership)
+		assertRefusalCheck(t, err, CheckOwnership)
 	})
 
 	t.Run("BranchZeroDirtiness", func(t *testing.T) {
@@ -375,7 +375,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			ownership: ownedManagedBranch(l, ""),
 		}
 		err := checkBranchRequest(req)
-		assertRefusalCheck(t, err, checkDirtiness)
+		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 }
 
@@ -419,11 +419,15 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 		ownership: ownedFabricHub(),
 		dirtiness: dirtyScopeTracked(),
 	}
-	if err := removePath(req); err != nil {
+	rec := NewMutations("")
+	if err := removePath(rec, req); err != nil {
 		t.Errorf("removePath() on absent target = %v; want nil", err)
 	}
 	if _, err := os.Lstat(absent); !os.IsNotExist(err) {
 		t.Errorf("removePath() on absent target unexpectedly created something at %s", absent)
+	}
+	if got := rec.Len(); got != 0 {
+		t.Errorf("removePath() on absent target recorded %d entries; want 0 (a successful no-op is not a removal)", got)
 	}
 }
 
@@ -433,7 +437,8 @@ func TestGate_TokenRoundTrip(t *testing.T) {
 	container := t.TempDir()
 	target := filepath.Join(container, "fresh")
 
-	tok, err := createExclusiveDir(target)
+	rec := NewMutations("")
+	tok, err := createExclusiveDir(rec, target)
 	if err != nil {
 		t.Fatalf("createExclusiveDir(%s) = %v; want nil error", target, err)
 	}
@@ -441,7 +446,7 @@ func TestGate_TokenRoundTrip(t *testing.T) {
 		t.Errorf("createExclusiveDir(%s) token = %+v; want path=%s worktree=false", target, tok, target)
 	}
 
-	if _, err := createExclusiveDir(target); err == nil {
+	if _, err := createExclusiveDir(rec, target); err == nil {
 		t.Errorf("createExclusiveDir(%s) on an already-existing path = nil error; want EEXIST", target)
 	}
 
@@ -576,14 +581,14 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 	})
 
 	t.Run("RefusalIsSurfaced", func(t *testing.T) {
-		refusal := &destructiveRefusal{Check: checkOwnership, What: "test", Target: "x", Reason: "no"}
+		refusal := &destructiveRefusal{Check: CheckOwnership, What: "test", Target: "x", Reason: "no"}
 		if got := surfaceRefusal(refusal); got != refusal {
 			t.Errorf("surfaceRefusal(refusal) = %v; want the same refusal unchanged", got)
 		}
 	})
 
 	t.Run("WrappedRefusalIsSurfaced", func(t *testing.T) {
-		refusal := &destructiveRefusal{Check: checkDirtiness, What: "test", Target: "x", Reason: "no"}
+		refusal := &destructiveRefusal{Check: CheckDirtiness, What: "test", Target: "x", Reason: "no"}
 		wrapped := fmt.Errorf("context: %w", refusal)
 		got := surfaceRefusal(wrapped)
 		if got != wrapped {
@@ -592,8 +597,238 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 	})
 }
 
+// TestGate_RecordOnlyOnObservedEffect covers the record-only-on-observed-effect rule using only
+// filesystem primitives already reachable from an untagged test in this package: removePath,
+// removeLink, and createExclusiveDir. The git-spawning executors (removeGitWorktree, deleteBranch)
+// are deliberately NOT covered here — an untagged test in this package may not spawn git per the
+// Test Tier Purity Invariant — and their nonzero-exit-with-nil-error rule is asserted through
+// internal/fabricengine/fabrictest's tagged matrix in batch 7 instead.
+func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
+	t.Run("RemovePath_AbsentTargetRecordsNothing", func(t *testing.T) {
+		container := t.TempDir()
+		absent := filepath.Join(container, "does-not-exist")
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    absent,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtyScopeTracked(),
+		}
+		rec := NewMutations("")
+		if err := removePath(rec, req); err != nil {
+			t.Fatalf("removePath() on absent target = %v; want nil", err)
+		}
+		if got := rec.Len(); got != 0 {
+			t.Errorf("removePath() on absent target recorded %d entries; want 0", got)
+		}
+	})
+
+	t.Run("RemovePath_DirectoryRecordsRecursive", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "dir")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			ownership: ownedFreshlyCreatedPath(createdToken{path: filepath.Clean(target), worktree: false}),
+			dirtiness: dirtinessNA("test"),
+		}
+		rec := NewMutations("")
+		if err := removePath(rec, req); err != nil {
+			t.Fatalf("removePath() on directory = %v; want nil", err)
+		}
+		entries := rec.Entries()
+		if len(entries) != 1 || entries[0].Kind != KindPathRemoved || entries[0].Detail != "recursive" {
+			t.Errorf("removePath() on directory recorded %+v; want exactly one path_removed with detail recursive", entries)
+		}
+	})
+
+	t.Run("RemovePath_FileRecordsSingle", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "file")
+		if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    target,
+			ownership: ownedFreshlyCreatedPath(createdToken{path: filepath.Clean(target), worktree: false}),
+			dirtiness: dirtinessNA("test"),
+		}
+		rec := NewMutations("")
+		if err := removePath(rec, req); err != nil {
+			t.Fatalf("removePath() on file = %v; want nil", err)
+		}
+		entries := rec.Entries()
+		if len(entries) != 1 || entries[0].Kind != KindPathRemoved || entries[0].Detail != "single" {
+			t.Errorf("removePath() on file recorded %+v; want exactly one path_removed with detail single", entries)
+		}
+	})
+
+	t.Run("RemovePath_RefusedRequestRecordsNothing", func(t *testing.T) {
+		container := t.TempDir()
+		outside := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    outside,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtyScopeTracked(),
+		}
+		rec := NewMutations("")
+		if err := removePath(rec, req); err == nil {
+			t.Fatalf("removePath() on a containment-refused request = nil; want a refusal")
+		}
+		if got := rec.Len(); got != 0 {
+			t.Errorf("removePath() on a refused request recorded %d entries; want 0", got)
+		}
+	})
+
+	t.Run("RemoveLink_RefusedRequestRecordsNothing", func(t *testing.T) {
+		container := t.TempDir()
+		outside := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    outside,
+			ownership: ownedFabricHub(),
+			dirtiness: dirtinessNA("test"),
+		}
+		rec := NewMutations("")
+		if err := removeLink(rec, req); err == nil {
+			t.Fatalf("removeLink() on a containment-refused request = nil; want a refusal")
+		}
+		if got := rec.Len(); got != 0 {
+			t.Errorf("removeLink() on a refused request recorded %d entries; want 0", got)
+		}
+	})
+
+	t.Run("RemoveLink_AbsentTargetRecordsNothing", func(t *testing.T) {
+		container := t.TempDir()
+		absent := filepath.Join(container, "does-not-exist-link")
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    absent,
+			ownership: ownedDriftedWiredJunction([]string{absent}),
+			dirtiness: dirtinessNA("test"),
+		}
+		rec := NewMutations("")
+		if err := removeLink(rec, req); err != nil {
+			t.Fatalf("removeLink() on absent target = %v; want nil", err)
+		}
+		if got := rec.Len(); got != 0 {
+			t.Errorf("removeLink() on absent target recorded %d entries; want 0 (fslink.Remove's own idempotence must not become a recorded removal)", got)
+		}
+	})
+
+	t.Run("RemoveLink_PresentLinkRecordsOne", func(t *testing.T) {
+		dir := t.TempDir()
+		target := filepath.Join(dir, "target")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("mkdir target: %v", err)
+		}
+		link := filepath.Join(dir, "link")
+		if err := fslink.CreateDirLink(link, target); err != nil {
+			t.Fatalf("CreateDirLink: %v", err)
+		}
+		req := pathRequest{
+			what:      "test",
+			container: dir,
+			target:    link,
+			ownership: ownedWiredJunction([]string{link}, target),
+			dirtiness: dirtinessNA("test"),
+		}
+		rec := NewMutations("")
+		if err := removeLink(rec, req); err != nil {
+			t.Fatalf("removeLink() on present link = %v; want nil", err)
+		}
+		entries := rec.Entries()
+		if len(entries) != 1 || entries[0].Kind != KindLinkRemoved {
+			t.Errorf("removeLink() on present link recorded %+v; want exactly one link_removed", entries)
+		}
+	})
+
+	t.Run("CreateExclusiveDir_SuccessRecordsOne", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "fresh")
+		rec := NewMutations("")
+		if _, err := createExclusiveDir(rec, target); err != nil {
+			t.Fatalf("createExclusiveDir() = %v; want nil", err)
+		}
+		entries := rec.Entries()
+		if len(entries) != 1 || entries[0].Kind != KindDirCreated {
+			t.Errorf("createExclusiveDir() recorded %+v; want exactly one dir_created", entries)
+		}
+	})
+
+	t.Run("CreateExclusiveDir_EEXISTRecordsNothing", func(t *testing.T) {
+		container := t.TempDir()
+		target := filepath.Join(container, "already-there")
+		if err := os.Mkdir(target, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		rec := NewMutations("")
+		if _, err := createExclusiveDir(rec, target); err == nil {
+			t.Fatalf("createExclusiveDir() on an already-existing path = nil; want EEXIST")
+		}
+		if got := rec.Len(); got != 0 {
+			t.Errorf("createExclusiveDir() on EEXIST recorded %d entries; want 0", got)
+		}
+	})
+
+	// A nil recorder must never panic: every not-yet-threaded call site degrades to recording
+	// nothing rather than crashing.
+	t.Run("NilRecorderDoesNotPanic", func(t *testing.T) {
+		container := t.TempDir()
+
+		removeTarget := filepath.Join(container, "nil-rec-file")
+		if err := os.WriteFile(removeTarget, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write file: %v", err)
+		}
+		removeReq := pathRequest{
+			what:      "test",
+			container: container,
+			target:    removeTarget,
+			ownership: ownedFreshlyCreatedPath(createdToken{path: filepath.Clean(removeTarget), worktree: false}),
+			dirtiness: dirtinessNA("test"),
+		}
+		if err := removePath(nil, removeReq); err != nil {
+			t.Errorf("removePath(nil, ...) = %v; want nil", err)
+		}
+
+		linkTarget := filepath.Join(container, "nil-rec-link-target")
+		if err := os.Mkdir(linkTarget, 0o755); err != nil {
+			t.Fatalf("mkdir link target: %v", err)
+		}
+		link := filepath.Join(container, "nil-rec-link")
+		if err := fslink.CreateDirLink(link, linkTarget); err != nil {
+			t.Fatalf("CreateDirLink: %v", err)
+		}
+		linkReq := pathRequest{
+			what:      "test",
+			container: container,
+			target:    link,
+			ownership: ownedWiredJunction([]string{link}, linkTarget),
+			dirtiness: dirtinessNA("test"),
+		}
+		if err := removeLink(nil, linkReq); err != nil {
+			t.Errorf("removeLink(nil, ...) = %v; want nil", err)
+		}
+
+		dirTarget := filepath.Join(container, "nil-rec-dir")
+		if _, err := createExclusiveDir(nil, dirTarget); err != nil {
+			t.Errorf("createExclusiveDir(nil, ...) = %v; want nil", err)
+		}
+	})
+}
+
 // assertRefusalCheck fails the test unless err is a *destructiveRefusal carrying want as its Check.
-func assertRefusalCheck(t *testing.T, err error, want destructiveCheck) {
+func assertRefusalCheck(t *testing.T, err error, want Check) {
 	t.Helper()
 	var refusal *destructiveRefusal
 	if !errors.As(err, &refusal) {
