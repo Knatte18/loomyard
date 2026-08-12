@@ -37,6 +37,14 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 	}
 	defer l.Release()
 
+	return writeJSONUnlocked(path, v)
+}
+
+// writeJSONUnlocked marshals v as indented JSON and writes it to path atomically, assuming the
+// caller already holds whatever lock guards path.
+// It exists so WriteJSON and UpdateJSON can share this body without either composing on top of the
+// other's own internal lock acquisition.
+func writeJSONUnlocked[T any](path string, v T) error {
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
@@ -60,6 +68,17 @@ func ReadJSON[T any](path, lockPath string) (T, bool, error) {
 		return zero, false, fmt.Errorf("acquire read lock: %w", err)
 	}
 	defer l.Release()
+
+	return readJSONUnlocked[T](path)
+}
+
+// readJSONUnlocked reads and decodes a JSON value from path, assuming the caller already holds
+// whatever lock guards path.
+// Returns (zero, false, nil) if the file does not exist.
+// It exists so ReadJSON and UpdateJSON can share this body without either composing on top of the
+// other's own internal lock acquisition.
+func readJSONUnlocked[T any](path string) (T, bool, error) {
+	var zero T
 
 	data, err := os.ReadFile(path)
 	if err != nil {
