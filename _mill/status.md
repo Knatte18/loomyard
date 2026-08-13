@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-destroy-executors
+phase: approved-outer-call-sites
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-13T15:14:25Z'
 approved-gitexec-checked-entry-point  '2026-08-13T15:21:27Z'
 approved-gitrepo-checked-pair  '2026-08-13T15:29:59Z'
 approved-fabric-destroy-executors  '2026-08-13T15:36:55Z'
+approved-outer-call-sites  '2026-08-13T15:40:23Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     commit_sha: 40b2e512dc035a1929087f2d1675af40ba06d217
     verify_baseline_failures: []
   - name: outer-call-sites
-    state: running
+    state: approved
     implementer_session: 67298108-874c-4c01-9322-7b6495420f80
     start_sha: 7fc1fe4a22ef9f9b0d337088cc1aeeb0ab8fb89a
+    commit_sha: edff8d727bd0b74848158d9dd4824cabdb2f4dbc
     verify_baseline_failures: []
   - name: fabric-destroy-caller-files
     state: pending
