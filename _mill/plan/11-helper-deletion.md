@@ -69,6 +69,7 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   - `internal/loomengine/config_test.go`
   - `internal/fabricengine/export_test.go`
   - `internal/fabricengine/reconcile_stale_registration_test.go`
+  - `internal/fabricengine/commit_lock_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -99,6 +100,12 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   A second deviation, same shape: `internal/fabricengine/reconcile_stale_registration_test.go`'s `newFabricFixture` still returned `gitkit.PairedFixture` as a literal struct type, not just a name in prose — its own doc comment even said the field-mapping wrapper was "kept only so ... callers do not all need to change their field-access pattern in this same batch," anticipating exactly this card's cleanup.
   Replaced with a package-local `fabricFixture` struct carrying the identical field set, so this file's twenty existing `newFabricFixture` callers across the package need no change.
   Added to this card's `Edits:` list for the same reason as the first deviation.
+
+  A third, differently-shaped deviation, surfaced only by this card's `go vet -tags smoke ./...` run: batch 8's export-shim growth (`grow the export shim for the relocating weft suites`) added `export_test.go`'s untagged `WeftWriteLockPathForTest`, wrapping `weftWriteLockPath`, a symbol defined only in the `//go:build integration`-tagged `commit_lock_integration_test.go`.
+  Neither batch 8 nor 9 nor 10 runs `go vet -tags smoke`, so the resulting undefined-symbol failure under the smoke tag was invisible until this batch's `verify:` restored that gate.
+  Fixed by moving the wrapper into `commit_lock_integration_test.go` itself, alongside the symbol it wraps, so both share the same build tag;
+  its one caller (`commit_integration_test.go`, also integration-tagged) is unaffected.
+  Added to this card's `Edits:` list for the same reason as the other two.
 
   Finish by confirming `grep -rn 'CopyPaired\|CopyPairedLocal\|CopyWeft\|CopyWarpHub' --include=*.go internal cmd` is empty, which is card 70's third gate satisfied in advance.
 - **Commit:** `docs(test): retarget prose naming the retired fixture helpers`
