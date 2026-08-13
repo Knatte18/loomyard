@@ -9,18 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **lyxtest builds real fabric hubs — invert the dependency** — `internal/lyxtest`'s fixtures are hand-assembled approximations of a fabric hub, never produced by `CloneHub`: no `_board`, no junctions, no `.lyx-anchor`, no warp binding.
-   Every test built on them asserts against a shape someone wrote down rather than the shape fabric produces, and nothing detects drift between the two.
-   Invert it — `lyxtest` imports `fabricengine` and builds hub fixtures by really cloning — so drift becomes impossible by construction instead of by discipline.
-   Both objections were measured and both failed: the import cycle touches 14 `fabricengine` files (which move to `fabrictest`, created by slice 13) plus two files needing only `MustRun`,
-   and the runtime cost is **+3.6 s on Tier 2's ~132 s, about 2.7 %** — 167 `Copy*` call sites at a measured 24 ms per full fixture against today's 2.3 ms. The template-and-copy model is not discarded but moves one level down: **copy the two bares** (zero symlinks, ~2 ms) and **clone the hub** (~22 ms, unavoidable since its junctions carry absolute targets).
-   Local bare repos are real remotes, so `push`/`pull`/`sync` need no GitHub — the repo already tests force-pushed upstreams and genuine non-fast-forwards this way.
-   The real cost is migrating whichever assertions break on the true hub shape,
-   and each such break marks a test currently asserting against an invented one.
-   Windows is unmeasured and is the one open question.
-   Builds on the fabric campaign's landed slice 13 (see Done below), which created the `fabrictest` package this needs as a landing zone.
-   See [designs/lyxtest-real-hubs.md](designs/lyxtest-real-hubs.md).
-
 1. **Shed: shared outer phase-FSM, with NO predefined slots** — revised model (2026-08-08, superseding the earlier "two swappable slots" description): `Shed` has no built-in concept of Preflight, a producer-slot, or Finalize at all — it is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry.
    Everything that used to be "special" is just a producer like any other: `loom`'s own Preflight is the first producer in `loom`'s list;
    Finalize is an ordinary producer both `loom` and `Hardener` happen to reference at the end of their own list (shared by reference, not by Shed special-casing it) — Raddle-regeneration is now scoped as part of Finalize's own contract, not a separate producer, since merge-conflict risk makes updating Raddle before the Finalize merge impractical (`Tenter`/`Hardener` will need the equivalent, deferred).
@@ -162,6 +150,14 @@ No build order is implied between these items.
 
 ## Done
 
+1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning, never hand-assembled.
+   `internal/gitkit` is the below-fabric leaf holding git primitives (`MustRun`, `SeedConfig`, `HermeticGitEnv`, `GitStatusPorcelain`, and the primitive repo fixture `CopyRepo`, callable from `internal/lyxcwd` alone);
+   `internal/hubforge` is the repo-wide real-hub factory, building every fixture through `fabriccli.CloneAndWire`.
+   `internal/fabricengine/fabrictest` no longer exists — fabric's own live-state assertions moved to `package fabricengine_test` files inside `internal/fabricengine/`.
+   The migration touched 141 measured `Copy*` call expressions, of which 132 moved to `hubforge.NewHub` and 9 stayed in `internal/lyxcwd` on `gitkit.CopyRepo`;
+   the predicted cost was **+2.9 s on a ~132 s Tier 2 run**.
+   See the `internal/gitkit` and `internal/hubforge` package documentation.
+
 1. **fabric** — unified warp↔weft git-coordination module replacing warp/weft;
    cut over and old modules deleted.
    Warp-rebase / remote-reconcile recovery landed via `Fabric.Pull` (`internal/fabricengine/pull.go`): fabric-layer detection (ancestry, never `SHAExists`) + safe re-anchor + a `PullResult` PATTERN-residue document, driven by `lyx fabric pull`.
@@ -177,7 +173,7 @@ No build order is implied between these items.
    Dirtiness scope is a caller-declared member of a closed sum type, and every one of the roughly 29 converted call sites kept the scope it already had.
    All four fabric crucible follow-up slices (12-15) have now landed — see below.
 
-1. **fabric: crucible follow-ups — slice 13** — the live-state integration harness (`internal/fabricengine/fabrictest`, `//go:build integration`) that validates slice 12's gate against real cloned hubs in dirty and hostile on-disk state, broadening coverage to ten states, nine verbs, and hostile inputs.
+1. **fabric: crucible follow-ups — slice 13** — the live-state integration harness (`package fabricengine_test`, `//go:build integration`, inside `internal/fabricengine/`) that validates slice 12's gate against real cloned hubs in dirty and hostile on-disk state, broadening coverage to ten states, nine verbs, and hostile inputs.
    The hub factory drives real clones through the extracted `fabriccli.CloneAndWire`, never a hand-assembled fixture;
    the ten-state × nine-verb × two-anchor cross product runs with prefix-rooted manifest permits, so a cell asserts "the operator's content is still on disk," not merely "the verb returned an error";
    the two refusal-expectation helpers pin a refusal to the exact layer that produced it, gate versus pre-flight;
