@@ -748,7 +748,8 @@ func importsWeftname(f *ast.File) bool {
 // owner set, that contains the bare token "weft" or "warp" (in an identifier, a string literal,
 // or a comment); it fails any such file, owner set or not, that contains a fabric-sense "host"
 // phrase -- host is retired, not merely scoped, so the owner set never carves out a host hit. It
-// also fails any file outside {fabricengine, fabriccli, gitkit} that imports internal/weftname.
+// also fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports
+// internal/weftname.
 // It additionally walks every internal/**/*.md file (a plain walk, not a //go:embed parse, so a
 // future non-embedded template is policed rather than silently skipped) for the same bare-token
 // and host-phrase rules. *_test.go files are excluded from all three rules -- rule (3) included,
