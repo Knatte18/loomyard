@@ -104,7 +104,9 @@ batches:
     commit_sha: 36fa7fc1bd339a1bfdd3351b9296e4944cb33af7
     verify_baseline_failures: []
   - name: fabricengine in-package hub
-    state: pending
+    state: running
+    implementer_session: dedf8497-38b3-4e8e-8f6e-99e090dc99e0
+    start_sha: c2b7e98fd7ff66fb734918cb85186705d71c358e
     verify_baseline_failures: []
   - name: helper deletion
     state: pending
