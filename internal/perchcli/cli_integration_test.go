@@ -21,10 +21,12 @@ import (
 // rejected loud before pause ever stats or writes anything, rather than resolving outside the perch
 // runs area.
 func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
-	seedPerchFixture(t)
+	t.Parallel()
+
+	h := seedPerchFixture(t)
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"pause", "--run-id", "../../escaped"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"pause", "--run-id", "../../escaped"})
 
 	if exitCode != 1 {
 		t.Errorf(`RunCLI([pause --run-id ../../escaped]) = %d; want 1`, exitCode)
@@ -32,7 +34,11 @@ func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 	if !strings.Contains(out.String(), "lowercase alphanumerics and dashes only") {
 		t.Errorf(`RunCLI([pause --run-id ../../escaped]) output missing the run-id shape error; got: %q`, out.String())
 	}
-	if _, err := os.Stat(filepath.Join("..", "..", "escaped")); err == nil {
+	// Rewritten against an absolute path derived from the hub, since this test no longer chdirs into
+	// h.PrimeWorktree(): proving "../../escaped" did not escape the perch runs area no longer relies
+	// on a process-relative Stat, which would be meaningless once cwd is passed per call instead of
+	// held by the process.
+	if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), "..", "..", "escaped")); err == nil {
 		t.Error("a directory was created outside the perch runs area; --run-id validation did not prevent the escape")
 	}
 }
@@ -42,9 +48,7 @@ func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 func seedPerchFixture(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
-	h := hubforge.NewHub(t, ".")
-	t.Chdir(h.PrimeWorktree())
-	return h
+	return hubforge.NewHub(t, ".")
 }
 
 // TestRunCLI_Pause_FinishedBlockRefused verifies that pausing a block whose state.json already
@@ -52,6 +56,8 @@ func seedPerchFixture(t *testing.T) *hubforge.Hub {
 // flag no run loop will ever observe (proven misleading live: a finished-STUCK block accepted a
 // pause and the operator had no signal it could never be honored).
 func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
+	t.Parallel()
+
 	h := seedPerchFixture(t)
 
 	runDir := filepath.Join(perchengine.RunsDir(h.Location), "finishedrun")
@@ -65,7 +71,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"pause", "--run-id", "finishedrun"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"pause", "--run-id", "finishedrun"})
 	if exitCode != 1 {
 		t.Fatalf(`RunCLI([pause --run-id finishedrun]) = %d; want 1, output: %s`, exitCode, out.String())
 	}
@@ -88,12 +94,12 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 // The pause verb's run-dir lookup exposes the resolved base: a run dir created under
 // <cwd>/_lyx/perch must be found.
 func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
+	t.Parallel()
+
 	// Build the hub at the real "nested" anchor: fabriccli.CloneAndWire records that anchor at
 	// BoardDir for real, which is the entire point of this migration -- a hand-rolled anchor marker
 	// on top of a real hub would be asserting against an invented shape again.
 	h := hubforge.NewHub(t, "nested")
-
-	t.Chdir(h.Location.AnchorPath())
 
 	runDir := filepath.Join(perchengine.RunsDir(h.Location), "nestedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
@@ -101,7 +107,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"pause", "--run-id", "nestedrun"})
+	exitCode := RunCLIIn(h.Location.AnchorPath(), &out, []string{"pause", "--run-id", "nestedrun"})
 	if exitCode != 0 {
 		t.Fatalf(`RunCLI([pause --run-id nestedrun]) = %d; want 0 — the run dir under <cwd>/_lyx/perch must be found, output: %s`, exitCode, out.String())
 	}
@@ -115,10 +121,12 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 // with a "no such run" error, rather than silently fabricating an empty run dir for a pause flag
 // with nothing to pause.
 func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
-	seedPerchFixture(t)
+	t.Parallel()
+
+	h := seedPerchFixture(t)
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"pause", "--run-id", "does-not-exist"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"pause", "--run-id", "does-not-exist"})
 
 	if exitCode != 1 {
 		t.Errorf(`RunCLI([pause --run-id does-not-exist]) = %d; want 1`, exitCode)
@@ -133,6 +141,8 @@ func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
 // its _lyx run dir — succeeds, and that a second pause call against the same run-id is a no-op
 // success (idempotent re-pause).
 func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
+	t.Parallel()
+
 	h := seedPerchFixture(t)
 
 	runDir := filepath.Join(perchengine.RunsDir(h.Location), "myrun")
@@ -141,7 +151,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"pause", "--run-id", "myrun"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"pause", "--run-id", "myrun"})
 	if exitCode != 0 {
 		t.Fatalf(`RunCLI([pause --run-id myrun]) = %d; want 0, output: %s`, exitCode, out.String())
 	}
@@ -163,7 +173,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 	// Idempotent re-pause: calling pause again while the flag already
 	// exists is a no-op success, not an error.
 	var out2 bytes.Buffer
-	exitCode2 := RunCLI(&out2, []string{"pause", "--run-id", "myrun"})
+	exitCode2 := RunCLIIn(h.PrimeWorktree(), &out2, []string{"pause", "--run-id", "myrun"})
 	if exitCode2 != 0 {
 		t.Fatalf(`second RunCLI([pause --run-id myrun]) = %d; want 0, output: %s`, exitCode2, out2.String())
 	}

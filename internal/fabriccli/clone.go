@@ -8,6 +8,7 @@
 package fabriccli
 
 import (
+	"context"
 	"io"
 	"path/filepath"
 
@@ -109,20 +110,21 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 
 // runCloneWithReset executes the clone subcommand. The hub teardown for an idempotent re-clone is no
 // longer performed here: it is driven through CloneOptions.Reset inside CloneHub itself, which can
-// derive the hub path in either the one- or two-argument form. It parses arguments, resolves cwd,
-// and delegates the entire clone-and-wire sequence to CloneAndWire. The returned envelope carries
-// "hub" and "anchor" from the resolved geometry, plus "warp" (the effective warp URL, supplied or
-// derived) and "warp_binding_recorded" (whether this clone wrote the .lyx-warp record) — both
-// always present so a consumer never has to distinguish absent from false.
-func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool) int {
+// derive the hub path in either the one- or two-argument form. It parses arguments, resolves the
+// seam cwd, derives the clone destination from into, and delegates the entire clone-and-wire
+// sequence to CloneAndWire. The returned envelope carries "hub" and "anchor" from the resolved
+// geometry, plus "warp" (the effective warp URL, supplied or derived) and "warp_binding_recorded"
+// (whether this clone wrote the .lyx-warp record) — both always present so a consumer never has to
+// distinguish absent from false.
+func runCloneWithReset(ctx context.Context, out io.Writer, args []string, reset bool, subpath string, forceBootstrap bool, into string) int {
 	// Nothing has been mutated yet at cwd resolution: a bare output.Err carries no record.
-	cwd, err := lyxcwd.Getwd()
+	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
 
 	if len(args) != 1 && len(args) != 2 {
-		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]")
+		return output.Err(out, "usage: lyx fabric clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]")
 	}
 	weftURL := args[0]
 	warpURL := ""
@@ -130,7 +132,23 @@ func runCloneWithReset(out io.Writer, args []string, reset bool, subpath string,
 		warpURL = args[1]
 	}
 
-	res, err := CloneAndWire(cwd, fabricengine.CloneOptions{
+	// The new hub is created in this directory, never the process cwd: an empty --into
+	// yields the seam cwd unchanged, an absolute --into is cleaned as given, and a
+	// relative --into resolves against the seam cwd, exactly like the --target-dir
+	// rebase in internal/scoutcli/cli.go — resolving against the process cwd here would
+	// reintroduce the very dependency this task removes, in the one verb where cwd is a
+	// destination rather than a lookup anchor.
+	dest := cwd
+	switch {
+	case into == "":
+		// dest already equals cwd.
+	case filepath.IsAbs(into):
+		dest = filepath.Clean(into)
+	default:
+		dest = filepath.Join(cwd, into)
+	}
+
+	res, err := CloneAndWire(dest, fabricengine.CloneOptions{
 		WeftURL:        weftURL,
 		WarpURL:        warpURL,
 		Subpath:        subpath,

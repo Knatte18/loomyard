@@ -6,6 +6,7 @@ package configcli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -252,9 +253,9 @@ func buildConfigLong() string {
 // and emits a JSON envelope. When apply is false (dry-run) no files are written; when
 // apply is true, changes are committed to disk atomically. Returns exit code 0 on success,
 // 1 on any error.
-func runReconcile(out io.Writer, apply bool) int {
-	// Resolve the current working directory and layout.
-	cwd, err := lyxcwd.Getwd()
+func runReconcile(ctx context.Context, out io.Writer, apply bool) int {
+	// Resolve the seam cwd and layout.
+	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("getwd: %v", err))
 	}
@@ -322,10 +323,10 @@ func Command() *cobra.Command {
 	configCmd.Flags().StringArray("set", nil, "set config key=value directly, bypassing the editor (repeatable)")
 	// The RunE closure captures configCmd so the --print/--set flags are
 	// readable without consulting os.Args directly.
-	configCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
+	configCmd.RunE = clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 		printOnly, _ := configCmd.Flags().GetBool("print")
 		setFlags, _ := configCmd.Flags().GetStringArray("set")
-		return runConfig(out, args, printOnly, setFlags)
+		return runConfig(ctx, out, args, printOnly, setFlags)
 	})
 
 	// Build the reconcile subcommand and register it so cobra routes
@@ -340,8 +341,8 @@ their live templates, reporting added keys (new in template) and removed keys
 Pass --apply to write the reconciled files to disk atomically.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
-	reconcileCmd.RunE = clihelp.WrapRun(func(out io.Writer, args []string) int {
-		return runReconcile(out, *apply)
+	reconcileCmd.RunE = clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
+		return runReconcile(ctx, out, *apply)
 	})
 	configCmd.AddCommand(reconcileCmd)
 
@@ -354,20 +355,33 @@ Pass --apply to write the reconciled files to disk atomically.`,
 // tests compile and pass unchanged.
 // The cobra command carries both stdout and stderr into out for single-buffer test capture.
 func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
+	return RunCLIIn("", out, args)
+}
+
+// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
+// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
+// the execution context via clihelp.ExecuteIn.
+// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// ExecuteIn would panic on every existing RunCLI call.
+func RunCLIIn(cwd string, out io.Writer, args []string) int {
+	if cwd == "" {
+		return clihelp.Execute(Command(), out, args)
+	}
+	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
 
 // runConfig is the package-private handler for the lyx config command.
 //
-// It resolves the layout from the current working directory, builds the real
-// editor (DefaultEditor) and the real sync function (fabriccli.RunCLI with "sync"),
-// and dispatches to dispatch with os.Stdin as the interactive input reader.
+// It resolves the layout from the seam cwd, builds the real editor (DefaultEditor) and the real
+// sync function (fabriccli.RunCLIIn with "sync", carrying the same seam cwd rather than letting the
+// nested call re-derive it from process state), and dispatches to dispatch with os.Stdin as the
+// interactive input reader.
 // When printOnly is true the command is read-only: it prints on-disk YAML
 // without opening an editor or running sync. setFlags carries the raw
 // "key=value" strings collected from repeated --set flags.
-func runConfig(out io.Writer, args []string, printOnly bool, setFlags []string) int {
-	// Resolve the current working directory.
-	cwd, err := lyxcwd.Getwd()
+func runConfig(ctx context.Context, out io.Writer, args []string, printOnly bool, setFlags []string) int {
+	// Resolve the seam cwd.
+	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -378,9 +392,11 @@ func runConfig(out io.Writer, args []string, printOnly bool, setFlags []string) 
 		return output.Err(out, err.Error())
 	}
 
-	// Build the real editor and sync functions.
+	// Build the real editor and sync functions. The nested fabriccli call carries the
+	// already-resolved cwd rather than re-deriving it from process state -- letting it
+	// do so is precisely the bug this seam removes.
 	realSync := func(w io.Writer) int {
-		return fabriccli.RunCLI(w, []string{"sync"})
+		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
 	}
 
 	// Dispatch to the print path, --set path, interactive menu, or specific module.

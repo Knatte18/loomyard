@@ -50,9 +50,8 @@ func TestE2ESyncIntegration(t *testing.T) {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", warpWorktreePath, err)
 	}
 
-	// Chdir into the worktree so fabriccli.RunCLI's cwd resolution lands on the fixture.
-	// NOTE: This test must NOT call t.Parallel() due to t.Chdir.
-	t.Chdir(warpWorktreePath)
+	// NOTE: This test must NOT call t.Parallel(): it calls t.Setenv("WEFT_SKIP_GIT", …) and
+	// t.Setenv("WEFT_SKIP_PUSH", …) below, which panic under t.Parallel() exactly as t.Chdir did.
 
 	// Explicitly clear WEFT_SKIP_GIT and WEFT_SKIP_PUSH so the commit is not a silent no-op.
 	t.Setenv("WEFT_SKIP_GIT", "")
@@ -67,10 +66,12 @@ func TestE2ESyncIntegration(t *testing.T) {
 		return os.WriteFile(path, []byte(validYAML), 0o644)
 	}
 
-	// Create an injected sync function that calls fabriccli.RunCLI with "commit" instead of "sync".
-	// (sync calls a detached spawnPush that cannot run in-process, so we use commit.)
+	// Create an injected sync function that calls fabriccli.RunCLIIn with "commit" instead of "sync".
+	// (sync calls a detached spawnPush that cannot run in-process, so we use commit.) The cwd is not
+	// a configcli dependence at all: dispatch is already given an explicit layout above, so this is
+	// the one seam the injectedSync closure needs its own cwd for.
 	injectedSync := func(w io.Writer) int {
-		return fabriccli.RunCLI(w, []string{"commit"})
+		return fabriccli.RunCLIIn(warpWorktreePath, w, []string{"commit"})
 	}
 
 	// Run dispatch with the fake editor and injected sync.
@@ -178,19 +179,8 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 		t.Fatalf("dispatch(--set) = %d; want 0; output: %q", setCode, setOut.String())
 	}
 
-	// Chdir into the temp repo so lyxcwd.Getwd inside RunCLI resolves
-	// there, then run reconcile.
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd) //nolint:errcheck
-
 	var reconcileOut bytes.Buffer
-	reconcileCode := RunCLI(&reconcileOut, []string{"reconcile"})
+	reconcileCode := RunCLIIn(tmpDir, &reconcileOut, []string{"reconcile"})
 	if reconcileCode != 0 {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0; output: %q", reconcileCode, reconcileOut.String())
 	}
