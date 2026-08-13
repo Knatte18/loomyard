@@ -34,7 +34,7 @@ func Command() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			cwd, err := lyxcwd.Getwd()
+			cwd, err := lyxcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(cmd.OutOrStdout(), fmt.Sprintf("failed to get working directory: %v", err))
 				clihelp.Abort(ctx, 1)
@@ -98,5 +98,17 @@ func Command() *cobra.Command {
 
 // RunCLI is the public seam for the ide module CLI.
 func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
+	return RunCLIIn("", out, args)
+}
+
+// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
+// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
+// the execution context via clihelp.ExecuteIn.
+// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// ExecuteIn would panic on every existing RunCLI call.
+func RunCLIIn(cwd string, out io.Writer, args []string) int {
+	if cwd == "" {
+		return clihelp.Execute(Command(), out, args)
+	}
+	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

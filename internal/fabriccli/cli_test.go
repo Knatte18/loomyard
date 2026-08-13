@@ -12,6 +12,7 @@ package fabriccli_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,19 +30,40 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// setupCLIRepo builds a real hub via hubforge.NewHub, changes into its prime warp worktree, and
-// overrides the repo-wide fabric.yaml at the board dir with a non-default branch_prefix so RunCLI's
-// migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can be seen resolving a
-// genuinely overridden value rather than the plain registered template hubforge.NewHub already
-// materializes on its own.
-// Returns the hub path. Stays serial (no t.Parallel) because t.Chdir is required for RunCLI.
-func setupCLIRepo(t *testing.T) string {
+// lyxFabricCLISubprocessCwdEnv is the env var that gates this file's re-exec entry point below: when
+// set, the process is not a normal `go test` run but a subprocess spawned by
+// TestRunCLI_FallbackCwdMatchesInjectedCwd, deliberately standing in a target directory via
+// exec.Command's Dir field so fabriccli.RunCLI's Getwd fallback can be observed for real, without any
+// t.Chdir/os.Chdir call anywhere in this file — this file is on the cwdmutation guard's subject set in
+// cmd/lyx/cwdmutation_test.go and carries no exemption.
+const lyxFabricCLISubprocessCwdEnv = "LYX_FABRICCLI_SUBPROCESS_CWD"
+
+// init intercepts the subprocess-mode re-exec before testing.Main ever runs, so the child process's
+// stdout carries only fabriccli.RunCLI's own JSON output — never the "=== RUN"/"--- PASS" noise `go
+// test` would otherwise interleave with it, which would defeat the byte-for-byte comparison
+// TestRunCLI_FallbackCwdMatchesInjectedCwd performs against fabriccli.RunCLIIn's output.
+func init() {
+	if os.Getenv(lyxFabricCLISubprocessCwdEnv) == "" {
+		return
+	}
+	var out bytes.Buffer
+	code := fabriccli.RunCLI(&out, []string{"pairs"})
+	os.Stdout.Write(out.Bytes())
+	os.Exit(code)
+}
+
+// setupCLIRepo builds a real hub via hubforge.NewHub and overrides the repo-wide fabric.yaml at the
+// board dir with a non-default branch_prefix so RunCLIIn's migrated topology-verb sites
+// (LoadConfig(fabricengine.BoardDir(l.HubPath))) can be seen resolving a genuinely overridden value
+// rather than the plain registered template hubforge.NewHub already materializes on its own.
+// Returns the hub so callers drive fabriccli.RunCLIIn against h.PrimeWorktree() explicitly, rather
+// than relying on the process cwd.
+func setupCLIRepo(t *testing.T) *hubforge.Hub {
 	t.Helper()
 	h := hubforge.NewHub(t, ".")
-	t.Chdir(h.PrimeWorktree())
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: wt-\npathspec: _lyx\n")
-	return h.Path
+	return h
 }
 
 // decodeResult parses RunCLI's JSON output into a generic map.
@@ -83,11 +105,8 @@ func TestRunCLI_NoArgs(t *testing.T) {
 // TestRunCLI_UnknownSubcommand verifies that an unknown subcommand exits 1 and emits a JSON error
 // envelope with ok=false.
 func TestRunCLI_UnknownSubcommand(t *testing.T) {
-	// A temp dir is sufficient: "fabric" is not in weftVerbNames, so the
-	// PersistentPreRunE guard returns nil early, bypassing all resolution.
-	tmpDir := t.TempDir()
-	t.Chdir(tmpDir)
-
+	// "fabric" is not in weftVerbNames, so the PersistentPreRunE guard returns nil early, bypassing
+	// all resolution -- no cwd setup is needed to reach this path, whatever the process cwd is.
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"unknown"})
 
@@ -132,10 +151,10 @@ func TestRunCLI_WeftPathPushOnly(t *testing.T) {
 // TestRunCLI_PairsReturnsPairsKey verifies that "fabric pairs" resolves the topology config from
 // cwd and emits ok=true with a "pairs" key.
 func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
-	setupCLIRepo(t)
+	h := setupCLIRepo(t)
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"pairs"})
 	if exitCode != 0 {
 		t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
@@ -162,8 +181,6 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
 
-	t.Chdir(h.PrimeWorktree())
-
 	// A real hub already wires _lyx as a junction onto the weft config. Pollution means an operator
 	// replaced that junction with a real, tracked directory, so the junction must be removed first --
 	// writing through it, as the old ungeometried fixture's plain mkdir did, would land the file on the
@@ -185,7 +202,7 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-m", "accidentally track _lyx")
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"pairs"})
 	if exitCode != 0 {
 		t.Errorf("RunCLI(pairs) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
@@ -301,18 +318,14 @@ func TestRunCLI_PullShortNonEmpty(t *testing.T) {
 
 // TestRunCLI_EnvMapToOption tests that the CLI edge properly maps WEFT_SKIP_PUSH to SyncOptions on
 // the push verb.
-// This is a serial test because it exercises the cwd-based push command which reads the current
-// directory.
+// Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
+// t.Parallel() exactly as t.Chdir did.
 func TestRunCLI_EnvMapToOption(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
 	// Fabric config is a repo-wide fact read from the board dir (weft_verbs.go's migrated
 	// PersistentPreRunE): fabriccli.CloneAndWire already materializes it with the plain registered
 	// template as part of building h, so nothing further needs seeding here.
-
-	// Change to the hub directory so lyxcwd.Resolve can locate the repo from cwd;
-	// t.Chdir restores the original cwd automatically after the test.
-	t.Chdir(h.PrimeWorktree())
 
 	// Modify a file in the weft config that would be committed.
 	weftConfigFile := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "placeholder")
@@ -324,7 +337,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"push"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"push"})
 
 	if exitCode != 0 {
 		t.Errorf("RunCLI push returned %d; want 0", exitCode)
@@ -343,6 +356,8 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 // builds its sync pathspec from fabricengine.PathspecNames — the routing set, which always contains
 // "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
 // This is the single most breakage-prone edit in the whole task: a miss here is silent, not loud.
+// Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
+// t.Parallel() exactly as t.Chdir did.
 func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
@@ -350,8 +365,6 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 	// proving _lyx arrives from the routing set structurally, not from this
 	// config.
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
-
-	t.Chdir(h.PrimeWorktree())
 
 	weftConfigFile := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified for sync regression"), 0o644); err != nil {
@@ -363,7 +376,7 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"sync"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"sync"})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(sync) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
@@ -383,7 +396,7 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 // positional (<weft-url>, warp URL derived from the recorded binding) or two
 // (<weft-url> <warp-url>), and rejects both zero and three positional arguments with exit 1 and the
 // updated usage message — runCloneWithReset's len(args) != 1 && len(args) != 2 check runs before any
-// git spawn, so a t.TempDir + t.Chdir is sufficient with no fixture.
+// git spawn, so a bare t.TempDir passed as RunCLIIn's cwd is sufficient with no fixture.
 func TestRunCLI_CloneAcceptsOneOrTwoArgs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -401,10 +414,9 @@ func TestRunCLI_CloneAcceptsOneOrTwoArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			t.Chdir(tmpDir)
 
 			var out bytes.Buffer
-			exitCode := fabriccli.RunCLI(&out, tt.args)
+			exitCode := fabriccli.RunCLIIn(tmpDir, &out, tt.args)
 
 			if exitCode != 1 {
 				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
@@ -490,11 +502,10 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-weft")
 
 	cloneParent := t.TempDir()
-	t.Chdir(cloneParent)
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
-		"clone", "--subpath", "backend",
+		"clone", "--into", cloneParent, "--subpath", "backend",
 		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
@@ -576,11 +587,10 @@ func TestRunCLI_CloneDefaultSubpathAnchorsAtRoot(t *testing.T) {
 	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-root-weft")
 
 	cloneParent := t.TempDir()
-	t.Chdir(cloneParent)
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{
-		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, out.String())
@@ -606,10 +616,9 @@ func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
 	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft")
 
 	cloneParent := t.TempDir()
-	t.Chdir(cloneParent)
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"clone", filepath.ToSlash(weftBare)})
+	exitCode := fabriccli.RunCLI(&out, []string{"clone", "--into", cloneParent, filepath.ToSlash(weftBare)})
 	if exitCode != 1 {
 		t.Fatalf("RunCLI(clone <weft-url>) = %d; want 1\noutput: %s", exitCode, out.String())
 	}
@@ -656,13 +665,12 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-weft")
 
 	cloneParent := t.TempDir()
-	t.Chdir(cloneParent)
 
 	var cloneOut bytes.Buffer
 	// No --force-bootstrap: makeCLICloneWeftBare's fixture is genuinely empty (no commits), which is
 	// the unborn-HEAD case the weft-candidate guard admits on its own.
 	exitCode := fabriccli.RunCLI(&cloneOut, []string{
-		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
@@ -677,10 +685,11 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
 	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
 
-	t.Chdir(filepath.Join(hubPath, "reconcilecli-warp"))
-
+	// Proving cwd is a per-call value and not a per-process one is exactly what this test exists to
+	// demonstrate: this reconcile runs against a different directory than the clone above, passed
+	// per-call rather than hoisted to a shared variable.
 	var reconcileOut bytes.Buffer
-	exitCode = fabriccli.RunCLI(&reconcileOut, []string{"reconcile"})
+	exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-warp"), &reconcileOut, []string{"reconcile"})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0\noutput: %s", exitCode, reconcileOut.String())
 	}
@@ -713,11 +722,10 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-fail-weft")
 
 	cloneParent := t.TempDir()
-	t.Chdir(cloneParent)
 
 	var cloneOut bytes.Buffer
 	exitCode := fabriccli.RunCLI(&cloneOut, []string{
-		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+		"clone", "--into", cloneParent, filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
 	})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(clone) = %d; want 0\noutput: %s", exitCode, cloneOut.String())
@@ -735,10 +743,11 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 	unreachable := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
 	gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
 
-	t.Chdir(filepath.Join(hubPath, "reconcilecli-fail-warp"))
-
+	// Proving cwd is a per-call value and not a per-process one is exactly what this test exists to
+	// demonstrate: this reconcile runs against a different directory than the clone above, passed
+	// per-call rather than hoisted to a shared variable.
 	var reconcileOut bytes.Buffer
-	exitCode = fabriccli.RunCLI(&reconcileOut, []string{"reconcile"})
+	exitCode = fabriccli.RunCLIIn(filepath.Join(hubPath, "reconcilecli-fail-warp"), &reconcileOut, []string{"reconcile"})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0 (a failed backfill push must be non-fatal)\noutput: %s", exitCode, reconcileOut.String())
 	}
@@ -767,10 +776,8 @@ func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
 	// building h -- unlike the old fixture, no manual fslink.CreateDirLink is needed here.
 	boardLink := filepath.Join(h.PrimeWorktree(), fabricengine.BoardDirName)
 
-	t.Chdir(h.PrimeWorktree())
-
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"unwire"})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(unwire) = %d; want 0\noutput: %s", exitCode, out.String())
 	}
@@ -798,10 +805,8 @@ func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
 	// marker is needed here.
 	h := hubforge.NewHub(t, "backend")
 
-	t.Chdir(h.PrimeWeft())
-
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWeft(), &out, []string{"pairs"})
 	if exitCode == 0 {
 		t.Fatalf("RunCLI(pairs) from weft sibling = 0; want a refusal\noutput: %s", out.String())
 	}
@@ -826,10 +831,9 @@ func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
 	if err := os.Remove(cfgPath); err != nil {
 		t.Fatalf("remove repo-wide fabric config: %v", err)
 	}
-	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"reconcile"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"reconcile"})
 	if exitCode != 0 {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", exitCode, out.String())
 	}
@@ -848,8 +852,6 @@ func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
-	t.Chdir(h.PrimeWorktree())
-
 	warpSHA := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "rev-parse", "HEAD"))
 
 	tests := []struct {
@@ -864,7 +866,7 @@ func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			exitCode := fabriccli.RunCLI(&out, tt.args)
+			exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, tt.args)
 			if exitCode != 0 {
 				t.Fatalf("RunCLI(%v) = %d; want 0\noutput: %s", tt.args, exitCode, out.String())
 			}
@@ -902,10 +904,8 @@ func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T
 		t.Fatalf("create drifted board link: %v", err)
 	}
 
-	t.Chdir(h.PrimeWorktree())
-
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"unwire"})
 	if exitCode != 1 {
 		t.Fatalf("RunCLI(unwire) = %d; want 1 (a drifted board junction must be refused)\noutput: %s", exitCode, out.String())
 	}
@@ -936,5 +936,110 @@ func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T
 	}
 	if _, present := result["mutations"]; !present {
 		t.Errorf("RunCLI(unwire) output missing 'mutations' key on the failure path")
+	}
+}
+
+// TestRunCLI_FallbackCwdMatchesInjectedCwd proves fabriccli.RunCLI's process-cwd fallback and
+// fabriccli.RunCLIIn's explicit-cwd branch agree on one read-only verb: it drives "pairs" through
+// RunCLIIn(h.PrimeWorktree(), …) directly in this process, then drives the same verb through RunCLI
+// in a genuinely separate OS process whose working directory is set to h.PrimeWorktree() via
+// exec.Command's Dir field — never via a t.Chdir/os.Chdir call on this test binary's own process,
+// which this file's entry on the cwdmutation guard's subject set bans outright. The subprocess is
+// this very test binary, re-exec'd and intercepted by this file's package-level init before testing.Main
+// runs, gated by lyxFabricCLISubprocessCwdEnv, mirroring the standard library's TestHelperProcess idiom.
+func TestRunCLI_FallbackCwdMatchesInjectedCwd(t *testing.T) {
+	h := setupCLIRepo(t)
+
+	var injectedOut bytes.Buffer
+	injectedCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &injectedOut, []string{"pairs"})
+	if injectedCode != 0 {
+		t.Fatalf("RunCLIIn(pairs) = %d; want 0\noutput: %s", injectedCode, injectedOut.String())
+	}
+
+	cmd := exec.Command(os.Args[0])
+	cmd.Dir = h.PrimeWorktree()
+	cmd.Env = append(os.Environ(), lyxFabricCLISubprocessCwdEnv+"=1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	fallbackOut, runErr := cmd.Output()
+
+	fallbackCode := 0
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(runErr, &exitErr) {
+			t.Fatalf("subprocess RunCLI(pairs) failed to run: %v\nstderr: %s", runErr, stderr.String())
+		}
+		fallbackCode = exitErr.ExitCode()
+	}
+
+	if fallbackCode != injectedCode {
+		t.Errorf("RunCLI (process-cwd fallback) exit code = %d; want %d (RunCLIIn's)\nstderr: %s", fallbackCode, injectedCode, stderr.String())
+	}
+	if string(fallbackOut) != injectedOut.String() {
+		t.Errorf("RunCLI (process-cwd fallback) output = %q; want it identical to RunCLIIn(h.PrimeWorktree(), …) output %q", fallbackOut, injectedOut.String())
+	}
+}
+
+// TestRunCLI_CloneIntoFlagCreatesHubAtDirectory asserts that "fabric clone --into <dir>" creates the
+// new hub under <dir>, not under the seam cwd RunCLIIn was given — the --into flag names a genuine
+// clone destination distinct from the lookup cwd every other topology verb resolves against.
+func TestRunCLI_CloneIntoFlagCreatesHubAtDirectory(t *testing.T) {
+	fixtures := t.TempDir()
+	warpBare := makeCLICloneWarpBare(t, fixtures, "intoflag-warp")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "intoflag-weft")
+
+	callerCwd := t.TempDir()
+	dest := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLIIn(callerCwd, &out, []string{
+		"clone", "--into", dest,
+		filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(clone --into) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	hubPath, _ := result["hub"].(string)
+	if hubPath == "" {
+		t.Fatalf("RunCLIIn(clone --into) output missing non-empty 'hub' key; got %v", result)
+	}
+
+	if rel, err := filepath.Rel(dest, hubPath); err != nil || strings.HasPrefix(rel, "..") {
+		t.Errorf("hub %q was not created under --into destination %q", hubPath, dest)
+	}
+	if rel, err := filepath.Rel(callerCwd, hubPath); err == nil && !strings.HasPrefix(rel, "..") {
+		t.Errorf("hub %q was created under the caller's cwd %q instead of --into destination %q", hubPath, callerCwd, dest)
+	}
+}
+
+// TestRunCLI_CloneWithoutIntoFlagUsesResolvedCwd asserts that "fabric clone" with no --into flag
+// still creates the hub at the resolved seam cwd — --into's default, which is otherwise untested now
+// that the five clone-destination sites migrated onto --into with an explicit value.
+func TestRunCLI_CloneWithoutIntoFlagUsesResolvedCwd(t *testing.T) {
+	fixtures := t.TempDir()
+	warpBare := makeCLICloneWarpBare(t, fixtures, "nointoflag-warp")
+	weftBare := makeCLICloneWeftBare(t, fixtures, "nointoflag-weft")
+
+	cwd := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLIIn(cwd, &out, []string{
+		"clone", filepath.ToSlash(weftBare), filepath.ToSlash(warpBare),
+	})
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(clone) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	hubPath, _ := result["hub"].(string)
+	if hubPath == "" {
+		t.Fatalf("RunCLIIn(clone) output missing non-empty 'hub' key; got %v", result)
+	}
+
+	rel, err := filepath.Rel(cwd, hubPath)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		t.Errorf("hub %q was not created under the seam cwd %q when --into was omitted", hubPath, cwd)
 	}
 }

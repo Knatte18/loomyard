@@ -20,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
@@ -132,13 +133,36 @@ func WrapRun(fn func(out io.Writer, args []string) int) func(*cobra.Command, []s
 	}
 }
 
-// RunRoot sets SilenceErrors and SilenceUsage on cmd, seeds a fresh exit context, runs
-// cmd.ExecuteContext, and on a non-nil cobra error writes the JSON error envelope to out and
-// returns 1. On nil error it returns the exit code recorded via SetExit.
-// Callers must configure cmd's output writers and args before calling RunRoot;
+// WrapRunCtx is WrapRun's context-carrying sibling: it adapts a handler function with signature
+// func(context.Context, io.Writer, []string) int into a cobra RunE, passing cmd.Context() through
+// as the handler's first argument instead of discarding it.
+// Both wrappers exist side by side rather than one replacing the other, because most registration
+// sites resolve no cwd and have no use for a context argument;
+// WrapRun stays the registration shape for those (every internal/boardcli and
+// internal/selfreportcli site, and most of internal/fabriccli's), while WrapRunCtx is for a handler
+// that needs to read an injected cwd via lyxcwd.CwdFrom(ctx).
+// Short-circuit, exit-code recording, and the double-print-suppressing nil return all mirror WrapRun
+// exactly.
+func WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		// Short-circuit when a PersistentPreRunE signalled abort; the pre-run
+		// already wrote the error response and recorded the exit code.
+		if ShouldAbort(cmd.Context()) {
+			return nil
+		}
+		SetExit(cmd.Context(), fn(cmd.Context(), cmd.OutOrStdout(), args))
+		return nil
+	}
+}
+
+// RunRootCtx sets SilenceErrors and SilenceUsage on cmd, seeds a fresh exit context derived from
+// ctx, runs cmd.ExecuteContext, and on a non-nil cobra error writes the JSON error envelope to out
+// and returns 1. On nil error it returns the exit code recorded via SetExit.
+// Callers must configure cmd's output writers and args before calling RunRootCtx;
 // this function only supplies the context, the silence flags, and the error-wrapping policy.
-// Both Execute and cmd/lyx use RunRoot so the wrapping logic has exactly one implementation.
-func RunRoot(cmd *cobra.Command, out io.Writer) int {
+// RunRoot is the context.Background() special case of this function; ExecuteIn is the sibling that
+// seeds a cwd into ctx before calling this.
+func RunRootCtx(ctx context.Context, cmd *cobra.Command, out io.Writer) int {
 	// Silence cobra's own error printing; we emit a JSON envelope instead so the
 	// caller always gets a machine-parseable error shape rather than plain text.
 	cmd.SilenceErrors = true
@@ -147,14 +171,24 @@ func RunRoot(cmd *cobra.Command, out io.Writer) int {
 	// the problem well enough, and a usage dump bloats test snapshots.
 	cmd.SilenceUsage = true
 
-	ctx, es := NewExitContext(context.Background())
-	if err := cmd.ExecuteContext(ctx); err != nil {
+	execCtx, es := NewExitContext(ctx)
+	if err := cmd.ExecuteContext(execCtx); err != nil {
 		// Wrap the cobra error in the standard JSON envelope so all error paths
 		// (unknown command, bad flag, arg validation) have the same shape as domain
 		// errors. TrimSpace strips any newline cobra appends to its error strings.
 		return output.Err(out, strings.TrimSpace(err.Error()))
 	}
 	return es.code
+}
+
+// RunRoot sets SilenceErrors and SilenceUsage on cmd, seeds a fresh exit context, runs
+// cmd.ExecuteContext, and on a non-nil cobra error writes the JSON error envelope to out and
+// returns 1. On nil error it returns the exit code recorded via SetExit.
+// Callers must configure cmd's output writers and args before calling RunRoot;
+// this function only supplies the context, the silence flags, and the error-wrapping policy.
+// Both Execute and cmd/lyx use RunRoot so the wrapping logic has exactly one implementation.
+func RunRoot(cmd *cobra.Command, out io.Writer) int {
+	return RunRootCtx(context.Background(), cmd, out)
 }
 
 // Execute is the RunCLI seam used by every module and by cmd/lyx.
@@ -170,6 +204,23 @@ func Execute(cmd *cobra.Command, out io.Writer, args []string) int {
 	cmd.SetArgs(args)
 
 	return RunRoot(cmd, out)
+}
+
+// ExecuteIn is Execute's context-carrying sibling: it wires cmd exactly as Execute does, then seeds
+// cwd into the execution context via lyxcwd.WithCwd before delegating to RunRootCtx, so command
+// bodies that call lyxcwd.CwdFrom(cmd.Context()) observe cwd instead of the process working
+// directory.
+// cwd must be an absolute, non-empty path — ExecuteIn never receives an empty cwd and performs no
+// empty-string tolerance of its own; WithCwd panics on both an empty and a relative cwd.
+func ExecuteIn(cmd *cobra.Command, cwd string, out io.Writer, args []string) int {
+	// Merge stdout and stderr into a single writer so in-process tests capture
+	// cobra's error text from the same buffer as handler output.
+	cmd.SetOut(out)
+	cmd.SetErr(out)
+
+	cmd.SetArgs(args)
+
+	return RunRootCtx(lyxcwd.WithCwd(context.Background(), cwd), cmd, out)
 }
 
 // GroupRunE is the RunE for parent module group commands (e.g. "lyx fabric", "lyx board").

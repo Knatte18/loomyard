@@ -4,6 +4,7 @@
 package fabriccli
 
 import (
+	"context"
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -13,9 +14,9 @@ import (
 // runUnwire executes the fabric unwire subcommand, removing every on-disk
 // fabric junction for this worktree. Weft-side content, including _lyx and
 // .lyx, is never touched.
-func runUnwire(out io.Writer, _ []string) int {
+func runUnwire(ctx context.Context, out io.Writer, _ []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	cwd, _, err := resolveWarpLocation()
+	cwd, _, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

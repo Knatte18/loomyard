@@ -676,10 +676,11 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 }
 
 // seedPersistentPreRunFixture returns a fresh real hub with shuttle/reed/webster/batcher config
-// seeded (batcher.yaml's raw content is caller-supplied, so a test can override its active: key) and
-// chdir'd into the prime warp worktree -- unlike every other test in this file, this one drives
-// Command()'s real PersistentPreRunE (never bypassing it with a hand-built *websterCLI literal), since
-// load-time batcher selection is wired there (PersistentPreRunE, now via batcher.Active).
+// seeded (batcher.yaml's raw content is caller-supplied, so a test can override its active: key) --
+// unlike every other test in this file, this one drives Command()'s real PersistentPreRunE (never
+// bypassing it with a hand-built *websterCLI literal), since load-time batcher selection is wired
+// there (PersistentPreRunE, now via batcher.Active). Callers pass h.PrimeWorktree() to RunCLIIn
+// explicitly rather than relying on a chdir'd process cwd.
 func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) *hubforge.Hub {
 	t.Helper()
 	h := hubforge.NewHub(t, ".")
@@ -689,7 +690,6 @@ func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) *hubforge.H
 		"webster": websterengine.ConfigTemplate(),
 		"batcher": batcherConfig,
 	})
-	t.Chdir(h.PrimeWorktree())
 	return h
 }
 
@@ -698,12 +698,16 @@ func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) *hubforge.H
 // batcher.yaml active: name aborts before any verb's RunE ever runs, with an output.Err envelope
 // naming the bad batcher key -- proven here via the `status` verb, which never itself touches the
 // batcher.
+// This file stays serial: no t.Parallel() is added here even though this test's own chdir is gone,
+// because internal/webstercli/verbs_test.go is not one of the three files the Shared Decision grants
+// t.Parallel() to, and this file's other tests already call t.Setenv("WEFT_SKIP_GIT", …), which
+// panics under t.Parallel() exactly as t.Chdir did.
 func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 	batcherConfig := strings.Replace(batcher.ConfigTemplate(), `active: ""`, `active: "bogus"`, 1)
-	seedPersistentPreRunFixture(t, batcherConfig)
+	h := seedPersistentPreRunFixture(t, batcherConfig)
 
 	var out strings.Builder
-	exitCode := RunCLI(&out, []string{"status"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
 
 	if exitCode != 1 {
 		t.Fatalf("status with an unknown batcher = %d; want 1, output: %s", exitCode, out.String())
@@ -722,11 +726,15 @@ func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 // TestPersistentPreRunE_DefaultBatcherResolves proves the default (empty) batcher.yaml active: key
 // resolves to the identity batchifier and the command proceeds normally through the rest of
 // PersistentPreRunE and into the verb's own RunE.
+// This file stays serial: no t.Parallel() is added here even though this test's own chdir is gone,
+// because internal/webstercli/verbs_test.go is not one of the three files the Shared Decision grants
+// t.Parallel() to, and this file's other tests already call t.Setenv("WEFT_SKIP_GIT", …), which
+// panics under t.Parallel() exactly as t.Chdir did.
 func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
-	seedPersistentPreRunFixture(t, batcher.ConfigTemplate())
+	h := seedPersistentPreRunFixture(t, batcher.ConfigTemplate())
 
 	var out strings.Builder
-	exitCode := RunCLI(&out, []string{"status"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
 
 	if exitCode != 0 {
 		t.Fatalf("status with the default batcher = %d; want 0, output: %s", exitCode, out.String())

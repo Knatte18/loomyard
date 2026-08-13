@@ -29,11 +29,12 @@ import (
 // placeholder artifact (standing in for what a real partially-completed block, e.g.
 // a completed round before a later could-not-start gate error, would have left behind) to prove the
 // sync call actually runs and actually commits it on this path.
+// Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
+// t.Parallel() exactly as t.Chdir did.
 func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
-	t.Chdir(h.PrimeWorktree())
 
 	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
@@ -58,7 +59,7 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "fabric-on-error"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"run", "--profile", profilePath, "--run-id", "fabric-on-error"})
 
 	if exitCode != 1 {
 		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate)`, exitCode)
@@ -83,11 +84,12 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 // Uses the same deterministic engine-error skeleton as TestRunCLI_Run_FabricSyncRunsOnEngineError —
 // the sync path is identical for every outcome, so the cheapest deterministic exit exercises the
 // pathspec.
+// Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
+// t.Parallel() exactly as t.Chdir did.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
-	t.Chdir(h.PrimeWorktree())
 
 	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
@@ -126,7 +128,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "lock-exclusion"}); exitCode != 1 {
+	if exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"run", "--profile", profilePath, "--run-id", "lock-exclusion"}); exitCode != 1 {
 		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate), output: %s`, exitCode, out.String())
 	}
 
@@ -145,6 +147,8 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 // This test proves the same "run.lock/state.json.lock live under .lyx, never under the committed
 // _lyx pathspec" split still keeps the two lock files out of the commit while still landing the
 // rest of the block state, with the worktree geometry itself anchored two segments deep.
+// Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
+// t.Parallel() exactly as t.Chdir did.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -153,8 +157,8 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
 
 	// The anchored warp directory already exists in hubforge's own warp template (see hub.go's
-	// buildBareTemplate), so nothing further needs arranging here beyond chdir'ing into it.
-	t.Chdir(h.Location.AnchorPath())
+	// buildBareTemplate), so nothing further needs arranging here beyond passing it as RunCLIIn's cwd.
+	anchorCwd := h.Location.AnchorPath()
 
 	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
@@ -194,7 +198,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "nested-lock-exclusion"}); exitCode != 1 {
+	if exitCode := RunCLIIn(anchorCwd, &out, []string{"run", "--profile", profilePath, "--run-id", "nested-lock-exclusion"}); exitCode != 1 {
 		t.Fatalf(`RunCLI([run]) = %d; want 1 (a bad round-caps ladder must fail Profile.validate), output: %s`, exitCode, out.String())
 	}
 
@@ -218,11 +222,12 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 // "perch: <id> ERROR" message.
 // A dirty file is planted in the fabric-side _lyx (standing in for the winner's mid-round state) to
 // prove the sync would have had something to commit and still did not run.
+// Stays serial (no t.Parallel): it calls t.Setenv("WEFT_SKIP_PUSH", "1") below, which panics under
+// t.Parallel() exactly as t.Chdir did.
 func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
-	t.Chdir(h.PrimeWorktree())
 
 	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [3]\n"
@@ -263,7 +268,7 @@ func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	defer runLock.Release()
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"run", "--profile", profilePath, "--run-id", "busyblock"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"run", "--profile", profilePath, "--run-id", "busyblock"})
 	if exitCode != 1 {
 		t.Fatalf(`RunCLI([run --run-id busyblock]) = %d; want 1, output: %s`, exitCode, out.String())
 	}

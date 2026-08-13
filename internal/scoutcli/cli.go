@@ -33,7 +33,6 @@ package scoutcli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -130,10 +129,11 @@ scoped to one package comes back both complete and precise:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
-			// cmd/lyx/main.go; it anchors both the default target directory and
-			// the overlay-base resolution below.
-			cwd, err := lyxcwd.Getwd()
+			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// injected into ctx, or the process cwd when none was — anchoring
+			// both the default target directory and the overlay-base
+			// resolution below.
+			cwd, err := lyxcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -142,6 +142,10 @@ scoped to one package comes back both complete and precise:
 			dir := targetDir
 			if dir == "" {
 				dir = cwd
+			} else if filepath.IsAbs(dir) {
+				dir = filepath.Clean(dir)
+			} else {
+				dir = filepath.Join(cwd, dir)
 			}
 
 			registry, layout, err := lookupContext(cwd, dir)
@@ -158,9 +162,9 @@ scoped to one package comes back both complete and precise:
 			// combined with batch mode.
 			buildQuery := func(arg string) (scoutengine.Query, error) {
 				if inFile != "" {
-					return inFileQuery(inFile, arg)
+					return inFileQuery(cwd, inFile, arg)
 				}
-				return parseQuery(arg)
+				return parseQuery(cwd, arg)
 			}
 
 			if len(args) == 1 {
@@ -260,10 +264,11 @@ structurally-identical interfaces in different packages).`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
-			// cmd/lyx/main.go; it anchors both the default target directory and
-			// the overlay-base resolution below.
-			cwd, err := lyxcwd.Getwd()
+			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// injected into ctx, or the process cwd when none was — anchoring
+			// both the default target directory and the overlay-base
+			// resolution below.
+			cwd, err := lyxcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -272,6 +277,10 @@ structurally-identical interfaces in different packages).`,
 			dir := targetDir
 			if dir == "" {
 				dir = cwd
+			} else if filepath.IsAbs(dir) {
+				dir = filepath.Clean(dir)
+			} else {
+				dir = filepath.Join(cwd, dir)
 			}
 
 			registry, layout, err := lookupContext(cwd, dir)
@@ -288,9 +297,9 @@ structurally-identical interfaces in different packages).`,
 			// combined with batch mode.
 			buildQuery := func(arg string) (scoutengine.Query, error) {
 				if inFile != "" {
-					return inFileQuery(inFile, arg)
+					return inFileQuery(cwd, inFile, arg)
 				}
-				return parseQuery(arg)
+				return parseQuery(cwd, arg)
 			}
 
 			if len(args) == 1 {
@@ -365,10 +374,11 @@ matches into an ambiguity failure. Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
-			// cmd/lyx/main.go; it anchors both the default target directory and
-			// the overlay-base resolution below.
-			cwd, err := lyxcwd.Getwd()
+			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// injected into ctx, or the process cwd when none was — anchoring
+			// both the default target directory and the overlay-base
+			// resolution below.
+			cwd, err := lyxcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -377,6 +387,10 @@ matches into an ambiguity failure. Example:
 			dir := targetDir
 			if dir == "" {
 				dir = cwd
+			} else if filepath.IsAbs(dir) {
+				dir = filepath.Clean(dir)
+			} else {
+				dir = filepath.Join(cwd, dir)
 			}
 
 			registry, layout, err := lookupContext(cwd, dir)
@@ -557,10 +571,11 @@ involved — only interface methods are at risk of this conflation.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.Getwd() is the only permitted os.Getwd call outside
-			// cmd/lyx/main.go; it anchors both the default target directory and
-			// the overlay-base resolution below.
-			cwd, err := lyxcwd.Getwd()
+			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// injected into ctx, or the process cwd when none was — anchoring
+			// both the default target directory and the overlay-base
+			// resolution below.
+			cwd, err := lyxcwd.CwdFrom(ctx)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -569,6 +584,10 @@ involved — only interface methods are at risk of this conflation.`,
 			dir := targetDir
 			if dir == "" {
 				dir = cwd
+			} else if filepath.IsAbs(dir) {
+				dir = filepath.Clean(dir)
+			} else {
+				dir = filepath.Join(cwd, dir)
 			}
 
 			registry, layout, err := lookupContext(cwd, dir)
@@ -577,7 +596,7 @@ involved — only interface methods are at risk of this conflation.`,
 				return nil
 			}
 
-			query, err := parseQuery(args[0])
+			query, err := parseQuery(cwd, args[0])
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -771,7 +790,9 @@ func referenceFields(refs []scoutengine.Reference) []map[string]any {
 }
 
 // parseQuery converts a string argument to a Query, parsing "file:line:col" positions or treating it as a symbol name.
-func parseQuery(arg string) (scoutengine.Query, error) {
+// base must be an absolute path — the seam cwd, never the process cwd — against which a relative
+// "file:line:col" path is resolved.
+func parseQuery(base, arg string) (scoutengine.Query, error) {
 	pos, ok := parsePosition(arg)
 	if !ok {
 		return scoutengine.Query{Symbol: arg}, nil
@@ -779,30 +800,38 @@ func parseQuery(arg string) (scoutengine.Query, error) {
 
 	// scoutengine.Query.Pos.File must be an absolute path — References turns
 	// it into a file:// URI directly, with no further resolution — so a relative
-	// "file:line:col" argument is resolved against the process cwd here, the one
-	// point where the CLI, not the engine, owns path interpretation.
-	absFile, err := filepath.Abs(pos.File)
-	if err != nil {
-		return scoutengine.Query{}, fmt.Errorf("resolve absolute path for %s: %w", pos.File, err)
-	}
-	pos.File = absFile
+	// "file:line:col" argument is resolved against base here, the one point
+	// where the CLI, not the engine, owns path interpretation. base is never
+	// the process cwd, so this never falls back to filepath.Abs.
+	pos.File = absOrJoin(base, pos.File)
 
 	return scoutengine.Query{Pos: &pos}, nil
 }
 
 // inFileQuery converts a bare symbol name to an InFile Query, never position-parsed.
-func inFileQuery(inFilePath, name string) (scoutengine.Query, error) {
+// base must be an absolute path — the seam cwd, never the process cwd — against which a relative
+// --in-file path is resolved.
+func inFileQuery(base, inFilePath, name string) (scoutengine.Query, error) {
 	// scoutengine.InFileQuery.File must be an absolute path — References
 	// turns it into a file:// URI directly, with no further resolution — so a
-	// relative --in-file path is resolved against the process cwd here,
-	// exactly like parseQuery resolves Pos.File: the CLI layer, not the
-	// engine, owns path interpretation.
-	absFile, err := filepath.Abs(inFilePath)
-	if err != nil {
-		return scoutengine.Query{}, fmt.Errorf("resolve absolute path for %s: %w", inFilePath, err)
-	}
+	// relative --in-file path is resolved against base here, exactly like
+	// parseQuery resolves Pos.File: the CLI layer, not the engine, owns path
+	// interpretation. base is never the process cwd, so this never falls back
+	// to filepath.Abs.
+	absFile := absOrJoin(base, inFilePath)
 
 	return scoutengine.Query{InFile: &scoutengine.InFileQuery{File: absFile, Name: name}}, nil
+}
+
+// absOrJoin returns path unchanged if it is already absolute (cleaned), or joined onto base
+// otherwise.
+// base must itself be absolute; this is the one path-resolution rule the seam cwd governs for a
+// caller-supplied argument, shared by parseQuery and inFileQuery.
+func absOrJoin(base, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(base, path)
 }
 
 // parsePosition reports whether arg has the "file:line:col" shape and parses it.
@@ -911,5 +940,17 @@ func runBatch(ctx context.Context, out io.Writer, args []string, lookupOne func(
 
 // RunCLI is the public seam for the scout module CLI.
 func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
+	return RunCLIIn("", out, args)
+}
+
+// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
+// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
+// the execution context via clihelp.ExecuteIn.
+// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// ExecuteIn would panic on every existing RunCLI call.
+func RunCLIIn(cwd string, out io.Writer, args []string) int {
+	if cwd == "" {
+		return clihelp.Execute(Command(), out, args)
+	}
+	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }

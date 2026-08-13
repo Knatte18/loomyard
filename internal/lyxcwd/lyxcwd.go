@@ -5,6 +5,8 @@
 // stops doing — it resolves the active Location from a working directory and exposes typed
 // accessors for the paths every caller derives from that Location, so no other package recomputes
 // geometry from raw os.Getwd or git --show-toplevel calls.
+// WithCwd/CwdFrom are the per-call cwd-injection seam that carries this working directory through a
+// context.Context instead of the process cwd, and the value they carry is always absolute.
 package lyxcwd
 
 import (

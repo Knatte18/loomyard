@@ -95,6 +95,16 @@ Slowest 15 top-level tests
 RESULT: all packages passed
 ```
 
+## `LYX_TRACE=1` and the durable sink
+
+`internal/logger`'s durable trace sink (`ensureDurableSink`) short-circuits under `testing.Testing()` unless `LYX_TRACE=1` is set, and its `sinkOnce` is process-wide, so the first call to log in a test binary pins the trace directory for every subsequent call in that same process, for the rest of that binary's run.
+
+Before the chdir-to-`RunCLIIn` migration (see [test-suite-timing.md](test-suite-timing.md#trend-log)'s 2026-08-13 row), a test process that chdir'd across several fixture hubs left the sink pinned against whichever hub happened to log first — an arbitrary answer, since it depended on test execution order within the binary.
+After the migration, the process cwd itself never moves (every test drives its CLI seam at an explicit cwd instead), so the sink resolves against the repo worktree the test binary was launched from — a deterministic answer, and the same one every time.
+
+This is a change from one arbitrary answer to one predictable answer, not a fix and not a regression: per-test, hub-accurate trace directories were never delivered before the migration and still are not after it, since the sink is still pinned once per process rather than re-resolved per test.
+No code change was made to `internal/logger` as part of this migration — the disposition above is a side effect of the CLI test suite no longer moving the process, not a behavior change in the sink itself.
+
 ## Reducing wall-clock
 
 If the suite feels slow locally, the highest-leverage levers, in order:

@@ -8,7 +8,6 @@ package idecli
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 
@@ -17,11 +16,12 @@ import (
 )
 
 // TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
+// Stays serial (no t.Parallel): it swaps the package-level ideengine.CodeLauncher below and restores
+// it in a defer, which under t.Parallel() is both a data race on a production package-level variable
+// and a restore firing while sibling tests still run.
 func TestRunCLISpawnDispatch(t *testing.T) {
 	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
 	h := hubforge.NewHub(t, ".")
-
-	t.Chdir(h.PrimeWorktree())
 
 	// Stub ideengine.CodeLauncher so the test does not open VS Code.
 	originalLauncher := ideengine.CodeLauncher
@@ -29,7 +29,7 @@ func TestRunCLISpawnDispatch(t *testing.T) {
 	ideengine.CodeLauncher = func(dir string) error { return nil }
 
 	var out bytes.Buffer
-	code := RunCLI(&out, []string{"spawn", "child"})
+	code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn", "child"})
 
 	// spawn should succeed or fail for a handler reason, not layout resolution.
 	if code != 0 && !strings.Contains(out.String(), "spawn failed") {
@@ -88,17 +88,8 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 func TestRunCLI_NotAGitRepo(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldCwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	defer os.Chdir(oldCwd) //nolint:errcheck
-
 	var out bytes.Buffer
-	code := RunCLI(&out, []string{"menu"})
+	code := RunCLIIn(tmpDir, &out, []string{"menu"})
 
 	if code != 1 {
 		t.Errorf("RunCLI(menu) in non-git dir = %d; want 1", code)
@@ -118,10 +109,9 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 func TestRunCLI_MissingSlug(t *testing.T) {
 	// Requires a real hub so the PersistentPreRunE can resolve layout.
 	h := hubforge.NewHub(t, ".")
-	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
-	code := RunCLI(&out, []string{"spawn"})
+	code := RunCLIIn(h.PrimeWorktree(), &out, []string{"spawn"})
 
 	if code != 1 {
 		t.Errorf("RunCLI(spawn) with no slug = %d; want 1", code)

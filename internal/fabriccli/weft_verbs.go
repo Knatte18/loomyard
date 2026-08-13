@@ -73,7 +73,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 			return nil
 		}
 
-		_, resolved, err := resolveWarpLocation()
+		_, resolved, err := resolveWarpLocation(ctx)
 		if err != nil {
 			output.Err(out, err.Error())
 			clihelp.Abort(ctx, 1)

@@ -21,12 +21,12 @@ import (
 // succeeds — reed's registered ConfigTemplate() arrives already materialized via
 // fabriccli.CloneAndWire, so no explicit seeding is needed.
 func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
-	t.Chdir(h.PrimeWorktree())
-
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"status"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
 
 	if exitCode != 1 {
 		t.Errorf("RunCLI(status) = %d; want 1 (no live tmux session)", exitCode)
@@ -49,11 +49,12 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 // TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up` surfaces the friendly
 // "no reed session" error.
 func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
-	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"add", "--cmd", "pwsh -NoExit -Command Write-Host ready"})
 
 	if exitCode != 1 {
 		t.Errorf("RunCLI(add) before up = %d; want 1 (no live tmux session)", exitCode)
@@ -72,11 +73,12 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 // TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the
 // friendly "no reed session" error.
 func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
-	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"remove", "does-not-exist"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"remove", "does-not-exist"})
 
 	if exitCode != 1 {
 		t.Errorf("RunCLI(remove) before up = %d; want 1 (no live tmux session)", exitCode)
@@ -95,6 +97,8 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 // TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with
 // persisted strands surfaces the enriched "lyx reed resume" message.
 func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
+	t.Parallel()
+
 	h := hubforge.NewHub(t, ".")
 
 	st := &reedengine.ReedState{
@@ -109,10 +113,8 @@ func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
 		t.Fatalf("SaveState: %v", err)
 	}
 
-	t.Chdir(h.PrimeWorktree())
-
 	var out bytes.Buffer
-	exitCode := RunCLI(&out, []string{"status"})
+	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
 
 	if exitCode != 1 {
 		t.Errorf("RunCLI(status) before up = %d; want 1 (no live tmux session)", exitCode)

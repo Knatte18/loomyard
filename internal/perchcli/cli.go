@@ -74,7 +74,7 @@ Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			cwd, err := lyxcwd.Getwd()
+			cwd, err := lyxcwd.CwdFrom(ctx)
 			if err != nil {
 				output.Err(out, err.Error())
 				clihelp.Abort(ctx, 1)
@@ -173,5 +173,17 @@ Example:
 
 // RunCLI is the public seam for the perch module CLI.
 func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
+	return RunCLIIn("", out, args)
+}
+
+// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
+// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
+// the execution context via clihelp.ExecuteIn.
+// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// ExecuteIn would panic on every existing RunCLI call.
+func RunCLIIn(cwd string, out io.Writer, args []string) int {
+	if cwd == "" {
+		return clihelp.Execute(Command(), out, args)
+	}
+	return clihelp.ExecuteIn(Command(), cwd, out, args)
 }
