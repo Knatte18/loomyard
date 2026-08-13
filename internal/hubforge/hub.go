@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -213,6 +214,13 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		tb.Fatalf("NewHub: lyxcwd.Resolve(%s): %v", res.PrimeCwd, err)
 	}
 
+	// Registered after both copyBares and the container := tb.TempDir() call above, so LIFO
+	// cleanup ordering runs junction removal before Go's own tb.TempDir() cleanup removes the
+	// container — a junction left wired when os.RemoveAll walks into it is a Win11 correctness bug,
+	// not a POSIX one, so this must hold on every platform even though only Windows can observe it
+	// directly.
+	registerTeardown(tb, res.HubPath)
+
 	return &Hub{
 		Path:      res.HubPath,
 		Anchor:    res.Anchor,
@@ -223,6 +231,60 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		WeftBase:  res.WeftBase,
 		Container: container,
 	}
+}
+
+// registerTeardown installs a tb.Cleanup that removes every junction under hubPath before Go's own
+// tb.TempDir() cleanup removes the container directory it lives in.
+// It is a plain filepath.WalkDir from the hub root, calling fslink.IsLink on every entry and
+// fslink.Remove on each link found.
+//
+// Discovery is slug-free by design: the walk never consults a slug list, because for the live-state
+// matrix the pairs are created by the verb under test and some are destroyed by it, and because
+// enumerating worktrees through fabric requires fabric to still work against a hub those tests
+// deliberately corrupt.
+//
+// A missing hub directory (a worktree removed by hand mid-test) simply yields no entries from
+// WalkDir, and fslink.Remove is documented idempotent, so neither case needs a special branch.
+//
+// Errors from WalkDir, IsLink and Remove are reported with tb.Logf and never tb.Fatalf or
+// tb.Errorf: teardown must not fail a test that already passed.
+func registerTeardown(tb testing.TB, hubPath string) {
+	tb.Helper()
+
+	tb.Cleanup(func() {
+		walkErr := filepath.WalkDir(hubPath, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				tb.Logf("hubforge: teardown walk %s: %v", path, err)
+				return nil
+			}
+
+			isLink, err := fslink.IsLink(path)
+			if err != nil {
+				tb.Logf("hubforge: teardown IsLink %s: %v", path, err)
+				return nil
+			}
+			if !isLink {
+				return nil
+			}
+
+			if err := fslink.Remove(path); err != nil {
+				tb.Logf("hubforge: teardown Remove %s: %v", path, err)
+			}
+			// WalkDir already reports a link as a non-directory entry and never follows it, so
+			// non-descent is free. Returning filepath.SkipDir here — as it would from a directory
+			// callback — would instead skip the containing directory's remaining entries, since
+			// SkipDir from a non-directory callback means "stop visiting siblings in this
+			// directory", not "don't descend into this entry". That would leave every sibling
+			// junction wired: abandoning <hub>/_portals/<slug2> onward after removing
+			// <slug1>, and leaving _lyx and _board behind after removing <worktree>/.lyx.
+			// This is the single most reversible mistake in this file, so it is spelled out
+			// here rather than left to be rediscovered.
+			return nil
+		})
+		if walkErr != nil {
+			tb.Logf("hubforge: teardown walk %s: %v", hubPath, walkErr)
+		}
+	})
 }
 
 // AddPair drives h.Topology.Add for slug against h, fataling on error.
