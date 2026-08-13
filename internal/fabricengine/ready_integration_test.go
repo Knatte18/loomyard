@@ -1,7 +1,7 @@
 //go:build integration
 
 // ready_integration_test.go covers Ready(l)'s three outcomes: sibling absent, sibling present
-// (fixture-backed via gitkit.CopyPaired), and a stat failure other than not-exist.
+// (hub-backed via hubforge.NewHub), and a stat failure other than not-exist.
 
 package fabricengine_test
 
@@ -11,20 +11,20 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestReady_SiblingAbsent asserts that Ready returns (false, nil) when the weft sibling worktree
 // does not exist.
 func TestReady_SiblingAbsent(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
-	if err := os.RemoveAll(fixture.WeftPrime); err != nil {
-		t.Fatalf("RemoveAll(weftPrime): %v", err)
+	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+		t.Fatalf("RemoveAll(weft prime): %v", err)
 	}
 
-	ready, err := fabricengine.Ready(fixture.Layout)
+	ready, err := fabricengine.Ready(h.Location)
 	if err != nil {
 		t.Fatalf("Ready() error = %v; want nil", err)
 	}
@@ -36,9 +36,9 @@ func TestReady_SiblingAbsent(t *testing.T) {
 // TestReady_SiblingPresent asserts that Ready returns (true, nil) when the weft sibling worktree
 // exists.
 func TestReady_SiblingPresent(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
-	ready, err := fabricengine.Ready(fixture.Layout)
+	ready, err := fabricengine.Ready(h.Location)
 	if err != nil {
 		t.Fatalf("Ready() error = %v; want nil", err)
 	}
