@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -29,18 +29,15 @@ func TestSmokeDebugLog(t *testing.T) {
 
 	t.Setenv("LYX_REED_DEBUG", "1")
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
 	})
 
-	logsDir := filepath.Join(filepath.Dir(fixture.Hub), ".lyx", "logs")
+	logsDir := reedengine.HubLogsDir(h.Location)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		t.Fatalf("mkdir fake logs dir: %v", err)
 	}
@@ -161,18 +158,15 @@ func TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs(t *testing.
 	tmuxPath := tmuxBinaryPath(t)
 	t.Setenv("LYX_REED_DEBUG", "2")
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
 	})
 
-	logsDir := filepath.Join(filepath.Dir(fixture.Hub), ".lyx", "logs")
+	logsDir := reedengine.HubLogsDir(h.Location)
 
 	var out bytes.Buffer
 	if code := RunCLI(&out, []string{"up"}); code != 0 {

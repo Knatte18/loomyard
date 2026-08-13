@@ -11,20 +11,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestSmokeCrashRecovery covers crash recovery with server reboot.
 func TestSmokeCrashRecovery(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
@@ -134,12 +130,9 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	claudePath := claudeBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
@@ -160,7 +153,7 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 	// already in it BEFORE the launch, so phase 1 can only ever match the one
 	// transcript this test's own claude produces — never a concurrent sibling
 	// suite's (each suite has a unique temp hub, hence a unique project dir).
-	projectDir := claudeProjectDir(t, fixture.Hub)
+	projectDir := claudeProjectDir(t, h.PrimeWorktree())
 	transcriptsBefore := claudeTranscriptFiles(t, projectDir)
 	guid := addStrand(t, launch, "--resume-cmd", resume, "--name", "agent")
 	socket, session := socketAndSession(t)
