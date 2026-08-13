@@ -322,8 +322,11 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 	_, warpAdminStatErr := os.Lstat(warpAdminPath)
 	warpAdminWasRegistered := warpAdminStatErr == nil
 
-	gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)     //nolint:errcheck
-	gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath()) //nolint:errcheck
+	// Best-effort: a failed prune leaves a stale registration the next reconcile or prune
+	// re-reports, and it must not turn a completed removal into an error.
+	_, _ = gitexec.Run([]string{"worktree", "prune"}, weftRepoRoot)
+	// Best-effort, same reasoning as the weft-side prune above.
+	_, _ = gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath())
 
 	if warpAdminWasRegistered {
 		if _, statErr := os.Lstat(warpAdminPath); os.IsNotExist(statErr) {

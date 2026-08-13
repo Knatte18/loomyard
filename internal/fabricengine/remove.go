@@ -247,9 +247,9 @@ func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, fo
 		}
 		return fmt.Errorf("fallback removal failed: %w", removeErr)
 	}
-	// Bookkeeping only: a failed prune leaves a stale registration the next reconcile or prune
+	// Best-effort: a failed prune leaves a stale registration the next reconcile or prune
 	// re-reports, and it must not turn a completed removal into an error.
-	_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
+	_, _ = gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath())
 	return nil
 }
 
