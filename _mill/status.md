@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-module seams
+phase: approved-test migration and guard
 slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: _mill/plan
@@ -24,6 +24,7 @@ planned  '2026-08-13T14:53:21Z'
 implementing  '2026-08-13T14:53:55Z'
 approved-cwd-context seam  '2026-08-13T15:00:17Z'
 approved-module seams  '2026-08-13T15:13:07Z'
+approved-test migration and guard  '2026-08-13T15:38:47Z'
 ```
 
 ## Batches
@@ -43,8 +44,9 @@ batches:
     commit_sha: 91adfef396449cf6498f8b058eb47d11a7471f4e
     verify_baseline_failures: []
   - name: test migration and guard
-    state: running
+    state: approved
     implementer_session: 74b7ac37-0d3f-4622-88eb-abed22e34fa3
     start_sha: e57255adb19a6a8e87605d2bf23afe9b8e0ead08
+    commit_sha: df25e32e0977a2d28e46be9e0e42cd621468af88
     verify_baseline_failures: []
 ```
