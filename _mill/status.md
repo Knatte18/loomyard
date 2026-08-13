@@ -111,7 +111,9 @@ batches:
     commit_sha: ebd7b3934dbe28e7a88c38d6de795c0c869b2047
     verify_baseline_failures: []
   - name: helper deletion
-    state: pending
+    state: running
+    implementer_session: 3702e816-7176-4112-9f06-ecdc59995f72
+    start_sha: f0d6caa6eb5e987a8983658abc7602cf60df10bc
     verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: docs
     state: pending
