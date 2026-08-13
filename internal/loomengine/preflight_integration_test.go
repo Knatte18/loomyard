@@ -103,23 +103,6 @@ func commitFabricStatus(t *testing.T, h *hubforge.Hub) {
 	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-m", "update status")
 }
 
-// restoreCwd saves the process cwd and restores it via t.Cleanup. Call it AFTER
-// creating any t.TempDir()/fixture: t.Cleanup runs LIFO, so chdir-back must run
-// before TempDir removal (required on Windows).
-func restoreCwd(t *testing.T) {
-	t.Helper()
-
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(orig); err != nil {
-			t.Fatalf("restore cwd to %s: %v", orig, err)
-		}
-	})
-}
-
 // assertCheckSet asserts that got's Failures carry exactly the given CheckID set
 // (order-independent). An empty want asserts Report.OK.
 func assertCheckSet(t *testing.T, got loomengine.Report, want ...loomengine.CheckID) {
@@ -179,15 +162,9 @@ func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 // This exercises the public Preflight() (not checkResolved) because it needs lyxcwd.Getwd() to
 // observe a non-repo cwd.
 func TestPreflight_NotAGitRepo(t *testing.T) {
-	// t.TempDir() must be created before restoreCwd registers its cleanup —
-	// see restoreCwd's doc comment: on Windows, cleanup must chdir back out of
-	// dir before Go tries to remove it, and t.Cleanup runs LIFO.
-	dir := t.TempDir()
-	restoreCwd(t)
+	t.Parallel()
 
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%s): %v", dir, err)
-	}
+	dir := t.TempDir()
 
 	report, err := loomengine.Preflight(dir)
 	if err != nil {
@@ -203,12 +180,9 @@ func TestPreflight_NotAGitRepo(t *testing.T) {
 // non-"." anchor describes the repo's geometry, not where the caller stood.
 // Exercises the public Preflight() for the same reason as TestPreflight_NotAGitRepo.
 func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
-	// setupPreflightFixture's t.TempDir()-backed fixture must be created before
-	// restoreCwd registers its cleanup — see restoreCwd's doc comment: on
-	// Windows, cleanup must chdir back out of the fixture before Go tries to
-	// remove it, and t.Cleanup runs LIFO.
+	t.Parallel()
+
 	h, _ := setupPreflightFixture(t)
-	restoreCwd(t)
 
 	sub := filepath.Join(h.PrimeWorktree(), "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {
@@ -220,10 +194,6 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 	anchorPath := filepath.Join(fabricengine.BoardDir(h.Location.HubPath), lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
-	}
-
-	if err := os.Chdir(sub); err != nil {
-		t.Fatalf("Chdir(%s): %v", sub, err)
 	}
 
 	report, err := loomengine.Preflight(sub)
@@ -242,6 +212,8 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 // tracked-and-modified file, a staged file, and an untracked-only file), plus the genuinely-new
 // fabric-dirty-only and both-dirty shapes now that Clean also checks the fabric side.
 func TestPreflight_WarpDirty(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		dirty func(t *testing.T, h *hubforge.Hub)
@@ -397,6 +369,8 @@ func TestPreflight_ConfigLoadFailed(t *testing.T) {
 // This asymmetry is exactly what "check3BlocksSeed" is named for: it only changes check 4's
 // classification of a stat failure that already happened, it does not itself cause one.
 func TestPreflight_JunctionBroken(t *testing.T) {
+	t.Parallel()
+
 	shapes := []struct {
 		name    string
 		corrupt func(t *testing.T, warpLink string)
@@ -597,6 +571,8 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 // stamped start_sha) reports half-finished — the task has already run past the point Preflight is
 // meant to gate.
 func TestPreflight_SeedHalfFinished(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		seed func() loomengine.Status
