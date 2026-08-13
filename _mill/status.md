@@ -55,7 +55,9 @@ batches:
     commit_sha: e0f8744da6820fb917bd01e07ba5ae3724fb6005
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: hubforge factory
-    state: pending
+    state: running
+    implementer_session: 3edd2be4-d653-49c7-a495-3659c91b91eb
+    start_sha: d9af84b9c5e209adb7fbc24204cfc81c8987ac46
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: small consumers
     state: pending
