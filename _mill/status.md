@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r4
+phase: discussed
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-13T13:19:23Z'
 discussion-fix-r4  '2026-08-13T14:11:20Z'
+discussion-fix-r5  '2026-08-13T14:18:03Z'
+discussed  '2026-08-13T14:18:03Z'
 ```
