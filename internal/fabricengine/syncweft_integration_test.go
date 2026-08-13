@@ -17,40 +17,10 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
-
-// writeWeftConfigContent overwrites the tracked _lyx/config.yaml file
-// CopyWeft fixtures ship with, without staging or committing — the standard
-// way this file's tests dirty a weft worktree's pathspec-covered content
-// before calling CommitWeft/Fabric.Commit.
-func writeWeftConfigContent(t *testing.T, weftPath, content string) {
-	t.Helper()
-
-	configPath := filepath.Join(weftPath, "_lyx", "config.yaml")
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-}
-
-// commitMessageAt returns rev's full raw commit message (subject + body +
-// trailers) in repoPath, via `git log --format=%B`.
-func commitMessageAt(t *testing.T, repoPath, rev string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "log", "-1", "--format=%B", rev)
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git log -1 --format=%%B %s in %s: %v", rev, repoPath, err)
-	}
-	return string(out)
-}
 
 // TestRebuildIndex_EqualsIncrementallyBuiltIndex asserts that after several Commit rounds (each
 // incrementally updating the index via RecordCorrespondence), a full RebuildIndex reconstructs an

@@ -29,112 +29,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
-
-// seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's
-// classify step now reads via RepoWiredNames — the `weft:main` base at
-// BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's
-// classifier needs. warpPath is a bare t.TempDir() plain-git checkout (this
-// file's newPlainWarpRepo/newUnbornWarpRepo fixtures, not a real hub tree),
-// so lyxcwd.ResolveWorktree(warpPath)'s HubPath — warpPath's parent
-// directory — stands in for the hub; _board is not itself a git repository,
-// so the file is written directly with no git add/commit step. Mirrors
-// reconcile_stale_registration_test.go's seedRepoWideFabricConfig, which
-// this file cannot call directly (package fabricengine here, vs.
-// fabricengine_test there). Every Fabric.Commit test requires this.
-func seedFabricConfig(t *testing.T, warpPath string) {
-	t.Helper()
-
-	boardDir := BoardDir(filepath.Dir(warpPath))
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
-	}
-}
-
-// writeWarpFile overwrites (without staging or committing) name inside the
-// warp repo at warpPath — the standard way this file's tests dirty a
-// warp-side file before calling Fabric.Commit.
-func writeWarpFile(t *testing.T, warpPath, name, content string) {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(warpPath, name), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-}
-
-// pushCall records one spawnDetachedPushFn invocation's arguments.
-type pushCall struct {
-	warpPath string
-	weftPath string
-}
-
-// pushRecorder collects spawnDetachedPushFn invocations under a mutex.
-//
-// The mutex is not decoration: Fabric.Commit fires the push seam AFTER releasing the commit lock,
-// deliberately, so a test driving concurrent Commit calls (commit_lock_integration_test.go) reaches
-// the recorder from several goroutines at once. An unguarded slice append there is a real data race
-// that fails the whole package under -race.
-type pushRecorder struct {
-	mu    sync.Mutex
-	calls []pushCall
-}
-
-// record appends one invocation.
-func (r *pushRecorder) record(warpPath, weftPath string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls = append(r.calls, pushCall{warpPath: warpPath, weftPath: weftPath})
-}
-
-// Calls returns a copy of everything recorded so far, safe to read while other goroutines are still
-// recording.
-func (r *pushRecorder) Calls() []pushCall {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]pushCall(nil), r.calls...)
-}
-
-// swapPushRecorder replaces spawnDetachedPushFn with a no-op recorder for
-// the duration of the test, restoring the original on cleanup — the
-// push-invocation-seam-for-tests Shared Decision. Callers of this helper
-// must not use t.Parallel().
-func swapPushRecorder(t *testing.T) *pushRecorder {
-	t.Helper()
-
-	recorder := &pushRecorder{}
-	original := spawnDetachedPushFn
-	spawnDetachedPushFn = func(warpPath, weftPath string) error {
-		recorder.record(warpPath, weftPath)
-		return nil
-	}
-	t.Cleanup(func() { spawnDetachedPushFn = original })
-	return recorder
-}
-
-// newCommitFixture builds a fresh warp/weft pair with the fabric config
-// seeded, returning the Fabric handle and both repo paths.
-func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
-	t.Helper()
-
-	warpPath = newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	seedFabricConfig(t, warpPath)
-	f = newFabric(t, warpPath, weftFixture.WeftPath)
-	return f, warpPath, weftFixture.WeftPath
-}
 
 // TestCommit_TwoSided_WarpFirstOrdering asserts that a two-sided Fabric.Commit's weft commit
 // carries a Warp-SHA trailer naming the warp commit Fabric.Commit just made — never the prior warp
@@ -345,8 +247,8 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 	if len(recorder.Calls()) != 1 {
 		t.Fatalf("push recorder invocation count = %d; want 1 (calls: %+v)", len(recorder.Calls()), recorder.Calls())
 	}
-	if (recorder.Calls())[0].warpPath != warpPath || (recorder.Calls())[0].weftPath != weftPath {
-		t.Errorf("push recorder called with (%q, %q); want (%q, %q)", (recorder.Calls())[0].warpPath, (recorder.Calls())[0].weftPath, warpPath, weftPath)
+	if (recorder.Calls())[0].WarpPath != warpPath || (recorder.Calls())[0].WeftPath != weftPath {
+		t.Errorf("push recorder called with (%q, %q); want (%q, %q)", (recorder.Calls())[0].WarpPath, (recorder.Calls())[0].WeftPath, warpPath, weftPath)
 	}
 }
 

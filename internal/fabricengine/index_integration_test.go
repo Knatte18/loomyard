@@ -15,58 +15,12 @@ package fabricengine
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
-
-// newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on
-// branch main with one commit — everything RecordCorrespondence/warpSeq
-// needs from a warp repo, without any of fabric's own topology wiring
-// (junctions, weft pairing), which these index tests do not exercise.
-func newPlainWarpRepo(t *testing.T) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
-	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, dir, "git", "add", ".")
-	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
-	return dir
-}
-
-// currentSHA returns dir's HEAD commit SHA.
-func currentSHA(t *testing.T, dir string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// commitWarp creates a new commit in warpPath carrying content, returning
-// the new HEAD SHA.
-func commitWarp(t *testing.T, warpPath, content string) string {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(warpPath, "README"), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, warpPath, "git", "add", ".")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
-	return currentSHA(t, warpPath)
-}
 
 // commitWeftWithTrailer commits content into weftPath's tracked _lyx config
 // file with a Warp-SHA trailer naming warpSHA — a hand-crafted stand-in for
@@ -82,18 +36,6 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 	msg := appendWarpSHATrailer("weft sync", warpSHA)
 	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
 	return currentSHA(t, weftPath)
-}
-
-// newFabric wraps newPaired, failing the test on error rather than returning it —
-// every test in this file expects a valid pair.
-func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
-	t.Helper()
-
-	f, err := newPaired(warpPath, weftPath)
-	if err != nil {
-		t.Fatalf("newPaired(%q, %q) error = %v", warpPath, weftPath, err)
-	}
-	return f
 }
 
 // TestWeftGitDir_ResolvesInsideWeftGitdir asserts that weftGitDir returns a path genuinely inside

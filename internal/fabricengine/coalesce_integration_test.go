@@ -13,9 +13,7 @@ package fabricengine
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,20 +48,6 @@ func commitPlain(t *testing.T, dir, name, content string) string {
 	gitkit.MustRun(t, dir, "git", "add", name)
 	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", content)
 	return currentSHA(t, dir)
-}
-
-// bareBranchSHA returns the SHA that branch points to inside the bare repo at
-// bareDir.
-func bareBranchSHA(t *testing.T, bareDir, branch string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", branch)
-	cmd.Dir = bareDir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse %s in %s: %v", branch, bareDir, err)
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // runWithDeadline runs fn in a goroutine and fails the test if it has not

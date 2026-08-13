@@ -7,6 +7,15 @@
 package fabricengine
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -114,3 +123,358 @@ func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix strin
 	}
 	return deleteBranch(NewMutations(""), req)
 }
+
+// --- weft-fixture migration shim (fabricengine in-package weft batch) ---
+//
+// The functions and types below serve the nine package fabricengine_test files this batch relocates
+// out of package fabricengine. Two different reasons put an entry here, and both are noted per entry:
+//
+//   - "production plumbing": the underlying identifier is defined in a non-test, non-relocating file
+//     (or in a _test.go file that itself never relocates) and simply needs an exported seam.
+//   - "relocated fixture helper": the underlying function used to live in one of the nine relocating
+//     files, but a file OUTSIDE the nine — either a permanently package-fabricengine sibling test file,
+//     or one of the nine itself migrating on an EARLIER card than the helper's original host file —
+//     still needs it as a plain, unexported, same-package symbol at some point in the batch's history.
+//     Moving the body here (and deleting the original) keeps that symbol resolvable under package
+//     fabricengine for as long as anything package-fabricengine still calls it unqualified, while the
+//     ForTest wrapper below it gives every migrated file a qualified path to the same logic.
+
+// NewPlainWarpRepoForTest re-exports newPlainWarpRepo (relocated fixture helper, formerly
+// index_integration_test.go): commitweftat_test.go (package fabricengine, never migrating) calls it
+// unqualified, and several of the nine relocating files need it before
+// index_integration_test.go's own migration card lands.
+var NewPlainWarpRepoForTest = newPlainWarpRepo
+
+// newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on branch main with one
+// commit — everything RecordCorrespondence/warpSeq needs from a warp repo, without any of fabric's
+// own topology wiring (junctions, weft pairing), which the callers of this helper do not exercise.
+func newPlainWarpRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	gitkit.MustRun(t, dir, "git", "add", ".")
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
+	return dir
+}
+
+// CurrentSHAForTest re-exports currentSHA (relocated fixture helper, formerly
+// index_integration_test.go): several of the nine relocating files need it before
+// index_integration_test.go's own migration card lands.
+var CurrentSHAForTest = currentSHA
+
+// currentSHA returns dir's HEAD commit SHA.
+func currentSHA(t *testing.T, dir string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// CommitWarpForTest re-exports commitWarp (relocated fixture helper, formerly
+// index_integration_test.go): several of the nine relocating files need it before
+// index_integration_test.go's own migration card lands.
+var CommitWarpForTest = commitWarp
+
+// commitWarp creates a new commit in warpPath carrying content, returning the new HEAD SHA.
+func commitWarp(t *testing.T, warpPath, content string) string {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(warpPath, "README"), []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	gitkit.MustRun(t, warpPath, "git", "add", ".")
+	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
+	return currentSHA(t, warpPath)
+}
+
+// NewFabricForTest re-exports newFabric (relocated fixture helper, formerly
+// index_integration_test.go): several of the nine relocating files need it before
+// index_integration_test.go's own migration card lands. Distinct from NewPairedFromPathsForTest
+// above: newFabric fails the test on error rather than returning it, which every one of this
+// helper's callers relies on.
+var NewFabricForTest = newFabric
+
+// newFabric wraps newPaired, failing the test on error rather than returning it — every caller of
+// this helper expects a valid pair.
+func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
+	t.Helper()
+
+	f, err := newPaired(warpPath, weftPath)
+	if err != nil {
+		t.Fatalf("newPaired(%q, %q) error = %v", warpPath, weftPath, err)
+	}
+	return f
+}
+
+// SeedFabricConfigForTest re-exports seedFabricConfig (relocated fixture helper, formerly
+// commit_integration_test.go): diff_integration_test.go and syncweft_integration_test.go need it
+// before their own migration cards land, and newCommitFixture below needs it permanently since it
+// stays package fabricengine.
+var SeedFabricConfigForTest = seedFabricConfig
+
+// seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's classify step now reads via
+// RepoWiredNames — the `weft:main` base at BoardDir(Hub) — so its resolved pathspec is what
+// Fabric.Commit's classifier needs. warpPath is a bare t.TempDir() plain-git checkout (newPlainWarpRepo
+// or a sibling unborn-warp fixture, not a real hub tree), so lyxcwd.ResolveWorktree(warpPath)'s
+// HubPath — warpPath's parent directory — stands in for the hub; _board is not itself a git
+// repository, so the file is written directly with no git add/commit step.
+func seedFabricConfig(t *testing.T, warpPath string) {
+	t.Helper()
+
+	boardDir := BoardDir(filepath.Dir(warpPath))
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		t.Fatalf("mkdir repo-wide config dir: %v", err)
+	}
+	configPath := configengine.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx _extra\n"), 0o644); err != nil {
+		t.Fatalf("write repo-wide fabric config: %v", err)
+	}
+}
+
+// WriteWarpFileForTest re-exports writeWarpFile (relocated fixture helper, formerly
+// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
+// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
+// migrating) call it unqualified.
+var WriteWarpFileForTest = writeWarpFile
+
+// writeWarpFile overwrites (without staging or committing) name inside the warp repo at warpPath —
+// the standard way a caller of this helper dirties a warp-side file before calling Fabric.Commit.
+func writeWarpFile(t *testing.T, warpPath, name, content string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(warpPath, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+// pushCall records one spawnDetachedPushFn invocation's arguments. WarpPath and WeftPath are
+// exported (unlike the type name) so a caller outside this package can read a *PushRecorderForTest's
+// recorded calls' fields without this package needing to export the pushCall/pushRecorder names
+// themselves — Go permits reading exported fields of an unexported type obtained from an exported
+// function, which is exactly the shape SwapPushRecorderForTest returns.
+type pushCall struct {
+	WarpPath string
+	WeftPath string
+}
+
+// PushRecorderForTest re-exports pushRecorder's type identity for package fabricengine_test files
+// that hold a *PushRecorderForTest returned by SwapPushRecorderForTest.
+type PushRecorderForTest = pushRecorder
+
+// pushRecorder collects spawnDetachedPushFn invocations under a mutex.
+//
+// The mutex is not decoration: Fabric.Commit fires the push seam AFTER releasing the commit lock,
+// deliberately, so a test driving concurrent Commit calls (commit_lock_integration_test.go) reaches
+// the recorder from several goroutines at once. An unguarded slice append there is a real data race
+// that fails the whole package under -race.
+type pushRecorder struct {
+	mu    sync.Mutex
+	calls []pushCall
+}
+
+// record appends one invocation.
+func (r *pushRecorder) record(warpPath, weftPath string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, pushCall{WarpPath: warpPath, WeftPath: weftPath})
+}
+
+// Calls returns a copy of everything recorded so far, safe to read while other goroutines are still
+// recording.
+func (r *pushRecorder) Calls() []pushCall {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]pushCall(nil), r.calls...)
+}
+
+// SwapPushRecorderForTest re-exports swapPushRecorder (relocated fixture helper, formerly
+// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
+// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
+// migrating) call it unqualified; the nine relocating files call the exported form.
+var SwapPushRecorderForTest = swapPushRecorder
+
+// swapPushRecorder replaces spawnDetachedPushFn with a no-op recorder for the duration of the test,
+// restoring the original on cleanup — the push-invocation-seam-for-tests Shared Decision. Callers of
+// this helper must not use t.Parallel().
+func swapPushRecorder(t *testing.T) *pushRecorder {
+	t.Helper()
+
+	recorder := &pushRecorder{}
+	original := spawnDetachedPushFn
+	spawnDetachedPushFn = func(warpPath, weftPath string) error {
+		recorder.record(warpPath, weftPath)
+		return nil
+	}
+	t.Cleanup(func() { spawnDetachedPushFn = original })
+	return recorder
+}
+
+// NewCommitFixtureForTest re-exports newCommitFixture (relocated fixture helper, formerly
+// commit_integration_test.go): commit_gating_integration_test.go, committed_lyxonly_integration_test.go,
+// commit_partial_integration_test.go and commit_lock_integration_test.go (package fabricengine, never
+// migrating) call it unqualified; the nine relocating files call the exported form.
+var NewCommitFixtureForTest = newCommitFixture
+
+// newCommitFixture builds a fresh warp/weft pair with the fabric config seeded, returning the Fabric
+// handle and both repo paths.
+func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
+	t.Helper()
+
+	warpPath = newPlainWarpRepo(t)
+	weftFixture := gitkit.CopyWeft(t)
+	seedFabricConfig(t, warpPath)
+	f = newFabric(t, warpPath, weftFixture.WeftPath)
+	return f, warpPath, weftFixture.WeftPath
+}
+
+// BareBranchSHAForTest re-exports bareBranchSHA (relocated fixture helper, formerly
+// coalesce_integration_test.go): bolt_integration_test.go (package fabricengine, never migrating)
+// calls it unqualified.
+var BareBranchSHAForTest = bareBranchSHA
+
+// bareBranchSHA returns the SHA that branch points to inside the bare repo at bareDir.
+func bareBranchSHA(t *testing.T, bareDir, branch string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", branch)
+	cmd.Dir = bareDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse %s in %s: %v", branch, bareDir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// WriteWeftConfigContentForTest re-exports writeWeftConfigContent (relocated fixture helper, formerly
+// syncweft_integration_test.go): commit_partial_integration_test.go, commit_gating_integration_test.go,
+// committed_lyxonly_integration_test.go and commit_lock_integration_test.go (package fabricengine,
+// never migrating) call it unqualified, and commit_integration_test.go/diff_integration_test.go need it
+// before syncweft_integration_test.go's own migration card lands.
+var WriteWeftConfigContentForTest = writeWeftConfigContent
+
+// writeWeftConfigContent overwrites the tracked _lyx/config.yaml file CopyWeft fixtures ship with,
+// without staging or committing — the standard way a caller of this helper dirties a weft worktree's
+// pathspec-covered content before calling CommitWeft/Fabric.Commit.
+func writeWeftConfigContent(t *testing.T, weftPath, content string) {
+	t.Helper()
+
+	configPath := filepath.Join(weftPath, "_lyx", "config.yaml")
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+// CommitMessageAtForTest re-exports commitMessageAt (relocated fixture helper, formerly
+// syncweft_integration_test.go): commitweftat_test.go (package fabricengine, never migrating) calls it
+// unqualified, and commit_integration_test.go needs it before syncweft_integration_test.go's own
+// migration card lands.
+var CommitMessageAtForTest = commitMessageAt
+
+// commitMessageAt returns rev's full raw commit message (subject + body + trailers) in repoPath, via
+// `git log --format=%B`.
+func commitMessageAt(t *testing.T, repoPath, rev string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "log", "-1", "--format=%B", rev)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git log -1 --format=%%B %s in %s: %v", rev, repoPath, err)
+	}
+	return string(out)
+}
+
+// WeftWriteLockPathForTest re-exports weftWriteLockPath (production plumbing: defined in
+// commit_lock_integration_test.go, package fabricengine, never migrating) for
+// commit_integration_test.go, which needs f's combined commit write lock path directly.
+func WeftWriteLockPathForTest(t *testing.T, f *Fabric) string {
+	return weftWriteLockPath(t, f)
+}
+
+// WeftGitDirForTest re-exports f.weftGitDir (production plumbing: index.go), for
+// index_integration_test.go's direct assertion on the per-worktree gitdir the correspondence index
+// is scoped to.
+func WeftGitDirForTest(f *Fabric) (string, error) {
+	return f.weftGitDir()
+}
+
+// CorrIndexPathForTest re-exports f.corrIndexPath (production plumbing: index.go), for the several
+// relocating files that load the correspondence index directly rather than through a Fabric method.
+func CorrIndexPathForTest(f *Fabric) (string, error) {
+	return f.corrIndexPath()
+}
+
+// CommitWeftForTest re-exports f.commitWeft (production plumbing: weftgit.go), for the several
+// relocating files that drive the weft-only commit path directly rather than through Fabric.Commit,
+// whose own classify-and-dispatch step would never reach it in isolation.
+func CommitWeftForTest(f *Fabric, pathspec []string, message string, opts SyncOptions, snapshotTags ...string) (sha string, committed bool, err error) {
+	return f.commitWeft(pathspec, message, opts, snapshotTags...)
+}
+
+// SnapshotWarpSHAForTest re-exports f.snapshotWarpSHA (production plumbing: snapshot.go), for the
+// relocating files covering its newest-tagged-commit-wins, tag-isolation and staleness behavior.
+func SnapshotWarpSHAForTest(f *Fabric, tag string) (string, error) {
+	return f.snapshotWarpSHA(tag)
+}
+
+// WarpPathForTest re-exports f's private warpPath field, for pull_integration_test.go's direct
+// assertion against the warp worktree's own path, distinct from WarpForTest's *gitrepo.Repo handle.
+func WarpPathForTest(f *Fabric) string {
+	return f.warpPath
+}
+
+// AppendWarpSHATrailerForTest re-exports appendWarpSHATrailer (production plumbing: trailer.go), for
+// relocating files that hand-craft a commit message carrying a Warp-SHA trailer without going through
+// CommitWeft.
+var AppendWarpSHATrailerForTest = appendWarpSHATrailer
+
+// AppendSnapshotTrailersForTest re-exports appendSnapshotTrailers (production plumbing: trailer.go),
+// for snapshot_integration_test.go's hand-crafted, back-dated commit fixture, which cannot go through
+// CommitWeft because it needs a caller-supplied GIT_COMMITTER_DATE.
+var AppendSnapshotTrailersForTest = appendSnapshotTrailers
+
+// ParseWarpSHATrailerForTest re-exports parseWarpSHATrailer (production plumbing: trailer.go), for
+// commit_integration_test.go's assertions on a landed commit's Warp-SHA trailer.
+var ParseWarpSHATrailerForTest = parseWarpSHATrailer
+
+// WeftLockDirNameForTest re-exports weftLockDirName (production plumbing: weftgit.go), for
+// diff_integration_test.go's assertion that Status never surfaces fabric's own git-excluded lock
+// directory.
+const WeftLockDirNameForTest = weftLockDirName
+
+// CorrIndexForTest re-exports corrIndex's type identity (production plumbing: corrindex.go), for
+// relocating files that load and inspect the correspondence index directly.
+type CorrIndexForTest = corrIndex
+
+// LoadCorrIndexForTest re-exports loadCorrIndex (production plumbing: corrindex.go), for relocating
+// files that load the correspondence index directly rather than through a Fabric method.
+var LoadCorrIndexForTest = loadCorrIndex
+
+// CorrIndexEntriesForTest re-exports ix.entries (production plumbing: corrindex.go), for relocating
+// files comparing an incrementally-built index against a RebuildIndex-reconstructed one. The returned
+// []corrEntry is usable via type inference without this package needing to export corrEntry's own
+// name, since corrEntry's fields are already exported.
+func CorrIndexEntriesForTest(ix *CorrIndexForTest) []corrEntry {
+	return ix.entries()
+}
+
+// CorrIndexExactForTest re-exports ix.exact (production plumbing: corrindex.go), for relocating files
+// asserting on a specific warp SHA's recorded correspondence entry.
+func CorrIndexExactForTest(ix *CorrIndexForTest, warpSHA string) (corrEntry, bool) {
+	return ix.exact(warpSHA)
+}
+
+// PathspecNamesForTest re-exports pathspecNames (production plumbing: junctionnames.go), for
+// weftgit_pathspec_integration_test.go's assertion on the real, resolved default routing set.
+var PathspecNamesForTest = pathspecNames
