@@ -1,6 +1,23 @@
-// gitexec.go — low-level git command execution.
+// gitexec.go implements the package's two-shape entry-point split.
+// Run is the checked default: it treats a non-zero git exit as a failure,
+// returning *GitError.
+// RunGit is the raw form, for the sites where a non-zero exit is an answer
+// rather than a failure — it stays permanently correct there rather than
+// becoming a "legacy" wrapper.
+// Both are thin wrappers over one unexported exec core, runCore.
 //
-// RunGit executes git commands and returns their output and exit code.
+// An exec-level failure — git could not be run at all — is returned
+// unwrapped from Run, never as a *GitError, so errors.As(err, &gitErr)
+// means precisely "git ran and rejected this", not "something went wrong".
+// Run's stdout is returned in every case where git actually ran, including
+// alongside a *GitError; it is empty on an exec-level failure only because
+// git never ran.
+//
+// Args passed to either form are rendered verbatim into any resulting
+// *GitError, with no redaction — callers must not pass credentials in args.
+// CONSTRAINTS.md's gitexec Checked-Call Invariant is the mechanism that
+// keeps every remaining raw call site (RunGit, or a direct exec.Command)
+// deliberate rather than accidental.
 
 package gitexec
 
