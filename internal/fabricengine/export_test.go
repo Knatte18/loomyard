@@ -11,9 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// NewPairedForTest re-exports newPaired for package fabricengine_test files that construct a Fabric
-// from raw warp/weft paths rather than a lyxcwd.Location.
-var NewPairedForTest = newPaired
+// NewPairedFromPathsForTest re-exports newPaired for fabric_test.go's untagged unit test of the
+// newPaired constructor itself, its one remaining consumer: it hands newPaired two empty directories
+// and asserts the warp and weft fields come back non-nil.
+// It is a constructor seam, not a fixture-pairing shim — it must never be used to assemble a test
+// fixture's warp/weft pair.
+// A test needing a real pair takes one from internal/hubforge instead.
+var NewPairedFromPathsForTest = newPaired
 
 // WarpForTest returns f's private warp field, for package fabricengine_test files that need
 // warp-side gitrepo.Repo access no other exported accessor provides.

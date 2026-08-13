@@ -58,9 +58,9 @@ func TestFabricWarp_DetachVerifyRestoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.Open(fixture.Layout)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	originalBranch, err := f.CurrentBranch()
@@ -101,9 +101,9 @@ func TestFabricWarp_RestoreBranchInvalidRefErrors(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.Open(fixture.Layout)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	if err := f.RestoreBranch("does-not-exist-anywhere"); err == nil {
@@ -119,9 +119,9 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.Open(fixture.Layout)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
@@ -152,9 +152,9 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.Open(fixture.Layout)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	olderSHA := currentSHAOf(t, fixture.Layout.WorktreePath())
@@ -195,9 +195,9 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFabricFixture(t)
-	f, err := fabricengine.NewPairedForTest(fixture.Layout.WorktreePath(), fabricengine.WeftWorktree(fixture.Layout))
+	f, err := fabricengine.Open(fixture.Layout)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	gitkit.MustRun(t, fixture.Layout.WorktreePath(), "git", "checkout", "--detach")

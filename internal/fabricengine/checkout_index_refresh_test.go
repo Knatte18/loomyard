@@ -48,9 +48,9 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	f, err := fabricengine.NewPairedForTest(l.WorktreePath(), fabricengine.WeftWorktree(l))
+	f, err := fabricengine.Open(l)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	// Record one correspondence on the original branch via a real scoped commit.
