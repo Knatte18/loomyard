@@ -19,7 +19,8 @@ A fixture subpackage would not solve this: `loomtest`/`treadletest` would itself
 Moving the test file is the fix;
 the subpackage is not.
 
-`internal/loomengine/preflight_integration_test.go` is the higher-value of the two — it hand-rolls a `seedRepoWideFabricConfig` helper, which is another stand-in-hub hack this batch deletes outright.
+`internal/loomengine/preflight_integration_test.go` is the higher-value of the two — it hand-rolls a `seedRepoWideFabricConfig` helper that writes an uncommitted repo-wide `fabric.yaml` straight into `BoardDir`, which this batch replaces with `hubforge.SeedFabricConfig`.
+Note the shape of that replacement carefully: the helper's *placement* is stand-in-hub scaffolding, but its *content* is a genuine override (`pathspec: _extra`) that two of this file's tests depend on, so it is retargeted rather than dropped — see card 36.
 
 Batch-local decision: the two `export_test.go` files are created in their own cards, before the package flip, so each migration card can be reviewed on its own.
 Neither file is renamed — moving a test file out of its package is a one-line change to its `package` clause, and a `git mv` on top of that would add churn without adding history.
@@ -38,7 +39,7 @@ Neither file is renamed — moving a test file out of its package is a one-line 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Add `internal/loomengine/export_test.go` in `package loomengine`, untagged, re-exporting exactly what `preflight_integration_test.go` reaches for and nothing more: `var CheckResolvedForTest = checkResolved`, the unexported `checkResolved(l *lyxcwd.Location)` entry point the file calls twenty-six times.
+  Add `internal/loomengine/export_test.go` in `package loomengine`, untagged, re-exporting exactly what `preflight_integration_test.go` reaches for and nothing more: `var CheckResolvedForTest = checkResolved`, the unexported `checkResolved(l *lyxcwd.Location)` entry point, which the file invokes at twelve call expressions (a bare-word grep reports 26, but fourteen of those are `t.Fatalf("checkResolved: %v", err)` message literals).
   Follow `internal/fabricengine/export_test.go`'s convention: a file-header comment explaining that the shim exists so `package loomengine_test` files can drive an unexported seam directly rather than through the exported `Preflight()`, whose own `lyxcwd.Getwd()` dependency makes it unusable against an arbitrary `*lyxcwd.Location`, and a per-identifier doc comment saying why each one is re-exported.
   Add only the identifiers card 36 proves it needs;
   if the compiler shows more are required, add those and note them in the commit message rather than pre-emptively exporting the package's private surface.
@@ -63,7 +64,11 @@ Neither file is renamed — moving a test file out of its package is a one-line 
   Replace the single `gitkit.CopyPaired(t)` in `setupPreflightFixture` with `hubforge.NewHub(t, ".")` and change that helper's return type from `gitkit.PairedFixture` to `*hubforge.Hub`;
   the same substitution applies to the `commitFabricStatus(t, f)` helper's parameter and to the `dirty func(t *testing.T, f …)` table-test closures, all of which name `PairedFixture` today.
   Retarget the fixture fields per the overview's mapping table: `f.WeftPrime` becomes `h.PrimeWeft()`, `f.Hub` becomes `h.PrimeWorktree()` (it is handed to `git` as a repo directory, so `h.Path` would be wrong), and `f.Layout` becomes `h.Location`.
-  **Delete `seedRepoWideFabricConfig` outright** along with its call: it materializes a repo-wide `fabric.yaml` at the hub by hand, which is exactly the stand-in-hub scaffolding a real hub makes unnecessary — `fabriccli.CloneAndWire` already writes and commits it at `BoardDir`.
+  **Retarget `seedRepoWideFabricConfig` onto `hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")` and delete the helper** — do **not** simply drop the call.
+  Its placement is stand-in-hub scaffolding (a hand-written, uncommitted file at `BoardDir`) but its **content is a genuine override**, not a duplicate of the registered template: it names `pathspec: _extra`, whereas `internal/fabricengine/template.yaml` ships `pathspec: ""`.
+  The `_extra` value is load-bearing — `setupPreflightFixture` wires `_extra` as this fixture's second, non-`_lyx` junction through its explicit `fabricengine.WireJunctions(…, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"})` call, and `RepoWiredNames` must agree with what is wired on disk or `checkJunctionHealth` stops classifying `_extra` as a real optional junction at all.
+  Dropping it would silently break `TestPreflight_MissingOptionalJunctionIsAJunctionFault` and the two `_extra` junction-corruption sub-tests, which is a failure mode that looks like a passing test suite with two fewer meaningful assertions.
+  This is outcome 3 of the overview's three-way triage, and it mirrors batch 4 card 27's resolution of `perchcli`'s identically-named helper exactly.
   Apply the `SeedConfig` triage to the one `gitkit.SeedConfig(t, f.WeftPrime, …)` call.
   The `gitkit.MustRun(` calls stay on `gitkit` unchanged.
   The `git checkout -b` of the weft branch in `setupPreflightFixture` may now be redundant, since a real hub's weft worktree is already on the paired weft branch — check with `fabricengine.WeftBranchName` and drop it only if it is provably a no-op, noting the removal in the commit message.
@@ -107,6 +112,7 @@ Neither file is renamed — moving a test file out of its package is a one-line 
 
 ## Batch Tests
 
-`verify:` compile-checks the repo under both tags, then runs `internal/loomengine`'s integration suite, which is where the substantive migration in this batch lives: the flipped `preflight_integration_test.go` exercises `checkResolved` twenty-six times against a real hub and drops the hand-rolled `seedRepoWideFabricConfig` scaffolding, so a green run here is a direct proof that the repo-wide `fabric.yaml` a real clone writes is the one preflight reads.
+`verify:` compile-checks the repo under both tags, then runs `internal/loomengine`'s integration suite, which is where the substantive migration in this batch lives: the flipped `preflight_integration_test.go` drives `checkResolved` at twelve call sites against a real hub and moves its repo-wide `fabric.yaml` seeding onto `hubforge.SeedFabricConfig`, so a green run here proves both that the shim exposes the seam correctly and that a committed board-side override behaves as the hand-written uncommitted one did.
+The `_extra` junction-health tests are the ones to watch: they are what would fail silently if card 36's override were dropped instead of retargeted.
 
 `internal/treadleengine`'s integration suite is run too (`gate_lingering_test.go` lives there and is integration-tagged), but the file this batch moves in that package is `//go:build smoke` and spawns a real Claude session — compile-checked under `go vet -tags smoke ./...`, never executed.

@@ -169,8 +169,8 @@ this task does not run them.
   `lyxcwd.ValidateAnchorRel` accepts a multi-segment relative anchor and imposes no existence requirement, so `"wts/some-task"` is a legal `Subpath`;
   if the anchored directory does not exist inside the freshly cloned warp, `os.MkdirAll(h.Location.AnchorPath(), 0o755)` after `NewHub` is the correct arrangement — that is ordinary test arrangement on a real hub, not stand-in-hub scaffolding, and the difference is that the anchor itself is recorded by fabric either way.
 
-  *The `seedRepoWideFabricConfig` helper, five call sites across `internal/perchcli/run_integration_test.go`.*
-  Unlike the module-config sites it writes a genuine **override** — `branch_prefix: ""` and `pathspec: _lyx`, not the registered `fabric` template — so it is triage outcome 3, not a deletion: replace all five calls with `hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")` and delete the helper.
+  *The `seedRepoWideFabricConfig` helper, four call sites across `internal/perchcli/run_integration_test.go`.*
+  Unlike the module-config sites it writes a genuine **override** — `branch_prefix: ""` and `pathspec: _lyx`, not the registered `fabric` template — so it is triage outcome 3, not a deletion: replace all four calls with `hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")` and delete the helper.
   This matters beyond tidiness: the hand-rolled helper writes the file and never commits it, whereas `SeedFabricConfig` commits through `fabricengine.NewBolt`, and an uncommitted seed leaves the `weft:main` checkout dirty — which `Fabric.Commit`, this file's own subject, observes.
 - **Commit:** `test(perchcli): build fixtures with hubforge.NewHub`
 
