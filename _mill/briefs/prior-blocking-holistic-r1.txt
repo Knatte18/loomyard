@@ -1,1 +1,0 @@
-- copyDirRecursive's symlink-refusal test coverage was dropped: **Location:** `internal/gitkit/gitkit_test.go` (whole file); helper at `internal/gitkit/gitkit.go:259-262`
