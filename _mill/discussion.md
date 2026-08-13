@@ -97,16 +97,31 @@ touching those signatures is the substance of this task.
   `WithCwd(ctx, "")` is not legal;
   the empty string is a sentinel **only** in `RunCLIIn(cwd, …)`, where it means "seed nothing, let `CwdFrom` fall back to `Getwd()`", which is exactly how `RunCLI` delegates.
   `CwdFrom` therefore never returns a relative path.
+- **Enforcement mechanism (decided — a precondition with no detection is exactly the confusing-failure-far-from-its-cause this section argues against).** `WithCwd(ctx, dir)` **panics** when `dir` is empty or not absolute (`!filepath.IsAbs(dir)`).
+  It does not silently normalise via `filepath.Abs`, and it does not defer the complaint to `CwdFrom`.
+- Rationale: `WithCwd` returns only a `context.Context` and has nowhere to put an error without making every seeding site handle one.
+  Seeding a relative cwd is a programmer error at a call site the programmer controls, never user input — the CLI's own cwd comes from `Getwd()`, which is always absolute — so failing loudly at the seeding site puts the diagnostic at the cause.
+  Silent `filepath.Abs` normalisation was rejected precisely because it would resolve against the process cwd, reintroducing the dependency this task removes, and would do so invisibly.
+  Returning an error from `CwdFrom` was rejected because it reports the fault at the reading site, arbitrarily far from the seeding site that caused it.
 - **Governance contract — what the injected cwd does and does not control.** It governs **geometry resolution**: every `lyxcwd.Resolve`/`ResolveWorktree` input, and anything derived from the resulting `Location`.
   It does **not** automatically govern how a command resolves a *relative path supplied as a flag or positional argument*;
   those resolve against whatever base the individual handler chooses, which is the process cwd unless the handler is changed.
 - **Consequence, and why it is not left implicit.** Two verbs take a relative path as an argument and must be brought onto the seam cwd explicitly, or `RunCLIIn` would honour the injection for lookup while silently ignoring it for the argument:
   - `fabric clone --into <dir>` — covered by the `clone-gets-an-explicit-destination` decision.
-  - `scoutcli`'s four relative bases — `filepath.Abs(targetDir)` at `cli.go:446`, `filterWithin`'s `filepath.Abs(w)` at `:695` (whose own comment states it "resolves whatever remains against the process's actual working directory"), `parseQuery`'s `file:line:col` at `:784`, and `--in-file` at `:800`.
-- Decision: `scoutcli`'s four relative bases are rebased onto the seam cwd in the same commit that gives `scoutcli` its `RunCLIIn` — a relative value becomes `filepath.Join(seamCwd, v)`, an absolute value is used as given.
+  - `scoutcli`'s relative **value-entry points** — see the decision immediately below, and note the enumeration unit.
+- **Enumerate by value-entry point, not by `filepath.Abs` occurrence.** An earlier draft listed four `filepath.Abs` call sites inside `scoutcli` (`cli.go:446`, `:695`, `:784`, `:800`) and treated rebasing those as sufficient.
+  That is wrong, and `cli.go:446` is only the out-of-hub fallback branch rather than the main path.
+  The raw `--target-dir` value leaves the package unresolved: `cli.go:142-145` computes `dir := targetDir` (defaulting to `cwd` when empty), passes it to `lookupContext(cwd, dir)` at `:147` and `buildOptions(registry, dir, …)` at `:173`, from where it becomes `scoutengine.Options.TargetDir` (`refs.go:50`) and is finally absolutised by `rootURIFor`'s `filepath.Abs(targetDir)` at `scoutengine/ensureserver.go:120` — reached from `:182` and `:308` — plus a `DetectLanguage(opts.TargetDir, …)` tree read.
+  Both resolve against the **process** cwd, outside `scoutcli` entirely.
+- Decision: rebase at the flag's **defaulting point** — make `dir` absolute against the seam cwd at `cli.go:142-145`, before `lookupContext`/`buildOptions` — so every downstream consumer inside *and* outside `scoutcli` inherits a correct absolute value with no further change.
+  The same treatment applies to the other relative value-entry points reaching a handler: `--within`, `parseQuery`'s `file:line:col`, and `--in-file`.
+  A relative value becomes `filepath.Join(seamCwd, v)`;
+  an absolute value is used as given.
 - Rationale: a seam that is honoured for geometry but ignored for arguments is worse than no seam, because it returns a confidently wrong answer rather than an error.
-  `Reference.File` comparisons in `filterWithin` require an absolute `w`, and joining onto the seam cwd still produces one, so the invariant that comment protects is preserved.
+  Rebasing once at entry is also strictly safer than rebasing at each `filepath.Abs`, because it cannot miss a consumer in another package — which is exactly the class of miss the earlier draft made.
+  `Reference.File` comparisons in `filterWithin` require an absolute path, and joining onto the seam cwd still produces one, so the invariant its comment protects is preserved.
 - Rejected: documenting the limitation and leaving `scoutcli`'s bases on the process cwd (ships a known trap);
+  rebasing at the `filepath.Abs` sites (misses `scoutengine`);
   and omitting `scoutcli` from the seam entirely as `selfreportcli` is omitted (it genuinely resolves cwd at four sites, so it belongs).
 
 ### cwdfrom-owns-the-fallback
@@ -224,8 +239,11 @@ touching those signatures is the substance of this task.
 - Decision: three commits, each building and testing green on its own, each carrying its own doc updates:
   1. `lyxcwd` context API + the three `clihelp` siblings (`ExecuteIn`, `RunRootCtx`, `WrapRunCtx`) + the seam signature-pinning assertion + `CONSTRAINTS.md` CLI/Cobra amendment (wording and corrected "Enforced by") + `docs/overview.md:253` + package docs.
      `cmd/lyx/main.go` is not touched in this commit or any other.
-  2. Module seams — the 10 `RunCLIIn` functions, plain-handler context threading onto `WrapRunCtx`, `Preflight(cwd)`, clone `--into`, and `scoutcli`'s four relative-base rebases — plus module docs, `docs/overview.md:253`, and help text.
-  3. Test migration, `t.Parallel()`, the guard test, and the timing row.
+  2. Module seams — the 10 `RunCLIIn` functions, plain-handler context threading onto `WrapRunCtx`, `Preflight(cwd)` **together with its two call sites and the `export_test.go` comment rewrite**, clone `--into`, and `scoutcli`'s entry-point rebase — plus module docs, `docs/overview.md:253`, and help text.
+  3. Test migration (chdir removal), `t.Parallel()`, the guard test, and the timing row.
+- **Commit 2 carries `Preflight`'s two call-site updates, or it does not compile.** `Preflight()` → `Preflight(cwd string)` is the one *breaking* signature change in this task (`RunCLIIn`, `--into`, and the three `clihelp` siblings are all additive).
+  Its only two callers are `preflight_integration_test.go:192` and `:229`, so if those moved to commit 3, commit 2 would fail to build under `-tags integration` and the "each commit green on its own" property would be false.
+  Commit 2 therefore includes both call-site updates and the `export_test.go` comment rewrite, leaving commit 3 with chdir removal and `t.Parallel()` only.
 - Rationale: CLAUDE.md requires docs in the same commit as the change that causes them, which rules out a trailing docs-only commit.
   Slicing this way isolates the risky half (2) from the mechanical half (3).
 - Rejected: one commit (~40 files and two invariant amendments in a single reviewable unit);
@@ -294,7 +312,11 @@ Not migrated: `internal/logger/sink.go:88`, inert under `go test` per `sink.go:7
   the assertion is preserved, not weakened.
 - **`fabriccli/cli_test.go:89` and `:404`** chdir into a bare `t.TempDir()` to exercise error paths (`unknown` subcommand, and clone's usage error).
   At `:89` the `PersistentPreRunE` guard returns before any resolution, so the chdir is already dead weight.
-- **`fabriccli/cli_test.go:493,579,609,659,716`** are the clone tests where cwd is the destination. These move onto `--into`, not onto `RunCLIIn`'s cwd.
+- **`fabriccli/cli_test.go:493,579,609,659,716`** are the chdirs where cwd is a clone *destination*. These move onto `--into`.
+  Note `:659` and `:716` appear in the previous bullet too, and that is not a contradiction: those two tests use **both** seams.
+  `:659` chdirs into `cloneParent` for a `clone` (destination → `--into`), then `:680` chdirs into `filepath.Join(hubPath, "reconcilecli-warp")` for a `reconcile` (lookup → `RunCLIIn`);
+  `:716`/`:738` is the same pairing.
+  Each test therefore needs one `--into` argument and one per-call `RunCLIIn` cwd, not a choice between them.
 - **`perchcli/cli_integration_test.go:35`** asserts `os.Stat(filepath.Join("..","..","escaped"))`, deliberately relative to the chdir'd hub, proving `--run-id ../../escaped` did not escape the runs area.
   Rewrite against an absolute path derived from the hub (`filepath.Join(h.PrimeWorktree(), "..", "..", "escaped")`) so the assertion survives the chdir's removal.
 - **`perchcli/cli_integration_test.go:96` and `run_integration_test.go:157`** chdir into `h.Location.AnchorPath()`, a non-`"."` anchor — pass that path, not `PrimeWorktree()`.
@@ -375,14 +397,20 @@ The governing principle here is that this task must not silently weaken an asser
 Several chdir sites exist because the cwd *is* the thing under test, and a careless migration would turn a real assertion into a vacuous one.
 
 **Verification protocol (decided):** run the affected packages with `-race -count=2` under both `-tags integration` and untagged, before and after the change, and record the wall-clock delta as a row in `docs/benchmarks/test-suite-timing.md`.
-`-race` is what catches a cwd dependence removed incorrectly;
-`-count=2` catches fixture-teardown ordering bugs that only appear on a second run in the same binary;
-the timing row is the honest record of a small payoff.
+Each flag earns its place for a specific reason, and it is worth being precise about what `-race` does **not** buy here:
+- `-race` covers the **parallel-safety of the three newly parallelized files** — concurrent access to shared memory once those tests run together.
+  It does **not** catch a cwd dependence removed incorrectly: the process working directory is not race-detectable memory, and a wrongly-rebased path produces a failed assertion or a wrong answer, never a race report.
+- Assertion preservation across the migration is bought instead by the per-call-site notes above and by the named scenarios below — particularly the weft-sibling refusal, the run-id escape check, and the relative-`--target-dir` scoutcli case.
+  Those are the checks that would actually fail if a chdir were replaced with the wrong value.
+- `-count=2` catches fixture-teardown ordering bugs that only surface on a second run in the same binary.
+- The timing row is the honest record of a small payoff.
 
 **TDD candidates — write these first, watch them fail:**
 
 - `lyxcwd.CwdFrom` — returns the context-carried cwd when seeded via `WithCwd`, and falls back to `Getwd()` on a bare context.
   Pure unit test, no fixture, safe in Tier 1.
+- `lyxcwd.WithCwd`'s precondition — panics on an empty `dir` and on a relative `dir`, and accepts an absolute one.
+  Tier 1, no fixture. This is what makes "the injected cwd must be absolute" a rule rather than a wish.
 - `clihelp.ExecuteIn` — the cwd it is given reaches the command's context and is observable from a `RunE`.
   Tier 1 with a synthetic cobra command;
   no hub needed.
@@ -431,6 +459,10 @@ The smoke tier (11 files, 30 `.Chdir`) needs three further things before it coul
 - **Q:** Review round 3 found the `RunRoot` change was left as two unchosen alternatives, and that a parameter would force `cmd/lyx/main.go:42,54` to change. **A:** Decided: a `RunRootCtx(ctx, cmd, out)` sibling, with `RunRoot` retained as `RunRootCtx(context.Background(), cmd, out)`. `main.go` stays untouched and `clihelp` gets one consistent sibling idiom across all four seams.
 - **Q:** Review round 3 found `scoutcli` resolves relative flag/positional values against the process cwd at four sites, so `RunCLIIn` would honour the injection for lookup but not for `--target-dir`/`--within`/`file:line:col`/`--in-file`. **A:** State the seam's governance contract explicitly, and rebase those four bases onto the seam cwd in the same commit. A seam honoured for geometry but ignored for arguments returns a confidently wrong answer instead of an error.
 - **Q:** Must the injected cwd be absolute, and is `WithCwd(ctx, "")` legal? **A:** Absolute always; `WithCwd(ctx, "")` is illegal. The empty string is a sentinel only in `RunCLIIn`, meaning "seed nothing, fall back to `Getwd()`" — which is how `RunCLI` delegates.
+- **Q:** Review round 4 asked how the absolute-cwd precondition is actually enforced, since `WithCwd` returns no error. **A:** `WithCwd` panics on an empty or relative dir. Not silent `filepath.Abs` normalisation (which would resolve against the process cwd, reintroducing the very dependency being removed), and not an error from `CwdFrom` (which reports the fault far from the seeding site that caused it).
+- **Q:** Review round 4 found the scoutcli rebase was enumerated by `filepath.Abs` occurrence and so stopped at the package edge — the raw `--target-dir` reaches `scoutengine.Options.TargetDir` and is absolutised in `ensureserver.go:120`. **A:** Rebase at the flag's defaulting point (`cli.go:142-145`) instead, so every consumer inside and outside `scoutcli` inherits it; enumerate by value-entry point, never by `filepath.Abs` site.
+- **Q:** Review round 4 found commit 2 would not compile, since it changes `Preflight`'s signature while commit 3 migrates its only two callers. **A:** Commit 2 carries both call-site updates and the `export_test.go` comment rewrite; commit 3 keeps only chdir removal and `t.Parallel()`.
+- **Q:** Does `-race` catch an incorrectly removed cwd dependence? **A:** No — process cwd is not race-detectable memory. `-race` covers parallel-safety of the newly parallelized files; assertion preservation is covered by the per-site notes and the named scenarios.
 - **Q:** How does explicit cwd reach the resolution sites? **A:** Context-carried, owned by `lyxcwd` (`WithCwd`/`CwdFrom`), seeded by `clihelp.ExecuteIn` and per-module `RunCLIIn`. No user-visible `--cwd`/`-C` flag.
 - **Q:** `fabriccli` has a plain helper for topology verbs and a `PersistentPreRunE` for weft verbs, and `configcli` uses plain handlers. Unify them? **A:** No — thread `cmd.Context()` into the plain handlers and leave each package's seam shape alone.
 - **Q:** Clone's cwd is a destination, not a lookup. What replaces it? **A:** An explicit `--into <dir>` flag defaulting to the resolved cwd.
