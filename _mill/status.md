@@ -97,7 +97,9 @@ batches:
     commit_sha: 5664d9a6dc053fb14f14993497cae60d55be3ad6
     verify_baseline_failures: []
   - name: fabricengine in-package weft
-    state: pending
+    state: running
+    implementer_session: 2be0f014-4923-47e3-8df4-d00d70a67618
+    start_sha: 6353b5a24ffa4d2a3f6a686e3898f977e0277703
     verify_baseline_failures: []
   - name: fabricengine in-package hub
     state: pending
