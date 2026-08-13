@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main worktree,
@@ -99,8 +100,8 @@ func TestList(t *testing.T) {
 				return
 			}
 
-			fix := gitkit.CopyWarpHub(t)
-			hub := fix.Hub
+			h := hubforge.NewHub(t, ".")
+			hub := h.PrimeWorktree()
 
 			for i := 0; i < tt.extraWorktrees; i++ {
 				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))

@@ -27,7 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -194,32 +194,38 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 	}
 }
 
-// TestUnwire_NeverWiredWarpIsIdempotentNoOp verifies that Unwire is a clean, error-free no-op on a
-// warp worktree that was never fabric-paired at all — no weft sibling, no junctions — mirroring
-// initengine.Undo's TestUndo_NoWeftPairing coverage.
+// TestUnwire_NeverWiredWarpIsIdempotentNoOp verifies that a second Unwire call against an
+// already-torn-down pair is a clean, error-free no-op — the idempotency guarantee this test's name
+// promises. hubforge.NewHub's prime pair arrives genuinely paired and already wired (unlike the old
+// gitkit.CopyWarpHub fixture, which had no weft sibling and no junctions at all — the shape
+// initengine.Undo's TestUndo_NoWeftPairing coverage mirrored), so the FIRST Unwire call below does
+// real teardown work rather than observing a no-op; only the second call is the no-op.
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	warp := gitkit.CopyWarpHub(t)
+	h := hubforge.NewHub(t, ".")
 
-	res, err := fabricengine.Unwire(warp.Hub)
+	res, err := fabricengine.Unwire(h.PrimeWorktree())
 	if err != nil {
 		t.Fatalf("Unwire() = %v; want nil", err)
 	}
-	if res.WeftContent != "not_present" {
-		t.Errorf("res.WeftContent = %q; want %q", res.WeftContent, "not_present")
+	if res.WeftContent != "preserved" {
+		t.Errorf("res.WeftContent = %q; want %q (the prime pair's weft sibling is genuinely present)", res.WeftContent, "preserved")
 	}
-	if len(res.JunctionsRemoved) != 0 {
-		t.Errorf("res.JunctionsRemoved = %v; want empty", res.JunctionsRemoved)
+	if len(res.JunctionsRemoved) == 0 {
+		t.Error("res.JunctionsRemoved is empty; want the prime pair's already-wired junctions removed")
 	}
 
-	// Running it again is a clean, identical no-op.
-	res2, err := fabricengine.Unwire(warp.Hub)
+	// Running it again is a clean, identical no-op: nothing left to remove.
+	res2, err := fabricengine.Unwire(h.PrimeWorktree())
 	if err != nil {
 		t.Fatalf("second Unwire() = %v; want nil", err)
 	}
-	if res2.WeftContent != "not_present" {
-		t.Errorf("second res.WeftContent = %q; want %q", res2.WeftContent, "not_present")
+	if res2.WeftContent != "preserved" {
+		t.Errorf("second res.WeftContent = %q; want %q", res2.WeftContent, "preserved")
+	}
+	if len(res2.JunctionsRemoved) != 0 {
+		t.Errorf("second res.JunctionsRemoved = %v; want empty", res2.JunctionsRemoved)
 	}
 }
 
