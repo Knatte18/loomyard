@@ -160,12 +160,9 @@ func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, 
 // then refuses, failing the whole staging invocation (see
 // weftPathspecFilter's doc comment for the full failure mode this closes).
 func entryMatchesWeft(weftPath, entry string) (bool, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--", entry}, weftPath)
+	stdout, err := gitexec.Run([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--", entry}, weftPath)
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: git ls-files --cached --others --exclude-standard -- %s: %w", entry, err)
-	}
-	if code != 0 {
-		return false, fmt.Errorf("fabricengine: git ls-files --cached --others --exclude-standard -- %s in %s: %s", entry, weftPath, stderr)
+		return false, fmt.Errorf("fabricengine: git ls-files --cached --others --exclude-standard -- %s in %s: %w", entry, weftPath, err)
 	}
 	return strings.TrimSpace(stdout) != "", nil
 }

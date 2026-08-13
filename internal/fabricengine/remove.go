@@ -202,29 +202,33 @@ func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, fo
 		force:     force,
 	}
 
-	exitCode, stderr, err := removeGitWorktree(rec, req, l.WorktreePath())
-	if err != nil {
-		var refusal *destructiveRefusal
-		if errors.As(err, &refusal) && !isRegisteredLinkedWorktree(l, target) {
-			// The gate refused before git ever ran: target fails the exact same
-			// isRegisteredLinkedWorktree predicate the post-git-failure branch below would have
-			// applied, just evaluated earlier. Report the identical, pre-existing message rather
-			// than a gate-internal one — git's own exit code and stderr are unavailable here
-			// because git was never invoked.
-			return fmt.Errorf(
-				"refusing to remove worktree %s: %s; it is not a linked worktree of this repo, so fabric will not delete the directory itself",
-				target, refusal.Reason)
-		}
-		return fmt.Errorf("run git worktree remove for %s: %w", target, err)
-	}
-	if exitCode == 0 {
+	err := removeGitWorktree(rec, req, l.WorktreePath())
+	if err == nil {
 		return nil
+	}
+
+	var refusal *destructiveRefusal
+	if errors.As(err, &refusal) && !isRegisteredLinkedWorktree(l, target) {
+		// The gate refused before git ever ran: target fails the exact same
+		// isRegisteredLinkedWorktree predicate the post-git-failure branch below would have
+		// applied, just evaluated earlier. Report the identical, pre-existing message rather
+		// than a gate-internal one — git's own exit code and stderr are unavailable here
+		// because git was never invoked.
+		return fmt.Errorf(
+			"refusing to remove worktree %s: %s; it is not a linked worktree of this repo, so fabric will not delete the directory itself",
+			target, refusal.Reason)
+	}
+
+	var gitErr *gitexec.GitError
+	if !errors.As(err, &gitErr) {
+		// git never ran, or the gate refused before it could: destroy nothing.
+		return fmt.Errorf("run git worktree remove for %s: %w", target, err)
 	}
 
 	if !isRegisteredLinkedWorktree(l, target) {
 		return fmt.Errorf(
 			"git refused to remove worktree %s (git exit %d): %s; it is not a linked worktree of this repo, so fabric will not delete the directory itself",
-			target, exitCode, strings.TrimSpace(stderr))
+			target, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr))
 	}
 
 	fallbackReq := pathRequest{
@@ -243,9 +247,9 @@ func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, fo
 		}
 		return fmt.Errorf("fallback removal failed: %w", removeErr)
 	}
-	// Bookkeeping only: a failed prune leaves a stale registration the next reconcile or prune
+	// Best-effort: a failed prune leaves a stale registration the next reconcile or prune
 	// re-reports, and it must not turn a completed removal into an error.
-	_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
+	_, _ = gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath())
 	return nil
 }
 

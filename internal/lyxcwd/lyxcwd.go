@@ -146,12 +146,20 @@ func resolveWithAnchorCore(cwd, anchor string, applyGate bool) (*Location, error
 // gitWorktreeRoot runs git rev-parse --show-toplevel at cwd and returns the
 // cleaned, OS-native worktree root path.
 func gitWorktreeRoot(cwd string) (string, error) {
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--show-toplevel"}, cwd)
+	stdout, err := gitexec.Run([]string{"rev-parse", "--show-toplevel"}, cwd)
 	if err != nil {
+		// A *GitError means git ran and rejected the command (cwd is not
+		// inside a git repo): return the bare sentinel, unwrapped, so
+		// errors.Is(err, ErrNotAGitRepo) keeps matching at every consumer
+		// that pins its exact rendering. Anything else is an exec-level
+		// failure (git could not run at all), reported with the sentinel
+		// still leading via %w so errors.Is still matches, and the
+		// underlying error appended for diagnosis.
+		var gitErr *gitexec.GitError
+		if errors.As(err, &gitErr) {
+			return "", ErrNotAGitRepo
+		}
 		return "", fmt.Errorf("%w: %v", ErrNotAGitRepo, err)
-	}
-	if exitCode != 0 {
-		return "", ErrNotAGitRepo
 	}
 
 	workTreeRoot := filepath.FromSlash(strings.TrimSpace(stdout))

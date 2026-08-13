@@ -111,7 +111,7 @@ func WorktreeDirtyAllForTest(dir string) (dirty bool, detail string, err error) 
 // the primary weft branch or a branch checked out at some worktree.
 // It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its
 // own and its callers assert nothing about the record.
-func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix string, force bool) (exitCode int, stderr string, err error) {
+func DeleteBranchForTest(l *lyxcwd.Location, repoDir, branch, branchPrefix string, force bool) error {
 	req := branchRequest{
 		what:      "test delete branch",
 		repoDir:   repoDir,

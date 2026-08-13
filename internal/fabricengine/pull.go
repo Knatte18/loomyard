@@ -131,11 +131,15 @@ var ErrWarpDirty = errors.New("fabricengine: warp worktree has uncommitted chang
 // A nonzero exit from rev-parse @{u} means no upstream (or a detached HEAD), which for Pull's weft
 // step is the nothing-to-pull-from case, never an error.
 func (f *Fabric) weftHasUpstream() (bool, error) {
-	_, _, code, err := gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, f.weftPath)
-	if err != nil {
-		return false, fmt.Errorf("fabricengine: resolve weft upstream in %s: %w", f.weftPath, err)
+	_, err := gitexec.Run([]string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"}, f.weftPath)
+	if err == nil {
+		return true, nil
 	}
-	return code == 0, nil
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) {
+		return false, nil
+	}
+	return false, fmt.Errorf("fabricengine: resolve weft upstream in %s: %w", f.weftPath, err)
 }
 
 // warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
@@ -187,12 +191,9 @@ func (f *Fabric) recordWarpAdvance(rec *Mutations, before string) {
 // directly by ResetHard and IsAncestor, which both require a plain commit
 // SHA rather than symbolic revision syntax.
 func (f *Fabric) warpUpstreamSHA() (string, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "@{u}"}, f.warpPath)
+	stdout, err := gitexec.Run([]string{"rev-parse", "@{u}"}, f.warpPath)
 	if err != nil {
 		return "", fmt.Errorf("fabricengine: rev-parse @{u} in %s: %w", f.warpPath, err)
-	}
-	if code != 0 {
-		return "", fmt.Errorf("fabricengine: git rev-parse @{u} in %s: %s", f.warpPath, stderr)
 	}
 	return strings.TrimSpace(stdout), nil
 }
@@ -425,12 +426,9 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 		args = append(args, filepath.ToSlash(spec))
 	}
 
-	stdout, stderr, code, err := gitexec.RunGit(args, f.weftPath)
+	stdout, err := gitexec.Run(args, f.weftPath)
 	if err != nil {
 		return nil, fmt.Errorf("fabricengine: git log --name-only %s in %s: %w", rangeArg, f.weftPath, err)
-	}
-	if code != 0 {
-		return nil, fmt.Errorf("fabricengine: git log --name-only %s in %s: %s", rangeArg, f.weftPath, stderr)
 	}
 
 	return parsePatternResidueRecords(stdout), nil

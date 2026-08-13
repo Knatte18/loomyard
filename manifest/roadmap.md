@@ -44,12 +44,6 @@ realignment lands with the `Shed` build task itself.
    Also supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See [internal/pattern](../internal/pattern/doc.go).
 
-1. **gitexec: checked entry point + call-site migration** — the verdict is decided: a second, must-succeed entry point `gitexec.Run` returns stdout and a typed error, `RunGit` is unchanged and stays permanently correct for predicate sites, `gitrepo` gains the same checked/raw pair,
-   and the remaining raw sites are pinned by a guard test requiring a written justification comment.
-   Filed behind the tail of the serialised fabric chain, because it rewrites roughly 70 call sites in the package that chain exists to protect from concurrent edits.
-   The bulk of the work is a per-site merge of two existing error messages under a stated default rule, not a mechanical sweep.
-   See [designs/gitexec-error-shape.md](designs/gitexec-error-shape.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -270,6 +264,11 @@ No build order is implied between these items.
    a live-substrate agent for the Someday `Tenter` is a future second one) and a judge-maintained handoff that bounds the progress judge's read-set — an efficiency fix to `perch`'s own shipped behavior, not just a `Tenter` need. `perch` was rewritten onto it in the same task, behavior/CLI unchanged from the outside: `internal/perchengine` is the thin configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto treadle's `RoundRunner` seam.
    Renamed from the discussion-time placeholder `gorch`.
    See the `internal/treadleengine` package documentation.
+
+1. **gitexec: checked entry point + call-site migration** — `internal/gitexec` now exposes two entry points: `Run`, the checked, must-succeed default that returns stdout and a typed `*GitError`, and `RunGit`, the original raw form, unchanged and still the correct tool for the sites where a non-zero exit is an answer rather than a failure.
+   `internal/gitrepo` gained the matching pair, `run` (raw) and `runChecked`, and every call site across the tree now uses whichever form is correct for it.
+   The gitexec Checked-Call Invariant (`CONSTRAINTS.md`, enforced by `cmd/lyx/checkedcall_test.go`) is the mechanism that keeps every remaining raw call site deliberate: each carries an adjacent `//gitexec:raw` marker naming why the raw form is correct there, and a pinned per-package count catches drift.
+   See the `internal/gitexec` package documentation.
 
 ## Maintenance
 

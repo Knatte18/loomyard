@@ -352,7 +352,7 @@ Every registered lyx module must be exercised by the black-box sandbox suite or 
 Untagged test files perform no expensive spawns — no `git init`/`git worktree add`/fixture-tree copies;
 Tier 1 stays offline and fast.
 
-- A test file whose first non-empty line is not a `//go:build` constraint mentioning `integration`, `smoke`, or `scout` is "untagged" and must not call `gitexec.RunGit`, `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
+- A test file whose first non-empty line is not a `//go:build` constraint mentioning `integration`, `smoke`, or `scout` is "untagged" and must not call `gitexec.Run` (which also matches `gitexec.RunGit`), `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
   Raw substring match — a comment or string-literal mention also trips it.
 - Substrate definition (real git/tmux/filesystem/cross-compile/external-binary spawn) lives in `docs/benchmarks/running-tests.md`'s "## The two tiers" section.
 - Allowlist: `internal/proc` (its tests must spawn), `cmd/lyx/tierpurity_test.go` itself (carries the banned tokens as test data).
@@ -364,7 +364,7 @@ Tier 1 stays offline and fast.
 
 Every test package whose tests spawn git — directly or via a `gitkit`/`hubforge` fixture helper — runs under the hermetic git test environment, so no test behaviour depends on the operator's `~/.gitconfig` or the system gitconfig.
 
-- A package is "git-spawning" when any `*_test.go` file spawns git directly (`gitexec.RunGit`, `exec.Command`/`exec.CommandContext`) or indirectly via a fixture helper (`gitkit.Copy*`, `gitkit.MustRun`, `gitkit.SeedConfig`, `hubforge.NewHub`).
+- A package is "git-spawning" when any `*_test.go` file spawns git directly (`gitexec.Run`, which also matches `gitexec.RunGit`, or `exec.Command`/`exec.CommandContext`) or indirectly via a fixture helper (`gitkit.Copy*`, `gitkit.MustRun`, `gitkit.SeedConfig`, `hubforge.NewHub`).
   Every such package must have a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, or be allowlisted.
 - Allowlist: `internal/proc` (spawns non-git processes).
 - **Enforced by** `cmd/lyx/hermeticenv_test.go` (`TestHermeticGitEnv_GitSpawningPackagesHaveTestMain`) — proves presence of the call only;
@@ -420,8 +420,31 @@ no other production package shells out to `gh`.
 
 - go-git handles reads that resolve state already on disk — commit/tree/blob lookups and ref reads. `gitexec` is the only path to the git CLI, used for `StageAndCommit`, `CommitEmpty`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `PushRebaseFree`, `Pull`, `Fetch`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `IsAncestor`, `HasUnpushed`.
   Any new `gitexec` call added inside `internal/gitrepo` must update this list in the same commit.
-- Known guard blind spot: the check is set-equality on method names, so a new `r.run` call slipped inside an already-pinned method is not caught — per-call review still applies to those methods.
+- The guard's pinned method set is keyed on `r.run` and `r.runChecked` together — whichever chokepoint a method's body calls, it belongs on the same list;
+  the raw/checked split within that set is invisible to this guard by design (see the gitexec Checked-Call Invariant below, which is keyed by call site instead).
+- The guard separately asserts exactly two `gitexec.Run`/`gitexec.RunGit` call expressions exist in the package's non-test source: one inside `run`'s own body, one inside `runChecked`'s.
+- Known guard blind spot: the method-name check is set-equality, so a new `r.run`/`r.runChecked` call slipped inside an already-pinned method is not caught — per-call review still applies to those methods.
+- **See also:** this invariant answers *which methods may reach the git CLI at all*, keyed by method name;
+  the gitexec Checked-Call Invariant below answers *which call sites may use the raw form*, keyed by call site.
+  A new CLI call added inside an already-pinned method trips the Checked-Call Invariant and not this one;
+  a new method reaching the CLI trips both.
 - **Enforced by** `cmd/lyx/gitrepoboundary_test.go` (`TestGitrepoBoundary_PinnedRunCallSites`).
+
+## gitexec Checked-Call Invariant
+
+`gitexec.Run`/`runChecked` is the default entry point;
+`gitexec.RunGit`/`r.run` (the raw forms) survive only at a pinned set of call sites, each carrying an adjacent `//gitexec:raw` marker.
+
+- Every remaining raw `gitexec.RunGit` or `r.run` call site in non-test source carries an adjacent `//gitexec:raw — <why the raw form is correct here>` marker, on the same line or the line immediately above.
+  The justification must be true: the two truthfully-markable classes are (1) a pure predicate whose signature has no error channel to report the exec path through, and (2) a test-pinned, deliberate-suppression contract.
+- Per-package pinned raw-site counts: `internal/gitrepo` 3 (`run`'s own body, `Pull`, `Fetch`), `internal/fabricengine` 2 (`weftRepoExists`, `weftBranchExists`), `internal/lyxcwd` 0, `internal/fabriccli` 0, `internal/websterengine` 0.
+  A package with no entry here is pinned zero.
+- Test files are exempt from the marker requirement entirely.
+- Known guard blind spot: a raw-substring scan, not an AST walk — it cannot see a raw call written in a spelling its two literal tokens miss, and it cannot tell a genuinely new raw call sitting near an already-`//gitexec:raw`-marked region from the one call the marker was actually written to justify;
+  per-call review remains necessary there.
+- **See also:** this invariant answers *which call sites may use the raw form*, keyed by call site;
+  the gitrepo Client Boundary Invariant above answers *which methods may reach the git CLI at all*, keyed by method name.
+- **Enforced by** `cmd/lyx/checkedcall_test.go` (`TestCheckedCallInvariant_RawSitesMarkedAndPinned`).
 
 ## Never Force-Add Invariant
 

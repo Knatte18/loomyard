@@ -55,12 +55,9 @@ var ErrStaleSHA = errors.New("fabricengine: stale SHA in correspondence index")
 // dir — deliberately, since the correspondence index is scoped per
 // warp<->weft pair, not shared across every worktree of the same weft clone.
 func (f *Fabric) weftGitDir() (string, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-parse", "--git-dir"}, f.weftPath)
+	stdout, err := gitexec.Run([]string{"rev-parse", "--git-dir"}, f.weftPath)
 	if err != nil {
-		return "", err
-	}
-	if code != 0 {
-		return "", fmt.Errorf("fabricengine: git rev-parse --git-dir in %s: %s", f.weftPath, stderr)
+		return "", fmt.Errorf("fabricengine: git rev-parse --git-dir in %s: %w", f.weftPath, err)
 	}
 
 	dir := strings.TrimSpace(stdout)
@@ -85,12 +82,9 @@ func (f *Fabric) corrIndexPath() (string, error) {
 // correspondence index sorts by for its binary-search "nearest older"
 // lookup.
 func (f *Fabric) warpSeq(warpSHA string) (int, error) {
-	stdout, stderr, code, err := gitexec.RunGit([]string{"rev-list", "--count", "--first-parent", warpSHA}, f.warpPath)
+	stdout, err := gitexec.Run([]string{"rev-list", "--count", "--first-parent", warpSHA}, f.warpPath)
 	if err != nil {
-		return 0, err
-	}
-	if code != 0 {
-		return 0, fmt.Errorf("fabricengine: git rev-list --count --first-parent %s in %s: %s", warpSHA, f.warpPath, stderr)
+		return 0, fmt.Errorf("fabricengine: git rev-list --count --first-parent %s in %s: %w", warpSHA, f.warpPath, err)
 	}
 
 	seq, err := strconv.Atoi(strings.TrimSpace(stdout))
@@ -206,18 +200,16 @@ func (f *Fabric) scanWarpSHATrailers() ([]warpSHATrailerCommit, error) {
 		"%(trailers:key=" + SnapshotTrailerKey + ",valueonly)" +
 		warpSHATrailerFormatRecordSep
 
-	stdout, stderr, code, err := gitexec.RunGit([]string{"log", "--topo-order", "--format=" + format}, f.weftPath)
+	stdout, err := gitexec.Run([]string{"log", "--topo-order", "--format=" + format}, f.weftPath)
 	if err != nil {
-		return nil, err
-	}
-	if code != 0 {
 		// An unborn HEAD (a fresh weft branch with zero commits) is not a
 		// genuine scan failure — it just has empty trailer history — so it
 		// yields no commits rather than an error.
-		if strings.Contains(stderr, "does not have any commits yet") {
+		var gitErr *gitexec.GitError
+		if errors.As(err, &gitErr) && strings.Contains(gitErr.Stderr, "does not have any commits yet") {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("fabricengine: git log --format trailers in %s: %s", f.weftPath, stderr)
+		return nil, fmt.Errorf("fabricengine: git log --format trailers in %s: %w", f.weftPath, err)
 	}
 
 	var commits []warpSHATrailerCommit

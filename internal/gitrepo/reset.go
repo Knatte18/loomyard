@@ -15,12 +15,9 @@ func (r *Repo) ResetHard(sha string) error {
 		return ErrInvalidSHA
 	}
 
-	_, _, code, err := r.run("reset", "--hard", sha)
+	_, err := r.runChecked("reset", "--hard", sha)
 	if err != nil {
 		return fmt.Errorf("gitrepo: reset --hard %s in %s: %w", sha, r.path, err)
-	}
-	if code != 0 {
-		return fmt.Errorf("gitrepo: reset --hard %s in %s: git exited %d", sha, r.path, code)
 	}
 	return nil
 }

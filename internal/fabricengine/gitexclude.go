@@ -29,16 +29,12 @@ const gitExcludeLockFileName = "exclude.lyx.lock"
 // It asks git rather than composing the path, so a linked worktree resolves to its repo's COMMON
 // gitdir instead of its own private one.
 func resolveGitExcludePath(repoDir string) (string, error) {
-	stdout, stderr, exitCode, err := gitexec.RunGit(
+	stdout, err := gitexec.Run(
 		[]string{"rev-parse", "--git-path", "info/exclude"},
 		repoDir,
 	)
 	if err != nil {
 		return "", fmt.Errorf("resolve git exclude path for %q: %w", repoDir, err)
-	}
-	if exitCode != 0 {
-		return "", fmt.Errorf("resolve git exclude path for %q failed (git exit %d): %s",
-			repoDir, exitCode, strings.TrimSpace(stderr))
 	}
 
 	excludePath := strings.TrimSpace(stdout)

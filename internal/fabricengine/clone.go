@@ -15,6 +15,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -433,13 +434,9 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 // git branch --show-current at weftPath after this function returns would
 // incorrectly see the already-renamed <warpBranch>-weft, not warpBranch.
 func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
-	stdout, showStderr, exitCode, err := gitexec.RunGit([]string{"branch", "--show-current"}, weftPath)
+	stdout, err := gitexec.Run([]string{"branch", "--show-current"}, weftPath)
 	if err != nil {
 		return "", fmt.Errorf("resolve weft primary branch: %w", err)
-	}
-	if exitCode != 0 {
-		return "", fmt.Errorf("git branch --show-current in weft primary failed (git exit %d): %s",
-			exitCode, strings.TrimSpace(showStderr))
 	}
 	warpBranch = strings.TrimSpace(stdout)
 	if warpBranch == "" {
@@ -453,23 +450,25 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 	// from origin/<suffixed> both checks out that history and configures the
 	// upstream (git's default branch.autoSetupMerge for a remote-tracking start
 	// point), which the create path below deliberately leaves to the first push.
+	// This is a mixed probe: the exit path answers "no remote suffixed branch
+	// yet", so it is recovered via errors.As rather than merged into a single
+	// message.
 	remoteRef := "refs/remotes/origin/" + suffixedBranch
-	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", remoteRef}, weftPath)
+	_, err = gitexec.Run([]string{"rev-parse", "--verify", "--quiet", remoteRef}, weftPath)
+	remoteBranchExists := err == nil
 	if err != nil {
-		return "", fmt.Errorf("check for remote weft primary branch: %w", err)
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) {
+			return "", fmt.Errorf("check for remote weft primary branch: %w", err)
+		}
 	}
 	checkoutArgs := []string{"checkout", "-b", suffixedBranch}
-	if exitCode == 0 {
+	if remoteBranchExists {
 		checkoutArgs = append(checkoutArgs, "origin/"+suffixedBranch)
 	}
 
-	_, checkoutStderr, exitCode, err := gitexec.RunGit(checkoutArgs, weftPath)
-	if err != nil {
-		return "", fmt.Errorf("create weft primary branch %q: %w", suffixedBranch, err)
-	}
-	if exitCode != 0 {
-		return "", fmt.Errorf("checkout -b %q in weft primary failed (git exit %d): %s",
-			suffixedBranch, exitCode, strings.TrimSpace(checkoutStderr))
+	if _, err := gitexec.Run(checkoutArgs, weftPath); err != nil {
+		return "", fmt.Errorf("checkout -b %q in weft primary: %w", suffixedBranch, err)
 	}
 
 	if err := bornWeftPrimaryBranch(weftPath, suffixedBranch); err != nil {
@@ -493,24 +492,22 @@ func suffixWeftPrimaryBranch(weftPath string) (warpBranch string, err error) {
 // A branch that already resolves is left untouched, so the ordinary non-empty-remote clone and the
 // re-clone adopt path are unaffected.
 func bornWeftPrimaryBranch(weftPath, branch string) error {
-	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, weftPath)
-	if err != nil {
-		return fmt.Errorf("verify weft primary branch %q: %w", branch, err)
-	}
-	if exitCode == 0 {
+	// Mixed probe: the exit path answers "the branch is still unborn", the case this function
+	// exists to fix, so it is recovered via errors.As rather than merged into a single message.
+	_, err := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + branch}, weftPath)
+	if err == nil {
 		return nil
 	}
+	var gitErr *gitexec.GitError
+	if !errors.As(err, &gitErr) {
+		return fmt.Errorf("verify weft primary branch %q: %w", branch, err)
+	}
 
-	_, stderr, exitCode, err := gitexec.RunGit(
+	if _, err := gitexec.Run(
 		[]string{"commit", "--allow-empty", "-m", "fabric clone: initialise weft primary branch " + branch},
 		weftPath,
-	)
-	if err != nil {
+	); err != nil {
 		return fmt.Errorf("initialise unborn weft primary branch %q: %w", branch, err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("initialise unborn weft primary branch %q failed (git exit %d): %s",
-			branch, exitCode, strings.TrimSpace(stderr))
 	}
 	return nil
 }
@@ -542,17 +539,9 @@ func cloneRepo(url, dest string) error {
 	gitURL := filepath.ToSlash(url)
 	gitDest := filepath.ToSlash(destName)
 
-	stdout, cloneStderr, exitCode, err := gitexec.RunGit([]string{"clone", gitURL, gitDest}, parentDir)
-	if err != nil {
-		return fmt.Errorf("clone failed: %w", err)
+	if _, err := gitexec.Run([]string{"clone", gitURL, gitDest}, parentDir); err != nil {
+		return fmt.Errorf("clone %q to %q failed: %w", url, dest, err)
 	}
-
-	if exitCode != 0 {
-		return fmt.Errorf("clone %q to %q failed (git exit %d): %s",
-			url, dest, exitCode, strings.TrimSpace(cloneStderr))
-	}
-
-	_ = stdout // stdout is not used; we only check for errors
 
 	return nil
 }

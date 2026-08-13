@@ -9,25 +9,31 @@
 //
 // # Relationship to internal/gitexec — the two-backend boundary
 //
-// internal/gitexec is deliberately minimal: one function, RunGit(args
-// []string, cwd string) (stdout, stderr string, exitCode int, err error),
-// that shells out to git and returns raw output. gitrepo used to route every
-// method through it via a single unexported run helper; it no longer does.
+// internal/gitexec exposes a two-function pair: RunGit(args []string, cwd
+// string) (stdout, stderr string, exitCode int, err error), the raw form
+// that shells out to git and returns its exit code for the caller to
+// classify, and Run(args []string, cwd string) (string, error), the checked
+// form that treats a non-zero exit as failure and returns it as *GitError.
+// gitrepo used to route every CLI-bound method through a single unexported
+// run helper over RunGit; it now has a matching pair, run and runChecked.
 // The read surface — CurrentSHA, SHAExists, ChangedFilesSince, and
 // CurrentBranch — resolves state entirely through go-git's own object and
-// ref access (see gogit.go), bypassing run and gitexec.RunGit completely.
-// Everything that authenticates to a remote or mutates the working tree
-// stays CLI-bound through run: StageAndCommit, StageAllAndCommit, Push,
-// PushCoalesced, Pull, Fetch, ResetHard, CheckoutDetached, RestoreBranch,
-// IsAncestor, and HasUnpushed (measured and reverted from a go-git ancestry
-// walk; see HasUnpushed's own godoc in push.go for the reversal criterion). See
-// CONSTRAINTS.md's gitrepo Client Boundary Invariant for the enforced,
-// exhaustive version of this split and the review obligation any new CLI
-// call inside this package carries. gitexec itself stays a zero-dependency
-// leaf regardless of which side of the boundary a gitrepo method is on — it
-// has roughly eighty call-sites across packages, some lower in the layering
-// than gitrepo (e.g. lyxcwd), and gitrepo remains one of its many
-// consumers, not merged into it.
+// ref access (see gogit.go), bypassing both of them completely. Of the
+// CLI-bound methods, only Pull and Fetch sit on the raw run — a non-zero
+// exit is a failure at both sites too, but the package's test-enforced
+// no-`fatal:`-leak surface forbids folding git's stderr into their
+// messages, which is what run's raw form lets them keep working around.
+// Every other CLI-bound method — StageAndCommit, StageAllAndCommit, Push,
+// PushCoalesced, ResetHard, CheckoutDetached, RestoreBranch, IsAncestor, and
+// HasUnpushed (measured and reverted from a go-git ancestry walk; see
+// HasUnpushed's own godoc in push.go for the reversal criterion) — sits on
+// runChecked. See CONSTRAINTS.md's gitrepo Client Boundary Invariant for the
+// enforced, exhaustive version of this split and the review obligation any
+// new CLI call inside this package carries. gitexec itself stays a
+// zero-dependency leaf regardless of which side of the boundary a gitrepo
+// method is on — it has roughly seventy non-test call sites across
+// gitrepo, fabricengine, fabriccli, lyxcwd, and websterengine, and gitrepo
+// remains one of its many consumers, not merged into it.
 //
 // Some outcome classification still matches git's own untranslated
 // (C/English locale) message text — but less of it than before this
@@ -194,8 +200,7 @@
 // every caller-supplied SHA argument goes through (see above) guarantees an
 // option-shaped string can never reach `git reset` as a flag instead of a
 // target commit — ResetHard rejects it as ErrInvalidSHA before any git
-// spawn, exactly like ChangedFilesSince. Non-zero-exit errors follow Pull's
-// no-stderr-leak style: the repo path and git's exit code, never raw stderr.
+// spawn, exactly like ChangedFilesSince.
 //
 // # Evidence for the two-backend boundary
 //

@@ -66,15 +66,12 @@ func InstallPostCheckoutHook(l *lyxcwd.Location) error {
 	// longer consults, reported success, and the drift warning simply never fired again.
 	// --git-path hooks answers with the core.hooksPath directory when one is set and with the COMMON
 	// gitdir's hooks/ otherwise, including when called from a linked worktree.
-	hooksDirOut, stderr, exitCode, err := gitexec.RunGit(
+	hooksDirOut, err := gitexec.Run(
 		[]string{"rev-parse", "--git-path", "hooks"},
 		l.WorktreePath(),
 	)
 	if err != nil {
 		return fmt.Errorf("resolve git hooks dir: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("rev-parse --git-path hooks failed (git exit %d): %s", exitCode, strings.TrimSpace(stderr))
 	}
 
 	// git emits the path with forward slashes; convert to native separators.

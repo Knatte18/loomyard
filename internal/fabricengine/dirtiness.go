@@ -55,12 +55,9 @@ func worktreeDirty(scope dirtyScope, dir string) (dirty bool, detail string, err
 		args = append(args, "--untracked-files=no")
 	}
 
-	stdout, stderr, exitCode, runErr := gitexec.RunGit(args, dir)
+	stdout, runErr := gitexec.Run(args, dir)
 	if runErr != nil {
 		return false, "", fmt.Errorf("git status --porcelain in %s: %w", dir, runErr)
-	}
-	if exitCode != 0 {
-		return false, "", fmt.Errorf("git status --porcelain in %s: exit %d: %s", dir, exitCode, strings.TrimSpace(stderr))
 	}
 
 	trimmed := strings.TrimSpace(stdout)

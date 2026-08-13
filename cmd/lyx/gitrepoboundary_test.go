@@ -1,10 +1,16 @@
 // gitrepoboundary_test.go enforces the gitrepo Client Boundary Invariant: a pinned
-// set of methods on internal/gitrepo's Repo type may call r.run (the CLI choke
-// point), and exactly one gitexec.RunGit call site exists in the package's
-// non-test source. The go-git/CLI boundary is otherwise invisible in the code --
-// both backends are just method bodies -- so without this check a CLI call could
-// seep back into a migrated method one bugfix at a time. See CONSTRAINTS.md's
-// gitrepo Client Boundary Invariant.
+// set of methods on internal/gitrepo's Repo type may call r.run or r.runChecked (the
+// package's two CLI choke points), and exactly two gitexec entry-point call
+// expressions -- one gitexec.RunGit, one gitexec.Run -- exist in the package's
+// non-test source, one inside each chokepoint's own body. The go-git/CLI boundary is
+// otherwise invisible in the code -- both backends are just method bodies -- so
+// without this check a CLI call could seep back into a migrated method one bugfix at
+// a time. See CONSTRAINTS.md's gitrepo Client Boundary Invariant.
+//
+// This guard is keyed by **method name** and answers which methods may reach the CLI
+// at all; CONSTRAINTS.md's gitexec Checked-Call Invariant is keyed by **call site**
+// and answers which sites, package-wide, may use the raw form. The two invariants are
+// complementary, not redundant.
 //
 // # The one blind spot this guard cannot see
 //
@@ -26,11 +32,9 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
-	"go/printer"
 	"go/token"
 	"os"
 	"os/exec"
@@ -41,20 +45,24 @@ import (
 )
 
 // gitrepoPinnedRunBoundMethods is the literal, pinned set of internal/gitrepo
-// method names whose body contains at least one r.run( call, measured against
-// the package's post-migration source. This is deliberately NOT "the CLI-bound
-// methods" -- the two sets differ in both directions:
+// method names whose body contains at least one r.run( or r.runChecked( call,
+// measured against the package's post-migration source. This is deliberately NOT
+// "the CLI-bound methods" -- the two sets differ in both directions:
 //
-//   - StageAndCommit appears here as a mixed method: three CLI-bound r.run
-//     calls (add, diff --cached, commit) sit alongside a migrated go-git
-//     CurrentSHA read at the end -- presence in this list says nothing
+//   - StageAndCommit appears here as a mixed method: three CLI-bound
+//     r.runChecked calls (add, diff --cached, commit) sit alongside a migrated
+//     go-git CurrentSHA read at the end -- presence in this list says nothing
 //     about whether a method also has a migrated read.
-//   - CommitEmpty is the same mixed shape: two CLI-bound r.run calls (the
+//   - CommitEmpty is the same mixed shape: two CLI-bound r.runChecked calls (the
 //     dirty-index pre-check and the commit) sit alongside a migrated go-git
 //     CurrentSHA read on both the entry pre-check and the return path.
 //   - Push and PushCoalesced are CLI-bound by contract yet do NOT appear
 //     here: they delegate to pushWithRebaseRetry (which does appear)
-//     rather than calling r.run directly themselves.
+//     rather than calling r.run or r.runChecked directly themselves.
+//
+// Only Pull and Fetch still call the raw r.run; every other entry here calls
+// r.runChecked instead -- the raw/checked split is invisible to this set-equality
+// check, which cares only that a pinned method calls one chokepoint or the other.
 var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"StageAndCommit":      true,
 	"CommitEmpty":         true,
@@ -78,13 +86,13 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 const gitrepoBoundaryMinScannedFiles = 5
 
 // TestGitrepoBoundary_PinnedRunCallSites walks internal/gitrepo's non-test .go files and asserts
-// two things: (1) the set of methods whose body contains an r.run( call equals
-// gitrepoPinnedRunBoundMethods exactly, and (2) after stripping comments, the token "gitexec."
-// appears exactly once in the package's non-test source, inside the run method's own body.
-// The second assertion closes the blind spot the first one has: a bare gitexec.RunGit call written
-// directly inside a migrated method would satisfy an r.run(-keyed check while still violating the
-// CLI/go-git boundary, since gitexec.RunGit is the CLI layer's own entry point, one level below
-// r.run.
+// two things: (1) the set of methods whose body contains an r.run( or r.runChecked( call equals
+// gitrepoPinnedRunBoundMethods exactly, and (2) exactly two gitexec.Run/RunGit call expressions
+// exist in the package's non-test source, one inside run's own body and one inside runChecked's.
+// The second assertion closes the blind spot the first one has: a bare gitexec.RunGit or
+// gitexec.Run call written directly inside a migrated method would satisfy an r.run(/r.runChecked(-
+// keyed check while still violating the CLI/go-git boundary, since gitexec's entry points are the
+// CLI layer's own, one level below run and runChecked.
 func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH,
 	// mirroring tierpurity_test.go and hermeticenv_test.go so this gate never
@@ -113,7 +121,8 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	runBoundMethods := map[string]bool{}
 	var scanned int
 	var gitexecTotal int
-	var runFound, runBodyHasGitexec bool
+	var runFound, runCheckedFound bool
+	var runGitexecCalls, runCheckedGitexecCalls int
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
@@ -122,7 +131,6 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 		scanned++
 
 		path := filepath.Join(dir, entry.Name())
-		// Parse without comments, then print to strip comment text.
 		file, parseErr := parser.ParseFile(fset, path, nil, 0)
 		if parseErr != nil {
 			t.Fatalf("parse %s: %v", entry.Name(), parseErr)
@@ -137,26 +145,20 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 			if !named {
 				continue
 			}
-			if bodyCallsMethodOnReceiver(fn.Body, recvName, "run") {
+			if bodyCallsMethodOnReceiver(fn.Body, recvName, "run") || bodyCallsMethodOnReceiver(fn.Body, recvName, "runChecked") {
 				runBoundMethods[fn.Name.Name] = true
 			}
-			if fn.Name.Name == "run" {
+			switch fn.Name.Name {
+			case "run":
 				runFound = true
-				var body bytes.Buffer
-				if printErr := printer.Fprint(&body, fset, fn.Body); printErr != nil {
-					t.Fatalf("print run's body in %s: %v", entry.Name(), printErr)
-				}
-				if strings.Contains(body.String(), "gitexec.") {
-					runBodyHasGitexec = true
-				}
+				runGitexecCalls = countGitexecCalls(fn.Body)
+			case "runChecked":
+				runCheckedFound = true
+				runCheckedGitexecCalls = countGitexecCalls(fn.Body)
 			}
 		}
 
-		var rendered bytes.Buffer
-		if printErr := printer.Fprint(&rendered, fset, file); printErr != nil {
-			t.Fatalf("print %s: %v", entry.Name(), printErr)
-		}
-		gitexecTotal += strings.Count(rendered.String(), "gitexec.")
+		gitexecTotal += countGitexecCalls(file)
 	}
 
 	// Vacuous-scan protection: fewer than minimum found means misconfiguration.
@@ -165,18 +167,55 @@ func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
 	}
 
 	if diff := diffMethodSets(gitrepoPinnedRunBoundMethods, runBoundMethods); diff != "" {
-		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): r.run(-containing method set drifted from the pinned list:\n%s", diff)
+		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): r.run(/r.runChecked(-containing method set drifted from the pinned list:\n%s", diff)
 	}
 
 	if !runFound {
 		t.Fatalf("gitrepo boundary guard: no run method found on *Repo in %s -- the guard's own assumptions may be stale", dir)
 	}
-	if gitexecTotal != 1 {
-		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 1 non-comment occurrence of %q in internal/gitrepo, found %d", "gitexec.", gitexecTotal)
+	if !runCheckedFound {
+		t.Fatalf("gitrepo boundary guard: no runChecked method found on *Repo in %s -- the guard's own assumptions may be stale", dir)
 	}
-	if gitexecTotal == 1 && !runBodyHasGitexec {
-		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): the package's one gitexec. call site must live inside run's own body, not elsewhere")
+	if gitexecTotal != 2 {
+		t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 2 gitexec.Run/RunGit call expressions in internal/gitrepo (the raw/checked pair), found %d", gitexecTotal)
 	}
+	if gitexecTotal == 2 {
+		if runGitexecCalls != 1 {
+			t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 1 gitexec call expression inside run's own body, found %d", runGitexecCalls)
+		}
+		if runCheckedGitexecCalls != 1 {
+			t.Errorf("gitrepo Client Boundary Invariant violated (see CONSTRAINTS.md): expected exactly 1 gitexec call expression inside runChecked's own body, found %d", runCheckedGitexecCalls)
+		}
+	}
+}
+
+// countGitexecCalls counts the *ast.CallExpr nodes under n whose callee is
+// gitexec.Run or gitexec.RunGit -- internal/gitexec's two entry points -- so the
+// boundary guard can pin the package's checked/raw call-site count by AST shape
+// rather than by a whole-file substring count, which would also match the roughly
+// half-dozen `var gitErr *gitexec.GitError` declarations the runChecked migration
+// introduced.
+func countGitexecCalls(n ast.Node) int {
+	count := 0
+	ast.Inspect(n, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if !ok || ident.Name != "gitexec" {
+			return true
+		}
+		if sel.Sel.Name == "Run" || sel.Sel.Name == "RunGit" {
+			count++
+		}
+		return true
+	})
+	return count
 }
 
 // isRepoPointerMethod reports whether fn is a method with a pointer-to-Repo receiver.

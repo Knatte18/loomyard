@@ -51,7 +51,7 @@ var allowedNonHermetic = map[string]string{
 // *Hub only NewHub can produce, so this one token already covers every package that can reach any
 // of the three.
 var gitSpawnTokens = []string{
-	"gitexec.RunGit",
+	"gitexec.Run",
 	"exec.Command",
 	"gitkit.Copy",
 	"gitkit.MustRun",

@@ -469,7 +469,7 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 func assertBranchGateRefusesBothForceModes(t *testing.T, l *lyxcwd.Location, weftRoot, branch, wantSubstring string) {
 	t.Helper()
 	for _, force := range []bool{false, true} {
-		_, _, err := fabricengine.DeleteBranchForTest(l, weftRoot, branch, "", force)
+		err := fabricengine.DeleteBranchForTest(l, weftRoot, branch, "", force)
 		if err == nil {
 			t.Fatalf("DeleteBranchForTest(%q, force=%v) = nil error; want a refusal", branch, force)
 		}
@@ -533,9 +533,9 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	t.Run("AcceptsOrphanedFabricNamedNonPrimaryNonCheckedOutBranch", func(t *testing.T) {
 		const orphan = "orphan-task-weft"
 		gitkit.MustRun(t, weftRoot, "git", "branch", orphan)
-		exitCode, stderr, err := fabricengine.DeleteBranchForTest(l, weftRoot, orphan, "", false)
-		if err != nil || exitCode != 0 {
-			t.Fatalf("DeleteBranchForTest(%q) = exit %d, err %v, stderr %q; want a clean deletion", orphan, exitCode, err, stderr)
+		err := fabricengine.DeleteBranchForTest(l, weftRoot, orphan, "", false)
+		if err != nil {
+			t.Fatalf("DeleteBranchForTest(%q) = err %v; want a clean deletion", orphan, err)
 		}
 		if branchExistsAt(t, weftRoot, orphan) {
 			t.Errorf("branch %q still exists after an accepted deletion", orphan)

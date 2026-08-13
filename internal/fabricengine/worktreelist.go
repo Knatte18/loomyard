@@ -25,13 +25,9 @@ type WorktreeEntry struct {
 // The FIRST block in the porcelain output is marked as Main=true;
 // all others have Main=false.
 func List(sourceDir string) ([]WorktreeEntry, error) {
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"worktree", "list", "--porcelain"}, sourceDir)
+	stdout, err := gitexec.Run([]string{"worktree", "list", "--porcelain"}, sourceDir)
 	if err != nil {
-		return nil, err
-	}
-	if exitCode != 0 {
-		return nil, fmt.Errorf("list git worktrees in %q failed (git exit %d): %s",
-			sourceDir, exitCode, strings.TrimSpace(stderr))
+		return nil, fmt.Errorf("list git worktrees in %q: %w", sourceDir, err)
 	}
 
 	return parseWorktreePorcelain(stdout)

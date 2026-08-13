@@ -11,6 +11,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,26 +61,24 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	// local bare repo path (every fixture in this repo's test suite) git ignores --filter and
 	// --depth and performs an ordinary hardlinked clone, emitting warnings on stderr. Those
 	// warnings are not a failure; only a nonzero exit or a failure to run git at all is.
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{
+	_, err = gitexec.Run([]string{
 		"clone", "--depth", "1", "--filter=tree:0", "--no-checkout", "--single-branch",
 		filepath.ToSlash(weftURL), filepath.ToSlash(filepath.Base(probeDir)),
 	}, cwd)
-	_ = stdout
 	if err != nil {
-		return warpProbeResult{}, wrapProbeError(weftURL, "clone", "", err)
-	}
-	if exitCode != 0 {
-		return warpProbeResult{}, wrapProbeError(weftURL, "clone", stderr, nil)
+		return warpProbeResult{}, wrapProbeError(weftURL, "clone", err)
 	}
 
-	// Unborn-HEAD check: a nonzero exit here means the weft candidate has no commits at all, the
-	// genuinely empty weft remote that ensureBoardWorktree's orphan-create path already supports.
-	_, _, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, probeDir)
+	// Unborn-HEAD check is a mixed probe: its exit path answers "the weft candidate has no commits
+	// at all", the genuinely empty weft remote that ensureBoardWorktree's orphan-create path already
+	// supports, while its exec path returns a real *GitError that must be wrapped and propagated.
+	_, err = gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, probeDir)
 	if err != nil {
-		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", "", err)
-	}
-	if exitCode != 0 {
-		return warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil
+		var gitErr *gitexec.GitError
+		if errors.As(err, &gitErr) {
+			return warpProbeResult{Found: false, WeftLooksLikeWeft: true}, nil
+		}
+		return warpProbeResult{}, wrapProbeError(weftURL, "rev-parse HEAD", err)
 	}
 
 	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, WarpBindingFileName)
@@ -88,12 +87,9 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	}
 
 	if bindingPresent {
-		stdout, stderr, exitCode, err = gitexec.RunGit([]string{"show", "HEAD:" + WarpBindingFileName}, probeDir)
+		stdout, err := gitexec.Run([]string{"show", "HEAD:" + WarpBindingFileName}, probeDir)
 		if err != nil {
-			return warpProbeResult{}, wrapProbeError(weftURL, "show", "", err)
-		}
-		if exitCode != 0 {
-			return warpProbeResult{}, wrapProbeError(weftURL, "show", stderr, nil)
+			return warpProbeResult{}, wrapProbeError(weftURL, "show", err)
 		}
 		recorded := strings.TrimSpace(stdout)
 		if recorded != "" {
@@ -129,28 +125,22 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 // 0 with empty stdout means absent, exit 0 with the path echoed means present, and a nonzero exit or a
 // failure to run git at all is a hard error.
 func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"ls-tree", "HEAD", "--name-only", "--", path}, probeDir)
+	stdout, err := gitexec.Run([]string{"ls-tree", "HEAD", "--name-only", "--", path}, probeDir)
 	if err != nil {
-		return false, wrapProbeError(weftURL, "ls-tree", "", err)
-	}
-	if exitCode != 0 {
-		return false, wrapProbeError(weftURL, "ls-tree", stderr, nil)
+		return false, wrapProbeError(weftURL, "ls-tree", err)
 	}
 	return strings.TrimSpace(stdout) != "", nil
 }
 
-// wrapProbeError formats a probe-phase failure as "probe weft <url>: <detail>", using git's trimmed
-// stderr as the detail when available and falling back to a message naming the failing git
-// subcommand (op, e.g. "clone", "ls-tree", "show") otherwise, so an empty-stderr failure still tells
-// the operator which git invocation produced it.
-func wrapProbeError(weftURL, op, stderr string, cause error) error {
-	detail := strings.TrimSpace(stderr)
-	if detail == "" {
-		if cause != nil {
-			detail = cause.Error()
-		} else {
-			detail = fmt.Sprintf("git %s failed", op)
-		}
+// wrapProbeError formats a probe-phase failure as "probe weft <url>: <detail>", using cause's own
+// message as the detail when cause is non-nil. Every one of this package's call paths into
+// wrapProbeError invokes it from inside an err != nil branch, so the nil-cause arm below is
+// unreachable by construction today; it is kept deliberately, as defense for a future caller that
+// reaches this helper without an error, and it is what keeps op meaningful rather than a parameter
+// with no reader.
+func wrapProbeError(weftURL, op string, cause error) error {
+	if cause != nil {
+		return fmt.Errorf("probe weft %s: %w", weftURL, cause)
 	}
-	return fmt.Errorf("probe weft %s: %s", weftURL, detail)
+	return fmt.Errorf("probe weft %s: git %s failed", weftURL, op)
 }

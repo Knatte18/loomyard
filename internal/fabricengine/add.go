@@ -6,6 +6,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -56,11 +57,10 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := WeftBranchName(warpBranch)
 
-	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
-	if err != nil {
-		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, err)
-	}
-	if exitCode == 0 {
+	// rev-parse --verify is a mixed probe: its exit path is an answer ("the branch does not
+	// exist"), recovered via errors.As, while its exec path returns a real error.
+	_, verifyErr := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + warpBranch}, l.WorktreePath())
+	if verifyErr == nil {
 		// Name the way forward: Remove deliberately leaves the warp branch
 		// behind (it may carry unmerged work), so remove-then-re-add of the
 		// same slug lands here — a bare "already exists" gives the operator no
@@ -70,18 +70,19 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			warpBranch, warpBranch, warpBranch,
 		)
 	}
+	var verifyGitErr *gitexec.GitError
+	if !errors.As(verifyErr, &verifyGitErr) {
+		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, verifyErr)
+	}
 
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
 	}
 
-	stdout, stderr, exitCode, err := gitexec.RunGit([]string{"remote"}, l.WorktreePath())
+	stdout, err := gitexec.Run([]string{"remote"}, l.WorktreePath())
 	if err != nil {
 		return AddResult{}, fmt.Errorf("list warp remotes: %w", err)
-	}
-	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("list warp remotes (git exit %d): %s", exitCode, strings.TrimSpace(stderr))
 	}
 	if strings.TrimSpace(stdout) == "" {
 		return AddResult{}, fmt.Errorf("no remote configured")
@@ -103,23 +104,27 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
 
 	// Resolve parent warp branch before worktree creation to avoid partial state on failure.
-	stdout, stderr, exitCode, err = gitexec.RunGit([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
-	if err != nil {
-		return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)
-	}
-	if exitCode != 0 || strings.TrimSpace(stdout) == "HEAD" {
+	// This is a compound guard, not a two-message merge: the second disjunct of the old
+	// exitCode != 0 || TrimSpace(stdout) == "HEAD" condition fires on a *successful* git call
+	// (a detached HEAD), so there is no error to wrap on that arm — the two conditions stay
+	// apart rather than collapsing into one errors.As recovery.
+	headStdout, headErr := gitexec.Run([]string{"rev-parse", "--abbrev-ref", "HEAD"}, l.WorktreePath())
+	if headErr != nil {
+		var headGitErr *gitexec.GitError
+		if !errors.As(headErr, &headGitErr) {
+			return AddResult{}, fmt.Errorf("rev-parse abbrev-ref HEAD: %w", headErr)
+		}
 		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
 	}
-	parentBranch := strings.TrimSpace(stdout)
+	if strings.TrimSpace(headStdout) == "HEAD" {
+		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
+	}
+	parentBranch := strings.TrimSpace(headStdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	warpTok, exitCode, stderr, err := createGitWorktree(rec, l.WorktreePath(), []string{"worktree", "add", "-b", warpBranch, target}, target)
+	warpTok, err := createGitWorktree(rec, l.WorktreePath(), []string{"worktree", "add", "-b", warpBranch, target}, target)
 	if err != nil {
-		return AddResult{}, fmt.Errorf("create warp worktree %q for branch %q: %w", target, warpBranch, err)
-	}
-	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d): %s",
-			target, warpBranch, exitCode, strings.TrimSpace(stderr))
+		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed: %w", target, warpBranch, err)
 	}
 	// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
 	// not merely a worktree; a branch is a ref, so it records via AppendRef rather than Append.
@@ -139,18 +144,13 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
 		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
-		_, adoptStderr, exitCode, err := gitexec.RunGit(
+		_, err := gitexec.Run(
 			[]string{"worktree", "add", weftPath, weftBranch},
 			weftRepoRoot,
 		)
 		if err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-			return AddResult{}, fmt.Errorf("failed to adopt weft worktree: %w", err)
-		}
-		if exitCode != 0 {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed (git exit %d): %s",
-				weftBranch, exitCode, strings.TrimSpace(adoptStderr))
+			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: %w", weftBranch, err)
 		}
 	} else {
 		// Create: git worktree add -b <weftBranch> <path> <parentWeftBranch> (fork from parent's weft branch)
@@ -196,15 +196,9 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	}
 
 	// (11) Push warp branch (LAST step for warp)
-	_, pushStderr, exitCode, err := gitexec.RunGit([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath())
-	if err != nil {
+	if _, err := gitexec.Run([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath()); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-		return AddResult{}, fmt.Errorf("push: %w", err)
-	}
-	if exitCode != 0 {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-		return AddResult{}, fmt.Errorf("push branch %q failed (git exit %d): %s",
-			warpBranch, exitCode, strings.TrimSpace(pushStderr))
+		return AddResult{}, fmt.Errorf("push branch %q failed: %w", warpBranch, err)
 	}
 	rec.AppendRef(KindBranchPushed, warpBranch, "")
 
@@ -281,19 +275,13 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		dirtiness: dirtinessNA("rollback of the worktree this Add created"),
 		force:     true,
 	}
-	exitCode, _, err := removeGitWorktree(rec, removeReq, l.WorktreePath())
+	err := removeGitWorktree(rec, removeReq, l.WorktreePath())
 	if refusalErr := surfaceRefusal(err); refusalErr != nil {
 		if firstErr == nil {
 			firstErr = refusalErr
 		}
-	} else if err != nil || exitCode != 0 {
-		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git worktree remove failed with exit code %d", exitCode)
-			}
-		}
+	} else if err != nil && firstErr == nil {
+		firstErr = err
 	}
 
 	// (5) Delete warp branch
@@ -305,30 +293,19 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}
-	exitCode, _, err = deleteBranch(rec, branchReq)
+	err = deleteBranch(rec, branchReq)
 	if refusalErr := surfaceRefusal(err); refusalErr != nil {
 		if firstErr == nil {
 			firstErr = refusalErr
 		}
-	} else if err != nil || exitCode != 0 {
-		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
-			}
-		}
+	} else if err != nil && firstErr == nil {
+		firstErr = err
 	}
 
 	// (6) Prune warp worktrees
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
-	if err != nil || exitCode != 0 {
+	if _, err := gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath()); err != nil {
 		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git worktree prune failed with exit code %d", exitCode)
-			}
+			firstErr = err
 		}
 	}
 
