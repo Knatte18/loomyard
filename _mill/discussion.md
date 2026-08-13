@@ -145,7 +145,7 @@ Two further forcing functions: `internal/gitexec` is shared by every module that
 
 ### prior-exit-code-exception
 
-- Decision: a `%d` that cites a **prior** call's exit code is not a duplicate and is not dropped. `internal/fabricengine`'s `readBranch` is the one live instance: it renders the earlier `rev-parse --abbrev-ref HEAD` exit code inside an error belonging to the later `branch --show-current` call. Both calls migrate to the checked form; the first call's `*GitError` is recovered with `errors.As` and its `ExitCode` cited explicitly in the combined message.
+- Decision: a `%d` that cites a **prior** call's exit code is not a duplicate and is not dropped. `internal/fabricengine`'s `readBranch` is the one live instance: **two** of its downstream messages render the earlier `rev-parse --abbrev-ref HEAD` exit code — one inside the error belonging to the later `branch --show-current` call, and one inside the no-current-branch-set error. Both must keep the earlier code. Both calls migrate to the checked form; the first call's `*GitError` is recovered with `errors.As` and its `ExitCode` cited explicitly in the combined message.
 - Rationale: deleting that fragment would discard a second call's diagnostic rather than a duplicate of `GitError.Error()`. Migrating both keeps the combined diagnostic and leaves no raw site in a pure failure path.
 - Rejected: keeping the first call raw with a marker citing the combined message (simpler, but leaves a raw site in a path where every exit is a failure, which the marker's own justification wording cannot honestly claim).
 
@@ -186,8 +186,27 @@ Two further forcing functions: `internal/gitexec` is shared by every module that
 - Sites, **re-derived from the code — the design doc's query (`Contains(stderr`) found only the first two**:
   - `internal/fabricengine/index.go` — `"does not have any commits yet"` on `git log --format`, where an unborn HEAD is an empty history, not a scan failure.
   - `internal/gitrepo/push.go` — the `"no rebase in progress"` abort check.
-  - `internal/gitrepo/push.go` — `containsAny(stderr, rebaseRetryTriggers)` on the push result, the trigger for the whole rebase-retry recovery. Missed by the doc's grep because it goes through the `containsAny` helper rather than `strings.Contains` directly.
+  - `internal/gitrepo/push.go` — `containsAny(stderr, rebaseRetryTriggers)` on the push result inside `pushWithRebaseRetry`, the trigger for the whole rebase-retry recovery. Missed by the doc's grep because it goes through the `containsAny` helper rather than `strings.Contains` directly.
+  - `internal/gitrepo/push.go` — **the same `containsAny(stderr, rebaseRetryTriggers)` pattern inside `PushRebaseFree`, a separate function.** See the hybrid decision immediately below; this site must not be read as a plain two-message merge.
 - Rejected: leaving `pushWithRebaseRetry` raw as a unit (smaller blast radius on the one gitrepo path that recovers rather than fails, but it is four sites and two sniffs of exactly the class this decision covers).
+
+### pushrebasefree-is-a-sniff-plus-sentinel-hybrid
+
+- Decision: `internal/gitrepo`'s `PushRebaseFree` needs **both** the content-sniff treatment and the sentinel treatment, and neither decision read alone says so. Its migrated shape:
+
+  ```go
+  _, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+  if err == nil { return nil }
+  var gitErr *gitexec.GitError
+  if errors.As(err, &gitErr) && containsAny(gitErr.Stderr, rebaseRetryTriggers) {
+      return ErrPushRejected           // bare, unwrapped — no %w, no %v
+  }
+  return fmt.Errorf("gitrepo: git push: %w", err)
+  ```
+
+- Rationale: applying the `default-merge-rule` boilerplate here — `if err != nil { return fmt.Errorf(…) }` — would drop the `containsAny` sniff entirely and return a generic wrapped error on every divergence. That breaks `errors.Is(err, gitrepo.ErrPushRejected)` at `internal/fabricengine/coalesce.go`, which is production consumption, not a test convenience, and fails `internal/gitrepo/push_test.go`'s `TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected`.
+- The sentinel is returned **bare**, not as `fmt.Errorf("%w: %v", ErrPushRejected, err)`. Unlike the `lyxcwd` shape the `sentinel-sites-keep-their-sentinel` decision documents, the current code embeds no stderr in this path at all, and widening it here would be an unasked-for behaviour change to a surface `coalesce.go` reads.
+- Rejected: treating it as a plain checked call per its row in the disposition table (the shorthand that made this gap possible — the row is now annotated); wrapping the sentinel with `%w: %v` for consistency with `lyxcwd` (changes a sentinel surface nothing asked to change).
 
 ### mixed-tri-states-take-the-checked-form
 
@@ -291,7 +310,7 @@ The design doc's site inventories were measured on 2026-08-10/11 against `main` 
 | — `internal/gitrepo` / `websterengine` / `lyxcwd` / `fabriccli` | 1 each | 1 each (unchanged) |
 | `r.run` sites in `internal/gitrepo` | 21 | 21 (unchanged) |
 | full-discard sites | 7 | **4** |
-| content-sniff sites | 2 | **3** |
+| content-sniff sites | 2 | **4** |
 | `wrapProbeError` call paths | 7 | 7 (unchanged) |
 | messages embedding a bare exit code | ~30 | **34** |
 
@@ -303,7 +322,8 @@ New since the doc was written: `internal/fabricengine/destroy.go` holds three gi
 - `gitrepo` fan-out: `grep -rn 'r\.run(' --include='*.go' internal/gitrepo | grep -v _test`
 - Full discards: `grep -rn "_, _, _, _ *= *gitexec.RunGit\|^\s*gitexec.RunGit(" --include="*.go" internal/ | grep -v _test`
 - Exit-code fragments: `grep -rn 'git exit %d\|exited %d' --include='*.go' internal/ | grep -v _test`
-- Content sniffs: `grep -rn 'Contains(stderr\|Contains(.*[Ss]tderr\|containsAny(' --include='*.go' internal/ | grep -v _test` — note the `containsAny(` alternative, without which `pushWithRebaseRetry`'s trigger sniff is missed.
+- Content sniffs: `grep -rn 'Contains(stderr\|Contains(.*[Ss]tderr\|containsAny(' --include='*.go' internal/ | grep -v _test` — the `containsAny(` alternative is load-bearing: without it **both** `pushWithRebaseRetry`'s and `PushRebaseFree`'s trigger sniffs are missed, and the second of those guards a production-consumed sentinel.
+- Sentinels that must survive the migration: `grep -rn 'errors\.Is(' --include='*.go' internal/ | grep -v _test` — run this before merging any message, to find every `errors.Is` consumer whose sentinel a `%w`-wrapped `GitError` would displace.
 - Error-constructing helpers: `grep -rn 'stderr string' --include='*.go' internal/fabricengine internal/gitrepo | grep -v _test` — the query that surfaces both `wrapProbeError` and the `destroy.go` executors.
 - Two-message merge sites: for each `gitexec.RunGit(` in a non-test `fabricengine` file, inspect the window to the next call or function end and count it when the window contains **both** an `err != nil` guard and an exit-code comparison. A coarse fixed-line window over-counts; respect block boundaries.
 
@@ -320,7 +340,7 @@ New since the doc was written: `internal/fabricengine/destroy.go` holds three gi
 | `StageAllAndCommit` (`gitrepo.go`) | 3 | `diff --cached --quiet` mixed tri-state, **answer codes inverted** (exit 0 → `("", false, nil)`) → checked + `errors.As`; `add -A` and `commit` plain checked |
 | `CheckoutDetached`, `RestoreBranch` (`gitrepo.go`) | 2 | checked |
 | `pushWithRebaseRetry` (`push.go`) | 4 | checked + `errors.As`; both stderr sniffs move onto `gitErr.Stderr` |
-| `PushRebaseFree` (`push.go`) | 1 | checked |
+| `PushRebaseFree` (`push.go`) | 1 | checked + `errors.As` + **stderr sniff + bare sentinel** — see `pushrebasefree-is-a-sniff-plus-sentinel-hybrid`. **Not** a plain two-message merge: applying the default rule here breaks `errors.Is(err, ErrPushRejected)` at `fabricengine/coalesce.go` |
 | `IsAncestor` (`ancestry.go`) | 1 | checked + `errors.As` (exit 1 → `false, nil`) |
 | `ResetHard` (`reset.go`) | 1 | checked |
 
@@ -393,6 +413,7 @@ Discovered during discussion:
 - `internal/gitrepo` — the existing suites are the regression net for the 18 migrated sites. `pull_test.go` and `fetch_integration_test.go` must keep passing **unchanged** — they are what proves the two raw suppression sites stayed raw. `reset_test.go` must keep passing; it does not assert on error text, which is why `ResetHard` could migrate.
 - `internal/gitrepo` — `IsAncestor`, `CommitEmpty` (`ErrIndexNotEmpty` on a dirty index, both born and unborn HEAD), and `StageAllAndCommit`'s nothing-to-commit signal are the three `errors.As` tri-states; each needs its answer branch exercised, since a mis-transcribed exit-code comparison there converts an answer into a failure silently. `StageAllAndCommit`'s inverted codes make it the likeliest to be got wrong.
 - `internal/gitrepo` — `Push`'s rebase-retry recovery, whose trigger sniff moves onto `gitErr.Stderr`. If no existing test drives the non-fast-forward path, `/mill-plan` should add one; a silently-broken trigger degrades to a hard push error rather than a recovery, which is a real regression.
+- `internal/gitrepo` — `push_test.go`'s `TestPushRebaseFree_DivergedRemote_ReturnsErrPushRejected` must keep passing **unchanged**. It is the one test that catches the `PushRebaseFree` hybrid being flattened into a plain merge, and its production consumer is `internal/fabricengine/coalesce.go`'s `errors.Is`.
 - `internal/fabricengine` — the existing integration suite is the regression net for the 57 migrated sites, and specifically for the `destroy.go` executor re-signature: `warpforward_integration_test.go` asserts a dirtiness-gate *refusal* is distinguishable from a failure, which is exactly what the `err == nil` recording predicate and the surviving `errors.As(&refusal)` paths must preserve.
 - `internal/websterengine` — its suite covers the one migrated `gitwrap.go` site.
 
@@ -421,3 +442,4 @@ Discovered during discussion:
 - **Q:** Marker token at `gitrepo`'s raw `r.run` sites? **A:** The same `//gitexec:raw — <why>` token. One invariant, one searchable token.
 - **Q:** Verification scope? **A:** `go build`, `go vet`, Tier 1 and Tier 2 per batch and again at the end. `fabricengine` and `gitrepo`'s real coverage is behind the `integration` tag.
 - **Q:** Adopt the derived 21-site `gitrepo` disposition table (3 raw, 18 checked)? **A:** Yes, as written — every row read from the code rather than from the design doc's inventory.
+- **Q:** (Orchestrator review, `_mill/orch-review.md`) `PushRebaseFree` carries the same `containsAny(stderr, rebaseRetryTriggers)` sniff as `pushWithRebaseRetry`, but the disposition table listed it as a plain `checked`. **A:** Confirmed in the code and fixed. It is a fourth content-sniff site and a **hybrid** — sniff plus bare `ErrPushRejected`, which `internal/fabricengine/coalesce.go` consumes via `errors.Is` and `push_test.go` pins. The default merge rule applied here would have silently broken both. Added as its own decision, annotated in the table, and the sniff regeneration query now names why `containsAny(` must be in it. The same review's `readBranch` nuance — two downstream messages cite the earlier exit code, not one — is folded into that decision.
