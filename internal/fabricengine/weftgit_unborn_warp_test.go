@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // newUnbornWarpRepo creates a minimal, isolated git repo at t.TempDir() on
@@ -44,10 +45,10 @@ func newUnbornWarpRepo(t *testing.T) string {
 // behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change, unborn warp")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change, unborn warp")
 
 	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -57,7 +58,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 		t.Fatalf("commitWeft() committed = false; want true")
 	}
 
-	rawMessage := fabricengine.CommitMessageAtForTest(t, weftFixture.WeftPath, sha)
+	rawMessage := fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeWeft(), sha)
 	if strings.Contains(rawMessage, fabricengine.WarpSHATrailerKey+":") {
 		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", rawMessage, fabricengine.WarpSHATrailerKey)
 	}
@@ -79,7 +80,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	// Warp gains its first commit; a subsequent CommitWeft must resume
 	// normal trailer/record behavior — the unborn condition self-heals.
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp's first commit")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change, warp now born")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change, warp now born")
 
 	sha2, committed2, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -89,7 +90,7 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 		t.Fatalf("commitWeft() after warp's first commit committed = false; want true")
 	}
 
-	rawMessage2 := fabricengine.CommitMessageAtForTest(t, weftFixture.WeftPath, sha2)
+	rawMessage2 := fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeWeft(), sha2)
 	wantTrailer := fabricengine.WarpSHATrailerKey + ": " + warpSHA
 	if !strings.Contains(rawMessage2, wantTrailer) {
 		t.Errorf("commit message after warp's first commit = %q; want it to contain %q", rawMessage2, wantTrailer)
