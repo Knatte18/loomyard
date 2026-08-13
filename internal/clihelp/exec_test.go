@@ -5,6 +5,7 @@ package clihelp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // handlerReturning returns a WrapRun-compatible handler function that writes
@@ -153,4 +156,172 @@ func TestExecute_ConcurrentInvocationsDoNotCrossExitCodes(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// TestExecuteIn_HandlerObservesInjectedCwd verifies that a handler reading
+// lyxcwd.CwdFrom(cmd.Context()) observes the exact directory passed to
+// ExecuteIn.
+func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
+	t.Parallel()
+
+	const want = "/injected/cwd"
+	var got string
+
+	root := &cobra.Command{Use: "root", Short: "test root"}
+	root.AddCommand(&cobra.Command{
+		Use: "where",
+		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
+			cwd, err := lyxcwd.CwdFrom(ctx)
+			if err != nil {
+				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", err)
+			}
+			got = cwd
+			return 0
+		}),
+	})
+
+	var buf bytes.Buffer
+	if code := ExecuteIn(root, want, &buf, []string{"where"}); code != 0 {
+		t.Errorf("ExecuteIn(where) = %d; want 0", code)
+	}
+	if got != want {
+		t.Errorf("lyxcwd.CwdFrom(cmd.Context()) = %q; want %q", got, want)
+	}
+}
+
+// TestExecute_HandlerObservesProcessCwd verifies that the same command
+// driven through Execute (not ExecuteIn) observes the process cwd instead
+// of an injected one.
+func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
+	t.Parallel()
+
+	want, err := lyxcwd.Getwd()
+	if err != nil {
+		t.Fatalf("lyxcwd.Getwd() error = %v; want nil", err)
+	}
+	var got string
+
+	root := &cobra.Command{Use: "root", Short: "test root"}
+	root.AddCommand(&cobra.Command{
+		Use: "where",
+		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
+			cwd, cwdErr := lyxcwd.CwdFrom(ctx)
+			if cwdErr != nil {
+				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", cwdErr)
+			}
+			got = cwd
+			return 0
+		}),
+	})
+
+	var buf bytes.Buffer
+	if code := Execute(root, &buf, []string{"where"}); code != 0 {
+		t.Errorf("Execute(where) = %d; want 0", code)
+	}
+	if got != want {
+		t.Errorf("lyxcwd.CwdFrom(cmd.Context()) via Execute = %q; want process cwd %q", got, want)
+	}
+}
+
+// TestRunRootCtx_PropagatesContextValue verifies that RunRootCtx given a
+// context carrying a value propagates that value into the command's
+// context.
+func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
+	t.Parallel()
+
+	const want = "/propagated/cwd"
+	var got string
+
+	root := &cobra.Command{Use: "root", Short: "test root"}
+	root.AddCommand(&cobra.Command{
+		Use: "leaf",
+		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
+			cwd, err := lyxcwd.CwdFrom(ctx)
+			if err != nil {
+				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", err)
+			}
+			got = cwd
+			return 0
+		}),
+	})
+	root.SetArgs([]string{"leaf"})
+
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetErr(&buf)
+
+	ctx := lyxcwd.WithCwd(context.Background(), want)
+	if code := RunRootCtx(ctx, root, &buf); code != 0 {
+		t.Errorf("RunRootCtx() = %d; want 0", code)
+	}
+	if got != want {
+		t.Errorf("propagated cwd = %q; want %q", got, want)
+	}
+}
+
+// TestWrapRunCtx_ReceivesCommandContext verifies that a WrapRunCtx-wrapped
+// handler receives the command's own context, observed by reading a value
+// seeded into it.
+func TestWrapRunCtx_ReceivesCommandContext(t *testing.T) {
+	t.Parallel()
+
+	const want = "/seeded/cwd"
+	var got string
+
+	root := &cobra.Command{Use: "root", Short: "test root"}
+	root.AddCommand(&cobra.Command{
+		Use: "leaf",
+		RunE: WrapRunCtx(func(ctx context.Context, _ io.Writer, _ []string) int {
+			cwd, err := lyxcwd.CwdFrom(ctx)
+			if err != nil {
+				t.Fatalf("lyxcwd.CwdFrom() error = %v; want nil", err)
+			}
+			got = cwd
+			return 0
+		}),
+	})
+
+	var buf bytes.Buffer
+	if code := ExecuteIn(root, want, &buf, []string{"leaf"}); code != 0 {
+		t.Errorf("ExecuteIn(leaf) = %d; want 0", code)
+	}
+	if got != want {
+		t.Errorf("WrapRunCtx handler observed cwd = %q; want %q", got, want)
+	}
+}
+
+// TestWrapRunCtx_ShortCircuitsAfterAbort verifies that a WrapRunCtx-wrapped
+// handler short-circuits without running when Abort was called on the
+// command's context.
+func TestWrapRunCtx_ShortCircuitsAfterAbort(t *testing.T) {
+	t.Parallel()
+
+	ran := false
+
+	root := &cobra.Command{
+		Use:   "root",
+		Short: "test root",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			Abort(cmd.Context(), 2)
+			return nil
+		},
+	}
+	sub := &cobra.Command{
+		Use: "leaf",
+		RunE: WrapRunCtx(func(_ context.Context, _ io.Writer, _ []string) int {
+			ran = true
+			return 0
+		}),
+	}
+	root.AddCommand(sub)
+
+	var buf bytes.Buffer
+	code := Execute(root, &buf, []string{"leaf"})
+
+	if ran {
+		t.Error("WrapRunCtx: leaf body ran after Abort; want short-circuit")
+	}
+	if code != 2 {
+		t.Errorf("Execute after Abort = %d; want 2", code)
+	}
 }
