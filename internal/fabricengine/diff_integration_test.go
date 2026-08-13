@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // changeEntryPaths returns the Path of every entry in entries whose Side
@@ -51,19 +52,19 @@ func containsPath(paths []string, want string) bool {
 // side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
+	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change 1")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change 1")
 	res1, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res1.WeftCommitted {
 		t.Fatalf("first Commit: %+v, err=%v", res1, err)
 	}
 
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change 2")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change 2")
 	res2, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res2.WeftCommitted {
 		t.Fatalf("second Commit: %+v, err=%v", res2, err)
@@ -94,11 +95,11 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 // side coming back empty (which is what a strictly exact-only anchor would produce).
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
+	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change 1")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change 1")
 	res1, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res1.WeftCommitted {
 		t.Fatalf("Commit: %+v, err=%v", res1, err)
@@ -112,12 +113,12 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	// resolved to the nearest older synced weft SHA (res1.WeftSHA), not an
 	// empty/absent one: only a real anchor makes ChangedFilesSince surface
 	// this file.
-	manualPath := filepath.Join(weftFixture.WeftPath, "manual-ahead.txt")
+	manualPath := filepath.Join(weftFixture.PrimeWeft(), "manual-ahead.txt")
 	if err := os.WriteFile(manualPath, []byte("weft change 2, manual, not recorded"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", ".")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "manual weft commit ahead of last sync")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", ".")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "manual weft commit ahead of last sync")
 
 	got, err := f.Diff(warpSHA2)
 	if err != nil {
@@ -139,15 +140,15 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	initialWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture := gitkit.CopyWeft(t)
+	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	// Advance warp and synchronize weft — this records correspondence for
 	// the NEW warp commit, never for initialWarpSHA, which predates any
 	// recorded correspondence entirely.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change")
 	res, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 	if err != nil || !res.WeftCommitted {
 		t.Fatalf("Commit: %+v, err=%v", res, err)
@@ -178,14 +179,14 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	// One CommitWeft round first, so ensureWeftLockDir has already seeded
 	// the weft repo's .git/info/exclude with both artifact patterns before
 	// Status is asked to filter them out.
 	fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change")
 	if _, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}); err != nil || !committed {
 		t.Fatalf("commitWeft() committed=%v err=%v; want committed=true, err=nil", committed, err)
 	}
@@ -195,12 +196,12 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	if err := os.WriteFile(warpDirtyPath, []byte("warp dirty"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft dirty, uncommitted")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft dirty, uncommitted")
 
 	// CommitWeft never creates the push lock file — only PushCoalesced
 	// does — so it must be created explicitly to genuinely exercise the
 	// exclude mechanism rather than assert on an absent file.
-	pushLockPath := filepath.Join(weftFixture.WeftPath, gitrepo.PushLockFileName)
+	pushLockPath := filepath.Join(weftFixture.PrimeWeft(), gitrepo.PushLockFileName)
 	if err := os.WriteFile(pushLockPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile(push lock): %v", err)
 	}

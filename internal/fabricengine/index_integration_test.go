@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // commitWeftWithTrailer commits content into weftPath's tracked _lyx config
@@ -46,14 +47,14 @@ func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	gitDir, err := fabricengine.WeftGitDirForTest(f)
 	if err != nil {
 		t.Fatalf("weftGitDir() error = %v", err)
 	}
-	wantPrefix := filepath.Join(weftFixture.WeftPath, ".git")
+	wantPrefix := filepath.Join(weftFixture.PrimeWeft(), ".git")
 	if !strings.HasPrefix(gitDir, wantPrefix) {
 		t.Errorf("weftGitDir() = %q; want it under %q", gitDir, wantPrefix)
 	}
@@ -66,11 +67,11 @@ func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
-	weftSHA := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 1", warpSHA)
+	weftSHA := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 1", warpSHA)
 
 	if err := f.RecordCorrespondence(warpSHA, weftSHA); err != nil {
 		t.Fatalf("RecordCorrespondence() error = %v", err)
@@ -91,8 +92,8 @@ func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change, never synced")
 
@@ -109,13 +110,13 @@ func TestRebuildIndex_ReproducesTrailerHistory(t *testing.T) {
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
-	weftSHA1 := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 1", warpSHA1)
+	weftSHA1 := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 1", warpSHA1)
 	warpSHA2 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
-	weftSHA2 := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 2", warpSHA2)
+	weftSHA2 := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 2", warpSHA2)
 
 	if err := f.RebuildIndex(); err != nil {
 		t.Fatalf("RebuildIndex() error = %v", err)
