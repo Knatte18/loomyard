@@ -141,6 +141,8 @@ this task does not run them.
   - `internal/hubforge/hub.go`
   - `internal/hubforge/seed.go`
   - `internal/gitkit/gitkit.go`
+  - `internal/lyxcwd/anchor.go`
+  - `internal/fabricengine/junctionnames.go`
 - **Edits:**
   - `internal/perchcli/cli_integration_test.go`
   - `internal/perchcli/run_integration_test.go`

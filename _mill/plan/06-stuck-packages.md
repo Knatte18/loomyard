@@ -53,6 +53,7 @@ Neither file is renamed — moving a test file out of its package is a one-line 
   - `internal/gitkit/gitkit.go`
   - `internal/loomengine/export_test.go`
   - `internal/fabricengine/weftwiring.go`
+  - `internal/fabricengine/clone.go`
 - **Edits:**
   - `internal/loomengine/preflight_integration_test.go`
 - **Creates:** none
@@ -71,7 +72,10 @@ Neither file is renamed — moving a test file out of its package is a one-line 
   This is outcome 3 of the overview's three-way triage, and it mirrors batch 4 card 27's resolution of `perchcli`'s identically-named helper exactly.
   Apply the `SeedConfig` triage to the one `gitkit.SeedConfig(t, f.WeftPrime, …)` call.
   The `gitkit.MustRun(` calls stay on `gitkit` unchanged.
-  The `git checkout -b` of the weft branch in `setupPreflightFixture` may now be redundant, since a real hub's weft worktree is already on the paired weft branch — check with `fabricengine.WeftBranchName` and drop it only if it is provably a no-op, noting the removal in the commit message.
+  **Delete `setupPreflightFixture`'s `gitkit.MustRun(t, …, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))` line.**
+  This is not a "check whether it is redundant" judgement call — it is a hard requirement, because on a real hub that line **errors** rather than no-ops: `internal/fabricengine/clone.go`'s weft-primary step already runs `git checkout -b <WeftBranchName(warpBranch)>` on the weft during `CloneHub`, so the branch exists by the time the fixture returns and a second `checkout -b` onto the same name fails with "branch already exists", taking every test that calls `setupPreflightFixture` with it.
+  Note the removal in the commit message.
+  The two `git checkout -b "warp-only"` calls elsewhere in this file are unrelated — they create a distinct branch and stay.
 - **Commit:** `test(loomengine): move the preflight suite to package loomengine_test on hubforge`
 
 ### Card 37: Add treadleengine's export shim
