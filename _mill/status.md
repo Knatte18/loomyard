@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitexec-checked-entry-point
+phase: approved-gitrepo-checked-pair
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r4  '2026-08-13T15:13:33Z'
 planned  '2026-08-13T15:13:52Z'
 implementing  '2026-08-13T15:14:25Z'
 approved-gitexec-checked-entry-point  '2026-08-13T15:21:27Z'
+approved-gitrepo-checked-pair  '2026-08-13T15:29:59Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     commit_sha: 3050d8b5c203b38ac7f62cd281d85b3af5123d66
     verify_baseline_failures: []
   - name: gitrepo-checked-pair
-    state: running
+    state: approved
     implementer_session: 83620bdd-0ab8-44e6-8d70-538e0428edee
     start_sha: 476c782abcbdb1849dacab14c0c54c606d35f33b
+    commit_sha: 870dec82d43a8476ac3f1035bb4f8e011111d10b
     verify_baseline_failures: []
   - name: fabric-destroy-executors
     state: pending
