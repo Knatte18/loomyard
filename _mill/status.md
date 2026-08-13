@@ -83,7 +83,9 @@ batches:
     commit_sha: 119bf2e67e017c85ec1b1aaa14848254373d5571
     verify_baseline_failures: []
   - name: fabriccli
-    state: pending
+    state: running
+    implementer_session: 0d815f62-7fd1-419b-9b01-fc27654edf2f
+    start_sha: d793fc54a786625392f31ff8dd889993b0d52312
     verify_baseline_failures: []
   - name: fabricengine external
     state: pending
