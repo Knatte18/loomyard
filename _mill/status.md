@@ -69,7 +69,9 @@ batches:
     commit_sha: 1a267992ea30a163b3e8b31f32def52f19ec6830
     verify_baseline_failures: []
   - name: reedcli
-    state: pending
+    state: running
+    implementer_session: 638feca1-b9ba-45e9-9dfa-2e1e94034174
+    start_sha: e114ddc4538eba0d6d29dcc0b06b4eed6bc65b59
     verify_baseline_failures: []
   - name: stuck packages
     state: pending
