@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hubforge factory
+phase: approved-small consumers
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -37,6 +37,7 @@ implementing  '2026-08-13T07:02:52Z'
 approved-gitkit leaf  '2026-08-13T07:18:31Z'
 approved-fabrictest dissolution  '2026-08-13T07:32:23Z'
 approved-hubforge factory  '2026-08-13T07:46:27Z'
+approved-small consumers  '2026-08-13T08:03:57Z'
 ```
 
 ## Batches
@@ -62,9 +63,10 @@ batches:
     commit_sha: 9b4fee50b6cdc8c9abd03b4976217bd39dbec333
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: small consumers
-    state: running
+    state: approved
     implementer_session: cf904daf-e434-4041-ba60-f98402ad3997
     start_sha: e1823e94bad46cbe4081a1f5bd865dffa49c977f
+    commit_sha: 1a267992ea30a163b3e8b31f32def52f19ec6830
     verify_baseline_failures: []
   - name: reedcli
     state: pending
