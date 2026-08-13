@@ -48,9 +48,8 @@ func newFabricPair(t *testing.T) (*fabricengine.Fabric, string) {
 	return f, h.PrimeWeft()
 }
 
-// writeWeftConfig overwrites the tracked _lyx/config.yaml file both
-// CopyWeft fixtures ship with, the standard way this file dirties a weft
-// worktree's pathspec-covered content.
+// writeWeftConfig overwrites the tracked _lyx/config.yaml file a real hub's weft worktree ships
+// with, the standard way this file dirties a weft worktree's pathspec-covered content.
 func writeWeftConfig(t *testing.T, weftPath, content string) {
 	t.Helper()
 

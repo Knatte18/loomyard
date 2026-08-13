@@ -4,11 +4,10 @@
 // wiring around the correspondence index: gitdir resolution, the
 // RecordCorrespondence/WeftSHAForWarpSHA round trip, and RebuildIndex's
 // trailer scan. Package fabricengine_test, driving weftGitDir through
-// export_test.go's WeftGitDirForTest shim. Uses gitkit.CopyWeft for the weft
+// export_test.go's WeftGitDirForTest shim. Uses hubforge.NewHub for the weft
 // side and a minimal, locally-built plain git repo for the warp side —
 // fabric's warp is just an ordinary warp repo, so these tests need none of
-// CopyWeft's upstream-tracking setup or CopyPaired's junction/portal wiring
-// on the warp side.
+// the real hub's junction/portal wiring on the warp side.
 
 package fabricengine_test
 

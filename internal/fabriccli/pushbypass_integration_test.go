@@ -62,9 +62,9 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 
 	// Add one more commit on top of the weft side's already-pushed history, so the weft side has
 	// something genuinely unpushed to push. This package's subject is push bypass, so the remote must
-	// be a live push target: a real hub's warp and weft both have their own copied bare origin, which
-	// is exactly the substrate gitkit.CopyWeft used to provide, so nothing about the push path needs
-	// compensating.
+	// be a live push target: a real hub's warp and weft both have their own copied bare origin, the
+	// same live-push substrate the old weft-only fixture used to provide, so nothing about the push
+	// path needs compensating.
 	placeholderFile := filepath.Join(h.PrimeWeft(), lyxdirs.LyxDirName, "placeholder")
 	if err := os.WriteFile(placeholderFile, []byte("bypass push test"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)

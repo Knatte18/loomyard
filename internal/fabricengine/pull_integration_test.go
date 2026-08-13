@@ -9,7 +9,7 @@
 // (NewPlainWarpRepoForTest, CommitWarpForTest, CurrentSHAForTest,
 // NewFabricForTest, WriteWeftConfigContentForTest) and, unqualified,
 // coalesce_integration_test.go's addWarpBareRemote/commitPlain, since both
-// files share package fabricengine_test — plus gitkit.CopyWeft for the weft
+// files share package fabricengine_test — plus hubforge.NewHub for the weft
 // side, whose upstream tracking lets PullWeft's ff-pull no-op cleanly in
 // every test that does not deliberately diverge weft.
 

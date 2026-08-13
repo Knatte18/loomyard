@@ -167,7 +167,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	}
 
 	// A real hub's weft prime is already wired onto WeftBranchName("main") by CloneAndWire — the
-	// in-sync state — unlike the old CopyPairedLocal fixture, which left weft prime on a literal
+	// in-sync state — unlike the old paired-fixture template, which left weft prime on a literal
 	// "main" branch and required an explicit checkout to reach parity. Confirm the invariant rather
 	// than reconstructing it by hand.
 	if branch := currentBranchName(t, weftPrime); branch != fabricengine.WeftBranchName("main") {

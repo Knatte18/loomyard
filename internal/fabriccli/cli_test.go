@@ -425,8 +425,8 @@ func TestRunCLI_CloneAcceptsOneOrTwoArgs(t *testing.T) {
 // makeCLICloneWarpBare creates a bare warp remote at <dir>/<name>.git seeded
 // with a README and a committed "backend" subdirectory, so a clone --subpath
 // backend test has a real subpath to anchor at. This package has no existing
-// two-repo clone fixture helper (CopyWarpHub/CopyPaired both pre-materialize
-// an already-paired hub, not raw clone sources), so it is built minimally
+// two-repo clone fixture helper (hubforge.NewHub pre-materializes an
+// already-paired hub, not raw clone sources), so it is built minimally
 // inline, mirroring internal/fabricengine/clone_adopt_test.go's
 // makeBareRemoteWithSubdir.
 func makeCLICloneWarpBare(t *testing.T, dir, name string) string {

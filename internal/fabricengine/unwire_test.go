@@ -197,7 +197,7 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 // TestUnwire_NeverWiredWarpIsIdempotentNoOp verifies that a second Unwire call against an
 // already-torn-down pair is a clean, error-free no-op — the idempotency guarantee this test's name
 // promises. hubforge.NewHub's prime pair arrives genuinely paired and already wired (unlike the old
-// gitkit.CopyWarpHub fixture, which had no weft sibling and no junctions at all — the shape
+// plain-repo fixture, which had no weft sibling and no junctions at all — the shape
 // initengine.Undo's TestUndo_NoWeftPairing coverage mirrored), so the FIRST Unwire call below does
 // real teardown work rather than observing a no-op; only the second call is the no-op.
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {

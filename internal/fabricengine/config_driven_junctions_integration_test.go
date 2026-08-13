@@ -11,7 +11,7 @@
 // drift shape.
 //
 // Package fabricengine_test, mirroring junction_pattern_integration_test.go's
-// imports and gitkit.CopyPairedLocal(t) fixture pattern; shares the single
+// imports and hubforge.NewHub(t, ".") fixture pattern; shares the single
 // TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -93,8 +93,8 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 //
 // Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(warpBranch),
 // drift.go:69-72) before the junction loop; hubforge.NewHub's CloneAndWire already checks the weft
-// primary out on the suffixed branch, so — unlike the raw gitkit.CopyPairedLocal fixture this test
-// used to build by hand — no explicit checkout is needed here.
+// primary out on the suffixed branch, so — unlike the raw local-worktree pair this test used to
+// build by hand — no explicit checkout is needed here.
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 

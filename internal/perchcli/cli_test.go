@@ -6,8 +6,8 @@
 // this file (card 16).
 // Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
 // that coverage lives in the smoke test and the sandbox suite.
-// The fixture-backed pause tests (gitkit's CopyPaired) live in cli_integration_test.go per the
-// Test Tier Purity Invariant.
+// The fixture-backed pause tests (a real hub from hubforge.NewHub) live in cli_integration_test.go
+// per the Test Tier Purity Invariant.
 
 package perchcli
 

@@ -10,10 +10,9 @@
 // when the benchmark function returns), which matches how real tests defer fixture cleanup to test end
 // rather than per-iteration — the same accumulation any test suite using these fixtures already pays.
 //
-// These replace gitkit's own BenchmarkCopyPaired, BenchmarkCopyPairedLocal,
-// BenchmarkCopyPairedParallel, and BenchmarkCopyPairedLocalParallel, which measured the paired
-// warp+weft fixture that package built before this migration — see
-// internal/gitkit/bench_test.go's own header for the reproducing trail across both files.
+// These replace gitkit's own four benchmarks that measured the paired warp+weft fixture that
+// package built before this migration — see internal/gitkit/bench_test.go's own header for the
+// reproducing trail across both files.
 
 package hubforge
 

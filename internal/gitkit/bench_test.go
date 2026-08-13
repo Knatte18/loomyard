@@ -11,9 +11,8 @@
 // per-iteration — the same accumulation any test suite using these fixtures
 // already pays.
 //
-// This file used to carry BenchmarkCopyPaired, BenchmarkCopyPairedLocal,
-// BenchmarkCopyPairedParallel, and BenchmarkCopyPairedLocalParallel, measuring the paired
-// warp+weft fixture this package built. Those four are re-created, retargeted onto the real hub,
+// This file used to carry the four benchmarks measuring the paired warp+weft fixture this package
+// built, before that fixture's deletion. Those four are re-created, retargeted onto the real hub,
 // as batch 3's own benchmark file in the hubforge package (internal/hubforge/bench_test.go) —
 // see docs/benchmarks/fixture-copy.md for the reproducing trail across both.
 

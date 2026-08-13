@@ -294,7 +294,7 @@ func copyDirRecursive(src string, dest string) error {
 	})
 }
 
-// CopyRepo returns an isolated copy of the warp-hub template: a plain git repo with a bare origin,
+// CopyRepo returns an isolated copy of the repo template: a plain git repo with a bare origin,
 // never a hub.
 // The copy is placed in tb.TempDir();
 // its origin URL is rewritten to point to the copied bare repository.
@@ -305,7 +305,7 @@ func CopyRepo(tb testing.TB) RepoFixture {
 
 	templateHub, templateBare := buildRepoTemplate()
 
-	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
+	// Use a single temp dir so both repos share one cleanup entry.
 	tempContainer := tb.TempDir()
 
 	// Copy template hub into temp dir

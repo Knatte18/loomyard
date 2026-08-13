@@ -6,9 +6,9 @@
 // Sync holds its single absorbing lock across a burst of steps. Package
 // fabricengine (internal), building its own plain-repo-plus-bare-remote
 // fixture locally (mirroring boardengine/sync_integration_test.go's
-// newBoardRepo/newBareRemote shape) rather than gitkit.CopyWeft, whose
-// template carries its bare remote nested inside the copied worktree — fine
-// for CopyWeft's own explicit-pathspec callers, but not for Bolt's
+// newBoardRepo/newBareRemote shape) rather than the package's own
+// newPlainWeftRepo, whose fixture carries its bare remote nested inside the
+// copied worktree — fine for that fixture's own explicit-pathspec callers, but not for Bolt's
 // wildcard-stage commit, which would otherwise stage that untracked
 // directory and defeat the clean-repo no-op assertion. Reuses this
 // package's own bareBranchSHA helper (defined in

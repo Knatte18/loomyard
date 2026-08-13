@@ -457,8 +457,8 @@ func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 // newUnbornWeftRepo creates a minimal, isolated git repo at t.TempDir() on
 // branch main with NO commits — an unborn weft HEAD — mirroring
 // newUnbornWarpRepo (weftgit_unborn_warp_test.go) so the warp and weft
-// unborn fixtures read as the pair they are. gitkit.CopyWeft's fixture
-// already carries commits, so it cannot reach this state.
+// unborn fixtures read as the pair they are. newPlainWeftRepo's fixture and a
+// real hub's weft worktree alike already carry commits, so neither can reach this state.
 func newUnbornWeftRepo(t *testing.T) string {
 	t.Helper()
 

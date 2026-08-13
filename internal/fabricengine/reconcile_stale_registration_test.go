@@ -95,19 +95,31 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	}
 }
 
-// newFabricFixture returns a gitkit.PairedFixture-shaped view over a real hub built by
-// hubforge.NewHub. hubforge.NewHub's own CloneAndWire already produces the shape this fixture used to
-// hand-assemble from gitkit.CopyPairedLocal — the weft primary checked out on the suffixed primary
-// branch, a real _board worktree on the warp's unsuffixed default branch (the shape CloneHub produces
-// and the shape Cleanup reads the repo's primary weft branch from), and the repo-wide fabric.yaml
-// committed inside it — so this is now a thin field-mapping wrapper over the mapping table's
-// equivalents, kept only so the package's many newFabricFixture callers do not all need to change
-// their field-access pattern in this same batch.
-func newFabricFixture(t *testing.T) gitkit.PairedFixture {
+// fabricFixture is the local field-mapping shape newFabricFixture returns over a real hub, replacing
+// the deleted gitkit paired-fixture struct it used to hand-assemble from gitkit's own retired
+// local-pair template.
+// It is a package-local type so this file's many existing callers do not all need to change their
+// field-access pattern.
+type fabricFixture struct {
+	Container string
+	Hub       string
+	Bare      string
+	WeftPrime string
+	WeftBare  string
+	Layout    *lyxcwd.Location
+}
+
+// newFabricFixture returns a fabricFixture-shaped view over a real hub built by hubforge.NewHub.
+// hubforge.NewHub's own CloneAndWire already produces the shape this fixture used to hand-assemble
+// from gitkit's own retired local-pair template — the weft primary checked out on the suffixed
+// primary branch, a real _board worktree on the warp's unsuffixed default branch (the shape CloneHub
+// produces and the shape Cleanup reads the repo's primary weft branch from), and the repo-wide fabric.yaml committed inside
+// it — so this is now a thin field-mapping wrapper over the mapping table's equivalents.
+func newFabricFixture(t *testing.T) fabricFixture {
 	t.Helper()
 
 	h := hubforge.NewHub(t, ".")
-	return gitkit.PairedFixture{
+	return fabricFixture{
 		Container: h.Container,
 		Hub:       h.PrimeWorktree(),
 		Bare:      h.WarpBare,
@@ -155,9 +167,9 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 // fabricengine.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
 // Healthy, Reconcile, Topology.Checkout, Topology.Remove,
-// junctionRepointedDetail) now read from. gitkit.CopyPaired/CopyPairedLocal
-// do not create a _board dir, so this creates it (and its _lyx/config/)
-// first; unlike gitkit.SeedConfig, _board is not a git repository, so the
+// junctionRepointedDetail) now read from. A real hub built by hubforge.NewHub
+// materializes _board via CloneAndWire, but not this repo-wide fabric.yaml, so this creates the file
+// (and its _lyx/config/) first; unlike gitkit.SeedConfig, _board is not a git repository, so the
 // file is written directly with no git add/commit step. Shared by every
 // fabricengine_test fixture that exercises a migrated read.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {

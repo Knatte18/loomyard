@@ -47,8 +47,7 @@ var knownTierTags = []string{"integration", "smoke", "scout"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
-// matches exec.CommandContext, and gitkit.Copy prefix-matches gitkit.CopyPaired,
-// gitkit.CopyPairedLocal, gitkit.CopyWarpHub, gitkit.CopyWeft, and any future
+// matches exec.CommandContext, and gitkit.Copy prefix-matches gitkit.CopyRepo and any future
 // Copy* fixture. Comment or string-literal mentions trip the guard too — that is
 // accepted (rename the mention or tag the file).
 // hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so an

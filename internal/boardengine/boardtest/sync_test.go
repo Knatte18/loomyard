@@ -22,9 +22,9 @@ import (
 
 // newSyncRepo returns an isolated working-tree and helpers that count commits on
 // the remote (@{u}) and locally (HEAD). It builds a real hub via hubforge.NewHub, whose weft
-// worktree is cloned from h.WeftBare by CloneHub -- but unlike the old CopyWeft fixture, upstream
-// tracking is NOT pre-established there: hubforge's own weft-bare template must stay genuinely
-// empty and unpushed (pushing to it would trip CloneHub's WeftLooksLikeWeft bootstrap guard), so a
+// worktree is cloned from h.WeftBare by CloneHub -- but unlike the old weft-only fixture's
+// pre-established upstream tracking, that tracking is NOT set up here: hubforge's own weft-bare
+// template must stay genuinely empty and unpushed (pushing to it would trip CloneHub's WeftLooksLikeWeft bootstrap guard), so a
 // fresh hub's weft primary carries a local-only "initialise weft primary branch" commit with no
 // @{u} yet. This establishes tracking by pushing that commit against this hub's own per-test copy
 // of the bare (never the cached template) -- exactly what boardengine's own first real Sync would

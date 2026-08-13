@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // NewPairedFromPathsForTest re-exports newPaired for fabric_test.go's untagged unit test of the
@@ -329,10 +330,35 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 	t.Helper()
 
 	warpPath = newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
+	weftPath = newPlainWeftRepo(t)
 	seedFabricConfig(t, warpPath)
-	f = newFabric(t, warpPath, weftFixture.WeftPath)
-	return f, warpPath, weftFixture.WeftPath
+	f = newFabric(t, warpPath, weftPath)
+	return f, warpPath, weftPath
+}
+
+// newPlainWeftRepo creates a minimal, isolated git repo at t.TempDir() on branch main with a single
+// tracked _lyx/config.yaml file and one commit — the weft-side sibling of newPlainWarpRepo, replacing
+// gitkit's own retired weft-only template for newCommitFixture's four in-package callers, which
+// cannot import internal/hubforge.
+func newPlainWeftRepo(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
+
+	lyxDir := filepath.Join(dir, lyxdirs.LyxDirName)
+	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(lyxDir, "config.yaml"), []byte("test"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	gitkit.MustRun(t, dir, "git", "add", ".")
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
+	return dir
 }
 
 // BareBranchSHAForTest re-exports bareBranchSHA (relocated fixture helper, formerly
@@ -360,9 +386,10 @@ func bareBranchSHA(t *testing.T, bareDir, branch string) string {
 // before syncweft_integration_test.go's own migration card lands.
 var WriteWeftConfigContentForTest = writeWeftConfigContent
 
-// writeWeftConfigContent overwrites the tracked _lyx/config.yaml file CopyWeft fixtures ship with,
-// without staging or committing — the standard way a caller of this helper dirties a weft worktree's
-// pathspec-covered content before calling CommitWeft/Fabric.Commit.
+// writeWeftConfigContent overwrites the tracked _lyx/config.yaml file newPlainWeftRepo (and a real
+// hub's weft worktree alike) ships with, without staging or committing — the standard way a caller
+// of this helper dirties a weft worktree's pathspec-covered content before calling
+// CommitWeft/Fabric.Commit.
 func writeWeftConfigContent(t *testing.T, weftPath, content string) {
 	t.Helper()
 
@@ -390,13 +417,6 @@ func commitMessageAt(t *testing.T, repoPath, rev string) string {
 		t.Fatalf("git log -1 --format=%%B %s in %s: %v", rev, repoPath, err)
 	}
 	return string(out)
-}
-
-// WeftWriteLockPathForTest re-exports weftWriteLockPath (production plumbing: defined in
-// commit_lock_integration_test.go, package fabricengine, never migrating) for
-// commit_integration_test.go, which needs f's combined commit write lock path directly.
-func WeftWriteLockPathForTest(t *testing.T, f *Fabric) string {
-	return weftWriteLockPath(t, f)
 }
 
 // WeftGitDirForTest re-exports f.weftGitDir (production plumbing: index.go), for
