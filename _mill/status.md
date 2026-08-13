@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-test migration and guard
+phase: holistic-reviewing
 slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: _mill/plan
@@ -25,6 +25,7 @@ implementing  '2026-08-13T14:53:55Z'
 approved-cwd-context seam  '2026-08-13T15:00:17Z'
 approved-module seams  '2026-08-13T15:13:07Z'
 approved-test migration and guard  '2026-08-13T15:38:47Z'
+holistic-reviewing  '2026-08-13T15:39:19Z'
 ```
 
 ## Batches
