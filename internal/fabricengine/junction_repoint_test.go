@@ -31,7 +31,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestWireJunctions_RepointsWrongTargetJunction points the warp _lyx junction at an unrelated (but
@@ -40,14 +40,10 @@ import (
 func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	link := fabricengine.WarpLyxLink(l, slug)
 	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
@@ -91,14 +87,10 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
 	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
 
@@ -141,14 +133,10 @@ func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
 func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	link := fabricengine.WarpLyxLink(l, slug)
 	correctTarget := fabricengine.WeftLyxDirFor(l, slug)
 
@@ -189,14 +177,10 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 func TestWireJunctions_RepointsDanglingJunction_Extra(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, "_extra")
 	correctTarget := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, "_extra")
 
