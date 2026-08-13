@@ -1,6 +1,6 @@
-// gitrepo.go defines the Repo type and its read/commit primitives: New, the shared run helper over
-// gitexec.RunGit, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit, ChangedFilesSince,
-// and SHAExists.
+// gitrepo.go defines the Repo type and its read/commit primitives: New, the run/runChecked pair
+// over gitexec.RunGit and gitexec.Run, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
+// ChangedFilesSince, and SHAExists.
 
 package gitrepo
 
@@ -57,7 +57,15 @@ func New(path string) *Repo {
 
 // run executes a git subcommand against this Repo's checkout.
 func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) {
+	//gitexec:raw — the raw half of the gitrepo checked/raw pair, by design; each of its callers carries its own justification
 	return gitexec.RunGit(args, r.path)
+}
+
+// runChecked executes a git subcommand against this Repo's checkout and treats a non-zero exit as
+// a failure, returning *gitexec.GitError, recoverable via errors.As, whenever git ran and rejected
+// the command.
+func (r *Repo) runChecked(args ...string) (string, error) {
+	return gitexec.Run(args, r.path)
 }
 
 // CurrentSHA returns the SHA of HEAD, or ErrNoCommits if no commits exist.
