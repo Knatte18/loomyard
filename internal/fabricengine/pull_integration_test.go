@@ -27,6 +27,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
@@ -36,18 +37,18 @@ import (
 // synced warp<->weft correspondences, returning the Fabric handle, both worktree
 // paths, the bare remote's path, the initial warp SHA (the root for no-surviving-anchor),
 // and the recorded warp/weft SHA pairs in commit order.
-func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricengine.Fabric, warpPath, bareDir string, weftFixture gitkit.WeftFixture, initWarpSHA string, warpSHAs, weftSHAs []string) {
+func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricengine.Fabric, warpPath, bareDir string, weftFixture *hubforge.Hub, initWarpSHA string, warpSHAs, weftSHAs []string) {
 	t.Helper()
 
 	warpPath = fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir = addWarpBareRemote(t, fixturesDir, warpPath)
 	initWarpSHA = fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture = gitkit.CopyWeft(t)
-	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture = hubforge.NewHub(t, ".")
+	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	for i := 0; i < n; i++ {
 		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp change %d", i))
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, fmt.Sprintf("weft change %d", i))
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), fmt.Sprintf("weft change %d", i))
 		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() round %d error = %v", i, err)
@@ -224,7 +225,7 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
 
-	weftHEADBefore := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	weftHEADBefore := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 	if weftHEADBefore != weftSHAs[len(weftSHAs)-1] {
 		t.Fatalf("weft HEAD before Pull = %q; want the last synced weft SHA %q", weftHEADBefore, weftSHAs[len(weftSHAs)-1])
 	}
@@ -239,11 +240,11 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 		t.Fatalf("Pull() Reconciled = false; want true")
 	}
 
-	weftHEADAfter := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	weftHEADAfter := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 	if weftHEADAfter != result.ReanchorWeftSHA {
 		t.Errorf("weft HEAD after Pull = %q; want the reported re-anchor SHA %q", weftHEADAfter, result.ReanchorWeftSHA)
 	}
-	if got := revListCountBetween(t, weftFixture.WeftPath, weftHEADBefore+".."+weftHEADAfter); got != 1 {
+	if got := revListCountBetween(t, weftFixture.PrimeWeft(), weftHEADBefore+".."+weftHEADAfter); got != 1 {
 		t.Errorf("commits added on top of pre-existing weft history = %d; want exactly 1 (the re-anchor commit)", got)
 	}
 }
@@ -260,22 +261,22 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 2)
 
-	lyxDir := filepath.Join(weftFixture.WeftPath, lyxdirs.LyxDirName)
+	lyxDir := filepath.Join(weftFixture.PrimeWeft(), lyxdirs.LyxDirName)
 	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", lyxDir, err)
 	}
 	if err := os.WriteFile(filepath.Join(lyxDir, "PATTERN.md"), []byte("pattern content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern residue commit")
-	patternCommitSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "pattern residue commit")
+	patternCommitSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
-	if err := os.WriteFile(filepath.Join(weftFixture.WeftPath, "unrelated.txt"), []byte("unrelated"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(weftFixture.PrimeWeft(), "unrelated.txt"), []byte("unrelated"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "unrelated residue commit")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "unrelated residue commit")
 
 	configDir := filepath.Join(lyxDir, "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -284,8 +285,8 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configDir, "fabric.yaml"), []byte("junctions: []\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "config residue commit")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "config residue commit")
 
 	patternDetailDir := filepath.Join(lyxDir, "pattern")
 	if err := os.MkdirAll(patternDetailDir, 0o755); err != nil {
@@ -294,9 +295,9 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(patternDetailDir, "detail.md"), []byte("detail content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern detail residue commit")
-	patternDetailCommitSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "pattern detail residue commit")
+	patternDetailCommitSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
@@ -355,7 +356,7 @@ func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	f, warpPath, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 1)
 
 	preWarpHEAD := fabricengine.CommitWarpForTest(t, warpPath, "local unpushed change")
-	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
@@ -367,7 +368,7 @@ func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after aborted Pull() = %q; want unchanged %q", got, preWarpHEAD)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath); got != preWeftHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft()); got != preWeftHEAD {
 		t.Errorf("weft HEAD after aborted Pull() = %q; want unchanged %q", got, preWeftHEAD)
 	}
 }
@@ -379,7 +380,7 @@ func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	f, warpPath, bareDir, weftFixture, initWarpSHA, _, _ := buildReconcileFixture(t, fixturesDir, 2)
 
 	preWarpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
-	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, initWarpSHA)
 
@@ -391,7 +392,7 @@ func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after aborted Pull() = %q; want unchanged %q", got, preWarpHEAD)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath); got != preWeftHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft()); got != preWeftHEAD {
 		t.Errorf("weft HEAD after aborted Pull() = %q; want unchanged %q", got, preWeftHEAD)
 	}
 }
@@ -403,7 +404,7 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
-	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	clone := filepath.Join(fixturesDir, "warp-clone-ff")
 	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
@@ -432,7 +433,7 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	if got := fabricengine.CurrentSHAForTest(t, fabricengine.WarpPathForTest(f)); got != ffSHA {
 		t.Errorf("warp HEAD after Pull() = %q; want it advanced to %q", got, ffSHA)
 	}
-	if got := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath); got != preWeftHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft()); got != preWeftHEAD {
 		t.Errorf("weft HEAD after Pull() = %q; want unchanged %q", got, preWeftHEAD)
 	}
 }
@@ -568,8 +569,8 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
 	initWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	// Warp commits happen, but nothing is ever synced to weft — the
 	// correspondence index stays empty.
@@ -603,20 +604,29 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	preWarpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
 
+	// A real hub's weft primary checks out the suffixed branch (fabricengine.WeftBranchName("main")),
+	// never bare "main", and that suffixed branch carries no upstream at all until something pushes
+	// it -- CloneAndWire never does, since a fresh hub's primary is local-only until the first real
+	// push. Establish that upstream explicitly here, or PullWeft finds nothing to track and
+	// weftHasUpstream() reports false, skipping the pull as a vacuous success instead of the genuine
+	// divergence this test needs.
+	weftBranch := fabricengine.WeftBranchName("main")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "push", "-u", "origin", weftBranch)
+
 	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
-	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", weftFixture.Bare, cloneB)
+	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.WeftBare, cloneB)
 	gitkit.MustRun(t, cloneB, "git", "config", "user.email", "test@test.com")
 	gitkit.MustRun(t, cloneB, "git", "config", "user.name", "Test")
 	commitPlain(t, cloneB, "from-clone-b.txt", "b")
 	gitkit.MustRun(t, cloneB, "git", "push", "-q")
 
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
-	commitPlain(t, weftFixture.WeftPath, "local-only.txt", "local weft change")
+	commitPlain(t, weftFixture.PrimeWeft(), "local-only.txt", "local weft change")
 
 	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err == nil {
@@ -651,16 +661,16 @@ func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
 		t.Fatalf("write anchor marker: %v", err)
 	}
 
-	anchoredLyxDir := filepath.Join(weftFixture.WeftPath, anchor, lyxdirs.LyxDirName)
+	anchoredLyxDir := filepath.Join(weftFixture.PrimeWeft(), anchor, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(anchoredLyxDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", anchoredLyxDir, err)
 	}
 	if err := os.WriteFile(filepath.Join(anchoredLyxDir, "PATTERN.md"), []byte("anchored pattern content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "anchored pattern residue commit")
-	anchoredPatternSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "-q", "-m", "anchored pattern residue commit")
+	anchoredPatternSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
