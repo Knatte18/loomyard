@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -33,4 +33,35 @@ plan-review-r7  '2026-08-13T06:49:26Z'
 plan-fix-r7  '2026-08-13T06:50:16Z'
 blocked  '2026-08-13T06:50:48Z'
 planned  '2026-08-13T06:56:36Z'
+implementing  '2026-08-13T07:02:52Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: gitkit leaf
+    state: pending
+  - name: fabrictest dissolution
+    state: pending
+  - name: hubforge factory
+    state: pending
+  - name: small consumers
+    state: pending
+  - name: reedcli
+    state: pending
+  - name: stuck packages
+    state: pending
+  - name: fabriccli
+    state: pending
+  - name: fabricengine external
+    state: pending
+  - name: fabricengine in-package weft
+    state: pending
+  - name: fabricengine in-package hub
+    state: pending
+  - name: helper deletion
+    state: pending
+  - name: docs
+    state: pending
 ```
