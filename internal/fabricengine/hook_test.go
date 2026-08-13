@@ -166,9 +166,13 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
-	// Put the weft prime on the suffixed branch that pairs with warp "main"
-	// under fabric's uniform scheme — this is the in-sync state.
-	gitkit.MustRun(t, weftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	// A real hub's weft prime is already wired onto WeftBranchName("main") by CloneAndWire — the
+	// in-sync state — unlike the old CopyPairedLocal fixture, which left weft prime on a literal
+	// "main" branch and required an explicit checkout to reach parity. Confirm the invariant rather
+	// than reconstructing it by hand.
+	if branch := currentBranchName(t, weftPrime); branch != fabricengine.WeftBranchName("main") {
+		t.Fatalf("weft prime branch = %q; want %q (already wired by CloneAndWire)", branch, fabricengine.WeftBranchName("main"))
+	}
 
 	// Create a scratch branch in the warp prime so we have something to switch
 	// away from and back to "main".
