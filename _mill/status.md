@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -41,6 +41,7 @@ holistic-fixing  '2026-08-13T16:13:19Z'
 nits-fixed-holistic  '2026-08-13T16:16:33Z'
 holistic-approved  '2026-08-13T16:16:42Z'
 done  '2026-08-13T16:17:20Z'
+pr-pending  '2026-08-13T16:18:03Z'
 ```
 
 ## Batches
