@@ -5,7 +5,7 @@
 // empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled
 // stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
 
-package fabrictest
+package hubforge
 
 import (
 	"os"
