@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -48,6 +48,7 @@ approved-helper deletion  '2026-08-13T10:17:11Z'
 approved-docs  '2026-08-13T10:23:42Z'
 holistic-reviewing  '2026-08-13T10:24:11Z'
 holistic-fixing  '2026-08-13T10:29:45Z'
+holistic-reviewing  '2026-08-13T10:36:20Z'
 ```
 
 ## Batches
