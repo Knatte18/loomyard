@@ -151,6 +151,9 @@ Batch-local decision: the twelve relocated live-state files take a `livestate_` 
   - `internal/fabriccli/clone.go`
   - `internal/fabricengine/mutation.go`
   - `internal/fabricengine/doc.go`
+  - `internal/fabricengine/destroy_test.go`
+  - `internal/fabricengine/refusalof_test.go`
+  - `internal/fabricengine/mutation_record_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -161,6 +164,9 @@ Batch-local decision: the twelve relocated live-state files take a `livestate_` 
   `internal/hubforge` does **not** replace them in either map, because `hubforge` imports `weftname` only if `hub.go` does — check, and add `"internal/hubforge"` to the `weftname` map only if the compiler or the test says it is needed.
   In `internal/fabriccli/clone.go` and `internal/fabricengine/mutation.go`, rewrite the comments naming `fabrictest` so they name `internal/hubforge` (`clone.go`'s comment is the one warning that a second copy of `CloneAndWire`'s wiring is a hazard — keep that point, just retarget the package name).
   In `internal/fabricengine/doc.go`, rewrite the `fabrictest` reference to name the in-package `fabricengine_test` live-state harness and `internal/hubforge`.
+  Finish with a **bare-word** sweep, not a qualifier-only one — `grep -rln '\bfabrictest\b' --include=*.go internal cmd` must come back empty at the end of this card, and the three files added to `Edits:` above (`internal/fabricengine/destroy_test.go`, `internal/fabricengine/refusalof_test.go`, `internal/fabricengine/mutation_record_integration_test.go`) carry exactly that bare-word prose and no `fabrictest.` selector, so a qualifier-only pass leaves them behind and batch 11 card 69's zero-hit gate fails with no card owning the fix.
+  Each is a one-line comment naming `fabrictest` as the package that duplicates a refusal message, holds a mutation-oracle copy, or reads a record through the exported surface;
+  retarget each to name the relocated `package fabricengine_test` live-state harness, and check the claim still holds after the rename rather than only the name.
 - **Commit:** `refactor: retire every internal/fabricengine/fabrictest reference`
 
 ## Batch Tests

@@ -27,8 +27,9 @@ batch 11 deletes them.
 
 The external interface later batches consume is `gitkit.MustRun`, `gitkit.SeedConfig`, `gitkit.HermeticGitEnv`, `gitkit.GitStatusPorcelain` (added in batch 2) and `gitkit.CopyRepo`.
 
-Batch-local decision: the repo-wide qualifier rename is done with one `perl -pi -e` sweep rather than 116 hand edits, then proved by `go vet -tags integration ./...`.
-This deliberately also rewrites the guard-token string literals in `cmd/lyx/tierpurity_test.go` and `cmd/lyx/hermeticenv_test.go`, which is the wanted outcome — those tokens must track the package name.
+Batch-local decision: the repo-wide rename is done with one bare-word `perl -pi -e` sweep across 125 files rather than by hand, then proved by `go vet -tags integration ./...` and by batch 11 card 69's zero-hit grep gate.
+The sweep matches the bare word `lyxtest`, not just `internal/lyxtest` and `lyxtest.`, because comment prose uses possessive and bare-word forms that a qualifier-only sweep silently leaves behind — including in four production files and in seven test files no other card in this plan touches.
+It deliberately also rewrites the guard-token string literals in `cmd/lyx/tierpurity_test.go` and `cmd/lyx/hermeticenv_test.go`, which is the wanted outcome — those tokens must track the package name.
 
 ## Cards
 
@@ -68,6 +69,7 @@ This deliberately also rewrites the guard-token string literals in `cmd/lyx/tier
   - `cmd/lyx/testmain_test.go`
   - `cmd/lyx/tierpurity_test.go`
   - `cmd/lyx/tiersleep_test.go`
+  - `internal/batcher/config_test.go`
   - `internal/boardcli/testmain_test.go`
   - `internal/boardengine/boardtest/sync_test.go`
   - `internal/boardengine/boardtest/testmain_test.go`
@@ -98,6 +100,7 @@ This deliberately also rewrites the guard-token string literals in `cmd/lyx/tier
   - `internal/fabricengine/diff_integration_test.go`
   - `internal/fabricengine/doc.go`
   - `internal/fabricengine/dotlyxjunction_integration_test.go`
+  - `internal/fabricengine/fabric_test.go`
   - `internal/fabricengine/fabrictest/hub.go`
   - `internal/fabricengine/fabrictest/testmain_test.go`
   - `internal/fabricengine/healthreason_integration_test.go`
@@ -133,6 +136,7 @@ This deliberately also rewrites the guard-token string literals in `cmd/lyx/tier
   - `internal/gitrepo/fetch_integration_test.go`
   - `internal/gitrepo/gitrepo_test.go`
   - `internal/gitrepo/gogit_test.go`
+  - `internal/gitrepo/keyvalidation_test.go`
   - `internal/gitrepo/parity_test.go`
   - `internal/gitrepo/push_test.go`
   - `internal/gitrepo/testmain_test.go`
@@ -142,13 +146,17 @@ This deliberately also rewrites the guard-token string literals in `cmd/lyx/tier
   - `internal/ideengine/testmain_test.go`
   - `internal/loomengine/preflight_integration_test.go`
   - `internal/loomengine/testmain_test.go`
+  - `internal/lyxcwd/anchor.go`
   - `internal/lyxcwd/anchor_test.go`
   - `internal/lyxcwd/enforcement_test.go`
   - `internal/lyxcwd/gate_test.go`
+  - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxcwd/lyxcwd_test.go`
   - `internal/lyxcwd/testmain_test.go`
   - `internal/lyxdirs/doc.go`
+  - `internal/perchcli/cli_test.go`
   - `internal/perchcli/cli_integration_test.go`
+  - `internal/perchcli/run_test.go`
   - `internal/perchcli/run_integration_test.go`
   - `internal/perchcli/testmain_test.go`
   - `internal/perchengine/testmain_test.go`
@@ -171,6 +179,8 @@ This deliberately also rewrites the guard-token string literals in `cmd/lyx/tier
   - `internal/treadleengine/gate_lingering_test.go`
   - `internal/treadleengine/smoke_judge_test.go`
   - `internal/treadleengine/testmain_test.go`
+  - `internal/weftname/weftname.go`
+  - `internal/weftname/weftname_test.go`
   - `internal/webstercli/testmain_test.go`
   - `internal/webstercli/verbs_test.go`
   - `internal/websterengine/config_test.go`
@@ -182,11 +192,16 @@ This deliberately also rewrites the guard-token string literals in `cmd/lyx/tier
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Apply one mechanical sweep across exactly the files listed in `Edits:`, rewriting the import path `github.com/Knatte18/loomyard/internal/lyxtest` to `github.com/Knatte18/loomyard/internal/gitkit` and every selector-qualified reference `lyxtest.` to `gitkit.`:
+  Apply one mechanical sweep across exactly the files listed in `Edits:`, rewriting **every** occurrence of the bare word `lyxtest` to `gitkit` — the import path, the selector-qualified `lyxtest.` form, and bare-word or possessive prose in comments alike:
 
   ```
-  grep -rl 'internal/lyxtest\|lyxtest\.' --include=*.go internal cmd | grep -v '^internal/gitkit/' | xargs perl -pi -e 's{internal/lyxtest}{internal/gitkit}g; s{\blyxtest\.}{gitkit.}g'
+  grep -rl '\blyxtest\b' --include=*.go internal cmd | grep -v '^internal/gitkit/' | xargs perl -pi -e 's{\blyxtest\b}{gitkit}g'
   ```
+
+  The bare-word form is deliberate and is what makes batch 11 card 69's zero-hit `grep -rn 'lyxtest' --include=*.go internal cmd` gate satisfiable.
+  A narrower sweep matching only `internal/lyxtest` and `lyxtest.` would leave possessive and bare-word prose behind in files no other card owns — `internal/weftname/weftname.go` ("for `lyxtest`'s fixture builders"), `internal/lyxcwd/anchor.go` and `internal/lyxcwd/lyxcwd.go` ("`lyxtest` injects anchors into synthetic hubs"), `internal/batcher/config_test.go`, `internal/gitrepo/keyvalidation_test.go`, `internal/perchcli/cli_test.go`, `internal/perchcli/run_test.go` and others — and card 69 would then fail with no card owning the fix.
+  All such files are in this card's `Edits:` list, including three production files (`internal/weftname/weftname.go`, `internal/lyxcwd/anchor.go`, `internal/lyxcwd/lyxcwd.go`) whose only change is comment prose.
+  After the sweep, re-read the comments in those three production files: a bare-word substitution can produce a sentence that is now factually wrong rather than merely renamed — a comment saying `gitkit` builds synthetic hubs is no longer true once `hubforge` builds real ones — so correct the claim, not just the name, wherever the sentence describes fixture *shape* rather than fixture *ownership*.
 
   Then run `gofmt -l internal cmd` and fix any file it names.
   Rewriting comment prose and string literals is intended, not collateral: `cmd/lyx/tierpurity_test.go`'s banned token `"lyxtest.Copy"` must become `"gitkit.Copy"`, `cmd/lyx/hermeticenv_test.go`'s three tokens `"lyxtest.Copy"`, `"lyxtest.MustRun"`, `"lyxtest.SeedConfig"` must become their `gitkit.` forms, and `internal/lyxcwd/enforcement_test.go`'s two allowlist map keys `"internal/lyxtest"` must become `"internal/gitkit"`.

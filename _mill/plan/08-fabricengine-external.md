@@ -11,22 +11,24 @@ depends-on: [7]
 
 ## Batch Scope
 
-This batch migrates the thirty-seven `Copy*` sites and the eleven `NewPairedForTest` sites that already live in `package fabricengine_test` files inside `internal/fabricengine/`.
+This batch migrates the thirty-seven `Copy*` sites and the nine `NewPairedForTest` sites that already live in `package fabricengine_test` files inside `internal/fabricengine/`.
 No file moves and no export-shim growth are needed here — every file is already external — which is what makes it the right half of `fabricengine`'s eighty-two sites to do first.
 Batches 9 and 10 handle the forty-five in-package sites, which do need both.
 
 `NewPairedForTest` is the second axis in this batch.
-Its counts are call expressions, counted with `grep -o 'fabricengine\.NewPairedForTest('` — the same call-expression method the `Copy*` table uses, and for the same reason: a line-based count over-reports badly here, since `internal/fabricengine/export_test.go` declares the identifier and several `t.Fatalf` messages name it in string literals.
-Eleven real call expressions exist: five in `warpforward_integration_test.go`, four in `weftgit_exclude_test.go`, one in `checkout_index_refresh_test.go`, and one in `fabric_test.go`.
-Ten of them exist only because the old fixtures could not produce a genuine warp/weft pair — they bolt an unrelated `CopyWeft` weft onto a `CopyWarpHub` warp — and a real hub's `PrimeWorktree()`/`PrimeWeft()` **is** a genuine pair, so those ten go away.
-The eleventh, in `fabric_test.go`, is not a fixture at all and stays;
+Its counts are **call expressions, counted by reading each occurrence, not by grep at all**.
+A trailing-paren grep is not sufficient here and the plan says so explicitly because it got this wrong once: `weftgit_exclude_test.go` pairs each real call with a `t.Fatalf("fabricengine.NewPairedForTest(%q, %q): %v", …)` whose *format string* contains the literal text `fabricengine.NewPairedForTest(`, so even `grep -o 'fabricengine\.NewPairedForTest('` double-counts that file.
+`warpforward_integration_test.go`'s own `t.Fatalf` uses `"fabricengine.NewPairedForTest: %v"` with no paren and is not double-counted, which is exactly why a grep-only count looks self-consistent while being wrong.
+Nine real call expressions exist: five in `warpforward_integration_test.go`, two in `weftgit_exclude_test.go`, one in `checkout_index_refresh_test.go`, and one in `fabric_test.go`.
+Eight of them exist only because the old fixtures could not produce a genuine warp/weft pair — they bolt an unrelated `CopyWeft` weft onto a `CopyWarpHub` warp — and a real hub's `PrimeWorktree()`/`PrimeWeft()` **is** a genuine pair, so those eight go away.
+The ninth, in `fabric_test.go`, is not a fixture at all and stays;
 the next paragraph is why.
 
 Batch-local decision, and a deliberate deviation from the discussion's scope line: `NewPairedForTest` is **not** deleted outright.
 `internal/fabricengine/fabric_test.go` is an untagged unit test of the `newPaired` constructor itself — it hands the shim two empty `os.Mkdir` directories and asserts the warp and weft fields come back non-nil.
 That has nothing to do with hub fixtures, spawns no git, and would be lost coverage if deleted, and it cannot move onto `hubforge.NewHub` because the Test Tier Purity Invariant bans an untagged test from calling it.
 The shim therefore survives, renamed to `NewPairedFromPathsForTest` and documented as a constructor seam rather than a fixture — which is what card 51 does.
-The discussion's "delete `NewPairedForTest`" line was derived from the ten fixture-pairing sites and did not account for this one;
+The discussion's "delete `NewPairedForTest`" line was derived from the eight fixture-pairing sites and did not account for this one;
 batch 11's grep gate is written against the fixture usage accordingly.
 
 ## Cards
@@ -191,7 +193,7 @@ batch 11's grep gate is written against the fixture usage accordingly.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Replace the two `gitkit.CopyWeft(t)` calls with `hubforge.NewHub(t, ".")` and the four `fabricengine.NewPairedForTest(` calls with the hub's own genuine pair — `h.PrimeWorktree()` and `h.PrimeWeft()` are a real warp/weft pair, so the `Fabric` under test is obtained through `fabricengine`'s ordinary exported constructor against `h.Location` rather than through the shim.
+  Replace the two `gitkit.CopyWeft(t)` calls with `hubforge.NewHub(t, ".")` and the two `fabricengine.NewPairedForTest(` call expressions with the hub's own genuine pair — `h.PrimeWorktree()` and `h.PrimeWeft()` are a real warp/weft pair, so the `Fabric` under test is obtained through `fabricengine`'s ordinary exported constructor against `h.Location` rather than through the shim.
   Delete this file's stand-in-hub scaffolding: its header comment records that it seeds config "at warpPath's parent directory (this fixture's stand-in Hub)", and that seeding goes away entirely, because a real hub materializes config at `BoardDir` and `WeftBase` for real.
   Update the header comment to say what the file now does instead of describing the removed hack.
   The five `gitkit.MustRun(` calls stay on `gitkit` unchanged, and the `gitkit.GitStatusPorcelain` call batch 2 introduced stays as it is.
@@ -247,7 +249,7 @@ batch 11's grep gate is written against the fixture usage accordingly.
 - **Requirements:**
   Verification-only gate, no diff.
   Confirm that every `package fabricengine_test` file in `internal/fabricengine/` contains zero occurrences of `gitkit.CopyPaired`, `gitkit.CopyPairedLocal`, `gitkit.CopyWeft` and `gitkit.CopyWarpHub`, and that the only surviving reference to the renamed pairing shim is `internal/fabricengine/fabric_test.go`'s untagged constructor unit test.
-  Confirm no assertion was deleted rather than re-expressed without a stated reason: cross-read this batch's twelve commit messages against the diff and make sure each removal is accounted for.
+  Confirm no assertion was deleted rather than re-expressed without a stated reason: cross-read this batch's ten commit messages against the diff and make sure each removal is accounted for.
   If any check fails, fix it under the card that owns the file rather than here.
 - **Commit:** none
 

@@ -179,4 +179,4 @@ this task does not run them.
 `verify:` compile-checks the repo under both the `integration` and `smoke` tags, then runs the integration suites of the five packages whose migrated files are integration-tagged: `internal/webstercli`, `internal/configcli`, `internal/idecli`, `internal/boardengine` (covering the `boardtest` sibling) and `internal/perchcli`.
 
 `internal/burlerengine` and `internal/shuttlecli` are compile-checked under `-tags smoke` and never executed: their suites spawn live tmux sessions and LLM agents, which a per-batch verify must not do.
-That is a real coverage gap for those five call sites, and it is stated rather than hidden — the whole-repo `done_gate` does not close it either, since it runs no `smoke`-tagged tests.
+That is a real coverage gap for those six call sites, and it is stated rather than hidden — the whole-repo `done_gate` does not close it either, since it runs no `smoke`-tagged tests.

@@ -252,6 +252,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `docs/benchmarks/test-suite-timing.md`
 - `docs/overview.md`
 - `docs/shared-libs/lyxcwd.md`
+- `internal/batcher/config_test.go`
 - `internal/boardcli/testmain_test.go`
 - `internal/boardengine/boardtest/sync_test.go`
 - `internal/boardengine/boardtest/testmain_test.go`
@@ -280,6 +281,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/fabricengine/commit_integration_test.go`
 - `internal/fabricengine/commitweftat_test.go`
 - `internal/fabricengine/config_driven_junctions_integration_test.go`
+- `internal/fabricengine/destroy_test.go`
 - `internal/fabricengine/destructivegaps_integration_test.go`
 - `internal/fabricengine/diff_integration_test.go`
 - `internal/fabricengine/doc.go`
@@ -315,6 +317,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/fabricengine/ready_integration_test.go`
 - `internal/fabricengine/reconcile_stale_registration_test.go`
 - `internal/fabricengine/reconcile_stale_removal_test.go`
+- `internal/fabricengine/refusalof_test.go`
 - `internal/fabricengine/remove_guard_integration_test.go`
 - `internal/fabricengine/remove_junctions_integration_test.go`
 - `internal/fabricengine/snapshot_integration_test.go`
@@ -344,6 +347,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/gitrepo/fetch_integration_test.go`
 - `internal/gitrepo/gitrepo_test.go`
 - `internal/gitrepo/gogit_test.go`
+- `internal/gitrepo/keyvalidation_test.go`
 - `internal/gitrepo/parity_test.go`
 - `internal/gitrepo/push_test.go`
 - `internal/gitrepo/testmain_test.go`
@@ -360,14 +364,18 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/loomengine/export_test.go`
 - `internal/loomengine/preflight_integration_test.go`
 - `internal/loomengine/testmain_test.go`
+- `internal/lyxcwd/anchor.go`
 - `internal/lyxcwd/anchor_test.go`
 - `internal/lyxcwd/enforcement_test.go`
 - `internal/lyxcwd/gate_test.go`
+- `internal/lyxcwd/lyxcwd.go`
 - `internal/lyxcwd/lyxcwd_test.go`
 - `internal/lyxcwd/testmain_test.go`
 - `internal/lyxdirs/doc.go`
 - `internal/perchcli/cli_integration_test.go`
+- `internal/perchcli/cli_test.go`
 - `internal/perchcli/run_integration_test.go`
+- `internal/perchcli/run_test.go`
 - `internal/perchcli/testmain_test.go`
 - `internal/perchengine/testmain_test.go`
 - `internal/reedcli/cli_integration_test.go`
@@ -397,5 +405,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/websterengine/recoverbatch_test.go`
 - `internal/websterengine/runlevel_test.go`
 - `internal/websterengine/testmain_test.go`
+- `internal/weftname/weftname.go`
+- `internal/weftname/weftname_test.go`
 - `manifest/designs/fabric-unified-view.md`
 - `manifest/roadmap.md`
