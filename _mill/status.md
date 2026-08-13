@@ -118,6 +118,8 @@ batches:
     commit_sha: 8a3694f042b739bc8a6a0ca4c40cb2c9e235af4b
     verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: docs
-    state: pending
+    state: running
+    implementer_session: 76816d8d-6454-4452-829a-82bd17b2d49f
+    start_sha: 7a07496700f4eba4df569200d717a9a6bd368821
     verify_baseline_failures: []
 ```
