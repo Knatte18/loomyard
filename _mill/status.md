@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reedcli
+phase: approved-stuck packages
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-fabrictest dissolution  '2026-08-13T07:32:23Z'
 approved-hubforge factory  '2026-08-13T07:46:27Z'
 approved-small consumers  '2026-08-13T08:03:57Z'
 approved-reedcli  '2026-08-13T08:10:57Z'
+approved-stuck packages  '2026-08-13T08:17:02Z'
 ```
 
 ## Batches
@@ -76,9 +77,10 @@ batches:
     commit_sha: f80cb3f6f4701ce78f21701887cdbee254cbd8a1
     verify_baseline_failures: []
   - name: stuck packages
-    state: running
+    state: approved
     implementer_session: a63cb2f0-095b-473c-af35-2b13172e53fd
     start_sha: 78a76ec113498fc91dfcd3fe3424dec3f4247cc9
+    commit_sha: 119bf2e67e017c85ec1b1aaa14848254373d5571
     verify_baseline_failures: []
   - name: fabriccli
     state: pending
