@@ -62,7 +62,9 @@ batches:
     commit_sha: 9b4fee50b6cdc8c9abd03b4976217bd39dbec333
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: small consumers
-    state: pending
+    state: running
+    implementer_session: cf904daf-e434-4041-ba60-f98402ad3997
+    start_sha: e1823e94bad46cbe4081a1f5bd865dffa49c977f
     verify_baseline_failures: []
   - name: reedcli
     state: pending
