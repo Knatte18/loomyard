@@ -127,6 +127,15 @@ type Hub struct {
 	WarpBare string
 	// WeftBare is this hub's own copy of the weft bare remote.
 	WeftBare string
+	// WeftBase is the anchor-joined weft directory, populated verbatim from CloneResult.WeftBase —
+	// fabricengine's CloneHub computes it as filepath.Join(WeftWorktree(l), l.AnchorRel), never
+	// re-derived here.
+	// It is deliberately not the same thing as PrimeWeft(), which returns the un-anchored weft
+	// worktree root: the two coincide at the "." anchor and diverge at "backend", where writing
+	// config to the un-anchored path produces a file no module loader ever reads, with no error at
+	// all.
+	// hubforge.SeedConfig writes here for exactly that reason.
+	WeftBase string
 	// Container is the tb.TempDir() the hub was cloned into.
 	Container string
 }
@@ -137,7 +146,11 @@ func (h *Hub) PrimeWorktree() string {
 	return h.Location.WorktreePath()
 }
 
-// PrimeWeft returns the path to the weft sibling paired with the prime warp worktree.
+// PrimeWeft returns the path to the weft sibling paired with the prime warp worktree — the
+// un-anchored weft worktree root, not the anchor-joined path.
+// A caller reaching for this to seed config should use h.WeftBase and hubforge.SeedConfig instead:
+// at a non-"." anchor, writing to the path this method returns produces a file no module loader ever
+// reads, with no error at all.
 func (h *Hub) PrimeWeft() string {
 	return fabricengine.WeftWorktree(h.Location)
 }
@@ -207,6 +220,7 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 		Topology:  fabricengine.NewTopology(fabricengine.Config{}),
 		WarpBare:  warpBare,
 		WeftBare:  weftBare,
+		WeftBase:  res.WeftBase,
 		Container: container,
 	}
 }
