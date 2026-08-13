@@ -2,7 +2,7 @@
 
 // cli_test.go covers the fabric CLI cobra surface: no-arg listing of all 14 verbs,
 // unknown-subcommand cobra error, the --weft-path push-only gate, pairs with a
-// minimal topology fixture, commit --help's fixed-message/Warp-SHA-trailer prose,
+// real hub built by hubforge.NewHub, commit --help's fixed-message/Warp-SHA-trailer prose,
 // pull --help's both-sides/reconcile prose, and the WEFT_SKIP_PUSH env-to-SyncOptions
 // mapping on push — this package exercises both the topology and content-sync verb
 // families against the one fabric command tree.
@@ -23,33 +23,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// setupCLIRepo creates a hub via gitkit.CopyWarpHub, changes into it, and writes a
-// _lyx/config/fabric.yaml config at the repo-wide board dir so RunCLI's
-// migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can
-// resolve it. f.Hub is the fixture's warp worktree root, i.e.
-// lyxcwd.Location.WorktreePath() once resolved — the real lyxcwd HubPath
-// (WorktreePath()'s parent) is filepath.Dir(f.Hub), matching the established
-// idiom in internal/boardcli's own cli_test.go/notes_test.go fixtures.
-// Returns the hub path. Stays serial (no t.Parallel) because t.Chdir is
-// required for RunCLI.
+// setupCLIRepo builds a real hub via hubforge.NewHub, changes into its prime warp worktree, and
+// overrides the repo-wide fabric.yaml at the board dir with a non-default branch_prefix so RunCLI's
+// migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can be seen resolving a
+// genuinely overridden value rather than the plain registered template hubforge.NewHub already
+// materializes on its own.
+// Returns the hub path. Stays serial (no t.Parallel) because t.Chdir is required for RunCLI.
 func setupCLIRepo(t *testing.T) string {
 	t.Helper()
-	f := gitkit.CopyWarpHub(t)
-	t.Chdir(f.Hub)
+	h := hubforge.NewHub(t, ".")
+	t.Chdir(h.PrimeWorktree())
 
-	boardDir := fabricengine.BoardDir(filepath.Dir(f.Hub))
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: wt-\npathspec: _lyx\n"), 0o644); err != nil {
-		t.Fatalf("write fabric.yaml: %v", err)
-	}
-	return f.Hub
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: wt-\npathspec: _lyx\n")
+	return h.Path
 }
 
 // decodeResult parses RunCLI's JSON output into a generic map.
@@ -165,22 +157,23 @@ func TestRunCLI_PairsReturnsPairsKey(t *testing.T) {
 // so this test does not assert its absence directly; it asserts the surviving "remedy" key is
 // present and non-empty instead, which is the shape that matters to a CLI consumer.
 func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
-	// A paired fixture (warp + weft sibling), not the warp-only setupCLIRepo
-	// fixture: Status bails out of the per-pair pollution scan early when the
-	// weft sibling is missing, so a paired fixture is required to reach it.
-	fixture := gitkit.CopyPaired(t)
+	// A real hub, not the warp-only setupCLIRepo fixture: Status bails out of the per-pair pollution
+	// scan early when the weft sibling is missing, and hubforge.NewHub always builds a paired hub.
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
 
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create board config dir: %v", err)
+	t.Chdir(h.PrimeWorktree())
+
+	// A real hub already wires _lyx as a junction onto the weft config. Pollution means an operator
+	// replaced that junction with a real, tracked directory, so the junction must be removed first --
+	// writing through it, as the old ungeometried fixture's plain mkdir did, would land the file on the
+	// weft side instead of polluting the warp index this test means to exercise. The explicit "-f" on
+	// the git add below is likewise new: WireJunctionsWith seeded _lyx into the warp's
+	// .git/info/exclude, and git refuses to add an explicitly-named ignored path without it.
+	warpLyxDir := filepath.Join(h.PrimeWorktree(), lyxdirs.LyxDirName)
+	if err := fslink.Remove(warpLyxDir); err != nil {
+		t.Fatalf("remove warp _lyx junction: %v", err)
 	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
-		t.Fatalf("write board fabric.yaml: %v", err)
-	}
-
-	t.Chdir(fixture.Hub)
-
-	warpLyxDir := filepath.Join(fixture.Hub, lyxdirs.LyxDirName)
 	if err := os.MkdirAll(warpLyxDir, 0o755); err != nil {
 		t.Fatalf("mkdir warp _lyx dir: %v", err)
 	}
@@ -188,8 +181,8 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	gitkit.MustRun(t, fixture.Hub, "git", "add", "--", lyxdirs.LyxDirName)
-	gitkit.MustRun(t, fixture.Hub, "git", "commit", "-m", "accidentally track _lyx")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "-f", "--", lyxdirs.LyxDirName)
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-m", "accidentally track _lyx")
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
@@ -311,27 +304,18 @@ func TestRunCLI_PullShortNonEmpty(t *testing.T) {
 // This is a serial test because it exercises the cwd-based push command which reads the current
 // directory.
 func TestRunCLI_EnvMapToOption(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
-	// Fabric config is a repo-wide fact read from the board dir (weft_verbs.go's
-	// migrated PersistentPreRunE), not from the weft-prime fixture's own _lyx —
-	// CopyPaired never materializes a _board dir, so seed it directly here.
-	// fixture.Container is the real lyxcwd HubPath (fixture.Hub's parent; see
-	// CopyPaired's own doc comment), matching lyxcwd.Resolve(fixture.Hub).HubPath.
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create board config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("write board fabric.yaml: %v", err)
-	}
+	// Fabric config is a repo-wide fact read from the board dir (weft_verbs.go's migrated
+	// PersistentPreRunE): fabriccli.CloneAndWire already materializes it with the plain registered
+	// template as part of building h, so nothing further needs seeding here.
 
 	// Change to the hub directory so lyxcwd.Resolve can locate the repo from cwd;
 	// t.Chdir restores the original cwd automatically after the test.
-	t.Chdir(fixture.Hub)
+	t.Chdir(h.PrimeWorktree())
 
 	// Modify a file in the weft config that would be committed.
-	weftConfigFile := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -360,22 +344,16 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 // "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
 // This is the single most breakage-prone edit in the whole task: a miss here is silent, not loud.
 func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
 	// Repo-wide fabric.yaml names only "_extra" -- a single non-_lyx name --
 	// proving _lyx arrives from the routing set structurally, not from this
 	// config.
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create board config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
-		t.Fatalf("write board fabric.yaml: %v", err)
-	}
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
-	t.Chdir(fixture.Hub)
+	t.Chdir(h.PrimeWorktree())
 
-	weftConfigFile := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "placeholder")
+	weftConfigFile := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "placeholder")
 	if err := os.WriteFile(weftConfigFile, []byte("modified for sync regression"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -395,9 +373,9 @@ func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *test
 		t.Fatalf("RunCLI(sync) ok = %v; want true; output: %s", result["ok"], out.String())
 	}
 
-	tracked := strings.TrimSpace(gitOutputCLI(t, fixture.WeftPrime, "log", "-1", "--name-only", "--pretty=format:"))
+	tracked := strings.TrimSpace(gitOutputCLI(t, h.PrimeWeft(), "log", "-1", "--name-only", "--pretty=format:"))
 	if !strings.Contains(tracked, filepath.ToSlash(filepath.Join(lyxdirs.LyxDirName, "placeholder"))) {
-		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", fixture.WeftPrime, lyxdirs.LyxDirName, tracked)
+		t.Errorf("HEAD commit on %s does not touch %s; want the sync-built pathspec to still cover _lyx even though the repo-wide config names only _extra\nfiles: %s", h.PrimeWeft(), lyxdirs.LyxDirName, tracked)
 	}
 }
 
@@ -782,23 +760,14 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 // the pathspec-derived sweep, so its removal can never appear in junctions_removed — a CLI envelope
 // without its own key silently hid that the link was torn down.
 func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create board config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
-		t.Fatalf("write board fabric.yaml: %v", err)
-	}
+	// The operator-convenience _board link is already wired by fabriccli.CloneAndWire as part of
+	// building h -- unlike the old fixture, no manual fslink.CreateDirLink is needed here.
+	boardLink := filepath.Join(h.PrimeWorktree(), fabricengine.BoardDirName)
 
-	// Wire the operator-convenience _board link the way clone/add/reconcile do.
-	boardLink := filepath.Join(fixture.Hub, fabricengine.BoardDirName)
-	if err := fslink.CreateDirLink(boardLink, boardDir); err != nil {
-		t.Fatalf("create board link: %v", err)
-	}
-
-	t.Chdir(fixture.Hub)
+	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
@@ -824,18 +793,12 @@ func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
 // weft-sibling message, never the generic cwd-gate error — which names the weft's own anchored
 // directory as the place to stand and thereby directs the operator deeper INTO the weft.
 func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	// "backend" is a subpath anchor, so the weft ROOT (h.PrimeWeft()) is not the anchored directory
+	// (h.WeftBase) -- fabriccli.CloneAndWire records that anchor for real, so no hand-written anchor
+	// marker is needed here.
+	h := hubforge.NewHub(t, "backend")
 
-	// Record a subpath anchor so the weft ROOT is not the anchored directory.
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte("sub\n"), 0o644); err != nil {
-		t.Fatalf("write anchor marker: %v", err)
-	}
-
-	t.Chdir(fixture.WeftPrime)
+	t.Chdir(h.PrimeWeft())
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
@@ -854,10 +817,16 @@ func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
 // \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead
 // materialize the config and proceed.
 func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
-	// Deliberately NO repo-wide fabric.yaml seeding — the state that used to produce the circular
-	// error.
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+
+	// hubforge.NewHub always materializes a repo-wide fabric.yaml as part of building a real hub, so
+	// the "missing config" state this test exists to heal must be produced by hand here -- an operator
+	// deleting the file is exactly the scenario the healing logic guards against.
+	cfgPath := configengine.ConfigFile(h.BoardDir(), "fabric")
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatalf("remove repo-wide fabric config: %v", err)
+	}
+	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"reconcile"})
@@ -865,7 +834,6 @@ func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
 		t.Fatalf("RunCLI(reconcile) = %d; want 0 (reconcile must heal the missing config, not report it)\noutput: %s", exitCode, out.String())
 	}
 
-	cfgPath := configengine.ConfigFile(fabricengine.BoardDir(fixture.Container), "fabric")
 	if _, err := os.Stat(cfgPath); err != nil {
 		t.Errorf("repo-wide fabric config not materialized at %s: %v", cfgPath, err)
 	}
@@ -877,19 +845,12 @@ func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
 // paired hub, since the weft-verb pair (status, diff) resolves its Fabric handle through the
 // PersistentPreRunE that only a real hub satisfies.
 func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create board config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
-		t.Fatalf("write board fabric.yaml: %v", err)
-	}
+	t.Chdir(h.PrimeWorktree())
 
-	t.Chdir(fixture.Hub)
-
-	warpSHA := strings.TrimSpace(gitOutputCLI(t, fixture.Hub, "rev-parse", "HEAD"))
+	warpSHA := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "rev-parse", "HEAD"))
 
 	tests := []struct {
 		name string
@@ -926,25 +887,22 @@ func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
 // object carries all four keys (check, what, target, reason), and that the flattened "error" string is
 // still present alongside it.
 func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T) {
-	fixture := gitkit.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
-	boardDir := fabricengine.BoardDir(fixture.Container)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("create board config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: \"\"\n"), 0o644); err != nil {
-		t.Fatalf("write board fabric.yaml: %v", err)
-	}
-
-	// Wire the _board link at a WRONG target — anywhere other than the real board dir — so
-	// unwireBoardLink's ownership check (raw target must equal BoardDir(l.HubPath)) refuses.
+	// The correct _board link is already wired by fabriccli.CloneAndWire as part of building h; drift
+	// it onto a WRONG target — anywhere other than the real board dir — so unwireBoardLink's ownership
+	// check (raw target must equal BoardDir(l.HubPath)) refuses.
 	wrongTarget := t.TempDir()
-	boardLink := filepath.Join(fixture.Hub, fabricengine.BoardDirName)
+	boardLink := filepath.Join(h.PrimeWorktree(), fabricengine.BoardDirName)
+	if err := fslink.Remove(boardLink); err != nil {
+		t.Fatalf("remove correctly-wired board link: %v", err)
+	}
 	if err := fslink.CreateDirLink(boardLink, wrongTarget); err != nil {
 		t.Fatalf("create drifted board link: %v", err)
 	}
 
-	t.Chdir(fixture.Hub)
+	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"unwire"})
