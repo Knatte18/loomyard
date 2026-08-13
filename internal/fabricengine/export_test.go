@@ -8,9 +8,7 @@ package fabricengine
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 
@@ -162,41 +160,6 @@ func newPlainWarpRepo(t *testing.T) string {
 	gitkit.MustRun(t, dir, "git", "add", ".")
 	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
 	return dir
-}
-
-// CurrentSHAForTest re-exports currentSHA (relocated fixture helper, formerly
-// index_integration_test.go): several of the nine relocating files need it before
-// index_integration_test.go's own migration card lands.
-var CurrentSHAForTest = currentSHA
-
-// currentSHA returns dir's HEAD commit SHA.
-func currentSHA(t *testing.T, dir string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// CommitWarpForTest re-exports commitWarp (relocated fixture helper, formerly
-// index_integration_test.go): several of the nine relocating files need it before
-// index_integration_test.go's own migration card lands.
-var CommitWarpForTest = commitWarp
-
-// commitWarp creates a new commit in warpPath carrying content, returning the new HEAD SHA.
-func commitWarp(t *testing.T, warpPath, content string) string {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(warpPath, "README"), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	gitkit.MustRun(t, warpPath, "git", "add", ".")
-	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
-	return currentSHA(t, warpPath)
 }
 
 // NewFabricForTest re-exports newFabric (relocated fixture helper, formerly
@@ -361,24 +324,6 @@ func newPlainWeftRepo(t *testing.T) string {
 	return dir
 }
 
-// BareBranchSHAForTest re-exports bareBranchSHA (relocated fixture helper, formerly
-// coalesce_integration_test.go): bolt_integration_test.go (package fabricengine, never migrating)
-// calls it unqualified.
-var BareBranchSHAForTest = bareBranchSHA
-
-// bareBranchSHA returns the SHA that branch points to inside the bare repo at bareDir.
-func bareBranchSHA(t *testing.T, bareDir, branch string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", branch)
-	cmd.Dir = bareDir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse %s in %s: %v", branch, bareDir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // WriteWeftConfigContentForTest re-exports writeWeftConfigContent (relocated fixture helper, formerly
 // syncweft_integration_test.go): commit_partial_integration_test.go, commit_gating_integration_test.go,
 // committed_lyxonly_integration_test.go and commit_lock_integration_test.go (package fabricengine,
@@ -397,26 +342,6 @@ func writeWeftConfigContent(t *testing.T, weftPath, content string) {
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-}
-
-// CommitMessageAtForTest re-exports commitMessageAt (relocated fixture helper, formerly
-// syncweft_integration_test.go): commitweftat_test.go (package fabricengine, never migrating) calls it
-// unqualified, and commit_integration_test.go needs it before syncweft_integration_test.go's own
-// migration card lands.
-var CommitMessageAtForTest = commitMessageAt
-
-// commitMessageAt returns rev's full raw commit message (subject + body + trailers) in repoPath, via
-// `git log --format=%B`.
-func commitMessageAt(t *testing.T, repoPath, rev string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "log", "-1", "--format=%B", rev)
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git log -1 --format=%%B %s in %s: %v", rev, repoPath, err)
-	}
-	return string(out)
 }
 
 // WeftGitDirForTest re-exports f.weftGitDir (production plumbing: index.go), for
