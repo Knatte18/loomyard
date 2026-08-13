@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -615,12 +616,12 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 // record yet.
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
+	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 	fabricengine.SwapPushRecorderForTest(t)
 
-	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	result, err := f.Commit(nil, "unborn warp, tags only", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
@@ -630,7 +631,7 @@ func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 		t.Errorf("Commit() = %+v; want a full no-op (unborn warp drops tags exactly as before)", result)
 	}
 
-	postWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	postWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 	if postWeftSHA != preWeftSHA {
 		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit)", preWeftSHA, postWeftSHA)
 	}
@@ -824,8 +825,8 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 // matching nothing and one snapshot tag, it lands the empty commit.
 func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")
 	if err != nil {
@@ -836,7 +837,7 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 	}
 
 	warpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
-	msg := fabricengine.CommitMessageAtForTest(t, weftFixture.WeftPath, sha)
+	msg := fabricengine.CommitMessageAtForTest(t, weftFixture.PrimeWeft(), sha)
 	wantWarpTrailer := fabricengine.WarpSHATrailerKey + ": " + warpSHA
 	if !strings.Contains(msg, wantWarpTrailer) {
 		t.Errorf("commit message = %q; want it to contain %q", msg, wantWarpTrailer)
