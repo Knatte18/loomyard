@@ -30,7 +30,10 @@ touching those signatures is the substance of this task.
 - `clihelp.ExecuteIn(cmd, cwd, out, args) int` beside the existing `Execute`, seeding the cwd into the invocation context.
 - `RunCLIIn(cwd string, out io.Writer, args []string) int` on all 11 modules that expose `RunCLI` (`fabriccli`, `burlercli`, `configcli`, `idecli`, `shuttlecli`, `scoutcli`, `perchcli`, `selfreportcli`, `boardcli`, `webstercli`, `reedcli`).
   Existing `RunCLI` delegates to it with `cwd == ""`, meaning "read the process cwd".
-- Swapping every production `lyxcwd.Getwd()` call site in a CLI path over to `lyxcwd.CwdFrom(cmd.Context())` — ~12 sites listed under Technical context.
+- Swapping every production `lyxcwd.Getwd()` call site in a CLI path over to `lyxcwd.CwdFrom(cmd.Context())` — 15 sites: 7 in a `PersistentPreRunE`, 4 in `scoutcli` `RunE` bodies, and 4 in plain handler functions.
+  A 16th touch point, `fabriccli/weft_verbs.go:52`, calls no `Getwd()` of its own and instead needs `cmd.Context()` threaded into its `resolveWarpLocation()` call.
+  `loomengine/preflight.go:36` is the 17th and last production site, handled by its own Scope bullet below.
+  All are enumerated under Technical context.
 - Threading `cmd.Context()` into the plain handler functions that resolve cwd today (`fabriccli.resolveWarpLocation`, `fabriccli.runCloneWithReset`, `configcli.runReconcile`, `configcli.runConfig`).
 - Changing `loomengine.Preflight()` to `Preflight(cwd string)` and deleting its `Getwd()` call.
 - A `--into <dir>` flag on `lyx fabric clone`, defaulting to the resolved cwd, because clone's cwd is a *destination* argument rather than a lookup.
@@ -43,7 +46,7 @@ touching those signatures is the substance of this task.
 **Out:**
 
 - **The eleven `//go:build smoke` files** (30 `.Chdir` occurrences across `reedcli`, `shuttlecli`, `burlerengine`, `treadleengine`).
-  They are in neither measured tier — `docs/benchmarks/running-tests.md:29` documents `-tags smoke` as requiring a live logged-in `claude` session — so parallelizing them moves no measured number, and they carry three further blockers of their own (see Deferred follow-up).
+  They are in neither measured tier — `docs/benchmarks/running-tests.md:29-30` documents `-tags smoke` as requiring a live logged-in `claude` session — so parallelizing them moves no measured number, and they carry three further blockers of their own (see Deferred follow-up).
 - **The `WEFT_SKIP_GIT` / `WEFT_SKIP_PUSH` / `BOARD_SKIP_GIT` config seam.**
   `t.Setenv` panics under `t.Parallel()` exactly as `t.Chdir` does, and it lands on four of the nine integration target files.
   Those files get their chdir removed but stay serial.
@@ -73,7 +76,7 @@ touching those signatures is the substance of this task.
 ### cwdfrom-owns-the-fallback
 
 - Decision: `CwdFrom(ctx)` returns `(string, error)`, internally falling back to `Getwd()` when the context carries no cwd.
-- Rationale: every one of the ~12 production sites becomes a one-line swap from `lyxcwd.Getwd()` to `lyxcwd.CwdFrom(cmd.Context())`, and the fallback exists in exactly one place.
+- Rationale: every one of the 15 CLI-path production sites becomes a one-line swap from `lyxcwd.Getwd()` to `lyxcwd.CwdFrom(cmd.Context())`, and the fallback exists in exactly one place.
 - Rejected: `CwdFrom(ctx) (string, bool)` with per-caller fallback — more explicit at the call site, but duplicates the fallback twelve times and invites one site getting it wrong.
 
 ### runcli-gains-a-sibling-rather-than-changing
@@ -189,15 +192,18 @@ The four files that gain `t.Parallel()` are `idecli/cli_test.go`, `reedcli/cli_i
 
 ### Production `lyxcwd.Getwd()` call sites to migrate
 
-Cobra `PersistentPreRunE` (resolve, then build the module's engine/config):
-`internal/reedcli/cli.go:56`, `internal/shuttlecli/cli.go:58`, `internal/perchcli/cli.go:77`, `internal/webstercli/cli.go:123`, `internal/idecli/cli.go:37`, `internal/boardcli/cli.go:71`, `internal/burlercli/cli.go:59`, `internal/fabriccli/weft_verbs.go:52` (scoped to `weftVerbNames`).
+Cobra `PersistentPreRunE`, calling `lyxcwd.Getwd()` directly (resolve, then build the module's engine/config) — 7 sites:
+`internal/reedcli/cli.go:56`, `internal/shuttlecli/cli.go:58`, `internal/perchcli/cli.go:77`, `internal/webstercli/cli.go:123`, `internal/idecli/cli.go:37`, `internal/boardcli/cli.go:71`, `internal/burlercli/cli.go:59`.
 
-Per-command `RunE` bodies: `internal/scoutcli/cli.go:136`, `:266`, `:371`, `:563`.
+Per-command `RunE` bodies — 4 sites: `internal/scoutcli/cli.go:136`, `:266`, `:371`, `:563`.
 
-Plain handler functions (no `cmd` in scope today):
+Plain handler functions (no `cmd` in scope today) — 4 sites:
 `internal/fabriccli/fabric.go:398` (`resolveWarpLocation`, serving the 8 topology verbs), `internal/fabriccli/clone.go:119` (`runCloneWithReset`), `internal/configcli/configcli.go:257` (`runReconcile`), `internal/configcli/configcli.go:370` (`runConfig`).
 
-Engine-level, no CLI: `internal/loomengine/preflight.go:36`.
+Context-threading only, no `Getwd()` of its own — 1 site: `internal/fabriccli/weft_verbs.go:52`, a `PersistentPreRunE` scoped to `weftVerbNames` that reaches cwd indirectly by calling `resolveWarpLocation()` at `:76`.
+Its migration action is threading `cmd.Context()` into that call, independent of the `Getwd()` swap inside `resolveWarpLocation` itself — so it is a second, real touch point in `fabriccli`, not a double-count of `fabric.go:398`.
+
+Engine-level, no CLI — 1 site: `internal/loomengine/preflight.go:36`.
 
 Not migrated: `internal/logger/sink.go:88`, inert under `go test` per `sink.go:79`.
 
@@ -227,7 +233,7 @@ Not migrated: `internal/logger/sink.go:88`, inert under `go test` per `sink.go:7
   `copyBares` writes only into `tb.TempDir()`;
   teardown walks only its own `hubPath` and logs rather than fails.
   `TestNewHub_Concurrent` (`hub_test.go:340`) already fires 8 concurrent `NewHub` calls, and `BenchmarkNewHubParallel` runs it under `b.RunParallel`.
-  One known wart, not a race: the `os.MkdirTemp("", "hubforge-bare-*")` template at `hub.go:58` is never removed, leaking one temp tree per test binary.
+  One known wart, not a race: the `os.MkdirTemp("", "hubforge-bare-*")` template at `hub.go:56` is never removed, leaking one temp tree per test binary.
 - **`internal/configreg`** — `Modules()` returns a freshly built slice each call;
   no mutable package state.
 - **`Command()` in every module** builds a fresh cobra tree per call, and closure-locals like `idecli`'s `l *lyxcwd.Location` (`cli.go:24`) are per-invocation, not package-level.
