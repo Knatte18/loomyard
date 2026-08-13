@@ -28,9 +28,12 @@ touching those signatures is the substance of this task.
 
 - A cwd-injection seam owned by `internal/lyxcwd`: `WithCwd(ctx, dir) context.Context` and `CwdFrom(ctx) (string, error)`, the latter falling back to `Getwd()` when the context carries no cwd.
 - `clihelp.ExecuteIn(cmd, cwd, out, args) int` beside the existing `Execute`, seeding the cwd into the invocation context.
-  This also requires reaching `clihelp.RunRoot`, which hardcodes `context.Background()` at `exec.go:150` and is the shared implementation behind both `Execute` and `cmd/lyx`:
-  `RunRoot` gains a parent-context parameter (or a `RunRootCtx` sibling), so the seeded cwd survives into `cmd.ExecuteContext`.
+  This also requires reaching `clihelp.RunRoot`, which hardcodes `context.Background()` at `exec.go:150` and is the shared implementation behind both `Execute` and `cmd/lyx`.
   Adding `ExecuteIn` alone would not work.
+- `clihelp.RunRootCtx(ctx context.Context, cmd *cobra.Command, out io.Writer) int` — **a sibling, not a new parameter on `RunRoot`.**
+  `RunRoot` is retained as exactly `RunRootCtx(context.Background(), cmd, out)`.
+  This is decided, not an open alternative: `cmd/lyx/main.go:42` and `:54` are the only two `clihelp.RunRoot` call sites in the repo, and adding a parameter would force both to change, contradicting this task's rationale that `cmd/lyx/main.go` is untouched.
+  With the sibling, `main.go` genuinely needs no change, and `clihelp` gains one consistent idiom across all four seams: `Execute`/`ExecuteIn`, `RunRoot`/`RunRootCtx`, `WrapRun`/`WrapRunCtx`, `RunCLI`/`RunCLIIn`.
 - `clihelp.WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int)` beside the existing `WrapRun`, because `WrapRun`'s handler signature is `(out, args)` and carries no context — see the `plain-handlers-take-the-context` decision.
 - `RunCLIIn(cwd string, out io.Writer, args []string) int` on the 10 modules that both expose `RunCLI` and actually resolve a cwd (`fabriccli`, `burlercli`, `configcli`, `idecli`, `shuttlecli`, `scoutcli`, `perchcli`, `boardcli`, `webstercli`, `reedcli`).
   `internal/selfreportcli` is deliberately excluded: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
@@ -43,7 +46,7 @@ touching those signatures is the substance of this task.
 - Threading `cmd.Context()` into the plain handler functions that resolve cwd today (`fabriccli.resolveWarpLocation`, `fabriccli.runCloneWithReset`, `configcli.runReconcile`, `configcli.runConfig`).
 - Changing `loomengine.Preflight()` to `Preflight(cwd string)` and deleting its `Getwd()` call.
 - A `--into <dir>` flag on `lyx fabric clone`, defaulting to the resolved cwd, because clone's cwd is a *destination* argument rather than a lookup.
-- Threading the caller's resolved cwd through nested CLI invocations: `configcli.go:384`'s `fabriccli.RunCLI(w, []string{"sync"})` becomes `RunCLIIn`.
+- Threading the caller's resolved cwd through nested CLI invocations: `configcli.go:383`'s `fabriccli.RunCLI(w, []string{"sync"})` becomes `RunCLIIn`.
 - Migrating every `.Chdir` call site in the **eight** `//go:build integration` target files that can be migrated — **39 occurrences** — onto the new seam.
   The ninth integration file, `fabricengine/coalesce_integration_test.go` (2 occurrences), is untouched: see Out.
 - Adding `t.Parallel()` to the **three** integration files whose only blocker is chdir — **9 of those 39 occurrences** (`reedcli/cli_integration_test.go` 4, `loomengine/preflight_integration_test.go` 3, `perchcli/cli_integration_test.go` 2).
@@ -87,6 +90,25 @@ touching those signatures is the substance of this task.
 - Rejected: a `--cwd`/`-C` persistent flag — real operator value and git parity, but it adds user-visible surface needing `Short`/`Long`, help-tree test changes, docs, and a ruling on the invariant's "geometry is structural, never config/env-overridable" clause, none of which this task needs.
   Also rejected: a package-level settable cwd, which is not parallel-safe and would defeat the purpose.
 
+### the-injected-cwd-contract
+
+- **Value contract.** The injected cwd MUST be absolute.
+  `lyxcwd.Resolve` hands it to `gitexec.RunGit` as `cmd.Dir` and then gates on an `EvalSymlinks`-normalised absolute comparison (`anchor.go:103-140`), so a relative value would itself resolve against the process cwd and would most likely trip `ErrCwdOutsideAnchor` — a confusing failure far from its cause.
+  `WithCwd(ctx, "")` is not legal;
+  the empty string is a sentinel **only** in `RunCLIIn(cwd, …)`, where it means "seed nothing, let `CwdFrom` fall back to `Getwd()`", which is exactly how `RunCLI` delegates.
+  `CwdFrom` therefore never returns a relative path.
+- **Governance contract — what the injected cwd does and does not control.** It governs **geometry resolution**: every `lyxcwd.Resolve`/`ResolveWorktree` input, and anything derived from the resulting `Location`.
+  It does **not** automatically govern how a command resolves a *relative path supplied as a flag or positional argument*;
+  those resolve against whatever base the individual handler chooses, which is the process cwd unless the handler is changed.
+- **Consequence, and why it is not left implicit.** Two verbs take a relative path as an argument and must be brought onto the seam cwd explicitly, or `RunCLIIn` would honour the injection for lookup while silently ignoring it for the argument:
+  - `fabric clone --into <dir>` — covered by the `clone-gets-an-explicit-destination` decision.
+  - `scoutcli`'s four relative bases — `filepath.Abs(targetDir)` at `cli.go:446`, `filterWithin`'s `filepath.Abs(w)` at `:695` (whose own comment states it "resolves whatever remains against the process's actual working directory"), `parseQuery`'s `file:line:col` at `:784`, and `--in-file` at `:800`.
+- Decision: `scoutcli`'s four relative bases are rebased onto the seam cwd in the same commit that gives `scoutcli` its `RunCLIIn` — a relative value becomes `filepath.Join(seamCwd, v)`, an absolute value is used as given.
+- Rationale: a seam that is honoured for geometry but ignored for arguments is worse than no seam, because it returns a confidently wrong answer rather than an error.
+  `Reference.File` comparisons in `filterWithin` require an absolute `w`, and joining onto the seam cwd still produces one, so the invariant that comment protects is preserved.
+- Rejected: documenting the limitation and leaving `scoutcli`'s bases on the process cwd (ships a known trap);
+  and omitting `scoutcli` from the seam entirely as `selfreportcli` is omitted (it genuinely resolves cwd at four sites, so it belongs).
+
 ### cwdfrom-owns-the-fallback
 
 - Decision: `CwdFrom(ctx)` returns `(string, error)`, internally falling back to `Getwd()` when the context carries no cwd.
@@ -124,7 +146,9 @@ touching those signatures is the substance of this task.
 
 ### nested-cli-calls-thread-the-callers-cwd
 
-- Decision: where one module's CLI invokes another's, the caller passes its already-resolved cwd. `configcli.go:384`'s `fabriccli.RunCLI(w, []string{"sync"})` becomes `fabriccli.RunCLIIn(cwd, w, []string{"sync"})`, and the injected sync closure in `configcli_integration_test.go:74` follows.
+- Decision: where one module's CLI invokes another's, the caller passes its already-resolved cwd.
+  The production closure `realSync` at `configcli.go:382-384` calls `fabriccli.RunCLI(w, []string{"sync"})` at `:383` and becomes `fabriccli.RunCLIIn(cwd, w, []string{"sync"})`.
+  The test's `injectedSync` closure at `configcli_integration_test.go:72-74` calls `fabriccli.RunCLI(w, []string{"commit"})` at `:73` — note the different verb, deliberate per the comment at `:70-71` ("sync calls a detached spawnPush that cannot run in-process, so we use commit") — and follows the same change.
 - Rationale: `configcli` already resolves and holds a cwd;
   letting the nested call re-derive it from process state is precisely the bug being removed, and it is the reason `configcli_integration_test.go:55` chdirs even though `dispatch` is already given an explicit layout.
 - Rejected: leaving nested calls on `RunCLI` — the outer test would still need a process chdir, so the file could not migrate at all.
@@ -198,8 +222,9 @@ touching those signatures is the substance of this task.
 ### three-commits-each-self-contained
 
 - Decision: three commits, each building and testing green on its own, each carrying its own doc updates:
-  1. `lyxcwd` context API + `clihelp.ExecuteIn`, `RunRoot`'s parent-context parameter, and `WrapRunCtx` + the seam signature-pinning assertion + `CONSTRAINTS.md` CLI/Cobra amendment (wording and corrected "Enforced by") + `docs/overview.md:253` + package docs.
-  2. Module seams — the 10 `RunCLIIn` functions, plain-handler context threading, `Preflight(cwd)`, clone `--into` — plus module docs, `docs/overview.md:253`, and help text.
+  1. `lyxcwd` context API + the three `clihelp` siblings (`ExecuteIn`, `RunRootCtx`, `WrapRunCtx`) + the seam signature-pinning assertion + `CONSTRAINTS.md` CLI/Cobra amendment (wording and corrected "Enforced by") + `docs/overview.md:253` + package docs.
+     `cmd/lyx/main.go` is not touched in this commit or any other.
+  2. Module seams — the 10 `RunCLIIn` functions, plain-handler context threading onto `WrapRunCtx`, `Preflight(cwd)`, clone `--into`, and `scoutcli`'s four relative-base rebases — plus module docs, `docs/overview.md:253`, and help text.
   3. Test migration, `t.Parallel()`, the guard test, and the timing row.
 - Rationale: CLAUDE.md requires docs in the same commit as the change that causes them, which rules out a trailing docs-only commit.
   Slicing this way isolates the risky half (2) from the mechanical half (3).
@@ -274,7 +299,8 @@ Not migrated: `internal/logger/sink.go:88`, inert under `go test` per `sink.go:7
   Rewrite against an absolute path derived from the hub (`filepath.Join(h.PrimeWorktree(), "..", "..", "escaped")`) so the assertion survives the chdir's removal.
 - **`perchcli/cli_integration_test.go:96` and `run_integration_test.go:157`** chdir into `h.Location.AnchorPath()`, a non-`"."` anchor — pass that path, not `PrimeWorktree()`.
 - **`idecli/cli_test.go:95`** uses bare `os.Chdir` with a manual restore at `:98`, into a non-git tempdir for the error path.
-- **`configcli_integration_test.go:55`** is not a `configcli` cwd dependence at all: `dispatch` is already given an explicit layout at `:80`, and the cwd is consumed inside the injected sync closure at `:74` that calls `fabriccli.RunCLI`. The fix reaches `fabriccli`, not `configcli`.
+- **`configcli_integration_test.go:55`** is not a `configcli` cwd dependence at all: `dispatch` is already given an explicit layout at `:78`, and the cwd is consumed inside the `injectedSync` closure at `:72-74`, whose `fabriccli.RunCLI(w, []string{"commit"})` call sits at `:73`.
+  The fix reaches `fabriccli`, not `configcli`.
 - **`loomengine/preflight_integration_test.go:188` and `:225`** exercise the public `Preflight()` specifically because they need it to observe a particular cwd.
   Under `Preflight(cwd string)` they pass the directory directly and parallelize;
   the `restoreCwd` helper at `:106` becomes dead and should be deleted.
@@ -373,6 +399,9 @@ the timing row is the honest record of a small payoff.
   Both forms need coverage or the flag's default is untested.
 - `Preflight(cwd)` against a non-git directory still yields exactly `CheckGeometry`, and against a subpath-anchored hub still treats the anchor as legal geometry — the two assertions currently carried by `TestPreflight_NotAGitRepo` and `TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor`.
 - The `configcli` → `fabriccli` nested invocation resolves against the caller's cwd, driven without any process chdir.
+- `scoutcli.RunCLIIn(cwd, …)` with a **relative** `--target-dir` (and `--within`, and a `file:line:col` query) resolves against the injected cwd, not the process cwd.
+  This is the test that would have caught the round-3 defect, so it must exist;
+  an absolute value must still be honoured unchanged, and `filterWithin`'s comparisons must still see an absolute path.
 - `perchcli`'s run-id escape assertion still fails the test if an escape were to occur — worth planting a deliberate escape once, locally, to confirm the rewritten absolute-path form is not vacuous.
 
 **Explicitly not covered by this task:** anything requiring `-tags smoke`, and the four `t.Setenv` files remain serial, so no parallel-safety claim is made about them.
@@ -397,8 +426,11 @@ The smoke tier (11 files, 30 `.Chdir`) needs three further things before it coul
 ## Q&A log
 
 - **Q:** Given the measured payoff is ~1–3 s on Linux, how far do we take this? **A:** Build the explicit-cwd seam across 10 of the 11 `RunCLI` modules (`selfreportcli` resolves no cwd) plus `loomengine.Preflight`, migrate every integration-tier call site, and add `t.Parallel()` only where free. Defer the env seam and the smoke tier.
-- **Q:** Review round 2 found `clihelp.WrapRun` hands the handler only `(out, args)`, so "thread `cmd.Context()` in" was not mechanical. What is the mechanism? **A:** Add a `clihelp.WrapRunCtx` sibling taking `(ctx, out, args)`, matching the `RunCLI`/`RunCLIIn` idiom; `WrapRun` stays for handlers needing no cwd. `clihelp.RunRoot` also gains a parent-context parameter, since it hardcodes `context.Background()`.
+- **Q:** Review round 2 found `clihelp.WrapRun` hands the handler only `(out, args)`, so "thread `cmd.Context()` in" was not mechanical. What is the mechanism? **A:** Add a `clihelp.WrapRunCtx` sibling taking `(ctx, out, args)`, matching the `RunCLI`/`RunCLIIn` idiom; `WrapRun` stays for handlers needing no cwd. `clihelp.RunRoot` also needed reaching, since it hardcodes `context.Background()` — resolved in round 3 as a `RunRootCtx` sibling rather than a new parameter.
 - **Q:** Review round 2 found `idecli/cli_test.go` swaps the package-level `ideengine.CodeLauncher`, so it is not free for `t.Parallel()`. **A:** Migrate its chdir but leave it serial with a comment naming the seam swap; the parallelized set drops from four files to three. Converting `CodeLauncher` to per-invocation injection is deferred.
+- **Q:** Review round 3 found the `RunRoot` change was left as two unchosen alternatives, and that a parameter would force `cmd/lyx/main.go:42,54` to change. **A:** Decided: a `RunRootCtx(ctx, cmd, out)` sibling, with `RunRoot` retained as `RunRootCtx(context.Background(), cmd, out)`. `main.go` stays untouched and `clihelp` gets one consistent sibling idiom across all four seams.
+- **Q:** Review round 3 found `scoutcli` resolves relative flag/positional values against the process cwd at four sites, so `RunCLIIn` would honour the injection for lookup but not for `--target-dir`/`--within`/`file:line:col`/`--in-file`. **A:** State the seam's governance contract explicitly, and rebase those four bases onto the seam cwd in the same commit. A seam honoured for geometry but ignored for arguments returns a confidently wrong answer instead of an error.
+- **Q:** Must the injected cwd be absolute, and is `WithCwd(ctx, "")` legal? **A:** Absolute always; `WithCwd(ctx, "")` is illegal. The empty string is a sentinel only in `RunCLIIn`, meaning "seed nothing, fall back to `Getwd()`" — which is how `RunCLI` delegates.
 - **Q:** How does explicit cwd reach the resolution sites? **A:** Context-carried, owned by `lyxcwd` (`WithCwd`/`CwdFrom`), seeded by `clihelp.ExecuteIn` and per-module `RunCLIIn`. No user-visible `--cwd`/`-C` flag.
 - **Q:** `fabriccli` has a plain helper for topology verbs and a `PersistentPreRunE` for weft verbs, and `configcli` uses plain handlers. Unify them? **A:** No — thread `cmd.Context()` into the plain handlers and leave each package's seam shape alone.
 - **Q:** Clone's cwd is a destination, not a lookup. What replaces it? **A:** An explicit `--into <dir>` flag defaulting to the resolved cwd.
