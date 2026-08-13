@@ -134,6 +134,7 @@ batch 11's grep gate is written against the fixture usage accordingly.
   - `internal/fabricengine/destructivegaps_integration_test.go`
   - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/reconcile_stale_removal_test.go`
+  - `internal/fabricengine/reconcile_empty_anchor_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -143,6 +144,8 @@ batch 11's grep gate is written against the fixture usage accordingly.
   `internal/fabricengine/destructivegaps_integration_test.go` exercises the destruction gate's path-ownership kinds;
   three of those kinds (`ownedWiredJunction`, `ownedDriftedWiredJunction`, `ownedUnderGeometryRoot`) were structurally unreachable on the old fixture because it had no junctions, so this file may now be able to assert things it previously could not.
   Do not add that coverage here — note it in the commit message as available follow-up.
+  `internal/fabricengine/reconcile_empty_anchor_integration_test.go` is not one of this batch's originally-scoped external files, but it consumes `newFabricFixture` and its `TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot` assumes the prime worktree's root starts with zero junctions wired — an invented-fixture assumption a real hub's already-wired `.` anchor breaks (`_lyx`, `.lyx`, and the `_board` convenience link all pre-exist there once `newFabricFixture` is real-hub-backed).
+  Build this one test's hub directly via `hubforge.NewHub(t, "backend")` instead of `newFabricFixture(t)`, so the prime pair's own wiring lands under `<worktree>/backend` and the worktree root stays genuinely free of junctions for the test's own explicit "sub"-anchor wiring and root-refusal assertions to observe correctly.
 - **Commit:** `test(fabricengine): build the destructive-gap and reconcile-stale fixtures with hubforge.NewHub`
 
 ### Card 48: Migrate open and ready suites
