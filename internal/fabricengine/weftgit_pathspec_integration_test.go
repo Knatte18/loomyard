@@ -5,11 +5,10 @@
 // before f.weft.StageAndCommit: one test per predicate clause, against real
 // git, plus (added by card 14) the batch's own regression assertion that the
 // widened default pathspec and this filter belong together. Package
-// fabricengine (internal), reusing index_integration_test.go's
-// newPlainWarpRepo/newFabric fixture helpers and syncweft_integration_test.go's
-// writeWeftConfigContent, since both files share this package.
+// fabricengine_test, reusing export_test.go's NewPlainWarpRepoForTest,
+// NewFabricForTest and WriteWeftConfigContentForTest fixture shims.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"os"
@@ -18,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -79,13 +79,13 @@ func mustWriteFileWeft(t *testing.T, path, content string) {
 func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "newmodule", "newfile.txt"), "brand new, never staged")
 
-	sha, committed, err := f.commitWeft([]string{"doesnotexist", "newmodule"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", "newmodule"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -111,9 +111,9 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 	trackedPath := filepath.Join(weftFixture.WeftPath, "_lyx", "trackedfile.txt")
 	mustWriteFileWeft(t, trackedPath, "tracked content")
@@ -127,7 +127,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 		t.Fatalf("os.Remove(%q): %v", trackedPath, err)
 	}
 
-	sha, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -153,14 +153,14 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "durable.txt"), "durable state")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "run.lock"), "machine-local lock")
 
-	sha, committed, err := f.commitWeft([]string{"_lyx", ":(exclude)_lyx/*.lock"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx", ":(exclude)_lyx/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -191,19 +191,19 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	preSHA := currentSHA(t, weftFixture.WeftPath)
+	preSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	// A genuinely dirty tracked file and an untracked lock file: if the
 	// filter mishandled the all-negative pathspec by staging everything,
 	// both would show up staged below.
-	writeWeftConfigContent(t, weftFixture.WeftPath, "dirtied but must stay unstaged")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "dirtied but must stay unstaged")
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "run.lock"), "machine-local lock")
 
-	sha, committed, err := f.commitWeft([]string{"doesnotexist", ":(exclude)_lyx/*.lock"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist", ":(exclude)_lyx/*.lock"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v; want nil", err)
 	}
@@ -217,7 +217,7 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	if !diffCachedQuietWeft(t, weftFixture.WeftPath) {
 		t.Errorf("git diff --cached --quiet reports staged changes; want nothing staged at all")
 	}
-	postSHA := currentSHA(t, weftFixture.WeftPath)
+	postSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 	if postSHA != preSHA {
 		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit should have been made)", preSHA, postSHA)
 	}
@@ -232,15 +232,15 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 func resolvedDefaultRoutingNames(t *testing.T) []string {
 	t.Helper()
 
-	resolved, err := yamlengine.Resolve([]byte(ConfigTemplate()), nil)
+	resolved, err := yamlengine.Resolve([]byte(fabricengine.ConfigTemplate()), nil)
 	if err != nil {
-		t.Fatalf("yamlengine.Resolve(ConfigTemplate()): %v", err)
+		t.Fatalf("yamlengine.Resolve(fabricengine.ConfigTemplate()): %v", err)
 	}
-	var cfg Config
+	var cfg fabricengine.Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		t.Fatalf("yaml.Unmarshal resolved config template: %v", err)
 	}
-	return pathspecNames(cfg)
+	return fabricengine.PathspecNamesForTest(cfg)
 }
 
 // TestResolvedDefaultRoutingNames_IsLyxAlone asserts the real, resolved default routing set —
@@ -280,17 +280,17 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 	t.Run("OptionalDirWhollyAbsent", func(t *testing.T) {
 		t.Parallel()
 
-		warpPath := newPlainWarpRepo(t)
+		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 		weftFixture := gitkit.CopyWeft(t)
-		f := newFabric(t, warpPath, weftFixture.WeftPath)
+		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 		if _, err := os.Stat(filepath.Join(weftFixture.WeftPath, "_extra")); !os.IsNotExist(err) {
 			t.Fatalf("precondition: _extra must not exist in this fixture; Stat err = %v", err)
 		}
 
-		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _extra wholly absent")
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "lyx change, _extra wholly absent")
 
-		sha, committed, err := f.commitWeft(dirs, DefaultCommitMessage, SyncOptions{})
+		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() error = %v; want nil", err)
 		}
@@ -305,9 +305,9 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 	t.Run("OptionalDirExistsButEmpty", func(t *testing.T) {
 		t.Parallel()
 
-		warpPath := newPlainWarpRepo(t)
+		warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 		weftFixture := gitkit.CopyWeft(t)
-		f := newFabric(t, warpPath, weftFixture.WeftPath)
+		f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 		// git tracks files, not directories: a materialised-but-empty
 		// "_extra/" still has nothing for a pathspec to match.
@@ -315,9 +315,9 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 			t.Fatalf("MkdirAll _extra: %v", err)
 		}
 
-		writeWeftConfigContent(t, weftFixture.WeftPath, "lyx change, _extra present but empty")
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "lyx change, _extra present but empty")
 
-		sha, committed, err := f.commitWeft(dirs, DefaultCommitMessage, SyncOptions{})
+		sha, committed, err := fabricengine.CommitWeftForTest(f, dirs, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() error = %v; want nil", err)
 		}
