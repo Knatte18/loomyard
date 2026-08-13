@@ -14,14 +14,16 @@
 // over-firing, the CommitResult/push-seam shape on a warp-only tagged
 // commit, the invalid-tag-on-an-otherwise-empty-commit guard, the dirty-
 // weft-index-becomes-an-error transition, and CommitWeft's own inherited
-// contract. Package fabricengine (internal) because it swaps the unexported
-// spawnDetachedPushFn seam and reaches unexported helpers (weftWriteLockPath
-// from commit_lock_integration_test.go). Reuses index_integration_test.go's
-// fixture helpers (newPlainWarpRepo, commitWarp, newFabric, currentSHA),
-// weftgit_unborn_warp_test.go's newUnbornWarpRepo, and
-// syncweft_integration_test.go's (writeWeftConfigContent, commitMessageAt).
+// contract. Package fabricengine_test, driving the unexported
+// spawnDetachedPushFn seam and weftWriteLockPath (commit_lock_integration_test.go,
+// package fabricengine, never migrating) through export_test.go's ForTest
+// shims. Reuses those shims' fixture helpers (NewPlainWarpRepoForTest,
+// CommitWarpForTest, NewFabricForTest, CurrentSHAForTest,
+// WriteWeftConfigContentForTest, CommitMessageAtForTest) and
+// weftgit_unborn_warp_test.go's newUnbornWarpRepo directly, since both files
+// share package fabricengine_test.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"errors"
@@ -32,6 +34,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -42,13 +45,13 @@ import (
 // carries a Warp-SHA trailer naming the warp commit Fabric.Commit just made — never the prior warp
 // HEAD.
 func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
-	writeWeftConfigContent(t, weftPath, "weft change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -56,7 +59,7 @@ func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want both sides committed", result)
 	}
 
-	trailerSHA, ok := parseWarpSHATrailer(commitMessageAt(t, weftPath, result.WeftSHA))
+	trailerSHA, ok := fabricengine.ParseWarpSHATrailerForTest(fabricengine.CommitMessageAtForTest(t, weftPath, result.WeftSHA))
 	if !ok {
 		t.Fatalf("weft commit %s carries no Warp-SHA trailer", result.WeftSHA)
 	}
@@ -68,13 +71,13 @@ func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
 // TestCommit_TwoSided_RecordsCorrespondence asserts that a two-sided Fabric.Commit's weft commit is
 // recorded in the correspondence index against the warp SHA it just created.
 func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
-	writeWeftConfigContent(t, weftPath, "weft change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -88,18 +91,18 @@ func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
 	}
 }
 
-// TestCommit_ResultFields asserts CommitResult field population across the two-sided, warp-only,
+// TestCommit_ResultFields asserts fabricengine.CommitResult field population across the two-sided, warp-only,
 // and weft-only shapes — including, on the warp-only path, the plain-git property (no trailer, no
 // correspondence entry) a bare warp commit must have.
 func TestCommit_ResultFields(t *testing.T) {
 	t.Run("TwoSided", func(t *testing.T) {
-		f, warpPath, weftPath := newCommitFixture(t)
-		swapPushRecorder(t)
+		f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+		fabricengine.SwapPushRecorderForTest(t)
 
-		writeWarpFile(t, warpPath, "README", "warp change")
-		writeWeftConfigContent(t, weftPath, "weft change")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{})
+		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -112,12 +115,12 @@ func TestCommit_ResultFields(t *testing.T) {
 	})
 
 	t.Run("WarpOnly", func(t *testing.T) {
-		f, warpPath, _ := newCommitFixture(t)
-		swapPushRecorder(t)
+		f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+		fabricengine.SwapPushRecorderForTest(t)
 
-		writeWarpFile(t, warpPath, "README", "warp only change")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp only change")
 
-		result, err := f.Commit([]string{"README"}, "warp only commit", nil, SyncOptions{})
+		result, err := f.Commit([]string{"README"}, "warp only commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -129,7 +132,7 @@ func TestCommit_ResultFields(t *testing.T) {
 		}
 
 		// Plain-git property: no trailer, no correspondence entry.
-		if _, ok := parseWarpSHATrailer(commitMessageAt(t, warpPath, result.WarpSHA)); ok {
+		if _, ok := fabricengine.ParseWarpSHATrailerForTest(fabricengine.CommitMessageAtForTest(t, warpPath, result.WarpSHA)); ok {
 			t.Errorf("warp-only commit %s carries a Warp-SHA trailer; want none", result.WarpSHA)
 		}
 		if _, err := f.WeftSHAForWarpSHA(result.WarpSHA); err == nil {
@@ -138,12 +141,12 @@ func TestCommit_ResultFields(t *testing.T) {
 	})
 
 	t.Run("WeftOnly", func(t *testing.T) {
-		f, _, weftPath := newCommitFixture(t)
-		swapPushRecorder(t)
+		f, _, weftPath := fabricengine.NewCommitFixtureForTest(t)
+		fabricengine.SwapPushRecorderForTest(t)
 
-		writeWeftConfigContent(t, weftPath, "weft only change")
+		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft only change")
 
-		result, err := f.Commit([]string{"_lyx/config.yaml"}, "weft only commit", nil, SyncOptions{})
+		result, err := f.Commit([]string{"_lyx/config.yaml"}, "weft only commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -161,20 +164,20 @@ func TestCommit_ResultFields(t *testing.T) {
 // and absent entirely when snapshotTags is empty.
 func TestCommit_SnapshotTrailers(t *testing.T) {
 	t.Run("Present", func(t *testing.T) {
-		f, warpPath, weftPath := newCommitFixture(t)
-		swapPushRecorder(t)
+		f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+		fabricengine.SwapPushRecorderForTest(t)
 
-		writeWarpFile(t, warpPath, "README", "warp change")
-		writeWeftConfigContent(t, weftPath, "weft change")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "tagged commit", []string{"tag1", "tag2"}, SyncOptions{})
+		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "tagged commit", []string{"tag1", "tag2"}, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
 
-		msg := commitMessageAt(t, weftPath, result.WeftSHA)
+		msg := fabricengine.CommitMessageAtForTest(t, weftPath, result.WeftSHA)
 		for _, tag := range []string{"tag1", "tag2"} {
-			want := SnapshotTrailerKey + ": " + tag
+			want := fabricengine.SnapshotTrailerKey + ": " + tag
 			if !strings.Contains(msg, want) {
 				t.Errorf("weft commit message = %q; want it to contain %q", msg, want)
 			}
@@ -182,19 +185,19 @@ func TestCommit_SnapshotTrailers(t *testing.T) {
 	})
 
 	t.Run("Absent", func(t *testing.T) {
-		f, warpPath, weftPath := newCommitFixture(t)
-		swapPushRecorder(t)
+		f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+		fabricengine.SwapPushRecorderForTest(t)
 
-		writeWarpFile(t, warpPath, "README", "warp change")
-		writeWeftConfigContent(t, weftPath, "weft change")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+		fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "untagged commit", nil, SyncOptions{})
+		result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "untagged commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
 
-		msg := commitMessageAt(t, weftPath, result.WeftSHA)
-		if strings.Contains(msg, SnapshotTrailerKey+":") {
+		msg := fabricengine.CommitMessageAtForTest(t, weftPath, result.WeftSHA)
+		if strings.Contains(msg, fabricengine.SnapshotTrailerKey+":") {
 			t.Errorf("weft commit message = %q; want no Snapshot trailer", msg)
 		}
 	})
@@ -203,30 +206,30 @@ func TestCommit_SnapshotTrailers(t *testing.T) {
 // TestCommit_MessageHandling asserts the warp commit message is the bare msg,
 // and the weft commit message carries msg plus its Warp-SHA and Snapshot trailers.
 func TestCommit_MessageHandling(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
-	writeWeftConfigContent(t, weftPath, "weft change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "custom commit message", []string{"tag1"}, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "custom commit message", []string{"tag1"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
 
-	warpMsg := strings.TrimSpace(commitMessageAt(t, warpPath, result.WarpSHA))
+	warpMsg := strings.TrimSpace(fabricengine.CommitMessageAtForTest(t, warpPath, result.WarpSHA))
 	if warpMsg != "custom commit message" {
 		t.Errorf("warp commit message = %q; want bare %q", warpMsg, "custom commit message")
 	}
 
-	weftMsg := commitMessageAt(t, weftPath, result.WeftSHA)
+	weftMsg := fabricengine.CommitMessageAtForTest(t, weftPath, result.WeftSHA)
 	if !strings.HasPrefix(weftMsg, "custom commit message") {
 		t.Errorf("weft commit message = %q; want it to start with %q", weftMsg, "custom commit message")
 	}
-	if !strings.Contains(weftMsg, WarpSHATrailerKey+": "+result.WarpSHA) {
+	if !strings.Contains(weftMsg, fabricengine.WarpSHATrailerKey+": "+result.WarpSHA) {
 		t.Errorf("weft commit message = %q; want it to contain the Warp-SHA trailer for %q", weftMsg, result.WarpSHA)
 	}
-	if !strings.Contains(weftMsg, SnapshotTrailerKey+": tag1") {
+	if !strings.Contains(weftMsg, fabricengine.SnapshotTrailerKey+": tag1") {
 		t.Errorf("weft commit message = %q; want it to contain the Snapshot trailer for %q", weftMsg, "tag1")
 	}
 }
@@ -234,13 +237,13 @@ func TestCommit_MessageHandling(t *testing.T) {
 // TestCommit_InvokesPushRecorder asserts a successful two-sided Fabric.Commit invokes
 // spawnDetachedPushFn exactly once with (warpPath, weftPath).
 func TestCommit_InvokesPushRecorder(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	recorder := swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	recorder := fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
-	writeWeftConfigContent(t, weftPath, "weft change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	if _, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, SyncOptions{}); err != nil {
+	if _, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "two-sided commit", nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
 
@@ -257,10 +260,10 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 // or a warp-only input whose content is unchanged — never invokes spawnDetachedPushFn.
 func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 	t.Run("EmptyFiles", func(t *testing.T) {
-		f, _, _ := newCommitFixture(t)
-		recorder := swapPushRecorder(t)
+		f, _, _ := fabricengine.NewCommitFixtureForTest(t)
+		recorder := fabricengine.SwapPushRecorderForTest(t)
 
-		result, err := f.Commit(nil, "no-op commit", nil, SyncOptions{})
+		result, err := f.Commit(nil, "no-op commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -273,14 +276,14 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 	})
 
 	t.Run("WarpOnlyUnchanged", func(t *testing.T) {
-		f, warpPath, _ := newCommitFixture(t)
-		recorder := swapPushRecorder(t)
+		f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+		recorder := fabricengine.SwapPushRecorderForTest(t)
 
 		// newPlainWarpRepo already committed README with content "warp";
 		// writing the identical content again leaves nothing staged.
-		writeWarpFile(t, warpPath, "README", "warp")
+		fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp")
 
-		result, err := f.Commit([]string{"README"}, "no-op commit", nil, SyncOptions{})
+		result, err := f.Commit([]string{"README"}, "no-op commit", nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() error = %v", err)
 		}
@@ -301,12 +304,12 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 // The old name asserted the opposite of what this batch makes true, so it is renamed rather than
 // merely re-bodied: the name is the clearest single statement of the behaviour this batch reverses.
 func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp only change, tagged")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp only change, tagged")
 
-	result, err := f.Commit([]string{"README"}, "warp only commit", []string{"tag1"}, SyncOptions{})
+	result, err := f.Commit([]string{"README"}, "warp only commit", []string{"tag1"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -317,12 +320,12 @@ func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed (WeftCommitted=true, WeftSHA populated)", result)
 	}
 
-	weftMsg := commitMessageAt(t, weftPath, result.WeftSHA)
-	wantWarpTrailer := WarpSHATrailerKey + ": " + result.WarpSHA
+	weftMsg := fabricengine.CommitMessageAtForTest(t, weftPath, result.WeftSHA)
+	wantWarpTrailer := fabricengine.WarpSHATrailerKey + ": " + result.WarpSHA
 	if !strings.Contains(weftMsg, wantWarpTrailer) {
 		t.Errorf("empty weft commit message = %q; want it to contain %q", weftMsg, wantWarpTrailer)
 	}
-	if !strings.Contains(weftMsg, SnapshotTrailerKey+": tag1") {
+	if !strings.Contains(weftMsg, fabricengine.SnapshotTrailerKey+": tag1") {
 		t.Errorf("empty weft commit message = %q; want it to contain the Snapshot trailer for %q", weftMsg, "tag1")
 	}
 }
@@ -337,12 +340,12 @@ func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
 // This test must fail before the implementation and pass after;
 // a pass before the implementation means the fixture itself is wrong.
 func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change 1")
-	writeWeftConfigContent(t, weftPath, "identical content")
-	result1, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 1", []string{"raddle"}, SyncOptions{})
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change 1")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "identical content")
+	result1, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 1", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() round 1 error = %v", err)
 	}
@@ -350,7 +353,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 		t.Fatalf("Commit() round 1 = %+v; want both sides committed", result1)
 	}
 
-	got1, err := f.snapshotWarpSHA("raddle")
+	got1, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() after round 1 error = %v", err)
 	}
@@ -361,9 +364,9 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 	// Advance warp again, but write the IDENTICAL weft content: the
 	// weft-side pathspec matches real, tracked content, but StageAndCommit's
 	// diff against HEAD finds nothing changed — the unchanged-content case.
-	writeWarpFile(t, warpPath, "README", "warp change 2")
-	writeWeftConfigContent(t, weftPath, "identical content")
-	result2, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 2", []string{"raddle"}, SyncOptions{})
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change 2")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "identical content")
+	result2, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "commit 2", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() round 2 error = %v", err)
 	}
@@ -377,7 +380,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 		t.Errorf("Commit() round 2 WeftSHA = %q; want a NEW commit distinct from round 1's %q", result2.WeftSHA, result1.WeftSHA)
 	}
 
-	got2, err := f.snapshotWarpSHA("raddle")
+	got2, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() after round 2 error = %v", err)
 	}
@@ -395,7 +398,7 @@ func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing
 func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 	t.Helper()
 
-	boardDir := BoardDir(filepath.Dir(warpPath))
+	boardDir := fabricengine.BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("mkdir board dir: %v", err)
 	}
@@ -413,8 +416,8 @@ func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 // fix beyond the RelPath=="."
 // coverage every other test in this file exercises.
 func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
 	const anchor = "wts/some-task"
 	writeFabricAnchor(t, warpPath, anchor)
@@ -428,7 +431,7 @@ func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 	}
 	nestedRel := anchor + "/_lyx/nested.yaml"
 
-	result, err := f.Commit([]string{nestedRel}, "nested relpath commit", nil, SyncOptions{})
+	result, err := f.Commit([]string{nestedRel}, "nested relpath commit", nil, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -470,24 +473,24 @@ func newUnbornWeftRepo(t *testing.T) string {
 // lock (proven here by externally holding it and observing the call block until released), lands an
 // empty weft commit, and snapshotWarpSHA resolves the tag to warp's current HEAD.
 func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
-	f, warpPath, _ := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	warpHEAD := currentSHA(t, warpPath)
+	warpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
 
-	lockPath := weftWriteLockPath(t, f)
+	lockPath := fabricengine.WeftWriteLockPathForTest(t, f)
 	externalLock, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		t.Fatalf("AcquireWriteLock(%q) error = %v", lockPath, err)
 	}
 
 	type outcome struct {
-		result CommitResult
+		result fabricengine.CommitResult
 		err    error
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		result, err := f.Commit(nil, "tags only commit", []string{"raddle"}, SyncOptions{})
+		result, err := f.Commit(nil, "tags only commit", []string{"raddle"}, fabricengine.SyncOptions{})
 		done <- outcome{result: result, err: err}
 	}()
 
@@ -521,7 +524,7 @@ func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed", result)
 	}
 
-	gotWarpSHA, err := f.snapshotWarpSHA("raddle")
+	gotWarpSHA, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -534,12 +537,12 @@ func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 // fall-through: a weft-side pathspec entry that weftPathspecFilter drops (it matches nothing in the
 // worktree or index) still lands an empty weft commit when snapshotTags is non-empty.
 func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testing.T) {
-	f, warpPath, _ := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 
-	result, err := f.Commit([]string{"README", "_lyx/doesnotexist"}, "commit", []string{"raddle"}, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lyx/doesnotexist"}, "commit", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -572,15 +575,15 @@ func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testi
 // carrying its Warp-SHA and Snapshot trailers like any other — contrast with the unborn-WARP case
 // below, which drops the tags entirely.
 func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftPath := newUnbornWeftRepo(t)
-	seedFabricConfig(t, warpPath)
-	f := newFabric(t, warpPath, weftPath)
-	swapPushRecorder(t)
+	fabricengine.SeedFabricConfigForTest(t, warpPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftPath)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	warpHEAD := currentSHA(t, warpPath)
+	warpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
 
-	result, err := f.Commit(nil, "unborn weft, tags only", []string{"raddle"}, SyncOptions{})
+	result, err := f.Commit(nil, "unborn weft, tags only", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -588,16 +591,16 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want an empty weft commit to have landed as weft's root commit", result)
 	}
 
-	msg := commitMessageAt(t, weftPath, result.WeftSHA)
-	wantTrailer := WarpSHATrailerKey + ": " + warpHEAD
+	msg := fabricengine.CommitMessageAtForTest(t, weftPath, result.WeftSHA)
+	wantTrailer := fabricengine.WarpSHATrailerKey + ": " + warpHEAD
 	if !strings.Contains(msg, wantTrailer) {
 		t.Errorf("root weft commit message = %q; want it to contain %q", msg, wantTrailer)
 	}
-	if !strings.Contains(msg, SnapshotTrailerKey+": raddle") {
+	if !strings.Contains(msg, fabricengine.SnapshotTrailerKey+": raddle") {
 		t.Errorf("root weft commit message = %q; want it to contain the Snapshot trailer", msg)
 	}
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -613,13 +616,13 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
 	weftFixture := gitkit.CopyWeft(t)
-	seedFabricConfig(t, warpPath)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
-	swapPushRecorder(t)
+	fabricengine.SeedFabricConfigForTest(t, warpPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	preWeftSHA := currentSHA(t, weftFixture.WeftPath)
+	preWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
-	result, err := f.Commit(nil, "unborn warp, tags only", []string{"raddle"}, SyncOptions{})
+	result, err := f.Commit(nil, "unborn warp, tags only", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -627,12 +630,12 @@ func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 		t.Errorf("Commit() = %+v; want a full no-op (unborn warp drops tags exactly as before)", result)
 	}
 
-	postWeftSHA := currentSHA(t, weftFixture.WeftPath)
+	postWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 	if postWeftSHA != preWeftSHA {
 		t.Errorf("weft HEAD changed from %q to %q; want unchanged (no commit)", preWeftSHA, postWeftSHA)
 	}
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -646,13 +649,13 @@ func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 // all" opt-out for the weft side — while the warp commit proceeds regardless, since SkipGit is
 // weft-scoped for Fabric.Commit specifically.
 func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
-	writeWeftConfigContent(t, weftPath, "weft change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, "weft change")
 
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "skip git", []string{"raddle"}, SyncOptions{SkipGit: true})
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "skip git", []string{"raddle"}, fabricengine.SyncOptions{SkipGit: true})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -663,7 +666,7 @@ func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 		t.Errorf("Commit() = %+v; want the warp commit to still land (SkipGit is weft-scoped)", result)
 	}
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -676,10 +679,10 @@ func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 // firing when it should not: unchanged content and zero tags must still be a clean no-op, with the
 // weft HEAD left untouched.
 func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
-	f, warpPath, _ := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	preWeftSHA, err := f.weft.CurrentSHA()
+	preWeftSHA, err := fabricengine.WeftForTest(f).CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -687,9 +690,9 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 	// newPlainWarpRepo already committed README with content "warp"; writing
 	// the identical content again leaves nothing staged, and no tags are
 	// supplied.
-	writeWarpFile(t, warpPath, "README", "warp")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp")
 
-	result, err := f.Commit([]string{"README"}, "no-op, no tags", nil, SyncOptions{})
+	result, err := f.Commit([]string{"README"}, "no-op, no tags", nil, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -697,7 +700,7 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 		t.Fatalf("Commit() = %+v; want a full no-op (unchanged content, no tags)", result)
 	}
 
-	postWeftSHA, err := f.weft.CurrentSHA()
+	postWeftSHA, err := fabricengine.WeftForTest(f).CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -706,17 +709,17 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 	}
 }
 
-// TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce pins the CommitResult and push-seam shape on a
+// TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce pins the fabricengine.CommitResult and push-seam shape on a
 // warp-only tagged commit: WeftCommitted=true with a populated WeftSHA (the empty commit),
 // and exactly one push-seam invocation — the async-push gate is WarpCommitted || WeftCommitted,
 // and the snapshot trailer must reach the remote for cross-clone sharing.
 func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
-	f, warpPath, _ := newCommitFixture(t)
-	recorder := swapPushRecorder(t)
+	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+	recorder := fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp only tagged change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp only tagged change")
 
-	result, err := f.Commit([]string{"README"}, "warp only tagged commit", []string{"raddle"}, SyncOptions{})
+	result, err := f.Commit([]string{"README"}, "warp only tagged commit", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
@@ -732,23 +735,23 @@ func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
 // validate-all-before-appending-any property survives the empty-commit path: an invalid tag on an
 // otherwise-fully-empty call fails before anything is staged or committed, on either side.
 func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
-	f, warpPath, _ := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	preWarpSHA := currentSHA(t, warpPath)
-	preWeftSHA, err := f.weft.CurrentSHA()
+	preWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	preWeftSHA, err := fabricengine.WeftForTest(f).CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
 
-	_, err = f.Commit(nil, "invalid tag commit", []string{"bad tag with spaces"}, SyncOptions{})
-	var invalidTagErr *ErrInvalidSnapshotTag
+	_, err = f.Commit(nil, "invalid tag commit", []string{"bad tag with spaces"}, fabricengine.SyncOptions{})
+	var invalidTagErr *fabricengine.ErrInvalidSnapshotTag
 	if !errors.As(err, &invalidTagErr) {
-		t.Fatalf("Commit() error = %v; want *ErrInvalidSnapshotTag via errors.As", err)
+		t.Fatalf("Commit() error = %v; want *fabricengine.ErrInvalidSnapshotTag via errors.As", err)
 	}
 
-	postWarpSHA := currentSHA(t, warpPath)
-	postWeftSHA, err := f.weft.CurrentSHA()
+	postWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	postWeftSHA, err := fabricengine.WeftForTest(f).CurrentSHA()
 	if err != nil {
 		t.Fatalf("Weft.CurrentSHA() error = %v", err)
 	}
@@ -767,14 +770,14 @@ func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 // a tagged commit whose own pathspec content is unchanged reaches the `!committed` fall-through,
 // calls CommitEmpty, and CommitEmpty's own dirty-index pre-check refuses with
 // gitrepo.ErrIndexNotEmpty.
-// That refusal must surface as a *PartialCommitError with WeftCommitted=false — the same
+// That refusal must surface as a *fabricengine.PartialCommitError with WeftCommitted=false — the same
 // unlanded-weft outcome the mapping already models — while the warp commit that already landed
 // stands and is still pushed.
 func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	recorder := swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	recorder := fabricengine.SwapPushRecorderForTest(t)
 
-	writeWarpFile(t, warpPath, "README", "warp change")
+	fabricengine.WriteWarpFileForTest(t, warpPath, "README", "warp change")
 
 	// Simulate an aborted earlier run's leftover staged content: unrelated to
 	// this call's own pathspec, so StageAndCommit's own pathspec-scoped diff
@@ -787,17 +790,17 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 	// _lyx/config.yaml is left at its fixture-default content, so the
 	// weft-side pathspec's own StageAndCommit reports committed=false and
 	// the empty-commit rule's !committed fall-through fires.
-	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "dirty index, tagged", []string{"raddle"}, SyncOptions{})
+	result, err := f.Commit([]string{"README", "_lyx/config.yaml"}, "dirty index, tagged", []string{"raddle"}, fabricengine.SyncOptions{})
 	if err == nil {
 		t.Fatal("Commit() error = nil; want an error (CommitEmpty should refuse on the dirty index)")
 	}
 
-	var partialErr *PartialCommitError
+	var partialErr *fabricengine.PartialCommitError
 	if !errors.As(err, &partialErr) {
-		t.Fatalf("Commit() error = %v; want *PartialCommitError via errors.As", err)
+		t.Fatalf("Commit() error = %v; want *fabricengine.PartialCommitError via errors.As", err)
 	}
-	if partialErr.weftCommitted {
-		t.Errorf("PartialCommitError.weftCommitted = true; want false (CommitEmpty refused, nothing landed)")
+	if fabricengine.PartialCommitErrorWeftCommittedForTest(partialErr) {
+		t.Errorf("fabricengine.PartialCommitError.weftCommitted = true; want false (CommitEmpty refused, nothing landed)")
 	}
 	if !errors.Is(err, gitrepo.ErrIndexNotEmpty) {
 		t.Errorf("Commit() error = %v; want errors.Is(err, gitrepo.ErrIndexNotEmpty)", err)
@@ -820,11 +823,11 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 // empty-commit rule as its own contract: called directly (not via Fabric.Commit) with a pathspec
 // matching nothing and one snapshot tag, it lands the empty commit.
 func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	sha, committed, err := f.commitWeft([]string{"doesnotexist"}, DefaultCommitMessage, SyncOptions{}, "raddle")
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"doesnotexist"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v", err)
 	}
@@ -832,13 +835,13 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 		t.Fatalf("commitWeft() = (%q, %v); want an empty commit to have landed", sha, committed)
 	}
 
-	warpSHA := currentSHA(t, warpPath)
-	msg := commitMessageAt(t, weftFixture.WeftPath, sha)
-	wantWarpTrailer := WarpSHATrailerKey + ": " + warpSHA
+	warpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	msg := fabricengine.CommitMessageAtForTest(t, weftFixture.WeftPath, sha)
+	wantWarpTrailer := fabricengine.WarpSHATrailerKey + ": " + warpSHA
 	if !strings.Contains(msg, wantWarpTrailer) {
 		t.Errorf("commit message = %q; want it to contain %q", msg, wantWarpTrailer)
 	}
-	if !strings.Contains(msg, SnapshotTrailerKey+": raddle") {
+	if !strings.Contains(msg, fabricengine.SnapshotTrailerKey+": raddle") {
 		t.Errorf("commit message = %q; want it to contain the Snapshot trailer", msg)
 	}
 }
@@ -848,14 +851,14 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 // that nothing landed on either side: the never-committed check runs before any lock is taken or
 // any commit attempted, so a rejected call must leave both warp and weft HEAD unmoved.
 func TestCommit_DotLyxPath_HardErrorsAndCommitsNothing(t *testing.T) {
-	f, warpPath, weftPath := newCommitFixture(t)
-	swapPushRecorder(t)
+	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
+	fabricengine.SwapPushRecorderForTest(t)
 
-	warpSHABefore := currentSHA(t, warpPath)
-	weftSHABefore := currentSHA(t, weftPath)
+	warpSHABefore := fabricengine.CurrentSHAForTest(t, warpPath)
+	weftSHABefore := fabricengine.CurrentSHAForTest(t, weftPath)
 
 	offendingPath := ".lyx/webster/state.json.lock"
-	result, err := f.Commit([]string{offendingPath}, "should never land", nil, SyncOptions{})
+	result, err := f.Commit([]string{offendingPath}, "should never land", nil, fabricengine.SyncOptions{})
 	if err == nil {
 		t.Fatalf("Commit(%q) error = nil; want a hard error naming the offending path", offendingPath)
 	}
@@ -866,10 +869,10 @@ func TestCommit_DotLyxPath_HardErrorsAndCommitsNothing(t *testing.T) {
 		t.Errorf("Commit(%q) = %+v; want nothing committed on either side", offendingPath, result)
 	}
 
-	if got := currentSHA(t, warpPath); got != warpSHABefore {
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpSHABefore {
 		t.Errorf("warp HEAD moved from %s to %s; want it unchanged by a rejected call", warpSHABefore, got)
 	}
-	if got := currentSHA(t, weftPath); got != weftSHABefore {
+	if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftSHABefore {
 		t.Errorf("weft HEAD moved from %s to %s; want it unchanged by a rejected call", weftSHABefore, got)
 	}
 }

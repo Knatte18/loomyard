@@ -478,3 +478,12 @@ func CorrIndexExactForTest(ix *CorrIndexForTest, warpSHA string) (corrEntry, boo
 // PathspecNamesForTest re-exports pathspecNames (production plumbing: junctionnames.go), for
 // weftgit_pathspec_integration_test.go's assertion on the real, resolved default routing set.
 var PathspecNamesForTest = pathspecNames
+
+// PartialCommitErrorWeftCommittedForTest re-exports e's private weftCommitted field (production
+// plumbing: commit.go), for commit_integration_test.go's assertion distinguishing a landed-but-
+// unrecorded weft commit from a weft commit that failed entirely — deliberately not part of
+// PartialCommitError's public contract (only Error()'s rendered message is), but this file's own
+// assertion needs the raw bool.
+func PartialCommitErrorWeftCommittedForTest(e *PartialCommitError) bool {
+	return e.weftCommitted
+}
