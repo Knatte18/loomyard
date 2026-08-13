@@ -28,6 +28,10 @@ touching those signatures is the substance of this task.
 
 - A cwd-injection seam owned by `internal/lyxcwd`: `WithCwd(ctx, dir) context.Context` and `CwdFrom(ctx) (string, error)`, the latter falling back to `Getwd()` when the context carries no cwd.
 - `clihelp.ExecuteIn(cmd, cwd, out, args) int` beside the existing `Execute`, seeding the cwd into the invocation context.
+  This also requires reaching `clihelp.RunRoot`, which hardcodes `context.Background()` at `exec.go:150` and is the shared implementation behind both `Execute` and `cmd/lyx`:
+  `RunRoot` gains a parent-context parameter (or a `RunRootCtx` sibling), so the seeded cwd survives into `cmd.ExecuteContext`.
+  Adding `ExecuteIn` alone would not work.
+- `clihelp.WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int)` beside the existing `WrapRun`, because `WrapRun`'s handler signature is `(out, args)` and carries no context — see the `plain-handlers-take-the-context` decision.
 - `RunCLIIn(cwd string, out io.Writer, args []string) int` on the 10 modules that both expose `RunCLI` and actually resolve a cwd (`fabriccli`, `burlercli`, `configcli`, `idecli`, `shuttlecli`, `scoutcli`, `perchcli`, `boardcli`, `webstercli`, `reedcli`).
   `internal/selfreportcli` is deliberately excluded: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
   Eleven modules expose `RunCLI`; ten gain the sibling.
@@ -40,9 +44,10 @@ touching those signatures is the substance of this task.
 - Changing `loomengine.Preflight()` to `Preflight(cwd string)` and deleting its `Getwd()` call.
 - A `--into <dir>` flag on `lyx fabric clone`, defaulting to the resolved cwd, because clone's cwd is a *destination* argument rather than a lookup.
 - Threading the caller's resolved cwd through nested CLI invocations: `configcli.go:384`'s `fabriccli.RunCLI(w, []string{"sync"})` becomes `RunCLIIn`.
-- Migrating every `.Chdir` call site in the nine `//go:build integration` target files (41 occurrences) onto the new seam.
-- Adding `t.Parallel()` to the four integration files that have no other blocker (13 of those 41 occurrences).
-- A guard test at `cmd/lyx/cwdmutation_test.go` banning `t.Chdir(` and `os.Chdir(` in a **named per-file subject set** — the nine migrated files only, not their whole packages.
+- Migrating every `.Chdir` call site in the **eight** `//go:build integration` target files that can be migrated — **39 occurrences** — onto the new seam.
+  The ninth integration file, `fabricengine/coalesce_integration_test.go` (2 occurrences), is untouched: see Out.
+- Adding `t.Parallel()` to the **three** integration files whose only blocker is chdir — **9 of those 39 occurrences** (`reedcli/cli_integration_test.go` 4, `loomengine/preflight_integration_test.go` 3, `perchcli/cli_integration_test.go` 2).
+- A guard test at `cmd/lyx/cwdmutation_test.go` banning `t.Chdir(` and `os.Chdir(` in a **named per-file subject set** — the eight migrated files plus `coalesce_integration_test.go` as the one allowlisted exemption, never their whole packages.
 - Doc updates in the same commits: `CONSTRAINTS.md` (CLI/Cobra Invariant, including its corrected "Enforced by" line), `docs/overview.md:253` (which states the seam verbatim as `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out, args)` and becomes incomplete once `RunCLIIn`/`ExecuteIn` exist), `internal/lyxcwd` and `internal/clihelp` package docs, affected module docs under `manifest/designs/`, a `LYX_TRACE=1` note in `docs/benchmarks/running-tests.md`, and a timing row in `docs/benchmarks/test-suite-timing.md`.
 
 **Out:**
@@ -106,7 +111,14 @@ touching those signatures is the substance of this task.
 ### plain-handlers-take-the-context
 
 - Decision: the handler functions that resolve cwd outside a cobra hook (`fabriccli.resolveWarpLocation` at `fabric.go:398`, `fabriccli.runCloneWithReset` at `clone.go:119`, `configcli.runReconcile` at `configcli.go:257`, `configcli.runConfig` at `configcli.go:370`) take `cmd.Context()` as a parameter.
-- Rationale: `clihelp.WrapRun` already has `cmd` in scope, so passing the context through is mechanical, and it leaves each package's existing seam shape intact.
+- **Mechanism (corrected — an earlier draft got this wrong).** `clihelp.WrapRun` has signature `WrapRun(fn func(out io.Writer, args []string) int)` (`exec.go:123`): the wrapper closes over `cmd`, but the wrapped handler receives only `(out, args)` and therefore has no context today.
+  Every registration site passes an `(out, args)` closure — `configcli.go:325,343` and ten sites in `fabriccli/fabric.go` (`:125,159,171,196,227,243,264,303,346,372`).
+  So "pass `cmd.Context()` through" is not mechanical at the registration site;
+  it needs a seam of its own.
+- Decision: add a context-aware sibling `clihelp.WrapRunCtx(fn func(ctx context.Context, out io.Writer, args []string) int)` beside `WrapRun`, and migrate the affected registration sites onto it.
+  `WrapRun` stays for handlers that need no cwd.
+- Rationale: additive and shaped exactly like the `RunCLI`/`RunCLIIn` decision already taken, so the codebase gains one consistent "…Ctx/…In sibling" idiom rather than two different escape hatches.
+  Converting those `RunE`s to raw `func(*cobra.Command, []string) error` was rejected: it would rewrite twelve registration sites into a different shape from every other command in the tree, for no gain over the sibling.
   `fabriccli` legitimately has two seams — a plain helper for the 8 topology verbs and a scoped `PersistentPreRunE` for the weft verbs (`weft_verbs.go:52`) — and this decision does not force them to converge.
 - Rejected: converting the plain handlers to `PersistentPreRunE` for a uniform seam shape — a cleaner end state, but a larger refactor that changes error-path ordering in packages this task has no other reason to disturb.
 
@@ -141,8 +153,15 @@ touching those signatures is the substance of this task.
 
 ### parallel-is-written-where-it-applies
 
-- Decision: `t.Parallel()` is written explicitly in each migrated test function in the four env-free integration files.
-  The four `t.Setenv` files get their chdir removed but stay serial, each carrying a comment naming `t.Setenv` as the remaining blocker.
+- Decision: `t.Parallel()` is written explicitly in each migrated test function in the **three** files whose only blocker is chdir — `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go`, `perchcli/cli_integration_test.go`.
+  Five further integration files get their chdir removed but stay serial, each carrying a comment naming its remaining blocker: the four `t.Setenv` files, plus `idecli/cli_test.go`.
+- **`idecli/cli_test.go` is not free, contrary to an earlier draft.** `TestRunCLISpawnDispatch` swaps the package-level `ideengine.CodeLauncher` (`ideengine/spawn.go:17`, an exported injectable seam) at `cli_test.go:27-29` and restores it in a `defer`.
+  Under `t.Parallel()` that is both a data race on a production package-level var and a restore that fires while sibling tests are still running.
+  Disposition: migrate its chdir, leave it serial, comment the seam swap as the blocker.
+  Converting `CodeLauncher` to per-invocation injection would fix it properly but widens scope into `ideengine`'s public API for one test — deferred with the rest.
+- **Safety audit of the three parallelized files.** Verified directly, not assumed: none of `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go`, or `perchcli/cli_integration_test.go` assigns to any cross-package exported variable, and none calls `t.Setenv` or `os.Setenv`.
+  Their only process-global mutation is the chdir this task removes.
+  The audit method is a per-file sweep for cross-package var assignment and env mutation, and it must be re-run for any file later added to the parallelized set — a package-level safety claim is not sufficient, because the blocker can live in a *production* package the test stubs.
 - Rationale: parallelism stays visible at the test it governs, and the deferred work is documented where the next person will look for it.
 - Rejected: calling `t.Parallel()` inside the shared fixture helpers (`seedPerchFixture` and friends) — fewer lines, but it hides a control-flow-changing call inside a setup function.
 
@@ -179,7 +198,7 @@ touching those signatures is the substance of this task.
 ### three-commits-each-self-contained
 
 - Decision: three commits, each building and testing green on its own, each carrying its own doc updates:
-  1. `lyxcwd` context API + `clihelp.ExecuteIn` + `CONSTRAINTS.md` CLI/Cobra amendment + package docs.
+  1. `lyxcwd` context API + `clihelp.ExecuteIn`, `RunRoot`'s parent-context parameter, and `WrapRunCtx` + the seam signature-pinning assertion + `CONSTRAINTS.md` CLI/Cobra amendment (wording and corrected "Enforced by") + `docs/overview.md:253` + package docs.
   2. Module seams — the 10 `RunCLIIn` functions, plain-handler context threading, `Preflight(cwd)`, clone `--into` — plus module docs, `docs/overview.md:253`, and help text.
   3. Test migration, `t.Parallel()`, the guard test, and the timing row.
 - Rationale: CLAUDE.md requires docs in the same commit as the change that causes them, which rules out a trailing docs-only commit.
@@ -195,7 +214,8 @@ The task brief names twenty files. They do not behave alike:
 
 | population | files | `.Chdir` | blockers | measured tier? |
 |---|---|---|---|---|
-| integration, env-free | 4 | 13 | chdir only | Tier 2 |
+| integration, chdir-only | 3 | 9 | chdir only | Tier 2 |
+| integration, global-stub swap | 1 | 4 | chdir + `ideengine.CodeLauncher` | Tier 2 |
 | integration, `t.Setenv` too | 4 | 26 | chdir + `WEFT_SKIP_*` | Tier 2 |
 | integration, cwd-is-the-subject | 1 | 2 | unremovable by design | Tier 2 |
 | smoke | 11 | 30 | chdir + `deferHubRelease` + tmux races | neither |
@@ -214,9 +234,16 @@ Per-file counts, measured on this branch:
 | `internal/perchcli/cli_integration_test.go` | integration | 2 | 0 |
 | `internal/fabricengine/coalesce_integration_test.go` | integration | 2 | 0 |
 
-The four files that gain `t.Parallel()` are `idecli/cli_test.go`, `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go`, and `perchcli/cli_integration_test.go`.
+The three files that gain `t.Parallel()` are `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go`, and `perchcli/cli_integration_test.go`.
+`idecli/cli_test.go` is migrated but stays serial — its `ideengine.CodeLauncher` swap is a second blocker (see `parallel-is-written-where-it-applies`).
 
 ### Production `lyxcwd.Getwd()` call sites to migrate
+
+**Enumeration method — read this before sizing the work.** The list below counts `lyxcwd.Getwd()` *occurrences*, which is the right inventory for the one-line `CwdFrom` swap but **understates the touch-point surface**.
+The real surface is every function on the path from a cobra `RunE` to a cwd resolution, because each of those must carry a context it does not carry today.
+`fabriccli` is the sharp case: `resolveWarpLocation()` holds a single `Getwd()` call but has **10 callers** — `fabric.go:427,459,485,531,563,666,691,715`, `unwire.go:18`, and `weft_verbs.go:76` — every one a `WrapRun`-wrapped handler with no context.
+So `fabriccli` is one `Getwd()` site but eleven functions that change signature.
+mill-plan must size per-module work from the transitive path, not from the `Getwd()` count.
 
 Cobra `PersistentPreRunE`, calling `lyxcwd.Getwd()` directly (resolve, then build the module's engine/config) — 7 sites:
 `internal/reedcli/cli.go:56`, `internal/shuttlecli/cli.go:58`, `internal/perchcli/cli.go:77`, `internal/webstercli/cli.go:123`, `internal/idecli/cli.go:37`, `internal/boardcli/cli.go:71`, `internal/burlercli/cli.go:59`.
@@ -254,6 +281,10 @@ Not migrated: `internal/logger/sink.go:88`, inert under `go test` per `sink.go:7
 - **`shuttlecli/smoke_interrupt_test.go:264`** calls `lyxcwd.Getwd()` in the test body, hand-rebuilding what the `PersistentPreRunE` does. Out of scope (smoke tier) but worth knowing it exists.
 
 ### What is already safe, and needs no work
+
+**Scope limitation, stated honestly:** this appendix covers *infrastructure* packages and per-invocation closure locals.
+It does **not** by itself clear any given test file for `t.Parallel()`, because a test can stub a package-level var in a *production* package the appendix never looks at — which is exactly how `idecli/cli_test.go`'s `ideengine.CodeLauncher` swap was initially missed.
+Per-file clearance comes from the audit described under `parallel-is-written-where-it-applies`, not from this list.
 
 - **`internal/hubforge`** — `bareTemplateOnce` writes its two template paths only inside `Once.Do`, then they are read-only;
   `copyBares` writes only into `tb.TempDir()`;
@@ -365,7 +396,9 @@ The smoke tier (11 files, 30 `.Chdir`) needs three further things before it coul
 
 ## Q&A log
 
-- **Q:** Given the measured payoff is ~1–3 s on Linux, how far do we take this? **A:** Build the explicit-cwd seam across all 11 `RunCLI` modules plus `loomengine.Preflight`, migrate every integration-tier call site, and add `t.Parallel()` only where free. Defer the env seam and the smoke tier.
+- **Q:** Given the measured payoff is ~1–3 s on Linux, how far do we take this? **A:** Build the explicit-cwd seam across 10 of the 11 `RunCLI` modules (`selfreportcli` resolves no cwd) plus `loomengine.Preflight`, migrate every integration-tier call site, and add `t.Parallel()` only where free. Defer the env seam and the smoke tier.
+- **Q:** Review round 2 found `clihelp.WrapRun` hands the handler only `(out, args)`, so "thread `cmd.Context()` in" was not mechanical. What is the mechanism? **A:** Add a `clihelp.WrapRunCtx` sibling taking `(ctx, out, args)`, matching the `RunCLI`/`RunCLIIn` idiom; `WrapRun` stays for handlers needing no cwd. `clihelp.RunRoot` also gains a parent-context parameter, since it hardcodes `context.Background()`.
+- **Q:** Review round 2 found `idecli/cli_test.go` swaps the package-level `ideengine.CodeLauncher`, so it is not free for `t.Parallel()`. **A:** Migrate its chdir but leave it serial with a comment naming the seam swap; the parallelized set drops from four files to three. Converting `CodeLauncher` to per-invocation injection is deferred.
 - **Q:** How does explicit cwd reach the resolution sites? **A:** Context-carried, owned by `lyxcwd` (`WithCwd`/`CwdFrom`), seeded by `clihelp.ExecuteIn` and per-module `RunCLIIn`. No user-visible `--cwd`/`-C` flag.
 - **Q:** `fabriccli` has a plain helper for topology verbs and a `PersistentPreRunE` for weft verbs, and `configcli` uses plain handlers. Unify them? **A:** No — thread `cmd.Context()` into the plain handlers and leave each package's seam shape alone.
 - **Q:** Clone's cwd is a destination, not a lookup. What replaces it? **A:** An explicit `--into <dir>` flag defaulting to the resolved cwd.
