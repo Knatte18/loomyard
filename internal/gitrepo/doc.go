@@ -194,8 +194,7 @@
 // every caller-supplied SHA argument goes through (see above) guarantees an
 // option-shaped string can never reach `git reset` as a flag instead of a
 // target commit — ResetHard rejects it as ErrInvalidSHA before any git
-// spawn, exactly like ChangedFilesSince. Non-zero-exit errors follow Pull's
-// no-stderr-leak style: the repo path and git's exit code, never raw stderr.
+// spawn, exactly like ChangedFilesSince.
 //
 // # Evidence for the two-backend boundary
 //
