@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -63,26 +64,13 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	t.Parallel()
 
 	const slug = "adopt-rollback-keep"
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	// Mirror CloneHub's post-clone state so the fixture matches a real fabric
-	// hub: the weft primary sits on the suffixed sibling of the warp's branch.
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	// The gate's ownedManagedBranch reaches primaryWeftBranch, which reads the branch checked out at
-	// _board — mirror newFabricFixture's setup (worktree add BEFORE seeding config into it) so that
-	// read succeeds instead of refusing the deletion outright for want of a readable primary.
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
-	// Card 20 folds RepoWiredNames(l) — WiredNames(fabricengine.BoardDir(l.HubPath))
-	// — into Add's eager-wiring step, hard-failing via rollbackAdd on a
-	// name-set load error, so the fixture must also materialize the
-	// repo-wide fabric.yaml at BoardDir(Hub), not just the per-pair weft
-	// base above. seedRepoWideFabricConfig is the same helper
-	// newFabricFixture uses for this (reconcile_stale_registration_test.go).
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-
-	l := fixture.Layout
+	// hubforge.NewHub's CloneAndWire already produces exactly the real-hub shape the old fixture
+	// used to hand-assemble here: the weft primary checked out on the suffixed sibling of the warp's
+	// branch, a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read succeeds
+	// against, and the repo-wide fabric.yaml Add's eager RepoWiredNames load needs — so none of that
+	// scaffolding is seeded by hand any more.
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftBranch := fabricengine.WeftBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add —
@@ -202,17 +190,10 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	t.Parallel()
 
 	const slug = "adopt-rollback-unwire"
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: the gate's primaryWeftBranch read
-	// needs a real _board worktree to succeed, added BEFORE the config is seeded into it.
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-
-	l := fixture.Layout
+	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: hubforge.NewHub's CloneAndWire
+	// already produces the real-hub shape this fixture used to hand-assemble.
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 	weftBranch := fabricengine.WeftBranchName(slug)
 
 	// Pre-create the weft branch with a unique commit that predates the Add,
@@ -286,13 +267,8 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	l := fixture.Layout
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	// Point origin at a path that does not exist, so the push at the end of Add fails for a reason
 	// only git can state while every fabric-side precondition still passes.
