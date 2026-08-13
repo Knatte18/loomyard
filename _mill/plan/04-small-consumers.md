@@ -152,6 +152,26 @@ this task does not run them.
   `CopyPairedLocal` omitted the weft bare because its callers ran with `SkipPush: true`;
   a real hub always has both bares, so the distinction disappears and nothing at these call sites needs to compensate for it.
   This is the largest package in the batch (six `Copy*` sites, six `SeedConfig` sites) and is deliberately last, so the pattern is settled on the five smaller ones first.
+
+  **Two of the three ad-hoc seeding sites named in the overview's triage decision live in this card, and each gets an explicit resolution rather than the general rule.**
+  Both are nested-anchor tests that hand-build the anchor the old fixture could not produce, and both resolve the same way: build the hub at the real anchor and delete the hand-rolled scaffolding.
+
+  *`TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd` in `internal/perchcli/cli_integration_test.go`.*
+  Build it with `hubforge.NewHub(t, "nested")` instead of `hubforge.NewHub(t, ".")`.
+  Delete all three pieces of scaffolding it currently carries: the `os.MkdirAll` of `<fixture.Hub>/nested`, the `os.MkdirAll` of `fabricengine.BoardDir(...)`, and the `os.WriteFile` of `lyxcwd.AnchorFileName` recording `"nested"` — `fabriccli.CloneAndWire` records that anchor at `BoardDir` for real, which is the entire point of the migration, and a test that writes its own `.lyx-anchor` on top of a real hub is asserting against an invented shape again.
+  Its `gitkit.SeedConfig(t, nested, …)` call passes three plain registered templates (`shuttleengine.ConfigTemplate()`, `reedengine.ConfigTemplate()`, `perchengine.ConfigTemplate()`), so it is triage outcome 1 — delete the call outright.
+  Every later reference to the local `nested` variable becomes `h.Location.AnchorPath()`, the anchored warp path.
+
+  *`TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath` in `internal/perchcli/run_integration_test.go`.*
+  Build it with `hubforge.NewHub(t, "wts/some-task")`, matching the `relPath` constant the test already declares, and delete the local `seedFabricAnchor` helper entirely — this test is its only caller.
+  Its `gitkit.SeedConfig(t, warpSubdir, …)` call is again three plain registered templates, so it too is triage outcome 1 and the call is deleted;
+  `warpSubdir` and the `t.Chdir(warpSubdir)` argument both become `h.Location.AnchorPath()`, and the run-dir path built from `fixture.WeftPrime` plus `relPath` becomes `h.WeftBase`, which is that join done by fabric rather than by the test.
+  `lyxcwd.ValidateAnchorRel` accepts a multi-segment relative anchor and imposes no existence requirement, so `"wts/some-task"` is a legal `Subpath`;
+  if the anchored directory does not exist inside the freshly cloned warp, `os.MkdirAll(h.Location.AnchorPath(), 0o755)` after `NewHub` is the correct arrangement — that is ordinary test arrangement on a real hub, not stand-in-hub scaffolding, and the difference is that the anchor itself is recorded by fabric either way.
+
+  *The `seedRepoWideFabricConfig` helper, five call sites across `internal/perchcli/run_integration_test.go`.*
+  Unlike the module-config sites it writes a genuine **override** — `branch_prefix: ""` and `pathspec: _lyx`, not the registered `fabric` template — so it is triage outcome 3, not a deletion: replace all five calls with `hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")` and delete the helper.
+  This matters beyond tidiness: the hand-rolled helper writes the file and never commits it, whereas `SeedFabricConfig` commits through `fabricengine.NewBolt`, and an uncommitted seed leaves the `weft:main` checkout dirty — which `Fabric.Commit`, this file's own subject, observes.
 - **Commit:** `test(perchcli): build fixtures with hubforge.NewHub`
 
 ## Batch Tests

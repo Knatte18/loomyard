@@ -123,9 +123,10 @@ It is also why `cli_integration_test.go` is migrated first, in its own card: it 
 - **Requirements:**
   This file has no `Copy*` call — it has one `gitkit.SeedConfig(` call and three `gitkit.MustRun(` calls.
   Apply the `SeedConfig` triage to the seeding call.
-  Whether it becomes a deletion, a `hubforge.SeedConfig` or stays on `gitkit.SeedConfig` depends on what directory it is handed: if the base is a `Hub` obtained from a helper in another file in this package, it retargets to `hubforge.SeedConfig(t, h, …)`;
-  if the base is a plain repo this file builds itself with `MustRun`, `gitkit.SeedConfig` remains correct and the call stays exactly as it is.
-  The three `gitkit.MustRun(` calls stay on `gitkit` unchanged in either case.
+  This is the third of the three ad-hoc sites the overview's triage decision names — the `sibling` one — and its resolution is that **nothing changes**: the base is a second clone of the fixture's bare that this file builds itself two lines earlier with `gitkit.MustRun(t, …, "git", "clone", …)`, so it is a plain git repo and not a hub, and `gitkit.SeedConfig` is exactly the right helper for it.
+  Leave the call as written.
+  Only the clone's source argument moves, from the old fixture's `Bare` field to `h.WarpBare`, per the overview's mapping table.
+  The three `gitkit.MustRun(` calls stay on `gitkit` unchanged.
   This file is `//go:build smoke` and is compile-checked only.
 - **Commit:** `test(reedcli): triage smoke_test.go's config seeding`
 

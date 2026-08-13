@@ -142,6 +142,7 @@ The discussion's own migration order — smallest package first — is what this
   Neither of `gitkit.SeedConfig`'s current arguments works on a real hub: 32 of the 56 sites pass `fixture.Hub`, which is now the `<name>-HUB` container and not a git repo at all, so the commit fails outright.
   Seeding the warp worktree fails too — `<worktree>/_lyx` is a weft junction excluded from the warp index via `.git/info/exclude`, so `git add .` stages nothing.
   A single `SeedConfig` that guessed its base from the path shape was rejected: it would pick wrong on the three ad-hoc sites, silently.
+  Those three sites get named per-site resolutions rather than the general rule, because none of them fits it: the `nested` and `warpSubdir` sites are resolved in batch 4 card 27 (both hand-build an anchor a real hub records for itself, so both become `hubforge.NewHub` at the real anchor), and the `sibling` site is resolved in batch 5 card 33 (it is a plain second clone, so it stays on `gitkit.SeedConfig` unchanged).
 - **Applies to:** batches 4, 5, 6, 7, 8
 
 ### Decision: WeftBase is anchor-joined, and getting it wrong is silent
