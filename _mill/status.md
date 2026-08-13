@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -46,6 +46,7 @@ approved-fabricengine in-package weft  '2026-08-13T09:42:26Z'
 approved-fabricengine in-package hub  '2026-08-13T09:50:34Z'
 approved-helper deletion  '2026-08-13T10:17:11Z'
 approved-docs  '2026-08-13T10:23:42Z'
+holistic-reviewing  '2026-08-13T10:24:11Z'
 ```
 
 ## Batches
