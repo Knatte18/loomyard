@@ -15,10 +15,8 @@
 // newWarpFixture/newFabricPair/writeWeftConfig below are this file's own
 // fixture helpers, relocated here from weftgit_differential_test.go before
 // its deletion (this file was already its only other consumer).
-// gitStatusPorcelain moved to fabrictest.GitStatusPorcelain, which this file
-// now calls: package fabricengine_test importing fabrictest, which imports
-// fabricengine, is legal because Go compiles external test packages
-// separately.
+// gitStatusPorcelain moved to gitkit.GitStatusPorcelain, which this file now
+// calls directly.
 
 package fabricengine_test
 
@@ -30,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine/fabrictest"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -136,7 +133,7 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 		t.Fatalf("write push lock artifact: %v", err)
 	}
 
-	status := fabrictest.GitStatusPorcelain(t, weftFixture.WeftPath)
+	status := gitkit.GitStatusPorcelain(t, weftFixture.WeftPath)
 	if strings.Contains(status, ".weft") {
 		t.Errorf("git status --porcelain reports .weft as dirt: %q; want it git-excluded", status)
 	}
@@ -233,7 +230,7 @@ func mustWriteFile(t *testing.T, path, content string) {
 }
 
 // gitLsFiles returns `git ls-files`'s raw output for repoPath — the tracked
-// (committed-or-staged) file set, as opposed to fabrictest.GitStatusPorcelain's
+// (committed-or-staged) file set, as opposed to gitkit.GitStatusPorcelain's
 // untracked/dirty view.
 func gitLsFiles(t *testing.T, repoPath string) string {
 	t.Helper()
