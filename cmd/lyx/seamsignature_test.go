@@ -1,12 +1,11 @@
-// seamsignature_test.go pins the eleven existing RunCLI(io.Writer, []string) int seam functions to
-// their exact signature at compile time.
+// seamsignature_test.go pins the eleven existing RunCLI(io.Writer, []string) int seam functions,
+// and the ten RunCLIIn(string, io.Writer, []string) int seam functions built alongside them, to
+// their exact signatures at compile time.
 // This test has no test function and no runtime body: the assertion is that the package compiles,
-// so a drifted RunCLI signature in any of these eleven modules becomes a build failure instead of a
-// silent divergence from CONSTRAINTS.md's CLI/Cobra Invariant.
+// so a drifted RunCLI/RunCLIIn signature in any of these modules becomes a build failure instead of
+// a silent divergence from CONSTRAINTS.md's CLI/Cobra Invariant.
 // The CLI/Cobra Invariant's seam clause was previously unenforced: cmd/lyx/drift_test.go asserts only
 // that every command carries a non-empty Short, and no test under cmd/lyx referenced RunCLI at all.
-// The RunCLIIn half of this assertion — pinning func(string, io.Writer, []string) int across the
-// modules that gain it — lands in batch 2, in the same batch that creates those RunCLIIn functions.
 
 package main
 
@@ -40,4 +39,21 @@ var _ = []func(io.Writer, []string) int{
 	selfreportcli.RunCLI,
 	shuttlecli.RunCLI,
 	webstercli.RunCLI,
+}
+
+// The blank identifier below pins every module's RunCLIIn to the ten-module RunCLIIn seam shape
+// declared by the CLI/Cobra Invariant. internal/selfreportcli is the one seam module deliberately
+// absent: it references lyxcwd nowhere, so a RunCLIIn there would accept a cwd argument nothing
+// reads. Nothing reads this slice; the compile itself is the assertion.
+var _ = []func(string, io.Writer, []string) int{
+	boardcli.RunCLIIn,
+	burlercli.RunCLIIn,
+	configcli.RunCLIIn,
+	fabriccli.RunCLIIn,
+	idecli.RunCLIIn,
+	perchcli.RunCLIIn,
+	reedcli.RunCLIIn,
+	scoutcli.RunCLIIn,
+	shuttlecli.RunCLIIn,
+	webstercli.RunCLIIn,
 }

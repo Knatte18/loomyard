@@ -138,6 +138,8 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 
 - **Seam.**
   Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out, args)`.
+  Ten of the eleven seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
+  `internal/selfreportcli` is the one seam module without `RunCLIIn`: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
 - **Registration.**
   A new module is wired into `newRoot()`: import, `root.AddCommand(...)`, and appended to the root `Long` module-list.
   Unregistered ⇒ invisible to `--help`.
@@ -156,7 +158,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   engine never imports cli or cobra.
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine.
   Skip the engine only for trivial wrappers or a throwaway proof-of-concept meant to be deleted.
-- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all eleven modules at compile time.
+- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all eleven modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the ten modules that carry it, both at compile time.
 
 ## Shuttle Provider-Seam Invariant
 
