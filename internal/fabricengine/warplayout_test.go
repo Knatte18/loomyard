@@ -10,14 +10,14 @@ package fabricengine
 import (
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyWarpHub(t)
+	fixture := gitkit.CopyWarpHub(t)
 
 	base, err := lyxcwd.Resolve(fixture.Hub)
 	if err != nil {

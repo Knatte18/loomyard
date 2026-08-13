@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestClean_ReasonWording exercises the three shapes fabricengine.Clean can report a reason for.
@@ -21,7 +21,7 @@ func TestClean_ReasonWording(t *testing.T) {
 	t.Run("CodeSideOnly", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := lyxtest.CopyPairedLocal(t)
+		fixture := gitkit.CopyPairedLocal(t)
 		untracked := filepath.Join(fixture.Hub, "untracked.txt")
 		if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 			t.Fatalf("write untracked warp file: %v", err)
@@ -43,7 +43,7 @@ func TestClean_ReasonWording(t *testing.T) {
 	t.Run("StateSideOnly", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := lyxtest.CopyPairedLocal(t)
+		fixture := gitkit.CopyPairedLocal(t)
 		untracked := filepath.Join(fixture.WeftPrime, "untracked.txt")
 		if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 			t.Fatalf("write untracked weft file: %v", err)
@@ -65,7 +65,7 @@ func TestClean_ReasonWording(t *testing.T) {
 	t.Run("Both", func(t *testing.T) {
 		t.Parallel()
 
-		fixture := lyxtest.CopyPairedLocal(t)
+		fixture := gitkit.CopyPairedLocal(t)
 		warpUntracked := filepath.Join(fixture.Hub, "untracked.txt")
 		if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
 			t.Fatalf("write untracked warp file: %v", err)

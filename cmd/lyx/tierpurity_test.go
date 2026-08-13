@@ -1,6 +1,6 @@
 // tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones
 // that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`) perform no
-// expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, and no lyxtest.Copy*
+// expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, and no gitkit.Copy*
 // fixture-tree copy.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
@@ -47,14 +47,14 @@ var knownTierTags = []string{"integration", "smoke", "scout"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
-// matches exec.CommandContext, and lyxtest.Copy prefix-matches lyxtest.CopyPaired,
-// lyxtest.CopyPairedLocal, lyxtest.CopyWarpHub, lyxtest.CopyWeft, and any future
+// matches exec.CommandContext, and gitkit.Copy prefix-matches gitkit.CopyPaired,
+// gitkit.CopyPairedLocal, gitkit.CopyWarpHub, gitkit.CopyWeft, and any future
 // Copy* fixture. Comment or string-literal mentions trip the guard too — that is
 // accepted (rename the mention or tag the file).
 var bannedTokens = []string{
 	"gitexec.RunGit",
 	"exec.Command",
-	"lyxtest.Copy",
+	"gitkit.Copy",
 }
 
 // tierPuritySkipDirs names directories the walk never descends into: version control

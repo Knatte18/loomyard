@@ -53,16 +53,16 @@ var (
 
 // buildBareTemplate builds, once per test binary, the pushed-to warp bare and the genuinely empty
 // weft bare that NewHub's factory clones copies of.
-// It mirrors lyxtest's buildWarpHub/buildWeftPrime pattern: a scratch work repo builds the content,
+// It mirrors gitkit's buildWarpHub/buildWeftPrime pattern: a scratch work repo builds the content,
 // git init --bare backs each remote, fsmonitor/auto-maintenance/gc.auto are disabled and hook samples
-// stripped exactly as lyxtest.initRepo/initBareRemote do, and every git spawn panics on failure rather
+// stripped exactly as gitkit.initRepo/initBareRemote do, and every git spawn panics on failure rather
 // than swallowing it.
 //
 // The warp bare carries a root README and a backend/ subdirectory in the same commit, so one template
 // serves both anchors — a "."-anchored hub simply ignores backend/.
 // Two gotchas are encoded here and nowhere else.
 // First, `git init --bare` leaves HEAD on master while the branch just pushed is main, so the warp
-// bare needs its HEAD re-pointed after the push — lyxtest's own bares never hit this, because
+// bare needs its HEAD re-pointed after the push — gitkit's own bares never hit this, because
 // initBareRemote adds a bare as origin but never pushes to it, so the mismatch is never observable
 // there.
 // Second, the weft bare must stay genuinely empty and is never pushed to: pushing anything to it would
@@ -246,7 +246,7 @@ func AddPair(tb testing.TB, h *Hub, slug string) fabricengine.AddResult {
 }
 
 // initScratchRepo initializes a git repository at dir on branch main, disabling fsmonitor and
-// auto-maintenance, mirroring lyxtest.initRepo.
+// auto-maintenance, mirroring gitkit.initRepo.
 func initScratchRepo(dir string) {
 	mustGit(dir, "init", "-b", "main")
 	mustGit(dir, "config", "user.email", "test@test.com")
@@ -258,7 +258,7 @@ func initScratchRepo(dir string) {
 }
 
 // initBareRepo initializes a bare git repository at dir, disabling fsmonitor and auto-maintenance,
-// mirroring lyxtest.initBareRemote.
+// mirroring gitkit.initBareRemote.
 func initBareRepo(dir string) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		panic(err)
@@ -277,9 +277,9 @@ func commitAll(dir, message string) {
 }
 
 // mustGit runs a git subcommand in dir, panicking on non-zero exit.
-// It is this file's equivalent local helper to lyxtest.MustRun: the template builder runs once per
+// It is this file's equivalent local helper to gitkit.MustRun: the template builder runs once per
 // test binary via sync.Once, before any testing.TB is necessarily in scope for every caller, so it
-// panics rather than taking a tb — the same posture lyxtest's own template builders take.
+// panics rather than taking a tb — the same posture gitkit's own template builders take.
 // Every git spawn in this file goes through it; none is a bare exec.Command whose failure is silently
 // ignored.
 func mustGit(dir string, args ...string) {
@@ -291,7 +291,7 @@ func mustGit(dir string, args ...string) {
 }
 
 // stripHookSamples removes every *.sample file from hooksDir, best-effort, mirroring
-// lyxtest.stripHookSamples.
+// gitkit.stripHookSamples.
 func stripHookSamples(hooksDir string) {
 	matches, err := filepath.Glob(filepath.Join(hooksDir, "*.sample"))
 	if err != nil {
@@ -303,7 +303,7 @@ func stripHookSamples(hooksDir string) {
 }
 
 // copyDirRecursive recursively copies a directory tree from src to dest, refusing any symlink found
-// in the tree, mirroring lyxtest's own copyDirRecursive: a template must stay plain files and
+// in the tree, mirroring gitkit's own copyDirRecursive: a template must stay plain files and
 // directories only.
 func copyDirRecursive(src, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -16,8 +16,8 @@ import (
 func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -55,8 +55,8 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -106,8 +106,8 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -151,8 +151,8 @@ func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
 func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -240,8 +240,8 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	// Named "sibling", NOT "hub-b": real tmux's has-session/kill-session

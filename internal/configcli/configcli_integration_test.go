@@ -21,9 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestE2ESyncIntegration is an e2e test using CopyPaired: creates a new worktree with dispatch,
@@ -32,20 +32,20 @@ func TestE2ESyncIntegration(t *testing.T) {
 	const slug = "config-e2e-test"
 
 	// Build paired fixture (warp + fabric).
-	f := lyxtest.CopyPaired(t)
+	f := gitkit.CopyPaired(t)
 
 	// Seed the fabric-prime fixture with real config templates that fabriccli.RunCLI will need.
 	seeds := make(map[string]string)
 	for _, m := range configreg.Modules() {
 		seeds[m.Name] = m.Template()
 	}
-	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
+	gitkit.SeedConfig(t, f.WeftPrime, seeds)
 
 	// Mirror CloneHub's post-clone state: fabric's primary sits on the suffixed
 	// sibling of the warp's branch ("main-weft"), not the mirrored "main" this
 	// fixture starts on. Without this, Add's fork-from-parent
 	// step has no "main-weft" ref to fork the new pair's fabric branch from.
-	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	// Seed the repo-wide fabric config at fabricengine.BoardDir(f.Layout.HubPath):
 	// batch 5's eager wiring makes Topology.Add read the wired junction
@@ -262,9 +262,9 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 // seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
 // fabricengine.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
 // base fabricengine.RepoWiredNames (and every migrated call site downstream
-// of it, including Topology.Add's eager wiring) reads from. lyxtest.CopyPaired
+// of it, including Topology.Add's eager wiring) reads from. gitkit.CopyPaired
 // does not create a _board dir, so this creates it (and its _lyx/config/)
-// first; unlike lyxtest.SeedConfig, _board is not a git repository, so the
+// first; unlike gitkit.SeedConfig, _board is not a git repository, so the
 // file is written directly with no git add/commit step. Mirrors the
 // identically-named helper in internal/fabricengine's and
 // internal/loomengine's own test packages.

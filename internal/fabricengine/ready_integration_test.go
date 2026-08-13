@@ -1,7 +1,7 @@
 //go:build integration
 
 // ready_integration_test.go covers Ready(l)'s three outcomes: sibling absent, sibling present
-// (fixture-backed via lyxtest.CopyPaired), and a stat failure other than not-exist.
+// (fixture-backed via gitkit.CopyPaired), and a stat failure other than not-exist.
 
 package fabricengine_test
 
@@ -11,14 +11,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestReady_SiblingAbsent asserts that Ready returns (false, nil) when the weft sibling worktree
 // does not exist.
 func TestReady_SiblingAbsent(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	if err := os.RemoveAll(fixture.WeftPrime); err != nil {
 		t.Fatalf("RemoveAll(weftPrime): %v", err)
@@ -36,7 +36,7 @@ func TestReady_SiblingAbsent(t *testing.T) {
 // TestReady_SiblingPresent asserts that Ready returns (true, nil) when the weft sibling worktree
 // exists.
 func TestReady_SiblingPresent(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	ready, err := fabricengine.Ready(fixture.Layout)
 	if err != nil {

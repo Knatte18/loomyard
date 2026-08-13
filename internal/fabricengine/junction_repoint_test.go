@@ -31,7 +31,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestWireJunctions_RepointsWrongTargetJunction points the warp _lyx junction at an unrelated (but
@@ -40,8 +40,8 @@ import (
 func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -91,8 +91,8 @@ func TestWireJunctions_RepointsWrongTargetJunction(t *testing.T) {
 func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -141,8 +141,8 @@ func TestWireJunctions_RepointsWrongTargetJunction_Extra(t *testing.T) {
 func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -189,8 +189,8 @@ func TestWireJunctions_RepointsDanglingJunction(t *testing.T) {
 func TestWireJunctions_RepointsDanglingJunction_Extra(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)

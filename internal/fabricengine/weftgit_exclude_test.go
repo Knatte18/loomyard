@@ -31,10 +31,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine/fabrictest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // newWarpFixture creates a minimal, isolated git repo at t.TempDir() on
@@ -44,29 +44,29 @@ func newWarpFixture(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
 	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", ".")
-	lyxtest.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
+	gitkit.MustRun(t, dir, "git", "add", ".")
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
 	return dir
 }
 
 // newFabricPair returns a *fabricengine.Fabric paired with a fresh
-// newWarpFixture warp repo and a fresh lyxtest.CopyWeft weft fixture. The
+// newWarpFixture warp repo and a fresh gitkit.CopyWeft weft fixture. The
 // repo-wide fabric config is seeded at warpPath's parent directory (this
 // fixture's stand-in Hub) so Fabric.Commit's RepoWiredNames read succeeds —
 // Fabric.Commit classifies paths against that repo-wide config, unlike the
 // pathspec-only CommitWeft this file's tests previously called.
-func newFabricPair(t *testing.T) (*fabricengine.Fabric, lyxtest.WeftFixture) {
+func newFabricPair(t *testing.T) (*fabricengine.Fabric, gitkit.WeftFixture) {
 	t.Helper()
 
 	warpPath := newWarpFixture(t)
 	seedRepoWideFabricConfig(t, filepath.Dir(warpPath))
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f, err := fabricengine.NewPairedForTest(warpPath, weftFixture.WeftPath)
 	if err != nil {
 		t.Fatalf("fabricengine.NewPairedForTest(%q, %q): %v", warpPath, weftFixture.WeftPath, err)
@@ -262,7 +262,7 @@ func gitLsFiles(t *testing.T, repoPath string) string {
 // under _lyx and committed alongside the .lyx artifacts at every depth, proving the property is
 // exact and does not over-match real state.
 func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing.T) {
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 
 	relPaths := []string{".", "sub", "wts/some-task"}
 	for _, rel := range relPaths {

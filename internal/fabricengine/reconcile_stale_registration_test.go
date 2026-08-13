@@ -35,8 +35,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestReconcile_RecreatesHandDeletedWeftWorktree deletes a pair's weft worktree directory with
@@ -94,21 +94,21 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	}
 }
 
-// newFabricFixture returns a lyxtest.CopyPairedLocal fixture seeded with a
+// newFabricFixture returns a gitkit.CopyPairedLocal fixture seeded with a
 // fabric config and its weft prime on the suffixed primary branch. It also
 // materializes <Hub>/_board as a real weft worktree on the warp's unsuffixed
 // default branch — the shape CloneHub produces and the shape Cleanup reads the
 // repo's primary weft branch from — and the repo-wide config inside it via
 // seedRepoWideFabricConfig, so migrated reads succeed.
-func newFabricFixture(t *testing.T) lyxtest.PairedFixture {
+func newFabricFixture(t *testing.T) gitkit.PairedFixture {
 	t.Helper()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add",
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add",
 		fabricengine.BoardDir(fixture.Layout.HubPath), "main")
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 	return fixture
@@ -152,9 +152,9 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 // fabricengine.BoardDir(hub) — <hub>/_board/_lyx/config/fabric.yaml — the
 // base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
 // Healthy, Reconcile, Topology.Checkout, Topology.Remove,
-// junctionRepointedDetail) now read from. lyxtest.CopyPaired/CopyPairedLocal
+// junctionRepointedDetail) now read from. gitkit.CopyPaired/CopyPairedLocal
 // do not create a _board dir, so this creates it (and its _lyx/config/)
-// first; unlike lyxtest.SeedConfig, _board is not a git repository, so the
+// first; unlike gitkit.SeedConfig, _board is not a git repository, so the
 // file is written directly with no git add/commit step. Shared by every
 // fabricengine_test fixture that exercises a migrated read.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
@@ -390,7 +390,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 
 	// Move the weft primary off main-weft so main-weft is not the
 	// checked-out branch.
-	lyxtest.MustRun(t, weftPrime, "git", "checkout", "-b", "primary-parked")
+	gitkit.MustRun(t, weftPrime, "git", "checkout", "-b", "primary-parked")
 
 	res, err := topology.Cleanup(l, true, true)
 	if err != nil {
@@ -418,7 +418,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	const warpManagedBranch = "cleanup-warp-owned"
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", warpManagedBranch, fabricengine.WeftBranchName("main"))
 
 	res, err := topology.Cleanup(l, true, true)
 	if err != nil {
@@ -458,7 +458,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 	// pair is live; only the checked-out protection stands between Cleanup
 	// and the pair's weft branch.
 	warpPath := fabricengine.WorktreePath(l, slug)
-	lyxtest.MustRun(t, warpPath, "git", "checkout", "--detach")
+	gitkit.MustRun(t, warpPath, "git", "checkout", "--detach")
 
 	weftBranch := fabricengine.WeftBranchName(slug)
 
@@ -559,7 +559,7 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 		t.Fatalf("WeftRepoRoot: %v", err)
 	}
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	lyxtest.MustRun(t, weftRepoRoot, "git", "worktree", "remove", "--force", weftPath)
+	gitkit.MustRun(t, weftRepoRoot, "git", "worktree", "remove", "--force", weftPath)
 
 	result, err := topology.Reconcile(l)
 	if err != nil {
@@ -608,7 +608,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 		t.Fatalf("WeftRepoRoot: %v", err)
 	}
 	orphan := fabricengine.WeftBranchName(slug)
-	lyxtest.MustRun(t, weftRepoRoot, "git", "branch", orphan)
+	gitkit.MustRun(t, weftRepoRoot, "git", "branch", orphan)
 
 	findEntry := func(t *testing.T, entries []fabricengine.CleanupBranchEntry) fabricengine.CleanupBranchEntry {
 		t.Helper()

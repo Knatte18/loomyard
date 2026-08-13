@@ -8,7 +8,7 @@
 // assumption). Package fabricengine (internal), reusing
 // index_integration_test.go's, syncweft_integration_test.go's, and
 // commit_integration_test.go's fixture helpers (newPlainWarpRepo, commitWarp,
-// newFabric, currentSHA, commitMessageAt, lyxtest.CopyWeft,
+// newFabric, currentSHA, commitMessageAt, gitkit.CopyWeft,
 // writeWeftConfigContent, seedFabricConfig) rather than redefining them,
 // since all four files share this package.
 
@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // changeEntryPaths returns the Path of every entry in entries whose Side
@@ -52,7 +52,7 @@ func containsPath(paths []string, want string) bool {
 // side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
@@ -95,7 +95,7 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 // side coming back empty (which is what a strictly exact-only anchor would produce).
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
@@ -117,8 +117,8 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 	if err := os.WriteFile(manualPath, []byte("weft change 2, manual, not recorded"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", ".")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "manual weft commit ahead of last sync")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", ".")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "manual weft commit ahead of last sync")
 
 	got, err := f.Diff(warpSHA2)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	initialWarpSHA := currentSHA(t, warpPath)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
@@ -179,7 +179,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	// One CommitWeft round first, so ensureWeftLockDir has already seeded

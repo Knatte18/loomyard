@@ -25,9 +25,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
@@ -167,7 +167,7 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	}
 
 	weftTarget := fabricengine.WeftWorktreePath(l, slug)
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "lock", weftTarget)
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "lock", weftTarget)
 
 	_, err := topology.Remove(l, slug, true)
 	if err == nil {

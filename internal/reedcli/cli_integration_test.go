@@ -1,7 +1,7 @@
 //go:build integration
 
 // cli_integration_test.go holds the reedcli tests that seed a real paired
-// git-repo fixture (lyxtest.CopyPaired) with reed config resolution against a
+// git-repo fixture (gitkit.CopyPaired) with reed config resolution against a
 // real fixture hub, so this file is integration-tagged per the Test Tier
 // Purity Invariant.
 
@@ -14,15 +14,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // TestRunCLI_ResolvesLayoutAndConfig seeds a real reed.yaml into a fixture hub and verifies config
 // resolution succeeds.
 func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 
@@ -52,8 +52,8 @@ func TestRunCLI_ResolvesLayoutAndConfig(t *testing.T) {
 // TestRunCLI_AddNotUp_FriendlyError verifies that running `add` before `up` surfaces the friendly
 // "no reed session" error.
 func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)
@@ -78,8 +78,8 @@ func TestRunCLI_AddNotUp_FriendlyError(t *testing.T) {
 // TestRunCLI_RemoveNotUp_FriendlyError verifies that running `remove` before `up` surfaces the
 // friendly "no reed session" error.
 func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	t.Chdir(fixture.Hub)
@@ -104,8 +104,8 @@ func TestRunCLI_RemoveNotUp_FriendlyError(t *testing.T) {
 // TestRunCLI_StatusNotUp_EnrichedResumeHint verifies that running `status` before `up` with
 // persisted strands surfaces the enriched "lyx reed resume" message.
 func TestRunCLI_StatusNotUp_EnrichedResumeHint(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 

@@ -30,7 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -771,13 +771,13 @@ func claudeBinaryPath(t *testing.T) string {
 
 // materializeSibling clones the fixture's bare origin into a second worktree
 // alongside the primary hub and seeds reed config into it.
-func materializeSibling(t *testing.T, fixture lyxtest.PairedFixture, name string) string {
+func materializeSibling(t *testing.T, fixture gitkit.PairedFixture, name string) string {
 	t.Helper()
 	sibling := filepath.Join(fixture.Container, name)
-	lyxtest.MustRun(t, fixture.Container, "git", "clone", fixture.Bare, sibling)
-	lyxtest.MustRun(t, sibling, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, sibling, "git", "config", "user.name", "Test")
-	lyxtest.SeedConfig(t, sibling, map[string]string{
+	gitkit.MustRun(t, fixture.Container, "git", "clone", fixture.Bare, sibling)
+	gitkit.MustRun(t, sibling, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, sibling, "git", "config", "user.name", "Test")
+	gitkit.SeedConfig(t, sibling, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	return sibling

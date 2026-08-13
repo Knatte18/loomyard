@@ -47,7 +47,7 @@ const boardGuardMinScannedFiles = 5
 
 // TestBoardGuard_NoRawGitImportOrShellOut walks internal/boardengine's non-test *.go files
 // (skipping the boardtest subdirectory, a sibling package of integration tests that legitimately
-// spawn git via lyxtest.CopyWeft, not production code this guard's ban applies to) and fails if any
+// spawn git via gitkit.CopyWeft, not production code this guard's ban applies to) and fails if any
 // file imports internal/gitrepo or internal/gitexec directly, or shells out to `git` via
 // exec.Command/exec.CommandContext.
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {

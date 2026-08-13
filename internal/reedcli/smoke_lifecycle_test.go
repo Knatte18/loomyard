@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -19,8 +19,8 @@ import (
 func TestSmokeUpAddStatusDown(t *testing.T) {
 	tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -92,8 +92,8 @@ func TestSmokeUpAddStatusDown(t *testing.T) {
 func TestSmokeStackedAddsKeepEverySessionPane(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -170,8 +170,8 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 		t.Skip("corpse-pane-adoption premise is PSMUX-SPECIFIC; on native tmux, removing a session's sole strand destroys the session instead of corpsing its pane, so this scenario cannot occur here (see TestRemoveStrand_SoleStrandEmptiesSessionSucceeds for the tmux-side coverage)")
 	}
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -227,8 +227,8 @@ func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
 func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -312,8 +312,8 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 	lyxExe := buildLyxBinary(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -365,8 +365,8 @@ func TestSmokeHeaderPaneDisplaysRenderedHeaderText(t *testing.T) {
 func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)

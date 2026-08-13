@@ -598,7 +598,7 @@ var fabricVocabularyOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
 	"internal/weftname":     true,
-	"internal/lyxtest":      true,
+	"internal/gitkit":       true,
 	"internal/boardengine":  true,
 	configsyncOwnerDir:      true,
 	// internal/fabricengine/fabrictest is a directory of non-test .go files (the hub factory
@@ -613,7 +613,7 @@ var fabricVocabularyOwners = map[string]bool{
 var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
-	"internal/lyxtest":      true,
+	"internal/gitkit":       true,
 	// internal/fabricengine/fabrictest imports weftname for the weft-suffix hostile input its
 	// hostile-input cells construct, so it is an owner for this narrower import rule too.
 	"internal/fabricengine/fabrictest": true,
@@ -745,7 +745,7 @@ func importsWeftname(f *ast.File) bool {
 // owner set, that contains the bare token "weft" or "warp" (in an identifier, a string literal,
 // or a comment); it fails any such file, owner set or not, that contains a fabric-sense "host"
 // phrase -- host is retired, not merely scoped, so the owner set never carves out a host hit. It
-// also fails any file outside {fabricengine, fabriccli, lyxtest} that imports internal/weftname.
+// also fails any file outside {fabricengine, fabriccli, gitkit} that imports internal/weftname.
 // It additionally walks every internal/**/*.md file (a plain walk, not a //go:embed parse, so a
 // future non-embedded template is policed rather than silently skipped) for the same bare-token
 // and host-phrase rules. *_test.go files are excluded from all three rules -- rule (3) included,

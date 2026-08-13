@@ -22,13 +22,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// setupCLIRepo creates a hub via lyxtest.CopyWarpHub, changes into it, and writes a
+// setupCLIRepo creates a hub via gitkit.CopyWarpHub, changes into it, and writes a
 // _lyx/config/fabric.yaml config at the repo-wide board dir so RunCLI's
 // migrated topology-verb sites (LoadConfig(fabricengine.BoardDir(l.HubPath))) can
 // resolve it. f.Hub is the fixture's warp worktree root, i.e.
@@ -39,7 +39,7 @@ import (
 // required for RunCLI.
 func setupCLIRepo(t *testing.T) string {
 	t.Helper()
-	f := lyxtest.CopyWarpHub(t)
+	f := gitkit.CopyWarpHub(t)
 	t.Chdir(f.Hub)
 
 	boardDir := fabricengine.BoardDir(filepath.Dir(f.Hub))
@@ -168,7 +168,7 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	// A paired fixture (warp + weft sibling), not the warp-only setupCLIRepo
 	// fixture: Status bails out of the per-pair pollution scan early when the
 	// weft sibling is missing, so a paired fixture is required to reach it.
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
@@ -188,8 +188,8 @@ func TestRunCLI_PairsReportsPollutionEntryWithRemedy(t *testing.T) {
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	lyxtest.MustRun(t, fixture.Hub, "git", "add", "--", lyxdirs.LyxDirName)
-	lyxtest.MustRun(t, fixture.Hub, "git", "commit", "-m", "accidentally track _lyx")
+	gitkit.MustRun(t, fixture.Hub, "git", "add", "--", lyxdirs.LyxDirName)
+	gitkit.MustRun(t, fixture.Hub, "git", "commit", "-m", "accidentally track _lyx")
 
 	var out bytes.Buffer
 	exitCode := fabriccli.RunCLI(&out, []string{"pairs"})
@@ -311,7 +311,7 @@ func TestRunCLI_PullShortNonEmpty(t *testing.T) {
 // This is a serial test because it exercises the cwd-based push command which reads the current
 // directory.
 func TestRunCLI_EnvMapToOption(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	// Fabric config is a repo-wide fact read from the board dir (weft_verbs.go's
 	// migrated PersistentPreRunE), not from the weft-prime fixture's own _lyx —
@@ -360,7 +360,7 @@ func TestRunCLI_EnvMapToOption(t *testing.T) {
 // "_lyx" structurally — never from a raw, unfiltered Config.Dirs() that would silently drop it.
 // This is the single most breakage-prone edit in the whole task: a miss here is silent, not loud.
 func TestRunCLI_SyncStillCommitsLyx_WhenRepoWidePathspecNamesOnlyPattern(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	// Repo-wide fabric.yaml names only "_extra" -- a single non-_lyx name --
 	// proving _lyx arrives from the routing set structurally, not from this
@@ -458,16 +458,16 @@ func makeCLICloneWarpBare(t *testing.T, dir, name string) string {
 	if err := os.Mkdir(bare, 0o755); err != nil {
 		t.Fatalf("mkdir bare: %v", err)
 	}
-	lyxtest.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.MustRun(t, bare, "git", "init", "--bare")
 
 	scratch := filepath.Join(dir, "scratch-"+name)
 	if err := os.Mkdir(scratch, 0o755); err != nil {
 		t.Fatalf("mkdir scratch: %v", err)
 	}
-	lyxtest.MustRun(t, scratch, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, scratch, "git", "config", "user.name", "Test")
-	lyxtest.MustRun(t, scratch, "git", "remote", "add", "origin", filepath.ToSlash(bare))
+	gitkit.MustRun(t, scratch, "git", "init", "-b", "main")
+	gitkit.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, scratch, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, scratch, "git", "remote", "add", "origin", filepath.ToSlash(bare))
 
 	if err := os.WriteFile(filepath.Join(scratch, "README.md"), []byte("# "+name), 0o644); err != nil {
 		t.Fatalf("write README: %v", err)
@@ -480,9 +480,9 @@ func makeCLICloneWarpBare(t *testing.T, dir, name string) string {
 		t.Fatalf("write backend marker: %v", err)
 	}
 
-	lyxtest.MustRun(t, scratch, "git", "add", "README.md", "backend")
-	lyxtest.MustRun(t, scratch, "git", "commit", "-m", "init")
-	lyxtest.MustRun(t, scratch, "git", "push", "-u", "origin", "main")
+	gitkit.MustRun(t, scratch, "git", "add", "README.md", "backend")
+	gitkit.MustRun(t, scratch, "git", "commit", "-m", "init")
+	gitkit.MustRun(t, scratch, "git", "push", "-u", "origin", "main")
 
 	return bare
 }
@@ -495,7 +495,7 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	t.Helper()
 
 	bare := filepath.Join(dir, name+".git")
-	lyxtest.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
+	gitkit.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
 	return bare
 }
 
@@ -651,7 +651,7 @@ func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
 
 // gitOutputCLI runs a git command in dir and returns its trimmed stdout,
 // failing the test on any error — this package's capture-variant sibling of
-// lyxtest.MustRun, which discards output. Named distinctly from
+// gitkit.MustRun, which discards output. Named distinctly from
 // internal/fabricengine's own gitOutput test helper since the two packages
 // share no test code.
 func gitOutputCLI(t *testing.T, dir string, args ...string) string {
@@ -696,8 +696,8 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	}
 
 	boardDir := fabricengine.BoardDir(hubPath)
-	lyxtest.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
-	lyxtest.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
+	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
+	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
 
 	t.Chdir(filepath.Join(hubPath, "reconcilecli-warp"))
 
@@ -751,11 +751,11 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 	}
 
 	boardDir := fabricengine.BoardDir(hubPath)
-	lyxtest.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
-	lyxtest.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
+	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
+	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
 
 	unreachable := filepath.ToSlash(filepath.Join(fixtures, "does-not-exist.git"))
-	lyxtest.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
+	gitkit.MustRun(t, boardDir, "git", "remote", "set-url", "origin", unreachable)
 
 	t.Chdir(filepath.Join(hubPath, "reconcilecli-fail-warp"))
 
@@ -782,7 +782,7 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 // the pathspec-derived sweep, so its removal can never appear in junctions_removed — a CLI envelope
 // without its own key silently hid that the link was torn down.
 func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
@@ -824,7 +824,7 @@ func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
 // weft-sibling message, never the generic cwd-gate error — which names the weft's own anchored
 // directory as the place to stand and thereby directs the operator deeper INTO the weft.
 func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	// Record a subpath anchor so the weft ROOT is not the anchored directory.
 	boardDir := fabricengine.BoardDir(fixture.Container)
@@ -854,7 +854,7 @@ func TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal(t *testing.T) {
 // \"lyx fabric reconcile\"" — prescribing the command that just failed — and must instead
 // materialize the config and proceed.
 func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 	// Deliberately NO repo-wide fabric.yaml seeding — the state that used to produce the circular
 	// error.
 	t.Chdir(fixture.Hub)
@@ -877,7 +877,7 @@ func TestRunCLI_Reconcile_HealsMissingRepoWideConfig(t *testing.T) {
 // paired hub, since the weft-verb pair (status, diff) resolves its Fabric handle through the
 // PersistentPreRunE that only a real hub satisfies.
 func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
@@ -926,7 +926,7 @@ func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
 // object carries all four keys (check, what, target, reason), and that the flattened "error" string is
 // still present alongside it.
 func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	boardDir := fabricengine.BoardDir(fixture.Container)
 	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {

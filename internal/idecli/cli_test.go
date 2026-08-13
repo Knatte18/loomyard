@@ -12,14 +12,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/ideengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
 func TestRunCLISpawnDispatch(t *testing.T) {
 	// Create a real git repo so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
-	gitRepo := lyxtest.CopyWarpHub(t).Hub
+	gitRepo := gitkit.CopyWarpHub(t).Hub
 
 	t.Chdir(gitRepo)
 
@@ -117,7 +117,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 // TestRunCLI_MissingSlug verifies that "lyx ide spawn" with no slug errors appropriately.
 func TestRunCLI_MissingSlug(t *testing.T) {
 	// Requires a git repo so the PersistentPreRunE can resolve layout.
-	gitRepo := lyxtest.CopyWarpHub(t).Hub
+	gitRepo := gitkit.CopyWarpHub(t).Hub
 	t.Chdir(gitRepo)
 
 	var out bytes.Buffer

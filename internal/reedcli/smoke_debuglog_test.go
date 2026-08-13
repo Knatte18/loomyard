@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -29,8 +29,8 @@ func TestSmokeDebugLog(t *testing.T) {
 
 	t.Setenv("LYX_REED_DEBUG", "1")
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)
@@ -161,8 +161,8 @@ func TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs(t *testing.
 	tmuxPath := tmuxBinaryPath(t)
 	t.Setenv("LYX_REED_DEBUG", "2")
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)

@@ -4,7 +4,7 @@
 // The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is
 // restated here through Open(l), the constructor the contract now belongs to, using a hand-built
 // Location rather than a real git fixture — the fast Tier-1 home for this contract.
-// open_integration_test.go pins the identical contract end-to-end against a real paired lyxtest
+// open_integration_test.go pins the identical contract end-to-end against a real paired gitkit
 // fixture (CopyPaired; TestOpen_MissingWarpWorktree / TestOpen_MissingSiblingWorktree); that is the Tier-2 home,
 // not a duplicate of these — these prove the pure stat-check logic without a git spawn.
 

@@ -21,7 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // currentSHAOf returns the full SHA of HEAD at dir via git rev-parse HEAD,
@@ -46,8 +46,8 @@ func commitFile(t *testing.T, dir, name, content, msg string) string {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", "--", name)
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", msg)
+	gitkit.MustRun(t, dir, "git", "add", "--", name)
+	gitkit.MustRun(t, dir, "git", "commit", "-m", msg)
 	return currentSHAOf(t, dir)
 }
 
@@ -200,7 +200,7 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
 	}
 
-	lyxtest.MustRun(t, fixture.Layout.WorktreePath(), "git", "checkout", "--detach")
+	gitkit.MustRun(t, fixture.Layout.WorktreePath(), "git", "checkout", "--detach")
 
 	if _, err := f.CurrentBranch(); err == nil {
 		t.Fatalf("CurrentBranch() on detached HEAD error = nil; want non-nil")

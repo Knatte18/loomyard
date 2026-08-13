@@ -28,9 +28,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
@@ -90,7 +90,7 @@ func readExcludeLines(t *testing.T, l *lyxcwd.Location, slug string) []string {
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -136,8 +136,8 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -191,8 +191,8 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -244,8 +244,8 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -298,8 +298,8 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 	if err := os.WriteFile(trackedFile, []byte("# constraints\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxdirs.LyxDirName)
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _lyx")
+	gitkit.MustRun(t, l.WorktreePath(), "git", "add", "--", lyxdirs.LyxDirName)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _lyx")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	result, err := topology.Status(l)
@@ -395,8 +395,8 @@ func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 	if err := os.WriteFile(trackedFile, []byte("# notes\n"), 0o644); err != nil {
 		t.Fatalf("write tracked file: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", "--", "_raddle")
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _raddle")
+	gitkit.MustRun(t, l.WorktreePath(), "git", "add", "--", "_raddle")
+	gitkit.MustRun(t, l.WorktreePath(), "git", "commit", "-m", "accidentally track _raddle")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	result, err := topology.Status(l)
@@ -505,12 +505,12 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				fixture := lyxtest.CopyPairedLocal(t)
-				lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+				fixture := gitkit.CopyPairedLocal(t)
+				gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 					"fabric": fabricengine.ConfigTemplate(),
 				})
 				seedRepoWideExtraFabricConfig(t, fixture.Layout.HubPath)
-				lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+				gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 				l := fixture.Layout
 				slug := filepath.Base(fixture.Hub)
@@ -681,8 +681,8 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
@@ -737,7 +737,7 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout

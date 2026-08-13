@@ -4,7 +4,7 @@
 // wiring around the correspondence index: gitdir resolution, the
 // RecordCorrespondence/WeftSHAForWarpSHA round trip, and RebuildIndex's
 // trailer scan. Package-internal (not fabricengine_test) because it asserts
-// on weftGitDir, an unexported method. Uses lyxtest.CopyWeft for the weft
+// on weftGitDir, an unexported method. Uses gitkit.CopyWeft for the weft
 // side and a minimal, locally-built plain git repo for the warp side —
 // fabric's warp is just an ordinary warp repo, so these tests need none of
 // CopyWeft's upstream-tracking setup or CopyPaired's junction/portal wiring
@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on
@@ -31,14 +31,14 @@ func newPlainWarpRepo(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
 	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", ".")
-	lyxtest.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
+	gitkit.MustRun(t, dir, "git", "add", ".")
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
 	return dir
 }
 
@@ -63,8 +63,8 @@ func commitWarp(t *testing.T, warpPath, content string) string {
 	if err := os.WriteFile(filepath.Join(warpPath, "README"), []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, warpPath, "git", "add", ".")
-	lyxtest.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
+	gitkit.MustRun(t, warpPath, "git", "add", ".")
+	gitkit.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
 	return currentSHA(t, warpPath)
 }
 
@@ -78,9 +78,9 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", ".")
+	gitkit.MustRun(t, weftPath, "git", "add", ".")
 	msg := appendWarpSHATrailer("weft sync", warpSHA)
-	lyxtest.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
+	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
 	return currentSHA(t, weftPath)
 }
 
@@ -103,7 +103,7 @@ func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	gitDir, err := f.weftGitDir()
@@ -123,7 +123,7 @@ func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA := commitWarp(t, warpPath, "warp change 1")
@@ -148,7 +148,7 @@ func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA := commitWarp(t, warpPath, "warp change, never synced")
@@ -166,7 +166,7 @@ func TestRebuildIndex_ReproducesTrailerHistory(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA1 := commitWarp(t, warpPath, "warp change 1")

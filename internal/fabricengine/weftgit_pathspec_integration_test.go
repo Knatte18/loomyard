@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -80,7 +80,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "newmodule", "newfile.txt"), "brand new, never staged")
@@ -112,13 +112,13 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	trackedPath := filepath.Join(weftFixture.WeftPath, "_lyx", "trackedfile.txt")
 	mustWriteFileWeft(t, trackedPath, "tracked content")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "_lyx/trackedfile.txt")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "seed tracked file")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "_lyx/trackedfile.txt")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "seed tracked file")
 
 	// Delete from disk only — the file survives in the index until something
 	// stages the deletion. This is the exact state undo.go's os.RemoveAll
@@ -154,7 +154,7 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	mustWriteFileWeft(t, filepath.Join(weftFixture.WeftPath, "_lyx", "durable.txt"), "durable state")
@@ -192,7 +192,7 @@ func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T)
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	preSHA := currentSHA(t, weftFixture.WeftPath)
@@ -281,7 +281,7 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 		t.Parallel()
 
 		warpPath := newPlainWarpRepo(t)
-		weftFixture := lyxtest.CopyWeft(t)
+		weftFixture := gitkit.CopyWeft(t)
 		f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 		if _, err := os.Stat(filepath.Join(weftFixture.WeftPath, "_extra")); !os.IsNotExist(err) {
@@ -306,7 +306,7 @@ func TestCommitWeft_WidenedPathspecTolerance_LyxChangeStillCommitsWithEmptyOptio
 		t.Parallel()
 
 		warpPath := newPlainWarpRepo(t)
-		weftFixture := lyxtest.CopyWeft(t)
+		weftFixture := gitkit.CopyWeft(t)
 		f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 		// git tracks files, not directories: a materialised-but-empty

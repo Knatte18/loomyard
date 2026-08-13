@@ -30,9 +30,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // findReconcilePair returns the ReconcilePairResult for weftPath, failing the
@@ -381,12 +381,12 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	// Deliberately skip lyxtest.SeedConfig at fixture.WeftPrime — the point
+	fixture := gitkit.CopyPairedLocal(t)
+	// Deliberately skip gitkit.SeedConfig at fixture.WeftPrime — the point
 	// of this test is that no per-pair fabric.yaml exists, mirroring the new
 	// clone flow where only the repo-wide config is ever materialized.
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	l := fixture.Layout
 	topology := fabricengine.NewTopology(fabricengine.Config{})
@@ -412,7 +412,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 
 	// Topology.Checkout must not hard-fail/rollback re-pointing junctions
 	// after the branch switch.
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", "repo-wide-checkout-target")
+	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", "repo-wide-checkout-target")
 	if _, err := topology.Checkout(l, "repo-wide-checkout-target"); err != nil {
 		t.Errorf("Checkout with repo-wide-only config = %v; want success", err)
 	}

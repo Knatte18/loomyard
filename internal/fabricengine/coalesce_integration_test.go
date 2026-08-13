@@ -7,7 +7,7 @@
 // spinning. Package fabricengine (internal), reusing this package's existing
 // fixture helpers (newPlainWarpRepo, currentSHA, newFabric from
 // index_integration_test.go; seedFabricConfig/writeWarpFile from
-// commit_integration_test.go) plus lyxtest for bare-remote setup.
+// commit_integration_test.go) plus gitkit for bare-remote setup.
 
 package fabricengine
 
@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // addWarpBareRemote creates a bare git repository at <dir>/warp-remote.git,
@@ -31,9 +31,9 @@ func addWarpBareRemote(t *testing.T, dir, warpPath string) string {
 	t.Helper()
 
 	bare := filepath.Join(dir, "warp-remote.git")
-	lyxtest.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
-	lyxtest.MustRun(t, warpPath, "git", "remote", "add", "origin", filepath.ToSlash(bare))
-	lyxtest.MustRun(t, warpPath, "git", "push", "-u", "origin", "main")
+	gitkit.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
+	gitkit.MustRun(t, warpPath, "git", "remote", "add", "origin", filepath.ToSlash(bare))
+	gitkit.MustRun(t, warpPath, "git", "push", "-u", "origin", "main")
 	return bare
 }
 
@@ -47,8 +47,8 @@ func commitPlain(t *testing.T, dir, name, content string) string {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", name)
-	lyxtest.MustRun(t, dir, "git", "commit", "-q", "-m", content)
+	gitkit.MustRun(t, dir, "git", "add", name)
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", content)
 	return currentSHA(t, dir)
 }
 
@@ -95,7 +95,7 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
 	warpSHA := commitPlain(t, warpPath, "warp-file.txt", "warp change")
 
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change")
 
 	if _, err := CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{}); err != nil {
@@ -128,17 +128,17 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	// A second clone advances the bare remote past what warpPath's checkout
 	// has, setting up the divergence: warpPath's next push will be rejected.
 	warpClone2 := filepath.Join(fixtures, "warp-clone-2")
-	lyxtest.MustRun(t, fixtures, "git", "clone", warpBare, warpClone2)
-	lyxtest.MustRun(t, warpClone2, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, warpClone2, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, fixtures, "git", "clone", warpBare, warpClone2)
+	gitkit.MustRun(t, warpClone2, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, warpClone2, "git", "config", "user.name", "Test")
 	commitPlain(t, warpClone2, "other.txt", "from second clone")
-	lyxtest.MustRun(t, warpClone2, "git", "push")
+	gitkit.MustRun(t, warpClone2, "git", "push")
 
 	// warpPath now commits locally too, without ever having fetched the
 	// second clone's commit — its next push is a genuine non-fast-forward.
 	commitPlain(t, warpPath, "warp-file.txt", "warp change that will be rejected")
 
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 
 	bareHeadBefore := bareBranchSHA(t, warpBare, "main")
 	wantWarpFileContent, err := os.ReadFile(filepath.Join(warpPath, "warp-file.txt"))
@@ -195,7 +195,7 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 		}
 	})
 
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change, no warp")
 
 	if _, err := CoalescePushBothAt("", weftFixture.WeftPath, SyncOptions{}); err != nil {

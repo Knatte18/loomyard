@@ -34,10 +34,10 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's
@@ -130,7 +130,7 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 	t.Helper()
 
 	warpPath = newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	seedFabricConfig(t, warpPath)
 	f = newFabric(t, warpPath, weftFixture.WeftPath)
 	return f, warpPath, weftFixture.WeftPath
@@ -551,15 +551,15 @@ func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
 // newUnbornWeftRepo creates a minimal, isolated git repo at t.TempDir() on
 // branch main with NO commits — an unborn weft HEAD — mirroring
 // newUnbornWarpRepo (weftgit_unborn_warp_test.go) so the warp and weft
-// unborn fixtures read as the pair they are. lyxtest.CopyWeft's fixture
+// unborn fixtures read as the pair they are. gitkit.CopyWeft's fixture
 // already carries commits, so it cannot reach this state.
 func newUnbornWeftRepo(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
 	return dir
 }
 
@@ -710,7 +710,7 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 // record yet.
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 	swapPushRecorder(t)
@@ -880,7 +880,7 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 	if err := os.WriteFile(filepath.Join(weftPath, "leftover.txt"), []byte("staged by an aborted earlier run"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", "leftover.txt")
+	gitkit.MustRun(t, weftPath, "git", "add", "leftover.txt")
 
 	// _lyx/config.yaml is left at its fixture-default content, so the
 	// weft-side pathspec's own StageAndCommit reports committed=false and
@@ -919,7 +919,7 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 // matching nothing and one snapshot tag, it lands the empty commit.
 func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	sha, committed, err := f.commitWeft([]string{"doesnotexist"}, DefaultCommitMessage, SyncOptions{}, "raddle")

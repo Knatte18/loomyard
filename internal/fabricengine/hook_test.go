@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // resolveCommonHooksDir returns the common git hooks directory for the repo
@@ -48,7 +48,7 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	f := lyxtest.CopyWarpHub(t)
+	f := gitkit.CopyWarpHub(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -95,7 +95,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 
 	const userHookContent = "#!/bin/sh\necho user\n"
 
-	f := lyxtest.CopyWarpHub(t)
+	f := gitkit.CopyWarpHub(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -159,7 +159,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
 
-	f := lyxtest.CopyPairedLocal(t)
+	f := gitkit.CopyPairedLocal(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -172,11 +172,11 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 
 	// Put the weft prime on the suffixed branch that pairs with warp "main"
 	// under fabric's uniform scheme — this is the in-sync state.
-	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", WeftBranchName("main"))
+	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", WeftBranchName("main"))
 
 	// Create a scratch branch in the warp prime so we have something to switch
 	// away from and back to "main".
-	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "hook-prime-scratch")
+	gitkit.MustRun(t, f.Hub, "git", "checkout", "-b", "hook-prime-scratch")
 
 	// Warp back to main while weft sits on "main-weft": in sync, no warning.
 	cmd := exec.Command("git", "checkout", "main")
@@ -187,10 +187,10 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	}
 
 	// Diverge: move weft to a branch that is not the suffixed pairing.
-	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", "hook-prime-weft-side")
+	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", "hook-prime-weft-side")
 
 	// Switch warp away and back to fire the hook again with weft diverged.
-	lyxtest.MustRun(t, f.Hub, "git", "checkout", "hook-prime-scratch")
+	gitkit.MustRun(t, f.Hub, "git", "checkout", "hook-prime-scratch")
 	cmd = exec.Command("git", "checkout", "main")
 	cmd.Dir = f.Hub
 	out, _ = cmd.CombinedOutput()
@@ -216,7 +216,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 
 	const slug = "hook-child-test"
 
-	f := lyxtest.CopyPairedLocal(t)
+	f := gitkit.CopyPairedLocal(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -226,11 +226,11 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	// own Add verb lands in a later batch; this test only needs a warp/weft
 	// worktree pair on disk to exercise the hook script itself.
 	childWarp := WorktreePath(l, slug)
-	lyxtest.MustRun(t, f.Hub, "git", "worktree", "add", childWarp, "-b", slug)
+	gitkit.MustRun(t, f.Hub, "git", "worktree", "add", childWarp, "-b", slug)
 
 	weftBranch := WeftBranchName(slug)
 	childWeft := WeftWorktreePath(l, slug)
-	lyxtest.MustRun(t, f.WeftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
+	gitkit.MustRun(t, f.WeftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
 	// Install the hook (affects the shared common .git/hooks for the warp repo,
 	// which covers the warp prime and every warp child worktree).
@@ -241,7 +241,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 	// Create a second branch in the child warp so we have two branches to switch
 	// between (avoids the git constraint that a branch can only be checked out in
 	// one worktree at a time).
-	lyxtest.MustRun(t, childWarp, "git", "checkout", "-b", "hook-warp-alt")
+	gitkit.MustRun(t, childWarp, "git", "checkout", "-b", "hook-warp-alt")
 
 	// Child warp back to slug while weft sits on its correctly-suffixed branch:
 	// in sync, no warning.
@@ -254,10 +254,10 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 
 	// Move the weft child to a different branch — this creates the divergence the
 	// hook should detect. The weft branch is independent of the warp's branches.
-	lyxtest.MustRun(t, childWeft, "git", "checkout", "-b", "hook-weft-diverge")
+	gitkit.MustRun(t, childWeft, "git", "checkout", "-b", "hook-weft-diverge")
 
 	// Switch warp away and back to fire the hook again with weft diverged.
-	lyxtest.MustRun(t, childWarp, "git", "checkout", "hook-warp-alt")
+	gitkit.MustRun(t, childWarp, "git", "checkout", "hook-warp-alt")
 	cmd = exec.Command("git", "checkout", slug)
 	cmd.Dir = childWarp
 	out, _ = cmd.CombinedOutput()
@@ -276,7 +276,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 	t.Parallel()
 
-	f := lyxtest.CopyWarpHub(t)
+	f := gitkit.CopyWarpHub(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
@@ -337,7 +337,7 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
 	t.Parallel()
 
-	f := lyxtest.CopyWarpHub(t)
+	f := gitkit.CopyWarpHub(t)
 	l, err := lyxcwd.Resolve(f.Hub)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)

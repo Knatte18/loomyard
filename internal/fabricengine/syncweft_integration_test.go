@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // writeWeftConfigContent overwrites the tracked _lyx/config.yaml file
@@ -57,7 +57,7 @@ func commitMessageAt(t *testing.T, repoPath, rev string) string {
 // index whose entries are identical to the incrementally-built one.
 func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	seedFabricConfig(t, warpPath)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
@@ -114,8 +114,8 @@ func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 	t.Helper()
 
-	lyxtest.MustRun(t, repoPath, "git", "reflog", "expire", "--expire=now", "--all")
-	lyxtest.MustRun(t, repoPath, "git", "gc", "--prune=now", "-q")
+	gitkit.MustRun(t, repoPath, "git", "reflog", "expire", "--expire=now", "--all")
+	gitkit.MustRun(t, repoPath, "git", "gc", "--prune=now", "-q")
 }
 
 // TestWeftSHAForWarpSHA_DetachedPathSelfCorrection covers the CLI detached path's self-correction:
@@ -125,7 +125,7 @@ func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 // WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving (amended) trailer commit.
 func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA := commitWarp(t, warpPath, "warp change")
@@ -153,8 +153,8 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	// second can otherwise tie on every field), so this guarantees a
 	// genuinely new commit object while --no-edit preserves the trailer.
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, amended")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "--amend", "--no-edit")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "--amend", "--no-edit")
 	postAmendSHA := currentSHA(t, weftFixture.WeftPath)
 	if postAmendSHA == preAmendSHA {
 		t.Fatalf("amend did not change the weft SHA")
@@ -180,7 +180,7 @@ func staleCorrespondenceFixture(t *testing.T) (f *Fabric, warpSHA string) {
 	t.Helper()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f = newFabric(t, warpPath, weftFixture.WeftPath)
 
 	baseWeftSHA := currentSHA(t, weftFixture.WeftPath)
@@ -201,7 +201,7 @@ func staleCorrespondenceFixture(t *testing.T) (f *Fabric, warpSHA string) {
 	// Discard the trailer commit from history entirely, then force git to
 	// genuinely forget the orphaned object — RebuildIndex's scan will find
 	// no trailer naming warpSHA anywhere afterwards.
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "reset", "--hard", baseWeftSHA)
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "reset", "--hard", baseWeftSHA)
 	expireAndPruneUnreachable(t, weftFixture.WeftPath)
 
 	return f, warpSHA

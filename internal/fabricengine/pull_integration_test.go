@@ -9,7 +9,7 @@
 // commitWarp, currentSHA, newFabric (index_integration_test.go);
 // addWarpBareRemote, commitPlain, bareBranchSHA (coalesce_integration_test.go);
 // writeWeftConfigContent (syncweft_integration_test.go) — plus
-// lyxtest.CopyWeft for the weft side, whose upstream tracking lets PullWeft's
+// gitkit.CopyWeft for the weft side, whose upstream tracking lets PullWeft's
 // ff-pull no-op cleanly in every test that does not deliberately diverge weft.
 
 package fabricengine
@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
@@ -34,13 +34,13 @@ import (
 // synced warp<->weft correspondences, returning the Fabric handle, both worktree
 // paths, the bare remote's path, the initial warp SHA (the root for no-surviving-anchor),
 // and the recorded warp/weft SHA pairs in commit order.
-func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *Fabric, warpPath, bareDir string, weftFixture lyxtest.WeftFixture, initWarpSHA string, warpSHAs, weftSHAs []string) {
+func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *Fabric, warpPath, bareDir string, weftFixture gitkit.WeftFixture, initWarpSHA string, warpSHAs, weftSHAs []string) {
 	t.Helper()
 
 	warpPath = newPlainWarpRepo(t)
 	bareDir = addWarpBareRemote(t, fixturesDir, warpPath)
 	initWarpSHA = currentSHA(t, warpPath)
-	weftFixture = lyxtest.CopyWeft(t)
+	weftFixture = gitkit.CopyWeft(t)
 	f = newFabric(t, warpPath, weftFixture.WeftPath)
 
 	for i := 0; i < n; i++ {
@@ -57,7 +57,7 @@ func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *Fabric, 
 		weftSHAs = append(weftSHAs, weftSHA)
 	}
 
-	lyxtest.MustRun(t, warpPath, "git", "push", "origin", "main")
+	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
 	return f, warpPath, bareDir, weftFixture, initWarpSHA, warpSHAs, weftSHAs
 }
 
@@ -70,12 +70,12 @@ func rewriteWarpRemoteHistory(t *testing.T, fixturesDir, bareDir, resetToSHA str
 	t.Helper()
 
 	clone := filepath.Join(fixturesDir, "warp-clone-rewrite")
-	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
-	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
-	lyxtest.MustRun(t, clone, "git", "reset", "--hard", resetToSHA)
+	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	gitkit.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, clone, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, clone, "git", "reset", "--hard", resetToSHA)
 	commitPlain(t, clone, "rewritten.txt", "rewritten history")
-	lyxtest.MustRun(t, clone, "git", "push", "--force", "origin", "main")
+	gitkit.MustRun(t, clone, "git", "push", "--force", "origin", "main")
 	return currentSHA(t, clone)
 }
 
@@ -265,15 +265,15 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(lyxDir, "PATTERN.md"), []byte("pattern content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern residue commit")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern residue commit")
 	patternCommitSHA := currentSHA(t, weftFixture.WeftPath)
 
 	if err := os.WriteFile(filepath.Join(weftFixture.WeftPath, "unrelated.txt"), []byte("unrelated"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "unrelated residue commit")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "unrelated residue commit")
 
 	configDir := filepath.Join(lyxDir, "config")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -282,8 +282,8 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configDir, "fabric.yaml"), []byte("junctions: []\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "config residue commit")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "config residue commit")
 
 	patternDetailDir := filepath.Join(lyxDir, "pattern")
 	if err := os.MkdirAll(patternDetailDir, 0o755); err != nil {
@@ -292,8 +292,8 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(patternDetailDir, "detail.md"), []byte("detail content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern detail residue commit")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern detail residue commit")
 	patternDetailCommitSHA := currentSHA(t, weftFixture.WeftPath)
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
@@ -404,11 +404,11 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	preWeftHEAD := currentSHA(t, weftFixture.WeftPath)
 
 	clone := filepath.Join(fixturesDir, "warp-clone-ff")
-	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
-	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	gitkit.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, clone, "git", "config", "user.name", "Test")
 	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
-	lyxtest.MustRun(t, clone, "git", "push")
+	gitkit.MustRun(t, clone, "git", "push")
 
 	result, err := f.Pull(SyncOptions{})
 	if err != nil {
@@ -443,28 +443,28 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	fixturesDir := t.TempDir()
 	warpPath := newPlainWarpRepo(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
-	lyxtest.MustRun(t, warpPath, "git", "push", "origin", "main")
+	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
 
 	// A weft repo whose branch has no upstream at all — the post-bootstrap state before any push.
 	weftPath := t.TempDir()
-	lyxtest.MustRun(t, weftPath, "git", "init", "-q", "-b", "main-weft")
-	lyxtest.MustRun(t, weftPath, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, weftPath, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, weftPath, "git", "init", "-q", "-b", "main-weft")
+	gitkit.MustRun(t, weftPath, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, weftPath, "git", "config", "user.name", "Test")
 	if err := os.WriteFile(filepath.Join(weftPath, "seed.txt"), []byte("weft"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", ".")
-	lyxtest.MustRun(t, weftPath, "git", "commit", "-q", "-m", "init")
+	gitkit.MustRun(t, weftPath, "git", "add", ".")
+	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", "init")
 
 	f := newFabric(t, warpPath, weftPath)
 
 	// Advance the warp remote so the warp half has real work to do.
 	clone := filepath.Join(fixturesDir, "warp-clone-noupstream")
-	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
-	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	gitkit.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, clone, "git", "config", "user.name", "Test")
 	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
-	lyxtest.MustRun(t, clone, "git", "push")
+	gitkit.MustRun(t, clone, "git", "push")
 
 	result, err := f.Pull(SyncOptions{})
 	if err != nil {
@@ -525,11 +525,11 @@ func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 	preWarpHEAD := currentSHA(t, warpPath)
 
 	clone := filepath.Join(fixturesDir, "warp-clone-dirty-ff")
-	lyxtest.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
-	lyxtest.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, clone, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
+	gitkit.MustRun(t, clone, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, clone, "git", "config", "user.name", "Test")
 	commitPlain(t, clone, "ff-file.txt", "ff change")
-	lyxtest.MustRun(t, clone, "git", "push")
+	gitkit.MustRun(t, clone, "git", "push")
 
 	// Dirty a TRACKED warp file — the exact state ResetHard would destroy.
 	dirtyFile := filepath.Join(warpPath, "README")
@@ -566,14 +566,14 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
 	initWarpSHA := currentSHA(t, warpPath)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	// Warp commits happen, but nothing is ever synced to weft — the
 	// correspondence index stays empty.
 	commitWarp(t, warpPath, "warp change never synced 1")
 	commitWarp(t, warpPath, "warp change never synced 2")
-	lyxtest.MustRun(t, warpPath, "git", "push", "origin", "main")
+	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
 
 	newTip := rewriteWarpRemoteHistory(t, fixturesDir, bareDir, initWarpSHA)
 
@@ -601,17 +601,17 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	preWarpHEAD := currentSHA(t, warpPath)
 
 	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
-	lyxtest.MustRun(t, fixturesDir, "git", "clone", "-q", weftFixture.Bare, cloneB)
-	lyxtest.MustRun(t, cloneB, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, cloneB, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", weftFixture.Bare, cloneB)
+	gitkit.MustRun(t, cloneB, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, cloneB, "git", "config", "user.name", "Test")
 	commitPlain(t, cloneB, "from-clone-b.txt", "b")
-	lyxtest.MustRun(t, cloneB, "git", "push", "-q")
+	gitkit.MustRun(t, cloneB, "git", "push", "-q")
 
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
 	commitPlain(t, weftFixture.WeftPath, "local-only.txt", "local weft change")
@@ -656,8 +656,8 @@ func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(anchoredLyxDir, "PATTERN.md"), []byte("anchored pattern content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "anchored pattern residue commit")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "anchored pattern residue commit")
 	anchoredPatternSHA := currentSHA(t, weftFixture.WeftPath)
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])

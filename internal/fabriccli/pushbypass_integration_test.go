@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // headSHA returns dir's HEAD commit SHA.
@@ -40,8 +40,8 @@ func headSHA(t *testing.T, dir string) string {
 // asserts that --warp-path/--weft-path bypass push exits 0 and both bare upstreams' HEAD matches
 // their local checkout's HEAD.
 func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
-	weftFixture := lyxtest.CopyWeft(t)
-	warpFixture := lyxtest.CopyWarpHub(t)
+	weftFixture := gitkit.CopyWeft(t)
+	warpFixture := gitkit.CopyWarpHub(t)
 
 	// Add one more commit on top of the weft fixture's already-pushed "init"
 	// commit, so the weft side has something genuinely unpushed to push.
@@ -49,8 +49,8 @@ func TestRunCLI_BypassPushAdvancesBothUpstreams(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte("bypass push test"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "add", ".")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "weft bypass push")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", ".")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "weft bypass push")
 
 	wantWeftSHA := headSHA(t, weftFixture.WeftPath)
 	wantWarpSHA := headSHA(t, warpFixture.Hub)

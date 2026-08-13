@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -102,12 +102,12 @@ func writeClusterSmokeFixture(t *testing.T, hub string) string {
 // no burler.yaml seeding needed, since these tests exercise the fork
 // mechanism itself, not config loading (config.go's LoadConfig/ResolveFan
 // already has its own unit coverage).
-func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, lyxtest.PairedFixture) {
+func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, gitkit.PairedFixture) {
 	t.Helper()
 	claudeBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 	})

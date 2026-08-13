@@ -4,7 +4,7 @@
 // against real git fixtures — a paired warp+fabric worktree with a wired _lyx
 // junction and a seeded status.json — covering every pass/fail scenario
 // across all four preconditions. It is integration-tagged because it spawns
-// git via lyxtest fixtures (Test Tier Purity Invariant).
+// git via gitkit fixtures (Test Tier Purity Invariant).
 
 package loomengine
 
@@ -16,25 +16,25 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // setupPreflightFixture builds a fully-configured CopyPaired fixture with fabric
 // and junction setup, returning the fixture and the slug for WireJunctions.
-func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
+func setupPreflightFixture(t *testing.T) (gitkit.PairedFixture, string) {
 	t.Helper()
 
-	f := lyxtest.CopyPaired(t)
+	f := gitkit.CopyPaired(t)
 	slug := filepath.Base(f.Layout.WorktreePath())
 
-	lyxtest.SeedConfig(t, f.WeftPrime, map[string]string{
+	gitkit.SeedConfig(t, f.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, f.Layout.HubPath)
-	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
@@ -52,8 +52,8 @@ func setupPreflightFixture(t *testing.T) (lyxtest.PairedFixture, string) {
 	// out untracked. Commit them so a freshly-built fixture is genuinely
 	// clean on both sides — required now that Clean checks the fabric worktree
 	// too, not just the warp.
-	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
-	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
+	gitkit.MustRun(t, f.WeftPrime, "git", "add", "-A")
+	gitkit.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
 
 	return f, slug
 }
@@ -104,11 +104,11 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 
 // commitFabricStatus commits the current state of status.json in the fabric worktree,
 // isolating test scenarios from CheckWorktreeClean failures.
-func commitFabricStatus(t *testing.T, f lyxtest.PairedFixture) {
+func commitFabricStatus(t *testing.T, f gitkit.PairedFixture) {
 	t.Helper()
 
-	lyxtest.MustRun(t, f.WeftPrime, "git", "add", "-A")
-	lyxtest.MustRun(t, f.WeftPrime, "git", "commit", "-m", "update status")
+	gitkit.MustRun(t, f.WeftPrime, "git", "add", "-A")
+	gitkit.MustRun(t, f.WeftPrime, "git", "commit", "-m", "update status")
 }
 
 // restoreCwd saves the process cwd and restores it via t.Cleanup. Call it AFTER
@@ -252,11 +252,11 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 func TestPreflight_WarpDirty(t *testing.T) {
 	tests := []struct {
 		name  string
-		dirty func(t *testing.T, f lyxtest.PairedFixture)
+		dirty func(t *testing.T, f gitkit.PairedFixture)
 	}{
 		{
 			name: "TrackedModified",
-			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+			dirty: func(t *testing.T, f gitkit.PairedFixture) {
 				readme := filepath.Join(f.Hub, "README")
 				if err := os.WriteFile(readme, []byte("modified"), 0o644); err != nil {
 					t.Fatalf("modify README: %v", err)
@@ -265,17 +265,17 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		},
 		{
 			name: "Staged",
-			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+			dirty: func(t *testing.T, f gitkit.PairedFixture) {
 				readme := filepath.Join(f.Hub, "README")
 				if err := os.WriteFile(readme, []byte("staged"), 0o644); err != nil {
 					t.Fatalf("modify README: %v", err)
 				}
-				lyxtest.MustRun(t, f.Hub, "git", "add", "README")
+				gitkit.MustRun(t, f.Hub, "git", "add", "README")
 			},
 		},
 		{
 			name: "UntrackedOnly",
-			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+			dirty: func(t *testing.T, f gitkit.PairedFixture) {
 				untracked := filepath.Join(f.Hub, "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked file: %v", err)
@@ -284,7 +284,7 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		},
 		{
 			name: "DirtyFabricOnly",
-			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+			dirty: func(t *testing.T, f gitkit.PairedFixture) {
 				untracked := filepath.Join(f.WeftPrime, "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked fabric file: %v", err)
@@ -293,7 +293,7 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		},
 		{
 			name: "BothDirty",
-			dirty: func(t *testing.T, f lyxtest.PairedFixture) {
+			dirty: func(t *testing.T, f gitkit.PairedFixture) {
 				warpUntracked := filepath.Join(f.Hub, "untracked.txt")
 				if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked warp file: %v", err)
@@ -330,7 +330,7 @@ func TestPreflight_FabricNotReady(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	// Drive the not-present branch via the lyxtest fixture's own WeftPrime
+	// Drive the not-present branch via the gitkit fixture's own WeftPrime
 	// field rather than fabricengine.WeftWorktree(f.Layout): check 3 now
 	// goes through fabricengine.Ready(l), and the fixture field is the
 	// independent source of the same path.
@@ -355,7 +355,7 @@ func TestPreflight_WarpFabricDifferentBranches(t *testing.T) {
 
 	f, _ := setupPreflightFixture(t)
 
-	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
+	gitkit.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {
@@ -447,17 +447,17 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 
 	junctions := []struct {
 		name       string
-		linkFor    func(f lyxtest.PairedFixture, slug string) string
+		linkFor    func(f gitkit.PairedFixture, slug string) string
 		wantChecks []CheckID // in addition to CheckJunction, which every case wants
 	}{
 		{
 			name:       "Lyx",
-			linkFor:    func(f lyxtest.PairedFixture, slug string) string { return fabricengine.WarpLyxLink(f.Layout, slug) },
+			linkFor:    func(f gitkit.PairedFixture, slug string) string { return fabricengine.WarpLyxLink(f.Layout, slug) },
 			wantChecks: []CheckID{CheckSeedUnreadable},
 		},
 		{
 			name: "Extra",
-			linkFor: func(f lyxtest.PairedFixture, slug string) string {
+			linkFor: func(f gitkit.PairedFixture, slug string) string {
 				return filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, "_extra")
 			},
 			wantChecks: nil,
@@ -664,7 +664,7 @@ func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 		t.Fatalf("write untracked file: %v", err)
 	}
-	lyxtest.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
+	gitkit.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
 
 	report, err := checkResolved(f.Layout)
 	if err != nil {

@@ -10,7 +10,7 @@
 // `go test -tags scout` can even run — so it runs unconditionally
 // under the tag; there is deliberately no t.Skip here. This test spawns
 // `go install` and the freshly installed gopls binary, never git, so no
-// TestMain/lyxtest.HermeticGitEnv is required per the Hermetic Git Test
+// TestMain/gitkit.HermeticGitEnv is required per the Hermetic Git Test
 // Environment Invariant.
 
 package scoutengine

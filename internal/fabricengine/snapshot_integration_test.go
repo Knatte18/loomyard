@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // commitWeftTagged advances the warp repo by one commit, writes new content
@@ -60,9 +60,9 @@ func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) 
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", ".")
+	gitkit.MustRun(t, weftPath, "git", "add", ".")
 	msg := "weft sync\n\n" + SnapshotTrailerKey + ": " + tag
-	lyxtest.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
+	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
 	return currentSHA(t, weftPath)
 }
 
@@ -74,7 +74,7 @@ func TestSnapshotWarpSHA_Miss(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "untagged change")
@@ -95,7 +95,7 @@ func TestSnapshotWarpSHA_NewestTaggedCommitWins(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 1", "raddle")
@@ -117,7 +117,7 @@ func TestSnapshotWarpSHA_TagIsolation(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 1", "raddle")
@@ -149,7 +149,7 @@ func TestSnapshotWarpSHA_MultipleTagsOnOneCommit(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "multi-tag commit", "raddle", "trace")
@@ -179,7 +179,7 @@ func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 
 	warpPath := newPlainWarpRepo(t)
 	weftPath := t.TempDir()
-	lyxtest.MustRun(t, weftPath, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, weftPath, "git", "init", "-q", "-b", "main")
 	f := newFabric(t, warpPath, weftPath)
 
 	got, err := f.snapshotWarpSHA("raddle")
@@ -198,7 +198,7 @@ func TestSnapshotWarpSHA_UntaggedCommitsAreSkipped(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "plain change 1")
@@ -220,7 +220,7 @@ func TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	commitWeftSnapshotOnlyTrailer(t, weftFixture.WeftPath, "no warp trailer", "raddle")
@@ -241,7 +241,7 @@ func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "exact tag", "raddle")
@@ -272,19 +272,19 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	// "main" is the weft worktree's original branch (from CopyWeft). Fork
 	// "tagged" off it and record the Snapshot tag there, so "main" itself
 	// never advances past the fixture's initial commit.
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "tagged")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "tagged")
 	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "tagged change", "raddle")
 
 	// Fork "other" off "main" (NOT off "tagged"), so its history does not
 	// contain the tagged commit at all, and switch the weft worktree onto
 	// it — the branch snapshotWarpSHA must now scan.
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "other", "main")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "other", "main")
 
 	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
@@ -307,7 +307,7 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 // entry to clean up before the equivalence assertion below runs.
 //
 // The raw `git commit` call is a bare exec.Command, not
-// gitexec.RunGit/lyxtest.MustRun: neither of those helpers accepts a
+// gitexec.RunGit/gitkit.MustRun: neither of those helpers accepts a
 // caller-supplied environment, and this is the only commit in this package
 // that needs one. cmd.Env is scoped to this ONE invocation — appended onto
 // os.Environ(), never replacing it — rather than a process-wide
@@ -317,7 +317,7 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 // intermittent failure blamed on the wrong test. Appending onto
 // os.Environ() (rather than replacing it) preserves the
 // GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM pair this package's TestMain sets
-// via lyxtest.HermeticGitEnv(), so this one raw commit stays hermetic too.
+// via gitkit.HermeticGitEnv(), so this one raw commit stays hermetic too.
 func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file, content, committerDate string, tags ...string) (warpSHA, weftSHA string) {
 	t.Helper()
 
@@ -327,7 +327,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file,
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", ".")
+	gitkit.MustRun(t, weftPath, "git", "add", ".")
 
 	msg := appendWarpSHATrailer(DefaultCommitMessage, warpSHA)
 	msg, err := appendSnapshotTrailers(msg, tags)
@@ -383,16 +383,16 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	t.Parallel()
 
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "mainline tagged", "raddle")
 
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "side")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "side")
 	warpSHASide, _ := commitWeftTaggedWithDate(t, f, warpPath, weftFixture.WeftPath, "side-marker.txt", "side tagged (back-dated)", "2000-01-01T00:00:00+0000", "raddle")
 
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "checkout", "main")
-	lyxtest.MustRun(t, weftFixture.WeftPath, "git", "merge", "--no-ff", "-m", "merge side into main", "side")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "main")
+	gitkit.MustRun(t, weftFixture.WeftPath, "git", "merge", "--no-ff", "-m", "merge side into main", "side")
 
 	got, err := f.snapshotWarpSHA("raddle")
 	if err != nil {
@@ -463,7 +463,7 @@ func treeSHA(t *testing.T, repoPath, rev string) string {
 // entry restores exactly the same weft state either commit would have.
 func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	warpSHA, contentWeftSHA := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "content commit", "raddle")
@@ -534,7 +534,7 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 // own doc comment describes, in executable form.
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
 	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	baseWarpSHA := currentSHA(t, warpPath)
@@ -544,7 +544,7 @@ func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing
 	// to the base commit, then force git to genuinely forget the orphaned
 	// object — a plain reset alone leaves it resolvable via the reflog for a
 	// while (expireAndPruneUnreachable, syncweft_integration_test.go).
-	lyxtest.MustRun(t, warpPath, "git", "reset", "--hard", baseWarpSHA)
+	gitkit.MustRun(t, warpPath, "git", "reset", "--hard", baseWarpSHA)
 	expireAndPruneUnreachable(t, warpPath)
 
 	got, err := f.snapshotWarpSHA("raddle")

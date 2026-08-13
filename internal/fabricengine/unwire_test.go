@@ -27,9 +27,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan enumeration property:
@@ -200,7 +200,7 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
-	warp := lyxtest.CopyWarpHub(t)
+	warp := gitkit.CopyWarpHub(t)
 
 	res, err := fabricengine.Unwire(warp.Hub)
 	if err != nil {

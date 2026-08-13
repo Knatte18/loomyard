@@ -1,7 +1,7 @@
 //go:build integration
 
 // cli_integration_test.go holds the perchcli pause tests that seed a real
-// paired git-repo fixture (lyxtest.CopyPaired) and write run-dir state on
+// paired git-repo fixture (gitkit.CopyPaired) and write run-dir state on
 // disk, so they are integration-tagged per the Test Tier Purity Invariant.
 
 package perchcli
@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -43,11 +43,11 @@ func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 }
 
 // seedPerchFixture returns a paired git-repo fixture with real shuttle/reed/perch config seeded.
-func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
+func seedPerchFixture(t *testing.T) gitkit.PairedFixture {
 	t.Helper()
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
@@ -97,7 +97,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 // The pause verb's run-dir lookup exposes the resolved base: a run dir created under
 // <cwd>/_lyx/perch must be found.
 func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	fixture := gitkit.CopyPaired(t)
 
 	// Initialize a NESTED directory of the repo, exactly as lyx init
 	// run from <hub>/nested would: configs and _lyx live under nested/.
@@ -105,7 +105,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatalf("mkdir nested dir: %v", err)
 	}
-	lyxtest.SeedConfig(t, nested, map[string]string{
+	gitkit.SeedConfig(t, nested, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),

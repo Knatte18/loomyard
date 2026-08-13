@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -21,8 +21,8 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	shellPath := harnessShellBinaryPath(t)
 	lyxExe := buildLyxBinary(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyPaired(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"reed": reedengine.ConfigTemplate(),
 	})
 	deferHubRelease(t, fixture.Hub)

@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestAdd_ExistingBranchErrorNamesRemedy creates the warp branch a slug would claim, calls Add with
@@ -30,7 +30,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 
 	const slug = "leftover-pair"
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", slug)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", slug)
 
 	_, err := topology.Add(l, slug, fabricengine.AddOptions{SkipGit: true})
 	if err == nil {

@@ -25,8 +25,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // shaOf returns the commit SHA rev names in the repo at dir, failing the test
@@ -63,17 +63,17 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	t.Parallel()
 
 	const slug = "adopt-rollback-keep"
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	// Mirror CloneHub's post-clone state so the fixture matches a real fabric
 	// hub: the weft primary sits on the suffixed sibling of the warp's branch.
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 	// The gate's ownedManagedBranch reaches primaryWeftBranch, which reads the branch checked out at
 	// _board — mirror newFabricFixture's setup (worktree add BEFORE seeding config into it) so that
 	// read succeeds instead of refusing the deletion outright for want of a readable primary.
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
 	// Card 20 folds RepoWiredNames(l) — WiredNames(fabricengine.BoardDir(l.HubPath))
 	// — into Add's eager-wiring step, hard-failing via rollbackAdd on a
 	// name-set load error, so the fixture must also materialize the
@@ -89,14 +89,14 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	// the history the rollback must not destroy. The seeding worktree is
 	// removed again so the branch is free for Add to adopt.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
 	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
 		t.Fatalf("write precious.txt: %v", err)
 	}
-	lyxtest.MustRun(t, seedDir, "git", "add", "precious.txt")
-	lyxtest.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
+	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
+	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
 	preciousSHA := shaOf(t, seedDir, "HEAD")
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Inject a deterministic failure AFTER the adopt: a blocker file at the
 	// portal location makes step 9 (createPortal) fail, triggering rollback.
@@ -202,14 +202,14 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	t.Parallel()
 
 	const slug = "adopt-rollback-unwire"
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: the gate's primaryWeftBranch read
 	// needs a real _board worktree to succeed, added BEFORE the config is seeded into it.
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
 
 	l := fixture.Layout
@@ -218,18 +218,18 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 	// Pre-create the weft branch with a unique commit that predates the Add,
 	// exactly as TestAddRollback_AdoptedWeftBranchSurvives does.
 	seedDir := filepath.Join(t.TempDir(), "seed")
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "add", "-b", weftBranch, seedDir, fabricengine.WeftBranchName("main"))
 	if err := os.WriteFile(filepath.Join(seedDir, "precious.txt"), []byte("pre-existing weft work\n"), 0o644); err != nil {
 		t.Fatalf("write precious.txt: %v", err)
 	}
-	lyxtest.MustRun(t, seedDir, "git", "add", "precious.txt")
-	lyxtest.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
+	gitkit.MustRun(t, seedDir, "git", "add", "precious.txt")
+	gitkit.MustRun(t, seedDir, "git", "commit", "-m", "precious pre-existing weft work")
 	preciousSHA := shaOf(t, seedDir, "HEAD")
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "worktree", "remove", seedDir)
 
 	// Break the warp origin remote so step 11's push fails AFTER step 10b has
 	// already wired the junctions — the mid-add failure this test covers.
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
+	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
 	// See TestAddRollback_AdoptedWeftBranchSurvives's comment: a configured branch prefix is what
 	// makes the warp branch this Add creates recognizable to the gate's ownedManagedBranch check.
@@ -286,17 +286,17 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
+	fixture := gitkit.CopyPairedLocal(t)
+	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
 		"fabric": fabricengine.ConfigTemplate(),
 	})
 	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 	l := fixture.Layout
 
 	// Point origin at a path that does not exist, so the push at the end of Add fails for a reason
 	// only git can state while every fabric-side precondition still passes.
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin",
+	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin",
 		filepath.Join(t.TempDir(), "no-such-remote.git"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})

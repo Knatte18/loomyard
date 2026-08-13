@@ -8,7 +8,7 @@
 // outcome.yaml/summary.md — modeling Master having already spawned and
 // awaited that fork, per master-template.md's own integration-fork bracket
 // instruction, before Master's session itself finishes. This package's
-// testmain_test.go already wires lyxtest.HermeticGitEnv() for the whole
+// testmain_test.go already wires gitkit.HermeticGitEnv() for the whole
 // test binary; every fixture helper this file uses (newRunFixture, mustGit,
 // commitFile, seedMatchingState, seedShuttleRunState) is already defined in
 // beginbatch_test.go/runlevel_test.go, in the same external

@@ -1,7 +1,7 @@
 //go:build integration
 
 // run_integration_test.go holds the run verb's fabric-sync tests: each seeds a
-// real paired git-repo fixture (lyxtest.CopyPairedLocal) and asserts on the
+// real paired git-repo fixture (gitkit.CopyPairedLocal) and asserts on the
 // actual fabric git log/tracked-files via exec.Command, so this file is
 // integration-tagged per the Test Tier Purity Invariant.
 
@@ -17,10 +17,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -65,9 +65,9 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // sync call actually runs and actually commits it on this path.
 func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
@@ -124,9 +124,9 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 // pathspec.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
@@ -191,7 +191,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 // rest of the block state, with the worktree geometry itself anchored two segments deep.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
 
 	const relPath = "wts/some-task"
@@ -204,7 +204,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	// Module configs are seeded at the nested subdir itself: layout.Cwd is
 	// the anchor point every module config load resolves against, mirroring
 	// the real nested-initialized-repo shape a recorded anchor describes.
-	lyxtest.SeedConfig(t, warpSubdir, map[string]string{
+	gitkit.SeedConfig(t, warpSubdir, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),
@@ -274,9 +274,9 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 // prove the sync would have had something to commit and still did not run.
 func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 	seedRepoWideFabricConfig(t, fixture.Container)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"perch":   perchengine.ConfigTemplate(),

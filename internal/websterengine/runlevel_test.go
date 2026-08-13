@@ -15,7 +15,7 @@
 // is satisfied by hand-seeding a run.json under the fixture's own shuttle
 // run-dir root, mirroring what a real *shuttleengine.Runner.Start would
 // have produced. This package's testmain_test.go already wires
-// lyxtest.HermeticGitEnv() for the whole test binary — package-local (the
+// gitkit.HermeticGitEnv() for the whole test binary — package-local (the
 // internal and external test packages deliberately do not share a
 // test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's
 // own precedent), except for the shared newScratchRepo/commitFile/

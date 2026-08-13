@@ -17,17 +17,17 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // newSyncRepo returns an isolated working-tree and helpers that count commits on
-// the remote (@{u}) and locally (HEAD). It uses lyxtest.CopyWeft so that fixture
+// the remote (@{u}) and locally (HEAD). It uses gitkit.CopyWeft so that fixture
 // construction runs zero per-test git spawns; the fixture already has upstream
 // tracking established via the template-once build.
 func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() int) {
 	t.Helper()
 
-	fixture := lyxtest.CopyWeft(t)
+	fixture := gitkit.CopyWeft(t)
 	work = fixture.WeftPath
 
 	// Count from the work clone: HEAD is local commits, @{u} (the upstream

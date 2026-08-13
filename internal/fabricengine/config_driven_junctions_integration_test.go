@@ -11,7 +11,7 @@
 // drift shape.
 //
 // Package fabricengine_test, mirroring junction_pattern_integration_test.go's
-// imports and lyxtest.CopyPairedLocal(t) fixture pattern; shares the single
+// imports and gitkit.CopyPairedLocal(t) fixture pattern; shares the single
 // TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -25,7 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestWireJunctions_WiresEveryPassedName is the extensibility proof under the hybrid seam:
@@ -38,7 +38,7 @@ import (
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)
@@ -100,9 +100,9 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
+	fixture := gitkit.CopyPairedLocal(t)
 	// The repo-wide pathspec (not fixture.WeftPrime's own weft base) is what
-	// Healthy reads after card 7; lyxtest.CopyPairedLocal does not create
+	// Healthy reads after card 7; gitkit.CopyPairedLocal does not create
 	// a _board dir, so create it and its _lyx/config/ first, mirroring
 	// seedRepoWideFabricConfig but with a pathspec naming neither
 	// structural directory, proving _lyx is still wired structurally.
@@ -113,7 +113,7 @@ func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _other\n"), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	l := fixture.Layout
 	slug := filepath.Base(fixture.Hub)

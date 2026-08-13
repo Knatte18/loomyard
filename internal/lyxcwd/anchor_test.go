@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // writeAnchor writes the recorded .lyx-anchor marker into hub's board
@@ -41,7 +41,7 @@ func writeAnchor(t *testing.T, hub, anchor string) {
 func TestResolve_RootAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
+	fix := gitkit.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -82,7 +82,7 @@ func TestResolve_RootAnchor(t *testing.T) {
 func TestResolve_SubpathAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
+	fix := gitkit.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -124,7 +124,7 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
+	fix := gitkit.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -165,13 +165,13 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 // TestResolve_AnchorAbsentFallsBackToDot verifies that when no .lyx-anchor marker is recorded,
 // Resolve's AnchorRel falls back to "."
 // with no error at the worktree root — never to a cwd-derived relative path, which would make the
-// Location name a lie — the mid-clone / lyxtest synthetic hub / non-fabric repo case.
+// Location name a lie — the mid-clone / gitkit synthetic hub / non-fabric repo case.
 // The strict gate is hoisted to apply unconditionally (card 6), so with no anchor recorded lyx is
 // accepted only at the worktree root, never in a subdirectory: a subdirectory now errors.
 func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
+	fix := gitkit.CopyWarpHub(t)
 	root := fix.Hub
 
 	subDir := filepath.Join(root, "sub", "nested")
@@ -207,7 +207,7 @@ func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
+	fix := gitkit.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)
@@ -235,7 +235,7 @@ func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 func TestResolve_StaleAnchorMarkerHardErrors(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
+	fix := gitkit.CopyWarpHub(t)
 	root := fix.Hub
 
 	base, err := lyxcwd.Resolve(root)

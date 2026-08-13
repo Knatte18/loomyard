@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // newUnbornWarpRepo creates a minimal, isolated git repo at t.TempDir() on
@@ -26,9 +26,9 @@ func newUnbornWarpRepo(t *testing.T) string {
 	t.Helper()
 
 	dir := t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, dir, "git", "init", "-q", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
 	return dir
 }
 
@@ -41,7 +41,7 @@ func newUnbornWarpRepo(t *testing.T) string {
 // behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := gitkit.CopyWeft(t)
 	f := newFabric(t, warpPath, weftFixture.WeftPath)
 
 	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, unborn warp")

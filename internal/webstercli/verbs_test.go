@@ -35,10 +35,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -682,10 +682,10 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 // drives Command()'s real PersistentPreRunE (never bypassing it with a
 // hand-built *websterCLI literal), since load-time batcher selection is
 // wired there (PersistentPreRunE, now via batcher.Active).
-func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) lyxtest.WarpFixture {
+func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) gitkit.WarpFixture {
 	t.Helper()
-	fixture := lyxtest.CopyWarpHub(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
+	fixture := gitkit.CopyWarpHub(t)
+	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"webster": websterengine.ConfigTemplate(),

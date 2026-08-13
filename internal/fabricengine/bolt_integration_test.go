@@ -6,7 +6,7 @@
 // Sync holds its single absorbing lock across a burst of steps. Package
 // fabricengine (internal), building its own plain-repo-plus-bare-remote
 // fixture locally (mirroring boardengine/sync_integration_test.go's
-// newBoardRepo/newBareRemote shape) rather than lyxtest.CopyWeft, whose
+// newBoardRepo/newBareRemote shape) rather than gitkit.CopyWeft, whose
 // template carries its bare remote nested inside the copied worktree — fine
 // for CopyWeft's own explicit-pathspec callers, but not for Bolt's
 // wildcard-stage commit, which would otherwise stage that untracked
@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // newBoltBareRemote creates a bare git repository at <dir>/bolt-remote.git
@@ -37,7 +37,7 @@ func newBoltBareRemote(t *testing.T, dir string) string {
 	if err := os.Mkdir(bare, 0o755); err != nil {
 		t.Fatalf("mkdir bare remote: %v", err)
 	}
-	lyxtest.MustRun(t, bare, "git", "init", "--bare", "-b", "main")
+	gitkit.MustRun(t, bare, "git", "init", "--bare", "-b", "main")
 	return bare
 }
 
@@ -52,8 +52,8 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", name, err)
 	}
-	lyxtest.MustRun(t, path, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, path, "git", "remote", "add", "origin", bareRemote)
+	gitkit.MustRun(t, path, "git", "init", "-b", "main")
+	gitkit.MustRun(t, path, "git", "remote", "add", "origin", bareRemote)
 	return path
 }
 
