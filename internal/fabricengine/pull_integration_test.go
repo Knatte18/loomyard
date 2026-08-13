@@ -5,14 +5,15 @@
 // reconcile (single-back, multi-back, no-surviving-anchor, empty-index),
 // idempotency after a reconcile, PATTERN-residue identification, the
 // double-conflict abort, and the weft-first partial-failure contract.
-// Reuses this package's existing fixture helpers — newPlainWarpRepo,
-// commitWarp, currentSHA, newFabric (index_integration_test.go);
-// addWarpBareRemote, commitPlain, bareBranchSHA (coalesce_integration_test.go);
-// writeWeftConfigContent (syncweft_integration_test.go) — plus
-// gitkit.CopyWeft for the weft side, whose upstream tracking lets PullWeft's
-// ff-pull no-op cleanly in every test that does not deliberately diverge weft.
+// Package fabricengine_test. Reuses export_test.go's fixture shims
+// (NewPlainWarpRepoForTest, CommitWarpForTest, CurrentSHAForTest,
+// NewFabricForTest, WriteWeftConfigContentForTest) and, unqualified,
+// coalesce_integration_test.go's addWarpBareRemote/commitPlain, since both
+// files share package fabricengine_test — plus gitkit.CopyWeft for the weft
+// side, whose upstream tracking lets PullWeft's ff-pull no-op cleanly in
+// every test that does not deliberately diverge weft.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"errors"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -34,19 +36,19 @@ import (
 // synced warp<->weft correspondences, returning the Fabric handle, both worktree
 // paths, the bare remote's path, the initial warp SHA (the root for no-surviving-anchor),
 // and the recorded warp/weft SHA pairs in commit order.
-func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *Fabric, warpPath, bareDir string, weftFixture gitkit.WeftFixture, initWarpSHA string, warpSHAs, weftSHAs []string) {
+func buildReconcileFixture(t *testing.T, fixturesDir string, n int) (f *fabricengine.Fabric, warpPath, bareDir string, weftFixture gitkit.WeftFixture, initWarpSHA string, warpSHAs, weftSHAs []string) {
 	t.Helper()
 
-	warpPath = newPlainWarpRepo(t)
+	warpPath = fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir = addWarpBareRemote(t, fixturesDir, warpPath)
-	initWarpSHA = currentSHA(t, warpPath)
+	initWarpSHA = fabricengine.CurrentSHAForTest(t, warpPath)
 	weftFixture = gitkit.CopyWeft(t)
-	f = newFabric(t, warpPath, weftFixture.WeftPath)
+	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 	for i := 0; i < n; i++ {
-		warpSHA := commitWarp(t, warpPath, fmt.Sprintf("warp change %d", i))
-		writeWeftConfigContent(t, weftFixture.WeftPath, fmt.Sprintf("weft change %d", i))
-		weftSHA, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+		warpSHA := fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp change %d", i))
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, fmt.Sprintf("weft change %d", i))
+		weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("commitWeft() round %d error = %v", i, err)
 		}
@@ -76,7 +78,7 @@ func rewriteWarpRemoteHistory(t *testing.T, fixturesDir, bareDir, resetToSHA str
 	gitkit.MustRun(t, clone, "git", "reset", "--hard", resetToSHA)
 	commitPlain(t, clone, "rewritten.txt", "rewritten history")
 	gitkit.MustRun(t, clone, "git", "push", "--force", "origin", "main")
-	return currentSHA(t, clone)
+	return fabricengine.CurrentSHAForTest(t, clone)
 }
 
 // revListCountBetween returns `git rev-list --count <rangeArg>` in repoPath —
@@ -108,7 +110,7 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 
 	newTip := rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -125,10 +127,10 @@ func TestPull_DetectsDriftUnreachableUnprunedObject(t *testing.T) {
 	// The rebased-away commit's object still exists — fetch never prunes —
 	// yet it is not an ancestor of the new tip. Detection must key off the
 	// latter, never the former.
-	if !f.warp.SHAExists(warpSHAs[1]) {
+	if !fabricengine.WarpForTest(f).SHAExists(warpSHAs[1]) {
 		t.Errorf("SHAExists(%q) = false after fetch; want true (fetch never prunes)", warpSHAs[1])
 	}
-	isAncestor, err := f.warp.IsAncestor(warpSHAs[1], newTip)
+	isAncestor, err := fabricengine.WarpForTest(f).IsAncestor(warpSHAs[1], newTip)
 	if err != nil {
 		t.Fatalf("IsAncestor(%q, %q) error = %v", warpSHAs[1], newTip, err)
 	}
@@ -145,7 +147,7 @@ func TestPull_ReanchorsSingleCommitBack(t *testing.T) {
 
 	newTip := rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[1])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -171,7 +173,7 @@ func TestPull_ReanchorsMultiCommitBack(t *testing.T) {
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -195,7 +197,7 @@ func TestPull_IdempotentAfterReconcile(t *testing.T) {
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	first, err := f.Pull(SyncOptions{})
+	first, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("first Pull() error = %v", err)
 	}
@@ -203,7 +205,7 @@ func TestPull_IdempotentAfterReconcile(t *testing.T) {
 		t.Fatalf("first Pull() Reconciled = false; want true")
 	}
 
-	second, err := f.Pull(SyncOptions{})
+	second, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("second Pull() error = %v", err)
 	}
@@ -222,14 +224,14 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
 
-	weftHEADBefore := currentSHA(t, weftFixture.WeftPath)
+	weftHEADBefore := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 	if weftHEADBefore != weftSHAs[len(weftSHAs)-1] {
 		t.Fatalf("weft HEAD before Pull = %q; want the last synced weft SHA %q", weftHEADBefore, weftSHAs[len(weftSHAs)-1])
 	}
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -237,7 +239,7 @@ func TestPull_LeavesWeftHistoryUntouched(t *testing.T) {
 		t.Fatalf("Pull() Reconciled = false; want true")
 	}
 
-	weftHEADAfter := currentSHA(t, weftFixture.WeftPath)
+	weftHEADAfter := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 	if weftHEADAfter != result.ReanchorWeftSHA {
 		t.Errorf("weft HEAD after Pull = %q; want the reported re-anchor SHA %q", weftHEADAfter, result.ReanchorWeftSHA)
 	}
@@ -267,7 +269,7 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	}
 	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
 	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern residue commit")
-	patternCommitSHA := currentSHA(t, weftFixture.WeftPath)
+	patternCommitSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	if err := os.WriteFile(filepath.Join(weftFixture.WeftPath, "unrelated.txt"), []byte("unrelated"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -294,11 +296,11 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 	}
 	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
 	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "pattern detail residue commit")
-	patternDetailCommitSHA := currentSHA(t, weftFixture.WeftPath)
+	patternDetailCommitSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -309,7 +311,7 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 		t.Fatalf("Pull() PatternResidue = %+v; want exactly two entries", result.PatternResidue)
 	}
 
-	residueSHAs := make(map[string]PatternResidueEntry, len(result.PatternResidue))
+	residueSHAs := make(map[string]fabricengine.PatternResidueEntry, len(result.PatternResidue))
 	for _, entry := range result.PatternResidue {
 		residueSHAs[entry.WeftSHA] = entry
 	}
@@ -347,49 +349,49 @@ func TestPull_IdentifiesPatternResidue(t *testing.T) {
 
 // TestPull_AbortsOnUnpushedPlusDiverged covers the double-conflict abort: local warp has an
 // unpushed commit AND the remote diverged.
-// Fabric.Pull must return ErrWarpDivergedUnpushed and mutate neither repo.
+// Fabric.Pull must return fabricengine.ErrWarpDivergedUnpushed and mutate neither repo.
 func TestPull_AbortsOnUnpushedPlusDiverged(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, weftFixture, _, warpSHAs, _ := buildReconcileFixture(t, fixturesDir, 1)
 
-	preWarpHEAD := commitWarp(t, warpPath, "local unpushed change")
-	preWeftHEAD := currentSHA(t, weftFixture.WeftPath)
+	preWarpHEAD := fabricengine.CommitWarpForTest(t, warpPath, "local unpushed change")
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	_, err := f.Pull(SyncOptions{})
-	if !errors.Is(err, ErrWarpDivergedUnpushed) {
-		t.Fatalf("Pull() error = %v; want errors.Is(err, ErrWarpDivergedUnpushed)", err)
+	_, err := f.Pull(fabricengine.SyncOptions{})
+	if !errors.Is(err, fabricengine.ErrWarpDivergedUnpushed) {
+		t.Fatalf("Pull() error = %v; want errors.Is(err, fabricengine.ErrWarpDivergedUnpushed)", err)
 	}
 
-	if got := currentSHA(t, warpPath); got != preWarpHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after aborted Pull() = %q; want unchanged %q", got, preWarpHEAD)
 	}
-	if got := currentSHA(t, weftFixture.WeftPath); got != preWeftHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath); got != preWeftHEAD {
 		t.Errorf("weft HEAD after aborted Pull() = %q; want unchanged %q", got, preWeftHEAD)
 	}
 }
 
 // TestPull_NoSurvivingAnchorAborts covers a rewrite so thorough that no recorded correspondence
-// entry survives at all: Fabric.Pull must return ErrNoSurvivingAnchor and mutate neither repo.
+// entry survives at all: Fabric.Pull must return fabricengine.ErrNoSurvivingAnchor and mutate neither repo.
 func TestPull_NoSurvivingAnchorAborts(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, weftFixture, initWarpSHA, _, _ := buildReconcileFixture(t, fixturesDir, 2)
 
-	preWarpHEAD := currentSHA(t, warpPath)
-	preWeftHEAD := currentSHA(t, weftFixture.WeftPath)
+	preWarpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, initWarpSHA)
 
-	_, err := f.Pull(SyncOptions{})
-	if !errors.Is(err, ErrNoSurvivingAnchor) {
-		t.Fatalf("Pull() error = %v; want errors.Is(err, ErrNoSurvivingAnchor)", err)
+	_, err := f.Pull(fabricengine.SyncOptions{})
+	if !errors.Is(err, fabricengine.ErrNoSurvivingAnchor) {
+		t.Fatalf("Pull() error = %v; want errors.Is(err, fabricengine.ErrNoSurvivingAnchor)", err)
 	}
 
-	if got := currentSHA(t, warpPath); got != preWarpHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after aborted Pull() = %q; want unchanged %q", got, preWarpHEAD)
 	}
-	if got := currentSHA(t, weftFixture.WeftPath); got != preWeftHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath); got != preWeftHEAD {
 		t.Errorf("weft HEAD after aborted Pull() = %q; want unchanged %q", got, preWeftHEAD)
 	}
 }
@@ -401,7 +403,7 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, _, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
-	preWeftHEAD := currentSHA(t, weftFixture.WeftPath)
+	preWeftHEAD := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	clone := filepath.Join(fixturesDir, "warp-clone-ff")
 	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
@@ -410,7 +412,7 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
 	gitkit.MustRun(t, clone, "git", "push")
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -427,10 +429,10 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 		t.Errorf("Pull() Reconciled = true; want false (clean fast-forward)")
 	}
 
-	if got := currentSHA(t, f.warpPath); got != ffSHA {
+	if got := fabricengine.CurrentSHAForTest(t, fabricengine.WarpPathForTest(f)); got != ffSHA {
 		t.Errorf("warp HEAD after Pull() = %q; want it advanced to %q", got, ffSHA)
 	}
-	if got := currentSHA(t, weftFixture.WeftPath); got != preWeftHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath); got != preWeftHEAD {
 		t.Errorf("weft HEAD after Pull() = %q; want unchanged %q", got, preWeftHEAD)
 	}
 }
@@ -441,7 +443,7 @@ func TestPull_CleanFastForwardAdvancesWarp(t *testing.T) {
 // information" exit — and the warp side must still be processed.
 func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	fixturesDir := t.TempDir()
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
 	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
 
@@ -456,7 +458,7 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	gitkit.MustRun(t, weftPath, "git", "add", ".")
 	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", "init")
 
-	f := newFabric(t, warpPath, weftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftPath)
 
 	// Advance the warp remote so the warp half has real work to do.
 	clone := filepath.Join(fixturesDir, "warp-clone-noupstream")
@@ -466,7 +468,7 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	ffSHA := commitPlain(t, clone, "ff-file.txt", "ff change")
 	gitkit.MustRun(t, clone, "git", "push")
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v; want a clean no-op weft skip", err)
 	}
@@ -478,7 +480,7 @@ func TestPull_NoWeftUpstreamIsACleanNoOp(t *testing.T) {
 	}
 }
 
-// TestPull_StaleIndexRebuiltBeforeAnchorWalk guards the false ErrNoSurvivingAnchor a stale
+// TestPull_StaleIndexRebuiltBeforeAnchorWalk guards the false fabricengine.ErrNoSurvivingAnchor a stale
 // correspondence index produced: a re-cloned hub's per-pair index can be empty (or missing older
 // entries) while the adopted weft trailer history — the sole source of truth — still carries a
 // surviving anchor.
@@ -488,7 +490,7 @@ func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
 	f, _, bareDir, _, _, warpSHAs, weftSHAs := buildReconcileFixture(t, fixturesDir, 2)
 
 	// Simulate the re-cloned hub: the trailer history stays, the local index cache does not.
-	indexPath, err := f.corrIndexPath()
+	indexPath, err := fabricengine.CorrIndexPathForTest(f)
 	if err != nil {
 		t.Fatalf("corrIndexPath: %v", err)
 	}
@@ -499,7 +501,7 @@ func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
 	// Rewrite upstream so warpSHAs[1] dies but warpSHAs[0] survives as the nearest anchor.
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v; want a reconcile via the rebuilt index, not an abort", err)
 	}
@@ -516,13 +518,13 @@ func TestPull_StaleIndexRebuiltBeforeAnchorWalk(t *testing.T) {
 
 // TestPull_DirtyWarpRefusesBeforeMovingWarp guards the data-loss hole where Pull's ResetHard
 // discarded uncommitted tracked warp changes on a routine fast-forward: with a modified tracked file
-// in the warp worktree and an advanced remote, Pull must return ErrWarpDirty, leave warp HEAD
+// in the warp worktree and an advanced remote, Pull must return fabricengine.ErrWarpDirty, leave warp HEAD
 // unmoved, and leave the modification intact on disk.
 func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 	fixturesDir := t.TempDir()
 	f, warpPath, bareDir, _, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
 
-	preWarpHEAD := currentSHA(t, warpPath)
+	preWarpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
 
 	clone := filepath.Join(fixturesDir, "warp-clone-dirty-ff")
 	gitkit.MustRun(t, fixturesDir, "git", "clone", bareDir, clone)
@@ -538,15 +540,15 @@ func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 		t.Fatalf("dirty tracked file: %v", err)
 	}
 
-	result, err := f.Pull(SyncOptions{})
-	if !errors.Is(err, ErrWarpDirty) {
-		t.Fatalf("Pull() error = %v; want ErrWarpDirty", err)
+	result, err := f.Pull(fabricengine.SyncOptions{})
+	if !errors.Is(err, fabricengine.ErrWarpDirty) {
+		t.Fatalf("Pull() error = %v; want fabricengine.ErrWarpDirty", err)
 	}
 	if result.WarpAdvanced {
 		t.Errorf("Pull() WarpAdvanced = true; want false (refused before moving warp)")
 	}
 
-	if got := currentSHA(t, warpPath); got != preWarpHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after refused Pull() = %q; want unchanged %q", got, preWarpHEAD)
 	}
 	data, readErr := os.ReadFile(dirtyFile)
@@ -563,21 +565,21 @@ func TestPull_DirtyWarpRefusesBeforeMovingWarp(t *testing.T) {
 // commit written.
 func TestPull_EmptyIndexNoDrift(t *testing.T) {
 	fixturesDir := t.TempDir()
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	bareDir := addWarpBareRemote(t, fixturesDir, warpPath)
-	initWarpSHA := currentSHA(t, warpPath)
+	initWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
 	// Warp commits happen, but nothing is ever synced to weft — the
 	// correspondence index stays empty.
-	commitWarp(t, warpPath, "warp change never synced 1")
-	commitWarp(t, warpPath, "warp change never synced 2")
+	fabricengine.CommitWarpForTest(t, warpPath, "warp change never synced 1")
+	fabricengine.CommitWarpForTest(t, warpPath, "warp change never synced 2")
 	gitkit.MustRun(t, warpPath, "git", "push", "origin", "main")
 
 	newTip := rewriteWarpRemoteHistory(t, fixturesDir, bareDir, initWarpSHA)
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -600,11 +602,11 @@ func TestPull_EmptyIndexNoDrift(t *testing.T) {
 // surfaces, and warp HEAD is unchanged.
 func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 	fixturesDir := t.TempDir()
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	preWarpHEAD := currentSHA(t, warpPath)
+	preWarpHEAD := fabricengine.CurrentSHAForTest(t, warpPath)
 
 	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
 	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", weftFixture.Bare, cloneB)
@@ -616,7 +618,7 @@ func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
 	commitPlain(t, weftFixture.WeftPath, "local-only.txt", "local weft change")
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err == nil {
 		t.Fatalf("Pull() error = nil; want an error (weft pull should fail to fast-forward)")
 	}
@@ -624,7 +626,7 @@ func TestPull_WeftPullFailsWarpUntouched(t *testing.T) {
 		t.Errorf("Pull() result.WeftPulled = true; want false (a weft-side failure must report the zero result)")
 	}
 
-	if got := currentSHA(t, warpPath); got != preWarpHEAD {
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != preWarpHEAD {
 		t.Errorf("warp HEAD after failed Pull() = %q; want unchanged %q (warp must never be touched)", got, preWarpHEAD)
 	}
 }
@@ -641,7 +643,7 @@ func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
 	// Record a subpath anchor for this pair the same way a real hub does: the marker at the hub's
 	// board root, which lyxcwd.ResolveWorktree reads back for AnchorRel.
 	const anchor = "backend"
-	boardDir := BoardDir(filepath.Dir(warpPath))
+	boardDir := fabricengine.BoardDir(filepath.Dir(warpPath))
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", boardDir, err)
 	}
@@ -658,11 +660,11 @@ func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
 	}
 	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
 	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "-q", "-m", "anchored pattern residue commit")
-	anchoredPatternSHA := currentSHA(t, weftFixture.WeftPath)
+	anchoredPatternSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
 
 	rewriteWarpRemoteHistory(t, fixturesDir, bareDir, warpSHAs[0])
 
-	result, err := f.Pull(SyncOptions{})
+	result, err := f.Pull(fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("Pull() error = %v", err)
 	}
@@ -670,7 +672,7 @@ func TestPull_IdentifiesPatternResidueUnderSubpathAnchor(t *testing.T) {
 		t.Fatalf("Pull() Reconciled = false; want true")
 	}
 
-	var found *PatternResidueEntry
+	var found *fabricengine.PatternResidueEntry
 	for i := range result.PatternResidue {
 		if result.PatternResidue[i].WeftSHA == anchoredPatternSHA {
 			found = &result.PatternResidue[i]
