@@ -8,10 +8,12 @@
 // gate that refused every request would satisfy every refusal cell in the matrix, and slice 12 just
 // rewired roughly 29 call sites into that gate.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // cleanStateEntry returns the "clean" State from the package-level States slice, failing tb if it is
@@ -44,7 +46,7 @@ func TestVerbCases_CleanState(t *testing.T) {
 					t.Parallel()
 
 					// Phase 1: build.
-					h := NewHub(t, anchor)
+					h := hubforge.NewHub(t, anchor)
 
 					// Phase 2: arrange.
 					fixture := vc.Arrange(t, h)

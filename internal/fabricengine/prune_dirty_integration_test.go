@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestPrune_ProtectsDirtyWeftWorktreeUntilForced builds a stale pair whose weft worktree carries an
@@ -40,8 +40,8 @@ func TestPrune_ProtectsDirtyWeftWorktreeUntilForced(t *testing.T) {
 	if err := os.WriteFile(tracked, []byte("committed\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", tracked, err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", "tracked.md")
-	lyxtest.MustRun(t, weftPath, "git", "commit", "-m", "seed tracked file")
+	gitkit.MustRun(t, weftPath, "git", "add", "tracked.md")
+	gitkit.MustRun(t, weftPath, "git", "commit", "-m", "seed tracked file")
 
 	// The uncommitted work a forced removal would discard.
 	const sentinel = "PRUNE-SENTINEL"

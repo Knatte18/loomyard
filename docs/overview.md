@@ -77,7 +77,7 @@ Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, lau
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
-A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `lyxtest`, `boardengine`, `configsync` string-literal-only), the tokens `weft`/`warp` may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
+A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside an owner set (`fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync` string-literal-only), the tokens `weft`/`warp` may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
 The fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) is banned everywhere this test reaches, including inside the owner set — `host` is retired, not merely scoped.
 It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lyxcwd`'s to own — see CONSTRAINTS.md's Fabric Vocabulary Invariant.
 
@@ -368,9 +368,12 @@ loom wants a plan-reviewer for worktree `feature-x`:
 Per-file unit tests sit next to the source they test (`store.go` ↔ `store_test.go`).
 The cross-cutting suites — benchmarks, concurrency stress, and git-backed integration — live in the black-box `internal/boardengine/boardtest` package.
 
-`internal/fabricengine/fabrictest` follows the same black-box convention, but it is a hybrid rather than a pure suite package: `boardtest` holds cross-cutting suites only, while `fabrictest` is also a non-test helper package — the hub factory (`NewHub`, backed by the extracted `fabriccli.CloneAndWire`), importable by `fabricengine_test` — that additionally carries its own `//go:build integration`-tagged suites.
+Fabric's own cross-cutting suite follows the same black-box convention but keeps its own name: a set of `package fabricengine_test` files inside `internal/fabricengine/`, `//go:build integration`-tagged.
 It is the **live-state integration harness**: it drives real cloned hubs, built by really cloning rather than hand-assembling a fixture, into dirty and hostile on-disk states and asserts what a destructive verb is and is not permitted to touch.
-See its own package doc for the state matrix, the verb table, and the sabotage-proof table recording that each of the crucible campaign's eight data-loss defects still fails on demand when its guarding check is neutered.
+See `internal/fabricengine`'s own package doc for the state matrix, the verb table, and the sabotage-proof table recording that each of the crucible campaign's eight data-loss defects still fails on demand when its guarding check is neutered.
+
+`internal/gitkit` is the below-fabric leaf holding git primitives — `MustRun`, `SeedConfig`, `HermeticGitEnv`, `GitStatusPorcelain`, and the primitive repo fixture `CopyRepo` — and asserts nothing itself; it never imports fabric.
+`internal/hubforge` is the repo-wide real-hub fixture factory: it builds every hub fixture in the repo through `fabriccli.CloneAndWire`, never a hand-assembled stand-in, and asserts nothing about fabric either.
 
 ## Sandbox Hub
 

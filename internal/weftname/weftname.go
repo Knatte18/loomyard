@@ -1,5 +1,5 @@
 // weftname.go declares the "-weft" naming convention for fabric's weft sibling directories: a
-// stdlib-only leaf so both production geometry code and lyxtest's on-disk fixtures derive the
+// stdlib-only leaf so both production geometry code and gitkit's on-disk fixtures derive the
 // identical name from the identical source, rather than risking two independently-maintained string
 // literals drifting apart.
 
@@ -28,7 +28,7 @@ func SiblingPath(container, base string) string {
 // BareSiblingPath returns the absolute path to the bare-remote test fixture directory paired with a
 // weft sibling (e.g.
 // BareSiblingPath("/hub", "feat") -> "/hub/feat-weft-bare").
-// It exists for lyxtest's fixture builders, which pair every weft-sibling template with its own
+// It exists for gitkit's fixture builders, which pair every weft-sibling template with its own
 // bare origin on disk.
 func BareSiblingPath(container, base string) string {
 	return filepath.Join(container, base+Suffix+bareSuffix)

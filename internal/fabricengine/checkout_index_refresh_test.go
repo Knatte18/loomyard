@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original
@@ -45,12 +45,12 @@ func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
 	// the target weft branch's history predates (and never contains) the
 	// correspondence-carrying commit recorded on the original branch.
 	const targetBranch = "index-refresh-target"
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
-	f, err := fabricengine.NewPairedForTest(l.WorktreePath(), fabricengine.WeftWorktree(l))
+	f, err := fabricengine.Open(l)
 	if err != nil {
-		t.Fatalf("fabricengine.NewPairedForTest: %v", err)
+		t.Fatalf("fabricengine.Open: %v", err)
 	}
 
 	// Record one correspondence on the original branch via a real scoped commit.

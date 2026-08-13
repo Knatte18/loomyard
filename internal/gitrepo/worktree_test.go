@@ -11,7 +11,7 @@ package gitrepo_test
 import (
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 func TestWorktreeChangedFiles_CleanRepo_ReturnsEmpty(t *testing.T) {
@@ -39,7 +39,7 @@ func TestWorktreeChangedFiles_ReportsModifiedUntrackedAndStaged(t *testing.T) {
 
 	writeFile(t, dir, "a.txt", "changed")
 	writeFile(t, dir, "b.txt", "changed")
-	lyxtest.MustRun(t, dir, "git", "add", "b.txt")
+	gitkit.MustRun(t, dir, "git", "add", "b.txt")
 	writeFile(t, dir, "c.txt", "new file")
 
 	got, err := repo.WorktreeChangedFiles()

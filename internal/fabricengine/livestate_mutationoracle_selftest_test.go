@@ -7,7 +7,7 @@
 // the file_written ".git" split, net-commission-effect folding (both same-target inversion pairs and
 // the later-inverts-earlier ordering rule), and the "." target's commission/omission asymmetry.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"fmt"

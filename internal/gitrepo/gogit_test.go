@@ -37,7 +37,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // forceGoGitFinalizersOnCleanup forces the garbage collector to run,
@@ -58,8 +58,8 @@ func writeAndCommit(t *testing.T, dir, name, content, message string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", name)
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
+	gitkit.MustRun(t, dir, "git", "add", name)
+	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
 // newStandaloneRepo creates a fresh git repository on main with one commit.
@@ -67,7 +67,7 @@ func newStandaloneRepo(t *testing.T) (dir string, repo *Repo) {
 	t.Helper()
 
 	dir = t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
 	writeAndCommit(t, dir, "a.txt", "hello", "init")
 	return dir, New(dir)
 }
@@ -99,7 +99,7 @@ func newGogitLinkedFixture(t *testing.T) *gogitLinkedFixture {
 	if err := os.Mkdir(mainDir, 0o755); err != nil {
 		t.Fatalf("mkdir main: %v", err)
 	}
-	lyxtest.MustRun(t, mainDir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, mainDir, "git", "init", "-b", "main")
 	writeAndCommit(t, mainDir, "base.txt", "base", "base commit")
 
 	mainRepo := New(mainDir)
@@ -107,10 +107,10 @@ func newGogitLinkedFixture(t *testing.T) *gogitLinkedFixture {
 	if err != nil {
 		t.Fatalf("CurrentSHA() (main) error = %v", err)
 	}
-	lyxtest.MustRun(t, mainDir, "git", "update-ref", commonDirProbeRef, mainSHA)
+	gitkit.MustRun(t, mainDir, "git", "update-ref", commonDirProbeRef, mainSHA)
 
 	linkedDir := filepath.Join(container, "linked")
-	lyxtest.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
+	gitkit.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
 	writeAndCommit(t, linkedDir, "feature.txt", "feature", "feature commit")
 
 	return &gogitLinkedFixture{
@@ -176,7 +176,7 @@ func TestGoGit_SucceedsOnLinkedWorktree_ReadsCommonDirState(t *testing.T) {
 // goGit must instead fail outright.
 func TestGoGit_NonRepoPath_ErrorsWithoutRetargetingParent(t *testing.T) {
 	parent := t.TempDir()
-	lyxtest.MustRun(t, parent, "git", "init", "-b", "main")
+	gitkit.MustRun(t, parent, "git", "init", "-b", "main")
 	writeAndCommit(t, parent, "a.txt", "hi", "init")
 
 	notARepo := filepath.Join(parent, "subdir")
@@ -208,7 +208,7 @@ func TestGoGit_FailedOpen_NotCached(t *testing.T) {
 		t.Fatal("goGit() before the checkout exists error = nil; want an error")
 	}
 
-	lyxtest.MustRun(t, dir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
 	writeAndCommit(t, dir, "a.txt", "hi", "init")
 
 	handle, err := repo.goGit()
@@ -479,37 +479,37 @@ func newLinkedParityFixture(t *testing.T) *linkedParityFixture {
 
 	container := t.TempDir()
 	bare := filepath.Join(container, "remote.git")
-	lyxtest.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
+	gitkit.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
 
 	mainDir := filepath.Join(container, "main")
 	if err := os.Mkdir(mainDir, 0o755); err != nil {
 		t.Fatalf("mkdir main: %v", err)
 	}
-	lyxtest.MustRun(t, mainDir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, mainDir, "git", "init", "-b", "main")
 	writeAndCommit(t, mainDir, "base.txt", "base", "base commit")
 	mainRepo := New(mainDir)
 	sharedSHA, err := mainRepo.CurrentSHA()
 	if err != nil {
 		t.Fatalf("CurrentSHA() (shared) error = %v", err)
 	}
-	lyxtest.MustRun(t, mainDir, "git", "remote", "add", "origin", bare)
-	lyxtest.MustRun(t, mainDir, "git", "push", "-u", "origin", "main")
+	gitkit.MustRun(t, mainDir, "git", "remote", "add", "origin", bare)
+	gitkit.MustRun(t, mainDir, "git", "push", "-u", "origin", "main")
 
 	linkedDir := filepath.Join(container, "linked")
-	lyxtest.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
+	gitkit.MustRun(t, mainDir, "git", "worktree", "add", "-b", "feature", linkedDir)
 	writeAndCommit(t, linkedDir, "feature-only.txt", "feature advances", "feature commit")
 	linkedRepo := New(linkedDir)
 	linkedSHA, err := linkedRepo.CurrentSHA()
 	if err != nil {
 		t.Fatalf("CurrentSHA() (linked) error = %v", err)
 	}
-	lyxtest.MustRun(t, linkedDir, "git", "push", "-u", "origin", "feature")
+	gitkit.MustRun(t, linkedDir, "git", "push", "-u", "origin", "feature")
 
 	otherClone := filepath.Join(container, "other-clone")
-	lyxtest.MustRun(t, container, "git", "clone", "-b", "feature", bare, otherClone)
+	gitkit.MustRun(t, container, "git", "clone", "-b", "feature", bare, otherClone)
 	writeAndCommit(t, otherClone, "elsewhere.txt", "elsewhere advances", "elsewhere commit")
-	lyxtest.MustRun(t, otherClone, "git", "push")
-	lyxtest.MustRun(t, linkedDir, "git", "fetch", "origin")
+	gitkit.MustRun(t, otherClone, "git", "push")
+	gitkit.MustRun(t, linkedDir, "git", "fetch", "origin")
 
 	return &linkedParityFixture{
 		mainDir:   mainDir,
@@ -630,7 +630,7 @@ func TestLinkedWorktree_Parity(t *testing.T) {
 
 	t.Run("CurrentBranch_Detached", func(t *testing.T) {
 		repo := New(fx.linkedDir)
-		lyxtest.MustRun(t, fx.linkedDir, "git", "checkout", "--detach", fx.linkedSHA)
+		gitkit.MustRun(t, fx.linkedDir, "git", "checkout", "--detach", fx.linkedSHA)
 
 		_, oracleErr := oracleCurrentBranch(t, fx.linkedDir)
 		_, implErr := repo.CurrentBranch()

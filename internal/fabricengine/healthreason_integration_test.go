@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestHealthy_ReasonCauses exercises all five HealthCause values against a real paired fixture, one
@@ -35,7 +35,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 		if err := fabricengine.WireJunctions(l, slug, []string{"_lyx"}); err != nil {
 			t.Fatalf("WireJunctions: %v", err)
 		}
-		lyxtest.MustRun(t, fixture.Hub, "git", "checkout", "-b", "off-branch")
+		gitkit.MustRun(t, fixture.Hub, "git", "checkout", "-b", "off-branch")
 
 		ok, reason, err := fabricengine.Healthy(l)
 		if err != nil {
@@ -196,9 +196,9 @@ func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
 
 	// Re-create the pair's weft branch as an orphan so it carries no commits at all — exactly the
 	// shape suffixWeftPrimaryBranch leaves behind on a clone against an empty remote.
-	lyxtest.MustRun(t, weftWorktree, "git", "checkout", "--orphan", "unborn-scratch")
-	lyxtest.MustRun(t, weftWorktree, "git", "branch", "-D", weftBranch)
-	lyxtest.MustRun(t, weftWorktree, "git", "checkout", "--orphan", weftBranch)
+	gitkit.MustRun(t, weftWorktree, "git", "checkout", "--orphan", "unborn-scratch")
+	gitkit.MustRun(t, weftWorktree, "git", "branch", "-D", weftBranch)
+	gitkit.MustRun(t, weftWorktree, "git", "checkout", "--orphan", weftBranch)
 
 	// The orphan checkouts emptied the weft working tree, taking the junction targets with them;
 	// re-wiring restores exactly the wiring a real post-clone hub has, leaving the unborn branch as

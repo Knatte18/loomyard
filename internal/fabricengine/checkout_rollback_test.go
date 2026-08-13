@@ -20,8 +20,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair, then corrupts the
@@ -46,8 +46,8 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
-	lyxtest.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
+	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
+	gitkit.MustRun(t, mustWeftRepoRoot(t, l), "git", "branch", fabricengine.WeftBranchName(targetBranch))
 
 	originalWarpBranch := currentBranchOf(t, l.WorktreePath())
 	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))
@@ -103,7 +103,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 		t.Fatalf("setup WireJunctions: %v", err)
 	}
 	// Only the warp branch exists: the weft side must be forked by Checkout.
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "branch", targetBranch)
 
 	originalWarpBranch := currentBranchOf(t, l.WorktreePath())
 	originalWeftBranch := currentBranchOf(t, fabricengine.WeftWorktree(l))

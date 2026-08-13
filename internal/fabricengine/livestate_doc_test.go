@@ -1,8 +1,12 @@
-// Package fabrictest is the live-state integration harness for internal/fabricengine.
+//go:build integration
+
+// livestate_doc_test.go documents the live-state integration harness for internal/fabricengine: a set
+// of package fabricengine_test files (the livestate_ prefix) that build a hub through internal/hubforge
+// and drive fabric against it.
 //
-// # What this package is
+// # What this harness is
 //
-// fabrictest drives fabric against a real cloned hub — a warp worktree and its paired weft sibling,
+// It drives fabric against a real cloned hub — a warp worktree and its paired weft sibling,
 // both backed by real bare git repositories on disk — rather than against hand-assembled fixtures.
 // It builds a named hostile-state matrix (fixtures that plant dirty, stale, or otherwise hostile
 // on-disk conditions before a verb runs), a verb table (the topology verbs under test, each with its
@@ -27,7 +31,7 @@
 // This harness carries no runtime.GOOS skip anywhere in its states, cells, or helpers, and would run
 // on Windows — but nobody has run it there yet.
 // See manifest/designs/fabric-windows-verification.md for the full account of that gap across six
-// crucible hardening rounds.
+// hardening rounds.
 // The one genuine divergence this package's design carries for Windows: the
 // trackedSymlinkAtWiredPath state models a git-tracked symlink, which on Windows materialises as a
 // junction because it is built through fslink.CreateDirLink rather than a raw os.Symlink.
@@ -36,7 +40,7 @@
 //
 // # The three-member Check set
 //
-// fabrictest consumes fabricengine.Check directly — CheckContainment, CheckOwnership, CheckDirtiness —
+// This harness consumes fabricengine.Check directly — CheckContainment, CheckOwnership, CheckDirtiness —
 // rather than carrying a copy of its own; there is deliberately no CheckForce member, and fabricengine.
 // Check's own doc comment (internal/fabricengine/destroy.go) is this rule's one declarer, not this file.
 //
@@ -91,7 +95,7 @@
 //
 // # Measured wall-clock
 //
-// A full run (`go test -tags integration ./internal/fabricengine/fabrictest/`, no -run filter,
+// A full run (`go test -tags integration ./internal/fabricengine/`, no -run filter,
 // exercising every test in the package including this file's own cross-product matrix) measures
 // consistently around 4.0-4.3s of package elapsed time (go test's own "ok ... Xs" line) across
 // repeated runs, on a 12-core x86_64 Linux machine, at the default -parallel value (12, unset,
@@ -132,7 +136,7 @@
 //   - (2) dirtyWarpTracked x Pull x "." -- R2, pull discarded uncommitted tracked warp work. Neutered
 //     pull.go's own dirty-warp pre-flight (the `if dirty { return result, ErrWarpDirty }` guard in
 //     Fabric.Pull), by short-circuiting it to never fire. Ran
-//     `go test -tags integration ./internal/fabricengine/fabrictest/ -run 'TestCrossProduct/\./dirtyWarpTracked/Pull$'`:
+//     `go test -tags integration ./internal/fabricengine/ -run 'TestCrossProduct/\./dirtyWarpTracked/Pull$'`:
 //     the cell failed with "expected pre-flight refusal containing \"warp worktree has uncommitted
 //     changes\"; got err = fabricengine: warp remote diverged and local warp has unpushed commits;
 //     aborting, no changes" -- Pull proceeded straight into the rewrite-detected branch instead of
@@ -163,7 +167,7 @@
 //     `go test -tags integration ./internal/fabricengine/ -run TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut`:
 //     it failed with "Cleanup reported/handled primary weft branch \"main-weft\"; want not reported (live
 //     pair)" and "main-weft branch deleted after force Cleanup with primary parked elsewhere; want
-//     intact (F1 regression)". fabrictest's own clean/Cleanup/"." cell exercises both Cleanup's ordinary
+//     intact (F1 regression)". This harness's own clean/Cleanup/"." cell exercises both Cleanup's ordinary
 //     orphan-deletion path (cleanupCase's own deliberately-orphaned branch) AND this defence
 //     independently: cleanupCase's Arrange also moves the prime pair off the hub's default branch
 //     (mirroring the hermetic fixture above), and its Effect asserts the primary weft branch still
@@ -188,7 +192,7 @@
 //     neutered to isolate the ownership gate's own contribution. Ran
 //     `-run 'TestCrossProduct/\./foreignDirAtFabricOwnedPath/Prune$'`: the cell failed with
 //     "unpermitted change(s) outside permitted roots: verb-prune-structural-orphan-weft: removed (was
-//     dir) ... verb-prune-structural-orphan-weft/fabrictest-sentinel-foreignDirAtFabricOwnedPath.txt:
+//     dir) ... verb-prune-structural-orphan-weft/livestate-sentinel-foreignDirAtFabricOwnedPath.txt:
 //     removed (was file)" plus the assertPlantedContentSurvives failure naming the same missing sentinel.
 //   - (7) unrelatedGitCloneAtWeftNamedPath x Prune x "." -- R4, prune removed an unrelated git clone.
 //     Same two-check neutering as row (6). Ran `-run 'TestCrossProduct/\./unrelatedGitCloneAtWeftNamedPath/Prune$'`:
@@ -314,4 +318,4 @@
 // question only; they never suppress the second, since narrowing the oracle's own input by the same
 // allowlist would let a permitted-but-unrecorded change escape both assertions at once, precisely the
 // gap the oracle exists to close.
-package fabrictest
+package fabricengine_test

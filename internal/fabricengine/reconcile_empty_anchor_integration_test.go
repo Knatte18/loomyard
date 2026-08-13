@@ -7,8 +7,12 @@
 // a full SECOND junction set at the repo root beside the live set at the real anchor — the exact
 // damage the stale-marker guard exists to prevent for the pre-rename spelling.
 //
-// Package fabricengine_test to reuse newFabricFixture from
-// reconcile_stale_registration_test.go; shares the single TestMain in testmain_test.go.
+// Package fabricengine_test; shares the single TestMain in testmain_test.go. Builds its own
+// hubforge.Hub at anchor "backend" rather than reusing newFabricFixture/hubforge.NewHub(t, "."): this
+// test's whole premise is a warp worktree root with zero junctions wired, and a "."-anchored real hub
+// already wires _lyx, .lyx, and the _board convenience link at its own root via CloneAndWire. Anchoring
+// the hub at "backend" instead moves that pre-existing wiring to <worktree>/backend, leaving the root
+// free for this test's own explicit "sub"-anchor wiring and root-refusal assertions.
 
 package fabricengine_test
 
@@ -19,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -31,8 +36,8 @@ func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T
 
 	const anchor = "sub"
 
-	fixture := newFabricFixture(t)
-	l := fixture.Layout
+	h := hubforge.NewHub(t, "backend")
+	l := h.Location
 
 	subDir := filepath.Join(l.WorktreePath(), anchor)
 	if err := os.MkdirAll(subDir, 0o755); err != nil {

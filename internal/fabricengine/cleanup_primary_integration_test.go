@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout materialises a real _board worktree on the
@@ -33,8 +33,8 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	// Move the prime pair off the default branch, exactly as `lyx fabric checkout` does.
 	// The fixture's <Hub>/_board worktree stays on "main", which is what records the repo's
 	// primary warp branch.
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("alt"))
+	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("alt"))
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 

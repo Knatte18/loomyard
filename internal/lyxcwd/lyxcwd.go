@@ -94,7 +94,7 @@ func ResolveWorktree(worktreeRoot string) (*Location, error) {
 // It must stay ungated because both its callers stand somewhere the gate would reject: fabric's
 // clone passes the freshly-cloned worktree root while the anchor may be a non-"."
 // subpath,
-// and lyxtest injects anchors into synthetic hubs.
+// and gitkit injects anchors into its fixture repos standing in for hubs.
 func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
 	return resolveWithAnchorCore(cwd, anchor, false)
 }

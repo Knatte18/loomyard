@@ -18,9 +18,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lyx/ in the warp
@@ -61,7 +61,7 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 	if err := os.WriteFile(pollutedAbs, []byte("legacy\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", pollutedAbs, err)
 	}
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "add", pollutedRel)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "add", pollutedRel)
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	result, err := topology.Status(anchoredLayout)

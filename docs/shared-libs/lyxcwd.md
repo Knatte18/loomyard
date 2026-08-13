@@ -43,7 +43,7 @@ Builds a `Location` exactly as `Resolve` does, but takes the anchor as a paramet
 
 **This is a deliberate bypass, not a general-purpose resolver.**
 A caller reaching for `ResolveWithAnchor` to escape a gate failure is misusing it — the correct fix is to stand in the anchored directory.
-It stays ungated because both its production callers stand somewhere the strict gate would reject: fabric's clone passes the freshly-cloned worktree root while the anchor may be a non-`"."` subpath, and `lyxtest` injects anchors into synthetic hubs to build fixtures.
+It stays ungated because both its production callers stand somewhere the strict gate would reject: fabric's clone passes the freshly-cloned worktree root while the anchor may be a non-`"."` subpath, and `gitkit`'s primitive repo fixtures inject anchors the same way to build them.
 
 ### `ResolveWorktree(root string) (*Location, error)`
 

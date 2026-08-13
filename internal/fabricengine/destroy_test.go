@@ -602,7 +602,8 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 // removeLink, and createExclusiveDir. The git-spawning executors (removeGitWorktree, deleteBranch)
 // are deliberately NOT covered here — an untagged test in this package may not spawn git per the
 // Test Tier Purity Invariant — and their nonzero-exit-with-nil-error rule is asserted through
-// internal/fabricengine/fabrictest's tagged matrix in batch 7 instead.
+// this package's own live-state harness (the livestate_-prefixed package fabricengine_test files)
+// tagged matrix in batch 7 instead.
 func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 	t.Run("RemovePath_AbsentTargetRecordsNothing", func(t *testing.T) {
 		container := t.TempDir()

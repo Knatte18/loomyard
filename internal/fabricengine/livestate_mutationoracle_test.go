@@ -7,7 +7,7 @@
 // It lives apart from manifest.go, matching the package's one-concern-per-file layout: manifest.go
 // owns the filesystem capture and diff, this file owns judging a record against that diff.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"path"

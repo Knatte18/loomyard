@@ -6,7 +6,7 @@
 // lock/manifest patterns, the absorbing push lock still lives at the
 // unchanged board.push.lock path, and skipPush still commits locally without
 // advancing the remote. The board+bare-origin fixture is built inline via
-// lyxtest.MustRun, mirroring the fixture shape of
+// gitkit.MustRun, mirroring the fixture shape of
 // internal/gitrepo/push_test.go's newBareRemote/newRepoWithRemote —
 // reimplemented locally since those helpers live in a different test
 // package (gitrepo_test) and are not importable across that boundary.
@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // newBareRemote creates a bare git repository for testing.
@@ -33,7 +33,7 @@ func newBareRemote(t *testing.T, dir string) string {
 	if err := os.Mkdir(bare, 0o755); err != nil {
 		t.Fatalf("mkdir bare remote: %v", err)
 	}
-	lyxtest.MustRun(t, bare, "git", "init", "--bare", "-b", "main")
+	gitkit.MustRun(t, bare, "git", "init", "--bare", "-b", "main")
 	return bare
 }
 
@@ -45,8 +45,8 @@ func newBoardRepo(t *testing.T, dir, name, bareRemote string) string {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", name, err)
 	}
-	lyxtest.MustRun(t, path, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, path, "git", "remote", "add", "origin", bareRemote)
+	gitkit.MustRun(t, path, "git", "init", "-b", "main")
+	gitkit.MustRun(t, path, "git", "remote", "add", "origin", bareRemote)
 	return path
 }
 

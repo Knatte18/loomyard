@@ -1,7 +1,7 @@
 //go:build integration
 
-// open_integration_test.go covers Open(l) against a real paired fixture: the happy path, and each
-// missing-side case built by deleting one half of a lyxtest.CopyPaired fixture, pinning the same
+// open_integration_test.go covers Open(l) against a real paired hub: the happy path, and each
+// missing-side case built by deleting one half of a hubforge.NewHub hub, pinning the same
 // warp-checked-first contract fabric_test.go's TestNew_MissingWarpPath/TestNew_MissingWeftPath pin
 // for New, reached through a *lyxcwd.Location this time.
 
@@ -13,14 +13,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestOpen_HappyPath asserts that Open returns a non-nil handle on a paired fixture.
+// TestOpen_HappyPath asserts that Open returns a non-nil handle on a paired hub.
 func TestOpen_HappyPath(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
-	f, err := fabricengine.Open(fixture.Layout)
+	f, err := fabricengine.Open(h.Location)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -32,13 +32,13 @@ func TestOpen_HappyPath(t *testing.T) {
 // TestOpen_MissingWarpWorktree asserts that a missing warp worktree errors, naming the warp path,
 // and that the warp side is checked first (ahead of the sibling).
 func TestOpen_MissingWarpWorktree(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
-	if err := os.RemoveAll(fixture.Hub); err != nil {
-		t.Fatalf("RemoveAll(hub): %v", err)
+	if err := os.RemoveAll(h.PrimeWorktree()); err != nil {
+		t.Fatalf("RemoveAll(warp worktree): %v", err)
 	}
 
-	_, err := fabricengine.Open(fixture.Layout)
+	_, err := fabricengine.Open(h.Location)
 	if err == nil {
 		t.Fatal("Open() error = nil; want error naming the missing warp worktree")
 	}
@@ -46,21 +46,21 @@ func TestOpen_MissingWarpWorktree(t *testing.T) {
 	if !errors.As(err, &missingPath) {
 		t.Fatalf("Open() error = %v; want *ErrMissingPath", err)
 	}
-	if missingPath.Path != fixture.Hub {
-		t.Errorf("Open() error path = %q; want %q", missingPath.Path, fixture.Hub)
+	if missingPath.Path != h.PrimeWorktree() {
+		t.Errorf("Open() error path = %q; want %q", missingPath.Path, h.PrimeWorktree())
 	}
 }
 
 // TestOpen_MissingSiblingWorktree asserts that a missing weft sibling errors, naming the sibling
 // path, when the warp worktree is present.
 func TestOpen_MissingSiblingWorktree(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	h := hubforge.NewHub(t, ".")
 
-	if err := os.RemoveAll(fixture.WeftPrime); err != nil {
-		t.Fatalf("RemoveAll(weftPrime): %v", err)
+	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
+		t.Fatalf("RemoveAll(weft prime): %v", err)
 	}
 
-	_, err := fabricengine.Open(fixture.Layout)
+	_, err := fabricengine.Open(h.Location)
 	if err == nil {
 		t.Fatal("Open() error = nil; want error naming the missing sibling worktree")
 	}
@@ -68,7 +68,7 @@ func TestOpen_MissingSiblingWorktree(t *testing.T) {
 	if !errors.As(err, &missingPath) {
 		t.Fatalf("Open() error = %v; want *ErrMissingPath", err)
 	}
-	if missingPath.Path != fixture.WeftPrime {
-		t.Errorf("Open() error path = %q; want %q", missingPath.Path, fixture.WeftPrime)
+	if missingPath.Path != h.PrimeWeft() {
+		t.Errorf("Open() error path = %q; want %q", missingPath.Path, h.PrimeWeft())
 	}
 }

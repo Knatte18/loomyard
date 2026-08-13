@@ -7,7 +7,7 @@
 // conditional here would be the exact point at which the cross-product property quietly stops holding
 // for the next verb someone appends.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"path/filepath"
@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // anchors is the two anchor values every ordinary and hostile-input cell in the cross product runs
@@ -141,7 +142,7 @@ func assertExpectation(t *testing.T, err error, exp Expectation) {
 // the same path, so it adds no new failure mode -- it exists to make survival an explicit, named
 // assertion at the cell level, per the five-phase-cell-order Shared Decision's KindProceeds requirement,
 // rather than an implication a reader has to derive from the manifest diff alone.
-func assertPlantedContentSurvives(t *testing.T, h *Hub, stateName string, target StateTarget, permitted []string) {
+func assertPlantedContentSurvives(t *testing.T, h *hubforge.Hub, stateName string, target StateTarget, permitted []string) {
 	t.Helper()
 
 	switch stateName {
@@ -185,7 +186,7 @@ func assertPlantedContentSurvives(t *testing.T, h *Hub, stateName string, target
 
 // assertSurvivesIfUnpermitted runs check unless abs is empty or falls at or below one of permitted's
 // roots, in which case abs may legitimately have changed as part of the verb's own intended effect.
-func assertSurvivesIfUnpermitted(t *testing.T, h *Hub, abs string, permitted []string, check func()) {
+func assertSurvivesIfUnpermitted(t *testing.T, h *hubforge.Hub, abs string, permitted []string, check func()) {
 	t.Helper()
 
 	if abs == "" {
@@ -208,7 +209,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 
 	// Build: the factory clones a fresh hub at the cell's anchor. Every cell owns its hub, so pushes
 	// across parallel cells never race.
-	h := NewHub(t, anchor)
+	h := hubforge.NewHub(t, anchor)
 
 	// Arrange: the verb's own fixture.
 	fixture := vc.Arrange(t, h)
@@ -336,7 +337,7 @@ func TestCloneHubReset(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
 
-				h := NewHub(t, anchor)
+				h := hubforge.NewHub(t, anchor)
 				fixture := verbCase.Arrange(t, h)
 
 				before := CaptureManifest(t, fixture.ResetHubPath)

@@ -1,7 +1,7 @@
 //go:build integration
 
 // configcli_integration_test.go — e2e integration tests for configcli.
-// Tests real fabriccli.RunCLI over CopyPaired fixtures, plus the --set/reconcile
+// Tests real fabriccli.RunCLI over a hubforge.NewHub fixture, plus the --set/reconcile
 // chain that spawns gitexec.RunGit(["init"], …).
 
 package configcli
@@ -17,60 +17,34 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// TestE2ESyncIntegration is an e2e test using CopyPaired: creates a new worktree with dispatch,
+// TestE2ESyncIntegration is an e2e test using a real hub: creates a new worktree with dispatch,
 // edits a config, and verifies the file is tracked in the fabric repo while the warp stays pristine.
 func TestE2ESyncIntegration(t *testing.T) {
 	const slug = "config-e2e-test"
 
-	// Build paired fixture (warp + fabric).
-	f := lyxtest.CopyPaired(t)
+	// Build a real hub. fabriccli.CloneAndWire has already materialized every registered module's
+	// config plus the repo-wide fabric.yaml at BoardDir, and the weft primary already sits on its
+	// WeftBranchName-suffixed branch -- everything the old fixture's SeedConfig, seedRepoWideFabricConfig
+	// and manual weft-branch checkout hand-rolled is arriving for real now, so none of it is needed.
+	h := hubforge.NewHub(t, ".")
 
-	// Seed the fabric-prime fixture with real config templates that fabriccli.RunCLI will need.
-	seeds := make(map[string]string)
-	for _, m := range configreg.Modules() {
-		seeds[m.Name] = m.Template()
-	}
-	lyxtest.SeedConfig(t, f.WeftPrime, seeds)
-
-	// Mirror CloneHub's post-clone state: fabric's primary sits on the suffixed
-	// sibling of the warp's branch ("main-weft"), not the mirrored "main" this
-	// fixture starts on. Without this, Add's fork-from-parent
-	// step has no "main-weft" ref to fork the new pair's fabric branch from.
-	lyxtest.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-
-	// Seed the repo-wide fabric config at fabricengine.BoardDir(f.Layout.HubPath):
-	// batch 5's eager wiring makes Topology.Add read the wired junction
-	// name-set via fabricengine.RepoWiredNames, which loads fabric.yaml from
-	// the repo-wide board dir, not this fixture's per-worktree fabric config
-	// seeded above. Without this, Add below fails with "load fabric config:
-	// not initialized here" before it ever wires a junction.
-	seedRepoWideFabricConfig(t, f.Layout.HubPath)
-
-	// FIRST: Create the worktree via fabricengine.NewTopology().Add() (which is dormant).
-	// Then wire its _lyx junction via WireJunctions.
+	// Create the worktree via Topology.Add, which -- per batch 5's eager wiring -- already wires the
+	// new pair's junctions itself, reading the wired name-set from the real repo-wide fabric.yaml.
 	// Without this the worktree has no _lyx, so configengine.Edit→FindBaseDir would error.
-	top := fabricengine.NewTopology(fabricengine.Config{})
-	_, err := top.Add(f.Layout, slug, fabricengine.AddOptions{SkipPush: true})
+	_, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{SkipPush: true})
 	if err != nil {
 		t.Fatalf("Topology.Add(%q): %v", slug, err)
 	}
 
-	// Wire junctions for the new worktree.
-	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName}); err != nil {
-		t.Fatalf("WireJunctions(%q): %v", slug, err)
-	}
-
 	// Resolve layout for the new worktree.
-	warpWorktreePath := fabricengine.WorktreePath(f.Layout, slug)
+	warpWorktreePath := fabricengine.WorktreePath(h.Location, slug)
 	warpLayout, err := lyxcwd.Resolve(warpWorktreePath)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%q): %v", warpWorktreePath, err)
@@ -109,7 +83,7 @@ func TestE2ESyncIntegration(t *testing.T) {
 	}
 
 	// Assert _lyx/config/fabric.yaml is tracked/committed in the fabric worktree.
-	fabricWorktreePath := fabricengine.WeftWorktreePath(f.Layout, slug)
+	fabricWorktreePath := fabricengine.WeftWorktreePath(h.Location, slug)
 	configRelPath := configengine.ConfigFile(".", "fabric")
 	configPath := filepath.Join(fabricWorktreePath, configRelPath)
 	// For git commands, use forward slashes (git always uses forward slashes).
@@ -256,27 +230,5 @@ func TestDispatchSet_PreservedKeyDetectedByReconcile(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("board module's removed = %v; want it to contain \"legacy_key\"", removed)
-	}
-}
-
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// fabricengine.BoardDir(hub) -- <hub>/_board/_lyx/config/fabric.yaml -- the
-// base fabricengine.RepoWiredNames (and every migrated call site downstream
-// of it, including Topology.Add's eager wiring) reads from. lyxtest.CopyPaired
-// does not create a _board dir, so this creates it (and its _lyx/config/)
-// first; unlike lyxtest.SeedConfig, _board is not a git repository, so the
-// file is written directly with no git add/commit step. Mirrors the
-// identically-named helper in internal/fabricengine's and
-// internal/loomengine's own test packages.
-func seedRepoWideFabricConfig(t testing.TB, hub string) {
-	t.Helper()
-
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }

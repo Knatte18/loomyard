@@ -10,8 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
-	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestSmokeAttachRendersInsideHarnessPane drives the interactive terminal handover of `lyx reed
@@ -21,12 +20,9 @@ func TestSmokeAttachRendersInsideHarnessPane(t *testing.T) {
 	shellPath := harnessShellBinaryPath(t)
 	lyxExe := buildLyxBinary(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})

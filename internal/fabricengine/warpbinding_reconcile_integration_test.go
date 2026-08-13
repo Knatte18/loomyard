@@ -6,11 +6,11 @@
 // many pairs a hub has, and that a divergent or transport-only-differing record is reported but never
 // overwritten. It also proves Unwire leaves a recorded binding untouched.
 //
-// Every test needs a genuinely remote-backed hub — the backfill reads the warp side's real "origin"
-// remote and a future push half needs a real weft remote — so this file builds its own
-// newClonedHubFixture helper on top of fabricengine.CloneHub and clone_adopt_test.go's makeBareRemote,
-// rather than reusing lyxtest.CopyPairedLocal, which pairs two purely local worktrees with no remotes
-// at all.
+// Every test needs a hub built through fabricengine.CloneHub's own backfill path directly — the
+// backfill reads the warp side's real "origin" remote as CloneHub itself sets it up, not as
+// hubforge.NewHub's own pre-wired template would — so this file builds its own newClonedHubFixture
+// helper on top of CloneHub and clone_adopt_test.go's makeBareRemote instead of taking a ready-made
+// hub from hubforge.
 //
 // Package fabricengine_test to isolate real end-to-end git fixtures from the package's internal unit
 // tests; shares the single TestMain in testmain_test.go with every other file in this package.
@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // clonedHubFixture bundles the pieces newClonedHubFixture builds: the resolved clone geometry, the
@@ -322,7 +322,7 @@ func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
 
 	fixture := newClonedHubFixture(t)
 
-	lyxtest.MustRun(t, fixture.Layout.WorktreePath(), "git", "remote", "remove", "origin")
+	gitkit.MustRun(t, fixture.Layout.WorktreePath(), "git", "remote", "remove", "origin")
 
 	result, err := fixture.Topology.Reconcile(fixture.Layout)
 	if err != nil {

@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named
@@ -94,15 +94,15 @@ func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	if err := os.MkdirAll(clone, 0o755); err != nil {
 		t.Fatalf("create unrelated clone directory: %v", err)
 	}
-	lyxtest.MustRun(t, clone, "git", "init", "-b", "main", ".")
+	gitkit.MustRun(t, clone, "git", "init", "-b", "main", ".")
 
 	code := filepath.Join(clone, "code.txt")
 	const sentinel = "UNRELATED-PROJECT-SOURCE"
 	if err := os.WriteFile(code, []byte(sentinel+"\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", code, err)
 	}
-	lyxtest.MustRun(t, clone, "git", "add", "code.txt")
-	lyxtest.MustRun(t, clone, "git", "commit", "-m", "unrelated project commit")
+	gitkit.MustRun(t, clone, "git", "add", "code.txt")
+	gitkit.MustRun(t, clone, "git", "commit", "-m", "unrelated project commit")
 
 	result, err := topology.Prune(l, true, true)
 	if err != nil {

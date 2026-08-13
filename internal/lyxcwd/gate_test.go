@@ -3,7 +3,7 @@
 // untagged.
 // It also pins ResolveWithAnchor and ResolveWorktree as permanently ungated at each of the gate's
 // own rejection triples, so a later "consistency" change cannot quietly gate either bypass and
-// break clone/lyxtest.
+// break clone/gitkit.
 
 package lyxcwd
 
@@ -133,7 +133,7 @@ func TestSamePath(t *testing.T) {
 // points route through with git-spawning already done — must still succeed with no error.
 // This guards clone, whose freshly-cloned worktree root sits above a non-"."
 // subpath anchor,
-// and lyxtest's synthetic-hub anchor injection.
+// and gitkit's synthetic-hub anchor injection.
 // This test exercises buildLocation directly rather than the two exported entry points, so the file
 // stays untagged with no git spawned;
 // ResolveWithAnchor and ResolveWorktree are themselves one-line wrappers over this same

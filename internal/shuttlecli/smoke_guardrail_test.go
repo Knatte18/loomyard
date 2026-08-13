@@ -22,10 +22,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestSmokeGuardrailDeniesAgentTool proves the "deny-and-steer" path this round closes from the
@@ -40,13 +38,9 @@ import (
 func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 	claudeBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.Path)
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		reedcli.RunCLI(&buf, []string{"down"})
@@ -57,7 +51,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	outputPath := filepath.Join(fixture.Hub, "smoke-guardrail-agent-output.txt")
+	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-guardrail-agent-output.txt")
 	prompt := fmt.Sprintf(
 		"Dispatch a subagent via your Agent tool to write exactly DONE to %s and then stop. "+
 			"Only write the file yourself, directly, if the Agent tool turns out to be unavailable to you.",
@@ -101,13 +95,9 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 	claudeBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.Path)
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		reedcli.RunCLI(&buf, []string{"down"})
@@ -118,7 +108,7 @@ func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	outputPath := filepath.Join(fixture.Hub, "smoke-guardrail-asking-output.txt")
+	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-guardrail-asking-output.txt")
 	prompt := fmt.Sprintf(
 		"Before writing anything to %s, stop and ask me which of two options you should "+
 			"pick — do not guess, and do not write the file until I answer.",

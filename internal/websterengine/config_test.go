@@ -1,7 +1,7 @@
 // config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig,
 // overrides round-trip, and a malformed role model-spec fails loud naming the offending key,
 // seeded via plain os.MkdirAll/os.WriteFile against a
-// t.TempDir() rather than lyxtest's weft/config fixture-copy helpers: configengine.Load only
+// t.TempDir() rather than gitkit's weft/config fixture-copy helpers: configengine.Load only
 // requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged
 // and spawn-free (Test Tier Purity Invariant).
 
@@ -20,7 +20,7 @@ import (
 
 // seedConfig writes module's content to <baseDir>/_lyx/config/<module>.yaml,
 // creating the config directory (and its _lyx parent) as needed. It is a
-// plain-filesystem stand-in for lyxtest.SeedConfig, deliberately avoiding
+// plain-filesystem stand-in for gitkit.SeedConfig, deliberately avoiding
 // that helper's git spawn since configengine.Load never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()

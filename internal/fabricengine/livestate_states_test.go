@@ -14,7 +14,7 @@
 // the suite is what protects the state builders during development.
 // Neither substitutes for the other.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"os"
@@ -23,6 +23,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // StateTarget carries the paths one cell resolved for the verb under test: the warp checkout a
@@ -50,7 +52,7 @@ type State struct {
 	// structural state plants, so a failure message names the state that failed to establish itself.
 	Name string
 	// Apply plants this state's condition against target, then asserts it took.
-	Apply func(tb testing.TB, h *Hub, target StateTarget)
+	Apply func(tb testing.TB, h *hubforge.Hub, target StateTarget)
 }
 
 // States is the ordered ten-member hostile-state matrix every cross-product cell draws from.
@@ -74,14 +76,14 @@ var States = []State{
 // The checkout or directory it is planted into is what identifies the cell — each cell resolves its own
 // StateTarget, so the file name itself need not repeat that.
 func sentinelFileName(stateName string) string {
-	return "fabrictest-sentinel-" + stateName + ".txt"
+	return "livestate-sentinel-" + stateName + ".txt"
 }
 
 // trackedDirtMarker is the line plantTrackedDirt appends to a sentinel file's committed content to
 // produce its own local modification. Its presence on disk is what assertTrackedContentSurvives checks
 // for, independent of whatever git status shape (" M" tracked-modified, or "??" if a branch switch
 // carried it into a tree that never tracked it) the sentinel currently reports.
-const trackedDirtMarker = "fabrictest sentinel dirty"
+const trackedDirtMarker = "livestate sentinel dirty"
 
 // plantTrackedDirt commits a fresh sentinel file into checkout, then modifies it, so `git status
 // --porcelain` reports the sentinel with the tracked-modification " M" shape.
@@ -90,12 +92,12 @@ func plantTrackedDirt(tb testing.TB, checkout, stateName string) string {
 
 	name := sentinelFileName(stateName)
 	path := filepath.Join(checkout, name)
-	if err := os.WriteFile(path, []byte("fabrictest sentinel seed\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("livestate sentinel seed\n"), 0o644); err != nil {
 		tb.Fatalf("plantTrackedDirt(%s): write %s: %v", stateName, path, err)
 	}
 	mustGit(checkout, "add", name)
-	mustGit(checkout, "commit", "-m", "fabrictest: seed "+name)
-	if err := os.WriteFile(path, []byte("fabrictest sentinel seed\n"+trackedDirtMarker+"\n"), 0o644); err != nil {
+	mustGit(checkout, "commit", "-m", "livestate: seed "+name)
+	if err := os.WriteFile(path, []byte("livestate sentinel seed\n"+trackedDirtMarker+"\n"), 0o644); err != nil {
 		tb.Fatalf("plantTrackedDirt(%s): modify %s: %v", stateName, path, err)
 	}
 	return name
@@ -129,7 +131,7 @@ func plantUntrackedDirt(tb testing.TB, checkout, stateName string) string {
 
 	name := sentinelFileName(stateName)
 	path := filepath.Join(checkout, name)
-	if err := os.WriteFile(path, []byte("fabrictest sentinel untracked\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("livestate sentinel untracked\n"), 0o644); err != nil {
 		tb.Fatalf("plantUntrackedDirt(%s): write %s: %v", stateName, path, err)
 	}
 	return name
@@ -143,7 +145,7 @@ func plantUntrackedDirt(tb testing.TB, checkout, stateName string) string {
 func assertDirtyContains(tb testing.TB, checkout, sentinel, wantPrefix string) {
 	tb.Helper()
 
-	status := GitStatusPorcelain(tb, checkout)
+	status := gitkit.GitStatusPorcelain(tb, checkout)
 	if status == "" {
 		tb.Fatalf("state failed to establish: %s is clean; want dirty with sentinel %s", checkout, sentinel)
 	}
@@ -187,7 +189,7 @@ func assertLinkTarget(tb testing.TB, path, want string) {
 func cleanState() State {
 	return State{
 		Name:  "clean",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {},
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {},
 	}
 }
 
@@ -197,7 +199,7 @@ func cleanState() State {
 func dirtyWarpTrackedState() State {
 	return State{
 		Name: "dirtyWarpTracked",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			sentinel := plantTrackedDirt(tb, target.WarpCheckout, "dirtyWarpTracked")
@@ -212,7 +214,7 @@ func dirtyWarpTrackedState() State {
 func dirtyWarpUntrackedState() State {
 	return State{
 		Name: "dirtyWarpUntracked",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			sentinel := plantUntrackedDirt(tb, target.WarpCheckout, "dirtyWarpUntracked")
@@ -226,7 +228,7 @@ func dirtyWarpUntrackedState() State {
 func dirtyWeftTrackedState() State {
 	return State{
 		Name: "dirtyWeftTracked",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			sentinel := plantTrackedDirt(tb, target.WeftCheckout, "dirtyWeftTracked")
@@ -243,7 +245,7 @@ func dirtyWeftTrackedState() State {
 func dirtyWeftUntrackedState() State {
 	return State{
 		Name: "dirtyWeftUntracked",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			sentinel := plantUntrackedDirt(tb, target.WeftCheckout, "dirtyWeftUntracked")
@@ -258,7 +260,7 @@ func dirtyWeftUntrackedState() State {
 func bothDirtyState() State {
 	return State{
 		Name: "bothDirty",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			warpTracked := plantTrackedDirt(tb, target.WarpCheckout, "bothDirty-warp-tracked")
@@ -287,7 +289,7 @@ func bothDirtyState() State {
 func trackedSymlinkAtWiredPathState() State {
 	return State{
 		Name: "trackedSymlinkAtWiredPath",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			// The path already carries fabric's own wired junction; remove it before planting the
@@ -313,7 +315,7 @@ func trackedSymlinkAtWiredPathState() State {
 			// never shows as untracked; "-f" is what an operator committing a link of their own at that
 			// same path would need too, and is exactly the shape this state models.
 			mustGit(target.WarpCheckout, "add", "-f", rel)
-			mustGit(target.WarpCheckout, "commit", "-m", "fabrictest: track operator-owned link at wired path")
+			mustGit(target.WarpCheckout, "commit", "-m", "livestate: track operator-owned link at wired path")
 
 			assertLinkTarget(tb, target.StructuralPath, operatorOwned)
 		},
@@ -328,7 +330,7 @@ func trackedSymlinkAtWiredPathState() State {
 func staleWiredJunctionState() State {
 	return State{
 		Name: "staleWiredJunction",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			if err := fslink.Remove(target.StructuralPath); err != nil {
@@ -371,14 +373,14 @@ func staleWiredJunctionState() State {
 func foreignDirAtFabricOwnedPathState() State {
 	return State{
 		Name: "foreignDirAtFabricOwnedPath",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			if err := os.MkdirAll(target.StructuralPath, 0o755); err != nil {
 				tb.Fatalf("foreignDirAtFabricOwnedPath: mkdir %s: %v", target.StructuralPath, err)
 			}
 			contentPath := filepath.Join(target.StructuralPath, sentinelFileName("foreignDirAtFabricOwnedPath"))
-			if err := os.WriteFile(contentPath, []byte("fabrictest: operator content\n"), 0o644); err != nil {
+			if err := os.WriteFile(contentPath, []byte("livestate: operator content\n"), 0o644); err != nil {
 				tb.Fatalf("foreignDirAtFabricOwnedPath: write %s: %v", contentPath, err)
 			}
 
@@ -396,7 +398,7 @@ func foreignDirAtFabricOwnedPathState() State {
 func unrelatedGitCloneAtWeftNamedPathState() State {
 	return State{
 		Name: "unrelatedGitCloneAtWeftNamedPath",
-		Apply: func(tb testing.TB, h *Hub, target StateTarget) {
+		Apply: func(tb testing.TB, h *hubforge.Hub, target StateTarget) {
 			tb.Helper()
 
 			if err := os.MkdirAll(target.StructuralPath, 0o755); err != nil {
@@ -407,13 +409,13 @@ func unrelatedGitCloneAtWeftNamedPathState() State {
 			mustGit(target.StructuralPath, "config", "user.name", "Test")
 
 			contentPath := filepath.Join(target.StructuralPath, sentinelFileName("unrelatedGitCloneAtWeftNamedPath"))
-			if err := os.WriteFile(contentPath, []byte("fabrictest: unrelated repository content\n"), 0o644); err != nil {
+			if err := os.WriteFile(contentPath, []byte("livestate: unrelated repository content\n"), 0o644); err != nil {
 				tb.Fatalf("unrelatedGitCloneAtWeftNamedPath: write %s: %v", contentPath, err)
 			}
 			mustGit(target.StructuralPath, "add", ".")
-			mustGit(target.StructuralPath, "commit", "-m", "fabrictest: seed unrelated clone")
+			mustGit(target.StructuralPath, "commit", "-m", "livestate: seed unrelated clone")
 
-			status := GitStatusPorcelain(tb, target.StructuralPath)
+			status := gitkit.GitStatusPorcelain(tb, target.StructuralPath)
 			if status != "" {
 				tb.Fatalf("state failed to establish: unrelated clone at %s is not clean: %s", target.StructuralPath, status)
 			}

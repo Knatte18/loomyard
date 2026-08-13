@@ -29,8 +29,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -48,28 +48,28 @@ func makeBareRemote(t *testing.T, dir, name string) string {
 		t.Fatalf("mkdir bare: %v", err)
 	}
 
-	lyxtest.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.MustRun(t, bare, "git", "init", "--bare")
 
 	tempWork := filepath.Join(dir, "temp-work-"+name)
 	if err := os.Mkdir(tempWork, 0o755); err != nil {
 		t.Fatalf("mkdir temp work: %v", err)
 	}
 
-	lyxtest.MustRun(t, tempWork, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, tempWork, "git", "init", "-b", "main")
+	gitkit.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, tempWork, "git", "config", "user.name", "Test")
 
 	bareURL := filepath.ToSlash(bare)
-	lyxtest.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
+	gitkit.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
 
 	readmePath := filepath.Join(tempWork, "README.md")
 	if err := os.WriteFile(readmePath, []byte("# "+name), 0o644); err != nil {
 		t.Fatalf("write README: %v", err)
 	}
 
-	lyxtest.MustRun(t, tempWork, "git", "add", "README.md")
-	lyxtest.MustRun(t, tempWork, "git", "commit", "-m", "init")
-	lyxtest.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
+	gitkit.MustRun(t, tempWork, "git", "add", "README.md")
+	gitkit.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	gitkit.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
 
 	if err := os.RemoveAll(tempWork); err != nil {
 		t.Fatalf("remove temp work: %v", err)
@@ -92,7 +92,7 @@ func currentBranch(t *testing.T, repoPath string) string {
 }
 
 // gitOutput runs a git command in dir and returns its trimmed stdout, failing
-// the test on any error — the capture-variant sibling of lyxtest.MustRun,
+// the test on any error — the capture-variant sibling of gitkit.MustRun,
 // which discards output.
 func gitOutput(t *testing.T, dir string, args ...string) string {
 	t.Helper()
@@ -116,19 +116,19 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 		t.Fatalf("mkdir bare: %v", err)
 	}
 
-	lyxtest.MustRun(t, bare, "git", "init", "--bare")
+	gitkit.MustRun(t, bare, "git", "init", "--bare")
 
 	tempWork := filepath.Join(dir, "temp-work-"+name)
 	if err := os.Mkdir(tempWork, 0o755); err != nil {
 		t.Fatalf("mkdir temp work: %v", err)
 	}
 
-	lyxtest.MustRun(t, tempWork, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, tempWork, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, tempWork, "git", "init", "-b", "main")
+	gitkit.MustRun(t, tempWork, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, tempWork, "git", "config", "user.name", "Test")
 
 	bareURL := filepath.ToSlash(bare)
-	lyxtest.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
+	gitkit.MustRun(t, tempWork, "git", "remote", "add", "origin", bareURL)
 
 	readmePath := filepath.Join(tempWork, "README.md")
 	if err := os.WriteFile(readmePath, []byte("# "+name), 0o644); err != nil {
@@ -142,9 +142,9 @@ func makeBareRemoteWithSubdir(t *testing.T, dir, name, subdir string) string {
 		t.Fatalf("write subdir marker: %v", err)
 	}
 
-	lyxtest.MustRun(t, tempWork, "git", "add", "README.md", subdir)
-	lyxtest.MustRun(t, tempWork, "git", "commit", "-m", "init")
-	lyxtest.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
+	gitkit.MustRun(t, tempWork, "git", "add", "README.md", subdir)
+	gitkit.MustRun(t, tempWork, "git", "commit", "-m", "init")
+	gitkit.MustRun(t, tempWork, "git", "push", "-u", "origin", "main")
 
 	if err := os.RemoveAll(tempWork); err != nil {
 		t.Fatalf("remove temp work: %v", err)
@@ -162,10 +162,10 @@ func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents
 	t.Helper()
 
 	scratch := filepath.Join(dir, "scratch-"+branch+"-"+filepath.Base(relPath))
-	lyxtest.MustRun(t, dir, "git", "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
-	lyxtest.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, scratch, "git", "config", "user.name", "Test")
-	lyxtest.MustRun(t, scratch, "git", "checkout", branch)
+	gitkit.MustRun(t, dir, "git", "clone", filepath.ToSlash(bareRemote), filepath.Base(scratch))
+	gitkit.MustRun(t, scratch, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, scratch, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, scratch, "git", "checkout", branch)
 
 	target := filepath.Join(scratch, relPath)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -174,9 +174,9 @@ func commitFileOnBranch(t *testing.T, dir, bareRemote, branch, relPath, contents
 	if err := os.WriteFile(target, []byte(contents), 0o644); err != nil {
 		t.Fatalf("write %s: %v", relPath, err)
 	}
-	lyxtest.MustRun(t, scratch, "git", "add", relPath)
-	lyxtest.MustRun(t, scratch, "git", "commit", "-m", "seed "+relPath)
-	lyxtest.MustRun(t, scratch, "git", "push", "origin", branch)
+	gitkit.MustRun(t, scratch, "git", "add", relPath)
+	gitkit.MustRun(t, scratch, "git", "commit", "-m", "seed "+relPath)
+	gitkit.MustRun(t, scratch, "git", "push", "origin", branch)
 }
 
 // makeEmptyBareRemote creates a bare git repository with no commits at all —
@@ -187,7 +187,7 @@ func makeEmptyBareRemote(t *testing.T, dir, name string) string {
 	t.Helper()
 
 	bare := filepath.Join(dir, name+".git")
-	lyxtest.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
+	gitkit.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
 
 	return bare
 }
@@ -255,17 +255,17 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 	// active hub's synced weft history would have: one extra commit carrying a
 	// marker file that only exists on main-weft.
 	seedWork := filepath.Join(fixtures, "seed-weft")
-	lyxtest.MustRun(t, fixtures, "git", "clone", filepath.ToSlash(weftBare), "seed-weft")
-	lyxtest.MustRun(t, seedWork, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, seedWork, "git", "config", "user.name", "Test")
-	lyxtest.MustRun(t, seedWork, "git", "checkout", "-b", "main-weft")
+	gitkit.MustRun(t, fixtures, "git", "clone", filepath.ToSlash(weftBare), "seed-weft")
+	gitkit.MustRun(t, seedWork, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, seedWork, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, seedWork, "git", "checkout", "-b", "main-weft")
 	markerName := "synced-weft-state.txt"
 	if err := os.WriteFile(filepath.Join(seedWork, markerName), []byte("weft history"), 0o644); err != nil {
 		t.Fatalf("write weft marker: %v", err)
 	}
-	lyxtest.MustRun(t, seedWork, "git", "add", markerName)
-	lyxtest.MustRun(t, seedWork, "git", "commit", "-m", "weft sync")
-	lyxtest.MustRun(t, seedWork, "git", "push", "-u", "origin", "main-weft")
+	gitkit.MustRun(t, seedWork, "git", "add", markerName)
+	gitkit.MustRun(t, seedWork, "git", "commit", "-m", "weft sync")
+	gitkit.MustRun(t, seedWork, "git", "push", "-u", "origin", "main-weft")
 
 	remoteTip := gitOutput(t, seedWork, "rev-parse", "main-weft")
 

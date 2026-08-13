@@ -4,9 +4,14 @@
 // The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is
 // restated here through Open(l), the constructor the contract now belongs to, using a hand-built
 // Location rather than a real git fixture — the fast Tier-1 home for this contract.
-// open_integration_test.go pins the identical contract end-to-end against a real paired lyxtest
-// fixture (CopyPaired; TestOpen_MissingWarpWorktree / TestOpen_MissingSiblingWorktree); that is the Tier-2 home,
-// not a duplicate of these — these prove the pure stat-check logic without a git spawn.
+// open_integration_test.go pins the identical contract end-to-end against a real hub built by the
+// hubforge package (TestOpen_MissingWarpWorktree / TestOpen_MissingSiblingWorktree); that is the
+// Tier-2 home, not a duplicate of these — these prove the pure stat-check logic without a git spawn.
+//
+// TestNew_HappyPath below is this package's only remaining NewPairedFromPathsForTest consumer: an
+// untagged unit test of the newPaired constructor itself, spawning no git and having nothing to do
+// with hub fixtures, so it stays untagged and must never gain a hubforge import — the Test Tier
+// Purity Invariant bans an untagged test from calling the hubforge package's hub constructor.
 
 package fabricengine_test
 
@@ -82,15 +87,15 @@ func TestNew_HappyPath(t *testing.T) {
 		t.Fatalf("mkdir weft: %v", err)
 	}
 
-	f, err := fabricengine.NewPairedForTest(warpPath, weftPath)
+	f, err := fabricengine.NewPairedFromPathsForTest(warpPath, weftPath)
 	if err != nil {
-		t.Fatalf("NewPairedForTest() error = %v", err)
+		t.Fatalf("NewPairedFromPathsForTest() error = %v", err)
 	}
 	if fabricengine.WarpForTest(f) == nil {
-		t.Error("NewPairedForTest().warp = nil; want non-nil")
+		t.Error("NewPairedFromPathsForTest().warp = nil; want non-nil")
 	}
 	if fabricengine.WeftForTest(f) == nil {
-		t.Error("NewPairedForTest().weft = nil; want non-nil")
+		t.Error("NewPairedFromPathsForTest().weft = nil; want non-nil")
 	}
 }
 

@@ -1,6 +1,6 @@
 // weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base
 // combinations,
-// and locks in the relationship between them that lyxtest's fixture builders rely on, so the two
+// and locks in the relationship between them that gitkit's fixture builders rely on, so the two
 // on-disk shapes can never independently drift.
 
 package weftname_test
@@ -57,7 +57,7 @@ func TestBareSiblingPath(t *testing.T) {
 	}
 }
 
-// TestBareSiblingPath_AgreesWithSiblingPath locks in the relationship lyxtest's fixture builders
+// TestBareSiblingPath_AgreesWithSiblingPath locks in the relationship gitkit's fixture builders
 // depend on: a weft sibling's bare-remote fixture name is always SiblingPath's own result with
 // "-bare" appended, never an independently-derived literal.
 // This is the drift BareSiblingPath exists to prevent between production geometry and the on-disk

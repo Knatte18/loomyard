@@ -4,23 +4,22 @@
 // against real warp+weft repos with bare origins: the two-sided-advance case
 // (including the no-warp-root-.gitrepo-push.lock assertion), and the
 // diverged-warp-remote case that must return nil (not an error) without
-// spinning. Package fabricengine (internal), reusing this package's existing
-// fixture helpers (newPlainWarpRepo, currentSHA, newFabric from
-// index_integration_test.go; seedFabricConfig/writeWarpFile from
-// commit_integration_test.go) plus lyxtest for bare-remote setup.
+// spinning. Package fabricengine_test, driving the warp/bare fixture through
+// export_test.go's ForTest shims (NewPlainWarpRepoForTest, CurrentSHAForTest,
+// BareBranchSHAForTest) plus gitkit for bare-remote setup.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // addWarpBareRemote creates a bare git repository at <dir>/warp-remote.git,
@@ -31,9 +30,9 @@ func addWarpBareRemote(t *testing.T, dir, warpPath string) string {
 	t.Helper()
 
 	bare := filepath.Join(dir, "warp-remote.git")
-	lyxtest.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
-	lyxtest.MustRun(t, warpPath, "git", "remote", "add", "origin", filepath.ToSlash(bare))
-	lyxtest.MustRun(t, warpPath, "git", "push", "-u", "origin", "main")
+	gitkit.MustRun(t, dir, "git", "init", "--bare", "-b", "main", bare)
+	gitkit.MustRun(t, warpPath, "git", "remote", "add", "origin", filepath.ToSlash(bare))
+	gitkit.MustRun(t, warpPath, "git", "push", "-u", "origin", "main")
 	return bare
 }
 
@@ -47,23 +46,9 @@ func commitPlain(t *testing.T, dir, name, content string) string {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", name)
-	lyxtest.MustRun(t, dir, "git", "commit", "-q", "-m", content)
-	return currentSHA(t, dir)
-}
-
-// bareBranchSHA returns the SHA that branch points to inside the bare repo at
-// bareDir.
-func bareBranchSHA(t *testing.T, bareDir, branch string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", branch)
-	cmd.Dir = bareDir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse %s in %s: %v", branch, bareDir, err)
-	}
-	return strings.TrimSpace(string(out))
+	gitkit.MustRun(t, dir, "git", "add", name)
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", content)
+	return fabricengine.CurrentSHAForTest(t, dir)
 }
 
 // runWithDeadline runs fn in a goroutine and fails the test if it has not
@@ -91,26 +76,26 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.T) {
 	fixtures := t.TempDir()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
 	warpSHA := commitPlain(t, warpPath, "warp-file.txt", "warp change")
 
-	weftFixture := lyxtest.CopyWeft(t)
-	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change")
+	weftFixture := hubforge.NewHub(t, ".")
+	weftSHA := commitPlain(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change")
 
-	if _, err := CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{}); err != nil {
-		t.Fatalf("CoalescePushBothAt() error = %v; want nil", err)
+	if _, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeWeft(), fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil", err)
 	}
 
-	if got := bareBranchSHA(t, warpBare, "main"); got != warpSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpSHA {
 		t.Errorf("warp bare main = %q; want it advanced to local HEAD %q", got, warpSHA)
 	}
-	if got := bareBranchSHA(t, weftFixture.Bare, "main"); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.WeftBare, fabricengine.WeftBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 
 	if _, err := os.Stat(filepath.Join(warpPath, gitrepo.PushLockFileName)); !os.IsNotExist(err) {
-		t.Errorf("%s exists at warp worktree root after CoalescePushBothAt(); want it absent (rebase-free, lock-free-per-side push)", gitrepo.PushLockFileName)
+		t.Errorf("%s exists at warp worktree root after fabricengine.CoalescePushBothAt(); want it absent (rebase-free, lock-free-per-side push)", gitrepo.PushLockFileName)
 	}
 }
 
@@ -122,39 +107,39 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *testing.T) {
 	fixtures := t.TempDir()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	warpBare := addWarpBareRemote(t, fixtures, warpPath)
 
 	// A second clone advances the bare remote past what warpPath's checkout
 	// has, setting up the divergence: warpPath's next push will be rejected.
 	warpClone2 := filepath.Join(fixtures, "warp-clone-2")
-	lyxtest.MustRun(t, fixtures, "git", "clone", warpBare, warpClone2)
-	lyxtest.MustRun(t, warpClone2, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, warpClone2, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, fixtures, "git", "clone", warpBare, warpClone2)
+	gitkit.MustRun(t, warpClone2, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, warpClone2, "git", "config", "user.name", "Test")
 	commitPlain(t, warpClone2, "other.txt", "from second clone")
-	lyxtest.MustRun(t, warpClone2, "git", "push")
+	gitkit.MustRun(t, warpClone2, "git", "push")
 
 	// warpPath now commits locally too, without ever having fetched the
 	// second clone's commit — its next push is a genuine non-fast-forward.
 	commitPlain(t, warpPath, "warp-file.txt", "warp change that will be rejected")
 
-	weftFixture := lyxtest.CopyWeft(t)
+	weftFixture := hubforge.NewHub(t, ".")
 
-	bareHeadBefore := bareBranchSHA(t, warpBare, "main")
+	bareHeadBefore := fabricengine.BareBranchSHAForTest(t, warpBare, "main")
 	wantWarpFileContent, err := os.ReadFile(filepath.Join(warpPath, "warp-file.txt"))
 	if err != nil {
 		t.Fatalf("read warp-file.txt before call: %v", err)
 	}
 
 	callErr := runWithDeadline(t, 30*time.Second, func() error {
-		_, err := CoalescePushBothAt(warpPath, weftFixture.WeftPath, SyncOptions{})
+		_, err := fabricengine.CoalescePushBothAt(warpPath, weftFixture.PrimeWeft(), fabricengine.SyncOptions{})
 		return err
 	})
 	if callErr != nil {
-		t.Fatalf("CoalescePushBothAt() error = %v; want nil (a rejected push is not a genuine failure)", callErr)
+		t.Fatalf("fabricengine.CoalescePushBothAt() error = %v; want nil (a rejected push is not a genuine failure)", callErr)
 	}
 
-	if got := bareBranchSHA(t, warpBare, "main"); got != bareHeadBefore {
+	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != bareHeadBefore {
 		t.Errorf("warp bare main = %q; want it unadvanced at %q (rejected push must not partially land)", got, bareHeadBefore)
 	}
 	gotWarpFileContent, err := os.ReadFile(filepath.Join(warpPath, "warp-file.txt"))
@@ -166,7 +151,7 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 	}
 	for _, rebaseDir := range []string{"rebase-merge", "rebase-apply"} {
 		if _, statErr := os.Stat(filepath.Join(warpPath, ".git", rebaseDir)); statErr == nil {
-			t.Errorf(".git/%s exists after CoalescePushBothAt(); want no rebase ever attempted", rebaseDir)
+			t.Errorf(".git/%s exists after fabricengine.CoalescePushBothAt(); want no rebase ever attempted", rebaseDir)
 		}
 	}
 }
@@ -195,14 +180,14 @@ func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.
 		}
 	})
 
-	weftFixture := lyxtest.CopyWeft(t)
-	weftSHA := commitPlain(t, weftFixture.WeftPath, "weft-file.txt", "weft change, no warp")
+	weftFixture := hubforge.NewHub(t, ".")
+	weftSHA := commitPlain(t, weftFixture.PrimeWeft(), "weft-file.txt", "weft change, no warp")
 
-	if _, err := CoalescePushBothAt("", weftFixture.WeftPath, SyncOptions{}); err != nil {
-		t.Fatalf("CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
+	if _, err := fabricengine.CoalescePushBothAt("", weftFixture.PrimeWeft(), fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("fabricengine.CoalescePushBothAt(\"\", ...) error = %v; want nil (empty warpPath must be a true no-op, not a cwd-relative git open)", err)
 	}
 
-	if got := bareBranchSHA(t, weftFixture.Bare, "main"); got != weftSHA {
+	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.WeftBare, fabricengine.WeftBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
 	}
 }

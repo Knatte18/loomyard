@@ -105,7 +105,7 @@ var ErrCwdOutsideAnchor = errors.New("cwd is outside the recorded fabric anchor 
 // path may not exist yet, e.g. during clone). Normalization is not optional:
 // the worktree side comes from git rev-parse --show-toplevel while cwd comes
 // from os.Getwd, and the two disagree routinely — macOS's /tmp is a symlink
-// to /private/tmp, lyxtest fixtures live under symlinked temp dirs, and
+// to /private/tmp, gitkit fixtures live under symlinked temp dirs, and
 // Windows/macOS filesystems are case-insensitive while Go string comparison
 // is not. Comparison is byte-exact on Linux/macOS and case-insensitive
 // (strings.EqualFold) on Windows.
@@ -145,7 +145,7 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 // found. It returns ("", false, nil) on any error — an absent board directory, an
 // absent marker file, or an unreadable file — because every one of those
 // cases means the caller must fall back to today's cwd-derived RelPath
-// (mid-clone, a lyxtest synthetic hub, or a non-fabric git repo). An
+// (mid-clone, a gitkit fixture repo standing in for a hub, or a non-fabric git repo). An
 // empty or whitespace-only marker after trimming is also treated as absent:
 // an anchor must never resolve to an empty subpath. This helper spawns no
 // git and stays stdlib-only.

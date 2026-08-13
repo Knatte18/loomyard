@@ -1,6 +1,6 @@
 // config_test.go verifies batcher.yaml's template parses and Active resolves the configured
 // batchifier through both of its distinct error paths, seeded via plain os.MkdirAll/os.WriteFile
-// against a t.TempDir() rather than lyxtest's weft/config fixture-copy helpers: configengine.Load
+// against a t.TempDir() rather than gitkit's weft/config fixture-copy helpers: configengine.Load
 // only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays
 // untagged and spawn-free.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
@@ -20,7 +20,7 @@ import (
 
 // seedConfig writes content to <baseDir>/_lyx/config/<module>.yaml,
 // creating the config directory (and its _lyx parent) as needed. It is a
-// plain-filesystem stand-in for lyxtest's own git-spawning config-seeding
+// plain-filesystem stand-in for gitkit's own git-spawning config-seeding
 // helper, deliberately avoiding that helper's git spawn since
 // configengine.Load never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {

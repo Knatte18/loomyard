@@ -2,7 +2,7 @@
 // that stops every git spawned by a test process from reading the operator's global or system git
 // config.
 
-package lyxtest
+package gitkit
 
 import (
 	"os"
@@ -45,7 +45,7 @@ func HermeticGitEnv() {
 		// Fixture-construction precedent (mustGit): errors here are unrecoverable
 		// setup failures, so panic immediately rather than threading an error
 		// return through every TestMain in the repo.
-		f, err := os.CreateTemp("", "lyxtest-gitconfig-*")
+		f, err := os.CreateTemp("", "gitkit-gitconfig-*")
 		if err != nil {
 			panic(err)
 		}

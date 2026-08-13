@@ -7,7 +7,7 @@
 // Invariant in CONSTRAINTS.md), so it is tagged integration rather than
 // running on every plain `go test`. It previously evaded the tierpurity
 // guard because it spawns via the production execGateCommand wrapper rather
-// than a banned token (gitexec.RunGit, exec.Command, lyxtest.Copy) the guard
+// than a banned token (gitexec.RunGit, exec.Command, gitkit.Copy) the guard
 // greps for.
 
 package treadleengine

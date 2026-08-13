@@ -1,9 +1,8 @@
 //go:build integration
 
-// run_integration_test.go holds the run verb's fabric-sync tests: each seeds a
-// real paired git-repo fixture (lyxtest.CopyPairedLocal) and asserts on the
-// actual fabric git log/tracked-files via exec.Command, so this file is
-// integration-tagged per the Test Tier Purity Invariant.
+// run_integration_test.go holds the run verb's fabric-sync tests: each builds a real hub
+// (hubforge.NewHub) and asserts on the actual fabric git log/tracked-files via exec.Command, so this
+// file is integration-tagged per the Test Tier Purity Invariant.
 
 package perchcli
 
@@ -15,44 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/perchengine"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
-
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml that Fabric.Commit reads.
-func seedRepoWideFabricConfig(t *testing.T, hub string) {
-	t.Helper()
-
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
-	}
-}
-
-// seedFabricAnchor records relPath as the .lyx-anchor marker so Fabric.Commit resolves the correct RelPath.
-func seedFabricAnchor(t *testing.T, hub, relPath string) {
-	t.Helper()
-
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
-	}
-	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
-	if err := os.WriteFile(anchorPath, []byte(relPath), 0o644); err != nil {
-		t.Fatalf("write %s: %v", anchorPath, err)
-	}
-}
 
 // TestRunCLI_Run_FabricSyncRunsOnEngineError verifies that Engine.Run returning a hard error still
 // gets the SAME fabric commit+push treatment a successful terminal outcome does, per the Fabric Git
@@ -65,16 +31,11 @@ func seedFabricAnchor(t *testing.T, hub, relPath string) {
 // sync call actually runs and actually commits it on this path.
 func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
-	seedRepoWideFabricConfig(t, fixture.Container)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-		"perch":   perchengine.ConfigTemplate(),
-	})
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
+	t.Chdir(h.PrimeWorktree())
 
-	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
 		t.Fatalf("write profile fixture: %v", err)
@@ -85,10 +46,10 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 	// itself, so a placeholder file is planted directly inside the
 	// fabric-prime worktree at the path the warp's "_lyx" junction would
 	// otherwise transparently resolve to (this fixture predates "lyx init",
-	// so no junction exists yet — writing straight into WeftPrime is the
+	// so no junction exists yet — writing straight into PrimeWeft is the
 	// established pattern other cli test suites use, e.g. fabriccli's
 	// TestRunCLI_EnvMapToOption).
-	placeholderDir := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "fabric-on-error")
+	placeholderDir := filepath.Join(h.PrimeWeft(), lyxdirs.LyxDirName, "perch", "fabric-on-error")
 	if err := os.MkdirAll(placeholderDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -106,7 +67,7 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 		t.Fatalf(`RunCLI([run]) output missing the round-caps validation error; got: %q`, out.String())
 	}
 
-	fabricLog := gitLogOneline(t, fixture.WeftPrime)
+	fabricLog := gitLogOneline(t, h.PrimeWeft())
 	if !strings.Contains(fabricLog, "fabric-on-error ERROR") {
 		t.Errorf("fabric log = %q; want a %q commit even though Engine.Run returned an error", fabricLog, "perch: fabric-on-error ERROR")
 	}
@@ -124,24 +85,19 @@ func TestRunCLI_Run_FabricSyncRunsOnEngineError(t *testing.T) {
 // pathspec.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
-	seedRepoWideFabricConfig(t, fixture.Container)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-		"perch":   perchengine.ConfigTemplate(),
-	})
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
+	t.Chdir(h.PrimeWorktree())
 
-	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
 		t.Fatalf("write profile fixture: %v", err)
 	}
 
 	// Stand in for a real block's run dir (see the FabricSyncRunsOnEngineError
-	// test above for why this is planted straight into WeftPrime).
-	runDir := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "lock-exclusion")
+	// test above for why this is planted straight into PrimeWeft).
+	runDir := filepath.Join(h.PrimeWeft(), lyxdirs.LyxDirName, "perch", "lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -156,7 +112,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 
 	// Stand in for the same block's ".lyx" scratch dir, where the two lock
 	// files a real Engine.Run leaves behind actually live.
-	scratchDir := filepath.Join(fixture.WeftPrime, lyxdirs.DotLyxDirName, "perch", "lock-exclusion")
+	scratchDir := filepath.Join(h.PrimeWeft(), lyxdirs.DotLyxDirName, "perch", "lock-exclusion")
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder scratch dir: %v", err)
 	}
@@ -175,7 +131,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 	}
 
 	// The commit must carry the block state and nothing lock-shaped.
-	tracked := gitLsFiles(t, fixture.WeftPrime)
+	tracked := gitLsFiles(t, h.PrimeWeft())
 	if !strings.Contains(tracked, "lock-exclusion/state.json\n") || !strings.Contains(tracked, "lock-exclusion/round-1-review.md") {
 		t.Errorf("fabric tracked files = %q; want state.json and round-1-review.md committed", tracked)
 	}
@@ -191,35 +147,25 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles(t *testing.T) {
 // rest of the block state, with the worktree geometry itself anchored two segments deep.
 func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
-	seedRepoWideFabricConfig(t, fixture.Container)
 
 	const relPath = "wts/some-task"
-	seedFabricAnchor(t, fixture.Container, relPath)
+	h := hubforge.NewHub(t, relPath)
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
 
-	warpSubdir := filepath.Join(fixture.Hub, filepath.FromSlash(relPath))
-	if err := os.MkdirAll(warpSubdir, 0o755); err != nil {
-		t.Fatalf("mkdir nested warp subdir: %v", err)
-	}
-	// Module configs are seeded at the nested subdir itself: layout.Cwd is
-	// the anchor point every module config load resolves against, mirroring
-	// the real nested-initialized-repo shape a recorded anchor describes.
-	lyxtest.SeedConfig(t, warpSubdir, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-		"perch":   perchengine.ConfigTemplate(),
-	})
-	t.Chdir(warpSubdir)
+	// The anchored warp directory already exists in hubforge's own warp template (see hub.go's
+	// buildBareTemplate), so nothing further needs arranging here beyond chdir'ing into it.
+	t.Chdir(h.Location.AnchorPath())
 
-	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [5, 3]\n"
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
 		t.Fatalf("write profile fixture: %v", err)
 	}
 
-	// Stand in for a real block's run dir, nested under the recorded
-	// anchor's subpath exactly as the real fabric junction would mirror it.
-	runDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), lyxdirs.LyxDirName, "perch", "nested-lock-exclusion")
+	// Stand in for a real block's run dir, nested under the recorded anchor's subpath exactly as the
+	// real fabric junction would mirror it. h.WeftBase is that anchor-joined weft directory, fabric's
+	// own join rather than one built here from PrimeWeft()+relPath.
+	runDir := filepath.Join(h.WeftBase, lyxdirs.LyxDirName, "perch", "nested-lock-exclusion")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder run dir: %v", err)
 	}
@@ -234,7 +180,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 
 	// Stand in for the same block's ".lyx" scratch dir, nested the same way,
 	// where the two lock files a real Engine.Run leaves behind actually live.
-	scratchDir := filepath.Join(fixture.WeftPrime, filepath.FromSlash(relPath), lyxdirs.DotLyxDirName, "perch", "nested-lock-exclusion")
+	scratchDir := filepath.Join(h.WeftBase, lyxdirs.DotLyxDirName, "perch", "nested-lock-exclusion")
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir placeholder scratch dir: %v", err)
 	}
@@ -254,7 +200,7 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 
 	// The commit must carry the block state and nothing lock-shaped, even
 	// though the whole worktree is anchored two RelPath segments deep.
-	tracked := gitLsFiles(t, fixture.WeftPrime)
+	tracked := gitLsFiles(t, h.PrimeWeft())
 	wantPresent := relPath + "/_lyx/perch/nested-lock-exclusion/state.json"
 	wantPresent2 := relPath + "/_lyx/perch/nested-lock-exclusion/round-1-review.md"
 	if !strings.Contains(tracked, wantPresent) || !strings.Contains(tracked, wantPresent2) {
@@ -274,38 +220,33 @@ func TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath(t *testing.T) {
 // prove the sync would have had something to commit and still did not run.
 func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
-	fixture := lyxtest.CopyPairedLocal(t)
-	seedRepoWideFabricConfig(t, fixture.Container)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-		"perch":   perchengine.ConfigTemplate(),
-	})
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _lyx\n")
+	t.Chdir(h.PrimeWorktree())
 
-	profilePath := filepath.Join(fixture.Hub, "profile.yaml")
+	profilePath := filepath.Join(h.PrimeWorktree(), "profile.yaml")
 	profileContent := "target:\n  instructions: x\nfasit:\n  instructions: y\nrubric: r\nfix-scope: overlay\ngate:\n  mode: llm-verdict\nround-caps: [3]\n"
 	if err := os.WriteFile(profilePath, []byte(profileContent), 0o644); err != nil {
 		t.Fatalf("write profile fixture: %v", err)
 	}
 
-	// The winner's in-flight state, planted straight into WeftPrime (this
+	// The winner's in-flight state, planted straight into PrimeWeft (this
 	// fixture predates "lyx init", so no junction exists — same pattern as
 	// the fabric tests above). runDirBase resolves against the WARP cwd, so
 	// hold the run.lock there; the dirty fabric file proves the skipped sync
 	// had real material.
-	warpRunDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "busyblock")
+	warpRunDir := filepath.Join(perchengine.RunsDir(h.Location), "busyblock")
 	if err := os.MkdirAll(warpRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir warp run dir: %v", err)
 	}
 	// run.lock itself now lives in the block's .lyx scratch dir, not its
 	// _lyx run dir — see perchengine.ScratchDir and
 	// treadleengine.Options.ScratchDir.
-	warpScratchDir := filepath.Join(perchengine.ScratchDir(fixture.Layout), "busyblock")
+	warpScratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "busyblock")
 	if err := os.MkdirAll(warpScratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir warp scratch dir: %v", err)
 	}
-	fabricDirty := filepath.Join(fixture.WeftPrime, lyxdirs.LyxDirName, "perch", "busyblock")
+	fabricDirty := filepath.Join(h.PrimeWeft(), lyxdirs.LyxDirName, "perch", "busyblock")
 	if err := os.MkdirAll(fabricDirty, 0o755); err != nil {
 		t.Fatalf("mkdir fabric dirty dir: %v", err)
 	}
@@ -330,7 +271,7 @@ func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 		t.Errorf(`RunCLI([run --run-id busyblock]) output missing "already running"; got: %q`, out.String())
 	}
 
-	fabricLog := gitLogOneline(t, fixture.WeftPrime)
+	fabricLog := gitLogOneline(t, h.PrimeWeft())
 	if strings.Contains(fabricLog, "busyblock") {
 		t.Errorf("fabric log = %q; want NO commit from the losing invocation (the winner syncs at its own exit)", fabricLog)
 	}

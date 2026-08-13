@@ -23,29 +23,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
-// seedRepoWideEscapeFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)
-// with a pathspec naming exactly escapeName, mirroring reconcile_stale_registration_test.go's
-// seedRepoWideFabricConfig and junction_pattern_integration_test.go's seedRepoWideExtraFabricConfig
-// for a caller-chosen pathspec entry rather than either of those fixed ones.
-func seedRepoWideEscapeFabricConfig(t testing.TB, hub, escapeName string) {
-	t.Helper()
-
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "fabric")
-	content := "branch_prefix: \"\"\npathspec: " + escapeName + "\n"
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
-	}
+// escapeFabricConfigYAML returns a repo-wide fabric.yaml override whose pathspec names exactly
+// escapeName, for a caller-chosen pathspec entry rather than a fixed one.
+func escapeFabricConfigYAML(escapeName string) string {
+	return "branch_prefix: \"\"\npathspec: " + escapeName + "\n"
 }
 
 // TestUnwireJunctions_RefusesLinkOutsideItsWorktree covers gap one's first reach point: the
@@ -96,17 +84,13 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	t.Parallel()
 
 	const slug = "gap1-rollback-owner"
-	fixture := lyxtest.CopyPairedLocal(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	// The gate's ownedManagedBranch reaches primaryWeftBranch, which reads the branch checked out at
-	// _board — mirror newFabricFixture's setup (worktree add BEFORE seeding config into it).
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
-	seedRepoWideEscapeFabricConfig(t, fixture.Layout.HubPath, "../gap1-rollback-escape")
+	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
+	// materializes a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read
+	// succeeds against, so only the escape-specific pathspec override is seeded here.
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))
 
-	l := fixture.Layout
+	l := h.Location
 	// A configured branch prefix is what makes the warp branch this Add creates recognisable to the
 	// gate's ownedManagedBranch check, mirroring add_rollback_adopt_test.go's fixtures — the branch
 	// side of rollback is not what this test is about.
@@ -262,7 +246,7 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 		if err := os.MkdirAll(clone, 0o755); err != nil {
 			t.Fatalf("mkdir clone: %v", err)
 		}
-		lyxtest.MustRun(t, clone, "git", "init", "-b", "main", ".")
+		gitkit.MustRun(t, clone, "git", "init", "-b", "main", ".")
 		if fabricengine.IsRegisteredLinkedWorktreeInForTest(repoDir, clone) {
 			t.Errorf("IsRegisteredLinkedWorktreeInForTest(unrelated clone) = true; want false")
 		}
@@ -467,9 +451,9 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 		if err := os.WriteFile(staged, []byte("staged\n"), 0o644); err != nil {
 			t.Fatalf("write staged file: %v", err)
 		}
-		lyxtest.MustRun(t, dir, "git", "add", "staged-new.txt")
+		gitkit.MustRun(t, dir, "git", "add", "staged-new.txt")
 		t.Cleanup(func() {
-			lyxtest.MustRun(t, dir, "git", "reset", "--", "staged-new.txt")
+			gitkit.MustRun(t, dir, "git", "reset", "--", "staged-new.txt")
 			_ = os.Remove(staged)
 		})
 		assertScopes(t, true, true)
@@ -525,7 +509,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 			t.Fatalf("remove board worktree: %v", err)
 		}
 		const orphan = "orphan-primary-unreadable-weft"
-		lyxtest.MustRun(t, uWeftRoot, "git", "branch", orphan)
+		gitkit.MustRun(t, uWeftRoot, "git", "branch", orphan)
 		assertBranchGateRefusesBothForceModes(t, ul, uWeftRoot, orphan, "cannot determine the repo's primary weft branch")
 	})
 
@@ -542,13 +526,13 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	})
 
 	t.Run("RefusesUnmanagedName", func(t *testing.T) {
-		lyxtest.MustRun(t, weftRoot, "git", "branch", "plain-unmanaged-branch")
+		gitkit.MustRun(t, weftRoot, "git", "branch", "plain-unmanaged-branch")
 		assertBranchGateRefusesBothForceModes(t, l, weftRoot, "plain-unmanaged-branch", "not a name fabric's own scheme constructs")
 	})
 
 	t.Run("AcceptsOrphanedFabricNamedNonPrimaryNonCheckedOutBranch", func(t *testing.T) {
 		const orphan = "orphan-task-weft"
-		lyxtest.MustRun(t, weftRoot, "git", "branch", orphan)
+		gitkit.MustRun(t, weftRoot, "git", "branch", orphan)
 		exitCode, stderr, err := fabricengine.DeleteBranchForTest(l, weftRoot, orphan, "", false)
 		if err != nil || exitCode != 0 {
 			t.Fatalf("DeleteBranchForTest(%q) = exit %d, err %v, stderr %q; want a clean deletion", orphan, exitCode, err, stderr)
@@ -580,7 +564,7 @@ func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
 	// Break the warp origin remote so Add's final push fails after the warp branch and worktree
 	// already exist — the same post-creation-failure injection
 	// TestAddRollback_UnwiresJunctionsOnPostWiringFailure uses — triggering rollbackAdd.
-	lyxtest.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
+	gitkit.MustRun(t, l.WorktreePath(), "git", "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-remote"))
 
 	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
 		t.Fatalf("Add should have failed (broken origin remote)")

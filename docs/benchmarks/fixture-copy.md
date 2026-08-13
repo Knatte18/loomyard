@@ -1,6 +1,6 @@
 # Fixture-copy benchmark report
 
-Deep analysis behind the "Speed up git-fixture tests" task: the full benchmark report recorded during the task's discussion phase (2026-07-13), ported here verbatim as the permanent record, plus a "Reproducing" section to regenerate the copy numbers with the permanent benchmark this task shipped (`internal/lyxtest/bench_test.go`).
+Deep analysis behind the "Speed up git-fixture tests" task: the full benchmark report recorded during the task's discussion phase (2026-07-13), ported here verbatim as the permanent record, plus a "Reproducing" section to regenerate the copy numbers with the permanent benchmark this task shipped at the time (`internal/lyxtest/bench_test.go`, since retired by the `lyxtest-real-hubs` task — see "Reproducing" below for the benchmarks that replaced it).
 For the headline before/after wall-clock numbers, see [test-suite-timing.md](test-suite-timing.md#levers-that-moved-the-numbers);
 for how to run the suite, see [running-tests.md](running-tests.md).
 
@@ -113,8 +113,18 @@ See that invariant for the full mechanics and allowlist.
 
 ## Reproducing
 
-The permanent copy-cost probes (this task's Deliverable 1) live in `internal/lyxtest/bench_test.go`, `//go:build integration`: `BenchmarkCopyPaired`, `BenchmarkCopyPairedLocal` (serial),
-and their `BenchmarkCopyPairedParallel` / `BenchmarkCopyPairedLocalParallel` counterparts (`b.RunParallel`) — contended cost is what the suite actually pays (serial ~128 ms vs ~500 ms contended on this machine, per the arms table above).
+The `internal/lyxtest/bench_test.go` copy-cost probes this task originally shipped no longer exist: the `lyxtest-real-hubs` task retired `internal/lyxtest` and replaced its hand-assembled fixtures with real cloned hubs.
+The permanent benchmarks today are `BenchmarkNewHub` and `BenchmarkNewHubParallel` in `internal/hubforge/bench_test.go` (the real-hub factory, `//go:build integration`), `BenchmarkCopyBares` alongside them (the bare-repo-copy half of the copy-the-bares, clone-the-hub model), and `BenchmarkCopyRepo` in `internal/gitkit/bench_test.go` (the below-fabric leaf's own primitive repo-copy fixture):
+
+```sh
+go test -tags integration -bench . -run '^$' ./internal/hubforge ./internal/gitkit
+```
+
+**What changed.** Fixtures are now real hubs built by cloning rather than copied from a hand-assembled template.
+A full fixture now measures ~24 ms, against the old copy-only ~2.3 ms (`BenchmarkCopyPairedLocalParallel`'s figure below).
+Projected across the repo's `Copy*`/`NewHub` call sites, that predicts roughly **+2.9 s on a ~132 s Tier 2 run**.
+
+The benchmark output below (`BenchmarkCopyPaired`, `BenchmarkCopyPairedLocal`, and their `Parallel` counterparts) is kept as a **historical record, numbers and identifiers unchanged**: it measured the retired `internal/lyxtest`'s `CopyPaired`/`CopyPairedLocal` fixtures on 2026-07-13, before this task's cutover, and no number below was taken again under a new identifier.
 
 ```sh
 go test -tags integration -bench BenchmarkCopy -run '^$' ./internal/lyxtest
@@ -140,7 +150,8 @@ Note the parallel numbers here are Go's own `ns/op` (total time divided by total
 
 ## Linux benchmark (2026-07-13)
 
-The Linux counterpart to the Windows "Reproducing" numbers above, from the same permanent benchmark (`internal/lyxtest/bench_test.go`, `//go:build integration`).
+The Linux counterpart to the Windows "Reproducing" numbers above, from the same permanent benchmark that existed at the time (`internal/lyxtest/bench_test.go`, `//go:build integration`, since retired — see "Reproducing" above).
+Kept as a historical record, numbers and identifiers unchanged.
 Command:
 
 ```sh

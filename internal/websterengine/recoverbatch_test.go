@@ -10,7 +10,7 @@
 // re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-
 // calls) is this file's test centre, per the batch's own "Batch Tests"
 // note. This package's testmain_test.go already wires
-// lyxtest.HermeticGitEnv() for the whole test binary.
+// gitkit.HermeticGitEnv() for the whole test binary.
 
 package websterengine_test
 

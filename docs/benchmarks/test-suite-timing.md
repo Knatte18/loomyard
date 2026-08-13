@@ -65,7 +65,7 @@ Each of these was measured, and each is the reason a row above differs from the 
 
 | Lever | Effect | Where |
 |---|---|---|
-| **Hermetic git test environment** (`lyxtest.HermeticGitEnv()` via `TestMain`) | Tier 2 ~208 s → ~128 s | The operator's global gitconfig carried `core.fsmonitor=true`, causing hundreds of `fsmonitor--daemon` + auto-`maintenance` spawns per run (308 in one package alone, 60 % of its git process-seconds). Full trail in [fixture-copy.md](fixture-copy.md). |
+| **Hermetic git test environment** (`gitkit.HermeticGitEnv()` via `TestMain`) | Tier 2 ~208 s → ~128 s | The operator's global gitconfig carried `core.fsmonitor=true`, causing hundreds of `fsmonitor--daemon` + auto-`maintenance` spawns per run (308 in one package alone, 60 % of its git process-seconds). Full trail in [fixture-copy.md](fixture-copy.md). |
 | **cobra's Windows mousetrap check disabled** (`cobra.MousetrapHelpText = ""` in `internal/clihelp`) | Tier 1 ~29 s → ~9.95 s on Windows | Every `Execute()` called `mousetrap.StartedByExplorer()` — a `CreateToolhelp32Snapshot` walk of the whole OS process table. A CPU profile showed 99 % of `internal/clihelp`'s samples inside that syscall, and every `*cli` package paid it per test. |
 | **Real-time-wait tests given seams** (`ghAuthTokenTimeout` const → var; `--wait 1ns` on `await-batch`) | Tier 1 6.23 → 3.86 s, Tier 2 33.4 → 6.48 s on Linux | Two tests blocked on production timeouts (5 s and ~30 s) to prove those timeouts are honoured. Overriding the timeout proves the same thing in milliseconds. |
 | **Two-tier split, machine-enforced** (`//go:build integration` + `cmd/lyx/tierpurity_test.go`) | The single ~82 s loop became ~3.5 s / ~42 s | Tier 1 spawns no `git init` / `git worktree add` / fixture-tree copies repo-wide. Not "zero processes" — untagged tests reaching `hubgeometry.Resolve` on error paths still spawn one cheap, expected-to-fail `git rev-parse`, which the guard deliberately permits. |
@@ -108,7 +108,7 @@ Machine is the Intel 155U on native Windows unless noted — the only environmen
 | 2026-07-12 | ~44 s | ~181 s | Regression recorded: ~a dozen new modules brought untagged git-spawning tests |
 | 2026-06-23 | ~3.5 s | ~65 s | Real-GitHub network tests removed, boardtest parallelized — floor shifted to `worktree` fixture I/O |
 | 2026-06-22 | ~3.5 s | ~42 s | board/ide git tests gated and relocated — two-tier split complete repo-wide |
-| 2026-06-21 | ~27.6 s | — | `worktree`/`weft`/`hubgeometry` migrated onto shared `lyxtest` fixtures and gated — the split's first half |
+| 2026-06-21 | ~27.6 s | — | `worktree`/`weft`/`hubgeometry` migrated onto shared `gitkit` fixtures and gated — the split's first half |
 | 2026-06-15 | ~82 s (single loop) | — | Pre-split baseline: every git-spawning test ran in the default loop |
 
 The 2026-07-13 mousetrap block corrected two earlier causal claims: `cmd/lyx`'s guard tests cost ~0.25 s combined in isolation (not the AST-walk cost earlier blocks attributed to them), and 44 of `internal/perchengine`'s 45 tests sum to under 1 s (its earlier 12–19 s was contention attribution plus the one lingering-child test).

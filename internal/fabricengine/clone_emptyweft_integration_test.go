@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn clones against an empty weft remote and
@@ -60,7 +60,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 	// `fatal: invalid reference: main-weft`; driving Add itself is impossible here, since the
 	// repo-wide fabric.yaml is materialised by the CLI layer through configsync, which
 	// fabricengine must never import.
-	lyxtest.MustRun(t, weftPrimary, "git", "worktree", "add", "-b",
+	gitkit.MustRun(t, weftPrimary, "git", "worktree", "add", "-b",
 		fabricengine.WeftBranchName("my-task"), filepath.Join(res.HubPath, "my-task-weft"), suffixed)
 }
 

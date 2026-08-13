@@ -18,8 +18,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // newEmptyRepoFixture builds a repo with an unborn HEAD via `git init -b main`.
@@ -27,7 +27,7 @@ func newEmptyRepoFixture(t *testing.T) (dir string) {
 	t.Helper()
 
 	dir = t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
 	return dir
 }
 
@@ -57,8 +57,8 @@ func newRenameFixture(t *testing.T) (dir, oldName, newName string) {
 	dir, _ = newRepo(t)
 	writeFile(t, dir, oldName, "content that stays identical")
 	commitAll(t, dir, "init")
-	lyxtest.MustRun(t, dir, "git", "mv", oldName, newName)
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", "rename")
+	gitkit.MustRun(t, dir, "git", "mv", oldName, newName)
+	gitkit.MustRun(t, dir, "git", "commit", "-m", "rename")
 	return dir, oldName, newName
 }
 
@@ -69,8 +69,8 @@ func commitFile(t *testing.T, dir, name, content, message string) {
 	t.Helper()
 
 	writeFile(t, dir, name, content)
-	lyxtest.MustRun(t, dir, "git", "add", name)
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
+	gitkit.MustRun(t, dir, "git", "add", name)
+	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
 // assertParitySHA fails the test unless oracle and impl — the SHAs returned
@@ -393,7 +393,7 @@ func TestCurrentBranch_Parity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CurrentSHA() error = %v", err)
 		}
-		lyxtest.MustRun(t, dir, "git", "checkout", "--detach", sha)
+		gitkit.MustRun(t, dir, "git", "checkout", "--detach", sha)
 
 		_, oracleErr := oracleCurrentBranch(t, dir)
 		_, implErr := repo.CurrentBranch()
@@ -425,8 +425,8 @@ func TestCurrentBranch_Parity(t *testing.T) {
 		writeFile(t, dir, "a.txt", "initial")
 		commitAll(t, dir, "init")
 
-		lyxtest.MustRun(t, dir, "git", "checkout", "--orphan", "orphan-branch")
-		lyxtest.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
+		gitkit.MustRun(t, dir, "git", "checkout", "--orphan", "orphan-branch")
+		gitkit.MustRun(t, dir, "git", "rm", "-rf", "--cached", ".")
 		commitFile(t, dir, "orphan.txt", "unrelated root", "orphan root")
 
 		oracleBranch, oracleErr := oracleCurrentBranch(t, dir)
@@ -536,7 +536,7 @@ func TestSHAExists_MixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 	commitAll(t, dir, "second commit")
 	sha := resolveRevOrFatal(t, dir, "HEAD")
 
-	lyxtest.MustRun(t, dir, "git", "gc")
+	gitkit.MustRun(t, dir, "git", "gc")
 
 	if !repo.SHAExists(sha) {
 		t.Errorf("SHAExists(%q) after repack = false; want true (the fingerprint-gated reindex must recover the now-packed commit)", sha)
@@ -570,7 +570,7 @@ func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *te
 	if err != nil {
 		t.Fatalf("CurrentSHA() (repoB) error = %v", err)
 	}
-	lyxtest.MustRun(t, dir, "git", "gc")
+	gitkit.MustRun(t, dir, "git", "gc")
 
 	if !repoA.SHAExists(sha) {
 		t.Errorf("repoA.SHAExists(%q) = false; want true (repoA's fingerprint-gated reindex must see a write+repack made through a separate *Repo)", sha)

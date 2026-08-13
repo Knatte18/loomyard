@@ -78,7 +78,7 @@
 // two Checkout hostile cells) are written against the safe expectation that the argument never reaches
 // git as a flag and nothing outside the permitted roots is destroyed.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"os"
@@ -90,6 +90,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
@@ -177,7 +178,7 @@ type Expectation struct {
 	Check          fabricengine.Check
 	Substring      string
 	PermittedRoots []string
-	Effect         func(tb testing.TB, h *Hub, f VerbFixture)
+	Effect         func(tb testing.TB, h *hubforge.Hub, f VerbFixture)
 }
 
 // VerbCase is one verb under test: its own fixture builder, its call into fabric, the states it runs
@@ -198,8 +199,8 @@ type Expectation struct {
 // this field used to would leave nothing for a cell to cross-check against the manifest diff.
 type VerbCase struct {
 	Name    string
-	Arrange func(tb testing.TB, h *Hub) VerbFixture
-	Run     func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error)
+	Arrange func(tb testing.TB, h *hubforge.Hub) VerbFixture
+	Run     func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error)
 	States  []string
 	Expect  func(state string) Expectation
 }
@@ -282,7 +283,7 @@ var Omissions = []Omission{
 // permitted root or StateTarget.StructuralPath derivation.
 // Every geometry path this file needs is obtained from an fabricengine accessor first and converted
 // here, never spelled as a raw literal, per the geometry-through-accessors Shared Decision.
-func hubRelative(tb testing.TB, h *Hub, abs string) string {
+func hubRelative(tb testing.TB, h *hubforge.Hub, abs string) string {
 	tb.Helper()
 
 	rel, err := filepath.Rel(h.Path, abs)
@@ -296,7 +297,7 @@ func hubRelative(tb testing.TB, h *Hub, abs string) string {
 // resolved via fabricengine.WiredNames and fabricengine.WarpJunctions -- the same accessors
 // unwireJunctionsCase's own Run uses -- for a cell whose structural states need a real, pre-existing
 // link to remove and replant, per the geometry-through-accessors Shared Decision.
-func firstWiredJunctionLink(tb testing.TB, h *Hub, slug string) string {
+func firstWiredJunctionLink(tb testing.TB, h *hubforge.Hub, slug string) string {
 	tb.Helper()
 
 	names, err := fabricengine.WiredNames(h.BoardDir())
@@ -311,7 +312,7 @@ func firstWiredJunctionLink(tb testing.TB, h *Hub, slug string) string {
 
 // pairPermittedRoots returns the four hub-relative roots a pair's full teardown or creation may touch:
 // its warp worktree, its weft sibling, its portal junction, and its launcher directory.
-func pairPermittedRoots(tb testing.TB, h *Hub, slug string) []string {
+func pairPermittedRoots(tb testing.TB, h *hubforge.Hub, slug string) []string {
 	tb.Helper()
 
 	return []string{
@@ -324,7 +325,7 @@ func pairPermittedRoots(tb testing.TB, h *Hub, slug string) []string {
 
 // slugPermittedRoots returns the four hub-relative roots a pair named slug may occupy, unioned across
 // both anchors ("." and "backend"), for use inside a VerbCase's Expect closure — which, unlike an
-// Effect closure, has no *Hub in scope to resolve an accessor against, only the state name.
+// Effect closure, has no *hubforge.Hub in scope to resolve an accessor against, only the state name.
 // A permitted root that never matches anything in a given hub's own anchor is harmless: DiffManifest's
 // pathPermitted only ever narrows what a diff flags, never widens it, so carrying the unused anchor's
 // variant alongside the live one cannot hide a genuine unpermitted change.
@@ -421,8 +422,8 @@ func currentBranchName(tb testing.TB, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// currentSHA returns dir's checked-out commit SHA, via `git rev-parse HEAD`, failing tb on any error.
-func currentSHA(tb testing.TB, dir string) string {
+// liveStateCurrentSHA returns dir's checked-out commit SHA, via `git rev-parse HEAD`, failing tb on any error.
+func liveStateCurrentSHA(tb testing.TB, dir string) string {
 	tb.Helper()
 
 	cmd := exec.Command("git", "rev-parse", "HEAD")
@@ -477,7 +478,7 @@ func assertExists(tb testing.TB, path string) {
 func addCase() VerbCase {
 	return VerbCase{
 		Name: "Add",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			slug := "verb-add-owner"
@@ -499,7 +500,7 @@ func addCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
 			return res.Mutated(), err
@@ -512,7 +513,7 @@ func addCase() VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "source worktree has uncommitted changes",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						assertGone(tb, h.PairWarpWorktree(f.Slug))
 					},
 				}
@@ -526,7 +527,7 @@ func addCase() VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "already exists",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if branchExists(h.PrimeWorktree(), f.Slug) {
 							tb.Errorf("Add unexpectedly created branch %q despite refusing at worktree creation", f.Slug)
@@ -548,7 +549,7 @@ func addCase() VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "push branch",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairWarpWorktree(f.Slug))
 						assertGone(tb, h.PairWeftSibling(f.Slug))
@@ -588,11 +589,11 @@ func mustGitRemoteURL(tb testing.TB, dir string) string {
 func removeCase() VerbCase {
 	return VerbCase{
 		Name: "Remove",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			slug := "verb-remove-owner"
-			AddPair(tb, h, slug)
+			hubforge.AddPair(tb, h, slug)
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
@@ -607,7 +608,7 @@ func removeCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Remove(h.Location, f.Slug, false)
 			return res.Mutated(), err
@@ -622,7 +623,7 @@ func removeCase() VerbCase {
 					Kind:           KindRefusedBefore,
 					Substring:      "uncommitted changes",
 					PermittedRoots: portalAndLauncherPermittedRoots("verb-remove-owner"),
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						assertGone(tb, h.PairPortalLink(f.Slug))
 						assertGone(tb, h.PairLauncherDir(f.Slug))
 						assertExists(tb, h.PairWarpWorktree(f.Slug))
@@ -632,7 +633,7 @@ func removeCase() VerbCase {
 				return Expectation{
 					Kind:           KindProceeds,
 					PermittedRoots: slugPermittedRoots("verb-remove-owner"),
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairWarpWorktree(f.Slug))
 						assertGone(tb, h.PairWeftSibling(f.Slug))
@@ -652,11 +653,11 @@ func removeCase() VerbCase {
 func pruneCase() VerbCase {
 	return VerbCase{
 		Name: "Prune",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			slug := "verb-prune-owner"
-			AddPair(tb, h, slug)
+			hubforge.AddPair(tb, h, slug)
 			if err := os.RemoveAll(h.PairWarpWorktree(slug)); err != nil {
 				tb.Fatalf("remove warp worktree %s to stage a stale pair: %v", h.PairWarpWorktree(slug), err)
 			}
@@ -676,7 +677,7 @@ func pruneCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Prune(h.Location, true, false)
 			return res.Mutated(), err
@@ -692,7 +693,7 @@ func pruneCase() VerbCase {
 				return Expectation{
 					Kind:           KindProceeds,
 					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertExists(tb, h.PairWeftSibling(f.Slug))
 						assertExists(tb, h.PairPortalLink(f.Slug))
@@ -703,7 +704,7 @@ func pruneCase() VerbCase {
 				return Expectation{
 					Kind:           KindProceeds,
 					PermittedRoots: slugPermittedRoots("verb-prune-owner"),
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairWeftSibling(f.Slug))
 						assertGone(tb, h.PairPortalLink(f.Slug))
@@ -735,13 +736,13 @@ func pruneCase() VerbCase {
 func cleanupCase() VerbCase {
 	return VerbCase{
 		Name: "Cleanup",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			original := currentBranchName(tb, h.PrimeWorktree())
 
 			slug := "verb-cleanup-owner"
-			AddPair(tb, h, slug)
+			hubforge.AddPair(tb, h, slug)
 			mustGit(h.PrimeWorktree(), "worktree", "remove", "--force", h.PairWarpWorktree(slug))
 			mustGit(h.PrimeWorktree(), "branch", "-D", slug)
 			// The weft branch must not be checked out anywhere either: cleanup.go:162-166
@@ -765,7 +766,7 @@ func cleanupCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Cleanup(h.Location, true, true)
 			return res.Mutated(), err
@@ -773,7 +774,7 @@ func cleanupCase() VerbCase {
 		Expect: func(state string) Expectation {
 			return Expectation{
 				Kind: KindProceeds,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					orphan := fabricengine.WeftBranchName(f.Slug)
 					if branchExists(h.PairWeftSibling(f.Slug), orphan) {
@@ -800,11 +801,11 @@ func cleanupCase() VerbCase {
 func checkoutCase() VerbCase {
 	return VerbCase{
 		Name: "Checkout",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			slug := "verb-checkout-owner"
-			AddPair(tb, h, slug)
+			hubforge.AddPair(tb, h, slug)
 			// Remove the pair's own worktrees (never its branches), so both branches are free for
 			// the prime pair to switch onto — mirroring the everyday "lyx fabric checkout" reuse
 			// add.go's own error message points to ("switch a pair onto it"). Without this, `git
@@ -824,7 +825,7 @@ func checkoutCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
 			return res.Mutated(), err
@@ -837,7 +838,7 @@ func checkoutCase() VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "weft worktree has uncommitted changes",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
@@ -856,7 +857,7 @@ func checkoutCase() VerbCase {
 				return Expectation{
 					Kind:      KindEitherProceedsOrRefusedBefore,
 					Substring: "warp switch",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						warpBranch := currentBranchName(tb, h.PrimeWorktree())
 						weftBranch := currentBranchName(tb, h.PrimeWeft())
@@ -878,7 +879,7 @@ func checkoutCase() VerbCase {
 			default:
 				return Expectation{
 					Kind: KindProceeds,
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.CheckoutBranch {
 							tb.Errorf("prime warp branch after Checkout = %q; want %q", got, f.CheckoutBranch)
@@ -902,7 +903,7 @@ func checkoutCase() VerbCase {
 func reconcileCase() VerbCase {
 	return VerbCase{
 		Name: "Reconcile",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 			return VerbFixture{
 				Target: StateTarget{
@@ -911,7 +912,7 @@ func reconcileCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := h.Topology.Reconcile(h.Location)
 			return res.Mutated(), err
@@ -919,7 +920,7 @@ func reconcileCase() VerbCase {
 		Expect: func(state string) Expectation {
 			return Expectation{
 				Kind: KindProceeds,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					if _, err := h.Topology.Reconcile(h.Location); err != nil {
 						tb.Errorf("second Reconcile call: %v", err)
@@ -935,11 +936,11 @@ func reconcileCase() VerbCase {
 func unwireJunctionsCase() VerbCase {
 	return VerbCase{
 		Name: "UnwireJunctions",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			slug := "verb-unwire-owner"
-			AddPair(tb, h, slug)
+			hubforge.AddPair(tb, h, slug)
 			return VerbFixture{
 				Slug: slug,
 				Target: StateTarget{
@@ -955,7 +956,7 @@ func unwireJunctionsCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			names, err := fabricengine.WiredNames(h.BoardDir())
 			if err != nil {
@@ -998,7 +999,7 @@ func unwireJunctionsCase() VerbCase {
 				return Expectation{
 					Kind:           KindProceeds,
 					PermittedRoots: permitted,
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						names, err := fabricengine.WiredNames(h.BoardDir())
 						if err != nil {
@@ -1022,21 +1023,21 @@ func unwireJunctionsCase() VerbCase {
 func pullCase() VerbCase {
 	return VerbCase{
 		Name: "Pull",
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
-			from := currentSHA(tb, h.PrimeWorktree())
+			from := liveStateCurrentSHA(tb, h.PrimeWorktree())
 
 			scratch := tb.TempDir()
 			mustGit(filepath.Dir(scratch), "clone", h.WarpBare, filepath.Base(scratch))
 			advanceFile := filepath.Join(scratch, "pull-advance.txt")
-			if err := os.WriteFile(advanceFile, []byte("fabrictest: pull advance\n"), 0o644); err != nil {
+			if err := os.WriteFile(advanceFile, []byte("livestate: pull advance\n"), 0o644); err != nil {
 				tb.Fatalf("write %s: %v", advanceFile, err)
 			}
 			mustGit(scratch, "add", "pull-advance.txt")
-			mustGit(scratch, "commit", "-m", "fabrictest: advance warp bare for Pull")
+			mustGit(scratch, "commit", "-m", "livestate: advance warp bare for Pull")
 			mustGit(scratch, "push", "origin", "HEAD:"+currentBranchName(tb, h.PrimeWorktree()))
-			to := currentSHA(tb, scratch)
+			to := liveStateCurrentSHA(tb, scratch)
 
 			return VerbFixture{
 				AdvancedFromSHA: from,
@@ -1047,7 +1048,7 @@ func pullCase() VerbCase {
 				},
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			fab, err := fabricengine.Open(h.Location)
 			if err != nil {
@@ -1065,14 +1066,14 @@ func pullCase() VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "warp worktree has uncommitted changes",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						// Not f.AdvancedFromSHA: dirtyWarpTracked's own plantTrackedDirt seeds a fresh
 						// commit before leaving its modification uncommitted, so the prime warp's HEAD
 						// has already moved past AdvancedFromSHA by the time Run executes. What a
 						// refused Pull must guarantee is that it never reached ResetHard at all, i.e.
 						// HEAD never advances all the way to the (unrelated, unreachable) upstream tip.
-						if got := currentSHA(tb, h.PrimeWorktree()); got == f.AdvancedToSHA {
+						if got := liveStateCurrentSHA(tb, h.PrimeWorktree()); got == f.AdvancedToSHA {
 							tb.Errorf("prime warp HEAD after refused Pull = %s; want anything but the upstream tip %s", got, f.AdvancedToSHA)
 						}
 					},
@@ -1080,12 +1081,12 @@ func pullCase() VerbCase {
 			default:
 				return Expectation{
 					Kind: KindProceeds,
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if f.AdvancedFromSHA == f.AdvancedToSHA {
 							tb.Errorf("Pull's Arrange did not advance the warp bare: from == to == %s", f.AdvancedFromSHA)
 						}
-						if got := currentSHA(tb, h.PrimeWorktree()); got != f.AdvancedToSHA {
+						if got := liveStateCurrentSHA(tb, h.PrimeWorktree()); got != f.AdvancedToSHA {
 							tb.Errorf("prime warp HEAD after Pull = %s; want %s", got, f.AdvancedToSHA)
 						}
 					},
@@ -1102,7 +1103,7 @@ func cloneHubResetNonHubCase() VerbCase {
 	return VerbCase{
 		Name:   "CloneHubReset/NonHubTarget",
 		States: []string{"clean"},
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			cwd := tb.TempDir()
@@ -1124,7 +1125,7 @@ func cloneHubResetNonHubCase() VerbCase {
 				ResetHubPath: hubPath,
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := fabricengine.CloneHub(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
@@ -1137,7 +1138,7 @@ func cloneHubResetNonHubCase() VerbCase {
 			return Expectation{
 				Kind:      KindRefusedBefore,
 				Substring: "is not a fabric hub",
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					assertExists(tb, filepath.Join(f.ResetHubPath, "operator-content.txt"))
 				},
@@ -1152,7 +1153,7 @@ func cloneHubResetRealHubCase() VerbCase {
 	return VerbCase{
 		Name:   "CloneHubReset/RealHub",
 		States: []string{"clean"},
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 			return VerbFixture{
 				ResetCwd:     h.Container,
@@ -1161,7 +1162,7 @@ func cloneHubResetRealHubCase() VerbCase {
 				ResetHubPath: h.Path,
 			}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := fabriccli.CloneAndWire(f.ResetCwd, fabricengine.CloneOptions{
 				WeftURL: f.ResetWeftURL,
@@ -1173,7 +1174,7 @@ func cloneHubResetRealHubCase() VerbCase {
 		Expect: func(state string) Expectation {
 			return Expectation{
 				Kind: KindProceeds,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					if _, err := os.Lstat(fabricengine.BoardDir(f.ResetHubPath)); err != nil {
 						tb.Errorf("rebuilt hub missing %s: %v", fabricengine.BoardDir(f.ResetHubPath), err)
@@ -1215,10 +1216,10 @@ func addHostileCases() []VerbCase {
 		cases = append(cases, VerbCase{
 			Name:   "Add/" + in.name,
 			States: []string{"clean"},
-			Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+			Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 				return VerbFixture{Slug: in.input}
 			},
-			Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
 				res, err := h.Topology.Add(h.Location, f.Slug, fabricengine.AddOptions{})
 				return res.Mutated(), err
@@ -1228,7 +1229,7 @@ func addHostileCases() []VerbCase {
 					return Expectation{
 						Kind:      KindRefusedBefore,
 						Substring: in.want,
-						Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+						Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 							tb.Helper()
 							assertGone(tb, filepath.Join(h.Path, "verb-add-hostile-sentinel-never-created"))
 						},
@@ -1241,7 +1242,7 @@ func addHostileCases() []VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "worktree",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertGone(tb, h.PairWarpWorktree(f.Slug))
 					},
@@ -1263,10 +1264,10 @@ func removeHostileCases() []VerbCase {
 		cases = append(cases, VerbCase{
 			Name:   "Remove/" + in.name,
 			States: []string{"clean"},
-			Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+			Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 				return VerbFixture{Slug: in.input}
 			},
-			Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
 				res, err := h.Topology.Remove(h.Location, f.Slug, false)
 				return res.Mutated(), err
@@ -1281,7 +1282,7 @@ func removeHostileCases() []VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: want,
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						assertExists(tb, h.Path)
 					},
@@ -1311,14 +1312,14 @@ func checkoutHostileCases() []VerbCase {
 		cases = append(cases, VerbCase{
 			Name:   "Checkout/" + in.name,
 			States: []string{"clean"},
-			Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+			Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 				tb.Helper()
 				return VerbFixture{
 					OriginalBranch: currentBranchName(tb, h.PrimeWorktree()),
 					CheckoutBranch: in.input,
 				}
 			},
-			Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+			Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 				tb.Helper()
 				res, err := h.Topology.Checkout(h.Location, f.CheckoutBranch)
 				return res.Mutated(), err
@@ -1327,7 +1328,7 @@ func checkoutHostileCases() []VerbCase {
 				return Expectation{
 					Kind:      KindRefusedBefore,
 					Substring: "warp switch",
-					Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+					Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 						tb.Helper()
 						if got := currentBranchName(tb, h.PrimeWorktree()); got != f.OriginalBranch {
 							tb.Errorf("prime warp branch after refused Checkout = %q; want unchanged %q", got, f.OriginalBranch)
@@ -1354,7 +1355,7 @@ func unwireJunctionsHostileCase() VerbCase {
 	return VerbCase{
 		Name:   "UnwireJunctions/EscapingJunctionName",
 		States: []string{"clean"},
-		Arrange: func(tb testing.TB, h *Hub) VerbFixture {
+		Arrange: func(tb testing.TB, h *hubforge.Hub) VerbFixture {
 			tb.Helper()
 
 			slug := "verb-unwire-hostile-owner"
@@ -1365,7 +1366,7 @@ func unwireJunctionsHostileCase() VerbCase {
 			}
 			return VerbFixture{Slug: slug}
 		},
-		Run: func(tb testing.TB, h *Hub, f VerbFixture) (fabricengine.Mutations, error) {
+		Run: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) (fabricengine.Mutations, error) {
 			tb.Helper()
 			res, err := fabricengine.UnwireJunctions(h.Location, f.Slug, []string{escapeRelName(h.Anchor, escapeName)})
 			return res.Mutated(), err
@@ -1374,7 +1375,7 @@ func unwireJunctionsHostileCase() VerbCase {
 			return Expectation{
 				Kind:  KindRefusedByGate,
 				Check: fabricengine.CheckContainment,
-				Effect: func(tb testing.TB, h *Hub, f VerbFixture) {
+				Effect: func(tb testing.TB, h *hubforge.Hub, f VerbFixture) {
 					tb.Helper()
 					assertExists(tb, filepath.Join(h.Path, escapeName))
 				},

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -100,15 +100,15 @@ func initTinyRepo(t *testing.T, dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
-	lyxtest.MustRun(t, dir, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
+	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
+	gitkit.MustRun(t, dir, "git", "config", "user.name", "Test")
 	readme := filepath.Join(dir, "README.md")
 	if err := os.WriteFile(readme, []byte("# "+filepath.Base(dir)), 0o644); err != nil {
 		t.Fatalf("write README: %v", err)
 	}
-	lyxtest.MustRun(t, dir, "git", "add", "README.md")
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", "init")
+	gitkit.MustRun(t, dir, "git", "add", "README.md")
+	gitkit.MustRun(t, dir, "git", "commit", "-m", "init")
 }
 
 // TestCloneHub_CreatesHubDotLyx asserts that CloneHub's hub-materialisation step creates <hub>/.lyx:

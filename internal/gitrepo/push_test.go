@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // newBareRemote creates a bare git repository at <dir>/remote.git.
@@ -35,7 +35,7 @@ func newBareRemote(t *testing.T, dir string) string {
 	if err := os.Mkdir(bare, 0o755); err != nil {
 		t.Fatalf("mkdir bare remote: %v", err)
 	}
-	lyxtest.MustRun(t, bare, "git", "init", "--bare", "-b", "main")
+	gitkit.MustRun(t, bare, "git", "init", "--bare", "-b", "main")
 	return bare
 }
 
@@ -48,8 +48,8 @@ func newRepoWithRemote(t *testing.T, dir, name, bareRemote string) (path string,
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", name, err)
 	}
-	lyxtest.MustRun(t, path, "git", "init", "-b", "main")
-	lyxtest.MustRun(t, path, "git", "remote", "add", "origin", bareRemote)
+	gitkit.MustRun(t, path, "git", "init", "-b", "main")
+	gitkit.MustRun(t, path, "git", "remote", "add", "origin", bareRemote)
 	return path, gitrepo.New(path)
 }
 
@@ -60,7 +60,7 @@ func cloneFromBare(t *testing.T, dir, name, bareRemote string) (path string, rep
 	t.Helper()
 
 	path = filepath.Join(dir, name)
-	lyxtest.MustRun(t, dir, "git", "clone", "-b", "main", bareRemote, path)
+	gitkit.MustRun(t, dir, "git", "clone", "-b", "main", bareRemote, path)
 	return path, gitrepo.New(path)
 }
 

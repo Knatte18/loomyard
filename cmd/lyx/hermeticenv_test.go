@@ -1,6 +1,7 @@
 // hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every test package
-// whose tests spawn git — directly or via the lyxtest fixture helpers — must run under
-// lyxtest.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a reason.
+// whose tests spawn git — directly or via the fixture helpers now living in gitkit and hubforge —
+// must run under gitkit.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a
+// reason.
 // This is the repo-wide grep-guard companion to tierpurity_test.go, machine-enforcing what the
 // two-layer hermetic mechanism otherwise relies on every new package remembering to do.
 // See CONSTRAINTS.md's Hermetic Git Test Environment Invariant.
@@ -41,23 +42,28 @@ var allowedNonHermetic = map[string]string{
 
 // gitSpawnTokens are the raw substrings that mark a *_test.go file as git-spawning
 // for the Hermetic Git Test Environment Invariant. This set is broader than
-// tierpurity_test.go's bannedTokens: it adds lyxtest.MustRun and lyxtest.SeedConfig,
-// which spawn git internally inside lyxtest itself — without them, a package whose
+// tierpurity_test.go's bannedTokens: it adds gitkit.MustRun and gitkit.SeedConfig,
+// which spawn git internally inside gitkit itself — without them, a package whose
 // only git spawn goes through those helpers would carry no matching token and
 // silently skip the hermetic requirement.
+// hubforge.NewHub joins the set for the identical reason: it drives a real
+// fabriccli.CloneAndWire clone internally, and hubforge.SeedConfig/SeedFabricConfig both take a
+// *Hub only NewHub can produce, so this one token already covers every package that can reach any
+// of the three.
 var gitSpawnTokens = []string{
 	"gitexec.RunGit",
 	"exec.Command",
-	"lyxtest.Copy",
-	"lyxtest.MustRun",
-	"lyxtest.SeedConfig",
+	"gitkit.Copy",
+	"gitkit.MustRun",
+	"gitkit.SeedConfig",
+	"hubforge.NewHub",
 }
 
 // hermeticPresenceToken is the raw substring proving a package runs under the
 // hermetic git test environment: the bare, unqualified helper name. A bare-name
-// match (rather than the qualified "lyxtest.HermeticGitEnv" form) is deliberate —
+// match (rather than the qualified "gitkit.HermeticGitEnv" form) is deliberate —
 // it matches both the qualified call form used by other packages and the
-// unqualified HermeticGitEnv() form lyxtest's own package-lyxtest tests use (see
+// unqualified HermeticGitEnv() form gitkit's own package-gitkit tests use (see
 // the helper-name-HermeticGitEnv Shared Decision). This proves presence only — the
 // mechanical half of the check. The semantic half (a real TestMain that calls the
 // helper before m.Run()) is a review obligation, exactly like the repo's other
@@ -78,7 +84,7 @@ type pkgHermeticStatus struct {
 
 // TestHermeticGitEnv_GitSpawningPackagesHaveTestMain walks every *_test.go file under the module
 // root and fails if any package whose test files contain a git-spawn token (directly or via the
-// lyxtest fixture helpers) lacks the hermetic presence token anywhere in its test files, unless the
+// gitkit fixture helpers) lacks the hermetic presence token anywhere in its test files, unless the
 // package is on the allowedNonHermetic allowlist.
 // Unlike TestTierPurity_UntaggedTestsSpawnNothing, which only scans untagged files (its subject is
 // Tier 1's offline guarantee), this guard scans every *_test.go file regardless of build
@@ -174,7 +180,7 @@ func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
 			continue
 		}
 		failures = append(failures, fmt.Sprintf(
-			"%s: contains git-spawning token %q (in %s) but no test file in the package contains %s — add a testmain_test.go calling lyxtest.HermeticGitEnv(), or add an allowedNonHermetic entry in cmd/lyx/hermeticenv_test.go with a reason",
+			"%s: contains git-spawning token %q (in %s) but no test file in the package contains %s — add a testmain_test.go calling gitkit.HermeticGitEnv(), or add an allowedNonHermetic entry in cmd/lyx/hermeticenv_test.go with a reason",
 			dir, status.spawningToken, status.spawningFile, hermeticPresenceToken,
 		))
 	}

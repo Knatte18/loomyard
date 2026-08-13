@@ -23,9 +23,11 @@ import (
 // gitStatusPorcelain returns `git status --porcelain`'s raw output for dir —
 // non-empty means the worktree has uncommitted changes (staged, unstaged, or
 // untracked).
-// This copy cannot fold into fabrictest.GitStatusPorcelain: this file is in-package
-// (package fabricengine), and importing fabrictest here would close the
-// fabricengine → fabrictest → fabricengine cycle — stuck permanently, not a defect.
+// The shared helper is now gitkit.GitStatusPorcelain, and gitkit sits below fabric, so this file
+// importing it does not close a dependency cycle the way importing the old package-under-fabric copy
+// once would have — this copy is in fact now removable.
+// Folding it into gitkit.GitStatusPorcelain is left as follow-up work outside this task's scope; the
+// code here stays as-is.
 func gitStatusPorcelain(t *testing.T, dir string) string {
 	t.Helper()
 

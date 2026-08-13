@@ -2,7 +2,7 @@
 // a LEADING non-flag argument marks a CLI-style re-exec;
 // flag-led argv (including two-token flag values) stays allowed.
 
-package lyxtest
+package gitkit
 
 import "testing"
 
