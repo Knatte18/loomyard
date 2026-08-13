@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestRemove_RefusesPrimeWorktreeAndLeavesItIntact asserts Remove refuses the hub's prime slug and
@@ -63,14 +63,14 @@ func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 
 	const slug = "sidecar"
 	foreign := filepath.Join(l.HubPath, slug)
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", "--detach", foreign)
+	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", "--detach", foreign)
 
 	marker := filepath.Join(foreign, "content-marker")
 	if err := os.WriteFile(marker, []byte("keep me\n"), 0o644); err != nil {
 		t.Fatalf("seed marker: %v", err)
 	}
-	lyxtest.MustRun(t, foreign, "git", "add", "content-marker")
-	lyxtest.MustRun(t, foreign, "git", "commit", "-m", "seed marker")
+	gitkit.MustRun(t, foreign, "git", "add", "content-marker")
+	gitkit.MustRun(t, foreign, "git", "commit", "-m", "seed marker")
 
 	topology := fabricengine.NewTopology(fabricengine.Config{})
 	_, err := topology.Remove(l, slug, false)

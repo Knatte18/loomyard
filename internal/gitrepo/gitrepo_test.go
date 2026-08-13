@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // newRepo creates a fresh git repository on branch main and returns both
@@ -26,7 +26,7 @@ func newRepo(t *testing.T) (dir string, repo *gitrepo.Repo) {
 	t.Helper()
 
 	dir = t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-b", "main")
+	gitkit.MustRun(t, dir, "git", "init", "-b", "main")
 	return dir, gitrepo.New(dir)
 }
 
@@ -44,8 +44,8 @@ func writeFile(t *testing.T, dir, name, content string) {
 func commitAll(t *testing.T, dir, message string) {
 	t.Helper()
 
-	lyxtest.MustRun(t, dir, "git", "add", ".")
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", message)
+	gitkit.MustRun(t, dir, "git", "add", ".")
+	gitkit.MustRun(t, dir, "git", "commit", "-m", message)
 }
 
 // runGit runs a git subcommand in dir, returning stdout and stderr.
@@ -193,7 +193,7 @@ func TestStageAndCommit_PreStagedUnlistedEntry_NotCommitted(t *testing.T) {
 	// Someone else stages wip.txt but never commits it; the caller then
 	// commits an unrelated change to a.txt.
 	writeFile(t, dir, "wip.txt", "half-staged WIP")
-	lyxtest.MustRun(t, dir, "git", "add", "wip.txt")
+	gitkit.MustRun(t, dir, "git", "add", "wip.txt")
 	writeFile(t, dir, "a.txt", "changed")
 
 	sha, committed, err := repo.StageAndCommit("commit a only", []string{"a.txt"})
@@ -243,7 +243,7 @@ func TestStageAndCommit_EmptyFiles_WithPreStagedEntry_NoCommit(t *testing.T) {
 	}
 
 	writeFile(t, dir, "wip.txt", "half-staged WIP")
-	lyxtest.MustRun(t, dir, "git", "add", "wip.txt")
+	gitkit.MustRun(t, dir, "git", "add", "wip.txt")
 
 	for _, files := range [][]string{nil, {}} {
 		sha, committed, err := repo.StageAndCommit("must not happen", files)
@@ -281,16 +281,16 @@ func TestStageAndCommit_MidMerge_RefusesPartialCommit(t *testing.T) {
 
 	// A feature branch adds feat.txt while main edits a different file, so the
 	// merge is non-conflicting and leaves a clean, fully-resolved index.
-	lyxtest.MustRun(t, dir, "git", "checkout", "-b", "feature")
+	gitkit.MustRun(t, dir, "git", "checkout", "-b", "feature")
 	writeFile(t, dir, "feat.txt", "feature\n")
 	commitAll(t, dir, "feature edit")
-	lyxtest.MustRun(t, dir, "git", "checkout", "main")
+	gitkit.MustRun(t, dir, "git", "checkout", "main")
 	writeFile(t, dir, "base.txt", "base\nmain edit\n")
 	commitAll(t, dir, "main edit")
 
 	// --no-commit stops after merging into the index/worktree, so MERGE_HEAD is
 	// set with a clean index — the mid-merge state a commit could finalize.
-	lyxtest.MustRun(t, dir, "git", "merge", "--no-commit", "feature")
+	gitkit.MustRun(t, dir, "git", "merge", "--no-commit", "feature")
 	if _, _, code, _ := runGit(t, dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); code != 0 {
 		t.Fatalf("MERGE_HEAD not present after --no-commit merge (exit %d); test needs a mid-merge state", code)
 	}
@@ -562,8 +562,8 @@ func TestChangedFilesSince_RenameReportsBothPaths(t *testing.T) {
 	}
 
 	// A pure rename (identical content) is the case rename detection folds.
-	lyxtest.MustRun(t, dir, "git", "mv", "old.txt", "new.txt")
-	lyxtest.MustRun(t, dir, "git", "commit", "-m", "rename")
+	gitkit.MustRun(t, dir, "git", "mv", "old.txt", "new.txt")
+	gitkit.MustRun(t, dir, "git", "commit", "-m", "rename")
 
 	got, err := repo.ChangedFilesSince(base)
 	if err != nil {
@@ -695,7 +695,7 @@ func TestCurrentBranch_ErrorsOnDetachedHEAD(t *testing.T) {
 		t.Fatalf("CurrentSHA() error = %v", err)
 	}
 
-	lyxtest.MustRun(t, dir, "git", "checkout", "--detach", sha)
+	gitkit.MustRun(t, dir, "git", "checkout", "--detach", sha)
 
 	if _, err := repo.CurrentBranch(); err == nil {
 		t.Fatal("CurrentBranch() on detached HEAD error = nil; want non-nil")

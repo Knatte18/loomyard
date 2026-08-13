@@ -11,7 +11,7 @@
 // all (network + `go install` capability), which exec.LookPath("gopls") is
 // a reasonable, cheap proxy for reusing rather than inventing a second
 // capability probe. This test only spawns gopls, never git, so no
-// TestMain/lyxtest.HermeticGitEnv is required per the Hermetic Git Test
+// TestMain/gitkit.HermeticGitEnv is required per the Hermetic Git Test
 // Environment Invariant.
 //
 // It also now covers ensureServer's supervised dispatch: since the

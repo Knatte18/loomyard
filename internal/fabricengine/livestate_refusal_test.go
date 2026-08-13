@@ -7,7 +7,7 @@
 // and a cell that only checked "err != nil" could not tell one from the other — the two-kind scheme
 // here (RefusedByGate, RefusedBefore) is what lets a cell pin the refusal to a specific layer.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"strings"

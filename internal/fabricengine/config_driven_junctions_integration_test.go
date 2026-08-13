@@ -11,21 +11,19 @@
 // drift shape.
 //
 // Package fabricengine_test, mirroring junction_pattern_integration_test.go's
-// imports and lyxtest.CopyPairedLocal(t) fixture pattern; shares the single
+// imports and hubforge.NewHub(t, ".") fixture pattern; shares the single
 // TestMain in testmain_test.go.
 
 package fabricengine_test
 
 import (
 	"os"
-	"path/filepath"
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestWireJunctions_WiresEveryPassedName is the extensibility proof under the hybrid seam:
@@ -38,10 +36,10 @@ import (
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	names := []string{"_lyx", "_other", "_extra"}
 
 	if err := fabricengine.WireJunctions(l, slug, names); err != nil {
@@ -94,29 +92,20 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 // narrow-pathspec asymmetry note), not a drift shape Healthy should flag.
 //
 // Healthy checks weft-branch correspondence (weftBranch == WeftBranchName(warpBranch),
-// drift.go:69-72) before the junction loop, and raw CopyPairedLocal leaves the weft prime on "main"
-// (not "main-weft"), so this checks out the weft branch first — the same
-// TestHealthy_JunctionDriftShapes pattern (junction_pattern_integration_test.go:~400).
+// drift.go:69-72) before the junction loop; hubforge.NewHub's CloneAndWire already checks the weft
+// primary out on the suffixed branch, so — unlike the raw local-worktree pair this test used to
+// build by hand — no explicit checkout is needed here.
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
 	t.Parallel()
 
-	fixture := lyxtest.CopyPairedLocal(t)
-	// The repo-wide pathspec (not fixture.WeftPrime's own weft base) is what
-	// Healthy reads after card 7; lyxtest.CopyPairedLocal does not create
-	// a _board dir, so create it and its _lyx/config/ first, mirroring
-	// seedRepoWideFabricConfig but with a pathspec naming neither
-	// structural directory, proving _lyx is still wired structurally.
-	boardDir := fabricengine.BoardDir(fixture.Layout.HubPath)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte("branch_prefix: \"\"\npathspec: _other\n"), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
-	}
-	lyxtest.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	h := hubforge.NewHub(t, ".")
+	// The repo-wide pathspec (not the weft prime's own weft base) is what Healthy reads after card
+	// 7; override it with a pathspec naming neither structural directory, proving _lyx is still
+	// wired structurally.
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _other\n")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 
 	// The wired name-set must match what WiredNames/Healthy compute: both
 	// structural directories (_lyx, .lyx) unioned with the hub-reserved-filtered

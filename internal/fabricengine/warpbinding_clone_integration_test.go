@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // seedWeftBinding commits a .lyx-warp file containing warpURL plus a trailing newline onto
@@ -416,7 +416,7 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 		// Clone the valid bare weft fixture into a scratch bare repo, then corrupt the object HEAD
 		// resolves to, so `git ls-tree HEAD` itself fails.
 		brokenBare := filepath.Join(fixtures, "broken-weft.git")
-		lyxtest.MustRun(t, fixtures, "git", "clone", "--bare", filepath.ToSlash(sourceBare), filepath.Base(brokenBare))
+		gitkit.MustRun(t, fixtures, "git", "clone", "--bare", filepath.ToSlash(sourceBare), filepath.Base(brokenBare))
 
 		headCommit := gitOutput(t, brokenBare, "rev-parse", "HEAD")
 		if headCommit == "" {

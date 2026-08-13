@@ -20,7 +20,7 @@
 // Later positional- looking arguments stay allowed because they can be legitimate two-token flag
 // values (`./pkg.test -test.run Foo`).
 
-package lyxtest
+package gitkit
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ func cliReexecArg(args []string) (string, bool) {
 func refuseCLIReexec() {
 	if arg, ok := cliReexecArg(os.Args[1:]); ok {
 		fmt.Fprintf(os.Stderr,
-			"lyxtest: this test binary was invoked with positional argument %q — it is a Go test suite, not a CLI; "+
+			"gitkit: this test binary was invoked with positional argument %q — it is a Go test suite, not a CLI; "+
 				"refusing to run the full suite (a spawned child re-executing os.Executable() under go test reaches "+
 				"this path — see CONSTRAINTS.md, Live-Substrate Spawn Observability, and the 2026-07-30 header "+
 				"re-exec incident)\n", arg)

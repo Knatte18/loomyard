@@ -27,10 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
@@ -240,13 +238,9 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 	claudeBinaryPath(t)
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.Path)
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		reedcli.RunCLI(&buf, []string{"down"})
@@ -259,7 +253,7 @@ func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	outputPath := filepath.Join(fixture.Hub, "smoke-run-output.txt")
+	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-run-output.txt")
 	prompt := fmt.Sprintf("write exactly DONE to %s then stop", outputPath)
 
 	var out bytes.Buffer

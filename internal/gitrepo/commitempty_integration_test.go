@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // treeSHA resolves rev's tree object SHA in dir, used to assert an empty
@@ -124,7 +124,7 @@ func TestCommitEmpty_UnbornHEAD_CleanIndex_CreatesEmptyRootCommit(t *testing.T) 
 func TestCommitEmpty_UnbornHEAD_StagedFile_ReturnsErrIndexNotEmpty(t *testing.T) {
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "wip.txt", "half-staged WIP")
-	lyxtest.MustRun(t, dir, "git", "add", "wip.txt")
+	gitkit.MustRun(t, dir, "git", "add", "wip.txt")
 
 	sha, err := repo.CommitEmpty("must not happen")
 	if !errors.Is(err, gitrepo.ErrIndexNotEmpty) {
@@ -152,7 +152,7 @@ func TestCommitEmpty_BornHEAD_StagedFile_ReturnsErrIndexNotEmpty(t *testing.T) {
 	}
 
 	writeFile(t, dir, "wip.txt", "half-staged WIP")
-	lyxtest.MustRun(t, dir, "git", "add", "wip.txt")
+	gitkit.MustRun(t, dir, "git", "add", "wip.txt")
 
 	sha, err := repo.CommitEmpty("must not happen")
 	if !errors.Is(err, gitrepo.ErrIndexNotEmpty) {

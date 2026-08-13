@@ -120,12 +120,7 @@ const destructiveGuardMinScannedFiles = 30
 // destructiveGuardExcludedDirs are module-relative, slash-separated directories the walk skips
 // entirely (filepath.SkipDir), keyed to the reason the directory falls outside package
 // fabricengine's scope even though it nests under internal/fabricengine on disk.
-var destructiveGuardExcludedDirs = map[string]string{
-	"internal/fabricengine/fabrictest": "a different package — a test-support package whose state builders must plant and tear down " +
-		"hostile filesystem shapes through fslink.Remove and os.Remove — excluding it restores the guard to exactly the scope its " +
-		"own invariant text already claims (\"the only file in package fabricengine\"), where per-file allowlist rows would punch " +
-		"a growing set of holes",
-}
+var destructiveGuardExcludedDirs = map[string]string{}
 
 // destructiveGuardRecordingExecutors is the table of every executor in
 // internal/fabricengine/destroy.go the Mutation Record Invariant requires to take a leading

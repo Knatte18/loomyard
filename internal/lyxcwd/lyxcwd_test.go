@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
 
 // TestResolve_FromWorktreeRoot verifies that Resolve from the worktree root yields AnchorRel "."
@@ -22,8 +22,8 @@ import (
 func TestResolve_FromWorktreeRoot(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
-	hub := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	hub := fix.Repo
 
 	layout, err := lyxcwd.Resolve(hub)
 	if err != nil {
@@ -65,8 +65,8 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 func TestResolve_FromSubdirectory(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
-	hub := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	hub := fix.Repo
 
 	// Create a subdirectory structure
 	subDir := filepath.Join(hub, "subdir", "nested")
@@ -88,8 +88,8 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	t.Parallel()
 
-	fix := lyxtest.CopyWarpHub(t)
-	hub := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	hub := fix.Repo
 
 	// Call Resolve normally; both cwd and --show-toplevel output get normalized
 	layout, err := lyxcwd.Resolve(hub)

@@ -2,7 +2,8 @@
 //
 // Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp
 // baseDirs seeded via the paths helpers.
-// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over CopyPaired.
+// Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub
+// built by the hubforge package.
 // The git-init-backed TestDispatchSet_PreservedKeyDetectedByReconcile lives in
 // configcli_integration_test.go per the Test Tier Purity Invariant.
 

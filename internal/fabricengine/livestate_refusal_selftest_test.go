@@ -6,7 +6,7 @@
 // RefusedBefore's own real pre-flight cases, including the discriminating pair the "check failed"
 // exclusion exists for.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"os"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // driveContainmentGateRefusal drives a real containment refusal through UnwireJunctions: a junction
@@ -23,7 +24,7 @@ import (
 // TestUnwireJunctions_RefusesLinkOutsideItsWorktree (destructivegaps_integration_test.go) proves live:
 // junction.go:368's UnwireJunctions, through unseedLyxJunction, into unseedJunctionRecords's
 // pathRequest and removeLink call at junction.go:474-483.
-func driveContainmentGateRefusal(t testing.TB, h *Hub, slug, escapeName string) error {
+func driveContainmentGateRefusal(t testing.TB, h *hubforge.Hub, slug, escapeName string) error {
 	t.Helper()
 
 	escapeLink := filepath.Join(h.Path, escapeName)
@@ -61,10 +62,10 @@ func driveContainmentGateRefusal(t testing.TB, h *Hub, slug, escapeName string) 
 // target) makes PointsTo resolve correctly — so the pre-check passes and removeLink is attempted —
 // while RawTarget reads "intermediate", which does not match the gate's expected one-hop target: a
 // genuine gate-only refusal, not a proxy for a pre-flight duplicate.
-func driveOwnershipGateRefusal(t testing.TB, h *Hub, slug string) error {
+func driveOwnershipGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error {
 	t.Helper()
 
-	AddPair(t, h, slug)
+	hubforge.AddPair(t, h, slug)
 
 	names, err := fabricengine.WiredNames(h.BoardDir())
 	if err != nil {
@@ -103,10 +104,10 @@ func driveOwnershipGateRefusal(t testing.TB, h *Hub, slug string) error {
 // failure sends removeWarpWorktreeDir to its fallback request, which carries no force field at all
 // (defaulting to false) — so the fallback's own dirtiness check finally sees the tracked dirt that
 // survived because the locked git call never actually removed anything.
-func driveDirtinessGateRefusal(t testing.TB, h *Hub, slug string) error {
+func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error {
 	t.Helper()
 
-	AddPair(t, h, slug)
+	hubforge.AddPair(t, h, slug)
 
 	warpTarget := h.PairWarpWorktree(slug)
 	trackedFile := filepath.Join(warpTarget, "dirt.txt")
@@ -114,7 +115,7 @@ func driveDirtinessGateRefusal(t testing.TB, h *Hub, slug string) error {
 		t.Fatalf("write %s: %v", trackedFile, err)
 	}
 	mustGit(warpTarget, "add", "dirt.txt")
-	mustGit(warpTarget, "commit", "-m", "fabrictest: seed tracked file for dirtiness refusal")
+	mustGit(warpTarget, "commit", "-m", "livestate: seed tracked file for dirtiness refusal")
 	if err := os.WriteFile(trackedFile, []byte("v2\n"), 0o644); err != nil {
 		t.Fatalf("modify %s: %v", trackedFile, err)
 	}
@@ -130,7 +131,7 @@ func TestRefusedByGate(t *testing.T) {
 	t.Run("Containment", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		err := driveContainmentGateRefusal(t, h, "escape-owner", "escape-link")
 		if err == nil {
 			t.Fatalf("driveContainmentGateRefusal: want a refusal, got nil")
@@ -143,7 +144,7 @@ func TestRefusedByGate(t *testing.T) {
 	t.Run("Ownership", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		err := driveOwnershipGateRefusal(t, h, "own-owner")
 		if err == nil {
 			t.Fatalf("driveOwnershipGateRefusal: want a refusal, got nil")
@@ -156,7 +157,7 @@ func TestRefusedByGate(t *testing.T) {
 	t.Run("Dirtiness", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		err := driveDirtinessGateRefusal(t, h, "dirty-owner")
 		if err == nil {
 			t.Fatalf("driveDirtinessGateRefusal: want a refusal, got nil")
@@ -176,9 +177,9 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 	t.Run("OrdinaryErrorMatchesNoCheck", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		const slug = "ordinary-owner"
-		AddPair(t, h, slug)
+		hubforge.AddPair(t, h, slug)
 		// A second Add against the same slug fails for an entirely ordinary, non-refusal reason
 		// (add.go:71's plain fmt.Errorf: the worktree directory already exists) — a real error from
 		// a real verb, not a hand-written string standing in for one.
@@ -197,7 +198,7 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 	t.Run("EachRefusalMatchesOnlyItsOwnCheck", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		containmentErr := driveContainmentGateRefusal(t, h, "cross-owner", "cross-escape-link")
 		ownershipErr := driveOwnershipGateRefusal(t, h, "cross-own-owner")
 		dirtinessErr := driveDirtinessGateRefusal(t, h, "cross-dirty-owner")
@@ -234,9 +235,9 @@ func TestRefusedBefore(t *testing.T) {
 	t.Run("RemovesOwnDirtyMessage", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		const slug = "before-dirty-owner"
-		AddPair(t, h, slug)
+		hubforge.AddPair(t, h, slug)
 
 		warpTarget := h.PairWarpWorktree(slug)
 		scratch := filepath.Join(warpTarget, "scratch-dirty.txt")
@@ -262,7 +263,7 @@ func TestRefusedBefore(t *testing.T) {
 	t.Run("DiscriminatesFromGateDirtinessOnIdenticalReasonText", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		err := driveDirtinessGateRefusal(t, h, "before-gate-owner")
 		if err == nil {
 			t.Fatalf("driveDirtinessGateRefusal: want a refusal, got nil")
@@ -278,7 +279,7 @@ func TestRefusedBefore(t *testing.T) {
 	t.Run("RemovesSlugValidationRefusal", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		_, err := h.Topology.Remove(h.Location, "..", false)
 		if err == nil {
 			t.Fatalf(`Remove(h.Location, "..", false): want an error, got nil`)

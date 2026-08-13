@@ -8,7 +8,7 @@
 // with gopls installed. Only the gopls-spawning subtest is guarded on
 // exec.LookPath("gopls") (via t.Skip); the ErrServerNotFound subtest never
 // launches gopls and always runs, even on a machine without it. This test
-// only spawns gopls, never git, so no TestMain/lyxtest.HermeticGitEnv is
+// only spawns gopls, never git, so no TestMain/gitkit.HermeticGitEnv is
 // required per the Hermetic Git Test Environment Invariant.
 
 package scoutengine

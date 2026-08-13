@@ -28,7 +28,7 @@ var allowedLongSleepers = map[string]string{
 		"recursive re-exec; it is not reachable during a normal `go test` run (no test " +
 		"invokes the binary with a leading \"reed\" argument)",
 	"internal/reedcli/testmain_test.go": "same shape and the same TestMain-intercept rationale at its own matching " +
-		"loop on line 35 — this file's TestMain also calls lyxtest.HermeticGitEnv() later in " +
+		"loop on line 35 — this file's TestMain also calls gitkit.HermeticGitEnv() later in " +
 		"the same function, but only on the code path reached when the \"reed\" branch above " +
 		"is NOT taken; the sleep loop itself is an infinite for loop that never returns, so " +
 		"HermeticGitEnv() never executes on the sleep-loop path and plays no part in why that " +

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD asserts Fetch's whole point: after a
@@ -98,7 +98,7 @@ func TestFetch_RemoteUnreachable_ErrorNamesRepoPathWithoutStderrLeak(t *testing.
 	dir, repo := newRepo(t)
 	writeFile(t, dir, "a.txt", "content")
 	commitAll(t, dir, "init")
-	lyxtest.MustRun(t, dir, "git", "remote", "add", "origin", filepath.Join(dir, "does-not-exist.git"))
+	gitkit.MustRun(t, dir, "git", "remote", "add", "origin", filepath.Join(dir, "does-not-exist.git"))
 
 	err := repo.Fetch()
 	if err == nil {

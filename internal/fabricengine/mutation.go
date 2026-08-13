@@ -211,5 +211,6 @@ type MutationRecord struct {
 }
 
 // Mutated returns this result's accumulated mutation record.
-// It is the one accessor internal/fabricengine/fabrictest reads a heterogeneous result through.
+// It is the one accessor the package's own live-state harness (the livestate_-prefixed
+// package fabricengine_test files, built on internal/hubforge) reads a heterogeneous result through.
 func (r MutationRecord) Mutated() Mutations { return r.Mutations }

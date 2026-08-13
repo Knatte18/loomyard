@@ -17,18 +17,28 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // newSyncRepo returns an isolated working-tree and helpers that count commits on
-// the remote (@{u}) and locally (HEAD). It uses lyxtest.CopyWeft so that fixture
-// construction runs zero per-test git spawns; the fixture already has upstream
-// tracking established via the template-once build.
+// the remote (@{u}) and locally (HEAD). It builds a real hub via hubforge.NewHub, whose weft
+// worktree is cloned from h.WeftBare by CloneHub -- but unlike the old weft-only fixture's
+// pre-established upstream tracking, that tracking is NOT set up here: hubforge's own weft-bare
+// template must stay genuinely empty and unpushed (pushing to it would trip CloneHub's WeftLooksLikeWeft bootstrap guard), so a
+// fresh hub's weft primary carries a local-only "initialise weft primary branch" commit with no
+// @{u} yet. This establishes tracking by pushing that commit against this hub's own per-test copy
+// of the bare (never the cached template) -- exactly what boardengine's own first real Sync would
+// otherwise do via push.autoSetupRemote, done once up front so "before" reflects a board that has
+// already been synced once, matching the old fixture's pre-established state.
 func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() int) {
 	t.Helper()
 
-	fixture := lyxtest.CopyWeft(t)
-	work = fixture.WeftPath
+	h := hubforge.NewHub(t, ".")
+	work = h.PrimeWeft()
+
+	if out, err := exec.Command("git", "-C", work, "push", "-u", "origin", "HEAD").CombinedOutput(); err != nil {
+		t.Fatalf("establish upstream tracking: %v: %s", err, out)
+	}
 
 	// Count from the work clone: HEAD is local commits, @{u} (the upstream
 	// remote-tracking ref, advanced on push) is what landed on the remote. This

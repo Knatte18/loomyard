@@ -406,7 +406,7 @@
 // `lyxcwd.Resolve` is the reader. `Resolve` treats the record as truth once present — it sets
 // `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory
 // exactly — and falls back to `AnchorRel` `"."` only when no marker is recorded yet (mid-clone, a
-// lyxtest synthetic hub, or a non-fabric git repo).
+// gitkit synthetic hub, or a non-fabric git repo).
 // A hub still carrying the pre-rename marker spelling (`lyxcwd.StaleAnchorFileName`) with no
 // renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old
 // name, so every resolver returns `lyxcwd.ErrStaleAnchorMarker` rather than answering `"."` — which
@@ -542,7 +542,7 @@
 // — never the bare word, which is ordinary English elsewhere in the repo) may appear only in the
 // owner set: `internal/fabricengine` (this package, which implements the illusion),
 // `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
-// `internal/weftname` (the `-weft` suffix leaf), `internal/lyxtest` (the test-fixture leaf that
+// `internal/weftname` (the `-weft` suffix leaf), `internal/gitkit` (the test-fixture leaf that
 // builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
 // board lives at `weft:main`), `internal/configsync` (string literals and comments, never
 // identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).

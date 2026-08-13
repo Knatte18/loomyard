@@ -598,13 +598,13 @@ var fabricVocabularyOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
 	"internal/weftname":     true,
-	"internal/lyxtest":      true,
+	"internal/gitkit":       true,
 	"internal/boardengine":  true,
 	configsyncOwnerDir:      true,
-	// internal/fabricengine/fabrictest is a directory of non-test .go files (the hub factory
-	// must be non-test to be importable across packages) that names fabric's own geometry, so
-	// it is an owner for the bare weft/warp rule the same as internal/fabricengine itself.
-	"internal/fabricengine/fabrictest": true,
+	// internal/hubforge is a directory of non-test .go files (the hub factory must be non-test
+	// to be importable across packages) that names fabric's own geometry, so it owns the bare
+	// weft/warp tokens the same way internal/fabricengine does.
+	"internal/hubforge": true,
 }
 
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the
@@ -613,10 +613,13 @@ var fabricVocabularyOwners = map[string]bool{
 var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
-	"internal/lyxtest":      true,
-	// internal/fabricengine/fabrictest imports weftname for the weft-suffix hostile input its
-	// hostile-input cells construct, so it is an owner for this narrower import rule too.
-	"internal/fabricengine/fabrictest": true,
+	"internal/gitkit":       true,
+	// internal/hubforge is in the narrower weftname-import subset CONSTRAINTS.md's Fabric
+	// Vocabulary Invariant already names, alongside internal/fabricengine, internal/fabriccli
+	// and internal/gitkit -- this map is an allowlist of what may import weftname, not an
+	// assertion of what does, so this entry is correct even though hub.go imports no weftname
+	// identifier today.
+	"internal/hubforge": true,
 }
 
 // weftnameImportPath is the fully-qualified import path TestEnforcement_FabricVocabulary's
@@ -745,7 +748,8 @@ func importsWeftname(f *ast.File) bool {
 // owner set, that contains the bare token "weft" or "warp" (in an identifier, a string literal,
 // or a comment); it fails any such file, owner set or not, that contains a fabric-sense "host"
 // phrase -- host is retired, not merely scoped, so the owner set never carves out a host hit. It
-// also fails any file outside {fabricengine, fabriccli, lyxtest} that imports internal/weftname.
+// also fails any file outside {fabricengine, fabriccli, gitkit, hubforge} that imports
+// internal/weftname.
 // It additionally walks every internal/**/*.md file (a plain walk, not a //go:embed parse, so a
 // future non-embedded template is policed rather than silently skipped) for the same bare-token
 // and host-phrase rules. *_test.go files are excluded from all three rules -- rule (3) included,

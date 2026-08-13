@@ -9,7 +9,7 @@
 // while reading like coverage, and this file is what a broken state builder fails loudly against during
 // development rather than months later inside an opaque cross-product failure.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"os"
@@ -19,6 +19,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
@@ -39,7 +41,7 @@ var structuralStateNames = map[string]bool{
 // every structural state — an existing wired junction link for the two link states, and a fresh,
 // not-yet-claimed pair path for the two foreign-entity states (a weft-named sibling path specifically
 // for unrelatedGitCloneAtWeftNamedPath, matching that state's own name).
-func resolveStateTarget(t *testing.T, h *Hub, stateName string) StateTarget {
+func resolveStateTarget(t *testing.T, h *hubforge.Hub, stateName string) StateTarget {
 	t.Helper()
 
 	target := StateTarget{
@@ -89,7 +91,7 @@ func newPorcelainLines(beforeStatus, afterStatus string) []string {
 func assertOnlyNewShape(t *testing.T, checkout, beforeStatus, wantPrefix string) {
 	t.Helper()
 
-	newLines := newPorcelainLines(beforeStatus, GitStatusPorcelain(t, checkout))
+	newLines := newPorcelainLines(beforeStatus, gitkit.GitStatusPorcelain(t, checkout))
 	if len(newLines) == 0 {
 		t.Fatalf("state failed to establish: no new dirt appeared in %s", checkout)
 	}
@@ -106,7 +108,7 @@ func assertOnlyNewShape(t *testing.T, checkout, beforeStatus, wantPrefix string)
 func assertBothNewShapes(t *testing.T, checkout, beforeStatus string) {
 	t.Helper()
 
-	newLines := newPorcelainLines(beforeStatus, GitStatusPorcelain(t, checkout))
+	newLines := newPorcelainLines(beforeStatus, gitkit.GitStatusPorcelain(t, checkout))
 
 	var hasTracked, hasUntracked bool
 	for _, line := range newLines {
@@ -134,16 +136,16 @@ func assertBothNewShapes(t *testing.T, checkout, beforeStatus string) {
 // This is fabric's own machine-local wiring scratch, not operator dirt — the same status
 // junction.go's own doc comment gives ".lyx" ("always lyx's own machine-local scratch"). Anything beyond
 // that single expected line is a genuine finding, not baseline noise.
-func assertCleanHubEstablished(t *testing.T, h *Hub) {
+func assertCleanHubEstablished(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 
 	for _, checkout := range []string{h.PrimeWorktree(), h.BoardDir()} {
-		if status := GitStatusPorcelain(t, checkout); status != "" {
+		if status := gitkit.GitStatusPorcelain(t, checkout); status != "" {
 			t.Errorf("clean state failed to establish: %s is not clean: %s", checkout, status)
 		}
 	}
 
-	weftStatus := GitStatusPorcelain(t, h.PrimeWeft())
+	weftStatus := gitkit.GitStatusPorcelain(t, h.PrimeWeft())
 	if weftStatus == "" {
 		return
 	}
@@ -266,7 +268,7 @@ func assertUnrelatedCloneEstablished(t *testing.T, target StateTarget) {
 		t.Errorf("state failed to establish: %s has no commits: %v", target.StructuralPath, err)
 	}
 
-	if status := GitStatusPorcelain(t, target.StructuralPath); status != "" {
+	if status := gitkit.GitStatusPorcelain(t, target.StructuralPath); status != "" {
 		t.Errorf("state failed to establish: %s is not clean: %s", target.StructuralPath, status)
 	}
 }
@@ -276,7 +278,7 @@ func assertUnrelatedCloneEstablished(t *testing.T, target StateTarget) {
 // beforeWarp and beforeWeft are target.WarpCheckout's and target.WeftCheckout's own git status
 // --porcelain output, captured before state.Apply ran, so a dirtiness assertion can isolate what the
 // state itself changed from whatever baseline a checkout already carried.
-func assertStateEstablished(t *testing.T, h *Hub, stateName string, target StateTarget, beforeWarp, beforeWeft string) {
+func assertStateEstablished(t *testing.T, h *hubforge.Hub, stateName string, target StateTarget, beforeWarp, beforeWeft string) {
 	t.Helper()
 
 	switch stateName {
@@ -319,11 +321,11 @@ func TestStates(t *testing.T) {
 				t.Run(anchor, func(t *testing.T) {
 					t.Parallel()
 
-					h := NewHub(t, anchor)
+					h := hubforge.NewHub(t, anchor)
 					target := resolveStateTarget(t, h, state.Name)
 
-					beforeWarp := GitStatusPorcelain(t, target.WarpCheckout)
-					beforeWeft := GitStatusPorcelain(t, target.WeftCheckout)
+					beforeWarp := gitkit.GitStatusPorcelain(t, target.WarpCheckout)
+					beforeWeft := gitkit.GitStatusPorcelain(t, target.WeftCheckout)
 
 					var before Manifest
 					if structuralStateNames[state.Name] {

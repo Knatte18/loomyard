@@ -64,6 +64,15 @@ func weftWriteLockPath(t *testing.T, f *Fabric) string {
 	return filepath.Join(lockDir, weftWriteLockFile)
 }
 
+// WeftWriteLockPathForTest re-exports weftWriteLockPath for commit_integration_test.go, which needs
+// f's combined commit write lock path directly.
+// It lives here rather than in export_test.go because weftWriteLockPath itself is defined in this
+// integration-tagged file;
+// an untagged export_test.go re-export would leave the symbol undefined under `-tags smoke`.
+func WeftWriteLockPathForTest(t *testing.T, f *Fabric) string {
+	return weftWriteLockPath(t, f)
+}
+
 // TestCommitLock_WarpOnlySerializesConcurrentCommits asserts that two concurrent warp-only
 // Fabric.Commit calls (weft-empty inputs) against one warp+weft pair serialize on the combined
 // write lock: both commits land, neither corrupts the other's index (no git failure from a stray

@@ -12,11 +12,16 @@
 // while silently breaking the hard refusal for _lyx and any other junction name — the guard whose
 // whole purpose is never touching what might be the user's hand-authored content.
 //
-// Package fabricengine_test to reuse newFabricFixture/seedRepoWideFabricConfig from
-// reconcile_stale_registration_test.go and lyxtest.CopyPaired; shares the single TestMain in
+// Package fabricengine_test to reuse gitkit.GitStatusPorcelain; shares the single TestMain in
 // testmain_test.go. readWeftExcludeLines resolves the weft-side exclude file the same way
 // seedWeftArtifactExcludes does, mirroring junction_pattern_integration_test.go's readExcludeLines
 // for the warp side.
+//
+// Every case in this file builds its hub via hubforge.NewHub, whose CloneAndWire call already wires
+// the prime pair's .lyx junction (and seeds both sides' git-exclude) before any test body runs —
+// unlike the old fixture, which never wired anything. resetDotLyxJunction tears that pre-wiring back
+// down to a real, unwired starting point wherever a case's own subject is the wire-from-scratch or
+// adoption path; the lifecycle and exclude-ordering cases below use it for exactly that reason.
 
 package fabricengine_test
 
@@ -27,12 +32,27 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine/fabrictest"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
 )
+
+// resetDotLyxJunction removes the prime pair's already-wired .lyx junction so a test can exercise
+// seedLyxJunction's creation or adoption path against a genuinely unwired starting point, rather than
+// observing WireJunctions's idempotent no-op branch against a hub hubforge.NewHub already wired.
+// It returns the warp-side .lyx link path it just cleared, for the caller to reuse.
+func resetDotLyxJunction(t *testing.T, l *lyxcwd.Location, slug string) string {
+	t.Helper()
+
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	if err := fslink.Remove(link); err != nil {
+		t.Fatalf("reset .lyx junction at %s: %v", link, err)
+	}
+	return link
+}
 
 // readWeftExcludeLines resolves and reads a weft worktree's .git/info/exclude file, mirroring the
 // resolution logic seedWeftArtifactExcludes uses (git rev-parse --git-path info/exclude, joined with
@@ -64,15 +84,12 @@ func readWeftExcludeLines(t *testing.T, weftPath string) []string {
 // junction pointing at <weft>/<AnchorRel>/.lyx, seeds ".lyx" into the warp's .git/info/exclude AND
 // ".lyx/" into the weft's, and unwiring removes the junction and the warp entry.
 func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
+	resetDotLyxJunction(t, l, slug)
 
 	if err := fabricengine.WireJunctions(l, slug, names); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
@@ -137,19 +154,21 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 
 // TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite covers (b), the regression test for the
 // ordering hole: after wiring and before any weft-git verb runs, writing a file into the warp-side
-// .lyx leaves `git status --porcelain` in the weft worktree clean. Seeding the weft-side exclude only
-// from ensureWeftLockDir would pass every other test in this file while leaving scratch as untracked
-// dirt during the window that trips Remove's no-force dirty gate.
+// .lyx must not make `.lyx` itself appear in the weft worktree's `git status --porcelain`. Seeding
+// the weft-side exclude only from ensureWeftLockDir would pass every other test in this file while
+// leaving scratch as untracked dirt during the window that trips Remove's no-force dirty gate.
+//
+// This checks for `.lyx` specifically rather than requiring the whole status blank: a real hub's weft
+// worktree already carries its own untracked `_lyx/` config — hubforge.NewHub's CloneAndWire
+// materializes per-worktree config via configsync.ReconcileAll without committing it — which is
+// unrelated dirt this test's own subject, `.lyx`'s exclude ordering, was never about.
 func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
+	resetDotLyxJunction(t, l, slug)
 
 	if err := fabricengine.WireJunctions(l, slug, names); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
@@ -161,9 +180,9 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 	}
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
-	status := fabrictest.GitStatusPorcelain(t, weftPath)
-	if strings.TrimSpace(status) != "" {
-		t.Errorf("git status --porcelain in weft worktree = %q; want clean (the .lyx exclude must exist before any write)", status)
+	status := gitkit.GitStatusPorcelain(t, weftPath)
+	if strings.Contains(status, lyxdirs.DotLyxDirName) {
+		t.Errorf("git status --porcelain in weft worktree = %q; want no %q entry (the .lyx exclude must exist before any write)", status, lyxdirs.DotLyxDirName)
 	}
 }
 
@@ -171,17 +190,13 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 // holding files is moved into the weft target and replaced by a junction, and a second reconcile
 // (WireJunctions re-run) is a no-op.
 func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
 
-	warpDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	warpDotLyx := resetDotLyxJunction(t, l, slug)
 	if err := os.MkdirAll(filepath.Join(warpDotLyx, "webster"), 0o755); err != nil {
 		t.Fatalf("mkdir pre-existing real .lyx: %v", err)
 	}
@@ -226,17 +241,13 @@ func TestDotLyxJunction_AdoptsPreExistingRealDotLyx(t *testing.T) {
 // present in the weft-side target aborts adoption with an error naming the colliding path and leaves
 // both sides untouched — the warp directory remains a real directory.
 func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
 
-	warpDotLyx := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+	warpDotLyx := resetDotLyxJunction(t, l, slug)
 	if err := os.MkdirAll(warpDotLyx, 0o755); err != nil {
 		t.Fatalf("mkdir pre-existing real .lyx: %v", err)
 	}
@@ -304,14 +315,10 @@ func TestDotLyxJunction_AdoptionDoesNotOverreachIntoLyxOrPattern(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			fixture := lyxtest.CopyPaired(t)
-			lyxtest.SeedConfig(t, fixture.WeftPrime, map[string]string{
-				"fabric": fabricengine.ConfigTemplate(),
-			})
-			seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+			h := hubforge.NewHub(t, ".")
 
-			l := fixture.Layout
-			slug := filepath.Base(fixture.Hub)
+			l := h.Location
+			slug := l.WorktreeName
 			names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName, "_extra"}
 
 			link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, tt.dirName)

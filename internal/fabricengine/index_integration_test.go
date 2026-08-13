@@ -3,70 +3,25 @@
 // index_integration_test.go — integration tests for the fabric layer's git
 // wiring around the correspondence index: gitdir resolution, the
 // RecordCorrespondence/WeftSHAForWarpSHA round trip, and RebuildIndex's
-// trailer scan. Package-internal (not fabricengine_test) because it asserts
-// on weftGitDir, an unexported method. Uses lyxtest.CopyWeft for the weft
+// trailer scan. Package fabricengine_test, driving weftGitDir through
+// export_test.go's WeftGitDirForTest shim. Uses hubforge.NewHub for the weft
 // side and a minimal, locally-built plain git repo for the warp side —
 // fabric's warp is just an ordinary warp repo, so these tests need none of
-// CopyWeft's upstream-tracking setup or CopyPaired's junction/portal wiring
-// on the warp side.
+// the real hub's junction/portal wiring on the warp side.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
-
-// newPlainWarpRepo creates a minimal, isolated git repo at t.TempDir() on
-// branch main with one commit — everything RecordCorrespondence/warpSeq
-// needs from a warp repo, without any of fabric's own topology wiring
-// (junctions, weft pairing), which these index tests do not exercise.
-func newPlainWarpRepo(t *testing.T) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	lyxtest.MustRun(t, dir, "git", "init", "-q", "-b", "main")
-	lyxtest.MustRun(t, dir, "git", "config", "user.email", "test@test.com")
-	lyxtest.MustRun(t, dir, "git", "config", "user.name", "Test")
-	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("warp"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	lyxtest.MustRun(t, dir, "git", "add", ".")
-	lyxtest.MustRun(t, dir, "git", "commit", "-q", "-m", "init")
-	return dir
-}
-
-// currentSHA returns dir's HEAD commit SHA.
-func currentSHA(t *testing.T, dir string) string {
-	t.Helper()
-
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// commitWarp creates a new commit in warpPath carrying content, returning
-// the new HEAD SHA.
-func commitWarp(t *testing.T, warpPath, content string) string {
-	t.Helper()
-
-	if err := os.WriteFile(filepath.Join(warpPath, "README"), []byte(content), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	lyxtest.MustRun(t, warpPath, "git", "add", ".")
-	lyxtest.MustRun(t, warpPath, "git", "commit", "-q", "-m", content)
-	return currentSHA(t, warpPath)
-}
 
 // commitWeftWithTrailer commits content into weftPath's tracked _lyx config
 // file with a Warp-SHA trailer naming warpSHA — a hand-crafted stand-in for
@@ -78,22 +33,10 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	lyxtest.MustRun(t, weftPath, "git", "add", ".")
-	msg := appendWarpSHATrailer("weft sync", warpSHA)
-	lyxtest.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
-	return currentSHA(t, weftPath)
-}
-
-// newFabric wraps newPaired, failing the test on error rather than returning it —
-// every test in this file expects a valid pair.
-func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
-	t.Helper()
-
-	f, err := newPaired(warpPath, weftPath)
-	if err != nil {
-		t.Fatalf("newPaired(%q, %q) error = %v", warpPath, weftPath, err)
-	}
-	return f
+	gitkit.MustRun(t, weftPath, "git", "add", ".")
+	msg := fabricengine.AppendWarpSHATrailerForTest("weft sync", warpSHA)
+	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
+	return fabricengine.CurrentSHAForTest(t, weftPath)
 }
 
 // TestWeftGitDir_ResolvesInsideWeftGitdir asserts that weftGitDir returns a path genuinely inside
@@ -102,15 +45,15 @@ func newFabric(t *testing.T, warpPath, weftPath string) *Fabric {
 func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	gitDir, err := f.weftGitDir()
+	gitDir, err := fabricengine.WeftGitDirForTest(f)
 	if err != nil {
 		t.Fatalf("weftGitDir() error = %v", err)
 	}
-	wantPrefix := filepath.Join(weftFixture.WeftPath, ".git")
+	wantPrefix := filepath.Join(weftFixture.PrimeWeft(), ".git")
 	if !strings.HasPrefix(gitDir, wantPrefix) {
 		t.Errorf("weftGitDir() = %q; want it under %q", gitDir, wantPrefix)
 	}
@@ -122,12 +65,12 @@ func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	warpSHA := commitWarp(t, warpPath, "warp change 1")
-	weftSHA := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 1", warpSHA)
+	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
+	weftSHA := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 1", warpSHA)
 
 	if err := f.RecordCorrespondence(warpSHA, weftSHA); err != nil {
 		t.Fatalf("RecordCorrespondence() error = %v", err)
@@ -147,14 +90,14 @@ func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	warpSHA := commitWarp(t, warpPath, "warp change, never synced")
+	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change, never synced")
 
-	if _, err := f.WeftSHAForWarpSHA(warpSHA); !errors.Is(err, ErrNoCorrespondence) {
-		t.Errorf("WeftSHAForWarpSHA() error = %v; want errors.Is(err, ErrNoCorrespondence)", err)
+	if _, err := f.WeftSHAForWarpSHA(warpSHA); !errors.Is(err, fabricengine.ErrNoCorrespondence) {
+		t.Errorf("WeftSHAForWarpSHA() error = %v; want errors.Is(err, fabricengine.ErrNoCorrespondence)", err)
 	}
 }
 
@@ -165,14 +108,14 @@ func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 func TestRebuildIndex_ReproducesTrailerHistory(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := lyxtest.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	warpSHA1 := commitWarp(t, warpPath, "warp change 1")
-	weftSHA1 := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 1", warpSHA1)
-	warpSHA2 := commitWarp(t, warpPath, "warp change 2")
-	weftSHA2 := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 2", warpSHA2)
+	warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
+	weftSHA1 := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 1", warpSHA1)
+	warpSHA2 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
+	weftSHA2 := commitWeftWithTrailer(t, weftFixture.PrimeWeft(), "weft change 2", warpSHA2)
 
 	if err := f.RebuildIndex(); err != nil {
 		t.Fatalf("RebuildIndex() error = %v", err)

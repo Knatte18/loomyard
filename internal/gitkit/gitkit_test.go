@@ -1,6 +1,6 @@
 //go:build integration
 
-package lyxtest
+package gitkit
 
 import (
 	"os"
@@ -54,10 +54,10 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 func TestTemplateQuietConfig(t *testing.T) {
 	t.Parallel()
 
-	fixture := CopyWarpHub(t)
+	fixture := CopyRepo(t)
 
 	cmd := exec.Command("git", "config", "--local", "core.fsmonitor")
-	cmd.Dir = fixture.Hub
+	cmd.Dir = fixture.Repo
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git config --local core.fsmonitor: %v; output: %s", err, output)
@@ -67,24 +67,24 @@ func TestTemplateQuietConfig(t *testing.T) {
 	}
 }
 
-// TestCopyWarpHub verifies that CopyWarpHub returns valid independent git repos.
-func TestCopyWarpHub(t *testing.T) {
+// TestCopyRepo verifies that CopyRepo returns valid independent git repos.
+func TestCopyRepo(t *testing.T) {
 	t.Parallel()
 
-	fixture := CopyWarpHub(t)
+	fixture := CopyRepo(t)
 
-	// Verify the copied hub is a valid git repo
+	// Verify the copied repo is a valid git repo
 	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = fixture.Hub
+	cmd.Dir = fixture.Repo
 	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git rev-parse HEAD in hub: %v; output: %s", err, output)
+		t.Fatalf("git rev-parse HEAD in repo: %v; output: %s", err, output)
 	}
 
 	// Verify origin URL points at the copied bare, not the template.
 	// Normalize to forward slashes: git returns forward-slash paths on Windows
 	// while filepath.Join uses backslashes; both are equivalent local paths.
 	cmd = exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = fixture.Hub
+	cmd.Dir = fixture.Repo
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git remote get-url: %v", err)
@@ -95,166 +95,33 @@ func TestCopyWarpHub(t *testing.T) {
 	}
 }
 
-// TestCopyWarpHub_Isolation verifies that fixture copies are isolated.
-func TestCopyWarpHub_Isolation(t *testing.T) {
+// TestCopyRepo_Isolation verifies that fixture copies are isolated.
+func TestCopyRepo_Isolation(t *testing.T) {
 	t.Parallel()
 
-	fixture1 := CopyWarpHub(t)
-	fixture2 := CopyWarpHub(t)
+	fixture1 := CopyRepo(t)
+	fixture2 := CopyRepo(t)
 
 	// Mutate fixture1: add and commit a file
-	testFile := filepath.Join(fixture1.Hub, "test.txt")
+	testFile := filepath.Join(fixture1.Repo, "test.txt")
 	if err := os.WriteFile(testFile, []byte("test content"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
 	cmd := exec.Command("git", "add", "test.txt")
-	cmd.Dir = fixture1.Hub
+	cmd.Dir = fixture1.Repo
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v; output: %s", err, output)
 	}
 
 	cmd = exec.Command("git", "commit", "-m", "add test.txt")
-	cmd.Dir = fixture1.Hub
+	cmd.Dir = fixture1.Repo
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit: %v; output: %s", err, output)
 	}
 
 	// Verify fixture2 is unaffected
-	testFile2 := filepath.Join(fixture2.Hub, "test.txt")
-	if _, err := os.Stat(testFile2); err == nil {
-		t.Errorf("fixture2 should not have test.txt, but it does")
-	}
-}
-
-// TestCopyPaired verifies that CopyPaired returns valid independent repos.
-func TestCopyPaired(t *testing.T) {
-	t.Parallel()
-
-	fixture := CopyPaired(t)
-
-	// Verify hub is a valid git repo
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = fixture.Hub
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git rev-parse HEAD in hub: %v; output: %s", err, output)
-	}
-
-	// Verify weft-prime is a valid git repo
-	cmd = exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = fixture.WeftPrime
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git rev-parse HEAD in weft-prime: %v; output: %s", err, output)
-	}
-
-	// Verify origin URLs point at the copied bares.
-	// Normalize to forward slashes: git returns forward-slash paths on Windows
-	// while filepath.Join uses backslashes; both are equivalent local paths.
-	cmd = exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = fixture.Hub
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git remote get-url hub: %v", err)
-	}
-	gotURL := filepath.ToSlash(strings.TrimSpace(string(output)))
-	if gotURL != filepath.ToSlash(fixture.Bare) {
-		t.Errorf("hub origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
-	}
-
-	cmd = exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = fixture.WeftPrime
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git remote get-url weft-prime: %v", err)
-	}
-	gotURL = filepath.ToSlash(strings.TrimSpace(string(output)))
-	if gotURL != filepath.ToSlash(fixture.WeftBare) {
-		t.Errorf("weft-prime origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.WeftBare))
-	}
-
-	// Verify Layout is valid
-	if fixture.Layout == nil {
-		t.Errorf("Layout is nil")
-	}
-	if fixture.Layout.HubPath == "" {
-		t.Errorf("Layout.HubPath is empty")
-	}
-}
-
-// TestCopyWeft verifies that CopyWeft returns a valid repo with upstream tracking.
-func TestCopyWeft(t *testing.T) {
-	t.Parallel()
-
-	fixture := CopyWeft(t)
-
-	// Verify the copied weft is a valid git repo
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = fixture.WeftPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git rev-parse HEAD: %v; output: %s", err, output)
-	}
-
-	// Verify origin URL points at the copied bare.
-	// Normalize to forward slashes: git returns forward-slash paths on Windows
-	// while filepath.Join uses backslashes; both are equivalent local paths.
-	cmd = exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = fixture.WeftPath
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git remote get-url: %v", err)
-	}
-	gotURL := filepath.ToSlash(strings.TrimSpace(string(output)))
-	if gotURL != filepath.ToSlash(fixture.Bare) {
-		t.Errorf("origin URL = %q; want %q", gotURL, filepath.ToSlash(fixture.Bare))
-	}
-
-	// Verify upstream tracking is established
-	cmd = exec.Command("git", "rev-parse", "@{u}")
-	cmd.Dir = fixture.WeftPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git rev-parse @{u}: %v; output: %s", err, output)
-	}
-
-	// Verify we're up to date with upstream
-	cmd = exec.Command("git", "rev-list", "--count", "@{u}..HEAD")
-	cmd.Dir = fixture.WeftPath
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("git rev-list count: %v", err)
-	}
-	count := strings.TrimSpace(string(output))
-	if count != "0" {
-		t.Errorf("commits ahead of upstream = %q; want 0", count)
-	}
-}
-
-// TestCopyWeft_Isolation verifies that weft copies are isolated.
-func TestCopyWeft_Isolation(t *testing.T) {
-	t.Parallel()
-
-	fixture1 := CopyWeft(t)
-	fixture2 := CopyWeft(t)
-
-	// Mutate fixture1: add and commit a file
-	testFile := filepath.Join(fixture1.WeftPath, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	cmd := exec.Command("git", "add", "test.txt")
-	cmd.Dir = fixture1.WeftPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v; output: %s", err, output)
-	}
-
-	cmd = exec.Command("git", "commit", "-m", "add test.txt")
-	cmd.Dir = fixture1.WeftPath
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git commit: %v; output: %s", err, output)
-	}
-
-	// Verify fixture2 is unaffected
-	testFile2 := filepath.Join(fixture2.WeftPath, "test.txt")
+	testFile2 := filepath.Join(fixture2.Repo, "test.txt")
 	if _, err := os.Stat(testFile2); err == nil {
 		t.Errorf("fixture2 should not have test.txt, but it does")
 	}
@@ -264,10 +131,10 @@ func TestCopyWeft_Isolation(t *testing.T) {
 func TestMustRun(t *testing.T) {
 	t.Parallel()
 
-	fixture := CopyWarpHub(t)
+	fixture := CopyRepo(t)
 
 	// MustRun should succeed when the command succeeds
-	MustRun(t, fixture.Hub, "git", "rev-parse", "HEAD")
+	MustRun(t, fixture.Repo, "git", "rev-parse", "HEAD")
 }
 
 // TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern
@@ -284,17 +151,43 @@ func TestMustRun_Failure(t *testing.T) {
 	}
 
 	// Build a fixture so the subprocess has a valid git repo to run against.
-	fixture := CopyWarpHub(t)
+	fixture := CopyRepo(t)
 
 	// Re-invoke this test as a subprocess; the -tags flag must match the current build.
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMustRun_Failure$", "-test.v")
 	cmd.Env = append(os.Environ(),
 		"GO_TEST_SUBPROCESS=MUSTRUN_FAILURE",
-		"GO_TEST_SUBPROCESS_DIR="+fixture.Hub,
+		"GO_TEST_SUBPROCESS_DIR="+fixture.Repo,
 	)
 	err := cmd.Run()
 	if err == nil {
 		t.Errorf("subprocess passed; expected MustRun to call Fatalf and exit non-zero")
+	}
+}
+
+// TestCopyDirRecursive_RefusesSymlinks verifies that copyDirRecursive returns an error instead of
+// following or copying a symlink planted in the source tree.
+func TestCopyDirRecursive_RefusesSymlinks(t *testing.T) {
+	t.Parallel()
+
+	src := t.TempDir()
+	target := filepath.Join(src, "target.txt")
+	if err := os.WriteFile(target, []byte("target"), 0o644); err != nil {
+		t.Fatalf("WriteFile target: %v", err)
+	}
+
+	link := filepath.Join(src, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "dest")
+	err := copyDirRecursive(src, dest)
+	if err == nil {
+		t.Fatal("copyDirRecursive: expected error for symlink in source tree, got nil")
+	}
+	if !strings.Contains(err.Error(), "symlink not allowed") {
+		t.Errorf("copyDirRecursive error = %q; want it to mention symlink refusal", err.Error())
 	}
 }
 
@@ -358,32 +251,5 @@ func TestSeedConfig(t *testing.T) {
 	}
 	if string(output) != "" {
 		t.Errorf("git status not clean after SeedConfig: %s", string(output))
-	}
-}
-
-// TestCopyPaired_NeutralFixture verifies CopyPaired produces a neutral fixture.
-func TestCopyPaired_NeutralFixture(t *testing.T) {
-	t.Parallel()
-
-	fixture := CopyPaired(t)
-
-	// Verify the weft-prime contains _lyx/config/placeholder
-	placeholderPath := filepath.Join(configengine.ConfigDir(fixture.WeftPrime), "placeholder")
-	placeholderContent, err := os.ReadFile(placeholderPath)
-	if err != nil {
-		t.Fatalf("read placeholder: %v", err)
-	}
-	if string(placeholderContent) != "weft config" {
-		t.Errorf("placeholder content = %q; want %q", string(placeholderContent), "weft config")
-	}
-
-	// Verify the weft-prime does NOT contain real config files (e.g., weft.yaml)
-	weftConfigPath := configengine.ConfigFile(fixture.WeftPrime, "weft")
-	if _, err := os.Stat(weftConfigPath); !os.IsNotExist(err) {
-		if err == nil {
-			t.Errorf("weft.yaml should not exist in neutral fixture, but it does")
-		} else {
-			t.Errorf("unexpected error checking weft.yaml: %v", err)
-		}
 	}
 }

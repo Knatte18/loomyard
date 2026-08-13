@@ -6,7 +6,7 @@
 // property a Linux-only run would otherwise never catch — that a wired junction's target is recorded
 // once, under its own path, never a second time under the junction's path.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"os"
@@ -16,11 +16,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // firstWiredJunction returns the absolute path of one of h's wired junction links, along with its
 // hub-relative key, failing tb if the hub carries none.
-func firstWiredJunction(tb testing.TB, h *Hub) (linkAbs, linkRel string) {
+func firstWiredJunction(tb testing.TB, h *hubforge.Hub) (linkAbs, linkRel string) {
 	tb.Helper()
 
 	names, err := fabricengine.WiredNames(h.BoardDir())
@@ -53,7 +55,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("UnchangedHubDiffsEmpty", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		before := CaptureManifest(t, h.Path)
 		after := CaptureManifest(t, h.Path)
 
@@ -65,7 +67,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("DeletionOutsidePermittedRootIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		scratch := filepath.Join(h.Path, "scratch-unpermitted.txt")
 		if err := os.WriteFile(scratch, []byte("scratch"), 0o644); err != nil {
 			t.Fatalf("write %s: %v", scratch, err)
@@ -86,7 +88,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("DeletionUnderPermittedRootIsNotReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		permittedDir := filepath.Join(h.Path, "scratch-permitted")
 		if err := os.Mkdir(permittedDir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", permittedDir, err)
@@ -112,7 +114,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("LinkTargetChangeIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		linkAbs, linkRel := firstWiredJunction(t, h)
 		before := CaptureManifest(t, h.Path)
 
@@ -134,7 +136,7 @@ func TestManifestRoundTrip(t *testing.T) {
 	t.Run("KindChangeIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		linkAbs, linkRel := firstWiredJunction(t, h)
 		before := CaptureManifest(t, h.Path)
 
@@ -157,14 +159,14 @@ func TestManifestGitAllowlist(t *testing.T) {
 	t.Run("OrdinaryGitStatusAndCommitProduceEmptyDiff", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		repoDir := h.PrimeWorktree()
 		before := CaptureManifest(t, h.Path)
 
 		// An ordinary status probe followed by an empty commit only ever touches index/logs/refs/
 		// objects churn inside .git — nothing this harness's allowlist should ever surface.
-		GitStatusPorcelain(t, repoDir)
-		mustGit(repoDir, "commit", "--allow-empty", "-m", "fabrictest: manifest git-allowlist probe")
+		gitkit.GitStatusPorcelain(t, repoDir)
+		mustGit(repoDir, "commit", "--allow-empty", "-m", "livestate: manifest git-allowlist probe")
 
 		after := CaptureManifest(t, h.Path)
 		AssertNoUnpermittedChange(t, before, after, nil)
@@ -173,9 +175,9 @@ func TestManifestGitAllowlist(t *testing.T) {
 	t.Run("LinkedWorktreeDeregistrationIsReported", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		const slug = "wtdereg"
-		AddPair(t, h, slug)
+		hubforge.AddPair(t, h, slug)
 
 		registryDir := filepath.Join(h.PrimeWeft(), gitDirName, "worktrees")
 		entries, err := os.ReadDir(registryDir)
@@ -208,7 +210,7 @@ func TestManifestPortability(t *testing.T) {
 	t.Run("KeysAreToSlashNormalised", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		manifest := CaptureManifest(t, h.Path)
 
 		for key := range manifest {
@@ -221,7 +223,7 @@ func TestManifestPortability(t *testing.T) {
 	t.Run("PermitRootWithForwardSlashMatchesRunningPlatform", func(t *testing.T) {
 		t.Parallel()
 
-		h := NewHub(t, ".")
+		h := hubforge.NewHub(t, ".")
 		nestedDir := filepath.Join(h.Path, "scratch-nested", "deeper")
 		if err := os.MkdirAll(nestedDir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", nestedDir, err)
@@ -249,7 +251,7 @@ func TestManifestPortability(t *testing.T) {
 func TestManifestWiredJunctionWalk(t *testing.T) {
 	t.Parallel()
 
-	h := NewHub(t, ".")
+	h := hubforge.NewHub(t, ".")
 	linkAbs, linkRel := firstWiredJunction(t, h)
 
 	rawTarget, err := fslink.RawTarget(linkAbs)

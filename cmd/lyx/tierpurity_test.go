@@ -1,7 +1,7 @@
 // tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones
 // that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`) perform no
-// expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, and no lyxtest.Copy*
-// fixture-tree copy.
+// expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, no gitkit.Copy* fixture-tree
+// copy, and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
 // See CONSTRAINTS.md's Test Tier Purity Invariant.
@@ -47,14 +47,18 @@ var knownTierTags = []string{"integration", "smoke", "scout"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also
-// matches exec.CommandContext, and lyxtest.Copy prefix-matches lyxtest.CopyPaired,
-// lyxtest.CopyPairedLocal, lyxtest.CopyWarpHub, lyxtest.CopyWeft, and any future
+// matches exec.CommandContext, and gitkit.Copy prefix-matches gitkit.CopyRepo and any future
 // Copy* fixture. Comment or string-literal mentions trip the guard too — that is
 // accepted (rename the mention or tag the file).
+// hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so an
+// untagged test calling it is exactly the expensive-spawn violation this guard exists to catch.
+// hubforge.SeedConfig and hubforge.SeedFabricConfig need no separate entries — both take a *Hub that
+// only NewHub can produce, so this token already covers every package that can reach them.
 var bannedTokens = []string{
 	"gitexec.RunGit",
 	"exec.Command",
-	"lyxtest.Copy",
+	"gitkit.Copy",
+	"hubforge.NewHub",
 }
 
 // tierPuritySkipDirs names directories the walk never descends into: version control

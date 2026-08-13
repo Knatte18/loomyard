@@ -1,8 +1,7 @@
 //go:build integration
 
-// cli_integration_test.go holds the perchcli pause tests that seed a real
-// paired git-repo fixture (lyxtest.CopyPaired) and write run-dir state on
-// disk, so they are integration-tagged per the Test Tier Purity Invariant.
+// cli_integration_test.go holds the perchcli pause tests that build a real hub (hubforge.NewHub) and
+// write run-dir state on disk, so they are integration-tagged per the Test Tier Purity Invariant.
 
 package perchcli
 
@@ -13,12 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/perchengine"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // TestRunCLI_Pause_InvalidRunID verifies that a --run-id carrying a path separator (the class of
@@ -42,18 +37,14 @@ func TestRunCLI_Pause_InvalidRunID(t *testing.T) {
 	}
 }
 
-// seedPerchFixture returns a paired git-repo fixture with real shuttle/reed/perch config seeded.
-func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
+// seedPerchFixture returns a real hub. shuttle/reed/perch config is no longer seeded here --
+// fabriccli.CloneAndWire already materializes every registered module's plain template.
+func seedPerchFixture(t *testing.T) *hubforge.Hub {
 	t.Helper()
 
-	fixture := lyxtest.CopyPaired(t)
-	lyxtest.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-		"perch":   perchengine.ConfigTemplate(),
-	})
-	t.Chdir(fixture.Hub)
-	return fixture
+	h := hubforge.NewHub(t, ".")
+	t.Chdir(h.PrimeWorktree())
+	return h
 }
 
 // TestRunCLI_Pause_FinishedBlockRefused verifies that pausing a block whose state.json already
@@ -61,9 +52,9 @@ func seedPerchFixture(t *testing.T) lyxtest.PairedFixture {
 // flag no run loop will ever observe (proven misleading live: a finished-STUCK block accepted a
 // pause and the operator had no signal it could never be honored).
 func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
-	fixture := seedPerchFixture(t)
+	h := seedPerchFixture(t)
 
-	runDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "finishedrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location), "finishedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -81,7 +72,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	if !strings.Contains(out.String(), "already finished (STUCK)") {
 		t.Errorf(`RunCLI([pause --run-id finishedrun]) output missing "already finished (STUCK)"; got: %q`, out.String())
 	}
-	scratchDir := filepath.Join(perchengine.ScratchDir(fixture.Layout), "finishedrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "finishedrun")
 	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err == nil {
 		t.Error("pause flag was written for a finished block; want no flag")
 	}
@@ -97,37 +88,14 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 // The pause verb's run-dir lookup exposes the resolved base: a run dir created under
 // <cwd>/_lyx/perch must be found.
 func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
-	fixture := lyxtest.CopyPaired(t)
+	// Build the hub at the real "nested" anchor: fabriccli.CloneAndWire records that anchor at
+	// BoardDir for real, which is the entire point of this migration -- a hand-rolled anchor marker
+	// on top of a real hub would be asserting against an invented shape again.
+	h := hubforge.NewHub(t, "nested")
 
-	// Initialize a NESTED directory of the repo, exactly as lyx init
-	// run from <hub>/nested would: configs and _lyx live under nested/.
-	nested := filepath.Join(fixture.Hub, "nested")
-	if err := os.MkdirAll(nested, 0o755); err != nil {
-		t.Fatalf("mkdir nested dir: %v", err)
-	}
-	lyxtest.SeedConfig(t, nested, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-		"perch":   perchengine.ConfigTemplate(),
-	})
+	t.Chdir(h.Location.AnchorPath())
 
-	// Record "nested" as the recognized anchor -- exactly what a real `lyx
-	// init` run from <hub>/nested records -- so RunCLI's own lyxcwd.Resolve
-	// succeeds under the strict cwd gate with AnchorRel == "nested" rather
-	// than failing ErrCwdOutsideAnchor.
-	boardDir := fabricengine.BoardDir(fixture.Layout.HubPath)
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
-	}
-	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
-	if err := os.WriteFile(anchorPath, []byte("nested"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", anchorPath, err)
-	}
-
-	t.Chdir(nested)
-
-	nestedLayout := &lyxcwd.Location{HubPath: fixture.Layout.HubPath, WorktreeName: fixture.Layout.WorktreeName, AnchorRel: "nested"}
-	runDir := filepath.Join(perchengine.RunsDir(nestedLayout), "nestedrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location), "nestedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -137,7 +105,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf(`RunCLI([pause --run-id nestedrun]) = %d; want 0 — the run dir under <cwd>/_lyx/perch must be found, output: %s`, exitCode, out.String())
 	}
-	scratchDir := filepath.Join(perchengine.ScratchDir(nestedLayout), "nestedrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "nestedrun")
 	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err != nil {
 		t.Errorf("pause flag not written under the nested .lyx run dir %q: %v", scratchDir, err)
 	}
@@ -165,9 +133,9 @@ func TestRunCLI_Pause_NoSuchRun(t *testing.T) {
 // its _lyx run dir — succeeds, and that a second pause call against the same run-id is a no-op
 // success (idempotent re-pause).
 func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
-	fixture := seedPerchFixture(t)
+	h := seedPerchFixture(t)
 
-	runDir := filepath.Join(perchengine.RunsDir(fixture.Layout), "myrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location), "myrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -181,7 +149,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 		t.Errorf(`RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out.String())
 	}
 
-	scratchDir := filepath.Join(perchengine.ScratchDir(fixture.Layout), "myrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "myrun")
 	pauseFile := perchengine.PauseFlagPath(scratchDir)
 	if _, err := os.Stat(pauseFile); err != nil {
 		t.Fatalf("pause flag file %q not written: %v", pauseFile, err)

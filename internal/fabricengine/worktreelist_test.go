@@ -12,7 +12,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxtest"
+	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main worktree,
@@ -84,7 +85,7 @@ func TestList(t *testing.T) {
 			// Special handling for BareRepoRejection test case
 			if tt.name == "BareRepoRejection" {
 				bareRepo := filepath.Join(t.TempDir(), "bare.git")
-				lyxtest.MustRun(t, t.TempDir(), "git", "init", "--bare", bareRepo)
+				gitkit.MustRun(t, t.TempDir(), "git", "init", "--bare", bareRepo)
 
 				entries, err := fabricengine.List(bareRepo)
 				if err == nil {
@@ -99,12 +100,12 @@ func TestList(t *testing.T) {
 				return
 			}
 
-			fix := lyxtest.CopyWarpHub(t)
-			hub := fix.Hub
+			h := hubforge.NewHub(t, ".")
+			hub := h.PrimeWorktree()
 
 			for i := 0; i < tt.extraWorktrees; i++ {
 				wtPath := filepath.Join(filepath.Dir(hub), fmt.Sprintf("wt%d", i+1))
-				lyxtest.MustRun(t, hub, "git", "worktree", "add", wtPath)
+				gitkit.MustRun(t, hub, "git", "worktree", "add", wtPath)
 			}
 
 			entries, err := fabricengine.List(hub)
