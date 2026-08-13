@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabrictest dissolution
+phase: approved-hubforge factory
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -36,6 +36,7 @@ planned  '2026-08-13T06:56:36Z'
 implementing  '2026-08-13T07:02:52Z'
 approved-gitkit leaf  '2026-08-13T07:18:31Z'
 approved-fabrictest dissolution  '2026-08-13T07:32:23Z'
+approved-hubforge factory  '2026-08-13T07:46:27Z'
 ```
 
 ## Batches
@@ -55,9 +56,10 @@ batches:
     commit_sha: e0f8744da6820fb917bd01e07ba5ae3724fb6005
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: hubforge factory
-    state: running
+    state: approved
     implementer_session: 3edd2be4-d653-49c7-a495-3659c91b91eb
     start_sha: d9af84b9c5e209adb7fbc24204cfc81c8987ac46
+    commit_sha: 9b4fee50b6cdc8c9abd03b4976217bd39dbec333
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: small consumers
     state: pending
