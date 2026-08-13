@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-module seams  '2026-08-13T15:13:07Z'
 approved-test migration and guard  '2026-08-13T15:38:47Z'
 holistic-reviewing  '2026-08-13T15:39:19Z'
 holistic-approved  '2026-08-13T15:43:17Z'
+done  '2026-08-13T15:44:18Z'
 ```
 
 ## Batches
