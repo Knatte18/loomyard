@@ -63,7 +63,9 @@ batches:
     commit_sha: edff8d727bd0b74848158d9dd4824cabdb2f4dbc
     verify_baseline_failures: []
   - name: fabric-destroy-caller-files
-    state: pending
+    state: running
+    implementer_session: 40208072-5d92-42e2-b18c-a9a1cfbd8bfa
+    start_sha: 73513e314968c515cd831bb7ebcd108ca8b87a95
     verify_baseline_failures: []
   - name: fabric-probe-clone-reconcile
     state: pending
