@@ -89,6 +89,7 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   - `internal/hubforge/bench_test.go`
   - `cmd/lyx/boardguard_test.go`
   - `cmd/lyx/tierpurity_test.go`
+  - `internal/gitkit/leaf_enforcement_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -127,6 +128,10 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   Fixed by moving the wrapper into `commit_lock_integration_test.go` itself, alongside the symbol it wraps, so both share the same build tag;
   its one caller (`commit_integration_test.go`, also integration-tagged) is unaffected.
   Added to this card's `Edits:` list for the same reason as the other two.
+
+  A fourth deviation, found while confirming card 70's `lyxtest` gate in advance: `internal/gitkit/leaf_enforcement_test.go`'s own doc comment named `lyxtest` by token — "feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle" — a leftover from before `internal/hubforge` existed that batch 1 card 2's sweep never caught since it lives in `internal/gitkit` itself, not one of the files that sweep targeted.
+  `internal/hubforge` is `lyxtest`'s replacement and closes the identical cycle (it imports `gitkit`), so the sentence is retargeted onto it.
+  Added to this card's `Edits:` list for the same reason as the other three.
 
   Finish by confirming `grep -rn 'CopyPaired\|CopyPairedLocal\|CopyWeft\|CopyWarpHub' --include=*.go internal cmd` is empty, which is card 70's third gate satisfied in advance.
 - **Commit:** `docs(test): retarget prose naming the retired fixture helpers`
