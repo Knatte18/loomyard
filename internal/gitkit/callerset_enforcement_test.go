@@ -1,7 +1,7 @@
 // callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin: internal/lyxcwd
 // is the only caller of this package's CopyRepo, since every other package takes a real hub from
 // internal/hubforge instead. This is the guard that catches a later migration leaving a hub-shaped
-// call site on the primitive repo fixture rather than migrating it onto hubforge.NewHub.
+// call site on the primitive repo fixture rather than migrating it onto hubforge's real-hub factory.
 
 package gitkit
 
@@ -91,7 +91,7 @@ func TestCopyRepoCallerSet_LyxcwdOnly(t *testing.T) {
 	if len(failures) > 0 {
 		t.Errorf("gitkit Leaf Invariant violated: CopyRepo is pinned to %s alone, "+
 			"but found call sites in: %v -- every other package takes a real hub from "+
-			"internal/hubforge instead (see CONSTRAINTS.md's gitkit Leaf Invariant)",
+			"hubforge's real-hub factory instead (see CONSTRAINTS.md's gitkit Leaf Invariant)",
 			allowedCopyRepoCallerDir, failures)
 	}
 }

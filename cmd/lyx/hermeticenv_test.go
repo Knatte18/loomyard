@@ -1,6 +1,7 @@
 // hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every test package
-// whose tests spawn git — directly or via the gitkit fixture helpers — must run under
-// gitkit.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a reason.
+// whose tests spawn git — directly or via the fixture helpers now living in gitkit and hubforge —
+// must run under gitkit.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a
+// reason.
 // This is the repo-wide grep-guard companion to tierpurity_test.go, machine-enforcing what the
 // two-layer hermetic mechanism otherwise relies on every new package remembering to do.
 // See CONSTRAINTS.md's Hermetic Git Test Environment Invariant.
@@ -45,12 +46,17 @@ var allowedNonHermetic = map[string]string{
 // which spawn git internally inside gitkit itself — without them, a package whose
 // only git spawn goes through those helpers would carry no matching token and
 // silently skip the hermetic requirement.
+// hubforge.NewHub joins the set for the identical reason: it drives a real
+// fabriccli.CloneAndWire clone internally, and hubforge.SeedConfig/SeedFabricConfig both take a
+// *Hub only NewHub can produce, so this one token already covers every package that can reach any
+// of the three.
 var gitSpawnTokens = []string{
 	"gitexec.RunGit",
 	"exec.Command",
 	"gitkit.Copy",
 	"gitkit.MustRun",
 	"gitkit.SeedConfig",
+	"hubforge.NewHub",
 }
 
 // hermeticPresenceToken is the raw substring proving a package runs under the
