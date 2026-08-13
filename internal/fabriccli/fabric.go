@@ -14,6 +14,7 @@
 package fabriccli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -491,15 +492,19 @@ func runCheckout(out io.Writer, args []string) int {
 	if len(args) >= 1 {
 		branch = args[0]
 	} else {
-		branchOut, _, exitCode, runErr := gitexec.RunGit(
+		branchOut, runErr := gitexec.Run(
 			[]string{"branch", "--show-current"},
 			l.WorktreePath(),
 		)
 		if runErr != nil {
+			// A *GitError means git ran and rejected the command: recover it as
+			// "no current branch to infer", a distinct answer from an exec-level
+			// failure, which keeps its own diagnostic below.
+			var gitErr *gitexec.GitError
+			if errors.As(runErr, &gitErr) {
+				return output.Err(out, "usage: lyx fabric checkout <branch>")
+			}
 			return output.Err(out, runErr.Error())
-		}
-		if exitCode != 0 {
-			return output.Err(out, "usage: lyx fabric checkout <branch>")
 		}
 		branch = strings.TrimSpace(branchOut)
 		if branch == "" {
