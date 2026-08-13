@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -102,17 +102,13 @@ func writeClusterSmokeFixture(t *testing.T, hub string) string {
 // no burler.yaml seeding needed, since these tests exercise the fork
 // mechanism itself, not config loading (config.go's LoadConfig/ResolveFan
 // already has its own unit coverage).
-func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, gitkit.PairedFixture) {
+func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	t.Helper()
 	claudeBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.Path)
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		reedcli.RunCLI(&buf, []string{"down"})
@@ -126,19 +122,19 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, gitkit.PairedFix
 		t.Fatalf("reed up = %d; want 0, output: %s", code, reedOut.String())
 	}
 
-	reedCfg, err := reedengine.LoadConfig(fixture.Layout.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(h.Location.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, fixture.Layout)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, h.Location)
+	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
 	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
-	engine := burlerengine.New(runner, fixture.Layout, cfg)
-	return engine, fixture
+	engine := burlerengine.New(runner, h.Location, cfg)
+	return engine, h
 }
 
 // TestSmokeBurlerClusterCleanFan drives one cluster round naming the "clean" fan (two well-behaved
@@ -149,11 +145,11 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, gitkit.PairedFix
 // ParseReview's strict frontmatter contract — so a nil error here already proves a well-formed
 // consolidated structure).
 func TestSmokeBurlerClusterCleanFan(t *testing.T) {
-	engine, fixture := newClusterSmokeEngine(t)
-	targetPath := writeClusterSmokeFixture(t, fixture.Hub)
+	engine, h := newClusterSmokeEngine(t)
+	targetPath := writeClusterSmokeFixture(t, h.PrimeWorktree())
 
-	reviewPath := filepath.Join(fixture.Hub, "burler-cluster-smoke-clean-review.md")
-	fixerReportPath := filepath.Join(fixture.Hub, "burler-cluster-smoke-clean-fixer-report.md")
+	reviewPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-clean-review.md")
+	fixerReportPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-clean-fixer-report.md")
 
 	profile := burlerengine.Profile{
 		Target: burlerengine.FileSet{Paths: []string{targetPath}},
@@ -238,11 +234,11 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 //     distinguish "the hook denied it" from "the hook never ran and the
 //     model just narrated a call it made freely".
 func TestSmokeBurlerClusterRogueFork(t *testing.T) {
-	engine, fixture := newClusterSmokeEngine(t)
-	targetPath := writeClusterSmokeFixture(t, fixture.Hub)
+	engine, h := newClusterSmokeEngine(t)
+	targetPath := writeClusterSmokeFixture(t, h.PrimeWorktree())
 
-	reviewPath := filepath.Join(fixture.Hub, "burler-cluster-smoke-rogue-review.md")
-	fixerReportPath := filepath.Join(fixture.Hub, "burler-cluster-smoke-rogue-fixer-report.md")
+	reviewPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-rogue-review.md")
+	fixerReportPath := filepath.Join(h.PrimeWorktree(), "burler-cluster-smoke-rogue-fixer-report.md")
 
 	profile := burlerengine.Profile{
 		Target: burlerengine.FileSet{Paths: []string{targetPath}},

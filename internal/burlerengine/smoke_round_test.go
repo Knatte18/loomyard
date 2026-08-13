@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -241,13 +241,9 @@ func distinctColorsMentioned(text string) []string {
 func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	claudeBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.Path)
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		reedcli.RunCLI(&buf, []string{"down"})
@@ -263,7 +259,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 
 	// Write the toy target: an unambiguous chair/table color mismatch, the
 	// only thing a BLOCKING finding can legitimately be about here.
-	targetPath := filepath.Join(fixture.Hub, "chair-table.txt")
+	targetPath := filepath.Join(h.PrimeWorktree(), "chair-table.txt")
 	original := "In this small room there is a chair and a table. The chair is painted a " +
 		"bright red color. The table is painted a deep blue color. Nothing else in " +
 		"the room is described.\n"
@@ -271,8 +267,8 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 		t.Fatalf("write toy target file: %v", err)
 	}
 
-	reviewPath := filepath.Join(fixture.Hub, "burler-smoke-review.md")
-	fixerReportPath := filepath.Join(fixture.Hub, "burler-smoke-fixer-report.md")
+	reviewPath := filepath.Join(h.PrimeWorktree(), "burler-smoke-review.md")
+	fixerReportPath := filepath.Join(h.PrimeWorktree(), "burler-smoke-fixer-report.md")
 
 	profile := burlerengine.Profile{
 		Target: burlerengine.FileSet{
@@ -294,17 +290,17 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 
 	// Wire the real stack directly: burlerengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	reedCfg, err := reedengine.LoadConfig(fixture.Layout.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(h.Location.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, fixture.Layout)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
-	engine := burlerengine.New(runner, fixture.Layout, burlerengine.Config{})
+	reedEngine := reedengine.New(reedCfg, h.Location)
+	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
+	engine := burlerengine.New(runner, h.Location, burlerengine.Config{})
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
 	if err != nil {
