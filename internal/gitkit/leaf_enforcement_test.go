@@ -1,11 +1,11 @@
-// leaf_enforcement_test.go enforces the lyxtest Leaf Invariant: production code in internal/lyxtest
+// leaf_enforcement_test.go enforces the gitkit Leaf Invariant: production code in internal/gitkit
 // imports ONLY the standard library and internal/configengine, internal/lyxcwd, internal/weftname,
 // internal/lyxdirs — never internal/configreg or any feature package (boardengine/boardcli,
 // ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli).
 // Tests that need real config seed it via SeedConfig with a configreg-free map[string]string (never
 // configreg types).
 
-package lyxtest
+package gitkit
 
 import (
 	"go/parser"
@@ -34,17 +34,17 @@ var allowedImports = map[string]bool{
 // It uses go/parser with ImportsOnly so only real import declarations are inspected, never string
 // literals in doc comments.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
-	// Resolve the lyxtest source directory via runtime.Caller.
+	// Resolve the gitkit source directory via runtime.Caller.
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine lyxtest source directory location")
+		t.Fatal("could not determine gitkit source directory location")
 	}
-	lyxtestDir := filepath.Dir(file)
+	gitkitDir := filepath.Dir(file)
 
 	var failures []string
 
-	// Walk all .go files in the lyxtest directory (excluding *_test.go files).
-	err := filepath.WalkDir(lyxtestDir, func(path string, d fs.DirEntry, err error) error {
+	// Walk all .go files in the gitkit directory (excluding *_test.go files).
+	err := filepath.WalkDir(gitkitDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -78,17 +78,17 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 				continue
 			}
 
-			relPath, _ := filepath.Rel(lyxtestDir, path)
+			relPath, _ := filepath.Rel(gitkitDir, path)
 			failures = append(failures, relPath+": "+importPath)
 		}
 
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("failed to walk lyxtest directory: %v", err)
+		t.Fatalf("failed to walk gitkit directory: %v", err)
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("lyxtest Leaf Invariant violated; imports outside the allowlist (stdlib + configengine, lyxcwd, weftname, lyxdirs) found: %v", failures)
+		t.Errorf("gitkit Leaf Invariant violated; imports outside the allowlist (stdlib + configengine, lyxcwd, weftname, lyxdirs) found: %v", failures)
 	}
 }

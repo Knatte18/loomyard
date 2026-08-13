@@ -11,7 +11,7 @@
 // per-iteration — the same accumulation any test suite using these fixtures
 // already pays.
 
-package lyxtest
+package gitkit
 
 import "testing"
 

@@ -1,7 +1,7 @@
-// lyxtest.go implements the shared test-fixture builders and copy helpers used across worktree,
+// gitkit.go implements the shared test-fixture builders and copy helpers used across worktree,
 // weft, and paths tests.
 
-package lyxtest
+package gitkit
 
 import (
 	"fmt"
@@ -125,7 +125,7 @@ var (
 // populated with a README and initial commit (called once per test binary; panics on failure).
 func buildWarpHub() (hub, bare string) {
 	warpHubOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "lyxtest-warphub-*")
+		tmpDir, err := os.MkdirTemp("", "gitkit-repo-*")
 		if err != nil {
 			panic(err)
 		}
@@ -168,7 +168,7 @@ func buildWeftPrime() (weftPrime, weftBare string) {
 		// Derive the base name from the already-cached warp hub path so the naming
 		// is stable across repeated calls (sync.Once skips the body on reuse).
 		base := filepath.Base(warpHubPath)
-		tmpDir, err := os.MkdirTemp("", "lyxtest-weftprime-*")
+		tmpDir, err := os.MkdirTemp("", "gitkit-weftprime-*")
 		if err != nil {
 			panic(err)
 		}
@@ -216,7 +216,7 @@ var (
 // _lyx/config.yaml and upstream tracking (the only template that needs this; panics on failure).
 func buildWeftOnly() (weftPath, bare string) {
 	weftOnlyOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "lyxtest-weftonly-*")
+		tmpDir, err := os.MkdirTemp("", "gitkit-weftonly-*")
 		if err != nil {
 			panic(err)
 		}

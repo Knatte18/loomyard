@@ -1,23 +1,23 @@
-// Package lyxtest holds the shared git-fixture support machinery for Loomyard's test suites across
+// Package gitkit holds the shared git-fixture support machinery for Loomyard's test suites across
 // internal/fabricengine, internal/fabriccli, and internal/lyxcwd.
 // It owns the fixture builders and per-test isolation helpers, following the template-built-once +
 // per-test filesystem copy pattern to minimize setup overhead and maximize parallelism.
 // See MustRun, CopyWarpHub, CopyPaired, and CopyWeft.
 //
-// Leaf Invariant: internal/lyxtest production code imports only stdlib, internal/lyxcwd,
+// Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
 // internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
 // feature package
 // (boardengine/boardcli, fabricengine/fabriccli, ideengine/idecli, selfreportengine/selfreportcli)
 // excluded by construction —
-// feature packages' own tests import lyxtest, so a reverse import would
+// feature packages' own tests import gitkit, so a reverse import would
 // close a test-build cycle.
-// This is enforced by internal/lyxtest/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly)
-// and recorded as the "lyxtest Leaf Invariant" in CONSTRAINTS.md.
+// This is enforced by internal/gitkit/leaf_enforcement_test.go (TestLeafInvariant_AllowlistOnly)
+// and recorded as the "gitkit Leaf Invariant" in CONSTRAINTS.md.
 // Tests that need real configuration seed it via SeedConfig, which takes a configreg-free
 // map[string]string (module name to YAML content), converting configreg.Modules() or a feature's
-// ConfigTemplate() at the test site instead of inside lyxtest.
+// ConfigTemplate() at the test site instead of inside gitkit.
 //
-// Hermetic Git Test Environment: lyxtest also implements the two-layer mechanism that keeps
+// Hermetic Git Test Environment: gitkit also implements the two-layer mechanism that keeps
 // git-spawning tests from depending on the operator's global or system gitconfig.
 // Layer A (template quiet-config) sets core.fsmonitor=false, maintenance.auto=false, and gc.auto=0
 // on every template repo at build time, so fixtures built by initRepo/initBareRemote and their
@@ -28,4 +28,4 @@
 // the test binary launches.
 // See CONSTRAINTS.md's Hermetic Git Test Environment Invariant for the machine-enforced half of
 // this contract.
-package lyxtest
+package gitkit

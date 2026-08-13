@@ -1,6 +1,6 @@
 //go:build integration
 
-package lyxtest
+package gitkit
 
 import (
 	"os"
