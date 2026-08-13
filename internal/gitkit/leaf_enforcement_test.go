@@ -30,7 +30,7 @@ var allowedImports = map[string]bool{
 // imports only stdlib (no '.'
 // in the first path segment) or an entry in allowedImports.
 // The allowlist must never be widened to admit a feature package: feature packages' own tests import
-// lyxtest, so a reverse import would close a test-build cycle.
+// hubforge, so a reverse import would close a test-build cycle.
 // It uses go/parser with ImportsOnly so only real import declarations are inspected, never string
 // literals in doc comments.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
