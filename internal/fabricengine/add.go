@@ -113,13 +113,9 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	parentBranch := strings.TrimSpace(stdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	warpTok, exitCode, stderr, err := createGitWorktree(rec, l.WorktreePath(), []string{"worktree", "add", "-b", warpBranch, target}, target)
+	warpTok, err := createGitWorktree(rec, l.WorktreePath(), []string{"worktree", "add", "-b", warpBranch, target}, target)
 	if err != nil {
-		return AddResult{}, fmt.Errorf("create warp worktree %q for branch %q: %w", target, warpBranch, err)
-	}
-	if exitCode != 0 {
-		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed (git exit %d): %s",
-			target, warpBranch, exitCode, strings.TrimSpace(stderr))
+		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed: %w", target, warpBranch, err)
 	}
 	// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
 	// not merely a worktree; a branch is a ref, so it records via AppendRef rather than Append.
@@ -281,19 +277,13 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		dirtiness: dirtinessNA("rollback of the worktree this Add created"),
 		force:     true,
 	}
-	exitCode, _, err := removeGitWorktree(rec, removeReq, l.WorktreePath())
+	err := removeGitWorktree(rec, removeReq, l.WorktreePath())
 	if refusalErr := surfaceRefusal(err); refusalErr != nil {
 		if firstErr == nil {
 			firstErr = refusalErr
 		}
-	} else if err != nil || exitCode != 0 {
-		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git worktree remove failed with exit code %d", exitCode)
-			}
-		}
+	} else if err != nil && firstErr == nil {
+		firstErr = err
 	}
 
 	// (5) Delete warp branch
@@ -305,23 +295,17 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}
-	exitCode, _, err = deleteBranch(rec, branchReq)
+	err = deleteBranch(rec, branchReq)
 	if refusalErr := surfaceRefusal(err); refusalErr != nil {
 		if firstErr == nil {
 			firstErr = refusalErr
 		}
-	} else if err != nil || exitCode != 0 {
-		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
-			}
-		}
+	} else if err != nil && firstErr == nil {
+		firstErr = err
 	}
 
 	// (6) Prune warp worktrees
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
+	_, _, exitCode, err := gitexec.RunGit([]string{"worktree", "prune"}, l.WorktreePath())
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {

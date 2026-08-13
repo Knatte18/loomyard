@@ -215,15 +215,8 @@ func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string,
 		dirtiness: dirtyScopeAll(),
 		force:     force,
 	}
-	exitCode, _, err := removeGitWorktree(rec, req, weftRoot)
-	if err != nil || exitCode != 0 {
-		if firstErr == nil {
-			if err != nil {
-				firstErr = err
-			} else {
-				firstErr = fmt.Errorf("git worktree remove failed with exit code %d", exitCode)
-			}
-		}
+	if err := removeGitWorktree(rec, req, weftRoot); err != nil {
+		firstErr = err
 	}
 
 	if alsoDeleteBranch {
@@ -235,19 +228,12 @@ func removeWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch string,
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}
-		exitCode, _, err = deleteBranch(rec, branchReq)
-		if err != nil || exitCode != 0 {
-			if firstErr == nil {
-				if err != nil {
-					firstErr = err
-				} else {
-					firstErr = fmt.Errorf("git branch -D failed with exit code %d", exitCode)
-				}
-			}
+		if err := deleteBranch(rec, branchReq); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 
-	_, _, exitCode, err = gitexec.RunGit([]string{"worktree", "prune"}, weftRoot)
+	_, _, exitCode, err := gitexec.RunGit([]string{"worktree", "prune"}, weftRoot)
 	if err != nil || exitCode != 0 {
 		if firstErr == nil {
 			if err != nil {
