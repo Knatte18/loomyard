@@ -262,6 +262,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/burlerengine/smoke_round_test.go`
 - `internal/burlerengine/testmain_test.go`
 - `internal/configcli/configcli_integration_test.go`
+- `internal/configcli/configcli_test.go`
 - `internal/configcli/testmain_test.go`
 - `internal/fabriccli/cli_test.go`
 - `internal/fabriccli/clone.go`
@@ -361,6 +362,7 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/idecli/cli_test.go`
 - `internal/idecli/testmain_test.go`
 - `internal/ideengine/testmain_test.go`
+- `internal/loomengine/config_test.go`
 - `internal/loomengine/export_test.go`
 - `internal/loomengine/preflight_integration_test.go`
 - `internal/loomengine/testmain_test.go`

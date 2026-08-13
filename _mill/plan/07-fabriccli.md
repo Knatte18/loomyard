@@ -41,6 +41,14 @@ point the subject clone at those and give it its own `t.TempDir()` destination.
   Where a test's subject is `fabric clone` itself, do not clone into the fixture hub: pass `h.WarpBare` and `h.WeftBare` as the URLs and a fresh `t.TempDir()` as the destination, so the fixture hub stays the arranged state and the cloned hub is the observed one.
   Where a test previously relied on the old fixture *not* being a hub — for example asserting that `fabric add` refuses outside a hub, or that a path does not exist — that assertion is now false by construction and must be re-expressed against a directory that genuinely is not a hub (a bare `t.TempDir()`), not deleted.
   Note any such re-expression in the commit message.
+
+  **`TestRunCLI_EnvMapToOption` carries named stand-in-hub scaffolding — delete it.**
+  That test hand-writes `configengine.ConfigDir(fabricengine.BoardDir(fixture.Container))` and a `fabric.yaml` into it, and its own comment says why: "`CopyPaired` never materializes a `_board` dir, so seed it directly here."
+  A real hub does materialize `_board` and commits a repo-wide `fabric.yaml` into it — batch 3 card 17's `TestNewHub_IsARealHub` is the assertion that proves it — so the `os.MkdirAll` plus `os.WriteFile` pair goes away entirely and the test reads the config the clone actually produced.
+  Delete the explanatory comment with the code it explains rather than leaving it describing a hazard that no longer exists.
+  If the test needs a **non-default** fabric config rather than the registered template it currently writes, that is `hubforge.SeedFabricConfig` — triage outcome 3 — not a hand-written file;
+  read the value before choosing.
+  This is the same shape of scaffolding batch 4 card 27 removes in `perchcli` and batch 6 card 36 removes in `loomengine`, and it is named here rather than left to the generic mapping table because a mapping table only retargets fields, it never tells you to delete a block.
 - **Commit:** `test(fabriccli): build the CLI fixtures with hubforge.NewHub`
 
 ### Card 40: Migrate fabriccli's push-bypass suite

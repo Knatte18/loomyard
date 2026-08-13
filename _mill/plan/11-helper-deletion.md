@@ -4,7 +4,7 @@
 task: 'lyxtest: build real fabric hubs, invert the lyxtest/fabric dependency'
 batch: 'helper deletion'
 number: 11
-cards: 4
+cards: 5
 verify: go vet -tags integration ./... && go vet -tags smoke ./... && go test -tags integration ./internal/gitkit/... ./internal/lyxcwd/... ./cmd/lyx/... ./internal/fabricengine/... ./internal/fabriccli/...
 depends-on: [10]
 ```
@@ -14,7 +14,7 @@ depends-on: [10]
 Every consumer is migrated, so this batch deletes what they no longer call: `CopyPaired`, `CopyPairedLocal`, `CopyWeft`, the transitional `CopyWarpHub` wrapper, the three fixture structs they returned, and the two `sync.Once` template builders (`buildWeftPrime`, `buildWeftOnly`) that existed only to feed them.
 What survives in `internal/gitkit` afterwards is the leaf and nothing else: `MustRun`, `SeedConfig`, `GitStatusPorcelain`, `HermeticGitEnv`, `refuseCLIReexec`, and `CopyRepo` with its one-package caller set.
 
-The grep gate in card 69 is this task's completeness proof.
+The grep gate in card 70 is this task's completeness proof, and card 69 is what makes it satisfiable — the per-call-site cards replace call expressions and leave comment prose naming the same retired helpers behind.
 It is a card rather than a sentence in a commit message because "drift becomes impossible by construction" is the whole point of the task, and an unproved claim of it is worse than no claim.
 
 Batch-local decision: the gate greps for the *fixture* usage of the pairing shim, not for the bare string `NewPairedForTest`.
@@ -59,7 +59,40 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   State in the commit message how many tests were deleted and that every one of them named a deleted helper — this is the one place in the task where deleting a test is correct, so it should be auditable.
 - **Commit:** `test(gitkit): prune the retired fixtures' tests`
 
-### Card 69: Prove no stand-in hub survives anywhere
+### Card 69: Sweep the retired helper names out of prose
+
+- **Context:**
+  - `internal/gitkit/gitkit.go`
+  - `internal/hubforge/hub.go`
+- **Edits:**
+  - `internal/configcli/configcli_test.go`
+  - `internal/loomengine/config_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  The per-call-site migration cards in batches 4 through 10 replace **call expressions**;
+  they never touch comment prose naming the same helpers, and there is roughly a hundred hits' worth of it — a bare-token grep for the four retired names returns 244 hits against the 141 call expressions the plan's own arithmetic counts.
+  Every one of those surplus hits names an identifier card 67 has just deleted, and card 70's zero-hit gate fails on all of them.
+  Sweep them here, after the deletions and before the gate:
+
+  ```
+  grep -rl 'CopyPaired\|CopyPairedLocal\|CopyWeft\|CopyWarpHub' --include=*.go internal cmd
+  ```
+
+  For each file the grep names, rewrite the prose to describe what the code now does.
+  This is **not** a mechanical substitution and must not be done with `perl -pi -e`: the retired names have no one-to-one replacement — `CopyPaired`, `CopyPairedLocal` and `CopyWeft` all become `hubforge.NewHub`, `CopyWarpHub` becomes `hubforge.NewHub` at twelve sites and `gitkit.CopyRepo` at nine, and a sentence like "no `CopyWeft`, no `SeedConfig` — this is a `t.TempDir()` unit test" is making a claim about *tiering* that stays true only if the replacement names the right successor.
+  Read each sentence and rewrite the claim.
+
+  Two of the files carry no `lyxtest` token at all, so batch 1 card 2's sweep never selected them and no other card in this plan names them — they are in this card's `Edits:` list for exactly that reason:
+  `internal/configcli/configcli_test.go` (its header contrasts itself with the "e2e test with real `fabriccli.RunCLI` over `CopyPaired`" in its integration sibling) and `internal/loomengine/config_test.go` (its header says "no `CopyWeft`, no `SeedConfig`" to explain why it is a Tier-1 test).
+  Both are one-line header-comment fixes.
+  Every other file the grep names is already in some batch's `Edits:` list, so the sweep there is a re-read of files this task has already touched.
+
+  Finish by confirming `grep -rn 'CopyPaired\|CopyPairedLocal\|CopyWeft\|CopyWarpHub' --include=*.go internal cmd` is empty, which is card 70's third gate satisfied in advance.
+- **Commit:** `docs(test): retarget prose naming the retired fixture helpers`
+
+### Card 70: Prove no stand-in hub survives anywhere
 
 - **Context:**
   - `internal/gitkit/gitkit.go`
@@ -84,11 +117,11 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   - `grep -rln 'internal/hubforge' --include=*.go internal cmd` — no file that also declares a package inside `internal/fabriccli`'s dependency set, i.e. no in-package `fabricengine`, `loomengine`, `treadleengine`, `boardengine`, `burlerengine`, `perchengine`, `websterengine`, `gitrepo` or `lyxcwd` test file.
     The compiler enforces this, but eyeball it: it is the `hubforge` Fabric-Fixture Invariant's whole content.
 
-  Write the results into the commit message of card 70 (the next card in this batch), since this card produces no diff of its own.
+  Write the results into the commit message of card 71 (the next card in this batch), since this card produces no diff of its own.
   If any grep fails, fix it under the batch that owns the file rather than here.
 - **Commit:** none
 
-### Card 70: Record the migration's completeness in the module docs
+### Card 71: Record the migration's completeness in the module docs
 
 - **Context:**
   - `internal/gitkit/gitkit.go`
@@ -105,7 +138,7 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   In `internal/gitkit/doc.go`, delete the transitional sentence batch 1 added saying that `CopyWarpHub`/`CopyPaired`/`CopyPairedLocal`/`CopyWeft` are scheduled for deletion, and replace it with the finished statement: `gitkit` hands out `MustRun`, `SeedConfig`, `GitStatusPorcelain`, `HermeticGitEnv` and the single primitive fixture `CopyRepo`, which is callable from `internal/lyxcwd` alone.
   In `internal/hubforge/doc.go`, record the seeding contract as built: `SeedConfig` writes to the anchor-joined `WeftBase` and commits in the weft worktree, `SeedFabricConfig` writes repo-wide fabric config to `BoardDir` and commits through `fabricengine.NewBolt`, and most former seeding sites need neither because `fabriccli.CloneAndWire` materializes every registered module's default config during the clone.
   Also record the teardown contract: junctions are discovered by walking the hub root with `fslink.IsLink`, never by slug, and removed with `fslink.Remove` before `tb.TempDir()`'s own cleanup.
-  Carry card 69's grep results into this card's commit message.
+  Carry card 70's grep results into this card's commit message.
 - **Commit:** `docs(gitkit,hubforge): record the finished fixture contracts`
 
 ## Batch Tests

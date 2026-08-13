@@ -27,7 +27,7 @@ Every edit in this batch follows that rule.
 
 ## Cards
 
-### Card 71: Move the roadmap item to Done and delete its design doc
+### Card 72: Move the roadmap item to Done and delete its design doc
 
 - **Context:**
   - `internal/lyxcwd/docslink_test.go`
@@ -51,7 +51,7 @@ Every edit in this batch follows that rule.
   `TestEnforcement_MarkdownLinks` is what proves the link surgery.
 - **Commit:** `docs(roadmap): land lyxtest-real-hubs and delete its design doc`
 
-### Card 72: Update the overview's Tests section and vocabulary owner set
+### Card 73: Update the overview's Tests section and vocabulary owner set
 
 - **Context:**
   - `internal/gitkit/doc.go`
@@ -70,7 +70,7 @@ Every edit in this batch follows that rule.
   In the `TestEnforcement_FabricVocabulary` paragraph, replace `lyxtest` in the owner set with `gitkit` and `hubforge`, matching the owner set already written into `CONSTRAINTS.md` and enforced by `internal/lyxcwd/enforcement_test.go`.
 - **Commit:** `docs(overview): describe gitkit and hubforge in the Tests section`
 
-### Card 73: Retarget the benchmark docs
+### Card 74: Retarget the benchmark docs
 
 - **Context:**
   - `internal/gitkit/bench_test.go`
@@ -93,7 +93,7 @@ Every edit in this batch follows that rule.
   In `docs/benchmarks/scout-vs-grep.md`, the reference is to `internal/lyxtest/lyxtest.go` inside a recorded account of a past agent comparison — update the path to `internal/gitkit/gitkit.go` and add a parenthetical noting the file was renamed, rather than silently rewriting the history of what the agents saw.
 - **Commit:** `docs(benchmarks): retarget the fixture benchmark trail onto gitkit and hubforge`
 
-### Card 74: Update the crucible review prompt
+### Card 75: Update the crucible review prompt
 
 - **Context:**
   - `CONSTRAINTS.md`
@@ -107,7 +107,7 @@ Every edit in this batch follows that rule.
   This is the one markdown file whose staleness has behavioural consequences: every crucible reviewer reads it, and an invariant name that no longer exists in `CONSTRAINTS.md` sends them checking a rule that was retired.
 - **Commit:** `docs(crucible): name the gitkit and hubforge invariants in the review prompt`
 
-### Card 75: Update the remaining prose references
+### Card 76: Update the remaining prose references
 
 - **Context:**
   - `internal/gitkit/doc.go`
@@ -127,7 +127,7 @@ Every edit in this batch follows that rule.
   Keep the explanation — `weftname` still exists for that reason — but update the package names to `gitkit`/`hubforge` and add one sentence recording that the cycle this passage describes was subsequently broken by the `lyxtest-real-hubs` task, so a reader is not left believing the constraint is still live.
 - **Commit:** `docs: retarget the remaining lyxtest and fabrictest prose references`
 
-### Card 76: Prove no markdown reference survives
+### Card 77: Prove no markdown reference survives
 
 - **Context:**
   - `CLAUDE.md`
@@ -148,14 +148,14 @@ Every edit in this batch follows that rule.
 - **Moves:** none
 - **Requirements:**
   Verification-only gate, no diff.
-  Run `grep -rln 'lyxtest\|fabrictest' --include=*.md .` excluding `_mill/` and confirm the only surviving hits are the deliberate historical mentions card 71 and card 73 kept — the roadmap's Done entry naming the task by its slug, `docs/benchmarks/scout-vs-grep.md`'s recorded agent comparison, and `docs/benchmarks/fixture-copy.md`'s historical measurement rows.
+  Run `grep -rln 'lyxtest\|fabrictest' --include=*.md .` excluding `_mill/` and confirm the only surviving hits are the deliberate historical mentions card 72 and card 74 kept — the roadmap's Done entry naming the task by its slug, `docs/benchmarks/scout-vs-grep.md`'s recorded agent comparison, and `docs/benchmarks/fixture-copy.md`'s historical measurement rows.
   Every other hit is a miss and must be fixed under the card that owns the file.
-  Confirm `internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks` passes, which is the machine half of the link surgery in card 71.
+  Confirm `internal/lyxcwd/docslink_test.go`'s `TestEnforcement_MarkdownLinks` passes, which is the machine half of the link surgery in card 72.
   Confirm every file this batch edited still uses semantic line breaks and gained no fixed-column hard wrap.
 - **Commit:** none
 
 ## Batch Tests
 
-`verify:` compile-checks the repo under `-tags integration` — cheap insurance that a docs batch changed no code — then runs the two untagged suites that machine-check documentation: `internal/lyxcwd` for `TestEnforcement_MarkdownLinks` (the Markdown Link Integrity invariant, which card 71's roadmap-link surgery and design-doc deletion directly exercise) and `TestEnforcement_FabricVocabulary` (the owner set card 72 updates), and `cmd/lyx` for the guard suites that read invariant names.
+`verify:` compile-checks the repo under `-tags integration` — cheap insurance that a docs batch changed no code — then runs the two untagged suites that machine-check documentation: `internal/lyxcwd` for `TestEnforcement_MarkdownLinks` (the Markdown Link Integrity invariant, which card 72's roadmap-link surgery and design-doc deletion directly exercise) and `TestEnforcement_FabricVocabulary` (the owner set card 73 updates), and `cmd/lyx` for the guard suites that read invariant names.
 
 No `-tags integration` test run is needed for this batch's own content: it edits eleven markdown files and deletes one, and the only executable consequence is link and vocabulary resolution, both of which are untagged tests.

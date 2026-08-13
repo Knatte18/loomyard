@@ -220,6 +220,9 @@ batch 11's grep gate is written against the fixture usage accordingly.
   Say in the comment that it must not be used to assemble a fixture pair, and that a test needing a real pair takes one from `internal/hubforge`.
   In `internal/fabricengine/fabric_test.go`, retarget all four of its textual references onto the new name — one call expression plus three `t.Fatalf`/`t.Error` message strings naming the old identifier;
   the file stays untagged and must not gain a `hubforge` import, because the Test Tier Purity Invariant bans an untagged test from calling `hubforge.NewHub`.
+  Also rewrite that file's header comment, which claims `open_integration_test.go` "pins the identical contract end-to-end against a real paired `lyxtest` fixture (`CopyPaired`; `TestOpen_MissingWarpWorktree` / `TestOpen_MissingSiblingWorktree`)".
+  Card 48 migrates `open_integration_test.go` onto `hubforge.NewHub` in this same batch, so after that the sentence is not merely an unrenamed word but a false factual claim about a sibling file — name `hubforge.NewHub` and keep the two test names, which do not change.
+  This is the hazard batch 2 card 12 flags for its own three prose files, applied here because the same trap exists.
 - **Commit:** `test(fabricengine): retire the fixture-pairing shim for real hub pairs`
 
 ### Card 52: Confirm fabricengine's external files hold no stand-in hub
