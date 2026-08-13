@@ -12,16 +12,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/ideengine"
 )
 
 // TestRunCLISpawnDispatch tests that spawn subcommand dispatches correctly with stubbed launcher.
 func TestRunCLISpawnDispatch(t *testing.T) {
-	// Create a real git repo so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
-	gitRepo := gitkit.CopyWarpHub(t).Hub
+	// Create a real hub so lyxcwd.Resolve succeeds inside the PersistentPreRunE.
+	h := hubforge.NewHub(t, ".")
 
-	t.Chdir(gitRepo)
+	t.Chdir(h.PrimeWorktree())
 
 	// Stub ideengine.CodeLauncher so the test does not open VS Code.
 	originalLauncher := ideengine.CodeLauncher
@@ -116,9 +116,9 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 
 // TestRunCLI_MissingSlug verifies that "lyx ide spawn" with no slug errors appropriately.
 func TestRunCLI_MissingSlug(t *testing.T) {
-	// Requires a git repo so the PersistentPreRunE can resolve layout.
-	gitRepo := gitkit.CopyWarpHub(t).Hub
-	t.Chdir(gitRepo)
+	// Requires a real hub so the PersistentPreRunE can resolve layout.
+	h := hubforge.NewHub(t, ".")
+	t.Chdir(h.PrimeWorktree())
 
 	var out bytes.Buffer
 	code := RunCLI(&out, []string{"spawn"})
