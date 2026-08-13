@@ -6,6 +6,7 @@ slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Unblock t.Parallel on hub-fixture tests that currently t.Chdir
 task_description: |
   Unblock t.Parallel on hub-fixture tests that currently t.Chdir
@@ -28,9 +29,14 @@ implementing  '2026-08-13T14:53:55Z'
 ```yaml
 batches:
   - name: cwd-context seam
-    state: pending
+    state: running
+    implementer_session: 98514e89-86b3-4f46-bb1e-6323bc94cf4f
+    start_sha: 5a88df30072ff01d9a3940c5a3cc13a9875db326
+    verify_baseline_failures: []
   - name: module seams
     state: pending
+    verify_baseline_failures: []
   - name: test migration and guard
     state: pending
+    verify_baseline_failures: []
 ```
