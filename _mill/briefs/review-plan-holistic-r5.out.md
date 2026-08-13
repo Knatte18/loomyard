@@ -1,0 +1,32 @@
+MILL_REVIEW_BEGIN
+# Review: lyxtest: build real fabric hubs, invert the lyxtest/fabric dependency — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 4.5 (Anthropic), self-assessed
+reviewed_file: plan/
+date: 2026-08-13
+```
+
+## Findings
+
+### [BLOCKING:scope] hubforge never added to the Fabric Vocabulary owner set
+**Location:** batch 2, cards 7 and 12 (also touches batch 3, 11, 12).
+**Issue:** `internal/lyxcwd/enforcement_test.go`'s `fabricVocabularyOwners` map (the bare weft/warp token owner set that `TestEnforcement_FabricVocabulary` enforces) is never given an `"internal/hubforge": true` entry anywhere in the plan.
+Card 7 moves `internal/fabricengine/fabrictest/hub.go` to `internal/hubforge/hub.go`, keeps it untagged/non-`_test.go` production code, and explicitly preserves `WarpBare`, `WeftBare`, `PrimeWeft`, `PairWarpWorktree`, `PairWeftSibling` unchanged — all bare-token identifiers, plus dozens of "warp bare"/"weft bare" comment occurrences, confirmed by reading the current source. `internal/hubforge` is not a test directory and is not in the owner map, so `TestEnforcement_FabricVocabulary`'s tree-scan (`internal`/`cmd`, non-`_test.go` files, exact-directory-string match, no prefix matching) fails on `hub.go` the moment it lands.
+Card 12 explicitly declines to add it ("`internal/hubforge` does **not** replace them in either map"), and no later card (3, 9, 11, 12) adds it either — I grepped every batch file for `fabricVocabularyOwners`/`internal/hubforge` and the only touches to this map are the batch-1 rename (`lyxtest`→`gitkit`) and the batch-2 deletion of the `fabrictest` entries.
+This is a machine-enforced constraint break (`CONSTRAINTS.md`'s Fabric Vocabulary Invariant, `TestEnforcement_FabricVocabulary`), and it fails right at batch 2's own `verify:`, which runs `go test -tags integration ./internal/lyxcwd/...`.
+Notably, `CONSTRAINTS.md`'s Owner set line (already "correct" per the batch-12 scope note) explicitly lists `internal/gitkit`, `internal/hubforge` as owners — the plan's own authoritative target state requires this entry, but no card adds it.
+**Fix:** Add `"internal/hubforge": true` (with an explanatory comment matching the file's existing convention) to `fabricVocabularyOwners` in `internal/lyxcwd/enforcement_test.go`, in card 7 or card 12 of batch 2 (batch 2's own scope already touches this file/these maps in card 12).
+
+### [NIT:consistency] weftname-import subset left conditional against CONSTRAINTS.md's unconditional claim
+**Location:** batch 2, card 12.
+**Issue:** `CONSTRAINTS.md`'s Fabric Vocabulary Invariant states as fact that "the narrower `weftname`-import subset is `internal/fabricengine`, `internal/fabriccli`, `internal/gitkit`, and `internal/hubforge`" — i.e. `internal/hubforge` is asserted to already be a member of `weftnameImportOwners`. Card 12 instead makes this conditional on need ("add `internal/hubforge` to the weftname map only if the compiler or the test says it is needed"), and per the current `hub.go` source, `hubforge` never imports `weftname` anywhere the plan's cards touch, so this condition resolves to "not added." The shipped code then contradicts the already-landed `CONSTRAINTS.md` text (though this specific gap is not machine-checked, since `weftnameImportOwners` only fires on an actual import).
+**Fix:** Either add `"internal/hubforge": true` to `weftnameImportOwners` unconditionally in card 12 to match `CONSTRAINTS.md`'s stated invariant, or note in the same card that `CONSTRAINTS.md`'s phrasing is aspirational and should be corrected once `hubforge` gains a real `weftname` consumer.
+
+## Verdict
+
+REQUEST_CHANGES
+Batch 2 omits a required `fabricVocabularyOwners` entry for `internal/hubforge`, breaking `TestEnforcement_FabricVocabulary` at its own verify gate.
+MILL_REVIEW_END

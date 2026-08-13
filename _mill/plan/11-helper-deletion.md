@@ -37,7 +37,9 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   Delete from `internal/gitkit/gitkit.go`: `CopyPaired`, `CopyPairedLocal`, `CopyWeft`, the transitional `CopyWarpHub` wrapper, the structs `WarpFixture`, `PairedFixture` and `WeftFixture`, and the template builders `buildWeftPrime` and `buildWeftOnly` together with their `sync.Once`/path package-level variable blocks.
   Keep `buildWarpHub` and its variable block — `CopyRepo` is its only remaining consumer — but rename it and its variables to say what they now build: `buildRepoTemplate`, `repoTemplateOnce`, `repoTemplatePath`, `repoTemplateBarePath`.
   Keep `MustRun`, `SeedConfig`, `GitStatusPorcelain`, `RepoFixture`, `CopyRepo`, and the private `initRepo`, `initBareRemote`, `commitAll`, `mustGit`, `stripHookSamples`, `copyDirRecursive`, `rewriteOriginURLInConfig`.
-  Delete any import left unused by the deletions — `weftname` in particular, if `buildWeftPrime` was its only consumer, in which case `internal/lyxcwd/enforcement_test.go`'s `weftname`-import allowlist entry for `internal/gitkit` must go too (check whether that map still needs the entry and remove it if not).
+  Delete any Go import left unused by the deletions — `weftname` in particular, if `buildWeftPrime` and `buildWeftOnly` were its only consumers.
+  Do **not** remove `internal/gitkit`'s entry from `internal/lyxcwd/enforcement_test.go`'s `weftnameImportOwners` map when that happens: the map is an allowlist of directories that *may* import `weftname`, not a record of which currently do, and `CONSTRAINTS.md`'s Fabric Vocabulary Invariant names `internal/gitkit` in that subset unconditionally.
+  Removing the entry would put the code at odds with a landed invariant to no benefit.
   Do not widen `leaf_enforcement_test.go`'s `allowedImports` map to compensate for anything;
   the leaf's import set only ever shrinks here.
 - **Commit:** `refactor(gitkit): delete the retired paired and weft fixtures`

@@ -144,6 +144,7 @@ Batch-local decision: the twelve relocated live-state files take a `livestate_` 
 
 - **Context:**
   - `internal/fabricengine/livestate_doc_test.go`
+  - `internal/hubforge/hub.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `cmd/lyx/destructiveguard_test.go`
@@ -160,8 +161,11 @@ Batch-local decision: the twelve relocated live-state files take a `livestate_` 
 - **Requirements:**
   In `cmd/lyx/destructiveguard_test.go`, delete the `"internal/fabricengine/fabrictest"` entry from the subtree-exclusion allowlist together with its reason string.
   The exclusion is dead rather than merely relocated: the guard's own walk already skips `*_test.go` files, and every relocated live-state builder is now a `_test.go` file.
-  In `internal/lyxcwd/enforcement_test.go`, delete the `"internal/fabricengine/fabrictest"` key from both allowlist maps (the production-file scan map and the narrower `weftname`-import map) along with their comments;
-  `internal/hubforge` does **not** replace them in either map, because `hubforge` imports `weftname` only if `hub.go` does — check, and add `"internal/hubforge"` to the `weftname` map only if the compiler or the test says it is needed.
+  In `internal/lyxcwd/enforcement_test.go`, delete the `"internal/fabricengine/fabrictest"` key from both allowlist maps — `fabricVocabularyOwners` and `weftnameImportOwners` — along with their comments, and **add `"internal/hubforge": true` to both in their place**, unconditionally.
+  The `fabricVocabularyOwners` entry is load-bearing and is not optional: `internal/hubforge/hub.go` is untagged, non-`_test.go` production code carrying `WarpBare`, `WeftBare`, `PrimeWeft`, `PairWarpWorktree` and `PairWeftSibling` as identifiers plus many "warp bare"/"weft bare" comment occurrences, and `TestEnforcement_FabricVocabulary` scans `internal`/`cmd`'s non-`_test.go` files against an exact-directory-string match with no prefix matching.
+  Without the entry that test fails the moment `hub.go` lands — at this batch's own `verify:`, which runs `go test -tags integration ./internal/lyxcwd/...`.
+  Give it the same explanatory comment shape the retired `fabrictest` entry carried: `hubforge` is a directory of non-test `.go` files (the hub factory must be non-test to be importable across packages) that names fabric's own geometry, so it owns the bare weft/warp tokens the same way `internal/fabricengine` does.
+  Add the `weftnameImportOwners` entry unconditionally too, even though `hub.go` does not import `weftname` today: `CONSTRAINTS.md`'s already-landed Fabric Vocabulary Invariant states the narrower subset as `internal/fabricengine`, `internal/fabriccli`, `internal/gitkit`, `internal/hubforge`, and the map is an allowlist of what *may* import `weftname`, not an assertion of what does — so an entry with no current importer is aligned with the invariant rather than stale.
   In `internal/fabriccli/clone.go` and `internal/fabricengine/mutation.go`, rewrite the comments naming `fabrictest` so they name `internal/hubforge` (`clone.go`'s comment is the one warning that a second copy of `CloneAndWire`'s wiring is a hazard — keep that point, just retarget the package name).
   In `internal/fabricengine/doc.go`, rewrite the `fabrictest` reference to name the in-package `fabricengine_test` live-state harness and `internal/hubforge`.
   Finish with a **bare-word** sweep, not a qualifier-only one — `grep -rln '\bfabrictest\b' --include=*.go internal cmd` must come back empty at the end of this card, and the three files added to `Edits:` above (`internal/fabricengine/destroy_test.go`, `internal/fabricengine/refusalof_test.go`, `internal/fabricengine/mutation_record_integration_test.go`) carry exactly that bare-word prose and no `fabrictest.` selector, so a qualifier-only pass leaves them behind and batch 11 card 69's zero-hit gate fails with no card owning the fix.
