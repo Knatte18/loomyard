@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestRebuildIndex_EqualsIncrementallyBuiltIndex asserts that after several Commit rounds (each
@@ -25,13 +26,13 @@ import (
 // index whose entries are identical to the incrementally-built one.
 func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
+	weftFixture := hubforge.NewHub(t, ".")
 	fabricengine.SeedFabricConfigForTest(t, warpPath)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	for i := 0; i < 3; i++ {
 		fabricengine.CommitWarpForTest(t, warpPath, fmt.Sprintf("warp round %d", i))
-		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, fmt.Sprintf("weft round %d", i))
+		fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), fmt.Sprintf("weft round %d", i))
 		res, err := f.Commit([]string{"_lyx"}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{})
 		if err != nil {
 			t.Fatalf("Commit() round %d error = %v", i, err)
@@ -93,11 +94,11 @@ func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 // WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving (amended) trailer commit.
 func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
 	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change")
 
 	preAmendSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
@@ -120,14 +121,14 @@ func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
 	// parent, author, committer, and message; two amends within the same
 	// second can otherwise tie on every field), so this guarantees a
 	// genuinely new commit object while --no-edit preserves the trailer.
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change, amended")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "add", "-A")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "commit", "--amend", "--no-edit")
-	postAmendSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change, amended")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "commit", "--amend", "--no-edit")
+	postAmendSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 	if postAmendSHA == preAmendSHA {
 		t.Fatalf("amend did not change the weft SHA")
 	}
-	expireAndPruneUnreachable(t, weftFixture.WeftPath)
+	expireAndPruneUnreachable(t, weftFixture.PrimeWeft())
 
 	got, err = f.WeftSHAForWarpSHA(warpSHA)
 	if err != nil {
@@ -148,13 +149,13 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 	t.Helper()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
+	weftFixture := hubforge.NewHub(t, ".")
+	f = fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	baseWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.WeftPath)
+	baseWeftSHA := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeWeft())
 
 	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, "warp change")
-	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeWeft(), "weft change")
 	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() error = %v", err)
@@ -169,8 +170,8 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 	// Discard the trailer commit from history entirely, then force git to
 	// genuinely forget the orphaned object — RebuildIndex's scan will find
 	// no trailer naming warpSHA anywhere afterwards.
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "reset", "--hard", baseWeftSHA)
-	expireAndPruneUnreachable(t, weftFixture.WeftPath)
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "reset", "--hard", baseWeftSHA)
+	expireAndPruneUnreachable(t, weftFixture.PrimeWeft())
 
 	return f, warpSHA
 }
