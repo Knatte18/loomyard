@@ -37,8 +37,12 @@ Fuller design/how-to lives in godoc and `docs/`.
   The injected value must be absolute;
   `WithCwd` panics otherwise. `CwdFrom` falls back to `Getwd()` when `ctx` carries no injected value, so `Getwd` stays the single raw `os.Getwd` site.
   `context` is stdlib, so this seam does not affect the import cap below.
+- `cmd/lyx/cwdmutation_test.go` guards a named per-file subject set of integration test files against reintroducing a process-wide `t.Chdir(` or `os.Chdir(` call, either spelling, once a file has been migrated onto the `RunCLIIn`/`WithCwd` seam.
+  The subject set is per-file, never a package prefix, and carries exactly one allowlisted exemption, `internal/fabricengine/coalesce_integration_test.go`, whose cwd mutation is itself the assertion under test rather than a migration leftover.
+  A file joins the subject set only when it is migrated onto the seam, never by default.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
-  and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
+  `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap,
+  and `cmd/lyx/cwdmutation_test.go` (`TestCwdMutation_MigratedFilesStayChdirFree`) for the chdir-mutation regression guard.
 
 ## Lyxdirs Single-Declarer Invariant
 
