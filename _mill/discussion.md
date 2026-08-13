@@ -28,7 +28,9 @@ touching those signatures is the substance of this task.
 
 - A cwd-injection seam owned by `internal/lyxcwd`: `WithCwd(ctx, dir) context.Context` and `CwdFrom(ctx) (string, error)`, the latter falling back to `Getwd()` when the context carries no cwd.
 - `clihelp.ExecuteIn(cmd, cwd, out, args) int` beside the existing `Execute`, seeding the cwd into the invocation context.
-- `RunCLIIn(cwd string, out io.Writer, args []string) int` on all 11 modules that expose `RunCLI` (`fabriccli`, `burlercli`, `configcli`, `idecli`, `shuttlecli`, `scoutcli`, `perchcli`, `selfreportcli`, `boardcli`, `webstercli`, `reedcli`).
+- `RunCLIIn(cwd string, out io.Writer, args []string) int` on the 10 modules that both expose `RunCLI` and actually resolve a cwd (`fabriccli`, `burlercli`, `configcli`, `idecli`, `shuttlecli`, `scoutcli`, `perchcli`, `boardcli`, `webstercli`, `reedcli`).
+  `internal/selfreportcli` is deliberately excluded: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
+  Eleven modules expose `RunCLI`; ten gain the sibling.
   Existing `RunCLI` delegates to it with `cwd == ""`, meaning "read the process cwd".
 - Swapping every production `lyxcwd.Getwd()` call site in a CLI path over to `lyxcwd.CwdFrom(cmd.Context())` — 15 sites: 7 in a `PersistentPreRunE`, 4 in `scoutcli` `RunE` bodies, and 4 in plain handler functions.
   A 16th touch point, `fabriccli/weft_verbs.go:52`, calls no `Getwd()` of its own and instead needs `cmd.Context()` threaded into its `resolveWarpLocation()` call.
@@ -40,8 +42,8 @@ touching those signatures is the substance of this task.
 - Threading the caller's resolved cwd through nested CLI invocations: `configcli.go:384`'s `fabriccli.RunCLI(w, []string{"sync"})` becomes `RunCLIIn`.
 - Migrating every `.Chdir` call site in the nine `//go:build integration` target files (41 occurrences) onto the new seam.
 - Adding `t.Parallel()` to the four integration files that have no other blocker (13 of those 41 occurrences).
-- A guard test at `cmd/lyx/cwdmutation_test.go` banning `t.Chdir(` and `os.Chdir(` in the migrated packages' test files, with a reasoned allowlist.
-- Doc updates in the same commits: `CONSTRAINTS.md` (CLI/Cobra Invariant), `internal/lyxcwd` and `internal/clihelp` package docs, affected module docs under `manifest/designs/`, and a timing row in `docs/benchmarks/test-suite-timing.md`.
+- A guard test at `cmd/lyx/cwdmutation_test.go` banning `t.Chdir(` and `os.Chdir(` in a **named per-file subject set** — the nine migrated files only, not their whole packages.
+- Doc updates in the same commits: `CONSTRAINTS.md` (CLI/Cobra Invariant, including its corrected "Enforced by" line), `docs/overview.md:253` (which states the seam verbatim as `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out, args)` and becomes incomplete once `RunCLIIn`/`ExecuteIn` exist), `internal/lyxcwd` and `internal/clihelp` package docs, affected module docs under `manifest/designs/`, a `LYX_TRACE=1` note in `docs/benchmarks/running-tests.md`, and a timing row in `docs/benchmarks/test-suite-timing.md`.
 
 **Out:**
 
@@ -56,7 +58,14 @@ touching those signatures is the substance of this task.
   Nothing to migrate; the file is untouched.
 - Any change to `internal/hubforge` itself. It is already documented, machine-tested (`TestNewHub_Concurrent`, `BenchmarkNewHubParallel`) and pinned by `CONSTRAINTS.md:79` as safe under concurrent use.
 - A user-facing global `--cwd`/`-C` flag.
-- `internal/logger`'s durable-sink `sync.Once`. `sink.go:79` short-circuits under `testing.Testing()` unless `LYX_TRACE=1`, which no test sets.
+- `internal/logger`'s durable-sink `sync.Once` — no code change, but with a stated disposition rather than a dismissal.
+  `sink.go:79` short-circuits under `testing.Testing()` unless `LYX_TRACE=1`;
+  no test sets that variable today, but `CONSTRAINTS.md`'s Live-Substrate Spawn Observability documents `LYX_TRACE=1` as the supported under-`go test` gate, so "unused" is not by itself a disposition.
+  The disposition is this: `sinkOnce` is process-wide, so the **first** call to log in a test binary pins the trace directory for every subsequent call in that process.
+  Per-test, hub-accurate trace directories were therefore never actually delivered — under `LYX_TRACE=1` today the sink already resolves against whichever fixture hub happened to log first, which is arbitrary.
+  After this migration it resolves against the repo worktree instead, deterministically.
+  That is a change from one arbitrary answer to one predictable answer, and it is recorded in `docs/benchmarks/running-tests.md` beside the existing `LYX_TRACE=1` documentation.
+  Not attempted: having fixtures call `logger.SetDurableSinkDir` per test — that function reassigns `sinkOnce` and `headerOnce` wholesale (`sink.go:196-208`), which is itself a data race against any concurrent logger call, so it would have to be made safe before it could be used that way.
 - The seventeen further `.Chdir`-using test files outside the twenty named in the task brief.
 - `manifest/roadmap.md` — this is hardening, not a planned-item completion.
 
@@ -81,10 +90,17 @@ touching those signatures is the substance of this task.
 
 ### runcli-gains-a-sibling-rather-than-changing
 
-- Decision: add `RunCLIIn(cwd, out, args)` alongside the existing `RunCLI(out, args)` on all 11 modules;
+- Decision: add `RunCLIIn(cwd, out, args)` alongside the existing `RunCLI(out, args)` on the 10 cwd-resolving modules;
   `RunCLI` delegates with `cwd == ""`.
-  Amend the CLI/Cobra Invariant to name both shapes in the same commit.
-- Rationale: `RunCLI` stays the production seam, `cmd/lyx/main.go` needs no change, and `cmd/lyx/drift_test.go` gains a second pinned shape rather than having one rewritten.
+  Amend the CLI/Cobra Invariant to name both shapes in the same commit, **and add the signature-pinning test the invariant currently claims but does not have** (see below).
+- Rationale: `RunCLI` stays the production seam and `cmd/lyx/main.go` needs no change.
+- **Correction — the seam is not machine-enforced today.** An earlier draft of this document claimed `cmd/lyx/drift_test.go` would gain a second pinned shape.
+  That is false: `drift_test.go` asserts only that every cobra command carries a non-empty `Short` (`TestDriftGuard_AllCommandsHaveShort`), and no test under `cmd/lyx` references `RunCLI` at all — the only mentions are comments in `main_test.go:61` and `main_integration_test.go:188`.
+  The CLI/Cobra Invariant's "Seam" clause is therefore a review obligation wearing an "Enforced by" label, and `CONSTRAINTS.md`'s enforcement list overstates its coverage on this specific point.
+- Decision (follow-on): commit 1 adds a compile-time signature-pinning assertion covering both seam shapes across the 10 modules — the cheapest form is a `var _ = []func(io.Writer, []string) int{...}` / `[]func(string, io.Writer, []string) int{...}` pair in a `cmd/lyx` test file, which fails to compile if any module's signature drifts.
+  `CONSTRAINTS.md`'s "Enforced by" line is corrected in the same commit to name it.
+- Rationale: the invariant is being amended anyway, and closing a hole in a machine-checked rule while standing in it is cheaper than filing it.
+  A compile-time assertion costs nothing at runtime and cannot rot silently.
 - Rejected: replacing `RunCLI` outright — one seam and no dual API, but a wide mechanical change to production wiring driven purely by a test need.
 
 ### plain-handlers-take-the-context
@@ -112,6 +128,11 @@ touching those signatures is the substance of this task.
 ### clone-gets-an-explicit-destination
 
 - Decision: add `--into <dir>` to `lyx fabric clone`, defaulting to the resolved cwd.
+- **Relative-path base (must be stated, or parallel tests hit exactly this):** a relative `--into` resolves against the **seam cwd** — the value returned by `lyxcwd.CwdFrom(cmd.Context())` — never against the process cwd.
+  Under `RunCLIIn` those two differ by construction, which is the whole point;
+  resolving against the process cwd would reintroduce the process-global dependency this task removes, in the one verb where cwd is a destination rather than a lookup.
+  Absolute `--into` values are used as given.
+  `runCloneWithReset` passes the result straight into `CloneAndWire(dest, …)` (`clone.go:119,133`), so the resolution must happen before that call, not inside `CloneAndWire`.
 - Rationale: at `clone.go:119` the cwd is where the hub is *created* (`CloneAndWire(cwd, …)`), not a lookup.
   A resolution-only seam would not cover the five clone tests, and leaving cwd to mean "destination here, lookup everywhere else" is an unmarked trap.
   The flag sits naturally beside the existing `--reset`, `--subpath`, and `--force-bootstrap`.
@@ -127,7 +148,12 @@ touching those signatures is the substance of this task.
 
 ### guard-bans-both-chdir-spellings
 
-- Decision: a guard test at `cmd/lyx/cwdmutation_test.go` bans both `t.Chdir(` and `os.Chdir(` in the migrated packages' `*_test.go` files, with an allowlist keyed by `(package, file)` carrying a reason per entry.
+- Decision: a guard test at `cmd/lyx/cwdmutation_test.go` bans both `t.Chdir(` and `os.Chdir(` across an explicitly named **per-file subject set**, not per-package.
+- **Subject set (the guard's allowlist-of-what-is-guarded, not of what is excused):** the eight migrated files — `fabriccli/cli_test.go`, `perchcli/run_integration_test.go`, `perchcli/cli_integration_test.go`, `configcli/configcli_integration_test.go`, `webstercli/verbs_test.go`, `idecli/cli_test.go`, `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go` — plus `fabricengine/coalesce_integration_test.go`, which is guarded with a single allowlisted exemption.
+- **Why per-file and not per-package:** the eight packages that gain a seam change carry roughly fourteen further chdir-using test files this task deliberately does not touch (`boardcli/cli_test.go` and `cli_unit_test.go`, `burlercli/cli_test.go`, `shuttlecli/cli_test.go`, `scoutcli/cli_test.go`, `perchcli/cli_test.go` and `run_test.go`, `webstercli/cli_test.go`, `reedcli/cli_test.go`, `configcli/reconcile_test.go` and `reconcile_integration_test.go`), plus the eleven deferred smoke files in those same packages.
+  A per-package subject would make the allowlist larger than the guarded set, which inverts the point of a guard.
+- **The one allowlist entry:** `fabricengine/coalesce_integration_test.go`, reason `"cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New(\"\") against a non-git process cwd"`.
+- **Growth rule:** a file joins the subject set when it is migrated, never by default. The deferred files are outside the guard entirely and carry no allowlist entry, so the guard stays silent about work this task chose not to do.
 - Rationale: every package-walking guard in this repo lives in `cmd/lyx` (`tierpurity_test.go`, `hermeticenv_test.go`, `destructiveguard_test.go`, `ghguard_test.go`, `gitrepoboundary_test.go`), so placement follows the house pattern.
   Banning `os.Chdir` as well is what catches the wrapper pattern already present in three of these files (`restoreCwd`, `mustChdir`) which a `t.Chdir`-only ban would miss.
 - Rejected: banning `t.Chdir(` only (blind to the wrappers);
@@ -142,7 +168,7 @@ touching those signatures is the substance of this task.
 
 ### scope-is-the-integration-tier-only
 
-- Decision: build the seam across all 11 modules, migrate every integration-tier call site, and add `t.Parallel()` only where it is free.
+- Decision: build the seam across the 10 cwd-resolving modules, migrate every integration-tier call site, and add `t.Parallel()` only where it is free.
   Defer the env seam and the whole smoke tier.
 - Rationale: lands the durable architectural win with no speculative work, and stays honest about a small immediate payoff.
   The smoke tier contributes to no measured tier and carries three independent further blockers.
@@ -154,12 +180,12 @@ touching those signatures is the substance of this task.
 
 - Decision: three commits, each building and testing green on its own, each carrying its own doc updates:
   1. `lyxcwd` context API + `clihelp.ExecuteIn` + `CONSTRAINTS.md` CLI/Cobra amendment + package docs.
-  2. Module seams — the 11 `RunCLIIn` functions, plain-handler context threading, `Preflight(cwd)`, clone `--into` — plus module docs and help text.
+  2. Module seams — the 10 `RunCLIIn` functions, plain-handler context threading, `Preflight(cwd)`, clone `--into` — plus module docs, `docs/overview.md:253`, and help text.
   3. Test migration, `t.Parallel()`, the guard test, and the timing row.
 - Rationale: CLAUDE.md requires docs in the same commit as the change that causes them, which rules out a trailing docs-only commit.
   Slicing this way isolates the risky half (2) from the mechanical half (3).
 - Rejected: one commit (~40 files and two invariant amendments in a single reviewable unit);
-  per-module commits (~12, of which 2–12 are near-identical, and the seam is only useful once all exist).
+  per-module commits (~11, of which the last 10 are near-identical, and the seam is only useful once all exist).
 
 ## Technical context
 
@@ -270,7 +296,8 @@ From `CONSTRAINTS.md`, in order of how much they bear on this task:
   Also binding: `root` always means the git worktree root and `cwd` the working directory — never name the new parameter `root`.
   Geometry is structural, never config/env-overridable, which is part of why no `--cwd` flag is being added.
 - **CLI / Cobra Invariant.** The seam is pinned as `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`, enforced by `cmd/lyx/drift_test.go`, `helptree_test.go`, `registration_test.go`, `longlist_test.go`.
-  Adding `RunCLIIn` amends this and must update `CONSTRAINTS.md` and the drift test in the same commit.
+  **Note the enforcement list overstates its coverage on the seam clause:** `drift_test.go` asserts only non-empty `Short`, and no test under `cmd/lyx` references `RunCLI` at all, so the seam signature is unpinned today.
+  Adding `RunCLIIn` amends this invariant, and commit 1 both corrects the "Enforced by" line and adds the compile-time signature-pinning assertion that makes it true.
   `Short` is required on every command, and help accuracy is an explicit review obligation — the new `--into` flag needs a description and a `Long` example, and any `Short`/`Long` touching clone's behaviour must be re-checked.
   Errors stay on the `internal/output` JSON envelope.
 - **hubforge Fabric-Fixture Invariant.** `hubforge.NewHub` is safe under concurrent use;
@@ -303,6 +330,8 @@ the timing row is the honest record of a small payoff.
   Tier 1 with a synthetic cobra command;
   no hub needed.
 - The `cmd/lyx/cwdmutation_test.go` guard itself — assert it fires on a planted violation and stays silent on an allowlisted file, matching how `tierpurity_test.go` carries its banned tokens as test data.
+- The seam signature-pinning assertion — a compile-time `var _ = []func(io.Writer, []string) int{…}` over the 11 `RunCLI` functions and `[]func(string, io.Writer, []string) int{…}` over the 10 `RunCLIIn` functions.
+  It has no runtime body: the test is that the package compiles, so a drifted signature is a build failure rather than a silent divergence from `CONSTRAINTS.md`.
 
 **Scenarios that must be covered:**
 
@@ -353,3 +382,5 @@ The smoke tier (11 files, 30 `.Chdir`) needs three further things before it coul
 - **Q:** Nested CLI invocations (`configcli` calling `fabriccli`) — how do they get a cwd? **A:** The caller passes its already-resolved cwd via `RunCLIIn`.
 - **Q:** Does `loomengine`'s `export_test.go` shim survive? **A:** Yes, but its doc comment must be rewritten — its stated rationale is exactly what this task removes.
 - **Q:** What happens to the deferred smoke-tier work? **A:** Recorded as a named follow-up section in this file rather than filed as a wiki task unilaterally.
+- **Q:** Review round 1 found the seam signature is not machine-pinned — `drift_test.go` only checks `Short`, and nothing under `cmd/lyx` references `RunCLI`. What do we do? **A:** State plainly that the seam is unpinned today, correct `CONSTRAINTS.md`'s "Enforced by" line, and add a compile-time signature-pinning assertion for both shapes in commit 1.
+- **Q:** Review round 1 found the `LYX_TRACE=1` exclusion rested on "no test sets it", which is not a disposition given `CONSTRAINTS.md` documents that mode. What is the disposition? **A:** No code change. `sinkOnce` is process-wide, so the trace directory was always pinned by the first logging call and never per-test; the migration replaces an arbitrary result with a deterministic one, recorded in `docs/benchmarks/running-tests.md`.
