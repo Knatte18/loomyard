@@ -53,16 +53,12 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	}
 
 	// Capture both original branches for rollback on later failure.
-	origBranchOut, origBranchStderr, exitCode, err := gitexec.RunGit(
+	origBranchOut, err := gitexec.Run(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		l.WorktreePath(),
 	)
 	if err != nil {
 		return CheckoutResult{}, fmt.Errorf("capture warp branch: %w", err)
-	}
-	if exitCode != 0 {
-		return CheckoutResult{}, fmt.Errorf("capture warp branch failed (git exit %d): %s",
-			exitCode, strings.TrimSpace(origBranchStderr))
 	}
 	originalBranch := strings.TrimSpace(origBranchOut)
 
@@ -71,10 +67,10 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	// rollbackSwitch simply skips the weft side in that abnormal case, matching
 	// the best-effort posture of the rollback as a whole.
 	originalWeftBranch := ""
-	if weftBranchOut, _, code, werr := gitexec.RunGit(
+	if weftBranchOut, err := gitexec.Run(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftWorktree,
-	); werr == nil && code == 0 {
+	); err == nil {
 		if b := strings.TrimSpace(weftBranchOut); b != "HEAD" {
 			originalWeftBranch = b
 		}
@@ -84,15 +80,11 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	// git's own stderr is carried into the error: the actionable half of a failure here is
 	// invariably in it ("'main' is already used by worktree at ..."), and a bare exit code leaves
 	// the operator with nothing to act on.
-	_, switchStderr, exitCode, err := gitexec.RunGit(
+	if _, err := gitexec.Run(
 		[]string{"switch", branch},
 		l.WorktreePath(),
-	)
-	if err != nil {
-		return CheckoutResult{}, fmt.Errorf("warp switch: %w", err)
-	}
-	if exitCode != 0 {
-		return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed (git exit %d): %s", branch, exitCode, strings.TrimSpace(switchStderr))
+	); err != nil {
+		return CheckoutResult{}, fmt.Errorf("warp switch to branch %q failed: %w", branch, err)
 	}
 	rec.Append(KindWorktreeSwitched, l.WorktreePath(), branch)
 
@@ -143,44 +135,32 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 
 	if weftBranchExists(l, weftBranch) {
 		// Branch exists: switch to it.
-		_, switchStderr, exitCode, err := gitexec.RunGit(
+		if _, err := gitexec.Run(
 			[]string{"switch", weftBranch},
 			weftWorktree,
-		)
-		if err != nil {
-			return false, fmt.Errorf("weft switch: %w", err)
-		}
-		if exitCode != 0 {
-			return false, fmt.Errorf("weft switch to branch %q failed (git exit %d): %s", weftBranch, exitCode, strings.TrimSpace(switchStderr))
+		); err != nil {
+			return false, fmt.Errorf("weft switch to branch %q failed: %w", weftBranch, err)
 		}
 		rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
 		return false, nil
 	}
 
 	// Branch does not exist: fork from current weft HEAD to preserve merge-base.
-	parentWeftBranchOut, parentWeftStderr, exitCode, err := gitexec.RunGit(
+	parentWeftBranchOut, err := gitexec.Run(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftWorktree,
 	)
 	if err != nil {
 		return false, fmt.Errorf("capture parent weft branch: %w", err)
 	}
-	if exitCode != 0 {
-		return false, fmt.Errorf("capture parent weft branch failed (git exit %d): %s",
-			exitCode, strings.TrimSpace(parentWeftStderr))
-	}
 	parentWeftBranch := strings.TrimSpace(parentWeftBranchOut)
 
 	// Create and switch to the new weft branch.
-	_, forkStderr, exitCode, err := gitexec.RunGit(
+	if _, err := gitexec.Run(
 		[]string{"switch", "-c", weftBranch, parentWeftBranch},
 		weftWorktree,
-	)
-	if err != nil {
-		return false, fmt.Errorf("fork weft branch: %w", err)
-	}
-	if exitCode != 0 {
-		return false, fmt.Errorf("fork weft branch %q from %q failed (git exit %d): %s", weftBranch, parentWeftBranch, exitCode, strings.TrimSpace(forkStderr))
+	); err != nil {
+		return false, fmt.Errorf("fork weft branch %q from %q failed: %w", weftBranch, parentWeftBranch, err)
 	}
 	rec.Append(KindWorktreeSwitched, weftWorktree, weftBranch)
 	rec.AppendRef(KindBranchCreated, weftBranch, "")
@@ -203,13 +183,11 @@ func (t *Topology) switchOrForkWeft(rec *Mutations, l *lyxcwd.Location, branch s
 // rollback switch is a real mutation of the working tree, and the record must carry it, in order,
 // which is the whole point of Checkout's both-sides-rollback case.
 func (t *Topology) rollbackSwitch(rec *Mutations, l *lyxcwd.Location, originalBranch, originalWeftBranch, forkedWeftBranch string) {
-	_, _, warpExitCode, warpErr := gitexec.RunGit([]string{"switch", originalBranch}, l.WorktreePath())
-	if warpErr == nil && warpExitCode == 0 {
+	if _, err := gitexec.Run([]string{"switch", originalBranch}, l.WorktreePath()); err == nil {
 		rec.Append(KindWorktreeSwitched, l.WorktreePath(), originalBranch)
 	}
 	if originalWeftBranch != "" {
-		_, _, weftExitCode, weftErr := gitexec.RunGit([]string{"switch", originalWeftBranch}, WeftWorktree(l))
-		if weftErr == nil && weftExitCode == 0 {
+		if _, err := gitexec.Run([]string{"switch", originalWeftBranch}, WeftWorktree(l)); err == nil {
 			rec.Append(KindWorktreeSwitched, WeftWorktree(l), originalWeftBranch)
 		}
 	}
