@@ -67,6 +67,7 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
 - **Edits:**
   - `internal/configcli/configcli_test.go`
   - `internal/loomengine/config_test.go`
+  - `internal/fabricengine/export_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -88,6 +89,11 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   `internal/configcli/configcli_test.go` (its header contrasts itself with the "e2e test with real `fabriccli.RunCLI` over `CopyPaired`" in its integration sibling) and `internal/loomengine/config_test.go` (its header says "no `CopyWeft`, no `SeedConfig`" to explain why it is a Tier-1 test).
   Both are one-line header-comment fixes.
   Every other file the grep names is already in some batch's `Edits:` list, so the sweep there is a re-read of files this task has already touched.
+
+  Deviation found while implementing: `internal/fabricengine/export_test.go`'s `newCommitFixture` still held a live call expression, `gitkit.CopyWeft(t)`, not just prose — a call site an earlier batch missed rather than migrated.
+  `newCommitFixture` is called from four in-package (`package fabricengine`) files, so it cannot take a `hubforge.NewHub` fixture (the Fabric-Fixture Invariant forbids that import there);
+  it gets its own minimal in-package plain-weft-repo builder, `newPlainWeftRepo`, mirroring the existing `newPlainWarpRepo` sibling but tracking `_lyx/config.yaml` the way the deleted `buildWeftOnly` template did.
+  Added to this card's `Edits:` list for that reason.
 
   Finish by confirming `grep -rn 'CopyPaired\|CopyPairedLocal\|CopyWeft\|CopyWarpHub' --include=*.go internal cmd` is empty, which is card 70's third gate satisfied in advance.
 - **Commit:** `docs(test): retarget prose naming the retired fixture helpers`
