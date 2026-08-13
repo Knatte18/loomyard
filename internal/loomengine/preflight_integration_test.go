@@ -189,7 +189,7 @@ func TestPreflight_NotAGitRepo(t *testing.T) {
 		t.Fatalf("Chdir(%s): %v", dir, err)
 	}
 
-	report, err := loomengine.Preflight()
+	report, err := loomengine.Preflight(dir)
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 		t.Fatalf("Chdir(%s): %v", sub, err)
 	}
 
-	report, err := loomengine.Preflight()
+	report, err := loomengine.Preflight(sub)
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}

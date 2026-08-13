@@ -17,9 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// Preflight validates that the current worktree is fit for loom to run: the worktree is resolvable
+// Preflight validates that the worktree at cwd is fit for loom to run: the worktree is resolvable
 // and at its root, the worktree is clean, fabric is ready and in sync, and _lyx/status.json
 // is coherent and fresh.
+//
+// cwd is the caller-resolved seam cwd — Preflight itself reads no process or context cwd, so a
+// caller under RunCLIIn passes the injected cwd through unchanged.
 //
 // Callers MUST NOT invoke Preflight except when the task is at the fresh/preflight stage.
 // Invoking it on an already-advanced task (non-empty history, set start_sha) is a caller error that
@@ -30,14 +33,7 @@ import (
 // expected outcome, not an error.
 // Returns (Report{}, err) when Preflight could not determine an answer at all — the caller must
 // escalate, not treat this as "not ready".
-func Preflight() (Report, error) {
-	// Resolve cwd via lyxcwd.Getwd(), the only permitted raw-cwd read
-	// outside cmd/lyx/main.go (per the Cwd Resolution Invariant).
-	cwd, err := lyxcwd.Getwd()
-	if err != nil {
-		return Report{}, err
-	}
-
+func Preflight(cwd string) (Report, error) {
 	l, err := lyxcwd.Resolve(cwd)
 	if err != nil {
 		// ErrNotAGitRepo is a determined verdict (check 1: not inside a git
