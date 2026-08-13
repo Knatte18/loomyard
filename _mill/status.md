@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-probe-clone-reconcile
+phase: approved-fabric-remaining-sites
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-fabric-destroy-executors  '2026-08-13T15:36:55Z'
 approved-outer-call-sites  '2026-08-13T15:40:23Z'
 approved-fabric-destroy-caller-files  '2026-08-13T15:46:50Z'
 approved-fabric-probe-clone-reconcile  '2026-08-13T15:52:14Z'
+approved-fabric-remaining-sites  '2026-08-13T15:57:04Z'
 ```
 
 ## Batches
@@ -77,9 +78,10 @@ batches:
     commit_sha: 35291f042997ea47de78fbe3c52bf123721b905c
     verify_baseline_failures: []
   - name: fabric-remaining-sites
-    state: running
+    state: approved
     implementer_session: 765c3521-fcb2-4f34-9e69-299d8bcfa4a8
     start_sha: 9051d24ccbb5d54b388766189792ca535276e0ad
+    commit_sha: 58436304a238dca7a6db58e0b5badc532310d6ff
     verify_baseline_failures: []
   - name: checked-call-invariant-and-docs
     state: pending
