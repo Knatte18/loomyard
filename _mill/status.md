@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-13T13:19:32Z'
+discussion-fix-r6  '2026-08-13T14:33:07Z'
+discussed  '2026-08-13T14:33:07Z'
 ```

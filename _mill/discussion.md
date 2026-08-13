@@ -39,6 +39,9 @@ touching those signatures is the substance of this task.
   `internal/selfreportcli` is deliberately excluded: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
   Eleven modules expose `RunCLI`; ten gain the sibling.
   Existing `RunCLI` delegates to it with `cwd == ""`, meaning "read the process cwd".
+  **`RunCLIIn` branches on that sentinel rather than delegating uniformly:** `cwd == ""` calls `clihelp.Execute(Command(), out, args)`, any other value calls `clihelp.ExecuteIn(Command(), cwd, out, args)`.
+  This is required, not stylistic — `WithCwd` panics on an empty dir (see `the-injected-cwd-contract`), so a uniform `RunCLIIn → ExecuteIn` delegation would panic on every existing `RunCLI` call in the repo.
+  `ExecuteIn` itself never receives `""` and needs no empty-string tolerance.
 - Swapping every production `lyxcwd.Getwd()` call site in a CLI path over to `lyxcwd.CwdFrom(cmd.Context())` — 15 sites: 7 in a `PersistentPreRunE`, 4 in `scoutcli` `RunE` bodies, and 4 in plain handler functions.
   A 16th touch point, `fabriccli/weft_verbs.go:52`, calls no `Getwd()` of its own and instead needs `cmd.Context()` threaded into its `resolveWarpLocation()` call.
   `loomengine/preflight.go:36` is the 17th and last production site, handled by its own Scope bullet below.
@@ -199,6 +202,9 @@ touching those signatures is the substance of this task.
 - Rationale: at `clone.go:119` the cwd is where the hub is *created* (`CloneAndWire(cwd, …)`), not a lookup.
   A resolution-only seam would not cover the five clone tests, and leaving cwd to mean "destination here, lookup everywhere else" is an unmarked trap.
   The flag sits naturally beside the existing `--reset`, `--subpath`, and `--force-bootstrap`.
+- **The usage string is duplicated in three places and all three carry `--into` in commit 2**, or the CLI/Cobra help-accuracy obligation is violated by whichever one goes stale:
+  `fabriccli/fabric.go:64` (the cobra `Use:` line), `fabriccli/clone.go:125` (the usage-error literal returned on a wrong argument count), and the descriptive comment at `fabric.go:61`.
+  The flag also needs its own description on the `cloneCmd.Flags().String(...)` registration beside the existing three, and a `Long` example.
 - Rejected: a third positional after an already-optional second one (a usage trap);
   and routing clone through the same context-carried cwd (smallest change, but leaves the trap unmarked).
 
@@ -220,7 +226,7 @@ touching those signatures is the substance of this task.
 
 - Decision: a guard test at `cmd/lyx/cwdmutation_test.go` bans both `t.Chdir(` and `os.Chdir(` across an explicitly named **per-file subject set**, not per-package.
 - **Subject set (the guard's allowlist-of-what-is-guarded, not of what is excused):** the eight migrated files — `fabriccli/cli_test.go`, `perchcli/run_integration_test.go`, `perchcli/cli_integration_test.go`, `configcli/configcli_integration_test.go`, `webstercli/verbs_test.go`, `idecli/cli_test.go`, `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go` — plus `fabricengine/coalesce_integration_test.go`, which is guarded with a single allowlisted exemption.
-- **Why per-file and not per-package:** the eight packages that gain a seam change carry roughly fourteen further chdir-using test files this task deliberately does not touch (`boardcli/cli_test.go` and `cli_unit_test.go`, `burlercli/cli_test.go`, `shuttlecli/cli_test.go`, `scoutcli/cli_test.go`, `perchcli/cli_test.go` and `run_test.go`, `webstercli/cli_test.go`, `reedcli/cli_test.go`, `configcli/reconcile_test.go` and `reconcile_integration_test.go`), plus the twelve deferred smoke files in those same packages.
+- **Why per-file and not per-package:** the eleven packages that gain a seam change (the 10 `RunCLIIn` modules plus `loomengine`) carry exactly eleven further non-smoke chdir-using test files this task deliberately does not touch (`boardcli/cli_test.go` and `cli_unit_test.go`, `burlercli/cli_test.go`, `shuttlecli/cli_test.go`, `scoutcli/cli_test.go`, `perchcli/cli_test.go` and `run_test.go`, `webstercli/cli_test.go`, `reedcli/cli_test.go`, `configcli/reconcile_test.go` and `reconcile_integration_test.go`), plus the twelve deferred smoke files in those same packages.
   `scoutcli/cli_test.go` is a partial exception: commit 2 edits one test in it (`TestInFileQuery_ResolvesRelativePathToAbsolute`) because `inFileQuery` gains a base parameter, but the file does not join the guard's subject set and its chdirs are otherwise untouched.
   A per-package subject would make the allowlist larger than the guarded set, which inverts the point of a guard.
 - **The one allowlist entry:** `fabricengine/coalesce_integration_test.go`, reason `"cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New(\"\") against a non-git process cwd"`.
