@@ -154,9 +154,14 @@ func TestDotLyxJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 
 // TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite covers (b), the regression test for the
 // ordering hole: after wiring and before any weft-git verb runs, writing a file into the warp-side
-// .lyx leaves `git status --porcelain` in the weft worktree clean. Seeding the weft-side exclude only
-// from ensureWeftLockDir would pass every other test in this file while leaving scratch as untracked
-// dirt during the window that trips Remove's no-force dirty gate.
+// .lyx must not make `.lyx` itself appear in the weft worktree's `git status --porcelain`. Seeding
+// the weft-side exclude only from ensureWeftLockDir would pass every other test in this file while
+// leaving scratch as untracked dirt during the window that trips Remove's no-force dirty gate.
+//
+// This checks for `.lyx` specifically rather than requiring the whole status blank: a real hub's weft
+// worktree already carries its own untracked `_lyx/` config — hubforge.NewHub's CloneAndWire
+// materializes per-worktree config via configsync.ReconcileAll without committing it — which is
+// unrelated dirt this test's own subject, `.lyx`'s exclude ordering, was never about.
 func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 
@@ -176,8 +181,8 @@ func TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 
 	weftPath := fabricengine.WeftWorktreePath(l, slug)
 	status := gitkit.GitStatusPorcelain(t, weftPath)
-	if strings.TrimSpace(status) != "" {
-		t.Errorf("git status --porcelain in weft worktree = %q; want clean (the .lyx exclude must exist before any write)", status)
+	if strings.Contains(status, lyxdirs.DotLyxDirName) {
+		t.Errorf("git status --porcelain in weft worktree = %q; want no %q entry (the .lyx exclude must exist before any write)", status, lyxdirs.DotLyxDirName)
 	}
 }
 

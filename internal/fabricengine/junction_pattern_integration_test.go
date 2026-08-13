@@ -305,6 +305,15 @@ func TestDetectWarpPollution_LyxTrackedAsRestorable(t *testing.T) {
 	fixture := newFabricFixture(t)
 	l := fixture.Layout
 
+	// newFabricFixture's prime pair already has _lyx wired (a junction) and excluded (a
+	// .git/info/exclude entry) by hubforge.NewHub's CloneAndWire; unwire it first — which clears
+	// both the link and the exclude entry — so this test can simulate the "hand-authored _lyx
+	// content accidentally committed to warp" mistake against a genuinely trackable real directory,
+	// rather than `git add` refusing a still-gitignored path.
+	if _, err := fabricengine.UnwireJunctions(l, l.WorktreeName, []string{lyxdirs.LyxDirName}); err != nil {
+		t.Fatalf("pre-unwire _lyx: %v", err)
+	}
+
 	// Track a file under _lyx directly in the warp worktree's index — the
 	// "hand-authored _lyx content accidentally committed to warp" mistake
 	// this scan exists to catch.
