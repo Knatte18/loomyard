@@ -1,7 +1,8 @@
 # Status
 
 ```yaml
-phase: plan-fix-r7
+phase: blocked
+blocked_reason: max-rounds exhausted after 7 rounds, 1 BLOCKINGs remain
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -31,4 +32,5 @@ plan-review-r6  '2026-08-13T06:39:22Z'
 plan-fix-r6  '2026-08-13T06:40:57Z'
 plan-review-r7  '2026-08-13T06:49:26Z'
 plan-fix-r7  '2026-08-13T06:50:16Z'
+blocked  '2026-08-13T06:50:48Z'
 ```
