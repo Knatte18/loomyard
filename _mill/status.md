@@ -76,7 +76,9 @@ batches:
     commit_sha: f80cb3f6f4701ce78f21701887cdbee254cbd8a1
     verify_baseline_failures: []
   - name: stuck packages
-    state: pending
+    state: running
+    implementer_session: a63cb2f0-095b-473c-af35-2b13172e53fd
+    start_sha: 78a76ec113498fc91dfcd3fe3424dec3f4247cc9
     verify_baseline_failures: []
   - name: fabriccli
     state: pending
