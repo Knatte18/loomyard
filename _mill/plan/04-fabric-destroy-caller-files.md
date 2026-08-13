@@ -69,7 +69,15 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Migrate all six `gitexec.RunGit` sites in `Add` and `rollbackAdd` to `gitexec.Run`.
-  Five of the six in `Add` are plain two-message merges taking `default-merge-rule`, except that the `rev-parse --verify refs/heads/<warp>` warp-branch existence probe is a mixed probe and takes the checked form with `errors.As` recovery: its exit path is an answer ("the branch already exists") while its exec path returns a real error, so recover with `var gitErr *gitexec.GitError` and treat only `errors.As(err, &gitErr)` as the answer, letting anything else return the error.
+  Two of the six need shapes `default-merge-rule` does not cover, and both are in `Add`.
+  The `rev-parse --verify refs/heads/<warp>` warp-branch existence probe is a mixed probe: its exit path is an answer ("the branch already exists") while its exec path returns a real error, so recover with `var gitErr *gitexec.GitError` and treat only `errors.As(err, &gitErr)` as the answer, letting anything else return the error.
+  The `rev-parse --abbrev-ref HEAD` parent-branch probe is a **compound** guard and must not be merged: its exit branch today is `exitCode != 0 || strings.TrimSpace(stdout) == "HEAD"`, and the second disjunct fires on a *successful* git call with a nil error — a detached HEAD — so there is no error to wrap there at all.
+  Merging it mechanically would both misattribute an unrelated exec-level failure to "detached HEAD or unborn branch" and be unwritable for the success arm.
+  The migrated shape keeps the two conditions apart: a non-nil error that `errors.As` does not recover as `*GitError` returns the existing `fmt.Errorf("rev-parse abbrev-ref HEAD: %w", err)`;
+  a non-nil error that it does recover returns the existing detached-HEAD-or-unborn-branch message;
+  and a nil error still falls through to the separate `strings.TrimSpace(stdout) == "HEAD"` check, which returns that same message.
+  Both operator-visible strings survive unchanged.
+  The remaining four sites in this file are plain two-message merges taking `default-merge-rule`.
   The `worktree prune` site in `rollbackAdd` currently feeds `firstErr`;
   collapse it to `if err != nil` and delete the synthesised exit-code fallback, exactly as card 19 does for the sibling site.
   Every remaining site here is a plain two-message merge and needs no special handling beyond `default-merge-rule`.

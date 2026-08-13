@@ -39,7 +39,10 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Change `wrapProbeError(weftURL, op, stderr string, cause error) error` to `wrapProbeError(weftURL, op string, cause error) error` and delete its internal stderr-vs-cause selection branch.
-  The migrated body returns `fmt.Errorf("probe weft %s: %w", weftURL, cause)` when `cause` is non-nil, and `fmt.Errorf("probe weft %s: git %s failed", weftURL, op)` when it is nil — which is what keeps `op` load-bearing rather than an unused parameter.
+  The migrated body returns `fmt.Errorf("probe weft %s: %w", weftURL, cause)` when `cause` is non-nil, and `fmt.Errorf("probe weft %s: git %s failed", weftURL, op)` when it is nil.
+  After migration every one of the seven call paths invokes the helper from inside an `err != nil` branch, so the nil-cause arm is unreachable by construction and `op` is used only there.
+  Keep both, and say so in the godoc: the arm is deliberately defensive, guarding a future caller that reaches the helper without an error, and it is what keeps `op` meaningful rather than a parameter with no reader.
+  Do not silently leave it looking like a live branch, and do not drop `op` from the signature to remove it — the two-parameter form is the shape this task settled on.
   Update its godoc, which currently describes choosing between git's trimmed stderr and a fallback naming the subcommand.
   Migrate all four `gitexec.RunGit` sites in `probeWeftBinding` and `probeTreeHasPath` to `gitexec.Run`.
   Six of the seven call paths into `wrapProbeError` are exec-path/exit-path pairs — the `clone`, `show`, and `ls-tree` sites — and each pair collapses into one call passing the single error.

@@ -173,7 +173,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Change the guard's method-set key from `r.run` alone to the union of `r.run` and `r.runChecked`: `bodyCallsMethodOnReceiver` matches on the exact AST method name, so call it twice per method and add the name when either matches.
-  `gitrepoPinnedRunBoundMethods` keeps all twelve current entries unchanged — after migration only `Pull`, `Fetch`, and `HasUnpushed` still call `r.run`, so keying on `r.run` alone would go blind to the other nine.
+  `gitrepoPinnedRunBoundMethods` keeps all twelve current entries unchanged — after migration only `Pull` and `Fetch` still call `r.run` (card 7 migrates `HasUnpushed` to `r.runChecked`), so keying on `r.run` alone would go blind to the other ten.
   Replace the `gitexecTotal += strings.Count(rendered.String(), "gitexec.")` whole-file substring count and its `!= 1` assertion with an AST call-expression count: walk each parsed file with `ast.Inspect`, count every `*ast.CallExpr` whose `Fun` is an `*ast.SelectorExpr` whose `X` is the package ident `gitexec` and whose `Sel` is `Run` or `RunGit`, and assert the total is exactly two.
   A substring count is no longer usable because roughly six methods now declare `var gitErr *gitexec.GitError` for their `errors.As` recovery, so the count lands near eight and `!= 2` would be as false as `!= 1`.
   Keep the existing "the call site must live inside `run`'s own body" assertion but widen it to the pair: one call expression inside `run`'s body and one inside `runChecked`'s.

@@ -95,7 +95,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   that test files are exempt from the marker requirement;
   the known blind spot, stated honestly, matching the wording in the guard's own header;
   and an `**Enforced by** cmd/lyx/checkedcall_test.go` line in the same shape every other section uses.
-  Amend the existing `## gitrepo Client Boundary Invariant` section: replace the "exactly one `gitexec.` occurrence" claim with the two-call-expression assertion the repaired guard now makes, and note that the pinned method set is keyed on `r.run` and `r.runChecked` together.
+  Amend the existing `## gitrepo Client Boundary Invariant` section: state the two-call-expression assertion the repaired guard now makes — one `gitexec` call expression inside `run`'s body and one inside `runChecked`'s — and note that the pinned method set is keyed on `r.run` and `r.runChecked` together.
+  This is an addition, not a replacement: the "exactly one `gitexec.` occurrence" wording lives only in `cmd/lyx/gitrepoboundary_test.go`'s own header comment, which card 12 already corrected, and appears nowhere in `CONSTRAINTS.md`.
   Confirm the CLI-bound method list is still accurate — the migration changed which helper each method calls, not which methods reach the CLI.
   Add a one-line cross-reference in each direction between the two sections: the Client Boundary Invariant answers *which methods may reach the git CLI at all* and is keyed by method name;
   the Checked-Call Invariant answers *which call sites may use the raw form* and is keyed by call site.
