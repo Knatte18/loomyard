@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -51,6 +51,7 @@ holistic-fixing  '2026-08-13T10:29:45Z'
 holistic-reviewing  '2026-08-13T10:36:20Z'
 holistic-approved  '2026-08-13T10:42:33Z'
 done  '2026-08-13T10:43:36Z'
+pr-pending  '2026-08-13T10:44:11Z'
 ```
 
 ## Batches
