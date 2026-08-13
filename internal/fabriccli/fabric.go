@@ -14,6 +14,7 @@
 package fabriccli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -59,10 +60,10 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]
+	// clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]",
+		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-HUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
@@ -105,6 +106,11 @@ example one created with an auto-generated README), which the guard would
 otherwise refuse. It applies to exactly that situation: it is ignored in the
 one-argument form and whenever a binding is already recorded.
 
+Use --into <dir> to name the directory the new hub is created in, instead of
+the current working directory. A relative value resolves against the current
+working directory; the default, when --into is omitted, is the current
+working directory itself.
+
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
 "main` + weftname.Suffix + `" for default branch "main") — fabric's
 uniform branch scheme applies from the very first pair. When the weft remote
@@ -122,12 +128,14 @@ activate junctions or config.
 
 Example:
   lyx fabric clone --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
-  lyx fabric clone https://github.com/user/repo-weft`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+  lyx fabric clone https://github.com/user/repo-weft
+  lyx fabric clone --into ~/repos https://github.com/user/repo-weft`,
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
-			return runCloneWithReset(out, args, reset, subpath, forceBootstrap)
+			into, _ := cloneCmd.Flags().GetString("into")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into)
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
@@ -137,6 +145,7 @@ Example:
 	// explicit --subpath . against a hub recorded at a real subpath was silently adopted instead of
 	// refused like every other disagreeing value.
 	cloneCmd.Flags().String("subpath", "", `anchor lyx at this subdirectory of the warp repo (default ".", the repo root)`)
+	cloneCmd.Flags().String("into", "", "directory the new hub is created in; a relative value resolves against the current working directory (default: the current working directory)")
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
@@ -157,7 +166,7 @@ because a fork point cannot be determined in either case.
 
 Example:
   lyx fabric add my-task`,
-		RunE: clihelp.WrapRun(runAdd),
+		RunE: clihelp.WrapRunCtx(runAdd),
 	})
 
 	// list
@@ -169,7 +178,7 @@ Example:
 This command outputs warp worktree paths only. For the full warp↔weft pair
 geometry view — including weft pairing, branch drift, and junction health —
 use "lyx fabric pairs".`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runList(out, args) }),
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runList(ctx, out, args) }),
 	})
 
 	// remove [--force] <slug>
@@ -194,10 +203,10 @@ nothing unless the target is a registered linked worktree of this repo.
 Example:
   lyx fabric remove my-task
   lyx fabric remove --force my-task`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			// The --force flag is read from the cobra flag set via closure over removeCmd.
 			force, _ := removeCmd.Flags().GetBool("force")
-			return runRemoveWithFlag(out, args, force)
+			return runRemoveWithFlag(ctx, out, args, force)
 		}),
 	}
 	removeCmd.Flags().Bool("force", false, "forcefully remove worktree with uncommitted changes")
@@ -225,7 +234,7 @@ switch is rolled back so the pair is never left half-switched.
 
 Example:
   lyx fabric checkout my-branch`,
-		RunE: clihelp.WrapRun(runCheckout),
+		RunE: clihelp.WrapRunCtx(runCheckout),
 	})
 
 	// pairs
@@ -241,7 +250,7 @@ weft directory, and junction_reason names the first unhealthy one by name
 when it is not. The pollution scan likewise covers _lyx paths accidentally
 tracked in the warp index; every match carries an automated git rm --cached
 remedy.`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runPairs(out, args) }),
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runPairs(ctx, out, args) }),
 	})
 
 	// reconcile
@@ -262,7 +271,7 @@ It also restores a pair's hub-level portal junction (_portals/<slug>) and
 launcher directory (_launchers/<slug>) when either has gone missing, reporting
 portal_restored rather than already_healthy. The hub's prime worktree is
 skipped: it never had either, so there is nothing there to repair.`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runReconcile(out, args) }),
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runReconcile(ctx, out, args) }),
 	})
 
 	// prune [--apply]
@@ -301,10 +310,10 @@ Example:
   lyx fabric prune
   lyx fabric prune --apply
   lyx fabric prune --apply --force`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := pruneCmd.Flags().GetBool("apply")
 			force, _ := pruneCmd.Flags().GetBool("force")
-			return runPruneWithFlags(out, apply, force)
+			return runPruneWithFlags(ctx, out, apply, force)
 		}),
 	}
 	pruneCmd.Flags().Bool("apply", false, "remove stale weft worktrees (default is dry-run/report)")
@@ -344,10 +353,10 @@ reported but never deleted here, since they are not fabric-managed.
 
 Deletion is local to the hub's weft repo: a deleted branch's copy on the
 weft remote, if it was ever pushed, is left untouched.`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			apply, _ := cleanupCmd.Flags().GetBool("apply")
 			force, _ := cleanupCmd.Flags().GetBool("force")
-			return runCleanupWithFlags(out, apply, force)
+			return runCleanupWithFlags(ctx, out, apply, force)
 		}),
 	}
 	cleanupCmd.Flags().Bool("apply", false, "delete non-gate-protected orphaned weft branches")
@@ -370,7 +379,7 @@ always tears wiring down. It leaves the repo-wide weft:main records intact
 
 Example:
   lyx fabric unwire`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int { return runUnwire(out, args) }),
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int { return runUnwire(ctx, out, args) }),
 	})
 
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
@@ -384,19 +393,32 @@ Example:
 // It delegates to clihelp.Execute, allowing in-process tests to capture output.
 // Returns the exit code (0 on success, 1 on error).
 func RunCLI(out io.Writer, args []string) int {
-	return clihelp.Execute(Command(), out, args)
+	return RunCLIIn("", out, args)
 }
 
-// resolveWarpLocation resolves the process's cwd into the acting Location, refusing any cwd that
-// resolves onto something other than a warp worktree.
+// RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
+// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
+// the execution context via clihelp.ExecuteIn.
+// The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
+// ExecuteIn would panic on every existing RunCLI call.
+func RunCLIIn(cwd string, out io.Writer, args []string) int {
+	if cwd == "" {
+		return clihelp.Execute(Command(), out, args)
+	}
+	return clihelp.ExecuteIn(Command(), cwd, out, args)
+}
+
+// resolveWarpLocation resolves the seam cwd — the cwd RunCLIIn injected into ctx, or the process
+// cwd otherwise — into the acting Location, refusing any cwd that resolves onto something other
+// than a warp worktree.
 //
 // Every topology verb goes through it rather than calling lyxcwd.Resolve directly, because
 // lyxcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a
 // weft sibling, or inside the `_board` link fabric wires at every anchor, otherwise resolves
 // cleanly and drives the verb against geometry that does not exist.
 // It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
-func resolveWarpLocation() (cwd string, l *lyxcwd.Location, err error) {
-	cwd, err = lyxcwd.Getwd()
+func resolveWarpLocation(ctx context.Context) (cwd string, l *lyxcwd.Location, err error) {
+	cwd, err = lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		return "", nil, err
 	}
@@ -423,9 +445,9 @@ func resolveWarpLocation() (cwd string, l *lyxcwd.Location, err error) {
 }
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
-func runAdd(out io.Writer, args []string) int {
+func runAdd(ctx context.Context, out io.Writer, args []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	_, l, err := resolveWarpLocation()
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -456,8 +478,8 @@ func runAdd(out io.Writer, args []string) int {
 }
 
 // runList parses and executes the fabric list subcommand.
-func runList(out io.Writer, _ []string) int {
-	cwd, l, err := resolveWarpLocation()
+func runList(ctx context.Context, out io.Writer, _ []string) int {
+	cwd, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -481,9 +503,9 @@ func runList(out io.Writer, _ []string) int {
 // runCheckout executes the fabric checkout subcommand. When no branch is
 // supplied, it resolves the current warp branch and performs an in-place
 // re-checkout, re-pointing junctions and re-syncing weft.
-func runCheckout(out io.Writer, args []string) int {
+func runCheckout(ctx context.Context, out io.Writer, args []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	_, l, err := resolveWarpLocation()
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -532,8 +554,8 @@ func runCheckout(out io.Writer, args []string) int {
 
 // runPairs executes the fabric pairs subcommand, enumerating all warp↔weft
 // pairs with drift and pollution data.
-func runPairs(out io.Writer, _ []string) int {
-	_, l, err := resolveWarpLocation()
+func runPairs(ctx context.Context, out io.Writer, _ []string) int {
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -563,9 +585,9 @@ func runPairs(out io.Writer, _ []string) int {
 // Topology.Reconcile itself never returns — but never the exit code: a failed backfill commit or push
 // is non-fatal, mirroring the board-junction-wiring precedent that a convenience repair may never
 // downgrade a reconcile verdict.
-func runReconcile(out io.Writer, _ []string) int {
+func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	_, l, err := resolveWarpLocation()
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -666,9 +688,9 @@ func runReconcile(out io.Writer, _ []string) int {
 }
 
 // runPruneWithFlags executes the prune logic with the resolved apply and force flags.
-func runPruneWithFlags(out io.Writer, apply, force bool) int {
+func runPruneWithFlags(ctx context.Context, out io.Writer, apply, force bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	_, l, err := resolveWarpLocation()
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -691,9 +713,9 @@ func runPruneWithFlags(out io.Writer, apply, force bool) int {
 
 // runCleanupWithFlags executes the cleanup logic with the resolved apply and
 // force flags.
-func runCleanupWithFlags(out io.Writer, apply, force bool) int {
+func runCleanupWithFlags(ctx context.Context, out io.Writer, apply, force bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	_, l, err := resolveWarpLocation()
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
@@ -715,9 +737,9 @@ func runCleanupWithFlags(out io.Writer, apply, force bool) int {
 }
 
 // runRemoveWithFlag executes the remove logic with the resolved force flag.
-func runRemoveWithFlag(out io.Writer, args []string, force bool) int {
+func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force bool) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
-	_, l, err := resolveWarpLocation()
+	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}

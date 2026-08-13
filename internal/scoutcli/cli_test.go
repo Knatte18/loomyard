@@ -118,6 +118,47 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 	}
 }
 
+// TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd proves the --target-dir defaulting rebase
+// reaches a consumer: a relative --target-dir resolves against the seam cwd RunCLIIn injects,
+// never the process cwd, and an absolute --target-dir is honoured unchanged.
+// DetectLanguage's ErrNoLanguage message names the resolved targetDir verbatim ("searched markers
+// ... under %s"), so it doubles as the observation point without needing any marker file on disk.
+func TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd(t *testing.T) {
+	t.Parallel()
+
+	seamCwd := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(seamCwd, &out, []string{"refs", "MySymbol", "--target-dir", "sub"})
+	if exitCode == 0 {
+		t.Fatalf("RunCLIIn(seamCwd, refs MySymbol --target-dir sub) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLIIn output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	errMsg, _ := env["error"].(string)
+	wantRelResolved := filepath.Join(seamCwd, "sub")
+	if !strings.Contains(errMsg, wantRelResolved) {
+		t.Errorf("RunCLIIn(seamCwd, refs --target-dir \"sub\") error = %q; want it to reference the seam-cwd-resolved dir %q", errMsg, wantRelResolved)
+	}
+
+	out.Reset()
+	absDir := t.TempDir()
+	exitCode = RunCLIIn(seamCwd, &out, []string{"refs", "MySymbol", "--target-dir", absDir})
+	if exitCode == 0 {
+		t.Fatalf("RunCLIIn(seamCwd, refs MySymbol --target-dir %s) = 0; want non-zero exit for ErrNoLanguage", absDir)
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &env); err != nil {
+		t.Fatalf("RunCLIIn output is not valid JSON: %v; got: %q", err, out.String())
+	}
+	errMsg, _ = env["error"].(string)
+	if !strings.Contains(errMsg, absDir) {
+		t.Errorf("RunCLIIn(seamCwd, refs --target-dir %s) error = %q; want it to reference the absolute dir unchanged", absDir, errMsg)
+	}
+}
+
 // TestRunCLI_Definition_NoLanguageError verifies "definition" fails with ErrNoLanguage in an empty
 // directory.
 func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
@@ -216,9 +257,10 @@ func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing
 	// literal-search-string behavior is a deliberate divergence, not an
 	// accident of parseQuery(arg) happening to leave Pos unset for this
 	// particular string.
-	parsed, err := parseQuery(arg)
+	base := t.TempDir()
+	parsed, err := parseQuery(base, arg)
 	if err != nil {
-		t.Fatalf("parseQuery(%q) error = %v; want nil", arg, err)
+		t.Fatalf("parseQuery(%q, %q) error = %v; want nil", base, arg, err)
 	}
 	if parsed.Pos == nil {
 		t.Fatalf("parseQuery(%q).Pos = nil; want a parsed position, to prove symbolQuery's divergence from parseQuery is meaningful", arg)
@@ -599,9 +641,10 @@ func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testi
 
 	const name = "foo.go:1:1"
 
-	query, err := inFileQuery("internal/foo/bar.go", name)
+	base := t.TempDir()
+	query, err := inFileQuery(base, "internal/foo/bar.go", name)
 	if err != nil {
-		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "internal/foo/bar.go", name, err)
+		t.Fatalf("inFileQuery(%q, %q, %q) error = %v; want nil", base, "internal/foo/bar.go", name, err)
 	}
 
 	if query.Pos != nil {
@@ -618,14 +661,16 @@ func TestInFileQuery_ProducesInFileNeverPosEvenForFileLineColShapedName(t *testi
 	}
 }
 
-// TestInFileQuery_ResolvesRelativePathToAbsolute verifies relative paths resolve against cwd.
+// TestInFileQuery_ResolvesRelativePathToAbsolute verifies a relative path resolves against the
+// explicit base argument rather than the process cwd.
 func TestInFileQuery_ResolvesRelativePathToAbsolute(t *testing.T) {
-	cwd := t.TempDir()
-	t.Chdir(cwd)
+	t.Parallel()
 
-	query, err := inFileQuery("relative/bar.go", "MyFunc")
+	cwd := t.TempDir()
+
+	query, err := inFileQuery(cwd, "relative/bar.go", "MyFunc")
 	if err != nil {
-		t.Fatalf("inFileQuery(%q, %q) error = %v; want nil", "relative/bar.go", "MyFunc", err)
+		t.Fatalf("inFileQuery(%q, %q, %q) error = %v; want nil", cwd, "relative/bar.go", "MyFunc", err)
 	}
 
 	want := filepath.Join(cwd, "relative/bar.go")
