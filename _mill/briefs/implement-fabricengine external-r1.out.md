@@ -1,0 +1,11 @@
+Clean working tree, all 11 cards (42–52) committed and verified.
+
+{"status":"success","commit_sha":"5664d9a6dc053fb14f14993497cae60d55be3ad6","session_id":"c21005d1-ed16-4ae6-b04b-e9690c79009a","cards_done":[42,43,44,45,46,47,48,49,50,51,52]}
+
+Summary: All 11 cards of the "fabricengine external" batch (08-fabricengine-external.md) are complete and committed, in `/home/hanf/Code/loomyard/wts/lyxtest-real-hubs`. Card count self-check: 11 of 11 cards done (cards 42–51 each landed a real commit; card 52 was Commit: none, verification-only, and its checks passed).
+
+Key files touched: `internal/fabricengine/dotlyxjunction_integration_test.go`, `junction_pattern_integration_test.go`, `junction_repoint_test.go`, `add_rollback_adopt_test.go`, `cleanreason_integration_test.go`, `config_driven_junctions_integration_test.go`, `destructivegaps_integration_test.go`, `reconcile_stale_registration_test.go`, `reconcile_stale_removal_test.go`, `reconcile_empty_anchor_integration_test.go` (added to card 47's scope via a plan-edit commit after discovery), `open_integration_test.go`, `ready_integration_test.go`, `unwire_test.go`, `worktreelist_test.go`, `weftgit_exclude_test.go`, `warpforward_integration_test.go`, `checkout_index_refresh_test.go`, `fabric_test.go`, `export_test.go`. Plan file updated: `_mill/plan/08-fabricengine-external.md`.
+
+Notable deviations from the literal card text, all documented in commit messages: (1) `reconcile_empty_anchor_integration_test.go` needed its own `hubforge.NewHub(t, "backend")` instead of `newFabricFixture`, since a real hub's "." anchor arrives pre-wired; (2) two already-migrated tests needed follow-up fixes after the full-suite run (`TestDotLyxJunction_WeftExcludeSeededBeforeFirstWrite`, `TestDetectWarpPollution_LyxTrackedAsRestorable`); (3) `weftgit_exclude_test.go`'s `TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth` was rebuilt as one real hub per anchor rather than one shared weft across synthetic warp fixtures, since `Fabric.Commit`'s classification depends on the Fabric handle's own resolved `AnchorRel`.
+
+Final verify (`go vet -tags integration ./...` plus `go test -tags integration ./internal/fabricengine/...`) passes; working tree is clean.
