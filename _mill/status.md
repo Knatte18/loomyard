@@ -77,7 +77,9 @@ batches:
     commit_sha: 35291f042997ea47de78fbe3c52bf123721b905c
     verify_baseline_failures: []
   - name: fabric-remaining-sites
-    state: pending
+    state: running
+    implementer_session: 765c3521-fcb2-4f34-9e69-299d8bcfa4a8
+    start_sha: 9051d24ccbb5d54b388766189792ca535276e0ad
     verify_baseline_failures: []
   - name: checked-call-invariant-and-docs
     state: pending
