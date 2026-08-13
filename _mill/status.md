@@ -48,7 +48,9 @@ batches:
     commit_sha: ffcf226a3dc9cf306439658ff9d46f6cfc10fd0a
     verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: fabrictest dissolution
-    state: pending
+    state: running
+    implementer_session: 3e2fd3df-1c0d-413a-abfa-e3c01e2ee5f4
+    start_sha: 27dd30effdd8f1304b2b8ed9d915a7e123e64c52
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: hubforge factory
     state: pending
