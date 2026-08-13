@@ -4,9 +4,15 @@
 // against real git fixtures — a paired warp+fabric worktree with a wired _lyx
 // junction and a seeded status.json — covering every pass/fail scenario
 // across all four preconditions. It is integration-tagged because it spawns
-// git via gitkit fixtures (Test Tier Purity Invariant).
+// git via hubforge fixtures (Test Tier Purity Invariant).
+//
+// It is a package loomengine_test file, not an in-package test, because
+// internal/loomengine sits inside internal/fabriccli's dependency set: an
+// in-package test importing internal/hubforge (which imports fabriccli)
+// would close a compile cycle. loomengine/export_test.go re-exports the
+// unexported checkResolved seam this file drives directly.
 
-package loomengine
+package loomengine_test
 
 import (
 	"os"
@@ -17,26 +23,31 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// setupPreflightFixture builds a fully-configured CopyPaired fixture with fabric
-// and junction setup, returning the fixture and the slug for WireJunctions.
-func setupPreflightFixture(t *testing.T) (gitkit.PairedFixture, string) {
+// setupPreflightFixture builds a fully-configured real hub with fabric and junction setup,
+// returning the hub and the slug for WireJunctions.
+func setupPreflightFixture(t *testing.T) (*hubforge.Hub, string) {
 	t.Helper()
 
-	f := gitkit.CopyPaired(t)
-	slug := filepath.Base(f.Layout.WorktreePath())
+	h := hubforge.NewHub(t, ".")
+	slug := filepath.Base(h.Location.WorktreePath())
 
-	gitkit.SeedConfig(t, f.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, f.Layout.HubPath)
-	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	// fabricengine.ConfigTemplate() is fabric's own plain registered config: fabriccli.CloneAndWire
+	// already reconciled default config for every registered module when NewHub built h, so seeding
+	// it again here would be a no-op duplicate (outcome 1 of the SeedConfig triage).
+	//
+	// The repo-wide fabric.yaml, by contrast, is a genuine override — it names pathspec: _extra
+	// rather than the template's own default — so it is retargeted onto hubforge.SeedFabricConfig,
+	// not dropped.
+	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
 
-	if err := fabricengine.WireJunctions(f.Layout, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
+	if err := fabricengine.WireJunctions(h.Location, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
 	}
 
@@ -45,43 +56,24 @@ func setupPreflightFixture(t *testing.T) (gitkit.PairedFixture, string) {
 	// own seedGitExclude call already keeps the .lyx junction entry itself out
 	// of `git status`, so no test-local exclude is needed here.
 
-	seedValidStatus(t, f.Layout)
+	seedValidStatus(t, h.Location)
 
 	// The seeded status.json (and its .lock sidecar) materialize through the
 	// _lyx junction into the fabric worktree's own git repo, where they start
 	// out untracked. Commit them so a freshly-built fixture is genuinely
 	// clean on both sides — required now that Clean checks the fabric worktree
 	// too, not just the warp.
-	gitkit.MustRun(t, f.WeftPrime, "git", "add", "-A")
-	gitkit.MustRun(t, f.WeftPrime, "git", "commit", "-m", "seed status")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-m", "seed status")
 
-	return f, slug
-}
-
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// <hub>/_board/_lyx/config/fabric.yaml (directly written, not committed).
-// The pathspec names "_extra" rather than reading fabricengine.ConfigTemplate()'s own default,
-// because setupPreflightFixture's explicit WireJunctions call wires "_extra" as this fixture's
-// second, non-_lyx junction (card 3's retarget) — RepoWiredNames must agree with what is actually
-// wired on disk for checkJunctionHealth/Healthy to classify each fixture as healthy where expected.
-func seedRepoWideFabricConfig(t testing.TB, hub string) {
-	t.Helper()
-
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
-	}
+	return h, slug
 }
 
 // seedValidStatus writes a fresh, coherent status.json seed with handoff fields only.
 func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 	t.Helper()
 
-	s := Status{
+	s := loomengine.Status{
 		Slug:      "loom-preflight-fixture",
 		Parent:    "main",
 		Phase:     "preflight",
@@ -94,21 +86,21 @@ func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 	// status.json's own parent but not the lock's, so this fixture must
 	// create the lock's parent itself, mirroring Preflight's own MkdirAll
 	// fix in preflight.go.
-	if err := os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(loomengine.LoomStatusLock(l)), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
 	}
-	if err := state.WriteJSON(LoomStatusFile(l), LoomStatusLock(l), s); err != nil {
+	if err := state.WriteJSON(loomengine.LoomStatusFile(l), loomengine.LoomStatusLock(l), s); err != nil {
 		t.Fatalf("seed status.json: %v", err)
 	}
 }
 
 // commitFabricStatus commits the current state of status.json in the fabric worktree,
 // isolating test scenarios from CheckWorktreeClean failures.
-func commitFabricStatus(t *testing.T, f gitkit.PairedFixture) {
+func commitFabricStatus(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 
-	gitkit.MustRun(t, f.WeftPrime, "git", "add", "-A")
-	gitkit.MustRun(t, f.WeftPrime, "git", "commit", "-m", "update status")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "-A")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "-m", "update status")
 }
 
 // restoreCwd saves the process cwd and restores it via t.Cleanup. Call it AFTER
@@ -130,7 +122,7 @@ func restoreCwd(t *testing.T) {
 
 // assertCheckSet asserts that got's Failures carry exactly the given CheckID set
 // (order-independent). An empty want asserts Report.OK.
-func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
+func assertCheckSet(t *testing.T, got loomengine.Report, want ...loomengine.CheckID) {
 	t.Helper()
 
 	if len(want) == 0 {
@@ -144,11 +136,11 @@ func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
 		t.Errorf("Report.OK = true; want failures %v", want)
 	}
 
-	wantSet := make(map[CheckID]bool, len(want))
+	wantSet := make(map[loomengine.CheckID]bool, len(want))
 	for _, c := range want {
 		wantSet[c] = true
 	}
-	gotSet := make(map[CheckID]bool, len(got.Failures))
+	gotSet := make(map[loomengine.CheckID]bool, len(got.Failures))
 	for _, f := range got.Failures {
 		gotSet[f.Check] = true
 	}
@@ -167,15 +159,15 @@ func assertCheckSet(t *testing.T, got Report, want ...CheckID) {
 
 // TestPreflight_HealthyPairAndSeed is the anchor case: a fully healthy paired warp+fabric worktree
 // with a valid fresh seed reports OK.
-// Since CopyPaired's warp hub is a single-worktree repo, its Layout.Prime already equals
-// Layout.WorktreeRoot — this test doubles as the "Prime worktree with a healthy pair+seed" scenario
+// Since NewHub's warp hub is a single-worktree repo, its Location.WorktreePath already equals
+// the Prime worktree — this test doubles as the "Prime worktree with a healthy pair+seed" scenario
 // (run-in-existing-or-prime-worktree).
 func TestPreflight_HealthyPairAndSeed(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
@@ -197,11 +189,11 @@ func TestPreflight_NotAGitRepo(t *testing.T) {
 		t.Fatalf("Chdir(%s): %v", dir, err)
 	}
 
-	report, err := Preflight()
+	report, err := loomengine.Preflight()
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}
-	assertCheckSet(t, report, CheckGeometry)
+	assertCheckSet(t, report, loomengine.CheckGeometry)
 }
 
 // TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor asserts that a legitimately
@@ -215,17 +207,17 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 	// restoreCwd registers its cleanup — see restoreCwd's doc comment: on
 	// Windows, cleanup must chdir back out of the fixture before Go tries to
 	// remove it, and t.Cleanup runs LIFO.
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 	restoreCwd(t)
 
-	sub := filepath.Join(f.Hub, "sub")
+	sub := filepath.Join(h.PrimeWorktree(), "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sub, err)
 	}
 
 	// Record "sub" as the recognized anchor so Resolve(sub) succeeds under the strict cwd gate
 	// with AnchorRel == "sub" -- exactly the shape `lyx fabric clone --subpath sub` produces.
-	anchorPath := filepath.Join(fabricengine.BoardDir(f.Layout.HubPath), lyxcwd.AnchorFileName)
+	anchorPath := filepath.Join(fabricengine.BoardDir(h.Location.HubPath), lyxcwd.AnchorFileName)
 	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", anchorPath, err)
 	}
@@ -234,12 +226,12 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 		t.Fatalf("Chdir(%s): %v", sub, err)
 	}
 
-	report, err := Preflight()
+	report, err := loomengine.Preflight()
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}
 	for _, failure := range report.Failures {
-		if failure.Check == CheckGeometry {
+		if failure.Check == loomengine.CheckGeometry {
 			t.Errorf("Preflight() on a subpath-anchored hub reported %q: %s; want the anchor treated as legal geometry",
 				failure.Check, failure.Reason)
 		}
@@ -252,12 +244,12 @@ func TestPreflight_SubpathAnchoredHubIsNotRejectedForItsAnchor(t *testing.T) {
 func TestPreflight_WarpDirty(t *testing.T) {
 	tests := []struct {
 		name  string
-		dirty func(t *testing.T, f gitkit.PairedFixture)
+		dirty func(t *testing.T, h *hubforge.Hub)
 	}{
 		{
 			name: "TrackedModified",
-			dirty: func(t *testing.T, f gitkit.PairedFixture) {
-				readme := filepath.Join(f.Hub, "README")
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				readme := filepath.Join(h.PrimeWorktree(), "README")
 				if err := os.WriteFile(readme, []byte("modified"), 0o644); err != nil {
 					t.Fatalf("modify README: %v", err)
 				}
@@ -265,18 +257,18 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		},
 		{
 			name: "Staged",
-			dirty: func(t *testing.T, f gitkit.PairedFixture) {
-				readme := filepath.Join(f.Hub, "README")
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				readme := filepath.Join(h.PrimeWorktree(), "README")
 				if err := os.WriteFile(readme, []byte("staged"), 0o644); err != nil {
 					t.Fatalf("modify README: %v", err)
 				}
-				gitkit.MustRun(t, f.Hub, "git", "add", "README")
+				gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "README")
 			},
 		},
 		{
 			name: "UntrackedOnly",
-			dirty: func(t *testing.T, f gitkit.PairedFixture) {
-				untracked := filepath.Join(f.Hub, "untracked.txt")
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked file: %v", err)
 				}
@@ -284,8 +276,8 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		},
 		{
 			name: "DirtyFabricOnly",
-			dirty: func(t *testing.T, f gitkit.PairedFixture) {
-				untracked := filepath.Join(f.WeftPrime, "untracked.txt")
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				untracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
 				if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked fabric file: %v", err)
 				}
@@ -293,12 +285,12 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		},
 		{
 			name: "BothDirty",
-			dirty: func(t *testing.T, f gitkit.PairedFixture) {
-				warpUntracked := filepath.Join(f.Hub, "untracked.txt")
+			dirty: func(t *testing.T, h *hubforge.Hub) {
+				warpUntracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
 				if err := os.WriteFile(warpUntracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked warp file: %v", err)
 				}
-				fabricUntracked := filepath.Join(f.WeftPrime, "untracked.txt")
+				fabricUntracked := filepath.Join(h.PrimeWeft(), "untracked.txt")
 				if err := os.WriteFile(fabricUntracked, []byte("new"), 0o644); err != nil {
 					t.Fatalf("write untracked fabric file: %v", err)
 				}
@@ -310,14 +302,14 @@ func TestPreflight_WarpDirty(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f, _ := setupPreflightFixture(t)
-			tt.dirty(t, f)
+			h, _ := setupPreflightFixture(t)
+			tt.dirty(t, h)
 
-			report, err := checkResolved(f.Layout)
+			report, err := loomengine.CheckResolvedForTest(h.Location)
 			if err != nil {
 				t.Fatalf("checkResolved: %v", err)
 			}
-			assertCheckSet(t, report, CheckWorktreeClean)
+			assertCheckSet(t, report, loomengine.CheckWorktreeClean)
 		})
 	}
 }
@@ -328,21 +320,21 @@ func TestPreflight_WarpDirty(t *testing.T) {
 func TestPreflight_FabricNotReady(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
-	// Drive the not-present branch via the gitkit fixture's own WeftPrime
-	// field rather than fabricengine.WeftWorktree(f.Layout): check 3 now
-	// goes through fabricengine.Ready(l), and the fixture field is the
-	// independent source of the same path.
-	if err := os.RemoveAll(f.WeftPrime); err != nil {
+	// Drive the not-present branch via the hub's own PrimeWeft() rather than
+	// fabricengine.WeftWorktree(h.Location): check 3 now goes through
+	// fabricengine.Ready(l), and PrimeWeft() is the independent source of the
+	// same path.
+	if err := os.RemoveAll(h.PrimeWeft()); err != nil {
 		t.Fatalf("remove fabric worktree: %v", err)
 	}
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckFabricReady, CheckSeedUnreadable)
+	assertCheckSet(t, report, loomengine.CheckFabricReady, loomengine.CheckSeedUnreadable)
 }
 
 // TestPreflight_WarpFabricDifferentBranches asserts that warp and fabric worktrees on different
@@ -353,15 +345,15 @@ func TestPreflight_FabricNotReady(t *testing.T) {
 func TestPreflight_WarpFabricDifferentBranches(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
-	gitkit.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "warp-only")
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckFabricSync)
+	assertCheckSet(t, report, loomengine.CheckFabricSync)
 }
 
 // TestPreflight_ConfigLoadFailed asserts the CauseConfigLoadFailed/CheckJunction equivalence pinned
@@ -373,18 +365,18 @@ func TestPreflight_WarpFabricDifferentBranches(t *testing.T) {
 func TestPreflight_ConfigLoadFailed(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
-	configPath := configengine.ConfigFile(fabricengine.BoardDir(f.Layout.HubPath), "fabric")
+	configPath := configengine.ConfigFile(fabricengine.BoardDir(h.Location.HubPath), "fabric")
 	if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
 		t.Fatalf("corrupt repo-wide fabric config: %v", err)
 	}
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckJunction)
+	assertCheckSet(t, report, loomengine.CheckJunction)
 }
 
 // TestPreflight_JunctionBroken asserts that all three of Healthy's junction-drift shapes — missing,
@@ -447,18 +439,18 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 
 	junctions := []struct {
 		name       string
-		linkFor    func(f gitkit.PairedFixture, slug string) string
-		wantChecks []CheckID // in addition to CheckJunction, which every case wants
+		linkFor    func(h *hubforge.Hub, slug string) string
+		wantChecks []loomengine.CheckID // in addition to CheckJunction, which every case wants
 	}{
 		{
 			name:       "Lyx",
-			linkFor:    func(f gitkit.PairedFixture, slug string) string { return fabricengine.WarpLyxLink(f.Layout, slug) },
-			wantChecks: []CheckID{CheckSeedUnreadable},
+			linkFor:    func(h *hubforge.Hub, slug string) string { return fabricengine.WarpLyxLink(h.Location, slug) },
+			wantChecks: []loomengine.CheckID{loomengine.CheckSeedUnreadable},
 		},
 		{
 			name: "Extra",
-			linkFor: func(f gitkit.PairedFixture, slug string) string {
-				return filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, "_extra")
+			linkFor: func(h *hubforge.Hub, slug string) string {
+				return filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel, "_extra")
 			},
 			wantChecks: nil,
 		},
@@ -469,15 +461,15 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				f, slug := setupPreflightFixture(t)
-				warpLink := j.linkFor(f, slug)
+				h, slug := setupPreflightFixture(t)
+				warpLink := j.linkFor(h, slug)
 				tt.corrupt(t, warpLink)
 
-				report, err := checkResolved(f.Layout)
+				report, err := loomengine.CheckResolvedForTest(h.Location)
 				if err != nil {
 					t.Fatalf("checkResolved: %v", err)
 				}
-				want := append([]CheckID{CheckJunction}, j.wantChecks...)
+				want := append([]loomengine.CheckID{loomengine.CheckJunction}, j.wantChecks...)
 				assertCheckSet(t, report, want...)
 			})
 		}
@@ -499,31 +491,31 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 func TestPreflight_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	t.Parallel()
 
-	f, slug := setupPreflightFixture(t)
+	h, slug := setupPreflightFixture(t)
 
 	// Simulate the missing-optional-junction state: this worktree's second,
 	// non-_lyx junction was never wired, even though _lyx is fully healthy.
-	extraLink := filepath.Join(fabricengine.WorktreePath(f.Layout, slug), f.Layout.AnchorRel, "_extra")
+	extraLink := filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel, "_extra")
 	if err := fslink.Remove(extraLink); err != nil {
 		t.Fatalf("remove the optional junction to simulate a worktree missing it: %v", err)
 	}
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckJunction)
+	assertCheckSet(t, report, loomengine.CheckJunction)
 
 	// One Reconcile call repairs the missing junction: it must report
 	// JunctionRepointed (the repair happened), never AlreadyHealthy.
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	result, err := topology.Reconcile(f.Layout)
+	result, err := topology.Reconcile(h.Location)
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 	var found bool
 	for _, pair := range result.Pairs {
-		if pair.WarpWorktree != filepath.ToSlash(f.Layout.WorktreePath()) {
+		if pair.WarpWorktree != filepath.ToSlash(h.Location.WorktreePath()) {
 			continue
 		}
 		found = true
@@ -535,7 +527,7 @@ func TestPreflight_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("Reconcile result has no pair for the worktree %s: %+v", f.Layout.WorktreePath(), result.Pairs)
+		t.Fatalf("Reconcile result has no pair for the worktree %s: %+v", h.Location.WorktreePath(), result.Pairs)
 	}
 
 	// The junction now resolves.
@@ -544,7 +536,7 @@ func TestPreflight_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 	}
 
 	// A fresh Preflight now reports OK: the remedy this batch documents.
-	report, err = checkResolved(f.Layout)
+	report, err = loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved after Reconcile: %v", err)
 	}
@@ -556,18 +548,18 @@ func TestPreflight_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 func TestPreflight_SeedMissing(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
-	if err := os.Remove(LoomStatusFile(f.Layout)); err != nil {
+	if err := os.Remove(loomengine.LoomStatusFile(h.Location)); err != nil {
 		t.Fatalf("remove seed: %v", err)
 	}
-	commitFabricStatus(t, f)
+	commitFabricStatus(t, h)
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckSeedMissing)
+	assertCheckSet(t, report, loomengine.CheckSeedMissing)
 }
 
 // TestPreflight_SeedUnknownField asserts that a seed containing an unknown field fails strict
@@ -575,7 +567,7 @@ func TestPreflight_SeedMissing(t *testing.T) {
 func TestPreflight_SeedUnknownField(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
 	const raw = `{
   "slug": "loom-preflight-fixture",
@@ -589,16 +581,16 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
   "next_action": null,
   "unknown_field": true
 }`
-	if err := os.WriteFile(LoomStatusFile(f.Layout), []byte(raw), 0o644); err != nil {
+	if err := os.WriteFile(loomengine.LoomStatusFile(h.Location), []byte(raw), 0o644); err != nil {
 		t.Fatalf("write malformed seed: %v", err)
 	}
-	commitFabricStatus(t, f)
+	commitFabricStatus(t, h)
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckSeedIncoherent)
+	assertCheckSet(t, report, loomengine.CheckSeedIncoherent)
 }
 
 // TestPreflight_SeedHalfFinished asserts that a coherent-but-advanced seed (non-empty history, or a
@@ -607,15 +599,15 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 func TestPreflight_SeedHalfFinished(t *testing.T) {
 	tests := []struct {
 		name string
-		seed func() Status
+		seed func() loomengine.Status
 	}{
 		{
 			name: "NonEmptyHistory",
-			seed: func() Status {
-				return Status{
+			seed: func() loomengine.Status {
+				return loomengine.Status{
 					Slug: "loom-preflight-fixture", Parent: "main", Phase: "webster", Stage: "gate",
 					Narration: "now: mid-run",
-					History: []HistoryEntry{
+					History: []loomengine.HistoryEntry{
 						{Phase: "discussion", Outcome: "approved", Ts: "2026-07-17T10:01:30Z"},
 					},
 				}
@@ -623,9 +615,9 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 		},
 		{
 			name: "SetStartSha",
-			seed: func() Status {
+			seed: func() loomengine.Status {
 				sha := "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"
-				return Status{
+				return loomengine.Status{
 					Slug: "loom-preflight-fixture", Parent: "main", Phase: "webster", Stage: "produce",
 					Narration: "now: mid-run", StartSha: &sha,
 				}
@@ -637,17 +629,17 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f, _ := setupPreflightFixture(t)
-			if err := state.WriteJSON(LoomStatusFile(f.Layout), LoomStatusLock(f.Layout), tt.seed()); err != nil {
+			h, _ := setupPreflightFixture(t)
+			if err := state.WriteJSON(loomengine.LoomStatusFile(h.Location), loomengine.LoomStatusLock(h.Location), tt.seed()); err != nil {
 				t.Fatalf("overwrite seed: %v", err)
 			}
-			commitFabricStatus(t, f)
+			commitFabricStatus(t, h)
 
-			report, err := checkResolved(f.Layout)
+			report, err := loomengine.CheckResolvedForTest(h.Location)
 			if err != nil {
 				t.Fatalf("checkResolved: %v", err)
 			}
-			assertCheckSet(t, report, CheckHalfFinished)
+			assertCheckSet(t, report, loomengine.CheckHalfFinished)
 		})
 	}
 }
@@ -658,17 +650,17 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 func TestPreflight_MultipleSimultaneousFailures(t *testing.T) {
 	t.Parallel()
 
-	f, _ := setupPreflightFixture(t)
+	h, _ := setupPreflightFixture(t)
 
-	untracked := filepath.Join(f.Hub, "untracked.txt")
+	untracked := filepath.Join(h.PrimeWorktree(), "untracked.txt")
 	if err := os.WriteFile(untracked, []byte("new"), 0o644); err != nil {
 		t.Fatalf("write untracked file: %v", err)
 	}
-	gitkit.MustRun(t, f.Hub, "git", "checkout", "-b", "warp-only")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "checkout", "-b", "warp-only")
 
-	report, err := checkResolved(f.Layout)
+	report, err := loomengine.CheckResolvedForTest(h.Location)
 	if err != nil {
 		t.Fatalf("checkResolved: %v", err)
 	}
-	assertCheckSet(t, report, CheckWorktreeClean, CheckFabricSync)
+	assertCheckSet(t, report, loomengine.CheckWorktreeClean, loomengine.CheckFabricSync)
 }
