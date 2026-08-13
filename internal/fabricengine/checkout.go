@@ -222,7 +222,7 @@ func (t *Topology) rollbackSwitch(rec *Mutations, l *lyxcwd.Location, originalBr
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}
-		if _, _, err := deleteBranch(rec, req); err != nil {
+		if err := deleteBranch(rec, req); err != nil {
 			var refusal *destructiveRefusal
 			if errors.As(err, &refusal) {
 				logger.Warn("fabricengine: rollbackSwitch's branch deletion was refused by the destructive gate", "branch", forkedWeftBranch, "check", string(refusal.Check))

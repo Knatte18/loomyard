@@ -286,14 +286,8 @@ func deleteWeftBranch(rec *Mutations, l *lyxcwd.Location, branch, branchPrefix s
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}
-	exitCode, deleteStderr, err := deleteBranch(rec, req)
-	if err != nil {
-		entry.Error = fmt.Sprintf("git branch -D %s: %v", branch, err)
-		return false
-	}
-	if exitCode != 0 {
-		entry.Error = fmt.Sprintf("delete weft branch %q failed (git exit %d): %s",
-			branch, exitCode, strings.TrimSpace(deleteStderr))
+	if err := deleteBranch(rec, req); err != nil {
+		entry.Error = fmt.Sprintf("delete weft branch %q failed: %v", branch, err)
 		return false
 	}
 	return true
