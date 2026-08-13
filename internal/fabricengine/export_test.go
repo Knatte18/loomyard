@@ -339,7 +339,7 @@ func newCommitFixture(t *testing.T) (f *Fabric, warpPath, weftPath string) {
 // newPlainWeftRepo creates a minimal, isolated git repo at t.TempDir() on branch main with a single
 // tracked _lyx/config.yaml file and one commit — the weft-side sibling of newPlainWarpRepo, replacing
 // gitkit's own retired weft-only template for newCommitFixture's four in-package callers, which
-// cannot import internal/hubforge.
+// cannot import the hubforge package.
 func newPlainWeftRepo(t *testing.T) string {
 	t.Helper()
 
