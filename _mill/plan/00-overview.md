@@ -3,7 +3,7 @@
 ```yaml
 task: 'lyxtest: build real fabric hubs, invert the lyxtest/fabric dependency'
 slug: lyxtest-real-hubs
-approved: false
+approved: true
 started: '20260812-180311'
 parent: main
 root: ""
