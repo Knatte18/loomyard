@@ -4,24 +4,27 @@
 // repo with zero commits (a fresh `git init` -> `lyx init` -> `lyx config`
 // first-run path, before the operator's first warp commit) must not fail
 // every weft commit just because CommitWeft now reads warp HEAD for the
-// Warp-SHA trailer. Package fabricengine (internal), reusing
-// index_integration_test.go's newFabric/currentSHA/commitWarp helpers, which
-// this file shares the package with.
+// Warp-SHA trailer. Package fabricengine_test, reusing
+// export_test.go's NewFabricForTest/CurrentSHAForTest/CommitWarpForTest
+// shims for the fixture helpers this file used to share directly with
+// index_integration_test.go, back when both lived in package fabricengine.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
 // newUnbornWarpRepo creates a minimal, isolated git repo at t.TempDir() on
 // branch main with NO commits — an unborn HEAD, the state a bare `git init`
-// leaves before any commit lands. Distinct from newPlainWarpRepo (which
-// commits once), since these tests need the pre-first-commit state itself.
+// leaves before any commit lands. Distinct from
+// fabricengine.NewPlainWarpRepoForTest (which commits once), since this
+// file's tests need the pre-first-commit state itself.
 func newUnbornWarpRepo(t *testing.T) string {
 	t.Helper()
 
@@ -42,11 +45,11 @@ func newUnbornWarpRepo(t *testing.T) string {
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 	warpPath := newUnbornWarpRepo(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, unborn warp")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change, unborn warp")
 
-	sha, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() against an unborn warp HEAD error = %v; want nil", err)
 	}
@@ -54,31 +57,31 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 		t.Fatalf("commitWeft() committed = false; want true")
 	}
 
-	rawMessage := commitMessageAt(t, weftFixture.WeftPath, sha)
-	if strings.Contains(rawMessage, WarpSHATrailerKey+":") {
-		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", rawMessage, WarpSHATrailerKey)
+	rawMessage := fabricengine.CommitMessageAtForTest(t, weftFixture.WeftPath, sha)
+	if strings.Contains(rawMessage, fabricengine.WarpSHATrailerKey+":") {
+		t.Errorf("commit message = %q; want no %s trailer (warp has no HEAD yet)", rawMessage, fabricengine.WarpSHATrailerKey)
 	}
 
-	path, err := f.corrIndexPath()
+	path, err := fabricengine.CorrIndexPathForTest(f)
 	if err != nil {
 		t.Fatalf("corrIndexPath() error = %v", err)
 	}
 	if _, err := os.Stat(path); err == nil {
-		ix, err := loadCorrIndex(path)
+		ix, err := fabricengine.LoadCorrIndexForTest(path)
 		if err != nil {
 			t.Fatalf("loadCorrIndex() error = %v", err)
 		}
-		if len(ix.entries()) != 0 {
-			t.Errorf("correspondence index has %d entries after an unborn-warp commit; want 0", len(ix.entries()))
+		if len(fabricengine.CorrIndexEntriesForTest(ix)) != 0 {
+			t.Errorf("correspondence index has %d entries after an unborn-warp commit; want 0", len(fabricengine.CorrIndexEntriesForTest(ix)))
 		}
 	}
 
 	// Warp gains its first commit; a subsequent CommitWeft must resume
 	// normal trailer/record behavior — the unborn condition self-heals.
-	warpSHA := commitWarp(t, warpPath, "warp's first commit")
-	writeWeftConfigContent(t, weftFixture.WeftPath, "weft change, warp now born")
+	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp's first commit")
+	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.WeftPath, "weft change, warp now born")
 
-	sha2, committed2, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{})
+	sha2, committed2, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{})
 	if err != nil {
 		t.Fatalf("commitWeft() after warp's first commit error = %v; want nil", err)
 	}
@@ -86,17 +89,17 @@ func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
 		t.Fatalf("commitWeft() after warp's first commit committed = false; want true")
 	}
 
-	rawMessage2 := commitMessageAt(t, weftFixture.WeftPath, sha2)
-	wantTrailer := WarpSHATrailerKey + ": " + warpSHA
+	rawMessage2 := fabricengine.CommitMessageAtForTest(t, weftFixture.WeftPath, sha2)
+	wantTrailer := fabricengine.WarpSHATrailerKey + ": " + warpSHA
 	if !strings.Contains(rawMessage2, wantTrailer) {
 		t.Errorf("commit message after warp's first commit = %q; want it to contain %q", rawMessage2, wantTrailer)
 	}
 
-	ix, err := loadCorrIndex(path)
+	ix, err := fabricengine.LoadCorrIndexForTest(path)
 	if err != nil {
 		t.Fatalf("loadCorrIndex() (post-heal) error = %v", err)
 	}
-	if _, ok := ix.exact(warpSHA); !ok {
+	if _, ok := fabricengine.CorrIndexExactForTest(ix, warpSHA); !ok {
 		t.Errorf("correspondence index has no entry for %q after the healed CommitWeft; want one", warpSHA)
 	}
 }
