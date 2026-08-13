@@ -138,7 +138,6 @@ this task does not run them.
 ### Card 27: Migrate internal/perchcli
 
 - **Context:**
-  - `internal/hubforge/hub.go`
   - `internal/hubforge/seed.go`
   - `internal/gitkit/gitkit.go`
   - `internal/lyxcwd/anchor.go`
@@ -146,6 +145,7 @@ this task does not run them.
 - **Edits:**
   - `internal/perchcli/cli_integration_test.go`
   - `internal/perchcli/run_integration_test.go`
+  - `internal/hubforge/hub.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -168,6 +168,11 @@ this task does not run them.
   Build it with `hubforge.NewHub(t, "wts/some-task")`, matching the `relPath` constant the test already declares, and delete the local `seedFabricAnchor` helper entirely — this test is its only caller.
   Its `gitkit.SeedConfig(t, warpSubdir, …)` call is again three plain registered templates, so it too is triage outcome 1 and the call is deleted;
   `warpSubdir` and the `t.Chdir(warpSubdir)` argument both become `h.Location.AnchorPath()`, and the run-dir path built from `fixture.WeftPrime` plus `relPath` becomes `h.WeftBase`, which is that join done by fabric rather than by the test.
+
+  **Scope addition discovered during implementation:** `fabricengine.CloneHub`'s anchor-resolution step hard-errors ("subpath %q does not exist as a directory in the cloned warp repo") unless the requested `Subpath` already exists as a directory in the warp's committed history at clone time — `os.MkdirAll` after `NewHub` cannot help, because `NewHub` itself never returns if this check fails.
+  `internal/hubforge/hub.go`'s shared warp bare template (`buildBareTemplate`) commits only a root `README` and a `backend/README`, so `hubforge.NewHub(t, "nested")` and `hubforge.NewHub(t, "wts/some-task")` both fail against it as originally built.
+  `hub.go` is therefore moved from this card's `Context:` to its `Edits:`: `buildBareTemplate` gains a `nested/README` and a `wts/some-task/README` alongside the existing `backend/README`, in the same warp-template commit, so both of this card's real-hub-anchored tests can clone successfully.
+  This is an additive change to the shared template (no existing anchor's content changes), so no other batch-3-through-10 test that anchors at `"."` or `"backend"` is affected.
   `lyxcwd.ValidateAnchorRel` accepts a multi-segment relative anchor and imposes no existence requirement, so `"wts/some-task"` is a legal `Subpath`;
   if the anchored directory does not exist inside the freshly cloned warp, `os.MkdirAll(h.Location.AnchorPath(), 0o755)` after `NewHub` is the correct arrangement — that is ordinary test arrangement on a real hub, not stand-in-hub scaffolding, and the difference is that the anchor itself is recorded by fabric either way.
 
