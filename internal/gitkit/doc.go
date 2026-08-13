@@ -1,8 +1,17 @@
-// Package gitkit holds the shared git-fixture support machinery for Loomyard's test suites across
-// internal/fabricengine, internal/fabriccli, and internal/lyxcwd.
-// It owns the fixture builders and per-test isolation helpers, following the template-built-once +
-// per-test filesystem copy pattern to minimize setup overhead and maximize parallelism.
-// See MustRun, CopyWarpHub, CopyPaired, and CopyWeft.
+// Package gitkit is the below-fabric leaf holding git primitives only: MustRun, SeedConfig,
+// HermeticGitEnv, and CopyRepo.
+// It never imports fabric.
+// 23 packages call HermeticGitEnv from TestMain, and eleven of them sit inside
+// internal/fabriccli's dependency set, so a fabric import in this package would stop those
+// TestMain files compiling.
+//
+// CopyRepo is pinned to internal/lyxcwd alone, enforced by
+// internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LyxcwdOnly) — every other
+// package takes a real hub from internal/hubforge instead.
+// MustRun, SeedConfig, and HermeticGitEnv are unpinned; any package may call them.
+// CopyWarpHub, CopyPaired, CopyPairedLocal, and CopyWeft are transitional: they stay alive so the
+// tree keeps compiling while their call sites migrate onto internal/hubforge, and this task's
+// final batch deletes them.
 //
 // Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
 // internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
