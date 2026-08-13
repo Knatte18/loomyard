@@ -6,6 +6,7 @@ package gitexec_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -136,30 +137,41 @@ func TestRun_NonZeroExit(t *testing.T) {
 }
 
 // TestRun_StdoutOnError tests that stdout is still returned alongside a
-// *GitError, using a command that writes to stdout and then exits non-zero.
+// *GitError, using a command that writes to stdout and then exits non-zero:
+// `git diff --exit-code` prints the diff to stdout and exits 1 when the
+// working tree differs from the last commit.
 func TestRun_StdoutOnError(t *testing.T) {
 	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "a.txt")
 
 	if _, _, exitCode, err := gitexec.RunGit([]string{"init"}, tempDir); err != nil || exitCode != 0 {
 		t.Fatalf("git init failed: exitCode=%d err=%v", exitCode, err)
 	}
-	if _, _, exitCode, err := gitexec.RunGit([]string{"commit", "--allow-empty", "-m", "seed"}, tempDir); err != nil || exitCode != 0 {
+	if err := os.WriteFile(filePath, []byte("original\n"), 0o644); err != nil {
+		t.Fatalf("failed to seed a.txt: %v", err)
+	}
+	if _, _, exitCode, err := gitexec.RunGit([]string{"add", "a.txt"}, tempDir); err != nil || exitCode != 0 {
+		t.Fatalf("git add failed: exitCode=%d err=%v", exitCode, err)
+	}
+	if _, _, exitCode, err := gitexec.RunGit([]string{"commit", "-m", "seed"}, tempDir); err != nil || exitCode != 0 {
 		t.Fatalf("git commit failed: exitCode=%d err=%v", exitCode, err)
 	}
+	if err := os.WriteFile(filePath, []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("failed to modify a.txt: %v", err)
+	}
 
-	// `git branch --list <pattern> nonexistent-extra-arg` writes the (empty)
-	// branch list to stdout and then exits non-zero for the unexpected extra
-	// argument.
-	stdout, err := gitexec.Run([]string{"branch", "-v", "--nonexistent-flag"}, tempDir)
+	stdout, err := gitexec.Run([]string{"diff", "--exit-code", "--", "a.txt"}, tempDir)
 	if err == nil {
-		t.Fatal("expected a non-nil error for an invalid git flag")
+		t.Fatal("expected a non-nil error for a non-empty diff with --exit-code")
 	}
 
 	var gitErr *gitexec.GitError
 	if !errors.As(err, &gitErr) {
 		t.Fatalf("expected errors.As to recover *gitexec.GitError, got %T: %v", err, err)
 	}
-	_ = stdout // this command's stdout is legitimately empty; the assertion here is that Run's first return value is still git's own stdout, not a blanked sentinel
+	if stdout == "" {
+		t.Fatal("expected non-empty stdout containing the diff output")
+	}
 }
 
 // TestRun_ExecFailure tests that an exec-level failure — a cwd that does
