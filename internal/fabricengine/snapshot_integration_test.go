@@ -8,12 +8,13 @@
 // scoping, and (card 13) the one fixture that can actually discriminate
 // card 10's --topo-order change from git log's date-ordered default: a
 // back-dated merge commit, plus a RebuildIndex equivalence assertion on the
-// same history. Package fabricengine (internal), reusing
-// index_integration_test.go's newPlainWarpRepo, currentSHA, commitWarp,
-// commitWeftWithTrailer, and newFabric helpers rather than building a
-// parallel harness — they share this package.
+// same history. Package fabricengine_test, reusing export_test.go's
+// NewPlainWarpRepoForTest, CurrentSHAForTest, CommitWarpForTest and
+// NewFabricForTest fixture shims, and syncweft_integration_test.go's
+// expireAndPruneUnreachable directly, since both files share package
+// fabricengine_test.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"os"
@@ -22,7 +23,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // commitWeftTagged advances the warp repo by one commit, writes new content
@@ -30,12 +33,12 @@ import (
 // f.CommitWeft carrying tags — the standard way this file's tests build a
 // trailer history with Snapshot: entries. Returns the new warp and weft HEAD
 // SHAs. Passing zero tags produces a plain, untagged weft commit.
-func commitWeftTagged(t *testing.T, f *Fabric, warpPath, weftPath, content string, tags ...string) (warpSHA, weftSHA string) {
+func commitWeftTagged(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, content string, tags ...string) (warpSHA, weftSHA string) {
 	t.Helper()
 
-	warpSHA = commitWarp(t, warpPath, content)
-	writeWeftConfigContent(t, weftPath, content)
-	weftSHA, committed, err := f.commitWeft([]string{"_lyx"}, DefaultCommitMessage, SyncOptions{}, tags...)
+	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, content)
+	fabricengine.WriteWeftConfigContentForTest(t, weftPath, content)
+	weftSHA, committed, err := fabricengine.CommitWeftForTest(f, []string{"_lyx"}, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, tags...)
 	if err != nil {
 		t.Fatalf("commitWeft(tags=%v) error = %v", tags, err)
 	}
@@ -61,9 +64,9 @@ func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) 
 		t.Fatalf("WriteFile: %v", err)
 	}
 	gitkit.MustRun(t, weftPath, "git", "add", ".")
-	msg := "weft sync\n\n" + SnapshotTrailerKey + ": " + tag
+	msg := "weft sync\n\n" + fabricengine.SnapshotTrailerKey + ": " + tag
 	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
-	return currentSHA(t, weftPath)
+	return fabricengine.CurrentSHAForTest(t, weftPath)
 }
 
 // TestSnapshotWarpSHA_Miss is the TDD candidate for this card: a tag never recorded anywhere in
@@ -73,13 +76,13 @@ func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) 
 func TestSnapshotWarpSHA_Miss(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "untagged change")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "untagged change")
 
-	got, err := f.snapshotWarpSHA("never-recorded")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "never-recorded")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v; want nil", err)
 	}
@@ -94,15 +97,15 @@ func TestSnapshotWarpSHA_Miss(t *testing.T) {
 func TestSnapshotWarpSHA_NewestTaggedCommitWins(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 1", "raddle")
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 2", "raddle")
-	warpSHA3, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 3", "raddle")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "raddle round 1", "raddle")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "raddle round 2", "raddle")
+	warpSHA3, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "raddle round 3", "raddle")
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -116,16 +119,16 @@ func TestSnapshotWarpSHA_NewestTaggedCommitWins(t *testing.T) {
 func TestSnapshotWarpSHA_TagIsolation(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 1", "raddle")
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "trace round 1", "trace")
-	warpRaddle2, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "raddle round 2", "raddle")
-	warpTrace2, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "trace round 2", "trace")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "raddle round 1", "raddle")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "trace round 1", "trace")
+	warpRaddle2, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "raddle round 2", "raddle")
+	warpTrace2, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "trace round 2", "trace")
 
-	gotRaddle, err := f.snapshotWarpSHA("raddle")
+	gotRaddle, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA(\"raddle\") error = %v", err)
 	}
@@ -133,7 +136,7 @@ func TestSnapshotWarpSHA_TagIsolation(t *testing.T) {
 		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want %q", gotRaddle, warpRaddle2)
 	}
 
-	gotTrace, err := f.snapshotWarpSHA("trace")
+	gotTrace, err := fabricengine.SnapshotWarpSHAForTest(f, "trace")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA(\"trace\") error = %v", err)
 	}
@@ -148,13 +151,13 @@ func TestSnapshotWarpSHA_TagIsolation(t *testing.T) {
 func TestSnapshotWarpSHA_MultipleTagsOnOneCommit(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	warpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "multi-tag commit", "raddle", "trace")
+	warpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "multi-tag commit", "raddle", "trace")
 
-	gotRaddle, err := f.snapshotWarpSHA("raddle")
+	gotRaddle, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA(\"raddle\") error = %v", err)
 	}
@@ -162,7 +165,7 @@ func TestSnapshotWarpSHA_MultipleTagsOnOneCommit(t *testing.T) {
 		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want %q", gotRaddle, warpSHA)
 	}
 
-	gotTrace, err := f.snapshotWarpSHA("trace")
+	gotTrace, err := fabricengine.SnapshotWarpSHAForTest(f, "trace")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA(\"trace\") error = %v", err)
 	}
@@ -177,12 +180,12 @@ func TestSnapshotWarpSHA_MultipleTagsOnOneCommit(t *testing.T) {
 func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftPath := t.TempDir()
 	gitkit.MustRun(t, weftPath, "git", "init", "-q", "-b", "main")
-	f := newFabric(t, warpPath, weftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftPath)
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v; want nil (unborn weft HEAD)", err)
 	}
@@ -197,14 +200,14 @@ func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 func TestSnapshotWarpSHA_UntaggedCommitsAreSkipped(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "plain change 1")
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "plain change 2")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "plain change 1")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "plain change 2")
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -219,13 +222,13 @@ func TestSnapshotWarpSHA_UntaggedCommitsAreSkipped(t *testing.T) {
 func TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	commitWeftSnapshotOnlyTrailer(t, weftFixture.WeftPath, "no warp trailer", "raddle")
+	commitWeftSnapshotOnlyTrailer(t, weftFixture.PrimeWeft(), "no warp trailer", "raddle")
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -240,14 +243,14 @@ func TestSnapshotWarpSHA_SnapshotWithNoWarpSHAIsSkipped(t *testing.T) {
 func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "exact tag", "raddle")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "exact tag", "raddle")
 
 	for _, tag := range []string{"Raddle", "raddle "} {
-		got, err := f.snapshotWarpSHA(tag)
+		got, err := fabricengine.SnapshotWarpSHAForTest(f, tag)
 		if err != nil {
 			t.Fatalf("snapshotWarpSHA(%q) error = %v", tag, err)
 		}
@@ -262,31 +265,32 @@ func TestSnapshotWarpSHA_ByteExactMatching(t *testing.T) {
 // tagged commit landed) via a plain `git checkout -b`, and asserts snapshotWarpSHA reads the tag as
 // absent rather than answering cross-branch — the reader's per-branch contract.
 //
-// Topology.Checkout is deliberately not used here: it needs a full *lyxcwd.Location,
-// and the only fixture in this package building one lives in the external fabricengine_test
-// package, unreachable from this internal-package file.
-// It would also test the wrong thing — snapshotWarpSHA scans the weft worktree's CURRENT branch and
+// Topology.Checkout is deliberately not used here even though this file can now reach it: it would
+// test the wrong thing — snapshotWarpSHA scans the weft worktree's CURRENT branch and
 // nothing else, so a weft-side branch switch by itself is the whole mechanism under test;
 // the coordinated warp+weft checkout is only how that state arises in production.
 func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	// "main" is the weft worktree's original branch (from CopyWeft). Fork
-	// "tagged" off it and record the Snapshot tag there, so "main" itself
-	// never advances past the fixture's initial commit.
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "tagged")
-	commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "tagged change", "raddle")
+	// The weft worktree's original branch is fabricengine.WeftBranchName("main")
+	// ("main-weft"), never bare "main" -- a real hub's own weft:main is a
+	// SEPARATE worktree (_board), so this file's own branch stays suffixed.
+	// Fork "tagged" off it and record the Snapshot tag there, so the mainline
+	// branch itself never advances past the fixture's initial commit.
+	mainlineBranch := fabricengine.WeftBranchName("main")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "checkout", "-b", "tagged")
+	commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "tagged change", "raddle")
 
-	// Fork "other" off "main" (NOT off "tagged"), so its history does not
+	// Fork "other" off the mainline branch (NOT off "tagged"), so its history does not
 	// contain the tagged commit at all, and switch the weft worktree onto
 	// it — the branch snapshotWarpSHA must now scan.
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "other", "main")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "checkout", "-b", "other", mainlineBranch)
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -318,10 +322,10 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 // os.Environ() (rather than replacing it) preserves the
 // GIT_CONFIG_GLOBAL/GIT_CONFIG_NOSYSTEM pair this package's TestMain sets
 // via gitkit.HermeticGitEnv(), so this one raw commit stays hermetic too.
-func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file, content, committerDate string, tags ...string) (warpSHA, weftSHA string) {
+func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, weftPath, file, content, committerDate string, tags ...string) (warpSHA, weftSHA string) {
 	t.Helper()
 
-	warpSHA = commitWarp(t, warpPath, content)
+	warpSHA = fabricengine.CommitWarpForTest(t, warpPath, content)
 
 	filePath := filepath.Join(weftPath, "_lyx", file)
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
@@ -329,8 +333,8 @@ func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file,
 	}
 	gitkit.MustRun(t, weftPath, "git", "add", ".")
 
-	msg := appendWarpSHATrailer(DefaultCommitMessage, warpSHA)
-	msg, err := appendSnapshotTrailers(msg, tags)
+	msg := fabricengine.AppendWarpSHATrailerForTest(fabricengine.DefaultCommitMessage, warpSHA)
+	msg, err := fabricengine.AppendSnapshotTrailersForTest(msg, tags)
 	if err != nil {
 		t.Fatalf("appendSnapshotTrailers() error = %v", err)
 	}
@@ -342,7 +346,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file,
 		t.Fatalf("git commit (backdated, dir=%s): %v; output: %s", weftPath, err, output)
 	}
 
-	weftSHA = currentSHA(t, weftPath)
+	weftSHA = fabricengine.CurrentSHAForTest(t, weftPath)
 	if err := f.RecordCorrespondence(warpSHA, weftSHA); err != nil {
 		t.Fatalf("RecordCorrespondence() error = %v", err)
 	}
@@ -382,19 +386,24 @@ func commitWeftTaggedWithDate(t *testing.T, f *Fabric, warpPath, weftPath, file,
 func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "mainline tagged", "raddle")
+	// A real hub's weft primary checks out the suffixed branch (fabricengine.WeftBranchName("main")),
+	// never bare "main" -- "main" itself is already checked out by the hub's own _board worktree
+	// (the repo-wide weft:main checkout), so switching this worktree onto literal "main" would
+	// collide with that second worktree rather than reaching the primary's own mainline.
+	mainlineBranch := fabricengine.WeftBranchName("main")
+	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "mainline tagged", "raddle")
 
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "-b", "side")
-	warpSHASide, _ := commitWeftTaggedWithDate(t, f, warpPath, weftFixture.WeftPath, "side-marker.txt", "side tagged (back-dated)", "2000-01-01T00:00:00+0000", "raddle")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "checkout", "-b", "side")
+	warpSHASide, _ := commitWeftTaggedWithDate(t, f, warpPath, weftFixture.PrimeWeft(), "side-marker.txt", "side tagged (back-dated)", "2000-01-01T00:00:00+0000", "raddle")
 
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "checkout", "main")
-	gitkit.MustRun(t, weftFixture.WeftPath, "git", "merge", "--no-ff", "-m", "merge side into main", "side")
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "checkout", mainlineBranch)
+	gitkit.MustRun(t, weftFixture.PrimeWeft(), "git", "merge", "--no-ff", "-m", "merge side into main", "side")
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v", err)
 	}
@@ -402,15 +411,15 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 		t.Errorf("snapshotWarpSHA(\"raddle\") = %q; want the topologically-newest (side) baseline %q, not the date-newest mainline baseline %q", got, warpSHASide, warpSHAMainline)
 	}
 
-	path, err := f.corrIndexPath()
+	path, err := fabricengine.CorrIndexPathForTest(f)
 	if err != nil {
 		t.Fatalf("corrIndexPath() error = %v", err)
 	}
-	incremental, err := loadCorrIndex(path)
+	incremental, err := fabricengine.LoadCorrIndexForTest(path)
 	if err != nil {
 		t.Fatalf("loadCorrIndex() error = %v", err)
 	}
-	wantEntries := incremental.entries()
+	wantEntries := fabricengine.CorrIndexEntriesForTest(incremental)
 	if len(wantEntries) != 2 {
 		t.Fatalf("incrementally-built index has %d entries; want 2", len(wantEntries))
 	}
@@ -418,11 +427,11 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	if err := f.RebuildIndex(); err != nil {
 		t.Fatalf("RebuildIndex() error = %v", err)
 	}
-	rebuilt, err := loadCorrIndex(path)
+	rebuilt, err := fabricengine.LoadCorrIndexForTest(path)
 	if err != nil {
 		t.Fatalf("loadCorrIndex() (post-rebuild) error = %v", err)
 	}
-	gotEntries := rebuilt.entries()
+	gotEntries := fabricengine.CorrIndexEntriesForTest(rebuilt)
 
 	if len(gotEntries) != len(wantEntries) {
 		t.Fatalf("RebuildIndex() entries = %d; want %d", len(gotEntries), len(wantEntries))
@@ -462,17 +471,17 @@ func treeSHA(t *testing.T, repoPath, rev string) string {
 // commit's tree is byte-identical to the content commit's, so resolving through the overwritten
 // entry restores exactly the same weft state either commit would have.
 func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T) {
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	warpSHA, contentWeftSHA := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "content commit", "raddle")
+	warpSHA, contentWeftSHA := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "content commit", "raddle")
 
 	// A genuine tags-only call (nil pathspec) at the same warp HEAD — warp is
 	// not advanced again here — so the empty-commit rule's `!positive`
 	// fall-through fires and RecordCorrespondence upserts over the entry the
 	// content commit just wrote for warpSHA.
-	emptyWeftSHA, committed, err := f.commitWeft(nil, DefaultCommitMessage, SyncOptions{}, "raddle")
+	emptyWeftSHA, committed, err := fabricengine.CommitWeftForTest(f, nil, fabricengine.DefaultCommitMessage, fabricengine.SyncOptions{}, "raddle")
 	if err != nil {
 		t.Fatalf("commitWeft() (tags-only, same warp HEAD) error = %v", err)
 	}
@@ -491,24 +500,24 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 		t.Errorf("WeftSHAForWarpSHA(%q) = %q; want the newer empty commit %q (last recorded wins)", warpSHA, got, emptyWeftSHA)
 	}
 
-	path, err := f.corrIndexPath()
+	path, err := fabricengine.CorrIndexPathForTest(f)
 	if err != nil {
 		t.Fatalf("corrIndexPath() error = %v", err)
 	}
-	incremental, err := loadCorrIndex(path)
+	incremental, err := fabricengine.LoadCorrIndexForTest(path)
 	if err != nil {
 		t.Fatalf("loadCorrIndex() error = %v", err)
 	}
-	wantEntries := incremental.entries()
+	wantEntries := fabricengine.CorrIndexEntriesForTest(incremental)
 
 	if err := f.RebuildIndex(); err != nil {
 		t.Fatalf("RebuildIndex() error = %v", err)
 	}
-	rebuilt, err := loadCorrIndex(path)
+	rebuilt, err := fabricengine.LoadCorrIndexForTest(path)
 	if err != nil {
 		t.Fatalf("loadCorrIndex() (post-rebuild) error = %v", err)
 	}
-	gotEntries := rebuilt.entries()
+	gotEntries := fabricengine.CorrIndexEntriesForTest(rebuilt)
 
 	if len(gotEntries) != len(wantEntries) {
 		t.Fatalf("RebuildIndex() entries = %d; want %d", len(gotEntries), len(wantEntries))
@@ -519,8 +528,8 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 		}
 	}
 
-	gotTree := treeSHA(t, weftFixture.WeftPath, emptyWeftSHA)
-	wantTree := treeSHA(t, weftFixture.WeftPath, contentWeftSHA)
+	gotTree := treeSHA(t, weftFixture.PrimeWeft(), emptyWeftSHA)
+	wantTree := treeSHA(t, weftFixture.PrimeWeft(), contentWeftSHA)
 	if gotTree != wantTree {
 		t.Errorf("empty commit tree = %q; want it identical to the content commit's tree %q (the overwrite is benign because both resolve to the same weft state)", gotTree, wantTree)
 	}
@@ -533,12 +542,12 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 // reports false, demonstrating the "read, then check SHAExists" consumer idiom snapshotWarpSHA's
 // own doc comment describes, in executable form.
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
-	warpPath := newPlainWarpRepo(t)
-	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	weftFixture := hubforge.NewHub(t, ".")
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeWeft())
 
-	baseWarpSHA := currentSHA(t, warpPath)
-	danglingWarpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.WeftPath, "will be rewritten away", "raddle")
+	baseWarpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	danglingWarpSHA, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeWeft(), "will be rewritten away", "raddle")
 
 	// Rewrite warp history so danglingWarpSHA no longer resolves: reset back
 	// to the base commit, then force git to genuinely forget the orphaned
@@ -547,14 +556,14 @@ func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing
 	gitkit.MustRun(t, warpPath, "git", "reset", "--hard", baseWarpSHA)
 	expireAndPruneUnreachable(t, warpPath)
 
-	got, err := f.snapshotWarpSHA("raddle")
+	got, err := fabricengine.SnapshotWarpSHAForTest(f, "raddle")
 	if err != nil {
 		t.Fatalf("snapshotWarpSHA() error = %v; want nil (a dangling Warp-SHA is returned raw, not an error)", err)
 	}
 	if got != danglingWarpSHA {
 		t.Errorf("snapshotWarpSHA() = %q; want the dangling SHA %q returned raw", got, danglingWarpSHA)
 	}
-	if f.warp.SHAExists(got) {
+	if fabricengine.WarpForTest(f).SHAExists(got) {
 		t.Errorf("Warp.SHAExists(%q) = true; want false (the warp commit was rewritten away)", got)
 	}
 }
