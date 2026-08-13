@@ -25,6 +25,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -275,19 +276,22 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 			dirtiness: dirtyScopeTracked(),
 			force:     true,
 		}
-		exitCode, stderr, err := removeGitWorktree(rec, req, weftRepoRoot)
+		err := removeGitWorktree(rec, req, weftRepoRoot)
 		if err != nil {
-			pe.Error = fmt.Sprintf("git worktree remove: %v", err)
-			return false
-		}
-		if exitCode != 0 {
+			var gitErr *gitexec.GitError
+			if !errors.As(err, &gitErr) {
+				// git never ran, or the gate refused before it could: destroy nothing.
+				pe.Error = fmt.Sprintf("git worktree remove: %v", err)
+				return false
+			}
+
 			if !isRegisteredLinkedWorktreeIn(weftRepoRoot, weftPath) {
 				// The registration vanished between the ownership gate and here (a concurrent
 				// prune, an external `git worktree prune`). Report git's own reason and delete
 				// nothing: an unregistered path is never fabric's to remove.
 				pe.Error = fmt.Sprintf(
 					"git refused to remove weft worktree %q (git exit %d): %s; it is no longer a linked worktree of %s, so fabric will not delete the directory itself",
-					weftPath, exitCode, strings.TrimSpace(stderr), weftRepoRoot)
+					weftPath, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr), weftRepoRoot)
 				return false
 			}
 			fallbackReq := pathRequest{
@@ -298,7 +302,9 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 				dirtiness: dirtyScopeTracked(),
 			}
 			if removeErr := removePath(rec, fallbackReq); removeErr != nil {
-				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, exitCode, removeErr)
+				// The %d cites this worktree-remove call's exit code; the %v reports the removePath
+				// fallback's own failure — two failures in one string, not a duplicate of anything.
+				pe.Error = fmt.Sprintf("remove weft worktree %q failed (git exit %d); fallback cleanup also failed: %v", weftPath, gitErr.ExitCode, removeErr)
 				return false
 			}
 		}
