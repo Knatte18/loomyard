@@ -35,7 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -675,24 +675,22 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	}
 }
 
-// seedPersistentPreRunFixture returns a fresh warp-hub git fixture with
-// shuttle/reed/webster/batcher config seeded (batcher.yaml's raw content is
-// caller-supplied, so a test can override its active: key) and chdir'd
-// into the warp hub -- unlike every other test in this file, this one
-// drives Command()'s real PersistentPreRunE (never bypassing it with a
-// hand-built *websterCLI literal), since load-time batcher selection is
-// wired there (PersistentPreRunE, now via batcher.Active).
-func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) gitkit.WarpFixture {
+// seedPersistentPreRunFixture returns a fresh real hub with shuttle/reed/webster/batcher config
+// seeded (batcher.yaml's raw content is caller-supplied, so a test can override its active: key) and
+// chdir'd into the prime warp worktree -- unlike every other test in this file, this one drives
+// Command()'s real PersistentPreRunE (never bypassing it with a hand-built *websterCLI literal), since
+// load-time batcher selection is wired there (PersistentPreRunE, now via batcher.Active).
+func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) *hubforge.Hub {
 	t.Helper()
-	fixture := gitkit.CopyWarpHub(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedConfig(t, h, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
 		"webster": websterengine.ConfigTemplate(),
 		"batcher": batcherConfig,
 	})
-	t.Chdir(fixture.Hub)
-	return fixture
+	t.Chdir(h.PrimeWorktree())
+	return h
 }
 
 // TestPersistentPreRunE_UnknownBatcherFailsFast proves the load-time batcher selection
