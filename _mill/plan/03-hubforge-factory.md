@@ -172,6 +172,7 @@ No call site ever opts in or out, which is what makes the Win11 junction-removal
 - **Edits:**
   - `cmd/lyx/tierpurity_test.go`
   - `cmd/lyx/hermeticenv_test.go`
+  - `internal/gitkit/callerset_enforcement_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -180,6 +181,8 @@ No call site ever opts in or out, which is what makes the Win11 junction-removal
   Add the same token to `cmd/lyx/hermeticenv_test.go`'s git-spawning token list alongside `"gitkit.Copy"`, `"gitkit.MustRun"` and `"gitkit.SeedConfig"`, and update that file's header comment to say the fixture helpers now live in `gitkit` and `hubforge`.
   Do not add `hubforge.SeedConfig`/`hubforge.SeedFabricConfig` as separate tokens: both take a `*Hub` that only `NewHub` can produce, so the `hubforge.NewHub` token already covers every package that can reach them.
   Run both guards and confirm no package trips them — `internal/hubforge`'s own `hub_test.go` and `bench_test.go` are integration-tagged and its `testmain_test.go` calls `gitkit.HermeticGitEnv()`, so it satisfies both.
+  The new `"hubforge.NewHub"` token, run against the untagged suite, also trips `internal/gitkit/callerset_enforcement_test.go`: batch 2 wrote that file's doc comment and its failure message both naming `hubforge.NewHub` in prose (never as a real call), and the guard matches raw substrings, comments included.
+  Reword those two prose mentions (the file-header comment and `TestCopyRepoCallerSet_LyxcwdOnly`'s failure-message string) to break the literal substring — e.g. "hubforge's real-hub factory" — without losing the point being made, rather than adding an `allowedSpawners` entry: the mention is incidental prose, not scan data the guard needs to see, so rewording is more honest than allowlisting.
 - **Commit:** `test(lyx): add hubforge.NewHub to the tier-purity and hermetic guards`
 
 ## Batch Tests
