@@ -133,8 +133,9 @@ Batch-local decisions live in each batch file._
 
 ### Decision: deliberate-discards-migrate-as-discards
 
-- **Decision:** the four best-effort `worktree prune` discard sites (`prune.go` ×2, `reconcile.go`, `remove.go`) migrate to `_, _ = gitexec.Run(…)`.
-  Their `//nolint:errcheck` comments are deleted and each site gains its own comment stating why discarding is correct there.
+- **Decision:** the four best-effort `worktree prune` discard sites (`prune.go` ×2, `reconcile.go`, `remove.go`) migrate to `_, _ = gitexec.Run(…)`, and each gains its own comment stating why discarding is correct there.
+  Only `prune.go`'s two sites carry a `//nolint:errcheck` comment today, and those two are deleted;
+  the `reconcile.go` and `remove.go` sites already discard via the bare `_, _, _, _ =` form with no such comment, so they need the why-comment added and nothing removed.
   They are NOT `//gitexec:raw` sites and must not appear in the pinned map's counts.
 - **Rationale:** they use the checked form and discard its error;
   a raw marker would be a lie and would inflate the raw-site counts.

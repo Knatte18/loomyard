@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -20,4 +20,6 @@ discussion-fix-r5  '2026-08-13T14:18:03Z'
 discussed  '2026-08-13T14:18:03Z'
 planning  '2026-08-13T14:31:58Z'
 plan-fix-r1  '2026-08-13T14:42:01Z'
+plan-review-r2  '2026-08-13T14:48:54Z'
+plan-fix-r2  '2026-08-13T14:48:54Z'
 ```

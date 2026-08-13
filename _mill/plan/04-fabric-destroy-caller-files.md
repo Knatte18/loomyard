@@ -72,8 +72,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   Five of the six in `Add` are plain two-message merges taking `default-merge-rule`, except that the `rev-parse --verify refs/heads/<warp>` warp-branch existence probe is a mixed probe and takes the checked form with `errors.As` recovery: its exit path is an answer ("the branch already exists") while its exec path returns a real error, so recover with `var gitErr *gitexec.GitError` and treat only `errors.As(err, &gitErr)` as the answer, letting anything else return the error.
   The `worktree prune` site in `rollbackAdd` currently feeds `firstErr`;
   collapse it to `if err != nil` and delete the synthesised exit-code fallback, exactly as card 19 does for the sibling site.
-  Six paths in this file report the fixed, wrong cause `"cwd is not a valid git worktree"` for failures unrelated to the cwd.
-  Migrate them mechanically like any other site and leave those strings exactly as they are — a shape change does not remove a wrong cause, and rewriting them is a separate campaign this task does not open.
+  Every remaining site here is a plain two-message merge and needs no special handling beyond `default-merge-rule`.
+  Do not reword any of this file's error messages beyond what the merge itself requires — the wording at these sites was already settled per-site by an earlier campaign, and re-litigating it is out of scope.
 - **Commit:** `refactor(fabricengine): migrate add.go's call sites to the checked form`
 
 ### Card 21: migrate checkout.go's eight sites
@@ -107,7 +107,8 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:** Migrate the `gitexec.RunGit` site in `listWeftBranches` (`internal/fabricengine/cleanup.go`) to `gitexec.Run` as a plain two-message merge under `default-merge-rule`.
   Migrate the three best-effort `worktree prune` discards — two in `removeStalePair` (`internal/fabricengine/prune.go`) and one in `removeWarpWorktreeDir` (`internal/fabricengine/remove.go`) — to the form `_, _ = gitexec.Run(…)`.
-  Delete both `//nolint:errcheck` comments, which enforce nothing because this repo runs no `golangci-lint`, and give each of the three sites its own comment stating why discarding is correct there: a failed prune leaves a stale registration the next reconcile or prune re-reports, and it must not turn a completed removal into an error.
+  Delete the two `//nolint:errcheck` comments, which both sit on the `prune.go` pair and enforce nothing because this repo runs no `golangci-lint` — the `remove.go` site already discards via the bare `_, _, _, _ =` form and has no such comment to remove.
+  Give each of the three sites its own comment stating why discarding is correct there: a failed prune leaves a stale registration the next reconcile or prune re-reports, and it must not turn a completed removal into an error.
   These three are not raw sites and must never carry a `//gitexec:raw` marker — they use the checked form and drop its error, so a raw marker would be false and would inflate the pinned counts batch 8 asserts.
   Leave the shape-(D) executor call sites in both files exactly as batch 3 left them.
 - **Commit:** `refactor(fabricengine): migrate the remaining cleanup, prune, and remove sites`
