@@ -1,6 +1,6 @@
 // tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones
 // that run in every plain `go test`, without `-tags integration`/`smoke`/`scout`) perform no
-// expensive spawns — no gitexec.RunGit, no exec.Command/CommandContext, no gitkit.Copy* fixture-tree
+// expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit.Copy* fixture-tree
 // copy, and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
@@ -35,8 +35,9 @@ var allowedSpawners = map[string]string{
 	"cmd/lyx/ghguard_test.go":                  "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (GitHub Auth Invariant guard)",
 	"cmd/lyx/gitrepoboundary_test.go":          "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and names `gitexec.RunGit` in its own doc comment (gitrepo Client Boundary Invariant guard)",
 	"cmd/lyx/boardguard_test.go":               "contains `exec.Command` to resolve the module root via `go env GOMOD` (mirrors ghguard_test.go/gitrepoboundary_test.go's identical pattern, both already allowlisted here) — the Fabric Git Invariant board-guard",
-	"cmd/lyx/rawgitmutation_test.go":           "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)",
+	"cmd/lyx/rawgitmutation_test.go":           "contains the banned `gitexec.Run`/`exec.Command` token strings as its own scan data (Fabric Git Invariant raw-git-mutation guard)",
 	"cmd/lyx/destructiveguard_test.go":         "resolves its scan root via `go env GOMOD` (contains `exec.Command`) and carries its own banned destructive tokens as scan data (Fabric Destruction Chokepoint Invariant guard)",
+	"cmd/lyx/checkedcall_test.go":              "contains the banned `gitexec.RunGit`/`exec.Command` token strings as its own scan data and resolves its scan root via `go env GOMOD` (gitexec Checked-Call Invariant guard)",
 }
 
 // knownTierTags are the `//go:build` constraint substrings that mark a *_test.go file
@@ -55,7 +56,7 @@ var knownTierTags = []string{"integration", "smoke", "scout"}
 // hubforge.SeedConfig and hubforge.SeedFabricConfig need no separate entries — both take a *Hub that
 // only NewHub can produce, so this token already covers every package that can reach them.
 var bannedTokens = []string{
-	"gitexec.RunGit",
+	"gitexec.Run",
 	"exec.Command",
 	"gitkit.Copy",
 	"hubforge.NewHub",
