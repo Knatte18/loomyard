@@ -3,14 +3,14 @@
 // index_integration_test.go — integration tests for the fabric layer's git
 // wiring around the correspondence index: gitdir resolution, the
 // RecordCorrespondence/WeftSHAForWarpSHA round trip, and RebuildIndex's
-// trailer scan. Package-internal (not fabricengine_test) because it asserts
-// on weftGitDir, an unexported method. Uses gitkit.CopyWeft for the weft
+// trailer scan. Package fabricengine_test, driving weftGitDir through
+// export_test.go's WeftGitDirForTest shim. Uses gitkit.CopyWeft for the weft
 // side and a minimal, locally-built plain git repo for the warp side —
 // fabric's warp is just an ordinary warp repo, so these tests need none of
 // CopyWeft's upstream-tracking setup or CopyPaired's junction/portal wiring
 // on the warp side.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"errors"
@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
@@ -33,9 +34,9 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 		t.Fatalf("WriteFile: %v", err)
 	}
 	gitkit.MustRun(t, weftPath, "git", "add", ".")
-	msg := appendWarpSHATrailer("weft sync", warpSHA)
+	msg := fabricengine.AppendWarpSHATrailerForTest("weft sync", warpSHA)
 	gitkit.MustRun(t, weftPath, "git", "commit", "-q", "-m", msg)
-	return currentSHA(t, weftPath)
+	return fabricengine.CurrentSHAForTest(t, weftPath)
 }
 
 // TestWeftGitDir_ResolvesInsideWeftGitdir asserts that weftGitDir returns a path genuinely inside
@@ -44,11 +45,11 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	gitDir, err := f.weftGitDir()
+	gitDir, err := fabricengine.WeftGitDirForTest(f)
 	if err != nil {
 		t.Fatalf("weftGitDir() error = %v", err)
 	}
@@ -64,11 +65,11 @@ func TestWeftGitDir_ResolvesInsideWeftGitdir(t *testing.T) {
 func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	warpSHA := commitWarp(t, warpPath, "warp change 1")
+	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
 	weftSHA := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 1", warpSHA)
 
 	if err := f.RecordCorrespondence(warpSHA, weftSHA); err != nil {
@@ -89,14 +90,14 @@ func TestRecordAndLookupCorrespondence_RoundTrip(t *testing.T) {
 func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	warpSHA := commitWarp(t, warpPath, "warp change, never synced")
+	warpSHA := fabricengine.CommitWarpForTest(t, warpPath, "warp change, never synced")
 
-	if _, err := f.WeftSHAForWarpSHA(warpSHA); !errors.Is(err, ErrNoCorrespondence) {
-		t.Errorf("WeftSHAForWarpSHA() error = %v; want errors.Is(err, ErrNoCorrespondence)", err)
+	if _, err := f.WeftSHAForWarpSHA(warpSHA); !errors.Is(err, fabricengine.ErrNoCorrespondence) {
+		t.Errorf("WeftSHAForWarpSHA() error = %v; want errors.Is(err, fabricengine.ErrNoCorrespondence)", err)
 	}
 }
 
@@ -107,13 +108,13 @@ func TestWeftSHAForWarpSHA_NoEntryReturnsErrNoCorrespondence(t *testing.T) {
 func TestRebuildIndex_ReproducesTrailerHistory(t *testing.T) {
 	t.Parallel()
 
-	warpPath := newPlainWarpRepo(t)
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftFixture := gitkit.CopyWeft(t)
-	f := newFabric(t, warpPath, weftFixture.WeftPath)
+	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.WeftPath)
 
-	warpSHA1 := commitWarp(t, warpPath, "warp change 1")
+	warpSHA1 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 1")
 	weftSHA1 := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 1", warpSHA1)
-	warpSHA2 := commitWarp(t, warpPath, "warp change 2")
+	warpSHA2 := fabricengine.CommitWarpForTest(t, warpPath, "warp change 2")
 	weftSHA2 := commitWeftWithTrailer(t, weftFixture.WeftPath, "weft change 2", warpSHA2)
 
 	if err := f.RebuildIndex(); err != nil {
