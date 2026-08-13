@@ -8,20 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // TestSmokeDownReleasesServerBeforeReturning pins the down->up churn race.
 func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
@@ -55,12 +51,9 @@ func TestSmokeDownReleasesServerBeforeReturning(t *testing.T) {
 func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
@@ -106,12 +99,9 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
@@ -151,12 +141,9 @@ func TestSmokeDownLeavesNoTmuxOnSocket(t *testing.T) {
 func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
@@ -240,10 +227,7 @@ func TestSmokeRemoveReapsRemovedPaneChildProcesses(t *testing.T) {
 func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	tmuxPath := tmuxBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"reed": reedengine.ConfigTemplate(),
-	})
+	h := hubforge.NewHub(t, ".")
 	// Named "sibling", NOT "hub-b": real tmux's has-session/kill-session
 	// target resolution fuzzy-matches an unambiguous prefix against a
 	// live session when there is no exact name match — "hub" would
@@ -254,12 +238,12 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	// + `-s hub-b`, kill-session -t hub, then `has-session -t hub` still
 	// exits 0. A name with no shared prefix sidesteps the ambiguity
 	// entirely rather than relying on tmux's target-matching rules.
-	sibling := materializeSibling(t, fixture, "sibling")
+	sibling := materializeSibling(t, h, "sibling")
 
 	// Release BOTH worktree dirs before the framework's TempDir RemoveAll.
 	// Registered before the down cleanups and the chdirs so they run after them
 	// (LIFO) but before RemoveAll.
-	deferHubRelease(t, fixture.Hub)
+	deferHubRelease(t, h.PrimeWorktree())
 	deferHubRelease(t, sibling)
 
 	// Best-effort teardown nets: down each worktree from its own cwd even if an
@@ -270,7 +254,7 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 		RunCLI(&buf, []string{"down"})
 	})
 	t.Cleanup(func() {
-		_ = os.Chdir(fixture.Hub)
+		_ = os.Chdir(h.PrimeWorktree())
 		var buf bytes.Buffer
 		RunCLI(&buf, []string{"down"})
 	})
@@ -278,7 +262,7 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	launch := smokeReapLaunchCmd()
 
 	// --- worktree A: up + a live strand ---
-	mustChdir(t, fixture.Hub)
+	mustChdir(t, h.PrimeWorktree())
 	var out bytes.Buffer
 	if code := RunCLI(&out, []string{"up"}); code != 0 {
 		t.Fatalf("A up = %d; want 0, output: %s", code, out.String())
@@ -331,7 +315,7 @@ func TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive(t *testing.T) {
 	bPanePID := paneRootPID(t, tmuxPath, socket, sessionB, bPane)
 
 	// --- down in worktree A ---
-	mustChdir(t, fixture.Hub)
+	mustChdir(t, h.PrimeWorktree())
 	out.Reset()
 	if code := RunCLI(&out, []string{"down"}); code != 0 {
 		t.Fatalf("A down = %d; want 0, output: %s", code, out.String())
