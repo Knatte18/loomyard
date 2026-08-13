@@ -1,6 +1,6 @@
-// gitrepo.go defines the Repo type and its read/commit primitives: New, the shared run helper over
-// gitexec.RunGit, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit, ChangedFilesSince,
-// and SHAExists.
+// gitrepo.go defines the Repo type and its read/commit primitives: New, the run/runChecked pair
+// over gitexec.RunGit and gitexec.Run, CurrentSHA, StageAndCommit, CommitEmpty, StageAllAndCommit,
+// ChangedFilesSince, and SHAExists.
 
 package gitrepo
 
@@ -57,7 +57,15 @@ func New(path string) *Repo {
 
 // run executes a git subcommand against this Repo's checkout.
 func (r *Repo) run(args ...string) (stdout, stderr string, code int, err error) {
+	//gitexec:raw — the raw half of the gitrepo checked/raw pair, by design; each of its callers carries its own justification
 	return gitexec.RunGit(args, r.path)
+}
+
+// runChecked executes a git subcommand against this Repo's checkout and treats a non-zero exit as
+// a failure, returning *gitexec.GitError, recoverable via errors.As, whenever git ran and rejected
+// the command.
+func (r *Repo) runChecked(args ...string) (string, error) {
+	return gitexec.Run(args, r.path)
 }
 
 // CurrentSHA returns the SHA of HEAD, or ErrNoCommits if no commits exist.
@@ -92,34 +100,24 @@ func (r *Repo) StageAndCommit(msg string, files []string) (sha string, committed
 
 	addArgs := []string{"add", "--"}
 	addArgs = append(addArgs, files...)
-	_, stderr, code, err := r.run(addArgs...)
-	if err != nil {
-		return "", false, err
-	}
-	if code != 0 {
-		return "", false, fmt.Errorf("gitrepo: git add: %s", stderr)
+	if _, err := r.runChecked(addArgs...); err != nil {
+		return "", false, fmt.Errorf("gitrepo: git add: %w", err)
 	}
 
 	diffArgs := append([]string{"diff", "--cached", "--quiet", "--"}, files...)
-	_, stderr, code, err = r.run(diffArgs...)
-	if err != nil {
-		return "", false, err
-	}
-	switch code {
-	case 0:
+	_, diffErr := r.runChecked(diffArgs...)
+	var gitErr *gitexec.GitError
+	switch {
+	case diffErr == nil:
 		return "", false, nil
-	case 1:
+	case errors.As(diffErr, &gitErr) && gitErr.ExitCode == 1:
 	default:
-		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
+		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %w", diffErr)
 	}
 
 	commitArgs := append([]string{"commit", "-m", msg, "--"}, files...)
-	_, stderr, code, err = r.run(commitArgs...)
-	if err != nil {
-		return "", false, err
-	}
-	if code != 0 {
-		return "", false, fmt.Errorf("gitrepo: git commit: %s", stderr)
+	if _, err := r.runChecked(commitArgs...); err != nil {
+		return "", false, fmt.Errorf("gitrepo: git commit: %w", err)
 	}
 
 	sha, err = r.CurrentSHA()
@@ -137,24 +135,19 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 	_, err = r.CurrentSHA()
 	switch {
 	case err == nil:
-		_, stderr, code, runErr := r.run("diff", "--cached", "--quiet")
-		if runErr != nil {
-			return "", runErr
-		}
-		switch code {
-		case 0:
-		case 1:
+		_, diffErr := r.runChecked("diff", "--cached", "--quiet")
+		var gitErr *gitexec.GitError
+		switch {
+		case diffErr == nil:
+		case errors.As(diffErr, &gitErr) && gitErr.ExitCode == 1:
 			return "", ErrIndexNotEmpty
 		default:
-			return "", fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
+			return "", fmt.Errorf("gitrepo: git diff --cached --quiet: %w", diffErr)
 		}
 	case errors.Is(err, ErrNoCommits):
-		stdout, stderr, code, runErr := r.run("ls-files", "--cached")
-		if runErr != nil {
-			return "", runErr
-		}
-		if code != 0 {
-			return "", fmt.Errorf("gitrepo: git ls-files --cached: %s", stderr)
+		stdout, lsErr := r.runChecked("ls-files", "--cached")
+		if lsErr != nil {
+			return "", fmt.Errorf("gitrepo: git ls-files --cached: %w", lsErr)
 		}
 		if strings.TrimSpace(stdout) != "" {
 			return "", ErrIndexNotEmpty
@@ -163,12 +156,9 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 		return "", err
 	}
 
-	_, stderr, code, err := r.run("commit", "--allow-empty", "-m", msg)
+	_, err = r.runChecked("commit", "--allow-empty", "-m", msg)
 	if err != nil {
-		return "", err
-	}
-	if code != 0 {
-		return "", fmt.Errorf("gitrepo: git commit --allow-empty: %s", stderr)
+		return "", fmt.Errorf("gitrepo: git commit --allow-empty: %w", err)
 	}
 
 	sha, err = r.CurrentSHA()
@@ -182,32 +172,22 @@ func (r *Repo) CommitEmpty(msg string) (sha string, err error) {
 // Return semantics mirror StageAndCommit: ("", false, nil) when nothing to commit, otherwise the
 // new HEAD SHA with committed=true.
 func (r *Repo) StageAllAndCommit(msg string) (sha string, committed bool, err error) {
-	_, stderr, code, err := r.run("add", "-A")
-	if err != nil {
-		return "", false, err
-	}
-	if code != 0 {
-		return "", false, fmt.Errorf("gitrepo: git add -A: %s", stderr)
+	if _, err := r.runChecked("add", "-A"); err != nil {
+		return "", false, fmt.Errorf("gitrepo: git add -A: %w", err)
 	}
 
-	_, stderr, code, err = r.run("diff", "--cached", "--quiet")
-	if err != nil {
-		return "", false, err
-	}
-	switch code {
-	case 0:
+	_, diffErr := r.runChecked("diff", "--cached", "--quiet")
+	var gitErr *gitexec.GitError
+	switch {
+	case diffErr == nil:
 		return "", false, nil
-	case 1:
+	case errors.As(diffErr, &gitErr) && gitErr.ExitCode == 1:
 	default:
-		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %s", stderr)
+		return "", false, fmt.Errorf("gitrepo: git diff --cached --quiet: %w", diffErr)
 	}
 
-	_, stderr, code, err = r.run("commit", "-m", msg)
-	if err != nil {
-		return "", false, err
-	}
-	if code != 0 {
-		return "", false, fmt.Errorf("gitrepo: git commit: %s", stderr)
+	if _, err := r.runChecked("commit", "-m", msg); err != nil {
+		return "", false, fmt.Errorf("gitrepo: git commit: %w", err)
 	}
 
 	sha, err = r.CurrentSHA()
@@ -279,24 +259,16 @@ func (r *Repo) CheckoutDetached(sha string) error {
 	if !validSHA(sha) {
 		return ErrInvalidSHA
 	}
-	_, stderr, code, err := r.run("checkout", "--detach", sha)
-	if err != nil {
-		return err
-	}
-	if code != 0 {
-		return fmt.Errorf("gitrepo: git checkout --detach %s: %s", sha, stderr)
+	if _, err := r.runChecked("checkout", "--detach", sha); err != nil {
+		return fmt.Errorf("gitrepo: git checkout --detach %s: %w", sha, err)
 	}
 	return nil
 }
 
 // RestoreBranch moves HEAD back onto ref, ending the detached-HEAD state.
 func (r *Repo) RestoreBranch(ref string) error {
-	_, stderr, code, err := r.run("checkout", ref)
-	if err != nil {
-		return err
-	}
-	if code != 0 {
-		return fmt.Errorf("gitrepo: git checkout %s: %s", ref, stderr)
+	if _, err := r.runChecked("checkout", ref); err != nil {
+		return fmt.Errorf("gitrepo: git checkout %s: %w", ref, err)
 	}
 	return nil
 }

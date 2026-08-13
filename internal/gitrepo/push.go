@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -40,39 +41,44 @@ func (r *Repo) Push() error {
 // git pull --rebase once and retries, aborting if rebase fails. Sets
 // push.autoSetupRemote=true so first push establishes tracking.
 func (r *Repo) pushWithRebaseRetry() error {
-	_, stderr, code, err := r.run("-c", "push.autoSetupRemote=true", "push")
-	if err != nil {
-		return err
-	}
-	if code == 0 {
+	_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+	if err == nil {
 		return nil
 	}
 
-	if !containsAny(stderr, rebaseRetryTriggers) {
-		return fmt.Errorf("gitrepo: git push: %s", stderr)
+	var gitErr *gitexec.GitError
+	if !errors.As(err, &gitErr) || !containsAny(gitErr.Stderr, rebaseRetryTriggers) {
+		return fmt.Errorf("gitrepo: git push: %w", err)
 	}
 
-	_, rebaseStderr, rebaseCode, err := r.run("pull", "--rebase")
-	if err != nil {
-		return err
-	}
-	if rebaseCode != 0 {
-		_, abortStderr, abortCode, abortErr := r.run("rebase", "--abort")
-		if abortErr != nil {
-			return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort could not run, repository may be left mid-rebase: %v)", rebaseStderr, abortErr)
+	_, rebaseErr := r.runChecked("pull", "--rebase")
+	if rebaseErr != nil {
+		// The pull --rebase exit branch is control flow, not a message: only a
+		// *GitError means git ran and rejected the rebase, which is what
+		// justifies attempting rebase --abort below. Anything else means git
+		// never ran, so an abort would be wrong and this returns immediately.
+		var rebaseGitErr *gitexec.GitError
+		if !errors.As(rebaseErr, &rebaseGitErr) {
+			return rebaseErr
 		}
-		if abortCode != 0 && !strings.Contains(strings.ToLower(abortStderr), "no rebase in progress") {
-			return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort failed, repository may be left mid-rebase: %s)", rebaseStderr, abortStderr)
+
+		_, abortErr := r.runChecked("rebase", "--abort")
+		var abortGitErr *gitexec.GitError
+		switch {
+		case abortErr == nil:
+		case errors.As(abortErr, &abortGitErr):
+			if !strings.Contains(strings.ToLower(abortGitErr.Stderr), "no rebase in progress") {
+				return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort failed, repository may be left mid-rebase: %s)", rebaseGitErr.Stderr, abortGitErr.Stderr)
+			}
+		default:
+			return fmt.Errorf("gitrepo: git pull --rebase: %s (and rebase --abort could not run, repository may be left mid-rebase: %v)", rebaseGitErr.Stderr, abortErr)
 		}
-		return fmt.Errorf("gitrepo: git pull --rebase: %s", rebaseStderr)
+		return fmt.Errorf("gitrepo: git pull --rebase: %s", rebaseGitErr.Stderr)
 	}
 
-	_, stderr, code, err = r.run("-c", "push.autoSetupRemote=true", "push")
+	_, err = r.runChecked("-c", "push.autoSetupRemote=true", "push")
 	if err != nil {
-		return err
-	}
-	if code != 0 {
-		return fmt.Errorf("gitrepo: git push (retry after rebase): %s", stderr)
+		return fmt.Errorf("gitrepo: git push (retry after rebase): %w", err)
 	}
 	return nil
 }
@@ -82,17 +88,18 @@ func (r *Repo) pushWithRebaseRetry() error {
 // Returns ErrPushRejected on divergence.
 // Lock-free.
 func (r *Repo) PushRebaseFree() error {
-	_, stderr, code, err := r.run("-c", "push.autoSetupRemote=true", "push")
-	if err != nil {
-		return err
-	}
-	if code == 0 {
+	_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
+	if err == nil {
 		return nil
 	}
-	if containsAny(stderr, rebaseRetryTriggers) {
+	// ErrPushRejected is a sentinel consumers match with errors.Is, so it is
+	// returned bare rather than wrapped with %w — a wrapper here would break
+	// internal/fabricengine/coalesce.go's identity check.
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) && containsAny(gitErr.Stderr, rebaseRetryTriggers) {
 		return ErrPushRejected
 	}
-	return fmt.Errorf("gitrepo: git push: %s", stderr)
+	return fmt.Errorf("gitrepo: git push: %w", err)
 }
 
 // containsAny reports whether s contains any substring from substrs.
@@ -128,14 +135,15 @@ func (r *Repo) PushCoalesced() error {
 // HasUnpushed reports whether HEAD is ahead of its upstream.
 // No upstream configured is treated as unpushed (true), so the first push still happens.
 // A spawn failure returns (false, err);
-// rev-list errors fold into (true, nil).
+// a non-zero git exit, recovered via errors.As(err, &gitErr), folds into (true, nil).
 func (r *Repo) HasUnpushed() (bool, error) {
-	stdout, _, code, err := r.run("rev-list", "--count", "@{u}..HEAD")
-	if err != nil {
-		return false, err
+	stdout, err := r.runChecked("rev-list", "--count", "@{u}..HEAD")
+	if err == nil {
+		return strings.TrimSpace(stdout) != "0", nil
 	}
-	if code != 0 {
+	var gitErr *gitexec.GitError
+	if errors.As(err, &gitErr) {
 		return true, nil
 	}
-	return strings.TrimSpace(stdout) != "0", nil
+	return false, err
 }

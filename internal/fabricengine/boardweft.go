@@ -10,8 +10,8 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -21,39 +21,36 @@ import (
 // worktree adopts it. Otherwise (genuinely empty weft remote), the worktree is created
 // as an orphan. Returns any git error.
 func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
-	_, stderr, exitCode, err := gitexec.RunGit(
+	// Mixed probe: the exit path answers "the branch is not there yet", the orphan-create path
+	// this function exists to support, so it is recovered via errors.As rather than merged into a
+	// single message.
+	_, err := gitexec.Run(
 		[]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + warpBranch},
 		weftRepoRoot,
 	)
+	branchExistsLocally := err == nil
 	if err != nil {
-		return fmt.Errorf("check for local weft branch %q: %w", warpBranch, err)
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) {
+			return fmt.Errorf("check for local weft branch %q: %w", warpBranch, err)
+		}
 	}
 
-	if exitCode == 0 {
-		_, adoptStderr, exitCode, err := gitexec.RunGit(
+	if branchExistsLocally {
+		if _, err := gitexec.Run(
 			[]string{"worktree", "add", boardPath, warpBranch},
 			weftRepoRoot,
-		)
-		if err != nil {
+		); err != nil {
 			return fmt.Errorf("add _board worktree on existing branch %q: %w", warpBranch, err)
-		}
-		if exitCode != 0 {
-			return fmt.Errorf("git worktree add %q %q failed (git exit %d): %s",
-				boardPath, warpBranch, exitCode, strings.TrimSpace(adoptStderr))
 		}
 		return nil
 	}
 
-	_, stderr, exitCode, err = gitexec.RunGit(
+	if _, err := gitexec.Run(
 		[]string{"worktree", "add", "--orphan", "-b", warpBranch, boardPath},
 		weftRepoRoot,
-	)
-	if err != nil {
+	); err != nil {
 		return fmt.Errorf("add orphan _board worktree on branch %q: %w", warpBranch, err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("git worktree add --orphan -b %q %q failed (git exit %d): %s",
-			warpBranch, boardPath, exitCode, strings.TrimSpace(stderr))
 	}
 	return nil
 }

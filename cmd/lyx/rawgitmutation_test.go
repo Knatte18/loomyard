@@ -1,14 +1,14 @@
 // rawgitmutation_test.go closes the Fabric Git Invariant's tracked gap by machine-checking that
 // internal/websterengine's production source never constructs a raw
-// gitrepo handle or calls gitexec.RunGit directly, beyond the one grandfathered read-only exemption
+// gitrepo handle or calls gitexec.Run directly, beyond the one grandfathered read-only exemption
 // this file names.
 // See CONSTRAINTS.md's Fabric Git Invariant (warp + weft) — the "Known gap, tracked" clause
 // internal/websterengine's migration onto internal/fabricengine's warp-only methods closes.
 //
-// The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.RunGit() — not per-verb
+// The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.Run() — not per-verb
 // method names: a verb-name ban would both flag the correctly-migrated consumer code (which
 // legitimately calls .CheckoutDetached(/.ResetHard( on the new FabricBisector/FabricResetter
-// interfaces) and miss the raw gitexec.RunGit( bypass that carries no method token at all.
+// interfaces) and miss the raw gitexec.Run( bypass that carries no method token at all.
 
 package main
 
@@ -34,7 +34,7 @@ var rawGitMutationScanPackages = []string{
 // rawGitMutationAllowlist.
 var rawGitMutationBannedTokens = []string{
 	"gitrepo.New(",
-	"gitexec.RunGit(",
+	"gitexec.Run(",
 }
 
 // rawGitMutationAllowlist is this guard's per-file allowlist (path module-
@@ -43,7 +43,7 @@ var rawGitMutationBannedTokens = []string{
 // out when the mutating paths in this package migrated onto
 // internal/fabricengine's warp-only methods.
 var rawGitMutationAllowlist = map[string]string{
-	"internal/websterengine/gitwrap.go": "grandfathered read-only exemptions — CurrentSHA via gitrepo.New and `status --porcelain` via gitexec.RunGit",
+	"internal/websterengine/gitwrap.go": "grandfathered read-only exemptions — CurrentSHA via gitrepo.New and `status --porcelain` via gitexec.Run, the checked entry point dirty now uses per the Shared Decision git-verification-via-gitrepo's carved-out exception",
 }
 
 // rawGitMutationMinScannedFiles is the vacuous-scan floor for this guard's
@@ -54,7 +54,7 @@ const rawGitMutationMinScannedFiles = 4
 
 // TestNoRawGitMutation_WebsterProductionSource walks internal/websterengine's non-test .go files
 // and fails if any of them (other than a rawGitMutationAllowlist entry) contains the raw substring
-// "gitrepo.New(" or "gitexec.RunGit(" — the two construction/call tokens a raw, fabric-bypassing
+// "gitrepo.New(" or "gitexec.Run(" — the two construction/call tokens a raw, fabric-bypassing
 // git mutation would carry.
 func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
 	// Skip cleanly rather than fail when the go toolchain is not on PATH,

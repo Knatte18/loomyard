@@ -20,9 +20,10 @@
 // Recording contract: every one of the eight executors below takes a leading `rec *Mutations`
 // parameter and appends its own primitive's entry itself, after the primitive observably changed
 // state — never before, and never for a no-op. A refusal records nothing, since nothing happened;
-// removeGitWorktree and deleteBranch record only when the underlying git command both returned a
-// nil error AND exited zero, since a nonzero exit with a nil error is reachable and would otherwise
-// claim a destruction that never occurred. The parameter is explicit, never a request-type field,
+// removeGitWorktree and deleteBranch record only when the underlying git command returned a nil
+// error, since a non-nil error — whether git ran and rejected the command or could not be run at all
+// — would otherwise claim a destruction that never occurred.
+// The parameter is explicit, never a request-type field,
 // because a missing struct field is a silent zero value the compiler accepts while a missing
 // parameter does not compile — this slice exists because a record was silently dropped, so the
 // mechanism that turns dropping it into a build failure is the one this file uses.
@@ -676,14 +677,15 @@ func removePath(rec *Mutations, req pathRequest) error {
 }
 
 // removeGitWorktree is the executor for the git worktree remove primitive: it runs the pipeline,
-// then runs git worktree remove [--force] from repoDir. It returns git's own exit code and stderr
-// rather than swallowing them, because three of its four call sites build distinct error messages
-// from both.
-// It appends KindWorktreeRemoved to rec only when err is nil AND exitCode is zero — a nonzero exit
-// with a nil error is reachable here and must never be recorded as a completed removal.
-func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) (exitCode int, stderr string, err error) {
+// then runs git worktree remove [--force] from repoDir.
+// It returns the resulting error unchanged rather than wrapping it, because every call site builds
+// its own message from it, recovering the exit code and stderr via errors.As(err, &gitErr) wherever
+// it needs them.
+// It appends KindWorktreeRemoved to rec only when err is nil — a non-nil error must never be recorded
+// as a completed removal.
+func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) error {
 	if checkErr := checkPathRequest(req); checkErr != nil {
-		return 0, "", checkErr
+		return checkErr
 	}
 
 	args := []string{"worktree", "remove"}
@@ -692,11 +694,11 @@ func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) (exitCod
 	}
 	args = append(args, req.target)
 
-	_, stderr, exitCode, err = gitexec.RunGit(args, repoDir)
-	if err == nil && exitCode == 0 {
+	_, err := gitexec.Run(args, repoDir)
+	if err == nil {
 		rec.Append(KindWorktreeRemoved, req.target, "")
 	}
-	return exitCode, stderr, err
+	return err
 }
 
 // removeLink is the executor for the fslink.Remove primitive: it runs the pipeline, then removes
@@ -742,20 +744,21 @@ func repointLink(rec *Mutations, what, container, target string, own pathOwnersh
 }
 
 // deleteBranch is the executor for the git branch -D primitive: it runs the pipeline, then runs git
-// branch -D from req.repoDir, with the same return shape and the same reason removeGitWorktree has
-// for keeping git's own exit code and stderr rather than swallowing them.
-// It appends KindBranchDeleted to rec via AppendRef, not Append, only when err is nil AND exitCode is
-// zero: a branch name is a ref, not a path, so it carries no hub-relative conversion.
-func deleteBranch(rec *Mutations, req branchRequest) (exitCode int, stderr string, err error) {
+// branch -D from req.repoDir.
+// It returns the resulting error unchanged rather than wrapping it, for the same reason
+// removeGitWorktree does: every call site builds its own message from it.
+// It appends KindBranchDeleted to rec via AppendRef, not Append, only when err is nil: a branch name
+// is a ref, not a path, so it carries no hub-relative conversion.
+func deleteBranch(rec *Mutations, req branchRequest) error {
 	if checkErr := checkBranchRequest(req); checkErr != nil {
-		return 0, "", checkErr
+		return checkErr
 	}
 
-	_, stderr, exitCode, err = gitexec.RunGit([]string{"branch", "-D", req.branch}, req.repoDir)
-	if err == nil && exitCode == 0 {
+	_, err := gitexec.Run([]string{"branch", "-D", req.branch}, req.repoDir)
+	if err == nil {
 		rec.AppendRef(KindBranchDeleted, req.branch, "")
 	}
-	return exitCode, stderr, err
+	return err
 }
 
 // createExclusiveDir creates path as a directory the gate can later authorise the removal of, and
@@ -779,24 +782,20 @@ func createExclusiveDir(rec *Mutations, path string) (createdToken, error) {
 }
 
 // createGitWorktree runs git worktree add with addArgs from repoDir and, on success, returns the
-// createdToken proving the gate itself added the worktree at target, plus git's own exit code and
-// stderr so the call site keeps building its existing error messages.
+// createdToken proving the gate itself added the worktree at target.
 //
-// The first return value is spelled with an explicit name (tok createdToken) rather than left
-// unnamed: an unnamed `createdToken` immediately followed by `exitCode int` would parse as one
-// name-group of type int, shadowing the type inside the function body so the token literal below
-// could not compile at all.
-//
-// On a nonzero exit or a spawn error it returns the zero token, which no ownership kind accepts — see
-// createExclusiveDir's doc comment for why createdToken is unforgeable outside this file.
+// On a git failure it returns the zero token, which no ownership kind accepts, alongside the
+// resulting error unwrapped — see createExclusiveDir's doc comment for why createdToken is
+// unforgeable outside this file, and errors.As(err, &gitErr) for how a call site recovers the exit
+// code and stderr it needs.
 // It appends KindWorktreeCreated to rec only on the success path that mints the token.
-func createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target string) (tok createdToken, exitCode int, stderr string, err error) {
-	_, stderr, exitCode, err = gitexec.RunGit(addArgs, repoDir)
-	if err != nil || exitCode != 0 {
-		return createdToken{}, exitCode, stderr, err
+func createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target string) (createdToken, error) {
+	_, err := gitexec.Run(addArgs, repoDir)
+	if err != nil {
+		return createdToken{}, err
 	}
 	rec.Append(KindWorktreeCreated, target, "")
-	return createdToken{path: filepath.Clean(target), worktree: true}, exitCode, stderr, nil
+	return createdToken{path: filepath.Clean(target), worktree: true}, nil
 }
 
 // RemoveAll is an exported testability seam over the gate's own directory-removal primitive,

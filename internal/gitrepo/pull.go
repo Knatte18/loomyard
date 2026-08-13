@@ -16,6 +16,7 @@ import "fmt"
 // (pull_test.go pins that contract), so the reproduction pointer is what keeps a nonzero exit
 // diagnosable instead of a bare number.
 func (r *Repo) Pull() error {
+	//gitexec:raw — a non-zero exit here IS a failure, but folding git's stderr into the message would break pull_test.go's test-enforced no-`fatal:`-leak surface; the reproduction pointer stands in for the stderr.
 	_, _, code, err := r.run("pull", "--ff-only")
 	if err != nil {
 		return fmt.Errorf("gitrepo: pull --ff-only in %s: %w", r.path, err)
@@ -30,6 +31,7 @@ func (r *Repo) Pull() error {
 // Pull.
 // Errors follow Pull's style: repo path, exit code, and the reproducing command, never raw stderr.
 func (r *Repo) Fetch() error {
+	//gitexec:raw — a non-zero exit here IS a failure, but folding git's stderr into the message would break fetch_integration_test.go's test-enforced no-`fatal:`-leak surface; the reproduction pointer stands in for the stderr.
 	_, _, code, err := r.run("fetch")
 	if err != nil {
 		return fmt.Errorf("gitrepo: fetch in %s: %w", r.path, err)

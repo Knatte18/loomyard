@@ -7,8 +7,11 @@
 package gitrepo
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/gitexec"
 )
 
 // IsAncestor reports whether sha is an ancestor of ref via `git merge-base --is-ancestor`,
@@ -23,16 +26,14 @@ func (r *Repo) IsAncestor(sha, ref string) (bool, error) {
 		return false, ErrInvalidSHA
 	}
 
-	_, _, code, err := r.run("merge-base", "--is-ancestor", sha, ref)
-	if err != nil {
-		return false, fmt.Errorf("gitrepo: merge-base --is-ancestor %s %s in %s: %w", sha, ref, r.path, err)
-	}
-	switch code {
-	case 0:
+	_, err := r.runChecked("merge-base", "--is-ancestor", sha, ref)
+	var gitErr *gitexec.GitError
+	switch {
+	case err == nil:
 		return true, nil
-	case 1:
+	case errors.As(err, &gitErr) && gitErr.ExitCode == 1:
 		return false, nil
 	default:
-		return false, fmt.Errorf("gitrepo: merge-base --is-ancestor %s %s in %s: git exited %d", sha, ref, r.path, code)
+		return false, fmt.Errorf("gitrepo: merge-base --is-ancestor %s %s in %s: %w", sha, ref, r.path, err)
 	}
 }
