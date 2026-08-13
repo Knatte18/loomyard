@@ -56,7 +56,9 @@ batches:
     commit_sha: 40b2e512dc035a1929087f2d1675af40ba06d217
     verify_baseline_failures: []
   - name: outer-call-sites
-    state: pending
+    state: running
+    implementer_session: 67298108-874c-4c01-9322-7b6495420f80
+    start_sha: 7fc1fe4a22ef9f9b0d337088cc1aeeb0ab8fb89a
     verify_baseline_failures: []
   - name: fabric-destroy-caller-files
     state: pending
