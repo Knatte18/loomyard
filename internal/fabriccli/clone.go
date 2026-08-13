@@ -23,7 +23,7 @@ import (
 // commit and push, warp junction wiring, and per-worktree config reconciliation.
 //
 // It is the single wiring sequence shared by the cobra clone handler and
-// internal/fabricengine/fabrictest's hub factory; a second copy of this sequence anywhere is the
+// internal/hubforge's hub factory; a second copy of this sequence anywhere is the
 // drift this extraction exists to prevent.
 //
 // On error, the clone is left intact; the operator completes wiring with reconcile.

@@ -601,10 +601,10 @@ var fabricVocabularyOwners = map[string]bool{
 	"internal/gitkit":       true,
 	"internal/boardengine":  true,
 	configsyncOwnerDir:      true,
-	// internal/fabricengine/fabrictest is a directory of non-test .go files (the hub factory
-	// must be non-test to be importable across packages) that names fabric's own geometry, so
-	// it is an owner for the bare weft/warp rule the same as internal/fabricengine itself.
-	"internal/fabricengine/fabrictest": true,
+	// internal/hubforge is a directory of non-test .go files (the hub factory must be non-test
+	// to be importable across packages) that names fabric's own geometry, so it owns the bare
+	// weft/warp tokens the same way internal/fabricengine does.
+	"internal/hubforge": true,
 }
 
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the
@@ -614,9 +614,12 @@ var weftnameImportOwners = map[string]bool{
 	"internal/fabricengine": true,
 	"internal/fabriccli":    true,
 	"internal/gitkit":       true,
-	// internal/fabricengine/fabrictest imports weftname for the weft-suffix hostile input its
-	// hostile-input cells construct, so it is an owner for this narrower import rule too.
-	"internal/fabricengine/fabrictest": true,
+	// internal/hubforge is in the narrower weftname-import subset CONSTRAINTS.md's Fabric
+	// Vocabulary Invariant already names, alongside internal/fabricengine, internal/fabriccli
+	// and internal/gitkit -- this map is an allowlist of what may import weftname, not an
+	// assertion of what does, so this entry is correct even though hub.go imports no weftname
+	// identifier today.
+	"internal/hubforge": true,
 }
 
 // weftnameImportPath is the fully-qualified import path TestEnforcement_FabricVocabulary's

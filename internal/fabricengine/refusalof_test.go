@@ -84,8 +84,9 @@ func TestRefusalOf(t *testing.T) {
 }
 
 // TestCheck_RendersThreeSpellings pins the three Check constants' exact string spellings, since
-// fabrictest's own duplicate copy (batch 7) and destructiveRefusal.Error()'s composed message both
-// depend on them staying byte-identical.
+// this package's own live-state harness's duplicate copy (batch 7, the livestate_-prefixed package
+// fabricengine_test files) and destructiveRefusal.Error()'s composed message both depend on them
+// staying byte-identical.
 func TestCheck_RendersThreeSpellings(t *testing.T) {
 	tests := []struct {
 		name string

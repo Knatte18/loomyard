@@ -3,8 +3,8 @@
 // mutation_record_integration_test.go asserts the mutation record survives the two headline
 // mutated-then-errored paths at the engine boundary: a Remove that destroys the portal and launchers
 // before its own dirty pre-flight refuses, and an Add that fails partway and runs rollbackAdd.
-// Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or fabrictest
-// consumer actually has.
+// Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
+// package's own live-state harness consumer actually has.
 //
 // Package fabricengine_test to reuse newFabricFixture (reconcile_stale_registration_test.go) and the
 // broken-origin-remote failure injection gitkit.MustRun/TestAdd_GitFailureCarriesGitsOwnReason
