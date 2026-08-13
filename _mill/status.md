@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitkit leaf
+phase: approved-fabrictest dissolution
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -35,6 +35,7 @@ blocked  '2026-08-13T06:50:48Z'
 planned  '2026-08-13T06:56:36Z'
 implementing  '2026-08-13T07:02:52Z'
 approved-gitkit leaf  '2026-08-13T07:18:31Z'
+approved-fabrictest dissolution  '2026-08-13T07:32:23Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     commit_sha: ffcf226a3dc9cf306439658ff9d46f6cfc10fd0a
     verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: fabrictest dissolution
-    state: running
+    state: approved
     implementer_session: 3e2fd3df-1c0d-413a-abfa-e3c01e2ee5f4
     start_sha: 27dd30effdd8f1304b2b8ed9d915a7e123e64c52
+    commit_sha: e0f8744da6820fb917bd01e07ba5ae3724fb6005
     verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: hubforge factory
     state: pending
