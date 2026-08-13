@@ -41,8 +41,8 @@ func writeAnchor(t *testing.T, hub, anchor string) {
 func TestResolve_RootAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	root := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
 
 	base, err := lyxcwd.Resolve(root)
 	if err != nil {
@@ -82,8 +82,8 @@ func TestResolve_RootAnchor(t *testing.T) {
 func TestResolve_SubpathAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	root := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
 
 	base, err := lyxcwd.Resolve(root)
 	if err != nil {
@@ -124,8 +124,8 @@ func TestResolve_SubpathAnchor(t *testing.T) {
 func TestResolve_CwdOutsideAnchor(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	root := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
 
 	base, err := lyxcwd.Resolve(root)
 	if err != nil {
@@ -171,8 +171,8 @@ func TestResolve_CwdOutsideAnchor(t *testing.T) {
 func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	root := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
 
 	subDir := filepath.Join(root, "sub", "nested")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -207,8 +207,8 @@ func TestResolve_AnchorAbsentFallsBackToDot(t *testing.T) {
 func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	root := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
 
 	base, err := lyxcwd.Resolve(root)
 	if err != nil {
@@ -235,8 +235,8 @@ func TestResolveWorktree_SubpathAnchorNoGate(t *testing.T) {
 func TestResolve_StaleAnchorMarkerHardErrors(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	root := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	root := fix.Repo
 
 	base, err := lyxcwd.Resolve(root)
 	if err != nil {

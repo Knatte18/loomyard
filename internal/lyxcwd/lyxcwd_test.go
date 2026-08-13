@@ -22,8 +22,8 @@ import (
 func TestResolve_FromWorktreeRoot(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	hub := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	hub := fix.Repo
 
 	layout, err := lyxcwd.Resolve(hub)
 	if err != nil {
@@ -65,8 +65,8 @@ func TestResolve_FromWorktreeRoot(t *testing.T) {
 func TestResolve_FromSubdirectory(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	hub := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	hub := fix.Repo
 
 	// Create a subdirectory structure
 	subDir := filepath.Join(hub, "subdir", "nested")
@@ -88,8 +88,8 @@ func TestResolve_FromSubdirectory(t *testing.T) {
 func TestResolve_ForwardSlashNormalization(t *testing.T) {
 	t.Parallel()
 
-	fix := gitkit.CopyWarpHub(t)
-	hub := fix.Hub
+	fix := gitkit.CopyRepo(t)
+	hub := fix.Repo
 
 	// Call Resolve normally; both cwd and --show-toplevel output get normalized
 	layout, err := lyxcwd.Resolve(hub)

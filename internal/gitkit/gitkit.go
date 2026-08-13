@@ -254,7 +254,20 @@ func buildWeftOnly() (weftPath, bare string) {
 
 // Fixture structs for public API.
 
+// RepoFixture represents an isolated copy of the warp-hub template: a plain git repo with a bare
+// origin, never a hub.
+// It is the primitive repo fixture and is callable from internal/lyxcwd alone —
+// every other package takes a real hub from internal/hubforge instead;
+// see TestCopyRepoCallerSet_LyxcwdOnly.
+type RepoFixture struct {
+	Repo string
+	Bare string
+}
+
 // WarpFixture represents an isolated copy of the warp-hub template (hub + bare).
+//
+// Deprecated: WarpFixture is scheduled for deletion once the hub-shaped CopyWarpHub call sites
+// migrate to internal/hubforge.
 type WarpFixture struct {
 	Hub  string
 	Bare string
@@ -393,10 +406,13 @@ func copyDirRecursive(src string, dest string) error {
 	})
 }
 
-// CopyWarpHub returns an isolated copy of the warp-hub template.
+// CopyRepo returns an isolated copy of the warp-hub template: a plain git repo with a bare origin,
+// never a hub.
 // The copy is placed in tb.TempDir();
 // its origin URL is rewritten to point to the copied bare repository.
-func CopyWarpHub(tb testing.TB) WarpFixture {
+// It is the primitive repo fixture and is callable from internal/lyxcwd alone;
+// every other package takes a real hub from internal/hubforge instead.
+func CopyRepo(tb testing.TB) RepoFixture {
 	tb.Helper()
 
 	templateHub, templateBare := buildWarpHub()
@@ -421,9 +437,25 @@ func CopyWarpHub(tb testing.TB) WarpFixture {
 		tb.Fatalf("rewriteOriginURLInConfig: %v", err)
 	}
 
-	return WarpFixture{
-		Hub:  copiedHub,
+	return RepoFixture{
+		Repo: copiedHub,
 		Bare: copiedBare,
+	}
+}
+
+// CopyWarpHub returns an isolated copy of the warp-hub template, mapped onto the legacy WarpFixture
+// shape.
+//
+// Deprecated: use CopyRepo instead;
+// CopyWarpHub is scheduled for deletion once its hub-shaped call sites migrate to
+// internal/hubforge.
+func CopyWarpHub(tb testing.TB) WarpFixture {
+	tb.Helper()
+
+	fixture := CopyRepo(tb)
+	return WarpFixture{
+		Hub:  fixture.Repo,
+		Bare: fixture.Bare,
 	}
 }
 
