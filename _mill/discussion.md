@@ -134,8 +134,17 @@ Two further forcing functions: `internal/gitexec` is shared by every module that
   ```
 
   Sites where the exec-path message carries information the exit-path one lacks are read individually and the deviation noted in the commit.
+- **This rule presumes the exit branch is a *message*. Four decisions carve out the sites where it is not, and `/mill-go` must check each site against them before applying the rule:** `destroy-executors-are-re-signatured` shape (D) (the exit branch is control flow gating a destructive fallback), `merge-rule-at-non-error-string-sinks` (the sink is a `string`, so `%w` is unavailable), `prior-call-diagnostic-exception` (the message cites an earlier call's exit code or stderr), and `sentinel-sites-keep-their-sentinel` / `pushrebasefree-is-a-sniff-plus-sentinel-hybrid` (the branch returns a sentinel whose identity `errors.Is` consumers depend on).
 - Rationale: the exit-path message is the one written for the failure operators actually hit, and the returned error's own text now supplies what the exec-path message used to say. Stating the rule once stops the implementer re-deciding it at every site.
 - Rejected: leaving it to per-site judgement (roughly 50 identical decisions); an AST rewrite (`gofmt -r` rewrites expressions, not two statements with divergent bodies, and a tool that merged them would be making the editorial choice silently).
+
+### merge-rule-at-non-error-string-sinks
+
+- Decision: at a site whose failure sink is a plain `string` field rather than a returned `error`, the merged form is `%v` of the error, and the `(git exit %d)` fragment is dropped exactly as elsewhere. `%w` is not available at these sites and must not be reached for.
+- Sites: `internal/fabricengine/prune.go` (two assignments to `pe.Error`) and `internal/fabricengine/cleanup.go` (two assignments to `entry.Error`), all four built with `fmt.Sprintf`.
+- Rationale: `default-merge-rule` is written in terms of `fmt.Errorf` and `%w`, and read literally it does not say what to do where neither exists. `%w` in a `fmt.Sprintf` is not a compile error — it renders as `%!w(…)` — so an implementer following the rule mechanically produces a corrupted operator-visible string rather than a build failure.
+- These are report-entry fields consumed for display, not for `errors.Is`/`errors.As`, so nothing downstream needs the wrapped error's identity — which is why `%v` is sufficient rather than a signature change.
+- Rejected: widening the fields to `error` so `%w` applies (a change to two report structs and their consumers, for no gain to a display-only value); leaving the fragment in place at these sites since `%d` still works in a `Sprintf` (it would be the one place in the tree still rendering a bare exit code beside a message that already carries it, and the `prune.go` fallback-failure message that legitimately cites the exit code is covered by `prior-call-diagnostic-exception` instead).
 
 ### drop-the-exit-code-fragment
 
@@ -143,9 +152,12 @@ Two further forcing functions: `internal/gitexec` is shared by every module that
 - Rationale: `Run` deletes the binding the `%d` consumes, so leaving the fragment is both unfillable and a duplicate of what `GitError.Error()` renders. 34 production messages in the tree carry this fragment today; it is not covered by "`%s`-of-stderr becomes `%w`-of-error" and must be called out separately.
 - Rejected: keeping the fragment by reading `gitErr.ExitCode` (duplicates the error's own rendering at every site).
 
-### prior-exit-code-exception
+### prior-call-diagnostic-exception
 
-- Decision: a `%d` that cites a **prior** call's exit code is not a duplicate and is not dropped. `internal/fabricengine`'s `readBranch` is the one live instance: **two** of its downstream messages render the earlier `rev-parse --abbrev-ref HEAD` exit code — one inside the error belonging to the later `branch --show-current` call, and one inside the no-current-branch-set error. Both must keep the earlier code. Both calls migrate to the checked form; the first call's `*GitError` is recovered with `errors.As` and its `ExitCode` cited explicitly in the combined message.
+- Decision: a message that cites a **prior** call's exit code **or its stderr** is not a duplicate of the current error's own rendering, and is not dropped. Where the default rule would discard it, the prior call's `*GitError` is kept in scope and the fragment is filled from it.
+- **Two live instances, and the rule covers stderr as well as exit codes — the earlier draft named only the exit-code half:**
+  - `internal/gitrepo/push.go`, inside `pushWithRebaseRetry`: two messages about the **`rebase --abort`** outcome embed the **prior `pull --rebase` stderr** (`"gitrepo: git pull --rebase: %s (and rebase --abort could not run …: %v)"` and the `%s`/`%s` variant). The default rule applied to the abort call would drop `rebaseStderr` entirely, leaving an operator told only that an abort failed and nothing about the rebase that made an abort necessary. The migrated form keeps the `pull --rebase` call's own `*GitError` bound and renders `gitErr.Stderr` — or the error itself — in those two messages, exactly as today.
+  - `internal/fabricengine`'s `readBranch`: **two** of its downstream messages render the earlier `rev-parse --abbrev-ref HEAD` exit code — one inside the error belonging to the later `branch --show-current` call, and one inside the no-current-branch-set error. Both must keep the earlier code. Both calls migrate to the checked form; the first call's `*GitError` is recovered with `errors.As` and its `ExitCode` cited explicitly in the combined message.
 - Rationale: deleting that fragment would discard a second call's diagnostic rather than a duplicate of `GitError.Error()`. Migrating both keeps the combined diagnostic and leaves no raw site in a pure failure path.
 - Rejected: keeping the first call raw with a marker citing the combined message (simpler, but leaves a raw site in a path where every exit is a failure, which the marker's own justification wording cannot honestly claim).
 
@@ -237,6 +249,36 @@ Two further forcing functions: `internal/gitexec` is shared by every module that
 - Rationale: **this class did not exist when the design doc was written** — the destructive-chokepoint slice landed it afterwards. The executors deliberately propagate git's exit code and stderr so call sites build their own messages, which is the two-message split one level down from the call site. It is the same situation as `wrapProbeError`, and takes the same treatment. Leaving it would put the habit the change exists to break inside the chokepoint every destructive primitive now routes through.
 - Rejected: keeping the 3-tuple and re-deriving `exitCode`/`stderr` from `*GitError` inside each executor (zero call-site churn, but reintroduces the exact shape one level down); leaving the three raw with markers (their failure paths are genuine failures, so this is the "raw becomes legacy debt" outcome the verdict rejects).
 - Note for `/mill-plan`: the gate's own pipeline errors (`checkPathRequest` / `checkBranchRequest`, which return `*destructiveRefusal`) are returned **before** any git spawn and are unaffected. `errors.As(err, &refusal)` at call sites such as `rollbackSwitch` keeps working unchanged, because a refusal is still not a `*GitError`.
+
+**The nine executor call sites are NOT all plain merges. `default-merge-rule` does not apply to two of them, and applying it there would be a destructive-gate bypass.** The four shapes, classified from the code:
+
+| shape | sites | treatment |
+|---|---|---|
+| **(D) exit branch is control flow, not a message** | `remove.go` (`removeGitWorktree`), `prune.go` (`removeGitWorktree`) | **`errors.As`, never a merge** — see below |
+| (A) already unified as `err != nil \|\| exitCode != 0` | `weftwiring.go` ×2, `add.go` rollback ×2 (each behind `surfaceRefusal`) | collapses to `if err != nil`; the synthesised `fmt.Errorf("… failed with exit code %d", exitCode)` fallback disappears, since the branch now always has a real error to carry |
+| (B) plain two-message merge | `add.go` (`createGitWorktree`) | `default-merge-rule` as written |
+| (C) non-error string sink | `cleanup.go` (`deleteBranch` → `entry.Error`) | see `merge-rule-at-non-error-string-sinks` |
+| — | `checkout.go` (`deleteBranch` in `rollbackSwitch`) | already `if _, _, err := …; err != nil` with an `errors.As(&refusal)` handler; becomes `if err := …; err != nil`, otherwise unchanged |
+
+**Shape (D), stated as the rule:** at these two sites the old `exitCode != 0` branch is not a second message — it re-probes `isRegisteredLinkedWorktree` / `isRegisteredLinkedWorktreeIn` and, when the worktree is *still registered*, performs a **fallback destructive `removePath`** and returns success. The old `err != nil` branch bails without destroying anything. The migrated form must preserve that split exactly:
+
+```go
+if err := removeGitWorktree(rec, req, dir); err != nil {
+    var gitErr *gitexec.GitError
+    if !errors.As(err, &gitErr) {
+        // git never ran, or the gate refused before it could: bail, destroy nothing.
+        // (remove.go's existing *destructiveRefusal branch stays ahead of this, unchanged.)
+        return fmt.Errorf("run git worktree remove for %s: %w", target, err)
+    }
+    // git ran and refused — the fallback path, exactly as today.
+    if !isRegisteredLinkedWorktree(l, target) { … }
+    …removePath(rec, fallbackReq)…
+}
+```
+
+- Rationale: collapsing the two branches under the default rule has one of two outcomes, both wrong. Either the fallback removal is dropped, so `lyx fabric remove` and `prune` stop cleaning up a worktree git itself declined to remove; or the fallback runs on the exec-failure path too, and then an exec-level failure — or a `*destructiveRefusal` the gate raised *before git ran* — reaches a destructive primitive. The second is a Fabric Destruction Chokepoint Invariant violation reached by a message-merging rule, which is exactly the kind of silent widening the invariant exists to prevent.
+- `errors.As(err, &gitErr)` is the correct discriminator here precisely because of the `exec-failures-unwrapped` decision: it means "git ran and rejected this" and nothing else. This is the load-bearing consumer of that decision outside the predicate sites.
+- Rejected: keeping `removeGitWorktree` raw at these two sites so `exitCode` stays available (preserves the branch trivially, but leaves the destructive chokepoint on the raw form, which is where a bare-exit-code failure path is least acceptable); having the executor return a distinguished sentinel for "git refused" (a second discriminator beside `*GitError` doing the same job).
 
 ### error-constructing-helpers-are-re-signatured
 
@@ -366,7 +408,7 @@ New since the doc was written: `internal/fabricengine/destroy.go` holds three gi
 - **Mixed `rev-parse` probes** — checked + `errors.As`, per `rev-parse-probes-are-mixed-not-pure-predicates`.
 - **Bool-returning pure predicates** — raw with markers, per `bool-returning-predicates-stay-raw`.
 - **Content sniff** — `index.go`'s unborn-HEAD check.
-- **Prior-exit-code combined message** — `reconcile.go`'s `readBranch`.
+- **Prior-call diagnostic composed into a later call's message** — `reconcile.go`'s `readBranch` (prior exit code, two messages). The sibling instance lives in `internal/gitrepo/push.go` (prior stderr); see `prior-call-diagnostic-exception`.
 - **Error-constructing helper** — `warpprobe.go`'s `wrapProbeError`, 7 call paths collapsing to 4.
 - **Gate executors** — `destroy.go`'s `removeGitWorktree`, `deleteBranch`, `createGitWorktree`, with 8 call sites in `weftwiring.go`, `cleanup.go`, `add.go`, `checkout.go`, `remove.go`, `prune.go`.
 - **Best-effort discards** — the four `worktree prune` calls.
@@ -435,7 +477,7 @@ Discovered during discussion:
 
 - **Q:** Should `destroy.go`'s three gate executors (`removeGitWorktree`, `deleteBranch`, `createGitWorktree`), which return `(exitCode, stderr, err)` so their 8 call sites build their own messages, be re-signatured? **A:** Yes — re-signature to return `error`, merge at the call sites. This class did not exist when the design doc was written; it is `wrapProbeError` one level down and takes the same treatment.
 - **Q:** How do the three token guards learn about `gitexec.Run`? **A:** Replace the token with the shorter prefix `"gitexec.Run"` in all three. All three match by raw substring and their own header comments justify prefix matching; one token covers both entry points so no set can go half-updated.
-- **Q:** Where does the Checked-Call Invariant guard live and what does it scan? **A:** New `cmd/lyx/checkedcall_test.go`, walking all non-test `.go` under `internal/`, matching where the other cross-package token guards live.
+- **Q:** Where does the Checked-Call Invariant guard live and what does it scan? **A:** New `cmd/lyx/checkedcall_test.go`, walking all non-test `.go` under `internal/` **and `cmd/`**, matching where the other cross-package token guards live. See `the-checked-call-invariant` for why the walk covers `cmd/` even though zero production sites live there today.
 - **Q:** How detailed should the site inventory in this file be? **A:** Shapes, dispositions, and the regeneration queries — not a coordinate list. The implementer re-derives file:line at implementation time; the design doc's own acceptance bar is re-derivability, and 82 coordinates would be partly stale before `/mill-go` starts.
 - **Q:** One commit, or a batched DAG? **A:** One logical change, batched by `/mill-plan`. The branch squash-merges, so the design doc's "same commit" requirements are satisfied at merge.
 - **Q:** `ResetHard` — the design doc says checked, but `gitrepo/doc.go` documents deliberate stderr suppression. **A:** Checked, and delete the `doc.go` clause. **Operator's standing instruction: do not trust doc files; trust the code.** The code discards stderr and renders `git exited %d`; `reset_test.go` never asserts on `err.Error()`. Nothing pins the suppression — unlike `Pull`/`Fetch`, which three test assertions do pin.
@@ -452,5 +494,6 @@ Discovered during discussion:
 - **Q:** Marker token at `gitrepo`'s raw `r.run` sites? **A:** The same `//gitexec:raw — <why>` token. One invariant, one searchable token.
 - **Q:** Verification scope? **A:** `go build`, `go vet`, Tier 1 and Tier 2 per batch and again at the end. `fabricengine` and `gitrepo`'s real coverage is behind the `integration` tag.
 - **Q:** Adopt the derived 21-site `gitrepo` disposition table (3 raw, 18 checked)? **A:** Yes, as written — every row read from the code rather than from the design doc's inventory.
+- **Q:** (Discussion review r2, BLOCKING) At `remove.go` and `prune.go` the executors' `exitCode != 0` branch is control flow, not a second message — it re-probes registration and may perform a fallback destructive `removePath` — so the default merge rule would either drop the fallback or route an exec failure / `*destructiveRefusal` into a destructive primitive. **A:** Stated as its own rule: at an executor call site the old exit branch becomes `errors.As(err, &gitErr)`, with everything that is not a `*GitError` keeping the bail path. All nine executor call sites are now classified into four shapes in `destroy-executors-are-re-signatured`, and `default-merge-rule` carries an explicit list of the four decisions that carve out non-message exit branches.
 - **Q:** (Discussion review r1, BLOCKING) The invariant's wording covers the `gitexec.RunGit` call inside `gitrepo.run`'s own body, but the disposition table's "3 raw" does not — is `run`'s body a marked raw site, and what does the per-package map pin for `internal/gitrepo`? **A:** Yes, it is a marked raw site, and the map pins **4**. No carve-out in the guard — special cases inside guards are how guards rot. The "3 raw" figure counts `r.run` call sites among the twenty-one, a different unit, and is now labelled as such in both places.
 - **Q:** (Orchestrator review, `_mill/orch-review.md`) `PushRebaseFree` carries the same `containsAny(stderr, rebaseRetryTriggers)` sniff as `pushWithRebaseRetry`, but the disposition table listed it as a plain `checked`. **A:** Confirmed in the code and fixed. It is a fourth content-sniff site and a **hybrid** — sniff plus bare `ErrPushRejected`, which `internal/fabricengine/coalesce.go` consumes via `errors.Is` and `push_test.go` pins. The default merge rule applied here would have silently broken both. Added as its own decision, annotated in the table, and the sniff regeneration query now names why `containsAny(` must be in it. The same review's `readBranch` nuance — two downstream messages cite the earlier exit code, not one — is folded into that decision.
