@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -769,12 +770,14 @@ func claudeBinaryPath(t *testing.T) string {
 	return path
 }
 
-// materializeSibling clones the fixture's bare origin into a second worktree
-// alongside the primary hub and seeds reed config into it.
-func materializeSibling(t *testing.T, fixture gitkit.PairedFixture, name string) string {
+// materializeSibling clones h's warp bare origin into a second worktree alongside the primary hub
+// and seeds reed config into it.
+// The clone is a plain repo, not a hub, so it stays on gitkit.SeedConfig rather than
+// hubforge.SeedConfig — the third, ad-hoc "sibling" resolution of the SeedConfig triage.
+func materializeSibling(t *testing.T, h *hubforge.Hub, name string) string {
 	t.Helper()
-	sibling := filepath.Join(fixture.Container, name)
-	gitkit.MustRun(t, fixture.Container, "git", "clone", fixture.Bare, sibling)
+	sibling := filepath.Join(h.Container, name)
+	gitkit.MustRun(t, h.Container, "git", "clone", h.WarpBare, sibling)
 	gitkit.MustRun(t, sibling, "git", "config", "user.email", "test@test.com")
 	gitkit.MustRun(t, sibling, "git", "config", "user.name", "Test")
 	gitkit.SeedConfig(t, sibling, map[string]string{
