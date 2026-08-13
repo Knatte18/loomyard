@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
@@ -381,16 +382,15 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	// Deliberately skip gitkit.SeedConfig at fixture.WeftPrime — the point
-	// of this test is that no per-pair fabric.yaml exists, mirroring the new
-	// clone flow where only the repo-wide config is ever materialized.
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
+	// materializes ONLY the repo-wide fabric.yaml — no per-pair weft-base fabric.yaml exists anywhere
+	// in a real hub either — mirroring the new clone flow this test's own point is about, so no
+	// per-pair SeedConfig call is needed here.
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
+	l := h.Location
 	topology := fabricengine.NewTopology(fabricengine.Config{})
-	slug := filepath.Base(fixture.Hub)
+	slug := l.WorktreeName
 
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", lyxdirs.DotLyxDirName, "_extra"}); err != nil {
 		t.Fatalf("WireJunctions(primary): %v", err)

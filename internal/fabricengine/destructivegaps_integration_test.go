@@ -23,29 +23,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// seedRepoWideEscapeFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)
-// with a pathspec naming exactly escapeName, mirroring reconcile_stale_registration_test.go's
-// seedRepoWideFabricConfig and junction_pattern_integration_test.go's seedRepoWideExtraFabricConfig
-// for a caller-chosen pathspec entry rather than either of those fixed ones.
-func seedRepoWideEscapeFabricConfig(t testing.TB, hub, escapeName string) {
-	t.Helper()
-
-	boardDir := fabricengine.BoardDir(hub)
-	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
-		t.Fatalf("mkdir repo-wide config dir: %v", err)
-	}
-	configPath := configengine.ConfigFile(boardDir, "fabric")
-	content := "branch_prefix: \"\"\npathspec: " + escapeName + "\n"
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		t.Fatalf("write repo-wide fabric config: %v", err)
-	}
+// escapeFabricConfigYAML returns a repo-wide fabric.yaml override whose pathspec names exactly
+// escapeName, for a caller-chosen pathspec entry rather than a fixed one.
+func escapeFabricConfigYAML(escapeName string) string {
+	return "branch_prefix: \"\"\npathspec: " + escapeName + "\n"
 }
 
 // TestUnwireJunctions_RefusesLinkOutsideItsWorktree covers gap one's first reach point: the
@@ -96,17 +84,13 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 	t.Parallel()
 
 	const slug = "gap1-rollback-owner"
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	// The gate's ownedManagedBranch reaches primaryWeftBranch, which reads the branch checked out at
-	// _board — mirror newFabricFixture's setup (worktree add BEFORE seeding config into it).
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add", fabricengine.BoardDir(fixture.Layout.HubPath), "main")
-	seedRepoWideEscapeFabricConfig(t, fixture.Layout.HubPath, "../gap1-rollback-escape")
+	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
+	// materializes a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read
+	// succeeds against, so only the escape-specific pathspec override is seeded here.
+	h := hubforge.NewHub(t, ".")
+	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))
 
-	l := fixture.Layout
+	l := h.Location
 	// A configured branch prefix is what makes the warp branch this Add creates recognisable to the
 	// gate's ownedManagedBranch check, mirroring add_rollback_adopt_test.go's fixtures — the branch
 	// side of rollback is not what this test is about.

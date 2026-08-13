@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -94,24 +95,26 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 	}
 }
 
-// newFabricFixture returns a gitkit.CopyPairedLocal fixture seeded with a
-// fabric config and its weft prime on the suffixed primary branch. It also
-// materializes <Hub>/_board as a real weft worktree on the warp's unsuffixed
-// default branch — the shape CloneHub produces and the shape Cleanup reads the
-// repo's primary weft branch from — and the repo-wide config inside it via
-// seedRepoWideFabricConfig, so migrated reads succeed.
+// newFabricFixture returns a gitkit.PairedFixture-shaped view over a real hub built by
+// hubforge.NewHub. hubforge.NewHub's own CloneAndWire already produces the shape this fixture used to
+// hand-assemble from gitkit.CopyPairedLocal — the weft primary checked out on the suffixed primary
+// branch, a real _board worktree on the warp's unsuffixed default branch (the shape CloneHub produces
+// and the shape Cleanup reads the repo's primary weft branch from), and the repo-wide fabric.yaml
+// committed inside it — so this is now a thin field-mapping wrapper over the mapping table's
+// equivalents, kept only so the package's many newFabricFixture callers do not all need to change
+// their field-access pattern in this same batch.
 func newFabricFixture(t *testing.T) gitkit.PairedFixture {
 	t.Helper()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
-	gitkit.MustRun(t, fixture.WeftPrime, "git", "worktree", "add",
-		fabricengine.BoardDir(fixture.Layout.HubPath), "main")
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
-	return fixture
+	h := hubforge.NewHub(t, ".")
+	return gitkit.PairedFixture{
+		Container: h.Container,
+		Hub:       h.PrimeWorktree(),
+		Bare:      h.WarpBare,
+		WeftPrime: h.PrimeWeft(),
+		WeftBare:  h.WeftBare,
+		Layout:    h.Location,
+	}
 }
 
 // TestReconcile_MissingWeftRepoIsDiagnosedByName destroys the weft prime — the checkout holding the
