@@ -37,8 +37,12 @@ var (
 // stripped exactly as gitkit.initRepo/initBareRemote do, and every git spawn panics on failure rather
 // than swallowing it.
 //
-// The warp bare carries a root README and a backend/ subdirectory in the same commit, so one template
-// serves both anchors — a "."-anchored hub simply ignores backend/.
+// The warp bare carries a root README plus backend/, nested/ and wts/some-task/ subdirectories in
+// the same commit, so one template serves every anchor NewHub's callers request — an anchor not
+// carried here can never be requested from NewHub, since CloneHub's anchor-resolution step
+// hard-errors unless the requested Subpath already exists as a directory in the warp's committed
+// history at clone time.
+// A "."-anchored hub simply ignores the rest.
 // Two gotchas are encoded here and nowhere else.
 // First, `git init --bare` leaves HEAD on master while the branch just pushed is main, so the warp
 // bare needs its HEAD re-pointed after the push — gitkit's own bares never hit this, because
@@ -68,6 +72,25 @@ func buildBareTemplate() (warpBare, weftBare string) {
 			panic(err)
 		}
 		if err := os.WriteFile(filepath.Join(backendDir, "README"), []byte("hubforge backend anchor\n"), 0o644); err != nil {
+			panic(err)
+		}
+		// nested and wts/some-task/ exist purely so a caller can anchor a hub there:
+		// fabricengine.CloneHub's anchor-resolution step hard-errors unless the requested Subpath
+		// already exists as a directory in the warp's committed history at clone time, so any anchor
+		// this template does not carry here can never be requested from NewHub, no matter what a
+		// caller does after NewHub returns.
+		nestedDir := filepath.Join(scratch, "nested")
+		if err := os.Mkdir(nestedDir, 0o755); err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(filepath.Join(nestedDir, "README"), []byte("hubforge nested anchor\n"), 0o644); err != nil {
+			panic(err)
+		}
+		wtsTaskDir := filepath.Join(scratch, "wts", "some-task")
+		if err := os.MkdirAll(wtsTaskDir, 0o755); err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(filepath.Join(wtsTaskDir, "README"), []byte("hubforge wts/some-task anchor\n"), 0o644); err != nil {
 			panic(err)
 		}
 		commitAll(scratch, "hubforge: seed warp template")
