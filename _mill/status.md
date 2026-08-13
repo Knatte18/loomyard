@@ -84,6 +84,8 @@ batches:
     commit_sha: 58436304a238dca7a6db58e0b5badc532310d6ff
     verify_baseline_failures: []
   - name: checked-call-invariant-and-docs
-    state: pending
+    state: running
+    implementer_session: c4757495-2763-4479-82e9-541926fa9bcd
+    start_sha: 163f4032c9a384058c470b3e7a9edaf74f20a7a1
     verify_baseline_failures: []
 ```
