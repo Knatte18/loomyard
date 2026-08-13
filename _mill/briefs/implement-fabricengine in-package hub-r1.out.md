@@ -1,0 +1,10 @@
+{"status":"success","commit_sha":"ebd7b3934dbe28e7a88c38d6de795c0c869b2047","session_id":"dedf8497-38b3-4e8e-8f6e-99e090dc99e0","cards_done":[63,64,65,66]}
+
+Summary: 4 of 4 cards committed (cards 63, 64, 65 committed with real content; card 66 is Commit: none and its verification steps were performed this turn). All work is on branch `lyxtest-real-hubs`, pushed to origin.
+
+Files touched:
+- `/home/hanf/Code/loomyard/wts/lyxtest-real-hubs/internal/fabricengine/hook_test.go` — flipped to `package fabricengine_test`, migrated 4 `gitkit.CopyWarpHub` + 2 `gitkit.CopyPairedLocal` sites onto `hubforge.NewHub(t, ".")`, and fixed a real-hub behavior difference (weft prime already sits on `WeftBranchName("main")` via `CloneAndWire`, so the old explicit checkout that recreated that branch was removed and replaced with an assertion via the package-local `currentBranchName` helper).
+- `/home/hanf/Code/loomyard/wts/lyxtest-real-hubs/internal/fabricengine/warplayout_test.go` — flipped to `package fabricengine_test`, migrated its 1 `gitkit.CopyWarpHub` site onto `hubforge.NewHub(t, ".")`, and strengthened the fast-path assertion using `fabricengine.HubReservedNames()` since a real hub now has `_board`/`_portals`/`_launchers` at the same directory level the old fixture left empty.
+- `/home/hanf/Code/loomyard/wts/lyxtest-real-hubs/internal/fabricengine/export_test.go` — added `HookSentinelForTest` and `WarpLayoutForForTest` aliases, both consumed.
+
+Verification: `go vet -tags integration ./...` clean; `go test -tags integration ./internal/fabricengine/...` passes in full (52s); `TestCopyRepoCallerSet_LyxcwdOnly` passes; card 66's grep checks confirm no `gitkit.CopyPaired/CopyPairedLocal/CopyWeft/CopyWarpHub/CopyRepo` call sites remain in the two migrated files. Note (flagged for visibility, not fixed): the pre-existing `gitkit.CopyWeft` call inside `export_test.go`'s `newCommitFixture`, introduced by batch 9 for files that permanently stay `package fabricengine`, is outside this batch's Edits scope and was left untouched per the "never edit files outside this batch's declared scope" rule.
