@@ -13,18 +13,22 @@
 // contract, and the verdict parse against a real engine, never judge
 // quality.
 //
-// This file stays in package treadleengine (not an external _test package)
-// because runCircling and judgeInputs are unexported — the same
-// package-local Shuttle-seam surface a future round-runner adapter (e.g.
-// perchengine's) drives. Follows the internal/burlerengine/smoke_round_test.go
-// conventions otherwise: opt-in via -tags smoke, skipped when no claude
-// binary resolves, poll-with-deadline waits only (via
-// shuttleengine.Runner.Run itself), and the orphaned-conhost teardown guard
-// against the fixture hub. The helpers here are reproduced (not imported)
-// from burlerengine's smoke file, per the smoke-files-are-self-contained
-// convention.
+// This file is a package treadleengine_test file, not an in-package test,
+// because internal/treadleengine sits inside internal/fabriccli's dependency
+// set: an in-package test importing internal/hubforge (which imports
+// fabriccli) would close a compile cycle. runCircling and judgeInputs are
+// unexported — the same package-local Shuttle-seam surface a future
+// round-runner adapter (e.g. perchengine's) drives — so this file drives
+// them through treadleengine/export_test.go's RunCirclingForTest and
+// JudgeInputsForTest shims instead. Follows the
+// internal/burlerengine/smoke_round_test.go conventions otherwise: opt-in
+// via -tags smoke, skipped when no claude binary resolves, poll-with-deadline
+// waits only (via shuttleengine.Runner.Run itself), and the orphaned-conhost
+// teardown guard against the fixture hub. The helpers here are reproduced
+// (not imported) from burlerengine's smoke file, per the
+// smoke-files-are-self-contained convention.
 
-package treadleengine
+package treadleengine_test
 
 import (
 	"bytes"
@@ -37,11 +41,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
 // smokePwshPath is the PowerShell 7 binary for the orphaned-conhost teardown probe.
@@ -204,13 +209,13 @@ func deferHubRelease(t *testing.T, hub string) {
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	claudeBinaryPath(t)
 
-	fixture := gitkit.CopyPaired(t)
-	gitkit.SeedConfig(t, fixture.Hub, map[string]string{
-		"shuttle": shuttleengine.ConfigTemplate(),
-		"reed":    reedengine.ConfigTemplate(),
-	})
-	deferHubRelease(t, fixture.Hub)
-	t.Chdir(fixture.Hub)
+	// shuttleengine.ConfigTemplate() and reedengine.ConfigTemplate() are each module's own plain
+	// registered config: fabriccli.CloneAndWire already reconciled default config for every
+	// registered module when NewHub built h, so seeding them again here would be a no-op duplicate
+	// (outcome 1 of the SeedConfig triage).
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
 		reedcli.RunCLI(&buf, []string{"down"})
@@ -228,8 +233,8 @@ func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	// (unambiguously worded so a real judge reads it as recurring, not the
 	// test's own convergence quality) recurs unchanged from round 1 to
 	// round 2.
-	round1Path := filepath.Join(fixture.Hub, "round-1-review.md")
-	round2Path := filepath.Join(fixture.Hub, "round-2-review.md")
+	round1Path := filepath.Join(h.PrimeWorktree(), "round-1-review.md")
+	round2Path := filepath.Join(h.PrimeWorktree(), "round-2-review.md")
 	recurring := `---
 verdict: BLOCKING
 findings:
@@ -248,21 +253,21 @@ The chair is red and the table is blue; they must match.
 		t.Fatalf("write round-2 fixture review: %v", err)
 	}
 
-	verdictPath := filepath.Join(fixture.Hub, "round-2-judge.md")
-	handoffPath := filepath.Join(fixture.Hub, "round-2-handoff.md")
+	verdictPath := filepath.Join(h.PrimeWorktree(), "round-2-judge.md")
+	handoffPath := filepath.Join(h.PrimeWorktree(), "round-2-handoff.md")
 
 	// Wire the real stack directly: perchengine never imports claudeengine
 	// itself, but this test is the caller and may.
-	reedCfg, err := reedengine.LoadConfig(fixture.Layout.AnchorPath(), "reed")
+	reedCfg, err := reedengine.LoadConfig(h.Location.AnchorPath(), "reed")
 	if err != nil {
 		t.Fatalf("load reed config: %v", err)
 	}
-	shuttleCfg, err := shuttleengine.LoadConfig(fixture.Layout.AnchorPath(), "shuttle")
+	shuttleCfg, err := shuttleengine.LoadConfig(h.Location.AnchorPath(), "shuttle")
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, fixture.Layout)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), fixture.Layout, shuttleCfg)
+	reedEngine := reedengine.New(reedCfg, h.Location)
+	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
 
 	// HandoffPath is REQUIRED input: the same judge call must write its
 	// maintained handoff alongside the verdict (the handoff-on-disk shared
@@ -270,7 +275,7 @@ The chair is red and the table is blue; they must match.
 	// top-level stencil marker — leaving it empty fails the fill before any
 	// spawn, which is exactly the silent fail-safe degrade this test exists
 	// to catch.
-	verdict, rationale, ok := runCircling(runner, "perch", judgeInputs{
+	verdict, rationale, ok := treadleengine.RunCirclingForTest(runner, "perch", treadleengine.JudgeInputsForTest{
 		Round:        2,
 		PriorReviews: []string{round1Path, round2Path},
 		VerdictPath:  verdictPath,
@@ -292,7 +297,7 @@ The chair is red and the table is blue; they must match.
 	if err != nil {
 		t.Fatalf("read judge verdict file: %v (runCircling returned verdict=%q rationale=%q)", err, verdict, rationale)
 	}
-	if _, _, err := ParseJudgeVerdict(content, framingCircling); err != nil {
+	if _, _, err := treadleengine.ParseJudgeVerdict(content, treadleengine.FramingCirclingForTest); err != nil {
 		t.Fatalf("judge verdict file failed to parse: %v; content:\n%s", err, content)
 	}
 	if strings.TrimSpace(rationale) == "" {
@@ -307,7 +312,7 @@ The chair is red and the table is blue; they must match.
 	if err != nil {
 		t.Fatalf("read judge handoff file: %v (the judge call must write the handoff alongside the verdict)", err)
 	}
-	if _, err := ParseHandoff(handoffContent); err != nil {
+	if _, err := treadleengine.ParseHandoff(handoffContent); err != nil {
 		t.Fatalf("judge handoff file failed to parse: %v; content:\n%s", err, handoffContent)
 	}
 }
