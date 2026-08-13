@@ -113,18 +113,30 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `CONSTRAINTS.md`
   - `docs/overview.md`
   - `docs/shared-libs/lyxcwd.md`
+  - `docs/sandbox-hub.md`
+  - `docs/sandbox-howto.md`
+  - `docs/reference/discussion-format.md`
+  - `docs/reference/tmux_scripting.md`
+  - `docs/research/scout-agent-usage-findings.md`
+  - `internal/reedengine/doc.go`
+  - `internal/scoutengine/doc.go`
+  - `manifest/designs/fabric-unified-view.md`
+  - `manifest/roadmap.md`
 - **Edits:**
   - `docs/shared-libs/README.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `docs/shared-libs/README.md`, correct the line describing `internal/gitexec` as the "windowless `RunGit` primitive", which names one entry point where there are now two: describe the pair and which is correct where, in one line matching the file's existing terse table style.
-  Then re-run the prose regeneration sweep rather than trusting this hand-list — grep for `RunGit`, `gitexec`, `exit code`, and `exitCode` across the markdown files and `doc.go` files under `docs/`, `manifest/`, and `internal/`, plus `CONSTRAINTS.md`, excluding the `_mill/` tree, and read every hit.
-  Correct any the change falsifies and leave the rest alone;
-  `docs/overview.md`'s module table describes `internal/gitexec` as "shared git operations", which stays true, and `docs/shared-libs/lyxcwd.md`'s import-cap statement is unaffected because the cap names the package, not the function.
-  Prose is the one inventory in this task with no compiler behind it, so a miss here survives silently — the sweep is the mechanism, the hand-list is only what it found today.
-  The `internal/gitrepo/doc.go` corrections and the `internal/fabricengine/destroy.go` executor godocs were already made in batches 2 and 3;
-  confirm them in the sweep rather than redoing them.
+  Then run the prose regeneration query rather than trusting a hand-list — grep for `RunGit`, `gitexec`, `exit code`, and `exitCode` across the markdown files and `doc.go` files under `docs/`, `manifest/`, and `internal/`, plus `CONSTRAINTS.md`, excluding the `_mill/` tree.
+  This card's `Context:` **is** that query's hit set as measured when the plan was written, so the query is run to confirm the set rather than to widen the read: read the hits inside the files this card already lists, and if the query returns a file not listed here, do not read it — report it as prose drift that appeared after planning, so it can be scoped as its own card.
+  Of the listed files, only `docs/shared-libs/README.md` is falsified by this change, which is why it is the card's sole `Edits:` entry.
+  Every other hit is either already corrected by an earlier batch — `internal/gitrepo/doc.go` in batch 2, `internal/fabricengine/destroy.go` in batch 3, `CONSTRAINTS.md` in card 35, `manifest/roadmap.md` in card 37 — or matches on an unrelated sense of the search terms and stays true: `docs/overview.md`'s module table says "shared git operations";
+  `docs/shared-libs/lyxcwd.md`'s import cap names the package, not the function;
+  `manifest/designs/fabric-unified-view.md` names `gitexec` only as a dependency;
+  and the five remaining files match "exit code" in senses that have nothing to do with git.
+  Confirm each of those rather than editing it.
+  Prose is the one inventory in this task with no compiler behind it, so a miss here survives silently — the query is what makes the confirmation checkable instead of assumed.
 - **Commit:** `docs(shared-libs): describe gitexec's two entry points`
 
 ### Card 37: complete the documentation lifecycle
