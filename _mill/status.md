@@ -6,6 +6,7 @@ slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'gitexec: add the checked entry point and migrate the call sites'
 task_description: |
   gitexec: add the checked entry point and migrate the call sites
@@ -34,19 +35,29 @@ implementing  '2026-08-13T15:14:25Z'
 ```yaml
 batches:
   - name: gitexec-checked-entry-point
-    state: pending
+    state: running
+    implementer_session: 4fbd83b2-7521-487e-be84-24d13ac74470
+    start_sha: a0ab68e150243a4dca289d05fc22ad072cd52482
+    verify_baseline_failures: []
   - name: gitrepo-checked-pair
     state: pending
+    verify_baseline_failures: []
   - name: fabric-destroy-executors
     state: pending
+    verify_baseline_failures: []
   - name: outer-call-sites
     state: pending
+    verify_baseline_failures: []
   - name: fabric-destroy-caller-files
     state: pending
+    verify_baseline_failures: []
   - name: fabric-probe-clone-reconcile
     state: pending
+    verify_baseline_failures: []
   - name: fabric-remaining-sites
     state: pending
+    verify_baseline_failures: []
   - name: checked-call-invariant-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
