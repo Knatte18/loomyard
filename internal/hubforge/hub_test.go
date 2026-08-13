@@ -11,13 +11,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"gopkg.in/yaml.v3"
 )
 
 // runGit runs a git subcommand in dir and returns its trimmed stdout, failing the test on a non-zero
@@ -145,5 +149,121 @@ func TestNewHub(t *testing.T) {
 				t.Errorf("h.PairLauncherDir(%s) = %s; want %s", slug, got, launcherDir)
 			}
 		})
+	}
+}
+
+// assertRealHub runs the shared TestNewHub_IsARealHub assertions against h: every path is sourced
+// through fabricengine's own name accessors — BoardDir, WiredNames — and lyxdirs/lyxcwd's own
+// exported names, never a hardcoded string, because a hardcoded string is precisely the invented
+// shape this whole task removes.
+func assertRealHub(t *testing.T, h *Hub) {
+	t.Helper()
+
+	boardInfo, err := os.Stat(h.BoardDir())
+	if err != nil {
+		t.Fatalf("_board missing at %s: %v", h.BoardDir(), err)
+	}
+	if !boardInfo.IsDir() {
+		t.Errorf("_board at %s: want a real directory, got mode %v", h.BoardDir(), boardInfo.Mode())
+	}
+
+	anchorMarker := filepath.Join(h.BoardDir(), lyxcwd.AnchorFileName)
+	if _, err := os.Stat(anchorMarker); err != nil {
+		t.Errorf("%s marker missing at %s: %v", lyxcwd.AnchorFileName, anchorMarker, err)
+	}
+
+	hubDotLyx := filepath.Join(h.Path, lyxdirs.DotLyxDirName)
+	if _, err := os.Stat(hubDotLyx); err != nil {
+		t.Errorf("hub-level %s missing at %s: %v", lyxdirs.DotLyxDirName, hubDotLyx, err)
+	}
+	isLink, err := fslink.IsLink(hubDotLyx)
+	if err != nil {
+		t.Errorf("fslink.IsLink(%s): %v", hubDotLyx, err)
+	} else if isLink {
+		t.Errorf("hub-level %s at %s: want a real directory, got a link", lyxdirs.DotLyxDirName, hubDotLyx)
+	}
+
+	names, err := fabricengine.WiredNames(h.BoardDir())
+	if err != nil {
+		t.Fatalf("fabricengine.WiredNames(%s): %v", h.BoardDir(), err)
+	}
+	for _, name := range names {
+		link := filepath.Join(h.PrimeWorktree(), h.Anchor, name)
+		isLink, err := fslink.IsLink(link)
+		if err != nil {
+			t.Errorf("fslink.IsLink(%s): %v", link, err)
+			continue
+		}
+		if !isLink {
+			t.Errorf("wired junction %s: want a link, got none", link)
+		}
+	}
+
+	fabricConfig := configengine.ConfigFile(h.BoardDir(), "fabric")
+	if _, err := os.Stat(fabricConfig); err != nil {
+		t.Errorf("repo-wide fabric.yaml missing at %s: %v", fabricConfig, err)
+	}
+
+	warpBinding := filepath.Join(h.BoardDir(), fabricengine.WarpBindingFileName)
+	if _, err := os.Stat(warpBinding); err != nil {
+		t.Errorf("weft:main warp-URL binding missing at %s: %v", warpBinding, err)
+	}
+}
+
+func TestNewHub_IsARealHub(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, ".")
+	assertRealHub(t, h)
+
+	if h.WeftBase != h.PrimeWeft() {
+		t.Errorf("h.WeftBase = %s; want it to equal h.PrimeWeft() = %s at the %q anchor", h.WeftBase, h.PrimeWeft(), ".")
+	}
+}
+
+func TestNewHub_BackendAnchor(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, "backend")
+	assertRealHub(t, h)
+
+	if h.WeftBase == h.PrimeWeft() {
+		t.Errorf("h.WeftBase = %s; want it to diverge from h.PrimeWeft() = %s at the %q anchor", h.WeftBase, h.PrimeWeft(), "backend")
+	}
+}
+
+// TestNewHub_ConfigMaterializedWithoutSeeding asserts that a freshly built hub already carries a
+// materialized config file for at least one registered module without any seeding call.
+// This is what licenses batches 4 through 10 to delete a SeedConfig call rather than retarget it, so
+// it is not optional colour.
+func TestNewHub_ConfigMaterializedWithoutSeeding(t *testing.T) {
+	t.Parallel()
+
+	h := NewHub(t, ".")
+
+	const module = "board"
+	template, ok := configreg.Template(module)
+	if !ok {
+		t.Fatalf("configreg.Template(%q): module not registered", module)
+	}
+
+	configPath := configengine.ConfigFile(h.Location.AnchorPath(), module)
+	got, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+	if len(got) == 0 {
+		t.Fatalf("%s: want non-empty content, got none", configPath)
+	}
+
+	var gotDoc, wantDoc any
+	if err := yaml.Unmarshal(got, &gotDoc); err != nil {
+		t.Fatalf("parse %s: %v", configPath, err)
+	}
+	if err := yaml.Unmarshal([]byte(template()), &wantDoc); err != nil {
+		t.Fatalf("parse %s's registered template: %v", module, err)
+	}
+	if !reflect.DeepEqual(wantDoc, gotDoc) {
+		t.Errorf("%s content = %#v; want it to match the registered %s template %#v", configPath, gotDoc, module, wantDoc)
 	}
 }
