@@ -19,6 +19,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
+// GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath, calling tb.Fatalf on
+// failure — non-empty output means the worktree has uncommitted changes (staged, unstaged, or
+// untracked).
+func GitStatusPorcelain(tb testing.TB, repoPath string) string {
+	tb.Helper()
+
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		tb.Fatalf("git status --porcelain in %s: %v", repoPath, err)
+	}
+	return string(out)
+}
+
 // MustRun runs a command in the specified directory, calling tb.Fatalf on failure.
 func MustRun(tb testing.TB, dir string, args ...string) {
 	tb.Helper()

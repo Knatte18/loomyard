@@ -1,12 +1,10 @@
-//go:build integration
-
-// hub.go builds fabrictest's real hub fixture: a sync.Once-cached warp/weft bare-repo template built
+// hub.go builds hubforge's real hub fixture: a sync.Once-cached warp/weft bare-repo template built
 // once per test binary, copied fresh per scenario via copyBares, and driven through
 // fabriccli.CloneAndWire by NewHub into a real, fully-wired fabric hub — junctions, repo-wide
 // fabric.yaml, and all — that a hostile-state cell can run a verb against.
 // The Hub type and its geometry accessors are the external interface batches 3-7 consume.
 
-package fabrictest
+package hubforge
 
 import (
 	"fmt"
@@ -22,26 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
-
-// GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath, calling tb.Fatalf on
-// failure — non-empty means the worktree has uncommitted changes (staged, unstaged, or untracked).
-// It is the movable half of the gitStatusPorcelain duplicate: the same body
-// internal/fabricengine/weftgit_exclude_test.go's own gitStatusPorcelain carried, widened from
-// *testing.T to testing.TB so states and cells can use it too.
-// internal/fabricengine/commitweftat_test.go carries a second, permanently stuck copy: that file is
-// in-package (package fabricengine), so importing fabrictest there would close the
-// fabricengine → fabrictest → fabricengine cycle.
-func GitStatusPorcelain(tb testing.TB, repoPath string) string {
-	tb.Helper()
-
-	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		tb.Fatalf("git status --porcelain in %s: %v", repoPath, err)
-	}
-	return string(out)
-}
 
 // bareTemplateOnce guards buildBareTemplate so the warp/weft bare pair is built exactly once per test
 // binary; warpBareTemplate and weftBareTemplate hold the resulting paths.
@@ -70,7 +48,7 @@ var (
 // candidate whose history looks warp-shaped — the warp bare, by contrast, must have content pushed.
 func buildBareTemplate() (warpBare, weftBare string) {
 	bareTemplateOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "fabrictest-bare-*")
+		tmpDir, err := os.MkdirTemp("", "hubforge-bare-*")
 		if err != nil {
 			panic(err)
 		}
@@ -81,17 +59,17 @@ func buildBareTemplate() (warpBare, weftBare string) {
 		}
 		initScratchRepo(scratch)
 
-		if err := os.WriteFile(filepath.Join(scratch, "README"), []byte("fabrictest warp template\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(scratch, "README"), []byte("hubforge warp template\n"), 0o644); err != nil {
 			panic(err)
 		}
 		backendDir := filepath.Join(scratch, "backend")
 		if err := os.Mkdir(backendDir, 0o755); err != nil {
 			panic(err)
 		}
-		if err := os.WriteFile(filepath.Join(backendDir, "README"), []byte("fabrictest backend anchor\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(backendDir, "README"), []byte("hubforge backend anchor\n"), 0o644); err != nil {
 			panic(err)
 		}
-		commitAll(scratch, "fabrictest: seed warp template")
+		commitAll(scratch, "hubforge: seed warp template")
 
 		warp := filepath.Join(tmpDir, "warp-bare")
 		initBareRepo(warp)
