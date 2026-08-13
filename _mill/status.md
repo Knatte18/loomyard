@@ -43,6 +43,8 @@ batches:
     commit_sha: 91adfef396449cf6498f8b058eb47d11a7471f4e
     verify_baseline_failures: []
   - name: test migration and guard
-    state: pending
+    state: running
+    implementer_session: 74b7ac37-0d3f-4622-88eb-abed22e34fa3
+    start_sha: e57255adb19a6a8e87605d2bf23afe9b8e0ead08
     verify_baseline_failures: []
 ```
