@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
@@ -42,4 +43,33 @@ func SeedConfig(tb testing.TB, h *Hub, configByModule map[string]string) {
 
 	gitkit.MustRun(tb, h.PrimeWeft(), "git", "add", ".")
 	gitkit.MustRun(tb, h.PrimeWeft(), "git", "commit", "-m", "hubforge: seed config")
+}
+
+// SeedFabricConfig writes an override for the repo-wide fabric.yaml into h's board and commits it
+// through fabricengine.NewBolt, matching what fabriccli.CloneAndWire itself does after
+// ReconcileFabricAt — the same NewBolt(res.BoardDir).Commit(...) call — so the fixture leaves the
+// board in the same state a real clone does.
+//
+// It writes to configengine.ConfigFile(h.BoardDir(), "fabric"), the repo-wide fabric config base,
+// matching configsync.ReconcileFabricAt's own boardDir argument.
+//
+// Leaving it uncommitted would be unsafe rather than merely untidy: h.BoardDir() is the weft:main
+// checkout the destruction gate's dirtiness check observes, so an uncommitted seed would silently
+// change verb outcomes in fabric's own live-state cells.
+func SeedFabricConfig(tb testing.TB, h *Hub, yaml string) {
+	tb.Helper()
+
+	boardDir := h.BoardDir()
+	if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+		tb.Fatalf("hubforge.SeedFabricConfig: mkdir config dir: %v", err)
+	}
+
+	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
+	if err := os.WriteFile(fabricConfigPath, []byte(yaml), 0o644); err != nil {
+		tb.Fatalf("hubforge.SeedFabricConfig: write %s: %v", fabricConfigPath, err)
+	}
+
+	if _, _, err := fabricengine.NewBolt(boardDir).Commit("hubforge: seed repo-wide fabric config", fabricengine.SyncOptions{}); err != nil {
+		tb.Fatalf("hubforge.SeedFabricConfig: commit: %v", err)
+	}
 }
