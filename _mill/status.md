@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-fabric-probe-clone-reconcile  '2026-08-13T15:52:14Z'
 approved-fabric-remaining-sites  '2026-08-13T15:57:04Z'
 approved-checked-call-invariant-and-docs  '2026-08-13T16:08:03Z'
 holistic-reviewing  '2026-08-13T16:08:33Z'
+holistic-fixing  '2026-08-13T16:13:19Z'
 ```
 
 ## Batches
