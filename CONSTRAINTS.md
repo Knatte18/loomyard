@@ -33,6 +33,10 @@ Fuller design/how-to lives in godoc and `docs/`.
 - The `"."` fallback applies to an ABSENT anchor only, never a stale one: a board carrying the pre-rename `.lyx-anchor` spelling (`lyxcwd.StaleAnchorFileName`) with no renamed marker beside it returns `ErrStaleAnchorMarker` from every resolver.
   `lyxcwd` is the single declarer of both marker names;
   fabric's clone-time guard aliases them rather than re-declaring the literals.
+- `lyxcwd.WithCwd(ctx, dir)` / `lyxcwd.CwdFrom(ctx)` are the context-carried per-call cwd-injection seam: a caller threads an explicit cwd through a call chain instead of every callee reading the process working directory directly.
+  The injected value must be absolute;
+  `WithCwd` panics otherwise. `CwdFrom` falls back to `Getwd()` when `ctx` carries no injected value, so `Getwd` stays the single raw `os.Getwd` site.
+  `context` is stdlib, so this seam does not affect the import cap below.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   and `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap.
 
@@ -152,7 +156,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   engine never imports cli or cobra.
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine.
   Skip the engine only for trivial wrappers or a throwaway proof-of-concept meant to be deleted.
-- **Enforced by** `cmd/lyx/drift_test.go`, `helptree_test.go`, `registration_test.go`, `longlist_test.go`.
+- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all eleven modules at compile time.
 
 ## Shuttle Provider-Seam Invariant
 
