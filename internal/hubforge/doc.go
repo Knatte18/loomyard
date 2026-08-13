@@ -16,6 +16,18 @@
 // A hub itself cannot be copied the same way its bares are, because its junctions carry absolute
 // targets that a plain directory copy would leave pointing at the wrong tree.
 //
+// Seeding contract: SeedConfig overrides one or more modules' config, writing into the anchor-joined
+// h.WeftBase and committing at the weft worktree root h.PrimeWeft().
+// SeedFabricConfig overrides the repo-wide fabric.yaml, writing into h.BoardDir() and committing
+// through fabricengine.NewBolt, matching what CloneAndWire itself does after ReconcileFabricAt.
+// Most former seeding sites need neither: fabriccli.CloneAndWire already runs
+// configsync.ReconcileAll and ReconcileFabricAt, so a real hub arrives with every registered module's
+// default config already materialized.
+//
+// Teardown contract: junctions are discovered by walking the hub root with fslink.IsLink, never by
+// slug, and removed with fslink.Remove — a tb.Cleanup registered before tb.TempDir()'s own cleanup
+// runs, so every junction is unwired before Go's os.RemoveAll ever walks into it.
+//
 // No package inside internal/fabriccli's dependency set may import hubforge — such tests use an
 // external *_test package or gitkit instead.
 // This is self-enforcing: the import would close a dependency cycle and fail to compile.

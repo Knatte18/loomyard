@@ -9,9 +9,8 @@
 // internal/gitkit/callerset_enforcement_test.go (TestCopyRepoCallerSet_LyxcwdOnly) — every other
 // package takes a real hub from internal/hubforge instead.
 // MustRun, SeedConfig, and HermeticGitEnv are unpinned; any package may call them.
-// CopyWarpHub, CopyPaired, CopyPairedLocal, and CopyWeft are transitional: they stay alive so the
-// tree keeps compiling while their call sites migrate onto internal/hubforge, and this task's
-// final batch deletes them.
+// gitkit hands out MustRun, SeedConfig, GitStatusPorcelain, HermeticGitEnv and the single primitive
+// fixture CopyRepo, which is callable from internal/lyxcwd alone.
 //
 // Leaf Invariant: internal/gitkit production code imports only stdlib, internal/lyxcwd,
 // internal/weftname, internal/configengine, and internal/lyxdirs, with internal/configreg and every
