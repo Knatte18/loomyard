@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabricengine in-package hub
+phase: approved-helper deletion
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-fabriccli  '2026-08-13T08:27:57Z'
 approved-fabricengine external  '2026-08-13T09:08:41Z'
 approved-fabricengine in-package weft  '2026-08-13T09:42:26Z'
 approved-fabricengine in-package hub  '2026-08-13T09:50:34Z'
+approved-helper deletion  '2026-08-13T10:17:11Z'
 ```
 
 ## Batches
@@ -111,9 +112,10 @@ batches:
     commit_sha: ebd7b3934dbe28e7a88c38d6de795c0c869b2047
     verify_baseline_failures: []
   - name: helper deletion
-    state: running
+    state: approved
     implementer_session: 3702e816-7176-4112-9f06-ecdc59995f72
     start_sha: f0d6caa6eb5e987a8983658abc7602cf60df10bc
+    commit_sha: 8a3694f042b739bc8a6a0ca4c40cb2c9e235af4b
     verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: docs
     state: pending
