@@ -29,18 +29,41 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
-// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at
-// fabricengine.BoardDir(hub) with a pathspec naming "_extra" instead of
-// fabricengine.ConfigTemplate()'s own default. RepoWiredNames-consuming
-// production code (Healthy, Reconcile, Status, Add) reads this file to decide
-// which optional junction it expects wired, so any test that wires "_extra"
-// explicitly via WireJunctions must also point RepoWiredNames at "_extra" for
-// that production code to agree with what is actually on disk.
+// resetWarpJunction removes an already-wired warp-side junction named name (if any) so a test can
+// exercise seedLyxJunction's real-directory-refusal, creation, or no-op-unwire path against a
+// genuinely unwired starting point, rather than observing the wiring hubforge.NewHub's CloneAndWire
+// already performed for _lyx.
+func resetWarpJunction(t *testing.T, l *lyxcwd.Location, slug, name string) string {
+	t.Helper()
+
+	link := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel, name)
+	if err := fslink.Remove(link); err != nil {
+		t.Fatalf("reset %s junction at %s: %v", name, link, err)
+	}
+	return link
+}
+
+// extraFabricConfigYAML is the repo-wide fabric.yaml override this file seeds wherever a case needs a
+// pathspec naming "_extra" instead of fabricengine.ConfigTemplate()'s own default.
+// RepoWiredNames-consuming production code (Healthy, Reconcile, Status, Add) reads this file to
+// decide which optional junction it expects wired, so any test that wires "_extra" explicitly via
+// WireJunctions must also point RepoWiredNames at "_extra" for that production code to agree with
+// what is actually on disk.
+// A hubforge.Hub-backed case seeds it via hubforge.SeedFabricConfig; the two cases still built on
+// newFabricFixture's gitkit.PairedFixture shape (migrated separately, in the batch's reconcile card)
+// seed it via seedRepoWideExtraFabricConfig below, which takes a bare hub path rather than a
+// *hubforge.Hub.
+const extraFabricConfigYAML = "branch_prefix: \"\"\npathspec: _extra\n"
+
+// seedRepoWideExtraFabricConfig overwrites the repo-wide fabric.yaml at fabricengine.BoardDir(hub)
+// with extraFabricConfigYAML. It is the bare-hub-path counterpart to hubforge.SeedFabricConfig, for
+// the two newFabricFixture-based cases in this file that do not yet hold a *hubforge.Hub.
 func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 
@@ -49,7 +72,7 @@ func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 		t.Fatalf("mkdir repo-wide config dir: %v", err)
 	}
 	configPath := configengine.ConfigFile(boardDir, "fabric")
-	if err := os.WriteFile(configPath, []byte("branch_prefix: \"\"\npathspec: _extra\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte(extraFabricConfigYAML), 0o644); err != nil {
 		t.Fatalf("write repo-wide fabric config: %v", err)
 	}
 }
@@ -90,10 +113,10 @@ func readExcludeLines(t *testing.T, l *lyxcwd.Location, slug string) []string {
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 	target := fabricengine.WeftLyxDirFor(l, slug)
 
 	// The weft-prime template pre-seeds _lyx/config/placeholder; remove the
@@ -136,15 +159,11 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
-	link := fabricengine.WarpLyxLink(l, slug)
+	l := h.Location
+	slug := l.WorktreeName
+	link := resetWarpJunction(t, l, slug, lyxdirs.LyxDirName)
 
 	// Seed a real, non-link directory at the warp junction path — the
 	// "created _lyx by hand" mistake this card's message must guide an
@@ -191,14 +210,10 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 
 	if err := fabricengine.WireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
 		t.Fatalf("WireJunctions: %v", err)
@@ -244,14 +259,17 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
+
+	// hubforge.NewHub's CloneAndWire already wires _lyx; unwire it once first so this test
+	// exercises the already-unwired no-op path against a genuinely unwired worktree, rather than
+	// UnwireJunctions's ordinary first-time removal of the pre-wired _lyx junction.
+	if _, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_extra"}); err != nil {
+		t.Fatalf("pre-unwire: %v", err)
+	}
 
 	result, err := fabricengine.UnwireJunctions(l, slug, []string{"_lyx", "_extra"})
 	if err != nil {
@@ -505,15 +523,11 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 			t.Run(j.name+"_"+tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				fixture := gitkit.CopyPairedLocal(t)
-				gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-					"fabric": fabricengine.ConfigTemplate(),
-				})
-				seedRepoWideExtraFabricConfig(t, fixture.Layout.HubPath)
-				gitkit.MustRun(t, fixture.WeftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
+				h := hubforge.NewHub(t, ".")
+				hubforge.SeedFabricConfig(t, h, extraFabricConfigYAML)
 
-				l := fixture.Layout
-				slug := filepath.Base(fixture.Hub)
+				l := h.Location
+				slug := l.WorktreeName
 				// Wire the full RepoWiredNames set, .lyx included: Healthy below reads
 				// RepoWiredNames(l) internally, and a .lyx junction absent on disk would report
 				// CauseJunctionMissing for .lyx before this subtest's own corruption is ever
@@ -681,14 +695,10 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	gitkit.SeedConfig(t, fixture.WeftPrime, map[string]string{
-		"fabric": fabricengine.ConfigTemplate(),
-	})
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 
 	// Wire both junctions once, then remove _extra only — _lyx stays fully
 	// healthy, _extra becomes the only missing junction.
@@ -737,11 +747,10 @@ func TestWireJunctions_UpgradesLyxOnlyWorktreeToBoth(t *testing.T) {
 func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
 	t.Parallel()
 
-	fixture := gitkit.CopyPairedLocal(t)
-	seedRepoWideFabricConfig(t, fixture.Layout.HubPath)
+	h := hubforge.NewHub(t, ".")
 
-	l := fixture.Layout
-	slug := filepath.Base(fixture.Hub)
+	l := h.Location
+	slug := l.WorktreeName
 
 	// Stand in for a hub wired before the narrowing: a legacy bare-name line already in the file.
 	excludePath := excludeFilePath(t, l, slug)
