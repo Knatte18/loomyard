@@ -165,6 +165,32 @@ func TestMustRun_Failure(t *testing.T) {
 	}
 }
 
+// TestCopyDirRecursive_RefusesSymlinks verifies that copyDirRecursive returns an error instead of
+// following or copying a symlink planted in the source tree.
+func TestCopyDirRecursive_RefusesSymlinks(t *testing.T) {
+	t.Parallel()
+
+	src := t.TempDir()
+	target := filepath.Join(src, "target.txt")
+	if err := os.WriteFile(target, []byte("target"), 0o644); err != nil {
+		t.Fatalf("WriteFile target: %v", err)
+	}
+
+	link := filepath.Join(src, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "dest")
+	err := copyDirRecursive(src, dest)
+	if err == nil {
+		t.Fatal("copyDirRecursive: expected error for symlink in source tree, got nil")
+	}
+	if !strings.Contains(err.Error(), "symlink not allowed") {
+		t.Errorf("copyDirRecursive error = %q; want it to mention symlink refusal", err.Error())
+	}
+}
+
 // TestSeedConfig verifies that SeedConfig writes config files and commits them.
 func TestSeedConfig(t *testing.T) {
 	t.Parallel()
