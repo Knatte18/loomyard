@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-08-13T13:19:32Z'
 discussion-fix-r6  '2026-08-13T14:33:07Z'
 discussed  '2026-08-13T14:33:07Z'
 planning  '2026-08-13T14:44:55Z'
+plan-fix-r1  '2026-08-13T14:53:02Z'
 ```

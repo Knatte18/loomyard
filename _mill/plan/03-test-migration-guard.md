@@ -170,7 +170,7 @@ a per-package subject would make the allowlist larger than the guarded set, whic
   The list carries exactly one allowlist entry, `internal/fabricengine/coalesce_integration_test.go`, with the reason `cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New("") against a non-git process cwd`.
   Document the growth rule in the file's doc comment: a file joins the subject set when it is migrated, never by default.
   Add a test proving the guard is not vacuous, mirroring how `cmd/lyx/tierpurity_test.go` carries its banned tokens as its own test data: assert the guard's matcher fires on a planted violation string and stays silent for the allowlisted file.
-  Add `cmd/lyx/cwdmutation_test.go` to `allowedSpawners` in `cmd/lyx/tierpurity_test.go` with a one-line reason, because the new file resolves its scan root via `go env GOMOD` and therefore contains `exec.Command` — the same reason four sibling guards on that map already carry.
+  Add `cmd/lyx/cwdmutation_test.go` to `allowedSpawners` in `cmd/lyx/tierpurity_test.go` with a one-line reason, because the new file resolves its scan root via `go env GOMOD` and therefore contains `exec.Command` — the same reason three sibling guards on that map already carry.
   In `CONSTRAINTS.md`'s Cwd Resolution Invariant, add a bullet naming `cmd/lyx/cwdmutation_test.go`, its two banned spellings, its named per-file subject set, its single allowlisted exemption, and the growth rule.
   Use semantic line breaks throughout the markdown edit.
 - **Commit:** `test(cmd/lyx): guard the migrated files against both chdir spellings`

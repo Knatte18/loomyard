@@ -3,7 +3,7 @@
 ```yaml
 task: Unblock t.Parallel on hub-fixture tests that currently t.Chdir
 slug: hubforge-parallel-chdir
-approved: false
+approved: true
 started: 20260813-143839
 parent: main
 root: ""

@@ -71,7 +71,7 @@ That file does not join batch 3's guard subject set, and its other chdir call si
   In both, replace the `filepath.Abs(…)` call with the same absolute-or-join rule: an already-absolute path becomes `filepath.Clean(path)`, a relative one becomes `filepath.Join(base, path)`.
   Neither function may fall back to the process cwd, so the `filepath.Abs` error branch disappears;
   keep both return signatures as `(scoutengine.Query, error)` so the six call sites need no restructuring, and update both doc comments, which currently state that resolution happens against the process cwd.
-  Pass the seam `cwd` as `base` at all six call sites: the two `buildQuery` closures (`:161` and `:163`, and `:291` and `:293`) and the direct `parseQuery(args[0])` at `:580`.
+  Pass the seam `cwd` as `base` at all five call sites: the two `buildQuery` closures (`:161` and `:163`, and `:291` and `:293`) and the direct `parseQuery(args[0])` at `:580`.
   Add `RunCLIIn` beside `RunCLI` at `:913` using the sentinel branch from card 6, and rewrite `RunCLI` as `return RunCLIIn("", out, args)`.
   In `internal/scoutcli/cli_test.go`, update the three existing call sites for the new signatures: `parseQuery(arg)` at `:219`, and `inFileQuery("internal/foo/bar.go", name)` at `:602`.
   Rewrite `TestInFileQuery_ResolvesRelativePathToAbsolute` at `:622-635` so it passes an explicit base instead of moving the process: delete its `t.Chdir(cwd)` call, keep `cwd := t.TempDir()` as the base value, call `inFileQuery(cwd, "relative/bar.go", "MyFunc")`, and keep the existing `filepath.Join(cwd, "relative/bar.go")` expectation exactly.
