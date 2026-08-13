@@ -259,18 +259,15 @@ func writeWarpFile(t *testing.T, warpPath, name, content string) {
 }
 
 // pushCall records one spawnDetachedPushFn invocation's arguments. WarpPath and WeftPath are
-// exported (unlike the type name) so a caller outside this package can read a *PushRecorderForTest's
-// recorded calls' fields without this package needing to export the pushCall/pushRecorder names
-// themselves — Go permits reading exported fields of an unexported type obtained from an exported
-// function, which is exactly the shape SwapPushRecorderForTest returns.
+// exported (unlike the type name) so a caller outside this package can read the value
+// SwapPushRecorderForTest returns' recorded calls' fields without this package needing to export the
+// pushCall/pushRecorder names themselves — Go permits reading exported fields of an unexported type
+// obtained from an exported function, and holding such a value via `:=` type inference, without ever
+// needing to spell the unexported type name.
 type pushCall struct {
 	WarpPath string
 	WeftPath string
 }
-
-// PushRecorderForTest re-exports pushRecorder's type identity for package fabricengine_test files
-// that hold a *PushRecorderForTest returned by SwapPushRecorderForTest.
-type PushRecorderForTest = pushRecorder
 
 // pushRecorder collects spawnDetachedPushFn invocations under a mutex.
 //
