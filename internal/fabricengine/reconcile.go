@@ -277,9 +277,9 @@ func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lyxcwd.Location) (War
 
 	// git remote get-url is read-only, so it falls outside the Fabric Git Invariant's
 	// mutating-warp-git rule even though it targets the warp worktree.
-	originOut, _, exitCode, err := gitexec.RunGit([]string{"remote", "get-url", "origin"}, l.WorktreePath())
+	originOut, err := gitexec.Run([]string{"remote", "get-url", "origin"}, l.WorktreePath())
 	origin := strings.TrimSpace(originOut)
-	if err != nil || exitCode != 0 || origin == "" {
+	if err != nil || origin == "" {
 		// An absent origin remote is a legitimate state (a synthetic test hub, a locally-initialised
 		// warp), not an error condition.
 		return WarpBindingOutcomeSkipped, ""
@@ -439,7 +439,7 @@ func (t *Topology) reconcileMissingWeft(
 		if weftRepoRoot, weftRepoRootErr := WeftRepoRoot(warpLayout); weftRepoRootErr == nil {
 			// Bookkeeping only: a failed prune leaves the stale registration the adopt below
 			// re-reports, and must not abort the repair.
-			_, _, _, _ = gitexec.RunGit([]string{"worktree", "prune"}, weftRepoRoot)
+			_, _ = gitexec.Run([]string{"worktree", "prune"}, weftRepoRoot)
 		}
 
 		if err := adoptWeftWorktree(warpLayout, weftPath, weftBranch); err != nil {
@@ -474,16 +474,11 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
-	_, adoptStderr, exitCode, err := gitexec.RunGit(
+	if _, err := gitexec.Run(
 		[]string{"worktree", "add", weftPath, branch},
 		weftRepoRoot,
-	)
-	if err != nil {
-		return fmt.Errorf("git worktree add: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("adopt weft worktree %q for branch %q failed (git exit %d): %s",
-			weftPath, branch, exitCode, strings.TrimSpace(adoptStderr))
+	); err != nil {
+		return fmt.Errorf("adopt weft worktree %q for branch %q: %w", weftPath, branch, err)
 	}
 	return nil
 }
@@ -510,16 +505,12 @@ func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, sl
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
 
-	parentWeftOut, parentWeftStderr, exitCode, err := gitexec.RunGit(
+	parentWeftOut, err := gitexec.Run(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		weftRoot,
 	)
 	if err != nil {
 		return fmt.Errorf("capture parent weft branch: %w", err)
-	}
-	if exitCode != 0 {
-		return fmt.Errorf("capture parent weft branch failed (git exit %d): %s",
-			exitCode, strings.TrimSpace(parentWeftStderr))
 	}
 	parentWeftBranch := strings.TrimSpace(parentWeftOut)
 
@@ -541,30 +532,36 @@ func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, sl
 // branch, so it is consulted as the fallback, and only a genuinely branch-less HEAD falls through
 // to an error.
 func readBranch(dir string) (string, error) {
-	out, _, exitCode, err := gitexec.RunGit(
+	out, err := gitexec.Run(
 		[]string{"rev-parse", "--abbrev-ref", "HEAD"},
 		dir,
 	)
-	if err != nil {
-		return "", fmt.Errorf("rev-parse: %w", err)
-	}
-	if exitCode == 0 {
+	if err == nil {
 		return strings.TrimSpace(out), nil
 	}
 
-	unbornOut, _, unbornExit, unbornErr := gitexec.RunGit(
+	// The first call's *GitError stays bound across the fallback, because both downstream messages
+	// below cite its exit code — this is the merge-rule-carve-outs "prior call" case, not a plain
+	// two-message merge.
+	var gitErr *gitexec.GitError
+	if !errors.As(err, &gitErr) {
+		return "", fmt.Errorf("rev-parse: %w", err)
+	}
+
+	unbornOut, unbornErr := gitexec.Run(
 		[]string{"branch", "--show-current"},
 		dir,
 	)
 	if unbornErr != nil {
-		return "", fmt.Errorf("branch --show-current: %w", unbornErr)
-	}
-	if unbornExit != 0 {
-		return "", fmt.Errorf("rev-parse exited %d and branch --show-current exited %d", exitCode, unbornExit)
+		var unbornGitErr *gitexec.GitError
+		if !errors.As(unbornErr, &unbornGitErr) {
+			return "", fmt.Errorf("branch --show-current: %w", unbornErr)
+		}
+		return "", fmt.Errorf("rev-parse exited %d and branch --show-current: %w", gitErr.ExitCode, unbornErr)
 	}
 	branch := strings.TrimSpace(unbornOut)
 	if branch == "" {
-		return "", fmt.Errorf("rev-parse exited %d and no current branch is set", exitCode)
+		return "", fmt.Errorf("rev-parse exited %d and no current branch is set", gitErr.ExitCode)
 	}
 	return branch, nil
 }
