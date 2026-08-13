@@ -55,8 +55,12 @@ func renderArg(arg string) string {
 	return arg
 }
 
-// RunGit runs a git command and returns stdout, stderr, and exit code.
-func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
+// runCore spawns git with args in cwd and captures its output.
+// A non-nil err means git could not be run at all (not found, permission
+// denied, cwd invalid, …); a non-zero git exit is reported as exitCode with
+// a nil err. RunGit and Run are both thin wrappers over this shared core
+// and never call each other.
+func runCore(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
 
@@ -66,15 +70,41 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 
 	proc.HideWindow(cmd)
 
-	err = cmd.Run()
+	runErr := cmd.Run()
 
-	exitCode = 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		exitCode = exitErr.ExitCode()
-		err = nil
-	} else if err != nil {
-		return "", "", -1, err
+	if exitErr, ok := runErr.(*exec.ExitError); ok {
+		return outBuf.String(), errBuf.String(), exitErr.ExitCode(), nil
+	} else if runErr != nil {
+		return "", "", -1, runErr
 	}
 
-	return outBuf.String(), errBuf.String(), exitCode, err
+	return outBuf.String(), errBuf.String(), 0, nil
+}
+
+// RunGit runs a git command and returns stdout, stderr, and exit code.
+func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
+	stdout, stderr, exitCode, err = runCore(args, cwd)
+	if err != nil {
+		return "", "", -1, err
+	}
+	return stdout, stderr, exitCode, nil
+}
+
+// Run executes a git command and treats a non-zero exit as a failure: it
+// returns *GitError, recoverable via errors.As, whenever git ran and
+// rejected the command. It returns the raw underlying error, never wrapped
+// in a GitError, when git could not be run at all — that distinction is
+// what makes errors.As(err, &gitErr) mean precisely "git ran and rejected
+// this". stdout is returned in every case where git actually ran, including
+// alongside a *GitError; it is empty on an exec-level failure only because
+// git never ran.
+func Run(args []string, cwd string) (string, error) {
+	stdout, stderr, exitCode, err := runCore(args, cwd)
+	if err != nil {
+		return "", err
+	}
+	if exitCode != 0 {
+		return stdout, &GitError{Args: args, Dir: cwd, ExitCode: exitCode, Stderr: stderr}
+	}
+	return stdout, nil
 }
