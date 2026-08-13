@@ -59,10 +59,10 @@ Example:
 		RunE: clihelp.GroupRunE,
 	}
 
-	// clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]
+	// clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]
 	var cloneCmd *cobra.Command
 	cloneCmd = &cobra.Command{
-		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] <weft-url> [<warp-url>]",
+		Use:   "clone [--reset] [--subpath <rel>] [--force-bootstrap] [--into <dir>] <weft-url> [<warp-url>]",
 		Short: "bootstrap a new hub, wiring the entire topology in one shot",
 		Long: `Clone two repositories into a new hub directory (<parent>/<warp-name>-HUB)
 and wire everything: the warp prime, weft prime, _board worktree, lyx-anchor
@@ -105,6 +105,11 @@ example one created with an auto-generated README), which the guard would
 otherwise refuse. It applies to exactly that situation: it is ignored in the
 one-argument form and whenever a binding is already recorded.
 
+Use --into <dir> to name the directory the new hub is created in, instead of
+the current working directory. A relative value resolves against the current
+working directory; the default, when --into is omitted, is the current
+working directory itself.
+
 The weft prime is immediately checked out onto its suffixed pairing (e.g.
 "main` + weftname.Suffix + `" for default branch "main") — fabric's
 uniform branch scheme applies from the very first pair. When the weft remote
@@ -122,12 +127,14 @@ activate junctions or config.
 
 Example:
   lyx fabric clone --subpath backend https://github.com/user/mono-weft https://github.com/user/mono
-  lyx fabric clone https://github.com/user/repo-weft`,
-		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+  lyx fabric clone https://github.com/user/repo-weft
+  lyx fabric clone --into ~/repos https://github.com/user/repo-weft`,
+		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			reset, _ := cloneCmd.Flags().GetBool("reset")
 			subpath, _ := cloneCmd.Flags().GetString("subpath")
 			forceBootstrap, _ := cloneCmd.Flags().GetBool("force-bootstrap")
-			return runCloneWithReset(out, args, reset, subpath, forceBootstrap)
+			into, _ := cloneCmd.Flags().GetString("into")
+			return runCloneWithReset(ctx, out, args, reset, subpath, forceBootstrap, into)
 		}),
 	}
 	cloneCmd.Flags().Bool("reset", false, "remove an existing hub before cloning (idempotent re-clone)")
@@ -137,6 +144,7 @@ Example:
 	// explicit --subpath . against a hub recorded at a real subpath was silently adopted instead of
 	// refused like every other disagreeing value.
 	cloneCmd.Flags().String("subpath", "", `anchor lyx at this subdirectory of the warp repo (default ".", the repo root)`)
+	cloneCmd.Flags().String("into", "", "directory the new hub is created in; a relative value resolves against the current working directory (default: the current working directory)")
 	cloneCmd.Flags().Bool("force-bootstrap", false, "bypass the weft-candidate guard when bootstrapping a brand-new weft remote")
 	cmd.AddCommand(cloneCmd)
 
