@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-small consumers
+phase: approved-reedcli
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-gitkit leaf  '2026-08-13T07:18:31Z'
 approved-fabrictest dissolution  '2026-08-13T07:32:23Z'
 approved-hubforge factory  '2026-08-13T07:46:27Z'
 approved-small consumers  '2026-08-13T08:03:57Z'
+approved-reedcli  '2026-08-13T08:10:57Z'
 ```
 
 ## Batches
@@ -69,9 +70,10 @@ batches:
     commit_sha: 1a267992ea30a163b3e8b31f32def52f19ec6830
     verify_baseline_failures: []
   - name: reedcli
-    state: running
+    state: approved
     implementer_session: 638feca1-b9ba-45e9-9dfa-2e1e94034174
     start_sha: e114ddc4538eba0d6d29dcc0b06b4eed6bc65b59
+    commit_sha: f80cb3f6f4701ce78f21701887cdbee254cbd8a1
     verify_baseline_failures: []
   - name: stuck packages
     state: pending
