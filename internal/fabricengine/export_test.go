@@ -484,3 +484,12 @@ var PathspecNamesForTest = pathspecNames
 func PartialCommitErrorWeftCommittedForTest(e *PartialCommitError) bool {
 	return e.weftCommitted
 }
+
+// HookSentinelForTest re-exports hookSentinel (production plumbing: hook.go), for hook_test.go's
+// assertions on the fabric-managed hook marker after its package flip to fabricengine_test.
+const HookSentinelForTest = hookSentinel
+
+// WarpLayoutForForTest re-exports warpLayoutFor (production plumbing: warplayout.go), for
+// warplayout_test.go's direct comparison of its spawn-free hub-sibling fast path against the
+// spawning lyxcwd.ResolveWorktree fallback after its package flip to fabricengine_test.
+var WarpLayoutForForTest = warpLayoutFor

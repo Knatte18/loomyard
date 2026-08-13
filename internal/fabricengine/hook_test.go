@@ -10,7 +10,7 @@
 // diverging it. The child-pair setup uses raw `git worktree add` rather than
 // fabricengine's own Add verb, for test-fixture simplicity.
 
-package fabricengine
+package fabricengine_test
 
 import (
 	"os"
@@ -19,8 +19,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
 // resolveCommonHooksDir returns the common git hooks directory for the repo
@@ -48,17 +49,15 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	f := gitkit.CopyWarpHub(t)
-	l, err := lyxcwd.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hub := h.PrimeWorktree()
 
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("first InstallPostCheckoutHook: %v", err)
 	}
 
-	hooksDir := resolveCommonHooksDir(t, f.Hub)
+	hooksDir := resolveCommonHooksDir(t, hub)
 	hookPath := filepath.Join(hooksDir, "post-checkout")
 
 	firstContent, err := os.ReadFile(hookPath)
@@ -67,7 +66,7 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	}
 
 	// Second install must be a no-op.
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("second InstallPostCheckoutHook: %v", err)
 	}
 
@@ -81,7 +80,7 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 	}
 
 	// The sentinel must appear exactly once (no duplication on re-install).
-	count := strings.Count(string(secondContent), hookSentinel)
+	count := strings.Count(string(secondContent), fabricengine.HookSentinelForTest)
 	if count != 1 {
 		t.Errorf("sentinel appears %d times after re-install; want exactly 1", count)
 	}
@@ -95,14 +94,12 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 
 	const userHookContent = "#!/bin/sh\necho user\n"
 
-	f := gitkit.CopyWarpHub(t)
-	l, err := lyxcwd.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hub := h.PrimeWorktree()
 
 	// Plant a user hook.
-	hooksDir := resolveCommonHooksDir(t, f.Hub)
+	hooksDir := resolveCommonHooksDir(t, hub)
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		t.Fatalf("mkdir hooks dir: %v", err)
 	}
@@ -112,7 +109,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	}
 
 	// First install — chains the user hook.
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("first InstallPostCheckoutHook: %v", err)
 	}
 
@@ -137,7 +134,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 	}
 
 	// Second install — must be idempotent (sentinel already present).
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("second InstallPostCheckoutHook: %v", err)
 	}
 
@@ -159,40 +156,39 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 	t.Parallel()
 
-	f := gitkit.CopyPairedLocal(t)
-	l, err := lyxcwd.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hub := h.PrimeWorktree()
+	weftPrime := h.PrimeWeft()
 
 	// Install the hook in the shared repo.
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
 	// Put the weft prime on the suffixed branch that pairs with warp "main"
 	// under fabric's uniform scheme — this is the in-sync state.
-	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", WeftBranchName("main"))
+	gitkit.MustRun(t, weftPrime, "git", "checkout", "-b", fabricengine.WeftBranchName("main"))
 
 	// Create a scratch branch in the warp prime so we have something to switch
 	// away from and back to "main".
-	gitkit.MustRun(t, f.Hub, "git", "checkout", "-b", "hook-prime-scratch")
+	gitkit.MustRun(t, hub, "git", "checkout", "-b", "hook-prime-scratch")
 
 	// Warp back to main while weft sits on "main-weft": in sync, no warning.
 	cmd := exec.Command("git", "checkout", "main")
-	cmd.Dir = f.Hub
+	cmd.Dir = hub
 	out, _ := cmd.CombinedOutput()
 	if strings.Contains(string(out), "fabric:") {
 		t.Errorf("unexpected fabric drift warning for in-sync suffixed prime state: %s", out)
 	}
 
 	// Diverge: move weft to a branch that is not the suffixed pairing.
-	gitkit.MustRun(t, f.WeftPrime, "git", "checkout", "-b", "hook-prime-weft-side")
+	gitkit.MustRun(t, weftPrime, "git", "checkout", "-b", "hook-prime-weft-side")
 
 	// Switch warp away and back to fire the hook again with weft diverged.
-	gitkit.MustRun(t, f.Hub, "git", "checkout", "hook-prime-scratch")
+	gitkit.MustRun(t, hub, "git", "checkout", "hook-prime-scratch")
 	cmd = exec.Command("git", "checkout", "main")
-	cmd.Dir = f.Hub
+	cmd.Dir = hub
 	out, _ = cmd.CombinedOutput()
 
 	if !strings.Contains(string(out), "fabric:") {
@@ -216,25 +212,24 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 
 	const slug = "hook-child-test"
 
-	f := gitkit.CopyPairedLocal(t)
-	l, err := lyxcwd.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+	hub := h.PrimeWorktree()
+	weftPrime := h.PrimeWeft()
 
 	// Create a child worktree pair directly via git worktree add — fabricengine's
 	// own Add verb lands in a later batch; this test only needs a warp/weft
 	// worktree pair on disk to exercise the hook script itself.
-	childWarp := WorktreePath(l, slug)
-	gitkit.MustRun(t, f.Hub, "git", "worktree", "add", childWarp, "-b", slug)
+	childWarp := h.PairWarpWorktree(slug)
+	gitkit.MustRun(t, hub, "git", "worktree", "add", childWarp, "-b", slug)
 
-	weftBranch := WeftBranchName(slug)
-	childWeft := WeftWorktreePath(l, slug)
-	gitkit.MustRun(t, f.WeftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
+	weftBranch := fabricengine.WeftBranchName(slug)
+	childWeft := h.PairWeftSibling(slug)
+	gitkit.MustRun(t, weftPrime, "git", "worktree", "add", childWeft, "-b", weftBranch)
 
 	// Install the hook (affects the shared common .git/hooks for the warp repo,
 	// which covers the warp prime and every warp child worktree).
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
@@ -276,11 +271,8 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 	t.Parallel()
 
-	f := gitkit.CopyWarpHub(t)
-	l, err := lyxcwd.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	hooksDir := resolveCommonHooksDir(t, l.WorktreePath())
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
@@ -297,7 +289,7 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 		t.Fatalf("chmod seeded user hook: %v", err)
 	}
 
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
@@ -337,11 +329,8 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
 	t.Parallel()
 
-	f := gitkit.CopyWarpHub(t)
-	l, err := lyxcwd.Resolve(f.Hub)
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%q): %v", f.Hub, err)
-	}
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
 
 	customHooksDir := filepath.Join(t.TempDir(), "custom-hooks")
 	if err := os.MkdirAll(customHooksDir, 0o755); err != nil {
@@ -353,7 +342,7 @@ func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
 		t.Fatalf("git config core.hooksPath: %v (%s)", err, out)
 	}
 
-	if err := InstallPostCheckoutHook(l); err != nil {
+	if err := fabricengine.InstallPostCheckoutHook(l); err != nil {
 		t.Fatalf("InstallPostCheckoutHook: %v", err)
 	}
 
@@ -361,7 +350,7 @@ func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hook not installed into core.hooksPath dir %q: %v", customHooksDir, err)
 	}
-	if !strings.Contains(string(installed), hookSentinel) {
+	if !strings.Contains(string(installed), fabricengine.HookSentinelForTest) {
 		t.Errorf("hook installed into core.hooksPath dir lacks the fabric sentinel; content:\n%s", installed)
 	}
 }
