@@ -90,7 +90,9 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   - `cmd/lyx/boardguard_test.go`
   - `cmd/lyx/tierpurity_test.go`
   - `internal/gitkit/leaf_enforcement_test.go`
-- **Creates:** none
+  - `internal/fabricengine/fabric_test.go`
+- **Creates:**
+  - `internal/fabricengine/gitsha_integration_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
@@ -132,6 +134,13 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   A fourth deviation, found while confirming card 70's `lyxtest` gate in advance: `internal/gitkit/leaf_enforcement_test.go`'s own doc comment named `lyxtest` by token — "feature packages' own tests import lyxtest, so a reverse import would close a test-build cycle" — a leftover from before `internal/hubforge` existed that batch 1 card 2's sweep never caught since it lives in `internal/gitkit` itself, not one of the files that sweep targeted.
   `internal/hubforge` is `lyxtest`'s replacement and closes the identical cycle (it imports `gitkit`), so the sentence is retargeted onto it.
   Added to this card's `Edits:` list for the same reason as the other three.
+
+  A fifth deviation, surfaced only by this card's own `go test -tags integration ./cmd/lyx/...` run (which no batch since batch 1/2/3 has exercised): `TestTierPurity_UntaggedTestsSpawnNothing` failed against five files.
+  Two are prose-only, fixed by rewording (`internal/configcli/configcli_test.go` and `internal/perchcli/cli_test.go` / `run_test.go`, all three already in this card's own edit set, whose replacement text had written the literal token `hubforge.NewHub` into an untagged file).
+  A third, `internal/fabricengine/fabric_test.go`, is a pre-existing batch-8 bug (its own untagged doc comment named `hubforge.NewHub` by token) that no earlier batch's `verify:` ever ran `cmd/lyx` tests to catch; reworded the same way.
+  The fourth and structurally different one: `internal/fabricengine/export_test.go` (untagged) carried three fixture helpers — `currentSHA`, `bareBranchSHA`, `commitMessageAt` (plus `commitWarp`, which calls `currentSHA`) — that spawn git directly via `os/exec.Command` to capture output, a pre-existing batch-8/9 bug for the same untested-gate reason.
+  Every caller of all four is integration-tagged, so they move, with their `ForTest` wrappers, into a new file, `internal/fabricengine/gitsha_integration_test.go` (`//go:build integration`), added to this card's `Creates:` list.
+  `export_test.go`'s own now-unused `os/exec` and `strings` imports are dropped.
 
   Finish by confirming `grep -rn 'CopyPaired\|CopyPairedLocal\|CopyWeft\|CopyWarpHub' --include=*.go internal cmd` is empty, which is card 70's third gate satisfied in advance.
 - **Commit:** `docs(test): retarget prose naming the retired fixture helpers`
