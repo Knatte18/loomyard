@@ -42,7 +42,9 @@ batches:
     commit_sha: 3050d8b5c203b38ac7f62cd281d85b3af5123d66
     verify_baseline_failures: []
   - name: gitrepo-checked-pair
-    state: pending
+    state: running
+    implementer_session: 83620bdd-0ab8-44e6-8d70-538e0428edee
+    start_sha: 476c782abcbdb1849dacab14c0c54c606d35f33b
     verify_baseline_failures: []
   - name: fabric-destroy-executors
     state: pending
