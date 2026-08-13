@@ -11,7 +11,7 @@ depends-on: [3]
 
 ## Batch Scope
 
-This batch migrates the nineteen `Copy*` sites and fifteen `SeedConfig` sites in the seven smallest consumer packages, smallest first, so the migration pattern is settled and reviewed before `reedcli`'s twenty sites and `fabricengine`'s eighty-two.
+This batch migrates the seventeen `Copy*` sites and fourteen `SeedConfig` sites in the seven smallest consumer packages, smallest first, so the migration pattern is settled and reviewed before `reedcli`'s twenty sites and `fabricengine`'s eighty-two.
 Every one of these packages sits **outside** `internal/fabriccli`'s dependency set, so their in-package test files may import `hubforge` directly — no file moves, no export shims.
 
 The pattern this batch establishes, and batches 5 through 10 repeat, is in `## Shared Decisions` in the overview: the fixture-field mapping table and the three-way `SeedConfig` triage.

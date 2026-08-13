@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-08-12T12:12:27Z'
 discussion-fix-r3  '2026-08-12T17:42:51Z'
 discussed  '2026-08-12T17:51:13Z'
 planning  '2026-08-12T18:19:43Z'
+plan-fix-r1  '2026-08-13T05:48:32Z'
 ```

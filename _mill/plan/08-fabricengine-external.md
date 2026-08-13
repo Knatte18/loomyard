@@ -4,25 +4,29 @@
 task: 'lyxtest: build real fabric hubs, invert the lyxtest/fabric dependency'
 batch: 'fabricengine external'
 number: 8
-cards: 13
+cards: 11
 verify: go vet -tags integration ./... && go test -tags integration ./internal/fabricengine/...
 depends-on: [7]
 ```
 
 ## Batch Scope
 
-This batch migrates the thirty-seven `Copy*` sites and the twenty-two `NewPairedForTest` sites that already live in `package fabricengine_test` files inside `internal/fabricengine/`.
+This batch migrates the thirty-seven `Copy*` sites and the eleven `NewPairedForTest` sites that already live in `package fabricengine_test` files inside `internal/fabricengine/`.
 No file moves and no export-shim growth are needed here — every file is already external — which is what makes it the right half of `fabricengine`'s eighty-two sites to do first.
 Batches 9 and 10 handle the forty-five in-package sites, which do need both.
 
 `NewPairedForTest` is the second axis in this batch.
-Eighteen of its call sites exist only because the old fixtures could not produce a genuine warp/weft pair — they bolt an unrelated `CopyWeft` weft onto a `CopyWarpHub` warp — and a real hub's `PrimeWorktree()`/`PrimeWeft()` **is** a genuine pair, so those eighteen go away.
+Its counts are call expressions, counted with `grep -o 'fabricengine\.NewPairedForTest('` — the same call-expression method the `Copy*` table uses, and for the same reason: a line-based count over-reports badly here, since `internal/fabricengine/export_test.go` declares the identifier and several `t.Fatalf` messages name it in string literals.
+Eleven real call expressions exist: five in `warpforward_integration_test.go`, four in `weftgit_exclude_test.go`, one in `checkout_index_refresh_test.go`, and one in `fabric_test.go`.
+Ten of them exist only because the old fixtures could not produce a genuine warp/weft pair — they bolt an unrelated `CopyWeft` weft onto a `CopyWarpHub` warp — and a real hub's `PrimeWorktree()`/`PrimeWeft()` **is** a genuine pair, so those ten go away.
+The eleventh, in `fabric_test.go`, is not a fixture at all and stays;
+the next paragraph is why.
 
 Batch-local decision, and a deliberate deviation from the discussion's scope line: `NewPairedForTest` is **not** deleted outright.
 `internal/fabricengine/fabric_test.go` is an untagged unit test of the `newPaired` constructor itself — it hands the shim two empty `os.Mkdir` directories and asserts the warp and weft fields come back non-nil.
 That has nothing to do with hub fixtures, spawns no git, and would be lost coverage if deleted, and it cannot move onto `hubforge.NewHub` because the Test Tier Purity Invariant bans an untagged test from calling it.
 The shim therefore survives, renamed to `NewPairedFromPathsForTest` and documented as a constructor seam rather than a fixture — which is what card 51 does.
-The discussion's "delete `NewPairedForTest`" line was derived from the eighteen fixture-pairing sites and did not account for this one;
+The discussion's "delete `NewPairedForTest`" line was derived from the ten fixture-pairing sites and did not account for this one;
 batch 11's grep gate is written against the fixture usage accordingly.
 
 ## Cards
@@ -208,11 +212,11 @@ batch 11's grep gate is written against the fixture usage accordingly.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Replace the ten `fabricengine.NewPairedForTest(` calls in `internal/fabricengine/warpforward_integration_test.go` and the two in `internal/fabricengine/checkout_index_refresh_test.go` with a `Fabric` built against `hubforge.NewHub(t, ".")`'s genuine pair, adding the `internal/hubforge` import to each and dropping any fixture-bolting helper that existed only to pair an unrelated weft with a warp.
+  Replace the five `fabricengine.NewPairedForTest(` call expressions in `internal/fabricengine/warpforward_integration_test.go` and the one in `internal/fabricengine/checkout_index_refresh_test.go` with a `Fabric` built against `hubforge.NewHub(t, ".")`'s genuine pair, adding the `internal/hubforge` import to each and dropping any fixture-bolting helper that existed only to pair an unrelated weft with a warp.
   The `gitkit.MustRun(` calls in both files stay on `gitkit` unchanged.
   In `internal/fabricengine/export_test.go`, rename `NewPairedForTest` to `NewPairedFromPathsForTest` and rewrite its doc comment: it is no longer a fixture-pairing shim — its one remaining consumer is `internal/fabricengine/fabric_test.go`'s untagged unit test of the `newPaired` constructor, which hands it two empty directories and asserts the warp and weft fields come back non-nil.
   Say in the comment that it must not be used to assemble a fixture pair, and that a test needing a real pair takes one from `internal/hubforge`.
-  In `internal/fabricengine/fabric_test.go`, retarget its four references onto the new name;
+  In `internal/fabricengine/fabric_test.go`, retarget all four of its textual references onto the new name — one call expression plus three `t.Fatalf`/`t.Error` message strings naming the old identifier;
   the file stays untagged and must not gain a `hubforge` import, because the Test Tier Purity Invariant bans an untagged test from calling `hubforge.NewHub`.
 - **Commit:** `test(fabricengine): retire the fixture-pairing shim for real hub pairs`
 

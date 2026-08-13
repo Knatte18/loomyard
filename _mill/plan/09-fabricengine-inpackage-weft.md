@@ -4,7 +4,7 @@
 task: 'lyxtest: build real fabric hubs, invert the lyxtest/fabric dependency'
 batch: 'fabricengine in-package weft'
 number: 9
-cards: 11
+cards: 10
 verify: go vet -tags integration ./... && go test -tags integration ./internal/fabricengine/...
 depends-on: [8]
 ```

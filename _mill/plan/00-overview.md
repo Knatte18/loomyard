@@ -80,7 +80,7 @@ batches:
 ```
 
 The DAG is a straight chain, and that is a decision rather than an oversight.
-Batches 4 through 10 touch disjoint packages and could nominally run in parallel, but each one teaches the next: the fixture-field mapping and the `SeedConfig` triage are settled on nineteen sites in batch 4 before being applied to `fabricengine`'s eighty-two in batches 8 through 10.
+Batches 4 through 10 touch disjoint packages and could nominally run in parallel, but each one teaches the next: the fixture-field mapping and the `SeedConfig` triage are settled on seventeen sites in batch 4 before being applied to `fabricengine`'s eighty-two in batches 8 through 10.
 The discussion's own migration order — smallest package first — is what this chain encodes.
 
 ## Shared Decisions
@@ -181,7 +181,8 @@ The discussion's own migration order — smallest package first — is what this
 ### Decision: the verify shape is vet-both-tags plus scoped tests
 
 - **Decision:**
-  Every batch's `verify:` starts with `go vet -tags integration ./...` (and `go vet -tags smoke ./...` when the batch touches a smoke-tagged file), then runs `go test -tags integration` scoped to the packages the batch changed.
+  Every batch's `verify:` starts with `go vet -tags integration ./...`, plus one further `go vet` per custom tag the batch's edited test files carry — `go vet -tags smoke ./...` when it touches a smoke-tagged file, and `go vet -tags scout ./...` when it touches a scout-tagged one (batch 1 does, via `internal/scoutengine`'s three `//go:build scout` files) — then runs `go test -tags integration` scoped to the packages the batch changed.
+  Each tag gets its own `go vet` invocation rather than being appended to an existing `-tags` list, because Go reads a comma-separated `-tags` value as a conjunction: `-tags integration,scout` would require both tags at once and compile neither suite.
 - **Rationale:**
   `go vet` type-checks test files, so it is the cheapest whole-repo gate that catches a migration breaking a package the batch's scoped tests never load — which matters when a single batch edits files across thirteen directories.
   `smoke`-tagged suites are compile-checked and **never executed**: they spawn live tmux sessions and real LLM agents.
