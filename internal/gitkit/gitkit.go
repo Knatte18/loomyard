@@ -14,9 +14,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // GitStatusPorcelain returns `git status --porcelain`'s raw output for repoPath, calling tb.Fatalf on
@@ -129,17 +126,17 @@ func mustGit(dir string, args ...string) {
 	}
 }
 
-// warpHubTemplate caches the warp-hub template (git repo with bare origin, left empty).
+// repoTemplateOnce caches the repo template (git repo with bare origin, left empty).
 var (
-	warpHubOnce     sync.Once
-	warpHubPath     string
-	warpHubBarePath string
+	repoTemplateOnce     sync.Once
+	repoTemplatePath     string
+	repoTemplateBarePath string
 )
 
-// buildWarpHub constructs the warp-hub template: a git repo with origin bare remote,
+// buildRepoTemplate constructs the repo template: a git repo with origin bare remote,
 // populated with a README and initial commit (called once per test binary; panics on failure).
-func buildWarpHub() (hub, bare string) {
-	warpHubOnce.Do(func() {
+func buildRepoTemplate() (hub, bare string) {
+	repoTemplateOnce.Do(func() {
 		tmpDir, err := os.MkdirTemp("", "gitkit-repo-*")
 		if err != nil {
 			panic(err)
@@ -162,114 +159,16 @@ func buildWarpHub() (hub, bare string) {
 		bare := filepath.Join(tmpDir, "bare")
 		initBareRemote(bare, hub)
 
-		warpHubPath = hub
-		warpHubBarePath = bare
+		repoTemplatePath = hub
+		repoTemplateBarePath = bare
 	})
 
-	return warpHubPath, warpHubBarePath
-}
-
-// weftPrimeTemplate caches the weft-prime template.
-var (
-	weftPrimeOnce     sync.Once
-	weftPrimePath     string
-	weftPrimeBarePath string
-)
-
-// buildWeftPrime constructs the weft-prime template: a sibling weft worktree
-// at <hub>-weft with _lyx/config/placeholder and a bare remote (panics on failure).
-func buildWeftPrime() (weftPrime, weftBare string) {
-	weftPrimeOnce.Do(func() {
-		// Derive the base name from the already-cached warp hub path so the naming
-		// is stable across repeated calls (sync.Once skips the body on reuse).
-		base := filepath.Base(warpHubPath)
-		tmpDir, err := os.MkdirTemp("", "gitkit-weftprime-*")
-		if err != nil {
-			panic(err)
-		}
-
-		weftPrime := weftname.SiblingPath(tmpDir, base)
-		if err := os.Mkdir(weftPrime, 0o755); err != nil {
-			panic(err)
-		}
-
-		initRepo(weftPrime)
-
-		// Create _lyx/config with neutral placeholder (no real config files).
-		// Tests needing real config seed it via SeedConfig.
-		lyxConfigDir := configengine.ConfigDir(weftPrime)
-		if err := os.MkdirAll(lyxConfigDir, 0o755); err != nil {
-			panic(err)
-		}
-
-		// Write a placeholder file to mark the config dir as initialized.
-		placeholderPath := filepath.Join(lyxConfigDir, "placeholder")
-		if err := os.WriteFile(placeholderPath, []byte("weft config"), 0o644); err != nil {
-			panic(fmt.Sprintf("write placeholder: %v", err))
-		}
-		commitAll(weftPrime, "init")
-
-		// Create bare remote and add it as origin (left empty; no push).
-		weftBare := weftname.BareSiblingPath(tmpDir, base)
-		initBareRemote(weftBare, weftPrime)
-
-		weftPrimePath = weftPrime
-		weftPrimeBarePath = weftBare
-	})
-
-	return weftPrimePath, weftPrimeBarePath
-}
-
-// weftOnlyTemplate caches the weft-only template (with upstream tracking).
-var (
-	weftOnlyOnce sync.Once
-	weftOnlyPath string
-	weftOnlyBare string
-)
-
-// buildWeftOnly constructs the weft-only template: a weft worktree with
-// _lyx/config.yaml and upstream tracking (the only template that needs this; panics on failure).
-func buildWeftOnly() (weftPath, bare string) {
-	weftOnlyOnce.Do(func() {
-		tmpDir, err := os.MkdirTemp("", "gitkit-weftonly-*")
-		if err != nil {
-			panic(err)
-		}
-
-		weftPath := tmpDir
-
-		initRepo(weftPath)
-
-		// Create _lyx/config.yaml — a single tracked file under _lyx so that
-		// TestPushIntegration can commit the "_lyx" pathspec. This fixture only
-		// needs some tracked file under _lyx, not a real config layout; tests that
-		// need real config call SeedConfig after CopyWeft.
-		lyxDir := filepath.Join(weftPath, lyxdirs.LyxDirName)
-		if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-			panic(err)
-		}
-
-		if err := os.WriteFile(filepath.Join(lyxDir, "config.yaml"), []byte("test"), 0o644); err != nil {
-			panic(err)
-		}
-		commitAll(weftPath, "init")
-
-		// Create bare remote, add it as origin, then push with -u to establish
-		// upstream tracking — this is the only fixture that needs the tracking branch.
-		bare := filepath.Join(tmpDir, "bare")
-		initBareRemote(bare, weftPath)
-		mustGit(weftPath, "push", "-u", "origin", "main")
-
-		weftOnlyPath = weftPath
-		weftOnlyBare = bare
-	})
-
-	return weftOnlyPath, weftOnlyBare
+	return repoTemplatePath, repoTemplateBarePath
 }
 
 // Fixture structs for public API.
 
-// RepoFixture represents an isolated copy of the warp-hub template: a plain git repo with a bare
+// RepoFixture represents an isolated copy of the repo template: a plain git repo with a bare
 // origin, never a hub.
 // It is the primitive repo fixture and is callable from internal/lyxcwd alone —
 // every other package takes a real hub from internal/hubforge instead;
@@ -277,32 +176,6 @@ func buildWeftOnly() (weftPath, bare string) {
 type RepoFixture struct {
 	Repo string
 	Bare string
-}
-
-// WarpFixture represents an isolated copy of the warp-hub template (hub + bare).
-//
-// Deprecated: WarpFixture is scheduled for deletion once the hub-shaped CopyWarpHub call sites
-// migrate to internal/hubforge.
-type WarpFixture struct {
-	Hub  string
-	Bare string
-}
-
-// PairedFixture represents an isolated copy of the paired-Add fixture (warp hub + bare + weft-prime
-// + weft-bare).
-type PairedFixture struct {
-	Container string
-	Hub       string
-	Bare      string
-	WeftPrime string
-	WeftBare  string
-	Layout    *lyxcwd.Location
-}
-
-// WeftFixture represents an isolated copy of the weft-only template (with upstream tracking).
-type WeftFixture struct {
-	WeftPath string
-	Bare     string
 }
 
 // rewriteOriginURLInConfig rewrites the origin URL in .git/config as a pure text edit
@@ -430,7 +303,7 @@ func copyDirRecursive(src string, dest string) error {
 func CopyRepo(tb testing.TB) RepoFixture {
 	tb.Helper()
 
-	templateHub, templateBare := buildWarpHub()
+	templateHub, templateBare := buildRepoTemplate()
 
 	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
 	tempContainer := tb.TempDir()
@@ -455,176 +328,5 @@ func CopyRepo(tb testing.TB) RepoFixture {
 	return RepoFixture{
 		Repo: copiedHub,
 		Bare: copiedBare,
-	}
-}
-
-// CopyWarpHub returns an isolated copy of the warp-hub template, mapped onto the legacy WarpFixture
-// shape.
-//
-// Deprecated: use CopyRepo instead;
-// CopyWarpHub is scheduled for deletion once its hub-shaped call sites migrate to
-// internal/hubforge.
-func CopyWarpHub(tb testing.TB) WarpFixture {
-	tb.Helper()
-
-	fixture := CopyRepo(tb)
-	return WarpFixture{
-		Hub:  fixture.Repo,
-		Bare: fixture.Bare,
-	}
-}
-
-// CopyPaired returns an isolated copy of the full paired-Add fixture.
-// The copy includes hub + bare + weft-prime + weft-bare.
-// All origin URLs are rewritten to point to the copied bares.
-func CopyPaired(tb testing.TB) PairedFixture {
-	tb.Helper()
-
-	templateHub, templateBare := buildWarpHub()
-	templateWeftPrime, templateWeftBare := buildWeftPrime()
-
-	// Create a temp container
-	tempContainer := tb.TempDir()
-
-	// Copy hub
-	copiedHub := filepath.Join(tempContainer, "hub")
-	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
-		tb.Fatalf("copyDirRecursive hub: %v", err)
-	}
-
-	// Copy bare
-	copiedBare := filepath.Join(tempContainer, "bare")
-	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
-		tb.Fatalf("copyDirRecursive bare: %v", err)
-	}
-
-	// Copy weft-prime (must preserve the -weft suffix)
-	base := filepath.Base(templateHub)
-	copiedWeftPrime := weftname.SiblingPath(tempContainer, base)
-	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
-		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
-	}
-
-	// Copy weft-bare
-	copiedWeftBare := weftname.BareSiblingPath(tempContainer, base)
-	if err := copyDirRecursive(templateWeftBare, copiedWeftBare); err != nil {
-		tb.Fatalf("copyDirRecursive weftBare: %v", err)
-	}
-
-	// Rewrite origin URLs
-	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
-		tb.Fatalf("rewriteOriginURLInConfig hub: %v", err)
-	}
-
-	if err := rewriteOriginURLInConfig(copiedWeftPrime, copiedWeftBare); err != nil {
-		tb.Fatalf("rewriteOriginURLInConfig weftPrime: %v", err)
-	}
-
-	// Get layout from copied hub
-	layout, err := lyxcwd.Resolve(copiedHub)
-	if err != nil {
-		tb.Fatalf("lyxcwd.Resolve: %v", err)
-	}
-
-	return PairedFixture{
-		Container: tempContainer,
-		Hub:       copiedHub,
-		Bare:      copiedBare,
-		WeftPrime: copiedWeftPrime,
-		WeftBare:  copiedWeftBare,
-		Layout:    layout,
-	}
-}
-
-// CopyPairedLocal returns an isolated copy of the paired-Add fixture optimized for SkipPush:true
-// tests.
-// It copies only the warp hub, warp bare, and weft-prime, omitting the weft-bare (unused when the
-// weft push is suppressed).
-// This reduces per-test filesystem-copy + Defender cost by ~25%.
-// The returned fixture has Container, Hub, Bare, WeftPrime, and Layout populated, but WeftBare is
-// left empty.
-// Pushing the weft branch against this fixture is unsupported;
-// use CopyPaired instead if the test exercises the weft-bare as a live push target.
-func CopyPairedLocal(tb testing.TB) PairedFixture {
-	tb.Helper()
-
-	templateHub, templateBare := buildWarpHub()
-	templateWeftPrime, _ := buildWeftPrime()
-
-	// Create a temp container
-	tempContainer := tb.TempDir()
-
-	// Copy hub
-	copiedHub := filepath.Join(tempContainer, "hub")
-	if err := copyDirRecursive(templateHub, copiedHub); err != nil {
-		tb.Fatalf("copyDirRecursive hub: %v", err)
-	}
-
-	// Copy bare
-	copiedBare := filepath.Join(tempContainer, "bare")
-	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
-		tb.Fatalf("copyDirRecursive bare: %v", err)
-	}
-
-	// Copy weft-prime (must preserve the -weft suffix); omit weft-bare
-	base := filepath.Base(templateHub)
-	copiedWeftPrime := weftname.SiblingPath(tempContainer, base)
-	if err := copyDirRecursive(templateWeftPrime, copiedWeftPrime); err != nil {
-		tb.Fatalf("copyDirRecursive weftPrime: %v", err)
-	}
-
-	// Rewrite warp origin URL; do not rewrite weft-prime's origin URL
-	// (it points at the shared template weft-bare and is never reached under SkipPush:true)
-	if err := rewriteOriginURLInConfig(copiedHub, copiedBare); err != nil {
-		tb.Fatalf("rewriteOriginURLInConfig hub: %v", err)
-	}
-
-	// Get layout from copied hub
-	layout, err := lyxcwd.Resolve(copiedHub)
-	if err != nil {
-		tb.Fatalf("lyxcwd.Resolve: %v", err)
-	}
-
-	return PairedFixture{
-		Container: tempContainer,
-		Hub:       copiedHub,
-		Bare:      copiedBare,
-		WeftPrime: copiedWeftPrime,
-		WeftBare:  "",
-		Layout:    layout,
-	}
-}
-
-// CopyWeft returns an isolated copy of the weft-only template.
-// The copy is placed in tb.TempDir();
-// its origin URL is rewritten and upstream tracking is already established (from the template).
-func CopyWeft(tb testing.TB) WeftFixture {
-	tb.Helper()
-
-	templateWeftPath, templateBare := buildWeftOnly()
-
-	// Use a single temp dir so both repos share one cleanup entry (matches CopyPaired).
-	tempContainer := tb.TempDir()
-
-	// Copy template weft into temp dir
-	copiedWeft := filepath.Join(tempContainer, "weft")
-	if err := copyDirRecursive(templateWeftPath, copiedWeft); err != nil {
-		tb.Fatalf("copyDirRecursive weft: %v", err)
-	}
-
-	// Copy template bare into the same temp dir
-	copiedBare := filepath.Join(tempContainer, "bare")
-	if err := copyDirRecursive(templateBare, copiedBare); err != nil {
-		tb.Fatalf("copyDirRecursive bare: %v", err)
-	}
-
-	// Rewrite origin URL in copied weft's config
-	if err := rewriteOriginURLInConfig(copiedWeft, copiedBare); err != nil {
-		tb.Fatalf("rewriteOriginURLInConfig: %v", err)
-	}
-
-	return WeftFixture{
-		WeftPath: copiedWeft,
-		Bare:     copiedBare,
 	}
 }
