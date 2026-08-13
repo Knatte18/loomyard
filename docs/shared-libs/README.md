@@ -26,7 +26,7 @@ The following libraries ship in code and tests;
 their mechanics are documented there per the [doc-lifecycle convention](../overview.md#documentation-lifecycle):
 
 - `internal/fsx` — atomic file writes + relative-path guard
-- `internal/gitexec` — windowless `RunGit` primitive
+- `internal/gitexec` — windowless git-spawn pair: `Run` is the checked default, `RunGit` is the raw form for the sites where a non-zero exit is an answer, not a failure
 - `internal/gitignore` — shared `.gitignore` block manager for multiple modules
 - `internal/lock` — cross-process file locking
 - `internal/logger` — thin log/slog wrapper (Debug/Info/Warn), silent by default;
