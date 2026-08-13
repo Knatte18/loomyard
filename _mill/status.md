@@ -41,27 +41,41 @@ implementing  '2026-08-13T07:02:52Z'
 ```yaml
 batches:
   - name: gitkit leaf
-    state: pending
+    state: running
+    implementer_session: 4337e8c3-0904-4691-887b-42eae518bef3
+    start_sha: e74a0dca4202934d7d95f834e4d2e4eb5b08ad37
+    verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: fabrictest dissolution
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: hubforge factory
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/hubforge/... [setup failed]"]
   - name: small consumers
     state: pending
+    verify_baseline_failures: []
   - name: reedcli
     state: pending
+    verify_baseline_failures: []
   - name: stuck packages
     state: pending
+    verify_baseline_failures: []
   - name: fabriccli
     state: pending
+    verify_baseline_failures: []
   - name: fabricengine external
     state: pending
+    verify_baseline_failures: []
   - name: fabricengine in-package weft
     state: pending
+    verify_baseline_failures: []
   - name: fabricengine in-package hub
     state: pending
+    verify_baseline_failures: []
   - name: helper deletion
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
