@@ -36,7 +36,9 @@ batches:
     commit_sha: 625c33a6378ddf0ccec6edb9e26455fea924bde0
     verify_baseline_failures: []
   - name: module seams
-    state: pending
+    state: running
+    implementer_session: be55c82f-89cd-4d15-9aec-ee1e5acf4f1a
+    start_sha: f3c7e07d810dc482497ef6e08acb7cc1ce2aaf38
     verify_baseline_failures: []
   - name: test migration and guard
     state: pending
