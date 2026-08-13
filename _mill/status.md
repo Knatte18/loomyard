@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cwd-context seam
+phase: approved-module seams
 slug: hubforge-parallel-chdir
 branch: hubforge-parallel-chdir
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-08-13T14:53:02Z'
 planned  '2026-08-13T14:53:21Z'
 implementing  '2026-08-13T14:53:55Z'
 approved-cwd-context seam  '2026-08-13T15:00:17Z'
+approved-module seams  '2026-08-13T15:13:07Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ batches:
     commit_sha: 625c33a6378ddf0ccec6edb9e26455fea924bde0
     verify_baseline_failures: []
   - name: module seams
-    state: running
+    state: approved
     implementer_session: be55c82f-89cd-4d15-9aec-ee1e5acf4f1a
     start_sha: f3c7e07d810dc482497ef6e08acb7cc1ce2aaf38
+    commit_sha: 91adfef396449cf6498f8b058eb47d11a7471f4e
     verify_baseline_failures: []
   - name: test migration and guard
     state: pending
