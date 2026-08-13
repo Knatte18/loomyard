@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gitexec-checked-entry-point
 slug: gitexec-checked-entry-point
 branch: gitexec-checked-entry-point
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-08-13T15:02:12Z'
 plan-fix-r4  '2026-08-13T15:13:33Z'
 planned  '2026-08-13T15:13:52Z'
 implementing  '2026-08-13T15:14:25Z'
+approved-gitexec-checked-entry-point  '2026-08-13T15:21:27Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-13T15:14:25Z'
 ```yaml
 batches:
   - name: gitexec-checked-entry-point
-    state: running
+    state: approved
     implementer_session: 4fbd83b2-7521-487e-be84-24d13ac74470
     start_sha: a0ab68e150243a4dca289d05fc22ad072cd52482
+    commit_sha: 3050d8b5c203b38ac7f62cd281d85b3af5123d66
     verify_baseline_failures: []
   - name: gitrepo-checked-pair
     state: pending
