@@ -69,6 +69,7 @@ func weftRepoExists(l *lyxcwd.Location) bool {
 		return false
 	}
 
+	//gitexec:raw — bool-returning predicate: the signature has no error channel, so every outcome must collapse to a bool.
 	_, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--is-inside-work-tree"}, weftRepoRoot)
 	if err != nil {
 		return false
@@ -85,6 +86,7 @@ func weftBranchExists(l *lyxcwd.Location, branch string) bool {
 	if err != nil {
 		return false
 	}
+	//gitexec:raw — bool-returning predicate: the signature has no error channel, so every outcome must collapse to a bool.
 	_, _, exitCode, err := gitexec.RunGit(
 		[]string{"rev-parse", "--verify", "refs/heads/" + branch},
 		weftRepoRoot,
