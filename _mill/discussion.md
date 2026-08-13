@@ -55,7 +55,8 @@ touching those signatures is the substance of this task.
 
 **Out:**
 
-- **The eleven `//go:build smoke` files** (30 `.Chdir` occurrences across `reedcli`, `shuttlecli`, `burlerengine`, `treadleengine`).
+- **The twelve `//go:build smoke` files** (33 `.Chdir` occurrences across `reedcli`, `shuttlecli`, `burlerengine`, `treadleengine`).
+  Note this is one file and three occurrences more than the task brief's list, which named eleven: the brief omits `reedcli/smoke_test.go`, the shared smoke helper carrying `mustChdir` (`:790`) and `deferHubRelease`'s two `os.Chdir` calls.
   They are in neither measured tier — `docs/benchmarks/running-tests.md:29-30` documents `-tags smoke` as requiring a live logged-in `claude` session — so parallelizing them moves no measured number, and they carry three further blockers of their own (see Deferred follow-up).
 - **The `WEFT_SKIP_GIT` / `WEFT_SKIP_PUSH` / `BOARD_SKIP_GIT` config seam.**
   `t.Setenv` panics under `t.Parallel()` exactly as `t.Chdir` does, and it lands on four of the nine integration target files.
@@ -113,10 +114,21 @@ touching those signatures is the substance of this task.
   That is wrong, and `cli.go:446` is only the out-of-hub fallback branch rather than the main path.
   The raw `--target-dir` value leaves the package unresolved: `cli.go:142-145` computes `dir := targetDir` (defaulting to `cwd` when empty), passes it to `lookupContext(cwd, dir)` at `:147` and `buildOptions(registry, dir, …)` at `:173`, from where it becomes `scoutengine.Options.TargetDir` (`refs.go:50`) and is finally absolutised by `rootURIFor`'s `filepath.Abs(targetDir)` at `scoutengine/ensureserver.go:120` — reached from `:182` and `:308` — plus a `DetectLanguage(opts.TargetDir, …)` tree read.
   Both resolve against the **process** cwd, outside `scoutcli` entirely.
-- Decision: rebase at the flag's **defaulting point** — make `dir` absolute against the seam cwd at `cli.go:142-145`, before `lookupContext`/`buildOptions` — so every downstream consumer inside *and* outside `scoutcli` inherits a correct absolute value with no further change.
-  The same treatment applies to the other relative value-entry points reaching a handler: `--within`, `parseQuery`'s `file:line:col`, and `--in-file`.
+- Decision: rebase at the flag's **defaulting point** — make `dir` absolute against the seam cwd before `lookupContext`/`buildOptions` — so every downstream consumer inside *and* outside `scoutcli` inherits a correct absolute value with no further change.
+  **There are four such defaulting points, one per `RunE`, matching the four enumerated `Getwd()` sites** (`:136`, `:266`, `:371`, `:563`): the `dir := targetDir` / `if dir == "" { dir = cwd }` block recurs at `cli.go:142-145`, `:272-274`, `:377-379`, and `:569-571`.
+  All four are rebased.
+  A missed one does not fail to build — it silently returns an answer resolved against the wrong directory — so the named `--target-dir` scenario must cover more than one subcommand.
   A relative value becomes `filepath.Join(seamCwd, v)`;
   an absolute value is used as given.
+- **`parseQuery` and `inFileQuery` take an explicit base parameter.** `parseQuery(arg string)` (`cli.go:774`) and `inFileQuery(inFilePath, name string)` (`:794`) are package-level functions with no base today, reached from six call sites through the `buildQuery` closure.
+  They become `parseQuery(base, arg string)` and `inFileQuery(base, inFilePath, name string)`, with `base` the seam cwd.
+  This is the same gap that forced `WrapRunCtx` — semantics without a signature — and it gets the same treatment.
+- Rationale for a parameter over a closure: an explicit base is directly testable and matches the `Preflight(cwd)` decision, where the callee is *told* its geometry rather than deriving it.
+  A closure capturing the seam cwd would work but hides the dependency at exactly the sites a reader needs to see it.
+- **`internal/scoutcli/cli_test.go` is therefore touched by commit 2, contrary to the "not touched" list below.** `TestInFileQuery_ResolvesRelativePathToAbsolute` (`:622-635`) calls `t.Chdir(cwd)` and asserts `filepath.Join(cwd, "relative/bar.go")`, pinning the current process-cwd behaviour;
+  it must move to passing an explicit base, or commit 2 does not compile.
+  The file is untagged (Tier 1), so this also keeps it inside the Test Tier Purity Invariant — passing a base is cheaper than the chdir it replaces.
+  It does **not** join the guard's subject set: its remaining chdirs are unrelated to hub fixtures and are deferred with the rest.
 - Rationale: a seam that is honoured for geometry but ignored for arguments is worse than no seam, because it returns a confidently wrong answer rather than an error.
   Rebasing once at entry is also strictly safer than rebasing at each `filepath.Abs`, because it cannot miss a consumer in another package — which is exactly the class of miss the earlier draft made.
   `Reference.File` comparisons in `filterWithin` require an absolute path, and joining onto the seam cwd still produces one, so the invariant its comment protects is preserved.
@@ -208,7 +220,8 @@ touching those signatures is the substance of this task.
 
 - Decision: a guard test at `cmd/lyx/cwdmutation_test.go` bans both `t.Chdir(` and `os.Chdir(` across an explicitly named **per-file subject set**, not per-package.
 - **Subject set (the guard's allowlist-of-what-is-guarded, not of what is excused):** the eight migrated files — `fabriccli/cli_test.go`, `perchcli/run_integration_test.go`, `perchcli/cli_integration_test.go`, `configcli/configcli_integration_test.go`, `webstercli/verbs_test.go`, `idecli/cli_test.go`, `reedcli/cli_integration_test.go`, `loomengine/preflight_integration_test.go` — plus `fabricengine/coalesce_integration_test.go`, which is guarded with a single allowlisted exemption.
-- **Why per-file and not per-package:** the eight packages that gain a seam change carry roughly fourteen further chdir-using test files this task deliberately does not touch (`boardcli/cli_test.go` and `cli_unit_test.go`, `burlercli/cli_test.go`, `shuttlecli/cli_test.go`, `scoutcli/cli_test.go`, `perchcli/cli_test.go` and `run_test.go`, `webstercli/cli_test.go`, `reedcli/cli_test.go`, `configcli/reconcile_test.go` and `reconcile_integration_test.go`), plus the eleven deferred smoke files in those same packages.
+- **Why per-file and not per-package:** the eight packages that gain a seam change carry roughly fourteen further chdir-using test files this task deliberately does not touch (`boardcli/cli_test.go` and `cli_unit_test.go`, `burlercli/cli_test.go`, `shuttlecli/cli_test.go`, `scoutcli/cli_test.go`, `perchcli/cli_test.go` and `run_test.go`, `webstercli/cli_test.go`, `reedcli/cli_test.go`, `configcli/reconcile_test.go` and `reconcile_integration_test.go`), plus the twelve deferred smoke files in those same packages.
+  `scoutcli/cli_test.go` is a partial exception: commit 2 edits one test in it (`TestInFileQuery_ResolvesRelativePathToAbsolute`) because `inFileQuery` gains a base parameter, but the file does not join the guard's subject set and its chdirs are otherwise untouched.
   A per-package subject would make the allowlist larger than the guarded set, which inverts the point of a guard.
 - **The one allowlist entry:** `fabricengine/coalesce_integration_test.go`, reason `"cwd is the assertion: TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd pins gitrepo.New(\"\") against a non-git process cwd"`.
 - **Growth rule:** a file joins the subject set when it is migrated, never by default. The deferred files are outside the guard entirely and carry no allowlist entry, so the guard stays silent about work this task chose not to do.
@@ -261,7 +274,7 @@ The task brief names twenty files. They do not behave alike:
 | integration, global-stub swap | 1 | 4 | chdir + `ideengine.CodeLauncher` | Tier 2 |
 | integration, `t.Setenv` too | 4 | 26 | chdir + `WEFT_SKIP_*` | Tier 2 |
 | integration, cwd-is-the-subject | 1 | 2 | unremovable by design | Tier 2 |
-| smoke | 11 | 30 | chdir + `deferHubRelease` + tmux races | neither |
+| smoke | 12 | 33 | chdir + `deferHubRelease` + tmux races | neither |
 
 Per-file counts, measured on this branch:
 
@@ -323,7 +336,8 @@ Not migrated: `internal/logger/sink.go:88`, inert under `go test` per `sink.go:7
 - **`idecli/cli_test.go:95`** uses bare `os.Chdir` with a manual restore at `:98`, into a non-git tempdir for the error path.
 - **`configcli_integration_test.go:55`** is not a `configcli` cwd dependence at all: `dispatch` is already given an explicit layout at `:78`, and the cwd is consumed inside the `injectedSync` closure at `:72-74`, whose `fabriccli.RunCLI(w, []string{"commit"})` call sits at `:73`.
   The fix reaches `fabriccli`, not `configcli`.
-- **`loomengine/preflight_integration_test.go:188` and `:225`** exercise the public `Preflight()` specifically because they need it to observe a particular cwd.
+- **`loomengine/preflight_integration_test.go:192` and `:229`** — the two `loomengine.Preflight()` call sites, whose `os.Chdir` calls sit at `:188` and `:225` respectively — exercise the public `Preflight()` specifically because they need it to observe a particular cwd.
+  Cite `:192`/`:229` for the calls throughout; the earlier `:188`/`:225` pair names the chdirs, not the calls.
   Under `Preflight(cwd string)` they pass the directory directly and parallelize;
   the `restoreCwd` helper at `:106` becomes dead and should be deleted.
 - **`shuttlecli/smoke_interrupt_test.go:264`** calls `lyxcwd.Getwd()` in the test body, hand-rebuilding what the `PersistentPreRunE` does. Out of scope (smoke tier) but worth knowing it exists.
@@ -439,7 +453,7 @@ Each flag earns its place for a specific reason, and it is worth being precise a
 Worth filing as its own task once this lands;
 recorded here rather than filed unilaterally.
 
-The smoke tier (11 files, 30 `.Chdir`) needs three further things before it could go parallel, none of which is chdir removal:
+The smoke tier (12 files, 33 `.Chdir`) needs three further things before it could go parallel, none of which is chdir removal:
 
 1. **`deferHubRelease` redesign.** Defined identically in four packages (`reedcli/smoke_test.go:493`, `shuttlecli/smoke_run_test.go:141`, `burlerengine/smoke_round_test.go:147`, `treadleengine/smoke_judge_test.go:141`), it registers a `t.Cleanup` that calls `os.Chdir(os.TempDir())` and can hold for up to 100 s while polling for directory release.
    Note this is a *cascade*, not an independent blocker: that chdir exists only because the test moved the process into the hub, so removing the test-side chdir lets those two lines be deleted rather than worked around.
@@ -463,6 +477,9 @@ The smoke tier (11 files, 30 `.Chdir`) needs three further things before it coul
 - **Q:** Review round 4 found the scoutcli rebase was enumerated by `filepath.Abs` occurrence and so stopped at the package edge — the raw `--target-dir` reaches `scoutengine.Options.TargetDir` and is absolutised in `ensureserver.go:120`. **A:** Rebase at the flag's defaulting point (`cli.go:142-145`) instead, so every consumer inside and outside `scoutcli` inherits it; enumerate by value-entry point, never by `filepath.Abs` site.
 - **Q:** Review round 4 found commit 2 would not compile, since it changes `Preflight`'s signature while commit 3 migrates its only two callers. **A:** Commit 2 carries both call-site updates and the `export_test.go` comment rewrite; commit 3 keeps only chdir removal and `t.Parallel()`.
 - **Q:** Does `-race` catch an incorrectly removed cwd dependence? **A:** No — process cwd is not race-detectable memory. `-race` covers parallel-safety of the newly parallelized files; assertion preservation is covered by the per-site notes and the named scenarios.
+- **Q:** Review round 5 found the scoutcli rebase named one defaulting point of four, and gave `parseQuery`/`inFileQuery` semantics without a signature. **A:** All four defaulting points are rebased (`cli.go:142-145`, `:272-274`, `:377-379`, `:569-571`), and both functions take an explicit `base` parameter — the same "semantics without a signature" gap that forced `WrapRunCtx`, given the same treatment.
+- **Q:** Does the `inFileQuery` base parameter touch `scoutcli/cli_test.go`, which the guard section lists as untouched? **A:** Yes — `TestInFileQuery_ResolvesRelativePathToAbsolute` (`:622-635`) pins the process-cwd behaviour and must move to an explicit base in commit 2, or commit 2 does not compile. The file does not join the guard's subject set.
+- **Q:** Review round 5 disputed the out-of-scope inventory counts. **A:** Partly upheld. The smoke tier is 12 files / 33 occurrences, not 11 / 30 — the brief's list omits `reedcli/smoke_test.go`. The claim of "12 further files / 33 total / 111 occurrences" was not upheld: a comment-filtered repo census gives 37 files / 118 occurrences (smoke 12/33, integration 13/54, untagged 12/31), so "seventeen further files outside the twenty named" stands.
 - **Q:** How does explicit cwd reach the resolution sites? **A:** Context-carried, owned by `lyxcwd` (`WithCwd`/`CwdFrom`), seeded by `clihelp.ExecuteIn` and per-module `RunCLIIn`. No user-visible `--cwd`/`-C` flag.
 - **Q:** `fabriccli` has a plain helper for topology verbs and a `PersistentPreRunE` for weft verbs, and `configcli` uses plain handlers. Unify them? **A:** No — thread `cmd.Context()` into the plain handlers and leave each package's seam shape alone.
 - **Q:** Clone's cwd is a destination, not a lookup. What replaces it? **A:** An explicit `--into <dir>` flag defaulting to the resolved cwd.
