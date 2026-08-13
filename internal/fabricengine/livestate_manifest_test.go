@@ -1,13 +1,13 @@
 //go:build integration
 
-// manifest.go captures a whole-hub filesystem manifest before and after a verb runs, and diffs two
+// livestate_manifest_test.go captures a whole-hub filesystem manifest before and after a verb runs, and diffs two
 // manifests against a set of permitted removal roots so a cell can assert that a verb touched nothing
 // outside what it declared it would.
 // The manifest is the survival-assertion mechanism batches 5-7 build cells against: CaptureManifest,
 // DiffManifest, and AssertNoUnpermittedChange are the whole of the external interface those batches
 // consume.
 
-package fabrictest
+package fabricengine_test
 
 import (
 	"crypto/sha256"
@@ -282,7 +282,7 @@ type Change struct {
 // Matching is on path segments, not on raw string prefix, so a root of "_portals/x" never permits
 // "_portalsfoo/y".
 // Comparison of a path segment against a root segment folds case on Windows only, via this file's own
-// segmentsEqual — lyxcwd.samePath does exactly this but is unexported, so fabrictest carries its own
+// segmentsEqual — lyxcwd.samePath does exactly this but is unexported, so this file carries its own
 // equivalent rather than reaching for it.
 //
 // The returned slice is sorted by Path, so a caller's failure output is stable across runs.
