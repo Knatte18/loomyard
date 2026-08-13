@@ -3,7 +3,7 @@
 ```yaml
 task: 'gitexec: add the checked entry point and migrate the call sites'
 slug: gitexec-checked-entry-point
-approved: false
+approved: true
 started: '20260813-142251'
 parent: main
 root: ""

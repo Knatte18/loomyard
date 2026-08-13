@@ -135,7 +135,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   Every other hit is either already corrected by an earlier batch — `internal/gitrepo/doc.go` in batch 2, `internal/fabricengine/destroy.go` in batch 3, `CONSTRAINTS.md` in card 35, `manifest/roadmap.md` in card 37 — or matches on an unrelated sense of the search terms and stays true: `docs/overview.md`'s module table says "shared git operations";
   `docs/shared-libs/lyxcwd.md`'s import cap names the package, not the function;
   `manifest/designs/fabric-unified-view.md` names `gitexec` only as a dependency;
-  and the five remaining files match "exit code" in senses that have nothing to do with git.
+  and the seven remaining files — `docs/sandbox-hub.md`, `docs/sandbox-howto.md`, `docs/reference/discussion-format.md`, `docs/reference/tmux_scripting.md`, `docs/research/scout-agent-usage-findings.md`, `internal/reedengine/doc.go`, and `internal/scoutengine/doc.go` — match "exit code" in senses that have nothing to do with git (tmux, CLI, JSON envelope, and LSP exit codes).
   Confirm each of those rather than editing it.
   Prose is the one inventory in this task with no compiler behind it, so a miss here survives silently — the query is what makes the confirmation checkable instead of assumed.
 - **Commit:** `docs(shared-libs): describe gitexec's two entry points`
