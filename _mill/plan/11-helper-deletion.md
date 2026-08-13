@@ -70,6 +70,25 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   - `internal/fabricengine/export_test.go`
   - `internal/fabricengine/reconcile_stale_registration_test.go`
   - `internal/fabricengine/commit_lock_integration_test.go`
+  - `internal/fabriccli/cli_test.go`
+  - `internal/fabriccli/pushbypass_integration_test.go`
+  - `internal/boardengine/boardtest/sync_test.go`
+  - `internal/fabricengine/commit_integration_test.go`
+  - `internal/fabricengine/bolt_integration_test.go`
+  - `internal/fabricengine/hook_test.go`
+  - `internal/fabricengine/index_integration_test.go`
+  - `internal/fabricengine/pull_integration_test.go`
+  - `internal/fabricengine/warplayout_test.go`
+  - `internal/fabricengine/config_driven_junctions_integration_test.go`
+  - `internal/fabricengine/weftgit_exclude_test.go`
+  - `internal/fabricengine/warpbinding_reconcile_integration_test.go`
+  - `internal/fabricengine/unwire_test.go`
+  - `internal/perchcli/cli_test.go`
+  - `internal/perchcli/run_test.go`
+  - `internal/gitkit/bench_test.go`
+  - `internal/hubforge/bench_test.go`
+  - `cmd/lyx/boardguard_test.go`
+  - `cmd/lyx/tierpurity_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -90,7 +109,9 @@ Batch 8 card 51 renamed that shim to `NewPairedFromPathsForTest` and narrowed it
   Two of the files carry no `lyxtest` token at all, so batch 1 card 2's sweep never selected them and no other card in this plan names them — they are in this card's `Edits:` list for exactly that reason:
   `internal/configcli/configcli_test.go` (its header contrasts itself with the "e2e test with real `fabriccli.RunCLI` over `CopyPaired`" in its integration sibling) and `internal/loomengine/config_test.go` (its header says "no `CopyWeft`, no `SeedConfig`" to explain why it is a Tier-1 test).
   Both are one-line header-comment fixes.
-  Every other file the grep names is already in some batch's `Edits:` list, so the sweep there is a re-read of files this task has already touched.
+  Every other file the grep names was expected to be already covered by an earlier batch's own `Edits:` list — but the earlier batches' work only migrated call expressions, and the grep gate covers comment prose those cards were never scoped to touch.
+  Re-running the grep after card 67's deletions surfaced 19 further files, all pure comment-prose hits (no further call expressions or type references, verified individually below) in files this task has already read and edited once for their call-site migration.
+  They are added to this card's `Edits:` list rather than spawning one plan-edit commit per file, since the correction is uniform in kind (rewrite the sentence naming a deleted identifier) even though each sentence's replacement wording differs.
 
   Deviation found while implementing: `internal/fabricengine/export_test.go`'s `newCommitFixture` still held a live call expression, `gitkit.CopyWeft(t)`, not just prose — a call site an earlier batch missed rather than migrated.
   `newCommitFixture` is called from four in-package (`package fabricengine`) files, so it cannot take a `hubforge.NewHub` fixture (the Fabric-Fixture Invariant forbids that import there);
