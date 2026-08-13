@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gitkit leaf
 slug: lyxtest-real-hubs
 branch: lyxtest-real-hubs
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-fix-r7  '2026-08-13T06:50:16Z'
 blocked  '2026-08-13T06:50:48Z'
 planned  '2026-08-13T06:56:36Z'
 implementing  '2026-08-13T07:02:52Z'
+approved-gitkit leaf  '2026-08-13T07:18:31Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ implementing  '2026-08-13T07:02:52Z'
 ```yaml
 batches:
   - name: gitkit leaf
-    state: running
+    state: approved
     implementer_session: 4337e8c3-0904-4691-887b-42eae518bef3
     start_sha: e74a0dca4202934d7d95f834e4d2e4eb5b08ad37
+    commit_sha: ffcf226a3dc9cf306439658ff9d46f6cfc10fd0a
     verify_baseline_failures: ["FAIL\t./internal/gitkit/... [setup failed]"]
   - name: fabrictest dissolution
     state: pending
