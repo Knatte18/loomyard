@@ -1,6 +1,6 @@
 # `<MODULE>` — independent review + fix (prompt template)
 
-> **This is a TEMPLATE — the only checked-in prompt in this directory.** When you (the orchestrator) are asked to run crucible on a module, fill every `<PLACEHOLDER>` in a COPY of this file and write that filled instance to `.scratch/<module>-review-prompt.md` (gitignored). The per-module prompt is written fresh each campaign and is deliberately **NOT checked in** — a module's real state is stale the moment a review lands, so any committed instance would only rot; if crucible is re-run on a module later, its prompt is written anew from this template then and there. The filled instance is the round agent's instruction set for the review+fix work itself — the orchestrator spawns a fresh clean-room agent told only "read that file and do exactly what it says". The `crucible-reviewer-<effort>` agent-file preamble under `.claude/agents/` also carries the clean-room / commit-per-fix / summary-only contract, but this file remains the authoritative statement of it. See [README.md](README.md) for the loop this prompt runs inside.
+> **This is a TEMPLATE — the only checked-in prompt in this directory.** When you (the orchestrator) are asked to run crucible on a module, fill every `<PLACEHOLDER>` in a COPY of this file, write that filled instance to `_mill/<module>-review-prompt.md`, and COMMIT it. The per-module prompt is rewritten fresh each round — a module's state is stale the moment a review lands, so the file changes round to round — but every version that ever seeded a round is committed, so the exact instructions a round ran under are in git history rather than lost the moment the worktree is torn down; if crucible is re-run on a module later, its prompt is written anew from this template then and there and committed again. The filled instance is the round agent's instruction set for the review+fix work itself — the orchestrator spawns a fresh clean-room agent told only "read that file and do exactly what it says". The `crucible-reviewer-<effort>` agent-file preamble under `.claude/agents/` also carries the clean-room / commit-per-fix / summary-only contract, but this file remains the authoritative statement of it. See [README.md](README.md) for the loop this prompt runs inside.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `<MODULE>` module in the loomyard repo, followed by FIXING what you find.
 Work in the worktree at `<WORKTREE_PATH>` (branch `<BRANCH>`).
@@ -17,39 +17,46 @@ Adjust that path/branch if the task lives elsewhere now.
 As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live smoke/suite check if the finding needed one),
 and its doc update (if any) is included, COMMIT it — on the current branch, no push — before starting the next finding.
 Commit message format: `<module>: fix <finding-id> — <one-line what/why>` (e.g. `shuttle: fix M1 — assert redirected file content, not Wait outcome, after interrupt+send`).
-Do not commit `.scratch/` (gitignored;
-your review and fixer reports never belong in a commit regardless).
+Also commit `_mill/<module>-review-<yourtag>.md` and `_mill/<module>-review-<yourtag>-fixer-report.md` as you write or update them — they are NOT gitignored scratch, they are the campaign's durable record (see "Log as you go" below and `README.md`'s "Why deliverables are committed continuously, not gitignored"); a separate small commit for a report update is fine, and folding a report update into the same commit as the fix it documents is fine too.
 This exists because a round agent's session can be killed mid-fix by something entirely outside the method's control (a corrupted terminal, a lost connection) — round 2 of shuttle's own loop hit exactly this.
 A single monolithic uncommitted diff left behind by a crash forces the orchestrator to reverse-engineer, finding by finding, which fixes are actually complete versus half-done, from the diff alone.
 A trail of small commits turns that same crash into something the orchestrator can just read: `git log` shows exactly which findings landed clean, and anything with no commit is unambiguously not done yet — no guesswork, no risk of mistaking a half-applied fix for a finished one.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
-Job 1 must be COMPLETE — and its full review report SAVED to `.scratch/<module>-review-<yourtag>.md` on disk — before you touch (edit, create, or delete) a single production or test file.
+Job 1 must be COMPLETE — and its full review report SAVED to `_mill/<module>-review-<yourtag>.md` and committed — before you touch (edit, create, or delete) a single production or test file.
 Do not fix findings as you go, even ones that look small and obviously right.
 A review written or finished after code has already changed is no longer an independent judgment — it is a post-hoc rationalization of edits you already made,
 and it silently destroys the one property this whole method depends on.
 If you catch yourself wanting to patch something the moment you spot it: don't. Write it down as a finding, keep reading, finish the review, save the file, THEN start Job 2. (This rule exists because a round agent interleaved review and fix on shuttle's very first round — it had modified four production/test files before writing a single line of its review report.)
 
 ## Log as you go during Job 1 (BLOCKING — crash-resilience, do not batch it all to the end)
-As you work through "What to TEST" below — each hermetic command, each live-smoke run, each live-driving scenario — APPEND your observations to `.scratch/<module>-review-<yourtag>.md`'s "What was tested" section immediately after each command/scenario returns, rather than holding the results in your own working context to write out in one pass once everything is done.
+As you work through "What to TEST" below — each hermetic command, each live-smoke run, each live-driving scenario — APPEND your observations to `_mill/<module>-review-<yourtag>.md`'s "What was tested" section immediately after each command/scenario returns, rather than holding the results in your own working context to write out in one pass once everything is done.
 Do the same for findings as you form them: jot each one into the file's findings section provisionally as you spot it (the executive summary and final severity ordering can wait until you have the full picture, but individual findings and test observations should not).
-This file lives under `.scratch/` (gitignored), so writing to it during Job 1 does not conflict with the Sequencing rule above — you are not touching production or test files, only your own review notes.
+This file lives under `_mill/`, so writing to it during Job 1 does not conflict with the Sequencing rule above — you are not touching production or test files, only your own review notes.
+
+**COMMIT each append, not just write it to disk** — a small, frequent commit like
+`<module>: review notes — <what you just appended>` after each meaningful append (a finished
+scenario, a new finding) is exactly the discipline "Commit per fix" already asks of Job 2,
+extended to Job 1's own paperwork. Writing to disk alone survives a crash mid-session; it does
+NOT survive the worktree being torn down or reset, which a gitignored `.scratch/` file used to be
+exposed to. Committing removes that gap.
 
 This exists because Job 1's live-substrate driving is exactly the phase most exposed to a crash outside this method's control (a corrupted terminal, a lost connection, a host process killed) — the same class of failure "Commit per fix" above already defends against for Job 2, but nothing defended Job 1 until now.
 A round that spends many real minutes driving live scenarios and forms a full picture, then gets killed before ever writing a single byte of its report, leaves the orchestrator with zero evidence — not even a partial account of what was tried.
 This happened for real: a burler campaign's first round was killed mid-review, before the review file existed at all,
-and the orchestrator was left with nothing to read — no commits, no `.scratch/` files, just a stray uncommitted scratch fixture.
-Logging as you go means a round that dies at 95% leaves a 95%-complete account on disk, not an empty `.scratch/` directory.
+and the orchestrator was left with nothing to read — no commits, no `.scratch/` files (the convention at the time), just a stray uncommitted scratch fixture.
+Logging as you go, now committed as you go, means a round that dies at 95% leaves a 95%-complete account in git, not an empty directory or an uncommitted file a torn-down worktree would have taken with it.
 
 This does not relax the Sequencing rule above: Job 2 (fixing) still cannot start until Job 1's review is fully complete and saved — "fully complete" now just means "every test run and every finding already appears in the file", so finishing the review is closing out an already-populated document (adding the executive summary + final severity ordering), not writing it from scratch in one sitting.
 
 ## Clean-room review constraint (do this part unprimed)
 Form your OWN findings first.
 Do NOT read any prior review or review-dialogue files before you have your own list.
-Specifically do not open anything under `.scratch/` (gitignored;
-holds prior reviews `<module>-review-*.md` and `*-fixer-report.md`).
+Specifically do not open anything under `_mill/` matching `<module>-review-*` (holds prior reviews
+`<module>-review-*.md` and `*-fixer-report.md`, plus any orchestrator-only pre-count file named
+for this campaign — leave those alone too, this round or any later one).
 Reading the design SPEC and the module docs is expected and required (those are not reviews).
-AFTER you have written your own independent findings, you MAY consult the prior rounds' `.scratch/<module>-review-*` material — regardless of which model produced it (rounds rotate across Opus / Fable / Sonnet;
+AFTER you have written your own independent findings, you MAY consult the prior rounds' `_mill/<module>-review-*` material — regardless of which model produced it (rounds rotate across Opus / Fable / Sonnet;
 the most recent prior round is whichever `<module>-review-*` file is newest), EXCEPT your own `-<yourtag>` deliverables — to (a) confirm previously-fixed behaviors have not regressed and (b) re-evaluate the deferred items at the bottom.
 
 ## What to read
@@ -208,11 +215,11 @@ Small and low-severity findings are usually the CHEAPEST to fix, not a reason to
    Code findings severity-ranked with file:line + scenario + fix + CONFIRMED/PLAUSIBLE;
    Docs & operability findings;
    What-was-tested with exact commands + observed results, including what you could NOT verify and why).
-   Write it to `.scratch/<module>-review-<yourtag>.md` — per "Log as you go" above, build the What-was-tested section and provisional findings incrementally throughout Job 1, not in one pass at the end;
+   Write it to `_mill/<module>-review-<yourtag>.md` and commit it — per "Log as you go" above, build the What-was-tested section and provisional findings incrementally throughout Job 1 (committing each append), not in one pass at the end;
    only the executive summary and final severity ordering are written last.
 2. A fixer report: what you implemented, what you deliberately deferred (with reasons), the exact test commands run + results,
    and the changed files.
-   Write it to `.scratch/<module>-review-<yourtag>-fixer-report.md`.
+   Write it to `_mill/<module>-review-<yourtag>-fixer-report.md` and commit it (folding into a fix commit is fine).
 3. In your final chat message: a concise summary (executive summary + counts by severity + the two report paths + an explicit merge-readiness verdict).
    Do not paste the whole reports.
 

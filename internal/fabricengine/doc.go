@@ -290,8 +290,14 @@
 // A warp-only or tags-only `Fabric.Commit` call reaches `commitWeftLocked` with an empty weft
 // pathspec, which `weftPathspecFilter` reduces to no positive entry at all.
 // A pathspec that survives filtering can still resolve to nothing by the time `git add` runs, which
-// `StageAndCommit`'s "did not match any files" tolerance absorbs — reachable only as
+// `commitWeftLocked`'s own "did not match any files" tolerance absorbs — reachable only as
 // defense-in-depth, since the filter's own pre-check normally keeps this path from firing.
+// The tolerance lives in `commitWeftLocked` (weftgit.go), not in `gitrepo.StageAndCommit`, which has
+// none: `StageAndCommit` wraps and returns `git add`'s failure like any other, and
+// `commitWeftLocked` recognises this one case by matching git's own message text on the way past.
+// That match is the single place in this package whose correctness depends on
+// `*gitexec.GitError.Error()` continuing to render git's trimmed stderr into the message, so a
+// change to that rendering would silently turn this tolerance back into a hard failure.
 // And — the genuine correctness hole this whole mechanism exists to close — a pathspec that matches
 // real, tracked content whose staged bytes are identical to HEAD's makes `StageAndCommit` report
 // `committed=false`: without the empty-commit rule, a caller re-running an identical regeneration

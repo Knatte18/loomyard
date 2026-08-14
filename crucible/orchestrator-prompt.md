@@ -12,12 +12,12 @@ Your job is to drive rounds of independent clean-room agents, **independently ve
 The single discipline that makes this work: **you never trust a round's own "merge-ready" verdict** — only your own verification gates it.
 
 ## Your inputs
-- The per-module **review prompt** the round agent reads: `.scratch/<module>-review-prompt.md` — a filled instance of [`review-prompt-template.md`](review-prompt-template.md) that **you write** at the start of the campaign (fill every `<PLACEHOLDER>`) and keep under `.scratch/` (gitignored — the per-module prompt is never checked in;
-  write it fresh from the template each campaign).
+- The per-module **review prompt** the round agent reads: `_mill/<module>-review-prompt.md` — a filled instance of [`review-prompt-template.md`](review-prompt-template.md) that **you write** at the start of the campaign (fill every `<PLACEHOLDER>`), keep under `_mill/` (committed — see "Commit deliverables continuously" in `README.md`;
+  write it fresh from the template each campaign, and commit each rewrite).
   It carries a *"round context seeded from prior-round verification"* section that **you** rewrite each round.
 - Substrate + tool locations for verification: `<e.g. tmux resolved via PATH, pwsh7 resolved via PATH>`.
 - A scratchpad for verification artifacts.
-  Round deliverables live under `.scratch/` (gitignored).
+  Round deliverables live under `_mill/`, committed as they are written or meaningfully updated — never batched to round-end and never gitignored.
 
 ## Hard rules (do not violate)
 1. **Never trust the round's self-verdict.**
@@ -56,18 +56,17 @@ The single discipline that makes this work: **you never trust a round's own "mer
 
 ## The loop (repeat until converged)
 1. **Seed.**
-   On the first round, write `.scratch/<module>-review-prompt.md` from [`review-prompt-template.md`](review-prompt-template.md) (fill every `<PLACEHOLDER>`).
+   On the first round, write `_mill/<module>-review-prompt.md` from [`review-prompt-template.md`](review-prompt-template.md) (fill every `<PLACEHOLDER>`).
    Each round, rewrite its *"round context seeded from prior-round verification"* section to the current truth: either **the residual to close** (the specific defect your last verification found — file/scenario + "fix the right layer + add a regression test"),
    or a **safety-pass seed** ("no known residual;
    prior rounds converged and the last was independently verified clean — do an independent clean-room pass to find what every prior round missed, or honestly confirm merge-readiness").
    List the CLOSED-AND-VERIFIED items so they are not re-litigated.
-   The prompt lives under `.scratch/` (gitignored) — there is nothing to commit for the re-seed;
-   only the round agent's code/doc/test fixes get committed.
-2. **Spawn.** `Agent` tool → `subagent_type: crucible-reviewer-<effort>` (the operator's pick this round), `model: <the operator's pick this round>`, prompt = *"Read `.scratch/<module>-review-prompt.md` and do exactly what it says."*
-   Give it a tag `<model>-<effort>-r<N>` (e.g. `opus-high-r3`), tell it to **commit each individual fix as it lands** (message identifying the finding it closes — the prompt template's "Commit per fix" section has the exact format) but **never push**, and ask it to reply with only a concise executive summary + counts by severity + an explicit merge-readiness verdict.
+   The prompt lives under `_mill/`, committed — **commit the re-seed itself** (e.g. `fabric: crucible re-seed r3 — residual from r2 verification`) before spawning, so the exact instructions each round ran under are in git history, not just the round agent's own code/doc/test fixes.
+2. **Spawn.** `Agent` tool → `subagent_type: crucible-reviewer-<effort>` (the operator's pick this round), `model: <the operator's pick this round>`, prompt = *"Read `_mill/<module>-review-prompt.md` and do exactly what it says."*
+   Give it a tag `<model>-<effort>-r<N>` (e.g. `opus-high-r3`), tell it to **commit each individual fix as it lands** (message identifying the finding it closes — the prompt template's "Commit per fix" section has the exact format) and to **commit its review/fixer report under `_mill/` as it writes or updates them**, not just at the end, but **never push**, and ask it to reply with only a concise executive summary + counts by severity + an explicit merge-readiness verdict.
 3. **Notify + wait.**
    When it completes, `PushNotification` the operator if they are away from the terminal.
-   Do **not** read the agent's raw transcript file (it will overflow your context) — its final message and the `.scratch/` deliverables are enough.
+   Do **not** read the agent's raw transcript file (it will overflow your context) — its final message and the `_mill/` deliverables are enough.
 4. **Verify independently** — the part that actually catches residuals.
    Run the protocol below from a cold state on the committed tree.
    For any **new test** the round added, **reproduce its not-false-green proof yourself**: mutate the production code to reintroduce the bug the test claims to catch, confirm the test FAILS at the right assertion, then revert (confirm an empty diff).
@@ -76,9 +75,9 @@ The single discipline that makes this work: **you never trust a round's own "mer
    - **Residual found** → the round's fixes should already be committed one-by-one as they landed (per-fix commits — see the spawn step).
      If the round left anything genuinely uncommitted (e.g. it was killed mid-fix with no self-report at all), that is exactly the failure mode per-fix commits are meant to make cheap to recover from: read `git log` to see precisely which findings already landed clean, then either finish the remainder yourself or spawn a narrow, targeted fixer agent (rule 4 above) scoped to "read the existing review report + the current diff/log, finish and commit whatever is left" — not a fresh full review round.
      Re-seed the prompt (step 1) with the new finding, and spawn the next full round with a **different** model and/or effort tier.
-   - **Round died before any commits (crashed during Job 1)** → check `.scratch/<module>-review-<tag>.md` before assuming nothing survived.
-     Per the template's "Log as you go" section, the round appends its What-was-tested section and provisional findings incrementally, so even a crash mid-review usually leaves a partial-but-real account on disk — read it and re-seed the next round to pick up where it left off (what was already tested, what wasn't yet) rather than starting the whole review over blind.
-     Only treat it as truly a total loss if the file is genuinely absent or empty.
+   - **Round died before any commits (crashed during Job 1)** → check `_mill/<module>-review-<tag>.md` before assuming nothing survived — and check it via `git log`/`git show`, not only the working tree, since the file is committed incrementally now: even a crash that lost uncommitted working-tree state may still leave its last-committed increment recoverable.
+     Per the template's "Log as you go" section, the round appends its What-was-tested section and provisional findings incrementally (and commits each append — see "Commit deliverables continuously" in `README.md`), so even a crash mid-review usually leaves a partial-but-real account in git — read it and re-seed the next round to pick up where it left off (what was already tested, what wasn't yet) rather than starting the whole review over blind.
+     Only treat it as truly a total loss if the file is genuinely absent or empty at its last commit.
    - **Clean** → a further safety pass with a *different* model is cheap insurance.
      Convergence is when a safety pass **and** your gates **and** (for a live-substrate module) an operator-assisted visual check all agree.
 6. **Hand off.**
@@ -123,15 +122,23 @@ Available effort tiers: `low`, `medium`, `high`, `xhigh`, `max` — see `.claude
 This enumeration is the single place an operator learns what is pickable — if a tier is ever dropped, remove it from this list in the same commit that deletes the file.
 
 ## Hygiene
-- Commit each round's work (a clean base for the next). `.scratch/` is gitignored — review reports never get committed;
-  commit code + docs + suite + tests explicitly.
+- Commit each round's work (a clean base for the next) — code + docs + suite + tests explicitly.
+- **Commit deliverables continuously, not gitignored.** Every crucible artifact — the per-module
+  review prompt, the review report, the fixer report, the handoff note — lives under `_mill/`
+  (a worktree's normal, git-tracked task directory), never under a gitignored `.scratch/`.
+  Commit each one as soon as it is written or meaningfully updated, not batched to round-end: the
+  review report after each logged test/scenario or finding, the fixer report alongside (or
+  folded into) each fix commit, the re-seeded prompt each time you rewrite it, the handoff note
+  each time you refresh it. See `README.md`'s "Why deliverables are committed continuously, not
+  gitignored" for the rationale — a worktree torn down on merge takes a gitignored file with it,
+  which is the same loss "log as you go" already exists to prevent, just at a longer horizon.
 - Every task that changes behaviour must update the module doc / `overview.md` / `CONSTRAINTS.md` in the **same** commit (per `CLAUDE.md`).
   Do not add bugfix notes to `manifest/roadmap.md`.
-- Keep ONE handoff note (e.g. `.scratch/<module>-review-HANDOFF.md`) so the loop survives a context compaction, or briefs a genuinely fresh orchestrator that never saw this session.
-  Refresh it after every round's verification.
+- Keep ONE handoff note (e.g. `_mill/<module>-review-HANDOFF.md`) so the loop survives a context compaction, or briefs a genuinely fresh orchestrator that never saw this session.
+  Refresh it after every round's verification, and commit each refresh.
   Size its detail to what actually happened, not to a fixed template — a quiet round that closed clean might only need a few lines;
   an eventful round (a process defect caught and fixed, a confusing model-attribution question, several operator steering interruptions) earns a fuller write-up so none of that has to be rediscovered.
-  At minimum always cover: what round is running/paused right now (identify it by round tag + git state, never by internal agent/task ID — those are ephemeral and mean nothing in a new session), what is CLOSED-AND-VERIFIED (with the commit sha, so it's never re-litigated), what RESIDUAL is currently seeded in `.scratch/<module>-review-prompt.md`, what is on the DEFERRED list, and the exact next action to take (as an instruction, not a description).
+  At minimum always cover: what round is running/paused right now (identify it by round tag + git state, never by internal agent/task ID — those are ephemeral and mean nothing in a new session), what is CLOSED-AND-VERIFIED (with the commit sha, so it's never re-litigated), what RESIDUAL is currently seeded in `_mill/<module>-review-prompt.md`, what is on the DEFERRED list, and the exact next action to take (as an instruction, not a description).
   When something noteworthy happens — a method gap found and fixed, an operator norm worth remembering, a caveat like "the round-agent's model may not be what the UI appears to show" — fold it into this same file rather than starting a second one;
   a single up-to-date file beats two that can silently drift out of sync.
   The operator can ask for it to be refreshed or expanded at any point, not just after a round.
