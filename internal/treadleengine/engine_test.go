@@ -1344,7 +1344,7 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 			seedPath := filepath.Join(runDir, "round-3-seed.md")
 			sh := tt.shSet(seedPath)
 
-			content, ok := runTargeting(sh, "perch", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
+			content, ok := runTargeting(newTestStencilsDir(t), sh, "perch", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
 			if ok {
 				t.Errorf("runTargeting() ok = true; want false")
 			}

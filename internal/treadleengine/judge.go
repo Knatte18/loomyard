@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // Shuttle is the seam judge.go drives its three ephemeral calls through, satisfied by
@@ -41,13 +42,23 @@ type judgeInputs struct {
 	HandoffPath         string
 	Model               string
 	Effort              string
+	// StencilsDir is the absolute stencils directory runCircling and
+	// runMilestone read their prompt from via stencilstore.Read, told by the
+	// caller rather than derived — see Options.StencilsDir.
+	StencilsDir string
 }
 
 // runCircling spawns the per-round circling-check progress judge. Fail-safe:
-// any failure logs a Warn and returns (JudgeProgressing, "", false) rather
-// than an error. ok is false on every fail-safe path and true only when a
-// real verdict was parsed.
+// any failure — including a stencilstore.Read failure for the prompt itself —
+// logs a Warn and returns (JudgeProgressing, "", false) rather than an error.
+// ok is false on every fail-safe path and true only when a real verdict was
+// parsed.
 func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
+	template, err := stencilstore.Read(in.StencilsDir, "treadle-template-judge-circling")
+	if err != nil {
+		logger.Warn(name+": circling judge template unreadable, defaulting to "+string(JudgeProgressing), "round", in.Round, "cause", err)
+		return JudgeProgressing, "", false
+	}
 	values := map[string]string{
 		"round":            strconv.Itoa(in.Round),
 		"prior_reviews":    strings.Join(in.PriorReviews, "\n"),
@@ -55,13 +66,18 @@ func runCircling(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string,
 		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
 		"handoff_path":     in.HandoffPath,
 	}
-	return runJudgeCall(sh, name, judgeCirclingTemplate, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
+	return runJudgeCall(sh, name, template, values, framingCircling, in.Round, in.Model, in.Effort, JudgeProgressing, "circling judge")
 }
 
 // runMilestone spawns the milestone continuation-gate progress judge. Fail-safe
 // posture mirrors runCircling: defaults to (JudgeContinue, "", false) on any
-// failure.
+// failure, including a stencilstore.Read failure for the prompt itself.
 func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string, bool) {
+	template, err := stencilstore.Read(in.StencilsDir, "treadle-template-judge-milestone")
+	if err != nil {
+		logger.Warn(name+": milestone judge template unreadable, defaulting to "+string(JudgeContinue), "round", in.Round, "cause", err)
+		return JudgeContinue, "", false
+	}
 	values := map[string]string{
 		"round":            strconv.Itoa(in.Round),
 		"hard_cap":         strconv.Itoa(in.HardCap),
@@ -70,7 +86,7 @@ func runMilestone(sh Shuttle, name string, in judgeInputs) (JudgeVerdict, string
 		"previous_handoff": previousHandoffMarker(in.PreviousHandoffPath),
 		"handoff_path":     in.HandoffPath,
 	}
-	return runJudgeCall(sh, name, judgeMilestoneTemplate, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
+	return runJudgeCall(sh, name, template, values, framingMilestone, in.Round, in.Model, in.Effort, JudgeContinue, "milestone judge")
 }
 
 // previousHandoffMarker renders a judgeInputs.PreviousHandoffPath value into
@@ -133,15 +149,24 @@ func runJudgeCall(sh Shuttle, name string, template []byte, values map[string]st
 // runTriage spawns the asking-triage call: a review agent stopped mid-round
 // asking question rather than finishing, and this call classifies whether
 // a fresh retry can plausibly proceed (RETRY) or the round profile itself
-// is broken (GIVE_UP). Fail-safe: any failure — stencil fill, shuttle Run
-// error, non-done Outcome, verdict file read, or parse — logs a
-// name-prefixed logger.Warn naming the round and cause, and returns
-// (TriageRetry, "") rather than an error.
-func runTriage(sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string) {
+// is broken (GIVE_UP). Fail-safe: any failure — the prompt's stencilstore.Read,
+// stencil fill, shuttle Run error, non-done Outcome, verdict file read, or
+// parse — logs a name-prefixed logger.Warn naming the round and cause, and
+// returns (TriageRetry, "") rather than an error. stencilsDir is the
+// absolute stencils directory this call reads its prompt from, leading
+// rather than trailing so a mis-ordered call site still compiles (see the
+// composePrompt convention this mirrors).
+func runTriage(stencilsDir string, sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string) {
 	values := map[string]string{
 		"round":        strconv.Itoa(round),
 		"question":     question,
 		"verdict_path": verdictPath,
+	}
+
+	triageTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-triage")
+	if err != nil {
+		logger.Warn(name+": triage template unreadable, defaulting to retry", "round", round, "cause", err)
+		return TriageRetry, ""
 	}
 
 	prompt, err := stencil.Fill(triageTemplate, values)
