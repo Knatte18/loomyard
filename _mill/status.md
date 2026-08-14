@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: hub-dotlyx-into-board
 branch: hub-dotlyx-into-board
 plan: _mill/plan
@@ -36,6 +36,7 @@ nits-fixed-holistic  '2026-08-14T18:39:54Z'
 holistic-approved  '2026-08-14T18:40:01Z'
 self-resolved-scope-violation  '2026-08-14T18:52:00Z'
 done  '2026-08-14T18:52:23Z'
+pr-pending  '2026-08-14T18:53:18Z'
 ```
 
 ## Batches
