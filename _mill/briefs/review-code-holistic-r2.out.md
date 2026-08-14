@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: Relocate producer prompt files into a stencils/ directory — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-14
+```
+
+## Findings
+
+### [NIT:consistency] docs/overview.md's seam-module count is stale after this task's 12th module
+**Location:** `docs/overview.md:254`
+**Issue:** "Ten of the eleven modules also expose `RunCLIIn`..." is now inconsistent with the same file's own module table two lines below, which lists `stencil` as a 12th `lyx <module>` entry (line 287) — the true counts are eleven-of-twelve, matching what CONSTRAINTS.md's CLI/Cobra Invariant was correctly updated to say (batch 9, card 38). No card in batches 8/9 touched this sentence.
+**Fix:** Update "Ten of the eleven modules" to "Eleven of the twelve modules" in the same file, mirroring the CONSTRAINTS.md wording batch 9 already landed.
+
+### [NIT:decision] `stencilcli sync`'s `ForceRefresh` failure path drops any partial write record
+**Location:** `internal/stencilcli/cli.go:170-174`
+**Issue:** If `stencilstore.ForceRefresh` errors after writing some but not all stencils (a mid-loop I/O failure), `syncCmd` returns a bare `output.Err` with no `mutations`/`partial` keys, silently discarding the `written` slice `ForceRefresh` did return alongside the error. This differs from the `CommitSeededStencils` failure path two lines below, which does surface the record via `errWithRecord`.
+**Fix:** Either surface the partial `written` slice via `errWithRecord`-style keys on this path too, or add a one-line comment stating this is treated as a pre-flight-style failure (no `Mutations` recorder exists yet) so the asymmetry with the `CommitSeededStencils` error path reads as a deliberate choice. No functional risk: the next `sync` re-detects and completes any partially-written state via `Classify`, so this is a reporting gap, not a correctness bug.
+
+## Verdict
+
+APPROVE
+Implementation matches the nine-batch plan precisely across all cross-batch contracts, shared decisions, and CONSTRAINTS amendments; only two cosmetic NITs found.
+MILL_REVIEW_END
