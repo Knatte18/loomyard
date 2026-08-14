@@ -3,7 +3,23 @@
 Orchestrator's own state file. Refreshed after every round's verification. Never read by a round
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
-## Right now
+## Right now — CAMPAIGN COMPLETE
+Round 8 (`opus-medium-r8`), the operator's confirmed final round, has FINISHED and been
+independently verified (fork `a05815de72264fe6c`). **The full convergence verdict is written to
+`_mill/fabric-crucible-CONVERGENCE.md` (committed) — read that file for the campaign's complete
+final state.** Summary: round 8's general unprimed sweep (no seeded target) found one genuinely
+new defect class the prior 7 rounds' targeted chases had missed — `removeLaunchers` (delete side)
+was never migrated to the TOCTOU-safe `removeContainedPath` machinery round 3 built, plus 3 LOW
+findings (a deterministic out-of-container sweep bug, a swallowed-refusal dishonest-success bug in
+the same shape as M2, and an Args-validation gap). All 4 fixed. Independent verification did what
+round 8 itself could not — won M1's live race (250/3000 ≈ 8.3% pre-fix escapes, 0/3000 post-fix,
+own in-process harness) — upgrading the campaign's last uncertain fix to fully live-proven both
+ways. Two allowlist entries (both in `junction.go`) were flagged as structurally similar to
+findings that were wrong before in this campaign, but NOT confirmed as live defects — named
+honestly as open candidates for a hypothetical future round, not closed as safe and not treated as
+proven unsafe either. This campaign is now DONE per the operator's explicit final-round
+instruction; do not spawn round 9 without a new explicit operator instruction to do so.
+
 Round 7 (`fable-high-r7`) has FINISHED and been independently verified (fork `a896b8ed43fb2c180`).
 **Clean result — first round in the whole campaign where independent verification found NO
 counter-evidence and NO new sibling gap.** Round 7 ran the operator-scoped full write-side
@@ -192,6 +208,30 @@ nothing deferred, so nothing else to fold in from that source. The "inert leftov
 post-freeze observation is folded in as a low-priority spot-check only.
 
 ## CLOSED-AND-VERIFIED
+**Round 8 (`opus-medium-r8`, the campaign's FINAL round) — FULLY closed, strongest evidence bar of
+any round.** 1 MEDIUM (M1, `removeLaunchers` routed through `removeContainedPath` — the delete-side
+sibling round 7's `writeLaunchers` fix never covered) + 3 LOW (L1 `pruneEmptyAncestors` deterministic
+out-of-container sweep, L2 a swallowed-refusal dishonest-success bug — same shape as round 2's M2,
+L3 Args-validation on every verb), 6 commits `696979e2`..`32e32cb8`. Independently verified (fork
+`a05815de72264fe6c`): gates green cold; L1/L2/L3 sabotage-proven exactly as claimed (L1 confirmed
+genuinely deterministic, not a race); M1's two "behavioral" tests don't actually sabotage-prove the
+routing change (only the mechanical guard-allowlist test does — a precision correction to the fixer
+report's framing, not a functional defect). **Independent verification WON M1's live race where
+round 8 itself could not**: round 8 tried 60 CLI-subprocess trials and failed to hit it, honestly
+reporting the fix as CONFIRMED-by-trace rather than live; independent verification built its own
+in-process toggler and got 250/3000 (~8.3%) live escapes against the PRE-fix code, 0/3000 against
+the POST-fix code — M1 is now the strongest-evidenced fix in the whole campaign, live-proven broken
+AND live-proven closed. L2 re-attacked live in round 8's exact scenario, confirmed genuine; one
+minor already-accepted-class edge case noted (empty-target absent-target short-circuit, round 2's
+documented guard-strength limit, not a new live defect). L3 confirmed live. A targeted re-read of
+both guards' allowlist reasoning (round 8's own suggested lens, since M1/L1 both came from exactly
+this kind of stale reasoning) flagged two `junction.go` entries — `adoptDotLyxContent`/
+`mergeAdoptionTree` (destructive guard) and `seedLyxJunction`'s "race-only, not statically
+pre-plantable" claim (write guard) — as structurally matching the reasoning shape that was wrong
+three separate times this campaign (M1, the create-side gap, the staging-observability gap). NOT
+independently re-attacked (time-boxed) — named as open candidates for a hypothetical future round,
+not confirmed defects. See `_mill/fabric-crucible-CONVERGENCE.md` for the full campaign writeup.
+
 **Round 7 (`fable-high-r7`) — FULLY closed, first round with a clean independent verification (no
 counter-evidence, no new sibling found).** 1 MEDIUM (F1, `writeLaunchers` routed through `os.Root`)
 + 3 LOW (F2 `createPortal`'s container-symlink gap, fixed the same way; F3 the new write-side
@@ -337,27 +377,14 @@ file's content before self-correcting). All committed. Round 1's own deliverable
 from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was seeded before the
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
-## Exact next action
-1. `_mill/fabric-review-prompt.md` is rewritten for round 8 (no seeded residual, general final
-   confidence sweep, CLOSED-AND-VERIFIED updated with round 7's clean closure, deferred/round-
-   context sections cleared). Commit it together with this HANDOFF update.
-2. Spawn round 8: `subagent_type: crucible-reviewer-medium`, `model: opus`, tag `opus-medium-r8`
-   — per the operator's explicit choice, confirmed 2026-08-14.
-3. After round 8's own independent verification: this is the operator's confirmed FINAL round —
-   write the convergence verdict regardless of what round 8 finds (a genuine finding still gets
-   independently verified and fixed first, per standard discipline, before the verdict is
-   written). The verdict should state plainly: the destruction chokepoint's delete-side
-   containment (M3/M1, `removePath`/`removeLink` via `os.Root`) and create-side containment (the
-   create-worktree chain via `containedWorktreeAdd`, AND the write-side audit's
-   `writeLaunchers`/`createPortal` fixes) have all independently survived adversarial re-attack; a
-   durable write-side guard test now exists as a permanent check against future regressions on
-   this class of defect (there was none before this campaign — arguably the single most durable
-   outcome of the whole campaign, more than any individual fix); remaining permanent limits are
-   Windows path/junction behavior (never executed, Linux host) and N4's dirtiness-probe TOCTOU
-   (accepted, documented, real-in-theory-only residual). State honestly that most of the first 7
-   rounds each found something the previous round's own verdict missed, and that this is itself
-   informative — not proof the module is now perfect, but strong evidence the specific properties
-   hammered this hard (the chokepoint's containment guarantees, both directions) are now sound.
+## Exact next action — NONE, campaign complete
+`_mill/fabric-crucible-CONVERGENCE.md` is the final deliverable, committed. If the operator asks
+for further work on `fabric`, that is a NEW instruction, not a continuation of this campaign's
+standing plan — do not assume round 9 is wanted just because the module could theoretically absorb
+more scrutiny forever. If the operator does ask to continue, treat it the same as every scope
+change in this campaign: confirm the seed/target explicitly (the two `junction.go` allowlist
+entries named in CLOSED-AND-VERIFIED above are the most credible starting candidates) before
+spawning.
 
 If the operator says continue, rewrite `_mill/fabric-review-prompt.md` for round 8 using one of
 the candidate directions in "RESIDUAL" above (or a direction the operator specifies), commit, spawn
