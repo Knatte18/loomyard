@@ -37,6 +37,9 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
 - Renaming `internal/reedengine/header-template.md` to `console-header.md` and fixing that file's stale doc comment.
 - A new `fabricengine.StencilsDir(hub)` resolver beside `BoardDir`, and the signature changes that thread the resolved directory into each engine.
+- Exporting `internal/stencil`'s leading-comment stripper and making webster's `joinTemplateAssets` strip every asset's banner, fixing the pre-existing second-banner leak.
+- `.gitattributes` changes: 15 new `stencils/**` LF pins, removal of the 8 stale `internal/*` rows, and a seeded `.gitattributes` in the board's stencils tree.
+- A `**Covers:** stencil` scenario in `tools/sandbox/SANDBOX-CORE-SUITE.md`.
 - A new CONSTRAINTS.md invariant recording stencil ownership, the amended treadle allowlist bullet, and the CLI/Cobra seam counts going from eleven/ten to twelve/eleven.
 - Rewriting the wiki task's body so it describes the mechanism actually built rather than the junction layout that was disproved.
 
@@ -107,6 +110,12 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   The rows are evaluated in that order, and the third is a reconciliation rule that is load-bearing rather than an optimisation.
   Without it a file whose body has legitimately caught up with the shipped default — after a `promote` and the deploy that follows it, or after an operator reverts an edit by hand — keeps a stamp naming the *old* default forever, is classified edited forever, is skipped by every future refresh forever, and never returns to a clean state.
   With it, the stamp self-heals the moment body and shipped default agree.
+- **The hash is taken over an LF-normalised body**, and every comparison normalises both sides first.
+  Without this the mechanism breaks completely on a machine with `core.autocrlf=true`: the board copy is a git checkout, so an LF file seeded by lyx comes back as CRLF, whose hash matches neither the stamp nor the shipped default — so *every* stencil is classified human-edited, forever, and never refreshed again.
+  The `diff <name>` base lookup would diverge on the same platform for the same reason, since `internal/gitrepo` performs no CRLF conversion (`internal/gitrepo/doc.go:218`).
+- **The board's stencils tree is seeded with its own `.gitattributes`** pinning `*.md` to `text eol=lf`, since the generated board repo has none and inherits nothing from loomyard's.
+- Loomyard's own `.gitattributes` changes too: the 15 new `stencils/**` paths are pinned, and the 8 now-stale `internal/*` rows (four burler, four treadle) are removed.
+  Note that loom's two and webster's five are unpinned today, so the move also closes a gap rather than only relocating rows.
 
 - Rationale: hashing the stripped body is not merely convenient, it is required — a hash stored inside the file cannot cover itself, and stripping the leading comment is what removes the self-reference.
   It also has the right semantics: editing banner prose is not editing the instructions, while editing the instructions always changes the hash.
@@ -329,9 +338,23 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Rationale: `//go:embed` reaches only files at or below the embedding package's own directory, so a top-level prompt directory forces exactly one Go file at that directory's root — there is no arrangement with zero.
   Verified building in the spike.
   Exporting one typed default per stencil rather than an `embed.FS` keeps a renamed or missing file a build error instead of a runtime one.
+- The same file also holds the **name → default registry**, an exported ordered map from stencil name to its default text, built beside the typed vars.
+  `stencilstore` is its only consumer;
+  no engine imports the `stencils` package directly, so treadle's allowlist needs the one `internal/stencilstore` entry and no second one.
+  A test in the `stencils` package walks the family subfolders and asserts the registry and the `.md` tree name exactly the same set in both directions.
+  Without that test a hand-maintained map reintroduces the silent-omission failure the typed-var choice exists to prevent — a `.md` added but never registered would be invisible to `list`, never seeded, and never validated.
 - Note on naming: the package sits alongside the existing `internal/stencil` (the rendering mechanism).
   Plural versus singular is the only distinguisher, accepted because call sites read `stencils.LoomTemplateDiscussion` against `stencil.Fill`.
 - Rejected: one Go package per family (four packages where one suffices), and `internal/stencils/` (keeps the prompts under `internal/`, which is the thing the task set out to undo).
+
+### compose-strips-every-banner
+
+- Decision: `internal/stencil` exports its leading-comment stripper (today the unexported `stripLeadingComment`, `internal/stencil/stencil.go:67`), and `websterengine`'s `joinTemplateAssets` strips **every** asset's banner before concatenating, not just the first.
+- Rationale: `render.go:60-77` joins prefix and body, and `stencil.Fill` strips only the leading banner of the joined result, so the second file's banner already reaches the LLM verbatim today.
+  This task turns that latent wart into a real defect: once `implementer-body.md` carries `<!-- lyx-stencil: sha256=… -->`, that stamp line is delivered into both the fork prompt and the recovery prompt as if it were instruction text.
+  Leaking an internal bookkeeping hash into a producer's prompt is not acceptable, and the pre-existing double-banner leak is fixed by the same change rather than left standing beside it.
+- Rejected: stripping only the body's banner at compose time (works, but leaves the general case wrong for any future third asset).
+  Also rejected: keeping the stamp out of files that are composed — it would exempt exactly three of the fifteen from edit detection.
 
 ### reed-rename
 
@@ -368,7 +391,8 @@ The proposal's "16 files" prose and its 15-row table are consistent.
 `composeForkTemplate` joins `fork-prefix` ahead of `implementer-body`;
 `composeRecoveryTemplate` joins `recovery-prefix` ahead of the same body.
 Three files therefore participate in two composed prompts, and both must read through `stencilstore` for an edit to any of the three to take effect.
-Note that the composed result contains two leading banner comments, only the first of which `stripLeadingComment` removes — this is existing behaviour, not something this task introduces, but the plan must not make it worse.
+The composed result contains two banner comments, only the first of which `stripLeadingComment` removes.
+That is existing behaviour, but this task makes it actively harmful and therefore must fix it — see the `compose-strips-every-banner` decision.
 
 **The banner comment already exists and is already stripped.** `internal/stencil/stencil.go:27` calls `stripLeadingComment` before parsing, and `stencil.go:67` implements it: a leading `<!--` … `-->` block is dropped, otherwise the text is returned unchanged.
 All 15 files open with such a banner today.
@@ -411,8 +435,9 @@ From `CONSTRAINTS.md`:
   `cmd/lyx/helptree_test.go`, `registration_test.go`, `longlist_test.go`, `drift_test.go`, and `seamsignature_test.go` all react to a new module.
   The invariant's own text hardcodes the seam counts — "eleven seam modules" and "ten of the eleven" carrying `RunCLIIn` — so adding `stencil` makes those twelve and eleven, and that edit belongs in the same commit as the rest.
   `stencil` carries `RunCLIIn`, since it reads geometry.
-- **Sandbox Suite Coverage** — a newly registered module needs either a `**Covers:** stencil` scenario in a `tools/sandbox/*SUITE.md` file or an `excludedModules` entry with a reason;
-  `cmd/lyx/sandbox_coverage_test.go` fails otherwise.
+- **Sandbox Suite Coverage** — resolved rather than restated: a `**Covers:** stencil` scenario is added to `tools/sandbox/SANDBOX-CORE-SUITE.md`, not an `excludedModules` row.
+  `list` and `validate` are read-only and trivially black-box exercisable, so none of the three existing exclusion reasons (interactive stdin, real GitHub writes, external binary on `$PATH`) applies here.
+  `cmd/lyx/sandbox_coverage_test.go` fails without one or the other.
 - **Durable-vs-Ephemeral State Invariant** — `_lyx` holds tracked content only, which is correct for stencils.
   Nothing in this task writes under `.lyx`.
 - **Fabric Git Invariant** — the board write is a `Bolt` operation, never raw git.
@@ -434,7 +459,10 @@ From `CONSTRAINTS.md`:
   No new `Kind` member is needed: `KindFileWritten` and `KindCommitCreated` already exist (`internal/fabricengine/mutation.go:45,50`), which also keeps the same-commit `Kind`-plus-recording-site-plus-guard-entry rule from applying.
   `lyx stencil sync`'s envelope therefore carries the fixed `mutations` array and `partial` bool like every other mutating verb outcome, while a pre-flight failure emits a bare `output.Err` with neither key, per that invariant's pre-flight carve-out.
 - **Test Tier Purity Invariant** — untagged tests must not spawn git or build hub fixtures.
-  Satisfied by `stencilstore` taking an explicit base directory, so tests use `t.TempDir()`.
+  This is satisfied **for `internal/stencilstore` only**, because it takes an explicit base directory and its tests use `t.TempDir()`.
+  It is not a claim about the whole task: the promote round trip, the diff-base history walk, the seeding-commit pathspec, and the mutation-record assertions all need a real board repo, so those files carry an `integration` build tag.
+- **Hermetic Git Test Environment Invariant** — every one of those git-spawning test packages needs a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, including the new `stencilcli` test files and any new `fabricengine` test file.
+  `cmd/lyx/hermeticenv_test.go` fails otherwise.
 - **Documentation Lifecycle / task-completion rule** — `manifest/designs/` for any module doc touched, `docs/overview.md` for the module table and execution stack (a new `stencil` module changes both), and CONSTRAINTS.md for the new invariant, all in the same commit.
   `docs/overview.md:288-289` names `discussion-template.md` and `plan-template.md` by their current paths and must be updated.
 - **Markdown Link Integrity** — `manifest/` and `docs/` are the scan sources;
@@ -499,6 +527,13 @@ The empty-diff case is the dangerous one, since it reads as "you are up to date"
 
 **Mutation record.** Assert the seeding verb's record is empty on a no-op run and carries `file_written` plus `commit_created` on a run that actually seeded.
 
+**Banner stripping.** Assert a composed webster prompt contains no `lyx-stencil:` line and no `<!--` at all — the regression guard for the stamp leaking into a live prompt.
+
+**Hash normalisation.** Assert a body written with CRLF line endings hashes identically to the same body with LF, in both the untouched-detection and base-recovery paths.
+This is the one that silently disables the entire mechanism on a Windows checkout if it regresses.
+
+**Registry completeness.** Assert the `stencils` package's registry and its `.md` tree name the same set in both directions, so a file added without registration fails the build rather than going invisible.
+
 **Full-suite gate.** `go build ./...` and the full `go test ./...` must pass, since this change touches five engines, one enforcement walk, one import allowlist, and the cobra root.
 
 ## Q&A log
@@ -532,4 +567,8 @@ The empty-diff case is the dangerous one, since it reads as "you are up to date"
 - **Q:** Doesn't setting `core.hooksPath` collide with fabric's own hook installer? **A:** Yes — fabric resolves its hooks dir with `git rev-parse --git-path hooks`, which honours `core.hooksPath`, so it would write generated hooks into a tracked source directory. `core.hooksPath` is not set; `tools/deploy` installs a copy into the directory git already consults.
 - **Q:** Does an explicit `lyx stencil sync` refresh from a `-dev` build? **A:** Yes. The dev skip exists to stop incidental thrash, not to refuse an explicit request — and the dev binary is the one used in the test-live loop.
 - **Q:** How does the binary know it is a dev build, and what is an unstamped binary? **A:** `-ldflags -X` set by `tools/deploy -dev`. Unstamped — plain `go build`/`go install`, or a test binary — counts as production, since converging on shipped defaults is the safe default and dev must opt in.
+- **Q:** Once `implementer-body.md` carries a stamp, does it leak into webster's composed prompts? **A:** Yes — `stripLeadingComment` drops only the first banner of a joined pair, so the stamp would be delivered as instruction text. `internal/stencil` exports its stripper and `joinTemplateAssets` strips every asset, which also fixes the pre-existing second-banner leak.
+- **Q:** What happens to the hashes on a machine with `core.autocrlf=true`? **A:** Without a rule, every stencil is classified human-edited forever and never refreshed. Hashing is over an LF-normalised body, the board's stencils tree is seeded with its own `.gitattributes`, and loomyard's `.gitattributes` gains the 15 new paths and loses the 8 stale ones.
+- **Q:** Who owns the name → default registry, given typed vars rather than an `embed.FS`? **A:** The `stencils` package itself, beside the vars, consumed only by `stencilstore`. A test asserts registry and `.md` tree match in both directions, so a hand-maintained map cannot silently omit a file.
+- **Q:** Sandbox coverage — scenario or exclusion? **A:** A `**Covers:** stencil` scenario in `SANDBOX-CORE-SUITE.md`. None of the three existing exclusion reasons applies to a read-only `list`/`validate`.
 - **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) and adding a loomyard-only pre-commit `lyx stencil diff --all --exit-code`. CI cannot be the guard, since a CI runner has no access to the operator's hub.
