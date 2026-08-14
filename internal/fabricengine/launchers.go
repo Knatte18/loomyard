@@ -82,11 +82,21 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 // and ensures the menu launcher exists. The .cmd/.sh extension depends on GOOS;
 // .sh files are written executable.
 //
+// Every write goes through an os.Root rooted at l.HubPath rather than a raw os.MkdirAll/os.WriteFile,
+// and that is a containment property, not a style choice: _launchers is a structural directory
+// directly under the hub, and a raw write to <hub>/_launchers/<AnchorRel>/<slug> followed a symlink
+// planted at the leaf OR at the _launchers container out of the hub, writing executable script content
+// to an attacker-chosen path while reporting success — the create-side twin of the delete-side M3 the
+// removeLaunchers gate already closes. Rooting at the hub (the true containment boundary; _launchers
+// is never legitimately a symlink) makes component resolution and each write one openat chain that
+// refuses any component escaping the hub at write time. l.HubPath always exists here — writeLaunchers
+// runs only after the hub and the worktree pair it serves already exist.
+//
 // rec is the calling verb's own recorder. Every entry here is conditional on an observation, never
 // on plain success, because writeLaunchers doubles as the repair path (reconcile.go's
 // restorePortalAndLaunchers calls it against an already-wired pair): an unconditional record would
 // claim writes that did not happen on that path.
-//   - The launcher directory: os.MkdirAll succeeds on an already-existing directory, so the path is
+//   - The launcher directory: root.MkdirAll succeeds on an already-existing directory, so the path is
 //     stat'd BEFORE the MkdirAll and KindDirCreated is recorded only when it was absent.
 //   - The two scripts: written unconditionally with deterministic content, so a repair-path call
 //     rewrites them byte-identically. Each is recorded with KindFileWritten only when the write
@@ -94,17 +104,29 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 //     not "did the write succeed".
 //   - The menu launcher: never-clobber (writeLaunchers returns early when it already exists, and
 //     removeLaunchers deliberately leaves it in place), so it is recorded only on the branch that
-//     actually reaches its os.WriteFile.
+//     actually reaches its root.WriteFile.
 func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	ext := launcherExt(runtime.GOOS)
 
+	root, err := os.OpenRoot(l.HubPath)
+	if err != nil {
+		return fmt.Errorf("open hub root %s: %w", l.HubPath, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	// Create the mirrored launcher directory, recording only when this call is the one that minted
 	// it — a repair-path call against an already-wired pair must not claim a directory creation that
-	// happened on an earlier call.
+	// happened on an earlier call. A hub-escaping symlink at any component surfaces as a root.Stat
+	// error that is not os.IsNotExist, so dirWasAbsent stays false and the root.MkdirAll below fails
+	// closed rather than following it.
 	launcherDir := LauncherDir(l, slug)
-	_, statErr := os.Stat(launcherDir)
+	launcherDirRel, err := hubRel(l.HubPath, launcherDir)
+	if err != nil {
+		return err
+	}
+	_, statErr := root.Stat(launcherDirRel)
 	dirWasAbsent := os.IsNotExist(statErr)
-	if err := os.MkdirAll(launcherDir, 0o755); err != nil {
+	if err := root.MkdirAll(launcherDirRel, 0o755); err != nil {
 		return fmt.Errorf("mkdir launcher dir %s: %w", launcherDir, err)
 	}
 	if dirWasAbsent {
@@ -118,7 +140,7 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	}
 	ideContent, ideMode := launcherScript(runtime.GOOS, spawnRel, "ide spawn "+slug)
 	idePath := filepath.Join(launcherDir, "ide"+ext)
-	if err := writeLauncherScriptIfChanged(rec, idePath, ideContent, ideMode); err != nil {
+	if err := writeLauncherScriptIfChanged(rec, root, l.HubPath, idePath, ideContent, ideMode); err != nil {
 		return fmt.Errorf("write ide%s: %w", ext, err)
 	}
 
@@ -128,21 +150,27 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	// directory.
 	fabricCheckoutContent, fabricCheckoutMode := launcherScript(runtime.GOOS, spawnRel, "fabric checkout")
 	fabricCheckoutPath := filepath.Join(launcherDir, "fabric-checkout"+ext)
-	if err := writeLauncherScriptIfChanged(rec, fabricCheckoutPath, fabricCheckoutContent, fabricCheckoutMode); err != nil {
+	if err := writeLauncherScriptIfChanged(rec, root, l.HubPath, fabricCheckoutPath, fabricCheckoutContent, fabricCheckoutMode); err != nil {
 		return fmt.Errorf("write fabric-checkout%s: %w", ext, err)
 	}
 
 	// Ensure per-subpath menu launcher exists (never clobber)
 	menuPath := menuLauncherPath(l)
-	if _, err := os.Stat(menuPath); err == nil {
+	menuRelPath, err := hubRel(l.HubPath, menuPath)
+	if err != nil {
+		return err
+	}
+	if _, err := root.Stat(menuRelPath); err == nil {
 		// File exists, don't clobber it
 		return nil
 	} else if !os.IsNotExist(err) {
+		// A hub-escaping symlink at any component lands here too, failing closed rather than clobbering
+		// whatever it points at.
 		return fmt.Errorf("stat menu launcher: %w", err)
 	}
 
 	// File does not exist; create parent directory
-	if err := os.MkdirAll(filepath.Dir(menuPath), 0o755); err != nil {
+	if err := root.MkdirAll(filepath.Dir(menuRelPath), 0o755); err != nil {
 		return fmt.Errorf("mkdir menu launcher dir: %w", err)
 	}
 
@@ -159,7 +187,7 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 		return err
 	}
 	menuContent, menuMode := launcherScript(runtime.GOOS, menuRel, "ide menu")
-	if err := os.WriteFile(menuPath, menuContent, menuMode); err != nil {
+	if err := root.WriteFile(menuRelPath, menuContent, menuMode); err != nil {
 		return fmt.Errorf("write menu launcher: %w", err)
 	}
 	rec.Append(KindFileWritten, menuPath, "")
@@ -167,15 +195,32 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	return nil
 }
 
-// writeLauncherScriptIfChanged writes content to path with the given mode, recording KindFileWritten
-// against rec only when the bytes actually change — an absent file counts as changed. This is what
-// lets writeLaunchers' repair-path call (an already-wired pair, rewritten byte-identically) report no
-// change at all, since the deterministic content it writes is otherwise indistinguishable from a
-// fresh authoring by exit code alone.
-func writeLauncherScriptIfChanged(rec *Mutations, path string, content []byte, mode os.FileMode) error {
-	existing, err := os.ReadFile(path)
-	changed := err != nil || string(existing) != string(content)
-	if err := os.WriteFile(path, content, mode); err != nil {
+// hubRel returns path expressed relative to hubPath, the form every os.Root call under the hub takes.
+// It errors rather than degrading, because a launcher/portal path that cannot be related to the hub
+// is a bug in the geometry derivation, not a case to write blindly.
+func hubRel(hubPath, path string) (string, error) {
+	rel, err := filepath.Rel(hubPath, path)
+	if err != nil {
+		return "", fmt.Errorf("relate %s to hub %s: %w", path, hubPath, err)
+	}
+	return rel, nil
+}
+
+// writeLauncherScriptIfChanged writes content to path (expressed through root, rooted at hubPath) with
+// the given mode, recording KindFileWritten against rec only when the bytes actually change — an absent
+// file counts as changed. This is what lets writeLaunchers' repair-path call (an already-wired pair,
+// rewritten byte-identically) report no change at all, since the deterministic content it writes is
+// otherwise indistinguishable from a fresh authoring by exit code alone.
+// The read and the write both go through root, so a symlink planted at any component that would escape
+// the hub is refused at both rather than read-from or written-to.
+func writeLauncherScriptIfChanged(rec *Mutations, root *os.Root, hubPath, path string, content []byte, mode os.FileMode) error {
+	rel, err := hubRel(hubPath, path)
+	if err != nil {
+		return err
+	}
+	existing, readErr := root.ReadFile(rel)
+	changed := readErr != nil || string(existing) != string(content)
+	if err := root.WriteFile(rel, content, mode); err != nil {
 		return err
 	}
 	if changed {
