@@ -81,7 +81,9 @@ batches:
     commit_sha: 976d3b22d6665e106e7d2385a26bbd3820c7678c
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: stencil-cli
-    state: pending
+    state: running
+    implementer_session: 57903289-edc2-4e4f-a3d4-41d0aa729964
+    start_sha: 64bf0426be3ef2407b238ad96764f044fdafc369
     verify_baseline_failures: ["FAIL\t./internal/stencilcli/... [setup failed]"]
   - name: reed-rename-and-docs
     state: pending
