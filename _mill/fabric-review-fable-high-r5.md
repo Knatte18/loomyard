@@ -133,3 +133,46 @@ Exact commands and observations, appended incrementally as each scenario returns
   `lyx fabric add racewt` ran repeatedly (fresh branch cleanup between attempts).
 - Result: ESCAPE at attempt 12 — `$OUT/.git` (a full worktree fragment) written through the symlink
   into the outside directory. Confirms F1 live against the real substrate.
+
+### Post-fix verification
+
+- Hermetic: `go build ./...`, `go vet` (fabric pkgs), `go test <fabric pkgs> ./cmd/lyx/... -count=5` — all green.
+- Guards: `TestNoDestructiveBypass_FabricengineProductionSource`, `TestMutationRecord_...`,
+  `TestEnforcement_MarkdownLinks`, `TestEnforcement_FabricVocabulary`,
+  `TestHermeticGitEnv_...`, `TestTierPurity_...` — all green.
+- Full live integration suite `-tags integration` across fabricengine/fabriccli/gitexec/gitrepo — green.
+- 4× concurrent integration suites (compile once, run 4, parallel=8): all rc=0, all PASS; no
+  corruption markers (the grep hits were false positives on the word "failed" inside expected
+  refusal WARN logs), no `.fabric-wt-staging-*` debris, no stray git processes.
+- New tests determinism: `TestContainedWorktreeAdd_*` + `TestAddRollback_RefusedWarpBranchDeletionLogsWarn`
+  `-count=5` — green.
+- Sabotage proofs: reverting containedWorktreeAdd to a direct `git worktree add target` writes
+  `.git`/`README` OUTSIDE the container (F1 test fails); removing rollbackAdd's WARN hunk fails the
+  F4 test.
+- Live re-attack of F1 (post-fix binary): 3 batches × 400 = 1200 toggle-race trials against
+  `lyx fabric add` — 0 escapes (vs. pre-fix escape at attempt 12).
+- Live happy path (post-fix binary): fresh `lyx fabric clone` + `add` + `remove` + `reconcile` on a
+  real local-remote hub — all ok:true, worktrees land at nominal paths, git admin dirs named after
+  slugs (warp `livetask`, weft `_board`/`livetask-weft`), no staging debris.
+
+### Teardown
+
+All scratch hubs I created (repro9L3O, liveAwY7, lv2evws) torn down; test binary and run logs removed;
+zero stray git processes. Pre-existing `.gitrepo-push.lock`/`exclude.lyx.lock` files remain under
+unrelated earlier-session scratch dirs (`drive1`, `verify2`) — not created by this round, left
+untouched.
+
+## Docs & operability findings
+
+No standalone docs defect found. Documentation updated in the SAME commits as the fixes:
+`internal/fabricengine/doc.go` ("The destruction chokepoint" now covers the create-side twin),
+`internal/fabricengine/destroy.go`'s header, and `CONSTRAINTS.md`'s Fabric Destruction Chokepoint
+Invariant (containment bullet extended to the two create-side minters). `docs/overview.md` and
+`manifest/roadmap.md` were correctly NOT touched (no module-table move, hardening not a roadmap item).
+
+## Merge-readiness
+
+MERGEABLE. The seeded primary residual (F1) is closed and independently re-attacked; two sibling gaps
+(F2, F3) closed via the same containment machinery; the NIT (F4) test-coverage gap closed and
+sabotage-proved. Permanent out-of-scope limits unchanged: Windows path behavior (never-executed on a
+Linux host), and N4's dirtiness-probe TOCTOU (accepted, documented residual).
