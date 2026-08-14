@@ -753,6 +753,30 @@
 // substitute any path fabric writes to — but the operation is never REPORTED as success and never leaves
 // the target a dangling out-of-hub symlink, which is the create-side twin of the delete-side guarantee.
 //
+// **The two hub-level container WRITERS bind their writes to a rooted act the same way, because R7's
+// review proved five rounds of create-side pressure had never looked at them.** `writeLaunchers`
+// (launchers.go) and `createPortal` (portals.go) write into `<hub>/_launchers/<AnchorRel>/<slug>` and
+// `<hub>/_portals/<AnchorRel>/<slug>` — hub-level structural containers, not the freshly-created worktree —
+// and both once wrote through a raw primitive that resolved and followed the container path itself:
+// `writeLaunchers` via `os.MkdirAll`+`os.WriteFile`, `createPortal` via `fslink.CreateDirLink`, whose own
+// parent-mkdir follows a planted symlink. A STATIC symlink planted at the `<slug>` leaf OR the
+// `_launchers`/`_portals` container (no race, no observation) carried the write OUTSIDE the hub — executable
+// launcher content to an attacker-chosen path, a portal junction into an out-of-hub directory — while `add`
+// reported `ok:true` with a mutation record naming the hub-relative path the bytes never reached, the exact
+// delete-side M3 false-success shape and strictly easier to exploit (no timing). This is the same asymmetry
+// the delete side already closed for `removeLaunchers`/`removePortal`, live on the create side of the same
+// two verbs. Both now write through an `os.Root` rooted at `l.HubPath` (the true containment boundary;
+// `_launchers`/`_portals` are never legitimately symlinks): `writeLaunchers` roots every mkdir/write there,
+// and `createPortal` materialises the link's parent chain through `ensureContainedLinkParent` before handing
+// the leaf to `fslink`, so any component escaping the hub is refused at write time. The remaining raw writes
+// in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a
+// worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into
+// being in the same call (clone.go, warpbinding.go, weftgit.go, junction.go's weft-target materialisation),
+// where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
+// residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
+// guard rather than a routed write. See CONSTRAINTS.md's Fabric Write-Side Containment Invariant and
+// `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
+//
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
 // itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and

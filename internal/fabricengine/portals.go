@@ -42,8 +42,8 @@ func portalTarget(l *lyxcwd.Location, slug string) string {
 //
 // The portal's parent chain is materialised through an os.Root rooted at the hub BEFORE the leaf link
 // is handed to fslink, and that is a containment property, not a redundant mkdir: _portals is a
-// structural directory directly under the hub, and fslink.CreateDirLink's own os.MkdirAll(filepath.Dir(link))
-// followed a symlink planted at the _portals container (or an intermediate AnchorRel segment) straight
+// structural directory directly under the hub, and fslink.CreateDirLink's own mkdir of the link's
+// parent followed a symlink planted at the _portals container (or an intermediate AnchorRel segment) straight
 // out of the hub, planting the junction outside it while reporting success — the create-side twin of the
 // delete-side M3 the removePortal gate already closes (the leaf vector is separately refused by fslink's
 // own refuse-to-clobber guard). Rooting the parent creation at the hub refuses any escaping component at

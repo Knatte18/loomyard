@@ -283,6 +283,19 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   see the Mutation Record Invariant below.
 - **Enforced by** `cmd/lyx/destructiveguard_test.go` (`TestNoDestructiveBypass_FabricengineProductionSource`).
 
+## Fabric Write-Side Containment Invariant
+
+A `package fabricengine` write to a hub-level structural container an attacker can pre-plant a static symlink at — `<hub>/_launchers/…` (`writeLaunchers`) and `<hub>/_portals/…` (`createPortal`) — must route its filesystem write through an `os.Root` rooted at the hub, never a raw `os.MkdirAll`/`os.WriteFile`/`fslink` that resolves and follows the container path itself.
+
+- This is the create-side twin of the Destruction Chokepoint's containment rule.
+  `writeLaunchers` wrote `ide.sh`/`fabric-checkout.sh` to `<hub>/_launchers/<AnchorRel>/<slug>` via raw `os.MkdirAll`+`os.WriteFile`, and `createPortal` created its junction via `fslink.CreateDirLink` whose own parent-`mkdir` followed a planted symlink — either one carried the write OUTSIDE the hub while `add` reported `ok:true` with a mutation record naming a hub-relative path (fabric's R7 crucible round, the create-side twin of the delete-side M3).
+  Both now write through an `os.Root` at `l.HubPath` (`writeLaunchers` for its files, `createPortal` via `ensureContainedLinkParent` for the link's parent chain), so any component escaping the hub is refused at write time by the kernel's `openat` chain rather than followed.
+- The banned raw-write tokens are `os.MkdirAll(`, `os.Mkdir(`, `os.WriteFile(`, `os.Create(`, `os.OpenFile(`, `os.Symlink(`, `os.Link(` — the `os.`-qualified spellings, deliberately not the bare forms, so the rooted `os.Root` method calls (`root.MkdirAll`/`root.WriteFile`) that ARE the write-side chokepoint pass.
+- The guard's allowlist covers the raw writes that are NOT in this exploit class, each with a reason: a **git-owned** path resolved by git (`hook.go`'s hooks dir, `gitexclude.go`'s `.git/info`), or a worktree/board directory fabric just minted through a **contained** minter (`createExclusiveDir`/`containedWorktreeAdd`) in the same call (`clone.go`, `warpbinding.go`, `weftgit.go`, `junction.go`'s weft-target materialisation).
+  Those are race-only — a post-creation same-UID race, never a static pre-plant, the same accepted residual class as the gate's dirtiness window — because `add.go` refuses a pre-existing worktree path and the minter is fail-closed.
+- **Known guard blind spot:** raw substring matching and a per-file allowlist, exactly as the Destruction Chokepoint guard — a new raw write inside an allowlisted file is not caught, and an aliased or dynamically-built write evades it.
+- **Enforced by** `cmd/lyx/uncontainedwrite_test.go` (`TestNoUncontainedWrite_FabricengineProductionSource`).
+
 ## Mutation Record Invariant
 
 Every mutating fabric verb accumulates a `*Mutations` record of the primitives it actually performed, and every mutating result type exposes that record under a fixed, always-present envelope key set — so a consumer can tell "no error was returned" apart from "something was actually mutated" without parsing prose.
