@@ -9,7 +9,7 @@ what was deferred.
 |----|----------|--------|------|
 | F1 | MEDIUM | FIXED | create-side staging-leaf observation escape (false success + out-of-hub worktree) |
 | NIT-F2 | NIT | FIXED (folded into F1) | `containedWorktreeAdd` repair-failure left a half-placed worktree with a stale registration |
-| NIT-F3 | NIT | DEFERRED (with reason) | round-4 F2's WARN-on-refused-branch-deletion has no sabotage-proving test |
+| NIT-F3 | NIT | NOT A FINDING (verified already covered) | round-4 F2's WARN-on-refused-branch-deletion is in fact sabotage-proven by an existing test |
 
 ## F1 + NIT-F2 — implemented
 
@@ -81,15 +81,16 @@ escaped, and never leaves the target a dangling out-of-hub symlink.
   stale staging dir left by the PRE-fix binary that later planters piled onto, not a fix defect; a
   fresh hub with the fixed binary is clean.)
 
-## NIT-F3 — deferred, with reason
+## NIT-F3 — not a finding (the seed's concern is stale)
 
-Round-4 F2's `rollbackAdd` WARN-on-refused-branch-deletion (`add.go:316-323`) fires live (confirmed in
-this round's live driving — the trace shows `msg="...rollbackAdd's warp-branch deletion was refused by
-the destructive gate..." check=ownership`) but has no test that sabotage-proves the log line. Deferred
-because it is orthogonal to F1's mechanism, is a log-line assertion of the lowest value, and closing it
-well needs a `logger`-capture harness this package's create-containment test file does not have — not
-something to bolt onto F1's fix without its own focused change. Recorded here so it is not lost; it is a
-test-coverage gap, not a behavior defect.
+The seed carried round-4 F2's WARN-on-refused-branch-deletion as a minor open item ("its own test
+doesn't actually sabotage-prove the log line"). On verification this is already closed:
+`TestAddRollback_RefusedWarpBranchDeletionLogsWarn` (add_rollback_adopt_test.go) captures the logger's
+stderr half via `logger.SetOutput` and asserts the specific WARN line, the branch name, and the
+refusing check. I sabotage-proved it myself — reverting `add.go`'s `logger.Warn` hunk makes it FAIL at
+"expected a WARN line surfacing the refused bare-slug branch deletion"; restored, green. So a prior
+round already added a genuine sabotage-proving test; there is nothing to fix here. (Confirmed live too:
+this round's driving produced the exact WARN line, `check=ownership`, for a refused bare-slug deletion.)
 
 ## Teardown
 Zero stray git processes. All scratch hubs/locks live under the session scratchpad temp tree

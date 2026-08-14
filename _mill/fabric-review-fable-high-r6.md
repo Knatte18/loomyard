@@ -208,14 +208,16 @@ pass, not a re-run of round 1's breadth):
   path). The caller's rollback then calls `git worktree remove <target>`, which can itself fail on the
   broken registration. Pre-existing, minor. Fold into the F1 rewrite: on repair failure, `git worktree
   remove --force <target>` + `git worktree prune` so rollback sees a clean slate. Fixed as part of F1.
-- **NIT-F3 — round-4 F2 follow-up — `rollbackAdd`'s WARN-on-refused-branch-deletion (add.go:316-323)
-  has no test that sabotage-proves the log line.** Named as a minor open item in the seed. Low value
-  (a log-line assertion), deferred unless the F1 test work makes it convenient — see fixer report.
+- **NIT-F3 — round-4 F2 follow-up — NOT A FINDING (seed concern stale).** The seed flagged that
+  round-4 F2's WARN-on-refused-branch-deletion "doesn't sabotage-prove the log line", but
+  `TestAddRollback_RefusedWarpBranchDeletionLogsWarn` already captures the logger via `logger.SetOutput`
+  and asserts the WARN line — and I sabotage-proved it (reverting add.go's `logger.Warn` hunk fails it).
+  A prior round already closed this; nothing to fix.
 - No new BLOCKING/MEDIUM found outside F1. The delete-side `removeContainedPath` act-binding, the
   ownership predicates, `createdToken` unforgeability, and the gitexec checked/raw split were read for
   context and match their CLOSED-AND-VERIFIED characterisation; not re-litigated per the seed.
 
 ## Job 1 status: COMPLETE
 
-Findings: F1 (MEDIUM, CONFIRMED), NIT-F2 (CONFIRMED, folded into F1's rewrite), NIT-F3 (test-coverage,
-low). Proceeding to Job 2.
+Findings: F1 (MEDIUM, CONFIRMED — fixed), NIT-F2 (CONFIRMED — fixed, folded into F1's rewrite), NIT-F3
+(verified NOT a finding — already sabotage-proven by an existing test). Proceeding to Job 2.
