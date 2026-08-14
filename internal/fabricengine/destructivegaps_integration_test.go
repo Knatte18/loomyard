@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -208,6 +209,79 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	}
 	if !strings.Contains(string(content), sentinel) {
 		t.Fatalf("untracked content lost: %q no longer contains %q", content, sentinel)
+	}
+}
+
+// TestRemoveWarpWorktreeDir_FallbackHonoursForce is R2's regression for the operator's --force being
+// silently dropped by the fallback request.
+//
+// removeWarpWorktreeDir's fallback pathRequest was built without a force field at all, so it took
+// Go's zero value while the PRIMARY request one screen above declared force: force. An operator who
+// passed --force against a worktree git declined for a reason other than dirtiness therefore got a
+// refusal whose stated remedy was "use --force" — the one thing they had already done — and a
+// half-torn-down pair.
+//
+// `git worktree lock` is what makes `git worktree remove --force` fail on a worktree that is still
+// registered, which is exactly the state that routes into the fallback with force already set. The
+// no-force half runs the identical setup and must still refuse, because propagating force must not
+// weaken the guard that keeps the fallback from deleting what git declined to discard.
+func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		force       bool
+		wantRemoved bool
+	}{
+		{name: "ForceReachesTheFallback", force: true, wantRemoved: true},
+		{name: "NoForceStillRefuses", force: false, wantRemoved: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			slug := "force-fallback-" + strings.ToLower(tt.name)
+			fixture := newFabricFixture(t)
+			l := fixture.Layout
+			topology := fabricengine.NewTopology(fabricengine.Config{})
+			if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+				t.Fatalf("setup Add: %v", err)
+			}
+
+			target := fabricengine.WorktreePath(l, slug)
+			const sentinel = "UNTRACKED-WORK-NOT-YET-COMMITTED"
+			if err := os.WriteFile(filepath.Join(target, "untracked-scratch.txt"), []byte(sentinel+"\n"), 0o644); err != nil {
+				t.Fatalf("write untracked file: %v", err)
+			}
+
+			// Locking is what makes git refuse even under --force, so the fallback is reached with
+			// force already true rather than short-circuited by a successful git removal.
+			if _, err := gitexec.Run([]string{"worktree", "lock", target}, l.WorktreePath()); err != nil {
+				t.Fatalf("git worktree lock %s: %v", target, err)
+			}
+			t.Cleanup(func() {
+				_, _ = gitexec.Run([]string{"worktree", "unlock", target}, l.WorktreePath())
+			})
+
+			err := fabricengine.RemoveWarpWorktreeDirForTest(fabricengine.NewMutations(""), l, target, tt.force)
+
+			_, statErr := os.Stat(target)
+			removed := os.IsNotExist(statErr)
+			if removed != tt.wantRemoved {
+				t.Fatalf("worktree removed = %v; want %v (force=%v, err=%v)", removed, tt.wantRemoved, tt.force, err)
+			}
+
+			if tt.wantRemoved {
+				if err != nil {
+					t.Errorf("RemoveWarpWorktreeDirForTest(force=true) = %v; want nil once the fallback honours force", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Errorf("RemoveWarpWorktreeDirForTest(force=false) = nil; want a refusal that leaves the untracked file alone")
+			}
+		})
 	}
 }
 
@@ -572,5 +646,58 @@ func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
 
 	if !branchExistsAt(t, l.WorktreePath(), slug) {
 		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
+	}
+}
+
+// TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch is R2's regression for a misleading verdict under
+// a race reconcile cannot avoid: `git worktree list` is read once, before the per-pair loop, so a
+// concurrent `lyx fabric remove`/`prune` can delete a pair's directory between the enumeration and
+// the iteration that reaches it.
+//
+// That used to surface as ReconcileActionUnmanagedReported — a verdict meaning "this pair is not
+// fabric's to manage" — carrying os/exec's raw `chdir <path>: no such file or directory` as its
+// reason, which is neither what happened nor something an operator can act on. Worse, it set
+// pr.Error, so once reconcile started reporting a failed pair as a failure (R2's finding M2), a
+// perfectly ordinary concurrent teardown would have turned every enclosing reconcile into a non-zero
+// exit.
+//
+// Deleting the directory directly, with the registration deliberately left in place, is exactly the
+// state the race produces and needs no actual concurrency to construct — which is what makes this
+// test deterministic rather than timing-dependent.
+func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
+	t.Parallel()
+
+	const slug = "vanished-mid-walk"
+	h := hubforge.NewHub(t, ".")
+	hubforge.AddPair(t, h, slug)
+
+	warpPath := h.PairWarpWorktree(slug)
+	if err := os.RemoveAll(warpPath); err != nil {
+		t.Fatalf("remove warp worktree directory (leaving git's registration behind): %v", err)
+	}
+
+	result, err := h.Topology.Reconcile(h.Location)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var found bool
+	for _, pair := range result.Pairs {
+		if filepath.Base(filepath.FromSlash(pair.WarpWorktree)) != slug {
+			continue
+		}
+		found = true
+		if pair.Action != fabricengine.ReconcileActionVanishedMidWalk {
+			t.Errorf("vanished pair Action = %q; want %q", pair.Action, fabricengine.ReconcileActionVanishedMidWalk)
+		}
+		if pair.Error != "" {
+			t.Errorf("vanished pair Error = %q; want empty — nothing failed to reconcile, the pair stopped existing", pair.Error)
+		}
+		if pair.Detail == "" {
+			t.Errorf("vanished pair carries no Detail; want one naming the concurrent teardown")
+		}
+	}
+	if !found {
+		t.Fatalf("Reconcile reported no pair for the vanished slug %q; pairs: %+v", slug, result.Pairs)
 	}
 }

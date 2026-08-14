@@ -6,11 +6,13 @@
 // than hard-erroring — the branch that makes the very first `reconcile` after this change survive
 // against every worktree that predates it.
 //
-// (a) lifecycle, (b) seeding order, (c) adoption, (d) adoption collision, and (e) adoption's refusal
-// to over-reach into other real junction-named directories all live in this one file: (c), (d), and
-// (e) especially must be asserted together, because an adoption branch that over-reaches passes (c)
-// while silently breaking the hard refusal for _lyx and any other junction name — the guard whose
-// whole purpose is never touching what might be the user's hand-authored content.
+// (a) lifecycle, (b) seeding order, (c) adoption, (d) adoption collision, (e) adoption's refusal
+// to over-reach into other real junction-named directories, and (f) adoption's recursive merge of a
+// directory present on both sides all live in this one file: (c), (d), (e) and (f) especially must
+// be asserted together, because an adoption branch that over-reaches passes (c) while silently
+// breaking the hard refusal for _lyx and any other junction name — the guard whose whole purpose is
+// never touching what might be the user's hand-authored content — and because (d) and (f) are the
+// two halves of one rule, merge a dir/dir collision and refuse every other kind.
 //
 // Package fabricengine_test to reuse gitkit.GitStatusPorcelain; shares the single TestMain in
 // testmain_test.go. readWeftExcludeLines resolves the weft-side exclude file the same way
@@ -297,6 +299,86 @@ func TestDotLyxJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 	}
 	if string(weftContent) != "weft copy" {
 		t.Errorf("weft-side colliding entry content changed: %q", string(weftContent))
+	}
+}
+
+// TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides covers (f), R2's regression for the
+// permanently-stuck reconcile: a `logs` directory present on BOTH sides must be MERGED, not refused.
+//
+// This is adoption's steady state, not an exotic input. `lyx fabric unwire` removes the .lyx
+// junction, and the very next lyx invocation in that worktree that logs at Info-or-above or exits
+// non-zero recreates a real warp-side .lyx/logs through internal/logger's durable sink — on top of
+// the logs directory an earlier adoption already moved into weft. Refusing that collision left
+// `lyx fabric reconcile`, the documented remedy, unable to heal the pair ever again.
+//
+// The subtests are deliberately paired with the collision case above, which uses a FILE on both
+// sides: merging directories and refusing everything else is one rule, and a fix that merged
+// indiscriminately would pass this test while silently destroying the refusal that keeps fabric from
+// choosing a winner between two files.
+func TestDotLyxJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	l := h.Location
+	slug := l.WorktreeName
+	names := []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName}
+
+	warpDotLyx := resetDotLyxJunction(t, l, slug)
+	weftDotLyx := filepath.Join(fabricengine.WeftWorktreePath(l, slug), l.AnchorRel, lyxdirs.DotLyxDirName)
+
+	// The exact shape the residual produces: `logs` on both sides, each holding a distinctly-named
+	// trace file, plus a nested subdirectory present on both sides so the merge is proven recursive
+	// rather than one level deep.
+	for _, dir := range []string{
+		filepath.Join(warpDotLyx, "logs", "nested"),
+		filepath.Join(weftDotLyx, "logs", "nested"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	seeded := map[string]string{
+		filepath.Join(warpDotLyx, "logs", "trace-warp.log"):          "warp trace",
+		filepath.Join(warpDotLyx, "logs", "nested", "warp-only.txt"): "warp nested",
+		filepath.Join(warpDotLyx, "warp-root.txt"):                   "warp root",
+		filepath.Join(weftDotLyx, "logs", "trace-weft.log"):          "weft trace",
+		filepath.Join(weftDotLyx, "logs", "nested", "weft-only.txt"): "weft nested",
+	}
+	for path, content := range seeded {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("seed %s: %v", path, err)
+		}
+	}
+
+	if err := fabricengine.WireJunctions(l, slug, names); err != nil {
+		t.Fatalf("WireJunctions with a directory present on both sides = %v; want nil (the merge path)", err)
+	}
+
+	// The warp side is a junction again — the whole point: reconcile healed the pair.
+	isLink, linkErr := fslink.IsLink(warpDotLyx)
+	if linkErr != nil {
+		t.Fatalf("IsLink(%s): %v", warpDotLyx, linkErr)
+	}
+	if !isLink {
+		t.Fatalf("%s is not a junction after the merge; the pair is still unhealed", warpDotLyx)
+	}
+
+	// Every file from both sides survives, at its merged weft-side path, with its content intact.
+	want := map[string]string{
+		filepath.Join(weftDotLyx, "logs", "trace-warp.log"):          "warp trace",
+		filepath.Join(weftDotLyx, "logs", "trace-weft.log"):          "weft trace",
+		filepath.Join(weftDotLyx, "logs", "nested", "warp-only.txt"): "warp nested",
+		filepath.Join(weftDotLyx, "logs", "nested", "weft-only.txt"): "weft nested",
+		filepath.Join(weftDotLyx, "warp-root.txt"):                   "warp root",
+	}
+	for path, wantContent := range want {
+		got, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Errorf("read merged %s: %v", path, readErr)
+			continue
+		}
+		if string(got) != wantContent {
+			t.Errorf("merged %s = %q; want %q", path, string(got), wantContent)
+		}
 	}
 }
 

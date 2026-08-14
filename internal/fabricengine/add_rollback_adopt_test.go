@@ -17,6 +17,7 @@
 package fabricengine_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -127,6 +129,101 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 	if branchExistsAt(t, l.WorktreePath(), warpBranch) {
 		t.Errorf("warp branch %q still exists", warpBranch)
+	}
+}
+
+// TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix documents the F2 behaviour: under the DEFAULT
+// empty branch_prefix, the warp branch Add creates is a bare slug the gate cannot prove is fabric's,
+// so rollbackAdd's step-5 deletion is refused and the branch is left behind — while the worktree pair
+// itself is fully rolled back. This is the conservative-by-design counterpart to
+// TestAddRollback_AdoptedWeftBranchSurvives (which uses a non-empty prefix so the branch IS
+// deletable); pinning it guards against a regression that would make the gate delete a bare-slug
+// branch indistinguishable from a user's own.
+func TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix(t *testing.T) {
+	t.Parallel()
+
+	const slug = "empty-prefix-rollback"
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+
+	// Inject a deterministic post-creation failure: a blocker file at the portal location makes
+	// createPortal (step 9) fail after the warp worktree and its branch already exist, triggering
+	// rollbackAdd.
+	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
+	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
+		t.Fatalf("mkdir portal parent: %v", err)
+	}
+	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+
+	// Default empty branch_prefix: the warp branch is exactly the bare slug.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+		t.Fatalf("Add should have failed (portal blocker)")
+	}
+
+	// The worktree pair is fully rolled back.
+	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("warp worktree dir still exists at %s after rollback", fabricengine.WorktreePath(l, slug))
+	}
+	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.WeftWorktreePath(l, slug))
+	}
+
+	// The bare-slug warp branch is left behind: the gate cannot prove it is fabric's under an empty
+	// prefix, so it refuses deletion rather than risk deleting a user branch of the same name.
+	if !branchExistsAt(t, l.WorktreePath(), slug) {
+		t.Errorf("warp branch %q was deleted by rollback under an empty prefix; the gate must refuse to delete an unprovable bare-slug branch", slug)
+	}
+}
+
+// TestAddRollback_RefusedWarpBranchDeletionLogsWarn sabotage-proves the WARN log round 4 added:
+// TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix above only asserts the branch is left behind,
+// which is refusal behavior that predates the log line — reverting rollbackAdd's logger.Warn hunk
+// leaves that test green. This test captures the logger's stderr half and asserts the specific WARN
+// line actually fires when the gate refuses the bare-slug branch deletion, so a regression that drops
+// the log is caught rather than silently tolerated.
+//
+// It is deliberately NOT parallel: it rebinds the process-global logger sink via SetOutput, and Go
+// pauses t.Parallel() tests until the sequential ones finish, so a non-parallel test owns the sink for
+// its duration with no cross-talk from a concurrently-logging sibling.
+func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
+	const slug = "warn-on-refused-branch"
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+
+	// Deterministic post-creation failure: a blocker file at the portal makes createPortal fail after
+	// the warp worktree and its bare-slug branch already exist, triggering rollbackAdd.
+	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
+	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
+		t.Fatalf("mkdir portal parent: %v", err)
+	}
+	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+
+	// Capture the logger's stderr half for the duration of the Add.
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	// Default empty branch_prefix: the warp branch is the bare slug the gate cannot prove is fabric's.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+		t.Fatalf("Add should have failed (portal blocker)")
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, "rollbackAdd's warp-branch deletion was refused by the destructive gate") {
+		t.Fatalf("expected a WARN line surfacing the refused bare-slug branch deletion; got logger output:\n%s", logged)
+	}
+	// The refusal names the branch and the check that refused, so the trace is actionable.
+	if !strings.Contains(logged, slug) {
+		t.Errorf("WARN line does not name the left-behind branch %q; got:\n%s", slug, logged)
+	}
+	if !strings.Contains(logged, "ownership") {
+		t.Errorf("WARN line does not name the ownership check as the refusal cause; got:\n%s", logged)
 	}
 }
 

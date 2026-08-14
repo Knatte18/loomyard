@@ -69,6 +69,10 @@ type PruneEntry struct {
 type PruneResult struct {
 	MutationRecord
 	// Entries lists the pairs that were identified (and optionally removed).
+	// It is always a non-nil slice, empty when nothing was stale, so the CLI envelope renders
+	// "entries":[] rather than "entries":null — the same never-null rule the envelope already holds
+	// for "mutations", and the reason a consumer never has to distinguish absent from empty for one
+	// verb only. See Prune's own return sites, which are the only producers.
 	Entries []PruneEntry `json:"entries"`
 }
 
@@ -91,7 +95,10 @@ func (t *Topology) Prune(l *lyxcwd.Location, apply, force bool) (res PruneResult
 	// Track slugs emitted by Pass 1 to avoid re-reporting the same orphaned weft in Pass 2.
 	pass1Slugs := make(map[string]bool)
 
-	var result PruneResult
+	// Seeded non-nil rather than left to append: a nil Entries marshals to "entries":null, which made
+	// prune the one fabric verb whose array key a consumer had to special-case against null while
+	// cleanup and reconcile both emitted a real array in the same nothing-to-report state.
+	result := PruneResult{Entries: []PruneEntry{}}
 	for _, entry := range entries {
 		warpPath := filepath.FromSlash(entry.Path)
 		warpPath = filepath.Clean(warpPath)
@@ -294,12 +301,19 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 					weftPath, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr), weftRepoRoot)
 				return false
 			}
+			// force: true mirrors the primary request above, and the omission it replaces was a real
+			// defect: applyStalePairProtection is this site's own force-aware gate and has already
+			// run, so a tracked-dirty weft worktree reaching here is one the operator explicitly
+			// asked to discard — refusing it produced "use --force" as the remedy for an operator
+			// who had passed --force, and left a half-torn-down pair.
+			// See removeWarpWorktreeDir's fallback for the same reasoning stated in full.
 			fallbackReq := pathRequest{
 				what:      "remove weft worktree",
 				container: l.HubPath,
 				target:    weftPath,
 				ownership: ownedRegisteredLinkedWorktree(weftRepoRoot),
 				dirtiness: dirtyScopeTracked(),
+				force:     true,
 			}
 			if removeErr := removePath(rec, fallbackReq); removeErr != nil {
 				// The %d cites this worktree-remove call's exit code; the %v reports the removePath
