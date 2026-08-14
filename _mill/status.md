@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reed-rename-and-docs
+phase: holistic-reviewing
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-treadle-runtime-read  '2026-08-14T12:32:23Z'
 approved-webster-runtime-read  '2026-08-14T12:42:27Z'
 approved-stencil-cli  '2026-08-14T13:00:37Z'
 approved-reed-rename-and-docs  '2026-08-14T13:07:48Z'
+holistic-reviewing  '2026-08-14T13:08:17Z'
 ```
 
 ## Batches
