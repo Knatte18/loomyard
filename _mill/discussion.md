@@ -30,7 +30,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Runtime reading of every producer prompt from `<hub>/_board/_lyx/stencils/`, replacing direct use of the embedded bytes at all five producer call sites.
 - Retention of `//go:embed` for the shipped default bytes only — as the seed source, never as a live read path.
 - A hash stamp written into each seeded file's existing leading `<!-- ... -->` banner, and the edit-detection rule built on it.
-- A new `lyx stencil` cobra module with `list`, `validate`, `diff`, and `sync` subcommands.
+- A new `lyx stencil` cobra module with `list`, `validate`, `diff`, `sync`, and `promote` subcommands, where `diff` supports `--all` and `--exit-code`.
+- A pre-commit hook in loomyard only, running `lyx stencil diff --all --exit-code`, guarding against an unported board-copy edit.
 - Drift notification via `logger.Warn` when an operator-edited file falls behind a newer shipped default.
 - Amending the treadle import allowlist and its enforcement test to admit `internal/stencilstore`.
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
@@ -143,6 +144,23 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Rejected: a special case where lyx detects it is standing in its own source repo and reads top-level `stencils/` directly.
   It would save one copy step but removes the very place where "worked locally, broke after install" bugs are caught.
 
+### port-back-is-mechanical-not-remembered
+
+- Decision: the port-back step in the loop above is never a manual copy.
+  `lyx stencil promote <name>` copies the live board copy into the source `stencils/<family>/` tree of the current worktree, stripping the stamp on the way in (the source tree is the seed, so it carries no stamp).
+  Additionally, `lyx stencil diff` grows a `--exit-code` flag with git-diff semantics, and loomyard alone wires `lyx stencil diff --all --exit-code` as a pre-commit hook so an unported board edit cannot land silently.
+- Rationale: the `deployment-versus-production` loop otherwise ends in a hand-copy, and this codebase does not trust hand-steps — the Fabric Destruction Chokepoint Invariant, the Mutation Record Invariant, and this task's own allowlist and enforcement-walk amendments all exist because review discipline alone was judged insufficient.
+  The failure is specifically nasty here.
+  An edited board copy is permanently in the "never touched" state by design, its content lives only in `weft:main`'s commit stream rather than in the `stencils/` tree anyone reviewing this feature would read, and every later default refresh skips it forever.
+  The drift is therefore silent, permanent, and not self-healing, and it is worst in the one repo that exercises the mechanism most.
+- Rationale for the shape: `promote` removes the manual step rather than guarding it, which is the stronger of the two fixes;
+  the pre-commit `--exit-code` check catches the case where someone edits the board copy and forgets `promote` entirely.
+  The two are complementary, not alternatives.
+- Note on why CI cannot be the guard: a CI runner has no access to the operator's hub, so it cannot compare `stencils/` against a `_board/_lyx/stencils/` that only exists on the developer's machine.
+  The check has to run where the hub is, which is the pre-commit hook, not CI.
+- Rejected: documenting the port-back as a discipline step and leaving it to memory — that is exactly the discipline-dependent failure mode the hash stamp was introduced to eliminate for the general operator.
+  Also rejected: a CI-side assertion, for the reason above.
+
 ### stencilstore-ownership
 
 - Decision: a new `internal/stencilstore` package owns the entire lifecycle — seed, hash, edit detection, read, and validate.
@@ -187,10 +205,12 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 ### cli-surface
 
-- Decision: a new `lyx stencil` cobra module with `list`, `validate`, `diff`, and `sync`.
+- Decision: a new `lyx stencil` cobra module with `list`, `validate`, `diff`, `sync`, and `promote`.
+  `diff` takes `--all` and `--exit-code`.
 - Rationale: `validate` and `diff` were decided independently, `diff` is the entire migration story, and `list` is what makes the stencil set discoverable.
   Building the mechanism without them leaves it unoperatable.
   The CLI is additive: seeding is automatic, and `sync` only forces what already happens.
+  `promote` and the `--exit-code` flag exist for the `port-back-is-mechanical-not-remembered` decision.
 - Rejected: no CLI in V1 (leaves drift undiagnosable), and `validate`-only (omits the verb that matters the day a default changes).
 
 ### drift-notification-channel
@@ -292,7 +312,7 @@ Same idea, different layer.
 **Board writes go through `Bolt`.** Per the Fabric Git Invariant, no package other than `internal/fabricengine` runs raw git, and board writes flow through `fabricengine.NewBolt(fabricengine.BoardDir(hub))` (see `internal/fabriccli/fabric.go:635`).
 Seeding is therefore a commit on `weft:main`, not a bare file write.
 
-**The enforcement walk will silently stop covering these files.** `internal/lyxcwd/enforcement_test.go:934` runs `walkEnforcementRoots(t, repoRoot, []string{"internal"}, []string{".md"}, …)` to police the Fabric Vocabulary Invariant across `internal/**/*.md`.
+**The enforcement walk will silently stop covering these files.** `internal/lyxcwd/enforcement_test.go:936` runs `walkEnforcementRoots(t, repoRoot, []string{"internal"}, []string{".md"}, …)` to police the Fabric Vocabulary Invariant across `internal/**/*.md`.
 Moving the 15 files out of `internal/` un-guards every one of them unless `"stencils"` is added to that root list.
 This must land in the same commit as the move.
 
@@ -365,6 +385,10 @@ The plan must verify this rather than assume it.
 `diff` produces output against a seeded-then-changed default;
 `sync` is idempotent on a second run.
 
+**Port-back guard.** `promote` copies an edited board copy into the source tree, strips the stamp, and leaves a file that seeds back to a matching hash on the next run — assert that round trip explicitly, since it is what makes the loop closed.
+`diff --all --exit-code` exits non-zero when any board copy has been edited away from its shipped default and zero when none has;
+both directions need a test, because an `--exit-code` that never fires is a hook that silently passes forever.
+
 **Full-suite gate.** `go build ./...` and the full `go test ./...` must pass, since this change touches five engines, one enforcement walk, one import allowlist, and the cobra root.
 
 ## Q&A log
@@ -388,3 +412,4 @@ The plan must verify this rather than assume it.
 - **Q:** Drift notification channel? **A:** `logger.Warn`.
 - **Q:** Does `stencilstore` own writing and hashing too, or only reading? **A:** All of it.
 - **Q:** Still one task? **A:** Yes, with the wiki task body rewritten to match what is actually being built.
+- **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) and adding a loomyard-only pre-commit `lyx stencil diff --all --exit-code`. CI cannot be the guard, since a CI runner has no access to the operator's hub.
