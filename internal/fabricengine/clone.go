@@ -514,9 +514,12 @@ func bornWeftPrimaryBranch(weftPath, branch string) error {
 
 // cloneRepo clones a repository from url to dest.
 //
-// The clone is executed via gitexec.RunGit with the parent directory of dest as the cwd,
-// and the basename of dest as the destination argument. Paths are cleaned and normalized.
-// Non-zero git exit returns an error wrapping the stderr output.
+// The clone is executed via gitexec.Run — the checked entry point, not the raw RunGit — with the
+// parent directory of dest as the cwd, and the basename of dest as the destination argument.
+// Paths are cleaned and normalized.
+// The checked form is right here because a non-zero git exit at a clone is unambiguously a failure
+// rather than an answer, so there is nothing for this site to recover via errors.As;
+// it simply wraps the resulting *gitexec.GitError, whose own message already carries git's stderr.
 func cloneRepo(url, dest string) error {
 	// Clean and normalize paths
 	dest = filepath.Clean(dest)
