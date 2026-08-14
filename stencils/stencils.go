@@ -23,6 +23,26 @@ var LoomTemplateDiscussion []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
+// BurlerTemplateRoundOrchestrator is burler's shipped-default per-round orchestrator prompt.
+//
+//go:embed burler/burler-template-round-orchestrator.md
+var BurlerTemplateRoundOrchestrator []byte
+
+// BurlerStep1Explore is burler's shipped-default step-1 (explore) instruction prompt.
+//
+//go:embed burler/burler-step-1-explore.md
+var BurlerStep1Explore []byte
+
+// BurlerStep2Review is burler's shipped-default step-2 (review) instruction prompt.
+//
+//go:embed burler/burler-step-2-review.md
+var BurlerStep2Review []byte
+
+// BurlerStep3Fix is burler's shipped-default step-3 (fix) instruction prompt.
+//
+//go:embed burler/burler-step-3-fix.md
+var BurlerStep3Fix []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -34,6 +54,10 @@ type registryEntry struct {
 var entries = []registryEntry{
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-plan", &LoomTemplatePlan},
+	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},
+	{"burler-step-1-explore", &BurlerStep1Explore},
+	{"burler-step-2-review", &BurlerStep2Review},
+	{"burler-step-3-fix", &BurlerStep3Fix},
 }
 
 // registry implements stencilstore.Registry over entries.
