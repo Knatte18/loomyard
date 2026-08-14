@@ -13,10 +13,31 @@ working tree clean.
 **Operator instruction (2026-08-14) — round 4 model changed from Opus to Fable:** the original
 fixed 4-round plan was r1 Opus/medium, r2 Opus/high, r3 Fable/high, r4 Opus/high (final safety
 pass). The operator said "Kjør Fable High for R4 også. Den var god" — round 4 is **Fable/high**,
-NOT Opus/high. Round 4 remains the LAST round of the 4-round plan regardless of this model change
-— still a hard cap, still needs an honest convergence verdict afterward stating any limits still
-open (Windows path/junction behavior, N4's dirtiness-probe TOCTOU — now settled as an accepted
-documented residual, see below).
+NOT Opus/high.
+
+**Operator correction (2026-08-14) — round 4 is NOT a hard cap.** The orchestrator had been
+describing round 4 as "the last round, hard cap, no round 5" throughout the round-4 seed and this
+file. The operator corrected this directly: **"Det er ikke bestemt siste runde. Det er den siste
+jeg konfigurerte. Vi kan fint kjøre flere."** Round 4 is only the last round explicitly
+pre-configured at the campaign's start (the fixed model+effort schedule the operator gave up
+front) — NOT a decided stopping point. If round 4 (or the orchestrator's independent verification
+of it) surfaces something that warrants continued work, propose and run round 5+ rather than
+forcing closure. Retire the "hard cap"/"no round 5" language everywhere it appears in this file
+and in `_mill/fabric-review-prompt.md` — it does not reflect the operator's actual position.
+
+**Historical context the operator gave for why this campaign exists at all (2026-08-14):** the
+module's ORIGINAL 6-round crucible campaign (the one that ended at commit `79a72a38`, well before
+this campaign started) itself concluded that fabric needed a dedicated destruction gate. At that
+point the operator **interrupted crucible mid-campaign** and had `destroy.go` engineered as direct
+work instead (slice 12, commit `3184cd5a`) — the chokepoint this entire current campaign has spent
+three rounds hammering. That gate was therefore never itself the subject of an independent
+crucible review+fix round until THIS campaign — which is precisely why the operator insisted so
+strongly, from the very first message, that the chokepoint get dedicated adversarial rounds rather
+than being assumed sound just because it was built in direct response to a prior campaign's
+findings. This context also sets a precedent worth remembering for round 4 and beyond: if this
+campaign's own findings point toward "this needs dedicated engineering work, not another review
+round," interrupting crucible to go build that (the same move the operator made last time) is a
+legitimate, previously-used outcome — not a failure of the method.
 
 Round 3's finding: **M1, the containment TOCTOU seeded from the orchestrator's own verification
 of round 2's M3 fix** — fixed via `removeContainedPath`, a new helper routing the two arbitrary-
@@ -140,12 +161,14 @@ No single headline defect this time — four bounded, specific items (all detail
    symlink-directed-write angle, never attacked by any round yet?
 4. Round 2's "inert leftover directory" — still open, still never independently re-driven live.
 
-## Primary emphasis for round 4 — LAST round, chokepoint graduates to spot-check, broaden to the whole module
+## Primary emphasis for round 4 — chokepoint graduates to spot-check, broaden to the whole module
 Three consecutive rounds hammered the chokepoint; the round 3 fix survived independent adversarial
 re-attack (first one in the campaign to do so) — see CLOSED-AND-VERIFIED above. This earns
-"closed, watch for regressions" status. Round 4's Job-1 budget goes to a comprehensive final sweep
-of the WHOLE module (the way round 1 did), plus the four carried items above — this is the last
-scheduled round of the fixed 4-round plan, nothing catches what it misses.
+"closed, watch for regressions" status. Round 4's Job-1 budget goes to a comprehensive sweep of
+the WHOLE module (the way round 1 did), plus the four carried items above. (This was seeded as
+"the last scheduled round" before the operator's 2026-08-14 correction above — round 4 is only
+the last round pre-configured at campaign start, not a decided stopping point; a round 5+ is on
+the table if warranted.)
 
 ## DEFERRED list
 Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
@@ -169,10 +192,15 @@ convention changed — round 2 onward is seeded directly at `_mill/` from the st
    together with this HANDOFF update.
 2. Spawn round 4: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r4` —
    Fable per the operator's 2026-08-14 override, NOT the original plan's Opus.
-3. This is the LAST round of the fixed 4-round plan — hard cap, no round 5. After round 4's own
-   independent verification, write the campaign's convergence verdict: state honestly what's fixed
-   and confirmed (the chokepoint's containment property, now survived two rounds of independent
-   re-attack across M3 and M1), and what limits remain open regardless (Windows path/junction
-   behavior — never executed, permanent gap on this Linux host; N4's dirtiness-probe TOCTOU —
-   settled as a real-in-theory, no-demonstrated-exploit, documented residual; anything round 4
-   itself leaves open). Do not treat "this is the last round" as pressure to overstate closure.
+3. Round 4 was the last round pre-configured at campaign start — NOT a decided stopping point
+   (operator correction, 2026-08-14: "Det er ikke bestemt siste runde... Vi kan fint kjøre flere").
+   After round 4's own independent verification, assess honestly whether the campaign should
+   continue (round 5+) or wrap up: write a status verdict either way, stating what's fixed and
+   confirmed (the chokepoint's containment property, now survived two rounds of independent
+   re-attack across M3 and M1) and what remains open (Windows path/junction behavior — never
+   executed, permanent gap on this Linux host; N4's dirtiness-probe TOCTOU — settled as a
+   real-in-theory, no-demonstrated-exploit, documented residual; anything round 4 itself leaves
+   open). If anything round 4 surfaces looks like it needs dedicated engineering work rather than
+   another review round — the same fork the operator took after the ORIGINAL 6-round campaign,
+   which is why `destroy.go` exists and why this campaign exists — say so explicitly and propose
+   it, rather than defaulting to "run another round" or "declare done."
