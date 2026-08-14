@@ -100,8 +100,10 @@ var destructiveGuardAllowlist = map[string]string{
 		"non-empty, and the loop halts on the first refusal",
 	"internal/fabricengine/index.go": "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch",
-	"internal/fabricengine/junction.go": "adoptDotLyxContent's os.Remove(link) removes the warp-side directory the adoption loop " +
-		"immediately above it just emptied by rename — whole-file allowlist for this one audited site, not a blanket exemption",
+	"internal/fabricengine/junction.go": "two audited sites, both removing a directory the same call just emptied by rename and " +
+		"both using os.Remove rather than RemoveAll, so the OS itself refuses the moment anything is left inside: " +
+		"adoptDotLyxContent's os.Remove(link) for the warp-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
+		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption",
 	"internal/fabricengine/hook.go": "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
 		"ten lines earlier, on its own rollback path after a failed chain write",
 	"internal/fabricengine/launchers.go": "removeLaunchers runs the gate's own checkPathRequest immediately before its os.Remove(launcherDir) " +

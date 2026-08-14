@@ -112,6 +112,17 @@
 // reconcile` runs — which both wires the junction and, via `seedLyxJunction`'s `.lyx`-only adoption
 // branch, moves any pre-existing real `.lyx` content into the weft target rather than hard-erroring.
 // That is the documented remedy, not a bug to route around.
+// Adoption MERGES a directory present on both sides, recursively, rather than refusing it, and that
+// is load-bearing rather than lenient: `lyx fabric unwire` removes the `.lyx` junction, and the very
+// next `lyx` invocation in that worktree that logs at Info-or-above or exits non-zero opens
+// `internal/logger`'s durable sink — which is ungated outside `go test`, and whose
+// `os.MkdirAll(<anchor>/.lyx/logs)` therefore recreates a REAL warp-side `.lyx/logs` on top of the
+// `logs` an earlier adoption already moved into weft.
+// Refusing that collision left `reconcile`, the documented remedy, permanently unable to heal the
+// pair, and — because `seedLyxJunction` aborts before `seedGitExclude` re-runs — left the warp
+// worktree untracked-dirty, which then fed false input to the destruction gate's own dirtiness
+// checks. A collision that is not a directory on BOTH sides is still refused, because resolving it
+// would mean choosing a winner between two files, which fabric never does on the operator's behalf.
 // Third, the unwire output envelope changed: `UnwireVerbResult.WeftContent`'s value set is now
 // `"preserved"` | `"not_present"` (never `"cleared"`), and the `gitignore` key is gone from the CLI
 // envelope entirely — no code path removes a leftover committed `.gitignore` `.lyx/` block left by a
