@@ -30,9 +30,18 @@ The single discipline that makes this work: **you never trust a round's own "mer
    Never default to a tier and never fall back to `general-purpose`.
    **Pre-merge recovery path:** in a worktree branched before these profiles merged to `main`, the `crucible-reviewer-<effort>` profile does not exist yet and the spawn will not resolve — sync the worktree (`mill-merge-in` or equivalent) to pull the profiles in, then retry.
    This is a required remediation step before the round can proceed, explicitly *not* a licence to fall back to `general-purpose`.
-3. **Stay off the module's code while a round runs.**
+3. **Stay off the module's code — and off `git add`/`git commit` entirely — while a round runs.**
    The round agent drives the live substrate, deploys the dev binary (`deploy-dev.cmd`/`deploy-dev`), and edits source — if you touch the same files you collide.
    While a round is live you may only read, plan, and run `git status`.
+   This extends to files that have nothing to do with the module: the round agent runs in the
+   SAME working tree as you (no worktree isolation), so if you `git add` something of your own
+   mid-round — a `crucible/*.md` edit, a handoff-file refresh, anything — the round's own
+   commit-per-fix `git add` can indiscriminately sweep your staged files into its next fix commit,
+   mislabeling that commit and losing the separation "one commit = one finding's fix" depends on.
+   This happened for real during the fabric campaign: an orchestrator-side `crucible/*.md` edit,
+   staged mid-round, landed inside the round's `fix F6` commit instead of its own.
+   Queue anything you want committed — a doc edit, a handoff refresh — until the round completes
+   (or is paused/stopped), then commit it yourself in a clean tree.
 4. **One concern per round.**
    The review prompt is a full review+fix.
    A narrow follow-up (e.g. "close this one coverage gap", "split this file") is a *separate* targeted agent with its own tight brief — do not fold it into a review round.
