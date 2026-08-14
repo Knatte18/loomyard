@@ -4,9 +4,40 @@ Orchestrator's own state file. Refreshed after every round's verification. Never
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 1 verified, closed. Round 2 (`opus-high-r2`) about to be seeded and spawned — see "Exact
-next action". Base commit for this campaign segment: `08520a1b` on branch
-`fabric-crucible-hardening`.
+Round 1 verified, closed. Round 2 (`opus-high-r2`) is RUNNING — Job 1 done (12 findings: 0
+BLOCKING, 3 MEDIUM, 4 LOW, 5 NIT; review report `_mill/fabric-review-opus-high-r2.md`), Job 2 in
+progress (M3, M1, M2 fixed and committed as of `97052a7a`; L1 next, working tree has uncommitted
+edits to `remove.go`/`prune.go` — DO NOT touch, per hard rule 3, until it finishes or pauses).
+Base commit for this campaign segment: `08520a1b` on branch `fabric-crucible-hardening`.
+
+Round 2's headline finding: **M3, a real symlink-mediated containment bypass in the destruction
+chokepoint** — a symlink planted at an intermediate path segment let a gated `remove --force`
+delete files outside the hub, `ok:true`, exit 0. Reproduced live. Also root-caused round 1's
+seeded residual (M1, re-graded MEDIUM — no racing needed, worse than seeded) and found `reconcile`
+silently reporting success on a pair it failed to repair (M2). Full detail in the review report;
+don't re-summarize it here, read the file when verifying.
+
+## Operator instruction (2026-08-14) — more chokepoint testing in round 3 too
+The operator wants round 3 (Fable High) to ALSO carry chokepoint adversarial testing as a named
+focus — not just round 2's one-off assignment — plus whatever else the orchestrator or round 2
+itself flags as deserving more scrutiny. Round 2's review report has a few natural candidates
+worth carrying forward into round 3's seed once round 2 is verified:
+- **M3's fix itself** — the symlink-resolution fix in `refuseUncontainedPath`/`pathAtOrBelow` is
+  exactly the kind of security-shaped fix that deserves its own adversarial re-attack, not just a
+  sabotage-proof of the regression test. Try OTHER symlink placements/shapes round 2 didn't
+  (symlink loops, a symlink whose target itself doesn't exist yet at check time but does by act
+  time, `..`-relative symlink targets) once round 2's fix is verified in.
+- **N4's TOCTOU window** (dirtiness probe is check-then-act, not atomic) — round 2 explicitly
+  could not construct a live repro and recorded it as CONFIRMED-by-source/PLAUSIBLE-as-an-event.
+  A dedicated round with more budget on exactly this window (tight timing loop between the
+  `git status --porcelain` probe and the executor's act) is a natural round 3 candidate.
+  Round 2 judged closing it not worth this round's budget — round 3 could at least try harder to
+  make it observable, even if the fix itself stays deferred pending an operator call.
+- **Whatever round 2's OWN fixer report ends up flagging as deferred** (if anything — check once
+  it's done) is worth folding in too.
+- The orchestrator's own independent verification of round 2 (once it finishes) may surface its
+  own candidates the same way it did after round 1 — fold those in as well before finalizing
+  round 3's seed, same pattern as round 1 → round 2.
 
 ## CLOSED-AND-VERIFIED
 **Round 1 (`opus-medium-r1`)** — 7 findings (0 BLOCKING, 0 MEDIUM, 3 LOW, 4 NIT), all fixed, 8

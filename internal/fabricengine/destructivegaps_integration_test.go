@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -208,6 +209,79 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 	}
 	if !strings.Contains(string(content), sentinel) {
 		t.Fatalf("untracked content lost: %q no longer contains %q", content, sentinel)
+	}
+}
+
+// TestRemoveWarpWorktreeDir_FallbackHonoursForce is R2's regression for the operator's --force being
+// silently dropped by the fallback request.
+//
+// removeWarpWorktreeDir's fallback pathRequest was built without a force field at all, so it took
+// Go's zero value while the PRIMARY request one screen above declared force: force. An operator who
+// passed --force against a worktree git declined for a reason other than dirtiness therefore got a
+// refusal whose stated remedy was "use --force" — the one thing they had already done — and a
+// half-torn-down pair.
+//
+// `git worktree lock` is what makes `git worktree remove --force` fail on a worktree that is still
+// registered, which is exactly the state that routes into the fallback with force already set. The
+// no-force half runs the identical setup and must still refuse, because propagating force must not
+// weaken the guard that keeps the fallback from deleting what git declined to discard.
+func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		force       bool
+		wantRemoved bool
+	}{
+		{name: "ForceReachesTheFallback", force: true, wantRemoved: true},
+		{name: "NoForceStillRefuses", force: false, wantRemoved: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			slug := "force-fallback-" + strings.ToLower(tt.name)
+			fixture := newFabricFixture(t)
+			l := fixture.Layout
+			topology := fabricengine.NewTopology(fabricengine.Config{})
+			if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+				t.Fatalf("setup Add: %v", err)
+			}
+
+			target := fabricengine.WorktreePath(l, slug)
+			const sentinel = "UNTRACKED-WORK-NOT-YET-COMMITTED"
+			if err := os.WriteFile(filepath.Join(target, "untracked-scratch.txt"), []byte(sentinel+"\n"), 0o644); err != nil {
+				t.Fatalf("write untracked file: %v", err)
+			}
+
+			// Locking is what makes git refuse even under --force, so the fallback is reached with
+			// force already true rather than short-circuited by a successful git removal.
+			if _, err := gitexec.Run([]string{"worktree", "lock", target}, l.WorktreePath()); err != nil {
+				t.Fatalf("git worktree lock %s: %v", target, err)
+			}
+			t.Cleanup(func() {
+				_, _ = gitexec.Run([]string{"worktree", "unlock", target}, l.WorktreePath())
+			})
+
+			err := fabricengine.RemoveWarpWorktreeDirForTest(fabricengine.NewMutations(""), l, target, tt.force)
+
+			_, statErr := os.Stat(target)
+			removed := os.IsNotExist(statErr)
+			if removed != tt.wantRemoved {
+				t.Fatalf("worktree removed = %v; want %v (force=%v, err=%v)", removed, tt.wantRemoved, tt.force, err)
+			}
+
+			if tt.wantRemoved {
+				if err != nil {
+					t.Errorf("RemoveWarpWorktreeDirForTest(force=true) = %v; want nil once the fallback honours force", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Errorf("RemoveWarpWorktreeDirForTest(force=false) = nil; want a refusal that leaves the untracked file alone")
+			}
+		})
 	}
 }
 

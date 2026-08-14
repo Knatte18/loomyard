@@ -260,12 +260,23 @@ func removeWarpWorktreeDir(rec *Mutations, l *lyxcwd.Location, target string, fo
 			target, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr))
 	}
 
+	// force must travel from the primary request into the fallback, and its absence here was a real
+	// defect: an operator who passed --force against a worktree git declined for some OTHER reason
+	// (a `git worktree lock`, say) got a refusal whose stated remedy was "use --force" — the one
+	// thing they had already done — and a half-torn-down pair.
+	// Propagating it preserves the protection the fallback exists for, rather than weakening it: in
+	// the NO-force case git refused precisely because of untracked files, and the fallback must not
+	// delete what git just declined to discard; in the force case git was already invoked WITH
+	// --force, so untracked files cannot have been its reason.
+	// pathRequest.force is a bool with no unset state, so it is the one field a call site can omit to
+	// a silent zero value — the exact failure mode the type's own doc comment names for the others.
 	fallbackReq := pathRequest{
 		what:      "remove warp worktree",
 		container: l.HubPath,
 		target:    target,
 		ownership: ownedRegisteredLinkedWorktree(l.WorktreePath()),
 		dirtiness: dirtyScopeAll(),
+		force:     force,
 	}
 	if removeErr := removePath(rec, fallbackReq); removeErr != nil {
 		// A *destructiveRefusal propagates unwrapped so errors.As still works at the caller; only an

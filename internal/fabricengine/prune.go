@@ -294,12 +294,19 @@ func removeStalePair(rec *Mutations, l *lyxcwd.Location, slug, weftPath string, 
 					weftPath, gitErr.ExitCode, strings.TrimSpace(gitErr.Stderr), weftRepoRoot)
 				return false
 			}
+			// force: true mirrors the primary request above, and the omission it replaces was a real
+			// defect: applyStalePairProtection is this site's own force-aware gate and has already
+			// run, so a tracked-dirty weft worktree reaching here is one the operator explicitly
+			// asked to discard — refusing it produced "use --force" as the remedy for an operator
+			// who had passed --force, and left a half-torn-down pair.
+			// See removeWarpWorktreeDir's fallback for the same reasoning stated in full.
 			fallbackReq := pathRequest{
 				what:      "remove weft worktree",
 				container: l.HubPath,
 				target:    weftPath,
 				ownership: ownedRegisteredLinkedWorktree(weftRepoRoot),
 				dirtiness: dirtyScopeTracked(),
+				force:     true,
 			}
 			if removeErr := removePath(rec, fallbackReq); removeErr != nil {
 				// The %d cites this worktree-remove call's exit code; the %v reports the removePath
