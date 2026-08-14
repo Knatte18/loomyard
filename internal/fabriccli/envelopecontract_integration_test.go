@@ -1,7 +1,12 @@
 //go:build integration
 
-// reconcilefailure_integration_test.go covers the one thing `lyx fabric reconcile`'s envelope must
-// never get wrong: a pair it was asked to repair and could not must reach the caller as a FAILURE.
+// envelopecontract_integration_test.go covers the two envelope properties a fabric verb's JSON
+// output must hold against real git, both of them defects R2's crucible round found by driving the
+// real CLI: a verb must not report success for work it failed to do, and a verb's array key must
+// never be null.
+//
+// The first is `lyx fabric reconcile`: a pair it was asked to repair and could not must reach the
+// caller as a FAILURE.
 //
 // Before R2's fix, runReconcile always exited through okWithRecord, so a reconcile that failed to
 // re-point a junction still printed "ok":true with "partial":false and exited 0 — while carrying the
@@ -13,6 +18,9 @@
 // holding an entry that collides with a non-directory at the weft target — because that refusal is
 // deterministic, needs no racing, and is the shape adoption deliberately still refuses after R2 made
 // the dir/dir case merge.
+//
+// The second is `lyx fabric prune`, whose "entries" key rendered as null on a hub with nothing
+// stale while every sibling verb emitted a real array in the same state.
 //
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go, and building its hub via
 // hubforge.NewHub like every other fabric hub fixture in the repo.
@@ -102,5 +110,41 @@ func TestRunCLI_ReconcileReportsAFailedPairAsAFailure(t *testing.T) {
 	}
 	if _, present := envelope["partial"]; !present {
 		t.Errorf("envelope is missing the always-present \"partial\" key\noutput: %s", out.String())
+	}
+}
+
+// TestRunCLI_PruneEmitsAnEmptyArrayNotNull pins the never-null rule for `prune`'s own array key.
+//
+// PruneResult.Entries was left to append from a nil slice, so a hub with nothing stale emitted
+// "entries":null while `cleanup` and `reconcile` both emitted a real array in the same
+// nothing-to-report state — making prune the one fabric verb whose array a consumer had to
+// special-case against null, the exact asymmetry envelope.go's rule for "mutations" exists to
+// prevent.
+func TestRunCLI_PruneEmitsAnEmptyArrayNotNull(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	var out bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.Location.WorktreePath(), &out, []string{"prune"}); exitCode != 0 {
+		t.Fatalf("RunCLI(prune) = %d; want 0\noutput: %s", exitCode, out.String())
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode prune envelope: %v\noutput: %s", err, out.String())
+	}
+
+	raw, present := envelope["entries"]
+	if !present {
+		t.Fatalf("prune envelope has no \"entries\" key\noutput: %s", out.String())
+	}
+	if raw == nil {
+		t.Fatalf("prune envelope has \"entries\":null; want an empty array\noutput: %s", out.String())
+	}
+	entries, isArray := raw.([]any)
+	if !isArray {
+		t.Fatalf("prune \"entries\" is %T; want a JSON array\noutput: %s", raw, out.String())
+	}
+	if len(entries) != 0 {
+		t.Errorf("prune \"entries\" has %d element(s) on a hub with nothing stale; want 0", len(entries))
 	}
 }
