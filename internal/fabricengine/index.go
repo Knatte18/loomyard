@@ -57,7 +57,7 @@ var ErrStaleSHA = errors.New("fabricengine: stale SHA in correspondence index")
 func (f *Fabric) weftGitDir() (string, error) {
 	stdout, err := gitexec.Run([]string{"rev-parse", "--git-dir"}, f.weftPath)
 	if err != nil {
-		return "", fmt.Errorf("fabricengine: git rev-parse --git-dir in %s: %w", f.weftPath, err)
+		return "", fmt.Errorf("fabricengine: resolve weft gitdir in %s: %w", f.weftPath, err)
 	}
 
 	dir := strings.TrimSpace(stdout)
@@ -84,7 +84,7 @@ func (f *Fabric) corrIndexPath() (string, error) {
 func (f *Fabric) warpSeq(warpSHA string) (int, error) {
 	stdout, err := gitexec.Run([]string{"rev-list", "--count", "--first-parent", warpSHA}, f.warpPath)
 	if err != nil {
-		return 0, fmt.Errorf("fabricengine: git rev-list --count --first-parent %s in %s: %w", warpSHA, f.warpPath, err)
+		return 0, fmt.Errorf("fabricengine: count first-parent commits for warp SHA %s in %s: %w", warpSHA, f.warpPath, err)
 	}
 
 	seq, err := strconv.Atoi(strings.TrimSpace(stdout))

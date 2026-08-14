@@ -227,17 +227,30 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 	return nil
 }
 
-// adoptDotLyxContent moves every entry from the warp-side real directory at link into the weft-side
+// adoptDotLyxContent merges every entry from the warp-side real directory at link into the weft-side
 // target, then removes the now-empty warp directory and creates the junction in its place.
 // It is the only path seedLyxJunction takes for `.lyx`: every worktree in existence before this
 // change holds a real `.lyx` (the logger, reed, shuttle, scout and burler all write it
 // unconditionally), so without adoption the first `reconcile` after `.lyx` joined the wired name-set
 // would hard-error everywhere.
 //
-// Refuses before moving anything if any warp-side entry name already exists in target, returning an
-// error naming the colliding path and leaving both sides untouched — a collision means an earlier
-// adoption already ran, and `.lyx` is disposable enough that the operator can delete the warp-side
-// copy; fabric never overwrites or deletes content on its own.
+// A directory present on BOTH sides is merged, recursively, rather than refused. That is not a
+// convenience: adoption's own steady state produces the collision. `lyx fabric unwire` removes the
+// `.lyx` junction, and the very next `lyx` invocation in that worktree that logs at Info-or-above or
+// exits non-zero opens `internal/logger`'s durable sink, which is ungated outside `go test` and
+// runs `os.MkdirAll(<anchor>/.lyx/logs)` — recreating a real warp-side `.lyx/logs` on top of the
+// `logs` a previous adoption already moved into weft. Refusing that collision left `lyx fabric
+// reconcile`, the documented remedy, permanently unable to heal the pair: the same refusal every
+// time, `junction_healthy:false` forever, and (because seedLyxJunction aborts before seedGitExclude
+// re-runs) a warp worktree left untracked-dirty, which then trips the destruction gate's own
+// dirtiness checks on a pair the operator never dirtied.
+//
+// A collision that is NOT a directory on both sides is still refused, and that asymmetry is the
+// whole safety argument: merging two directories composes their contents and destroys nothing,
+// while resolving a file-vs-file or file-vs-directory collision would require choosing a winner,
+// which fabric never does on the operator's behalf.
+// The refusal check walks the whole tree BEFORE anything moves, so a refusal leaves both sides
+// exactly as it found them.
 //
 // A rename failure is wrapped in an actionable error naming the entry and instructing the operator to
 // stop reed/scout and re-run `lyx fabric reconcile` — on Windows, moving a directory with an open
@@ -247,36 +260,17 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 // Idempotent: a second call finds a link, not a real directory, so seedLyxJunction never reaches this
 // helper again for an already-adopted `.lyx`.
 // rec is the calling verb's own recorder. It records one KindFileWritten at target with Detail
-// "adopted" once the rename loop completes and before the link is created — the moved tree is a
+// "adopted" once the merge completes and before the link is created — the moved tree is a
 // hub-visible addition at the destination, and one entry at the destination root covers the whole
 // moved tree under the coverage rule. It then records KindLinkCreated for the link created in the
 // now-empty source's place, mirroring seedLyxJunction's own creation sites.
 func adoptDotLyxContent(rec *Mutations, link, target string) error {
-	entries, err := os.ReadDir(link)
-	if err != nil {
-		return fmt.Errorf("read %s for adoption: %w", link, err)
+	if err := refuseUnmergeableAdoption(link, target, link, target); err != nil {
+		return err
 	}
 
-	for _, entry := range entries {
-		if _, err := os.Lstat(filepath.Join(target, entry.Name())); err == nil {
-			return fmt.Errorf(
-				"adopt %s into %s: %s already exists at the weft target; an earlier adoption already ran — delete the warp-side copy at %s and re-run `lyx fabric reconcile`",
-				link, target, entry.Name(), filepath.Join(link, entry.Name()),
-			)
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("lstat %s: %w", filepath.Join(target, entry.Name()), err)
-		}
-	}
-
-	for _, entry := range entries {
-		src := filepath.Join(link, entry.Name())
-		dst := filepath.Join(target, entry.Name())
-		if err := os.Rename(src, dst); err != nil {
-			return fmt.Errorf(
-				"adopt %s into %s: move %s failed: %w — stop reed/scout (an open handle inside %s is the expected cause on Windows) and re-run `lyx fabric reconcile`",
-				link, target, entry.Name(), err, link,
-			)
-		}
+	if err := mergeAdoptionTree(link, target, link, target); err != nil {
+		return err
 	}
 
 	rec.Append(KindFileWritten, target, "adopted")
@@ -289,6 +283,95 @@ func adoptDotLyxContent(rec *Mutations, link, target string) error {
 		return err
 	}
 	rec.Append(KindLinkCreated, link, "")
+	return nil
+}
+
+// refuseUnmergeableAdoption walks src against dst and returns an error naming the first entry that
+// collides in a way adoption cannot resolve: present on both sides and not a real directory on both.
+//
+// It runs to completion before mergeAdoptionTree moves anything, which is what keeps a refusal
+// non-destructive — a collision three levels down must not be discovered after two levels have
+// already been renamed away.
+// rootLink and rootTarget are the top-level adoption pair, carried down purely so a nested refusal
+// still names the `.lyx` directories an operator recognises rather than an interior path.
+// os.Lstat, not os.Stat, decides "is a directory" on both sides: a symlink pointing at a directory
+// is a link, not a directory to merge into, and renaming one is the safe answer.
+func refuseUnmergeableAdoption(src, dst, rootLink, rootTarget string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("read %s for adoption: %w", src, err)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		dstInfo, dstErr := os.Lstat(dstPath)
+		if os.IsNotExist(dstErr) {
+			continue
+		}
+		if dstErr != nil {
+			return fmt.Errorf("lstat %s: %w", dstPath, dstErr)
+		}
+
+		srcInfo, srcErr := os.Lstat(srcPath)
+		if srcErr != nil {
+			return fmt.Errorf("lstat %s: %w", srcPath, srcErr)
+		}
+
+		if srcInfo.IsDir() && dstInfo.IsDir() {
+			if err := refuseUnmergeableAdoption(srcPath, dstPath, rootLink, rootTarget); err != nil {
+				return err
+			}
+			continue
+		}
+
+		return fmt.Errorf(
+			"adopt %s into %s: %s already exists at the weft target and is not a directory on both sides, so adoption cannot merge it — move or delete the warp-side copy at %s and re-run `lyx fabric reconcile`",
+			rootLink, rootTarget, dstPath, srcPath,
+		)
+	}
+
+	return nil
+}
+
+// mergeAdoptionTree moves every entry of src into dst, recursing into a directory present on both
+// sides and removing each source subdirectory once its own contents have moved.
+//
+// It is only ever called after refuseUnmergeableAdoption has cleared the whole tree, so a collision
+// reaching this function is a directory on both sides by construction; anything else would be a
+// broken invariant, not an input to handle.
+// rootLink and rootTarget serve the same naming purpose they do in refuseUnmergeableAdoption.
+func mergeAdoptionTree(src, dst, rootLink, rootTarget string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("read %s for adoption: %w", src, err)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if _, dstErr := os.Lstat(dstPath); os.IsNotExist(dstErr) {
+			if renameErr := os.Rename(srcPath, dstPath); renameErr != nil {
+				return fmt.Errorf(
+					"adopt %s into %s: move %s failed: %w — stop reed/scout (an open handle inside %s is the expected cause on Windows) and re-run `lyx fabric reconcile`",
+					rootLink, rootTarget, srcPath, renameErr, rootLink,
+				)
+			}
+			continue
+		}
+
+		if err := mergeAdoptionTree(srcPath, dstPath, rootLink, rootTarget); err != nil {
+			return err
+		}
+		// os.Remove, never RemoveAll: it is refused by the OS the moment the directory still holds
+		// anything, so it can only ever delete a directory the recursion above has just emptied.
+		if err := os.Remove(srcPath); err != nil {
+			return fmt.Errorf("remove now-empty %s after adoption: %w", srcPath, err)
+		}
+	}
+
 	return nil
 }
 

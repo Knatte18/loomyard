@@ -152,6 +152,7 @@ Example:
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <slug>",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "create a dual warp+weft worktree pair",
 		Long: `Create a new paired warp and weft git worktree for the given slug.
 
@@ -172,6 +173,7 @@ Example:
 	// list
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
+		Args:  cobra.NoArgs,
 		Short: "list warp worktrees (use 'lyx fabric pairs' for full pair geometry)",
 		Long: `List all warp worktrees registered in the current hub.
 
@@ -185,6 +187,7 @@ use "lyx fabric pairs".`,
 	var removeCmd *cobra.Command
 	removeCmd = &cobra.Command{
 		Use:   "remove [--force] <slug>",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "destroy a dual warp+weft worktree pair",
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
 (_lyx, .lyx, and the _board convenience link), portal junctions, and
@@ -214,6 +217,7 @@ Example:
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "checkout [branch]",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "coordinated branch switch across warp+weft with junction re-point",
 		Long: `Switch the warp worktree to <branch> and its weft sibling to the
 suffix-paired weft branch, re-pointing junctions in the same operation.
@@ -240,6 +244,7 @@ Example:
 	// pairs
 	cmd.AddCommand(&cobra.Command{
 		Use:   "pairs",
+		Args:  cobra.NoArgs,
 		Short: "show full warp↔weft pair geometry with drift and junction-health fields",
 		Long: `Show every warp↔weft pair's branch, in-sync verdict, junction health, and
 warp-pollution scan.
@@ -256,6 +261,7 @@ remedy.`,
 	// reconcile
 	cmd.AddCommand(&cobra.Command{
 		Use:   "reconcile",
+		Args:  cobra.NoArgs,
 		Short: "repair a managed pair whose weft side drifted or broke",
 		Long: `Reconcile walks every warp worktree and applies the minimal corrective
 action needed to restore a valid paired topology: recreate a missing weft
@@ -278,6 +284,7 @@ skipped: it never had either, so there is nothing there to repair.`,
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
 		Use:   "prune [--apply] [--force]",
+		Args:  cobra.NoArgs,
 		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
 		Long: `Prune scans for on-disk pair debris in two passes: a registered pair whose
 warp worktree directory is gone (stale), and a weft worktree with no warp
@@ -323,6 +330,7 @@ Example:
 	var cleanupCmd *cobra.Command
 	cleanupCmd = &cobra.Command{
 		Use:   "cleanup [--apply] [--force]",
+		Args:  cobra.NoArgs,
 		Short: "delete weft branches whose warp sibling is gone",
 		Long: `cleanup finds weft branches with no corresponding warp worktree sibling.
 
@@ -365,6 +373,7 @@ weft remote, if it was ever pushed, is left untouched.`,
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "unwire",
+		Args:  cobra.NoArgs,
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
 junction present (_lyx, .lyx, and the _board convenience link) and their
@@ -684,7 +693,44 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	if detail != "" {
 		envelope["warp_binding_detail"] = detail
 	}
+
+	// A pair carrying an Error is a repair this verb was asked to perform and did not, so it must
+	// not be reported through the success path. Every one of Topology.Reconcile's own pr.Error sites
+	// is a genuine failure — a junction it could not re-point, a weft worktree it could not
+	// recreate, a branch it could not read — never an advisory outcome, which is exactly why prune
+	// and cleanup deliberately do NOT get this treatment: their per-entry Error doubles as the
+	// explanation for a designed refusal ("commit them or re-run with --force"), and turning that
+	// into a non-zero exit would report a documented outcome as a failure.
+	// The envelope is carried through unchanged so a caller still learns WHICH pair failed; without
+	// it, a caller would gain an exit code and lose the report it needs to act on.
+	if pairErr := failedReconcilePairs(r.Pairs); pairErr != nil {
+		return errWithRecordFields(out, rec.Snapshot(), pairErr, envelope)
+	}
+
 	return okWithRecord(out, rec.Snapshot(), envelope)
+}
+
+// failedReconcilePairs returns an error summarising every pair whose reconcile step failed, or nil
+// when every pair reconciled cleanly.
+//
+// The summary names the count and the first failing pair's worktree and reason rather than
+// concatenating all of them: the full per-pair detail already travels in the envelope's "pairs"
+// array, so repeating it in the error string would duplicate the report an operator is about to
+// read anyway.
+func failedReconcilePairs(pairs []fabricengine.ReconcilePairResult) error {
+	var failed []fabricengine.ReconcilePairResult
+	for _, pair := range pairs {
+		if pair.Error != "" {
+			failed = append(failed, pair)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"reconcile could not repair %d of %d pair(s); first failure at %s: %s",
+		len(failed), len(pairs), failed[0].WarpWorktree, failed[0].Error,
+	)
 }
 
 // runPruneWithFlags executes the prune logic with the resolved apply and force flags.
