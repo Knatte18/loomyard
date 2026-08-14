@@ -533,9 +533,15 @@
 // individually rewritten.
 //
 // Every mutating verb's result type embeds `MutationRecord` (mutation.go), exposing the
-// accumulated record through one accessor, `Mutated() Mutations`; the four read-only verbs' result
-// types (`StatusResult`, `DiffResult`, and their siblings for `list`/`pairs`) do not, since nothing
-// was mutated and there is no record to carry.
+// accumulated record through one accessor, `Mutated() Mutations`; the read-only verbs' result types
+// do not, since nothing was mutated and there is no record to carry.
+// There are exactly TWO such types, and which verb each serves is worth stating precisely rather
+// than approximately, because the natural guess is wrong in both directions: `StatusResult`
+// (status.go, returned by `Topology.Status`) is the **pairs** verb, and `DiffResult` (diff.go) is
+// `diff`. The other two read-only verbs have no result type at all — `Fabric.Status`, the `status`
+// verb, returns a bare `[]ChangeEntry`, and `List` returns a bare `[]WorktreeEntry` — so there is
+// nothing for `destructiveguard_test.go`'s companion table to pin for them, and a reader must not
+// conclude from its two rows that the table is under-populated.
 //
 // At the CLI envelope layer (`internal/fabriccli`), every mutating verb's JSON output therefore
 // always carries two fixed keys on top of its own fields, present on both the success and the

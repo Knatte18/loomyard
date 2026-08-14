@@ -45,7 +45,7 @@
 // source inspection alone, both against internal/fabricengine/destroy.go and the mutating result
 // types' declarations: that every one of destroy.go's eight executors declares a leading
 // `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord
-// while the four read-only verbs' result types do not. Its blind spots are deliberate and
+// while the read-only verbs' result types do not. Its blind spots are deliberate and
 // significant: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call, so it
 // cannot tell a correctly recording executor from one whose parameter is a dead letter, and it
 // cannot tell a real recording call from one sitting inside a comment. Whether each body's
@@ -171,9 +171,15 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"PushResult", "internal/fabricengine/weftgit.go"},
 }
 
-// destructiveGuardReadOnlyResultTypes is the companion table of the four read-only verbs' result
-// types the invariant requires to NOT embed MutationRecord — the which-verbs-record scope decision
-// is machine-held here, not left to convention.
+// destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types
+// the invariant requires to NOT embed MutationRecord — the which-verbs-record scope decision is
+// machine-held here, not left to convention.
+//
+// It has two rows by construction rather than by omission, and which verb each row serves is not the
+// natural guess: StatusResult (status.go) is the **pairs** verb and DiffResult is `diff`. The other
+// two read-only verbs have no result type to pin — the `status` verb's Fabric.Status returns a bare
+// []ChangeEntry and `list`'s List returns a bare []WorktreeEntry — so a reader must not read two rows
+// here as a table that has drifted.
 var destructiveGuardReadOnlyResultTypes = []struct {
 	name string
 	file string

@@ -619,6 +619,16 @@ func checkPathRequest(req pathRequest) error {
 // A dirtinessNA declaration always passes (its validity was already checked in checkPathRequest). A
 // probe that cannot run at all is itself a refusal, not a pass, since a probe failure is exactly the
 // state in which an unconditional destructive act is least defensible.
+//
+// The probe is not atomic with the act it gates, and that limit is stated rather than left implicit:
+// this function runs `git status --porcelain` and returns, and the executor then performs the
+// primitive, with no lock spanning the two — so a write landing in that window is destroyed.
+// The exposure stays narrow by construction: removeGitWorktree re-checks through git itself,
+// resetHardTo delegates to git, and the only RemoveAll sites carrying a real dirtiness scope are the
+// two fallbacks that fire only AFTER git has already declined the removal. Closing the window would
+// need a lock held across probe and act at every executor, which is a much larger claim about every
+// future call path than the residual risk warrants — but "the gate executes rather than approves"
+// must not be read as "the probe and the act are one transaction".
 func checkPathDirtiness(req pathRequest) error {
 	if req.dirtiness.kind == pathDirtinessNA {
 		return nil
@@ -835,6 +845,15 @@ func createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target 
 // allowing tests to inject errors into it. It moved here from clone.go, which it used to serve as a
 // clone-teardown-only seam: removePath is now its only caller once batches 3 and 4 land, and the one
 // file allowed to destroy should own the function that destroys.
+//
+// The seam is worth naming as a known limit rather than leaving a reader to notice it: inside the one
+// file whose whole purpose is that no other code may reach a destructive primitive, the primitive
+// itself is a mutable, EXPORTED package-level variable. Any package in the module can replace it, two
+// tests assigning it concurrently are a data race, and the bypass guard — which reads raw source for
+// banned call tokens — cannot see either. Nothing outside this package assigns it today.
+// It is kept because the error-injection coverage it buys is real and unexported alternatives buy no
+// safety here: a test in package fabricengine can reach an unexported var just as easily, so making
+// it unexported would move the exposure rather than remove it.
 var RemoveAll = os.RemoveAll
 
 // resetHardTo is the executor for the ResetHard primitive: it runs the pipeline against req, and

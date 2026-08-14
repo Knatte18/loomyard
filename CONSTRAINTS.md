@@ -285,7 +285,9 @@ Every mutating fabric verb accumulates a `*Mutations` record of the primitives i
 
 - Every destructive executor in `internal/fabricengine/destroy.go` takes a `rec *Mutations` parameter and appends its own primitive to it, **after** the primitive observably changed state — never on a no-op, never on a refusal, never before the act.
 - Every mutating verb's result type embeds `MutationRecord`;
-  the four read-only verbs' result types must not.
+  a read-only verb's result type must not.
+  There are exactly two of those, and which verb each serves is not the natural guess: `StatusResult` is the **pairs** verb and `DiffResult` is `diff`.
+  The other two read-only verbs (`status`, `list`) return bare slices with no result type, so the guard's companion table has two rows by construction, not by omission.
 - `internal/fabricengine/mutation.go` is the single declarer of the `Kind` enum.
   A new member lands in the same commit as its recording site and its guard-test entry, never ahead of either.
 - A `CheckForce` member must never be added to `Check`: force is consulted only inside `checkPathDirtiness`, where it makes the dirtiness check *pass* rather than fail, so a refusal can never be attributed to it.
