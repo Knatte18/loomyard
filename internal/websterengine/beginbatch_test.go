@@ -260,6 +260,11 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	promptsDir := t.TempDir()
 	reed := &beginFakeReed{}
 
+	// webster's prompts are read from disk at call time now, so the fixture's
+	// hub must carry them before BeginBatch reaches RenderForkPrompt.
+	hubPath := filepath.Dir(worktree)
+	seedHubStencils(t, hubPath)
+
 	deps := websterengine.BeginDeps{
 		Plan:         plan,
 		Batches:      batches,
@@ -270,7 +275,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Injector:     injector,
 		Reed:         reed,
 		WorktreeRoot: worktree,
-		Layout:       &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "."},
+		Layout:       &lyxcwd.Location{HubPath: hubPath, WorktreeName: filepath.Base(worktree), AnchorRel: "."},
 		WebsterDir:   t.TempDir(),
 		ScratchDir:   t.TempDir(),
 		ReportsDir:   t.TempDir(),
