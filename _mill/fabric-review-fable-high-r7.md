@@ -25,6 +25,10 @@ that an attacker can pre-plant a *static* symlink at — no race, no observation
   `cmd/lyx/destructiveguard_test.go`. Nothing mechanically inventories the package's raw filesystem-WRITE
   primitives, which is exactly why F1/F2 sat undiscovered for five rounds. Building one is this round's most
   durable deliverable.
+- **F4 (LOW/doc-accuracy, CONFIRMED)** — `createExclusiveDir`'s doc (and the CONSTRAINTS invariant line)
+  claims it refuses an intermediate-ancestor symlink escape; empirically it does not (it roots at the
+  parent, which `os.OpenRoot` resolves). Not a live exploit at its sole call site, but a false containment
+  claim in an authoritative doc. Found during Job 2, corrected in the doc + a dedicated leaf-refusal test.
 
 The remaining raw-write sites (junction target materialisation, `_board` link, clone `.lyx`/anchor marker,
 warp binding, weft lock dir, git hooks / `info/exclude`) are **NOT** in the same exploit class: each writes
@@ -99,13 +103,36 @@ round chasing a ninth link. Fix: add `TestNoUncontainedWrite_FabricengineProduct
 delete-side guard, banning `os.MkdirAll(`/`os.Mkdir(`/`os.WriteFile(`/`os.Create(`/`os.OpenFile(`/
 `os.Symlink(`/`os.Link(` outside an allowlist that documents each safe raw site.
 
+### F4 — `createExclusiveDir`'s doc overstates its containment guarantee (LOW / doc-accuracy, CONFIRMED)
+`internal/fabricengine/destroy.go:886-917` (`createExclusiveDir` doc comment) and `CONSTRAINTS.md`'s
+Fabric Destruction Chokepoint Invariant line for the create-side minters.
+
+Found during Job 2 while re-evaluating round 5's F2/F3 "no dedicated test" item (my own experiment, not
+from any prior review). The doc claims rooting the `Mkdir` at path's parent "atomically refuses any
+intermediate component escaping the parent … a planted-intermediate-symlink escape is refused rather than
+followed." Empirically FALSE on Go 1.26: `createExclusiveDir` roots at `filepath.Dir(path)` and creates
+only `filepath.Base(path)` through the root, so `os.OpenRoot` resolves the parent argument (symlinks
+included) BEFORE rooting. A symlink planted in path's parent ancestry is followed exactly as `os.Mkdir`
+would follow it — a scratch test creating `<container>/escape -> <outside>` then
+`createExclusiveDir(<container>/escape/leaf)` created `<outside>/leaf` with a nil error. Only a symlink at
+the LEAF (path's final component) is refused (EEXIST, verified).
+
+Not a live exploit: the sole caller (`clone.go`'s `createExclusiveDir(rec, hubPath)`) passes a
+single-component hub leaf under the operator-chosen clone parent — an operator-controlled location, not a
+path an attacker can plant a symlink inside the way it can inside a live hub. But an authoritative
+invariant doc asserting a containment property the code does not provide is a latent trap: a future caller
+passing an attacker-influenced parent ancestry, trusting the claim, would escape. Fix: correct the doc
+(destroy.go + CONSTRAINTS.md) to state the accurate guarantee (leaf-only refusal; parent ancestry resolved
+by OpenRoot; safe here only because the hub leaf sits under the operator-controlled clone parent) and add
+the round-5-F2/F3 dedicated leaf-symlink-refusal regression test that was missing.
+
 ## Prior-round minor items (re-evaluated)
 
 - **Round 4 F2 (WARN-log test-coverage claim): NOT actually open — round 6 was right.**
   `TestAddRollback_RefusedWarpBranchDeletionLogsWarn` (`add_rollback_adopt_test.go:191`) rebinds the logger
   sink via `logger.SetOutput` and asserts the exact WARN line, so reverting `rollbackAdd`'s `logger.Warn`
-  hunk fails it. It genuinely sabotage-proves the log. (Will empirically sabotage-prove during Job 2.) No
-  fix needed.
+  hunk fails it. It genuinely sabotage-proves the log — empirically confirmed in Job 2: neutralising
+  `rollbackAdd`'s `logger.Warn` hunk makes the test FAIL at add_rollback_adopt_test.go:219. No fix needed.
 - **Round 5 F2/F3 dedicated tests:** to be assessed in Job 2; round 6's `containedWorktreeAdd` tests already
   exercise the shared helper heavily. Low value; note in fixer report.
 
