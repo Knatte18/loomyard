@@ -415,6 +415,37 @@ func TestStencilCLI_PromoteAndDiffAllRequireSourceTree(t *testing.T) {
 	}
 }
 
+// TestStencilCLI_PromoteRequiresMatchingSourceFile asserts promote errors, naming the missing file,
+// rather than creating one, when the worktree's stencils/ source tree exists but the target
+// stencil's own family subfile is absent from it.
+func TestStencilCLI_PromoteRequiresMatchingSourceFile(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	worktree := h.PrimeWorktree()
+
+	if _, code, raw := runCLI(t, worktree, "sync"); code != 0 {
+		t.Fatalf("stencil sync = %d; want 0. output: %s", code, raw)
+	}
+
+	sourceRoot := filepath.Join(worktree, "stencils")
+	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", sourceRoot, err)
+	}
+
+	name := stencils.Registry().Names()[0]
+	targetPath := filepath.Join(sourceRoot, filepath.FromSlash(stencilstore.RelPath(name)))
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("source file for %q unexpectedly present at %s before the test", name, targetPath)
+	}
+
+	if _, code, raw := runCLI(t, worktree, "promote", name); code == 0 {
+		t.Errorf("promote %s with a stencils/ tree present but no matching source file = %d; want non-zero. output: %s", name, code, raw)
+	}
+
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Errorf("promote created %s for a missing source file; it must error instead", targetPath)
+	}
+}
+
 // TestStencilCLI_DriftWarningNeverBlocksExitCode asserts the port-back drift warning fires as a
 // plain logger.Warn line and never affects sync's exit code.
 func TestStencilCLI_DriftWarningNeverBlocksExitCode(t *testing.T) {

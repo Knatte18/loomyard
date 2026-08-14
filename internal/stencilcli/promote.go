@@ -64,6 +64,11 @@ func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 			}
 
 			targetPath := filepath.Join(sourceDir, filepath.FromSlash(stencilstore.RelPath(name)))
+			if _, err := os.Stat(targetPath); err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
+					"stencil: no source file %s for %q in this worktree's stencils/ tree", targetPath, name)))
+				return nil
+			}
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("stencil: create parent directory for %s: %v", targetPath, err)))
 				return nil
