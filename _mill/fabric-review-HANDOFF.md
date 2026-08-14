@@ -4,13 +4,30 @@ Orchestrator's own state file. Refreshed after every round's verification. Never
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 6 (`fable-high-r6`) has FINISHED and been independently verified (fork `a54217f6d5db7273a`).
-**Mixed result: round 6's ASSIGNED fix genuinely holds — first sub-fix in the M3→M1→create-side→
-staging-observability chain to survive a fully independent re-attack with an independently-built
-tool. But verification found a NEW, separate, unscoped defect during its sweep: `writeLaunchers`
-has ZERO containment protection — no race needed, a static pre-planted symlink is 100% reliable,
-first attempt.** This is now beyond the operator's R5→R6 pre-approval scope — reporting to the
-operator for a decision on how to proceed (see below), not spawning round 7 unilaterally.
+Round 7 (`fable-high-r7`) has FINISHED and been independently verified (fork `a896b8ed43fb2c180`).
+**Clean result — first round in the whole campaign where independent verification found NO
+counter-evidence and NO new sibling gap.** Round 7 ran the operator-scoped full write-side
+containment audit and found two real defects: F1 `writeLaunchers` (the confirmed zero-race gap
+that triggered this round) and a SECOND, previously-unknown-to-anyone gap, F2 `createPortal`
+(a `_portals`-container symlink let a portal junction get planted outside the hub). Both fixed via
+`os.Root`, both independently re-attacked live and held. F3 built a durable write-side guard test
+(`TestNoUncontainedWrite_FabricengineProductionSource`, modeled on the delete-side
+`destructiveguard_test.go`) — independent verification re-derived the write-primitive inventory
+from scratch by grepping `internal/fabricengine/` independently and it matched the guard's
+allowlist EXACTLY, no mismatch, nothing missed; also confirmed the guard's detection mechanism
+actually works by injecting a throwaway uncontained write and watching it get caught. F4 (a
+doc-accuracy correction on `createExclusiveDir`'s overstated guarantee) had its "not exploitable
+at this call site" claim independently scrutinized — the highest-risk kind of claim given round
+4's history of an identical-sounding claim being wrong — and this one held up: `DeriveWarpName`
+structurally cannot inject a path separator, so the gap can only ever land on the leaf, never an
+intermediate ancestor, at its sole call site.
+
+**Independent verifier's own assessment: no concrete evidence surfaced to justify a mandatory
+round 8.** The module appears genuinely MERGEABLE on the write-side containment property this
+round targeted. This is a natural point to check with the operator: continue (there may still be
+value in one more broad sweep, or the operator may have a specific area in mind), or treat the
+campaign as converged and write the convergence verdict. Not deciding unilaterally either way —
+see "Exact next action" below.
 
 **Round 6's fix (the good news):** rejected the seed's own hypothesis (relocate staging outside
 the hub) after testing it — found that breaks `os.Root.Rename` across a mount boundary (EXDEV,
@@ -171,6 +188,23 @@ nothing deferred, so nothing else to fold in from that source. The "inert leftov
 post-freeze observation is folded in as a low-priority spot-check only.
 
 ## CLOSED-AND-VERIFIED
+**Round 7 (`fable-high-r7`) — FULLY closed, first round with a clean independent verification (no
+counter-evidence, no new sibling found).** 1 MEDIUM (F1, `writeLaunchers` routed through `os.Root`)
++ 3 LOW (F2 `createPortal`'s container-symlink gap, fixed the same way; F3 the new write-side
+guard test + CONSTRAINTS.md invariant; F4 a doc-accuracy correction on `createExclusiveDir`), 6
+commits `7e7583a8`..`6d600fc5`. Independently verified (fork `a896b8ed43fb2c180`): re-derived the
+write-primitive inventory from scratch by independently grepping `internal/fabricengine/` —
+matched the guard test's allowlist EXACTLY, nothing missed; sabotage-proved F1/F2's tests AND
+confirmed the guard test's OWN detection mechanism works (injected a throwaway uncontained write,
+watched it get caught); live-re-attacked F1 (leaf + container symlink) and F2 (container symlink,
+plus independently confirmed the leaf vector was already refused by pre-existing fslink behavior)
+against the real deployed binary — fails closed in every case, no regression to the happy path.
+F4's "not exploitable at this call site" claim — the highest-risk kind of claim given round 4's
+history of an identically-shaped claim being wrong — was independently scrutinized, not just
+repeated: confirmed `DeriveWarpName` structurally cannot inject a path separator, so the gap can
+only ever land on the leaf (already protected), never an intermediate ancestor, at its sole call
+site. Independent verifier's own conclusion: no concrete evidence to justify a mandatory round 8.
+
 **Round 6 (`fable-high-r6`) — FULLY closed, the create-side chain's fix finally holds.** 1 MEDIUM
 (F1, `containedWorktreeAdd`'s pre/post fail-closed `stagedWorktreeContained` checks around
 `os.Root.Rename`) + NIT-F2 (folded into F1) + NIT-F3 (reversed to "not a finding" — round 5's F2
@@ -274,60 +308,18 @@ already closed. The fixture-inversion (`f4ce0188`) and `t.Parallel` unblock (`16
 independently confirmed delivered as intended, drove real scenarios against both. Treat these
 three commits as settled unless a later round's own independent driving turns up something new.
 
-## RESIDUAL currently seeded for round 7
-**New finding, from the orchestrator's OWN independent verification of round 6's fix — but this
-time NOT a defeat of round 6's own assigned work (that held). This is a NEW, separate, previously
-unaudited defect the verification found while sweeping for anything else worth checking.**
-`internal/fabricengine/launchers.go`'s `writeLaunchers` (the CREATE-side counterpart of
-`removeLaunchers`, which round 2's M3 finding fixed on the DELETE side, called on every `add`) has
-**zero containment protection.**
-
-- **Mechanism:** `writeLaunchers` writes to `<hub>/_launchers/<AnchorRel>/<slug>` via plain
-  `os.MkdirAll`+`os.WriteFile` — no `refuseUncontainedPath` call, no `os.Root`, nothing. Unlike
-  every other finding in this campaign's chokepoint chain, this needs NO timing attack, NO race,
-  NO observation — a symlink planted at that exact path BEFORE running `add` is sufficient.
-- **Repro (independently reproduced, 100% first attempt):**
-  ```sh
-  ln -s <outside-the-hub> <hub>/_launchers/<slug>
-  lyx fabric add <slug>
-  ```
-  writes `ide.sh`/`fabric-checkout.sh` to the OUTSIDE target while reporting `ok:true` and a
-  mutation record claiming the files landed inside the hub — M3's exact false-success shape.
-- **Why this was never caught before:** five rounds of adversarial pressure on the chokepoint's
-  create-side chain (M3→M1→create-side-gap→staging-observability, all through
-  `containedWorktreeAdd`/`createGitWorktree`/`createExclusiveDir`) never audited `writeLaunchers`
-  at all — it's a sibling call site in the SAME `add` code path, not part of the chain anyone was
-  looking at. Confirms the pattern the campaign has repeated at every step: fixing one gap reveals
-  an unaudited sibling nearby, and this one didn't even need the sophistication of a timing attack
-  to find, just looking at a call site nobody had looked at yet.
-- **Operator decision (2026-08-14): round 7 is NOT scoped to `writeLaunchers` alone.** Per the
-  operator's explicit choice, round 7 must do a FULL WRITE-SIDE CONTAINMENT AUDIT: grep for every
-  `os.MkdirAll`/`os.WriteFile`/`os.Create` (and any other raw filesystem-write primitive) call
-  site under `internal/fabricengine` that writes to a hub-relative path WITHOUT going through
-  `refuseUncontainedPath` or an `os.Root`-based helper, fix every one found (not just
-  `writeLaunchers`), and re-derive the raw-write-primitive inventory the way round 2 re-derived
-  the raw-DELETE-primitive inventory against `destructiveguard_test.go`'s allowlist — except this
-  time for writes, which currently have no equivalent allowlist/guard test at all. Building that
-  guard test (a write-side sibling of the delete-side `destructiveguard_test.go`) is itself
-  probably the right permanent fix for "how do we stop this happening an eighth time," and should
-  be considered as part of this round's scope, not just fixing the specific sites found.
-- **Also worth reproducing/confirming independently, lower priority:** round 6's verification
-  flagged a THEORETICAL (not live-reproduced) residual — `add.go`'s steps after
-  `containedWorktreeAdd` returns (`InstallPostCheckoutHook`, `createPortal`, `writeLaunchers`,
-  `WireJunctionsWith`, `wireBoardLink`) trust the earlier containment check without re-verifying.
-  `writeLaunchers` above is the confirmed-live instance of exactly this pattern; the other steps
-  in that list should get the same scrutiny during the audit rather than being assumed safe by
-  association.
-
-## Primary emphasis for round 7 — full write-side containment audit, not a point-fix
-This is a scope change from every prior round in this chain: instead of chasing one specific
-seeded residual, round 7's Job-1 task is a systematic sweep. Reproduce `writeLaunchers`'s live
-bug first (fast, gives a working hub), then do the grep-and-audit work across the whole package,
-fix every gap found (severity-graded individually — do not lump them into one finding), and build
-the write-side guard test. Adversarially re-attack every fix the same way every prior round in
-this chain has been held to. Given the campaign's own track record, do not assume this audit is
-exhaustive just because it's systematic — a completeness check (did the guard test's own allowlist
-derivation miss anything a manual read would catch?) is itself part of the job.
+## RESIDUAL — none currently seeded (decision point, 2026-08-14)
+Round 7 closed the write-side audit residual (`writeLaunchers` + the newly-found `createPortal`
+sibling) and it is now CLOSED-AND-VERIFIED above. As of this writing there is no open,
+orchestrator-confirmed defect anywhere in `fabric` — this is the first time in the campaign this
+file has nothing to seed a next round with. If the operator chooses to continue, the next round's
+seed needs to come from either (a) a fresh clean-room sweep with no specific target (the way round
+1 and round 4's "broad sweep" halves worked), or (b) a specific area the operator wants scrutinized
+that hasn't had dedicated attention yet — theoretical residuals worth naming as candidates if asked:
+the `add.go` post-`containedWorktreeAdd` steps round 6/7 didn't fully individually audit beyond
+`writeLaunchers`/`createPortal` (`InstallPostCheckoutHook`, `WireJunctionsWith`, `wireBoardLink`),
+or a fresh full-module pass now that the write-side guard test exists to lean on. If the operator
+chooses to wrap up, write the convergence verdict per "Exact next action" below.
 
 ## DEFERRED list
 Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
@@ -345,21 +337,25 @@ from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was see
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-1. `_mill/fabric-review-prompt.md` is rewritten for round 7 (primary target = full write-side
-   containment audit, seeded by `writeLaunchers`'s zero-protection defect, CLOSED-AND-VERIFIED
-   updated with round 6's FULL closure — first link in this chain to genuinely hold —
-   deferred/round-context sections updated). Commit it together with this HANDOFF update.
-2. Spawn round 7: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r7` —
-   scope confirmed by the operator (2026-08-14): full audit, not a `writeLaunchers`-only point-fix.
-3. After round 7's own independent verification: check whether the audit was genuinely exhaustive
-   (did it find everything a completeness pass would?) with the same skepticism every prior round
-   in this campaign has been held to — this campaign's pattern has been that a "fixed" gap
-   reveals a sibling, and a systematic audit is not automatically immune to that pattern just
-   because it's systematic. If round 7 IS genuinely clean and the campaign looks converged, write
-   a status verdict stating what's fixed and confirmed and what remains open (Windows path/junction
-   behavior; N4's dirtiness-probe TOCTOU) — and check with the operator whether to continue further
-   or wrap up, since round count is open-ended per their 2026-08-14 correction, not something to
-   decide unilaterally either way. If a finding looks like it needs dedicated engineering work
-   rather than another review round — the fork the operator took after the ORIGINAL 6-round
-   campaign, which is why `destroy.go` exists and why this campaign exists — say so explicitly and
-   propose it, rather than defaulting to "run another round" or "declare done."
+Round 7 finished clean and was independently verified with no counter-evidence and no new sibling
+gap found (see CLOSED-AND-VERIFIED and "RESIDUAL" above). **This is reported to the operator now
+as a genuine decision point** — continue (round 8, scope TBD per the candidates in "RESIDUAL"
+above) or wrap up with a convergence verdict. Do not decide unilaterally.
+
+If the operator says wrap up, the convergence verdict should state plainly: the destruction
+chokepoint's delete-side containment (M3/M1, `removePath`/`removeLink` via `os.Root`) and
+create-side containment (the create-worktree chain via `containedWorktreeAdd`, AND the write-side
+audit's `writeLaunchers`/`createPortal` fixes) have all independently survived adversarial
+re-attack; a durable write-side guard test now exists as a permanent check against future regressions
+on this class of defect (there was none before this campaign — this is arguably the single most
+durable outcome of the whole campaign, more than any individual fix); remaining permanent limits
+are Windows path/junction behavior (never executed, Linux host) and N4's dirtiness-probe TOCTOU
+(accepted, documented, real-in-theory-only residual). State honestly that 7 rounds each finding
+something the previous round's own verdict missed is itself informative — not proof the module is
+now perfect, but strong evidence the specific properties hammered this hard are now sound.
+
+If the operator says continue, rewrite `_mill/fabric-review-prompt.md` for round 8 using one of
+the candidate directions in "RESIDUAL" above (or a direction the operator specifies), commit, spawn
+`subagent_type: crucible-reviewer-high`, `model: fable` (or whatever model/effort the operator
+specifies — do not assume Fable/high silently forever, confirm if it's been a while since it was
+last explicitly stated), tag `fable-high-r8`.
