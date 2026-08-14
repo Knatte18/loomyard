@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: hub-dotlyx-into-board
 branch: hub-dotlyx-into-board
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-14T17:53:58Z'
 approved-hub-scratch-move  '2026-08-14T18:10:57Z'
 approved-board-junction-deletion  '2026-08-14T18:24:52Z'
 holistic-reviewing  '2026-08-14T18:25:28Z'
+holistic-fixing  '2026-08-14T18:31:46Z'
 ```
 
 ## Batches
