@@ -16,7 +16,7 @@ import (
 )
 
 // DiscussionSpec builds the shuttleengine.Spec for one discussion producer run.
-func DiscussionSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
+func DiscussionSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry, slug string, autonomous bool) (shuttleengine.Spec, error) {
 	if slug == "" {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: slug must not be empty")
 	}
@@ -33,7 +33,7 @@ func DiscussionSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry,
 	decisionRecordPath := DiscussionDecisionRecord(layout)
 	supportLogPath := DiscussionSupportLog(layout)
 
-	prompt, err := composePrompt(slug, decisionRecordPath, supportLogPath, autonomous)
+	prompt, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, autonomous)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: DiscussionSpec: %w", err)
 	}
