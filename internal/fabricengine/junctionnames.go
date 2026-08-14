@@ -127,6 +127,15 @@ func StencilsDir(hub string) string {
 	return filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)
 }
 
+// HubScratchDir returns the hub-wide, machine-local scratch tree shared by every worktree in the hub:
+// <hub>/_board/.lyx.
+// It is the ephemeral sibling of StencilsDir's durable <hub>/_board/_lyx tree, is always a real
+// directory and never a junction, and is the sole constructor of this path — see StencilsDir's own
+// told-never-derives comment for the pattern this follows.
+func HubScratchDir(hub string) string {
+	return filepath.Join(BoardDir(hub), lyxdirs.DotLyxDirName)
+}
+
 // HubPath returns the absolute path to the hub container directory for the given repo name inside
 // parent.
 func HubPath(parent, name string) string {
