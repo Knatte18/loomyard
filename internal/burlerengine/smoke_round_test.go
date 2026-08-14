@@ -36,12 +36,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/stencils"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
 // for the orphaned-conhost teardown probe. Explicit absolute path, never a
 // bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
+
+// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
+// through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs. hubforge.NewHub builds
+// a fabric, not a seeded board, and burler reads its four prompts from disk at call time via
+// stencilstore.Read — so an unseeded fixture hub fails every round before it reaches a pane.
+func seedHubStencils(t *testing.T, hub string) {
+	t.Helper()
+	baseDir := fabricengine.StencilsDir(hub)
+	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
+		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
+	}
+}
 
 // claudeBinaryPath returns the claude CLI's path from the environment or
 // PATH, skipping the calling test when it is absent so a -tags=smoke run
@@ -244,6 +258,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	seedHubStencils(t, h.Location.HubPath)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer

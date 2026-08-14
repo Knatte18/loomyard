@@ -109,6 +109,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	seedHubStencils(t, h.Location.HubPath)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
