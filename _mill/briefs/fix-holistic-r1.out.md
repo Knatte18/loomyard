@@ -1,0 +1,8 @@
+Baseline was eeee29a3 (holistic fix housekeeping commit); HEAD is now dc4f495c604b11ae1462dd2bee70846a54acc29e, distinct with real content commits. No uncommitted tracked changes. All verify commands passed.
+
+{"status":"success","commit_sha":"dc4f495c604b11ae1462dd2bee70846a54acc29e","session_id":"e2ef4c9e-4a8e-46d4-92ee-b733bc83b7d9"}
+
+Summary of work:
+- Fixed the sole review NIT: removed the duplicate readWeftExcludeLinesForHubScratch helper in internal/fabricengine/hubscratch_integration_test.go, reusing the existing readWeftExcludeLines from dotlyxjunction_integration_test.go (same fabricengine_test package/binary), and corrected the file header comment to match. Commit ca0ce56a.
+- While running the batch verify commands, found TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive failing in internal/reedcli. Confirmed via go -C <main-worktree> test ... that this failure is pre-existing on main and unrelated to this task's diff: materializeSibling in internal/reedcli/smoke_test.go cloned the sibling worktree beside the hub directory (h.Container) instead of inside it (h.Path), so lyxcwd.Resolve computed a different HubPath (hence a different tmux socket) for the sibling than for the prime worktree. Since batch 1's own verify: line runs -tags smoke ./internal/reedcli/..., I extended _mill/plan/01-hub-scratch-move.md's card 5 Edits to include this file (commit c22d6c72), then fixed materializeSibling to clone into filepath.Join(h.Path, name) (commit dc4f495c).
+- Re-ran every verify: command from both 01-hub-scratch-move.md and 02-board-junction-deletion.md; all passed with exit code 0.
