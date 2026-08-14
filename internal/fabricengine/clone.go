@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -235,21 +234,6 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, err
 	}
 
-	// <hub>/.lyx is a fabric-recognised hub-level geometry element the way <hub>/_board
-	// already is. It stays a real directory and never a junction — the hub itself is not
-	// a git repo, so there is nothing to exclude and no weft to point at — and it is
-	// reserved (hubSlugReservedNames, junctionnames.go) so no worktree slug can claim
-	// the name. Created here, right beside the hub directory itself, so it exists for
-	// the lifetime of every hub this function successfully produces; a creation failure
-	// here returns directly rather than through teardownHub, matching the surrounding
-	// step-4 posture — the hub directory it would need to tear down was itself just
-	// created and holds nothing yet worth cleaning up specially.
-	dotLyxPath := filepath.Join(hubPath, lyxdirs.DotLyxDirName)
-	if err := os.MkdirAll(dotLyxPath, 0o755); err != nil {
-		return CloneResult{}, err
-	}
-	rec.Append(KindDirCreated, dotLyxPath, "")
-
 	// Step 5: Clone warp repo
 	warpWorktreePath := filepath.Join(hubPath, name)
 	if err := cloneRepo(warpURL, warpWorktreePath); err != nil {
@@ -312,6 +296,27 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 	rec.Append(KindWorktreeCreated, boardDir, "")
+
+	// The hub-wide never-tracked tree is <hub>/_board/.lyx, the mirrored ephemeral sibling of
+	// <hub>/_board/_lyx. It is created here, rather than at old step 4, because _board does not
+	// exist until ensureBoardWorktree above has run.
+	//
+	// The excludes are seeded first because the exposure is the board's stage-all commit, not
+	// untracked dirt: internal/fabriccli/clone.go runs CloneHub then NewBolt(res.BoardDir).Commit(...)
+	// and only afterwards WireJunctionsWith, which is what seeds .lyx/ into the weft common gitdir —
+	// so without this call, anything written into _board/.lyx before that commit lands on weft:main.
+	//
+	// The seed failure is fatal, routed through teardownHub like every other step-7 failure, rather
+	// than best-effort: Bolt.Commit's commitWeftAt → gitrepo.StageAllAndCommit path seeds nothing, so
+	// the board's excludes are not self-healing the way reconcile.go's best-effort call assumes.
+	if err := seedWeftArtifactExcludes(boardDir); err != nil {
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("seed weft artifact excludes in board worktree: %w", err))
+	}
+	scratchDir := HubScratchDir(hubPath)
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+	}
+	rec.Append(KindDirCreated, scratchDir, "")
 
 	// Step 8: Resolve the lyx-anchor subpath adopt-or-create, and write the
 	// marker to the board worktree ON DISK. The CLI layer commits it onto
