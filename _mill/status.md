@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: hub-dotlyx-into-board
 branch: hub-dotlyx-into-board
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-14T15:25:11Z'
+discussed  '2026-08-14T16:50:25Z'
 ```
