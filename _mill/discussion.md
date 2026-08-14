@@ -174,11 +174,20 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   The two are complementary, not alternatives.
 - Note on why CI cannot be the guard: a CI runner has no access to the operator's hub, so it cannot compare `stencils/` against a `_board/_lyx/stencils/` that only exists on the developer's machine.
   The check has to run where the hub is, which is the pre-commit hook, not CI.
+- **The hook warns, it never blocks.**
+  It cannot block, because the comparison is inherently cross-worktree: the board copy is one per hub while `stencils/` is per warp worktree, and `core.hooksPath` lives in the common gitdir so the hook fires in every worktree.
+  The moment worktree A promotes an edit and deploys, every other task worktree's older `stencils/` source differs from the shared board copy through no fault of its own — and concurrent task worktrees are the normal mode of work in this repo, not an edge case.
+  A blocking hook would therefore lock up every worktree that changed nothing.
+  Distinguishing "unported edit" from "another worktree moved ahead" would require asking whether the board body appears anywhere in the source's reachable history, which is far too heavy for a pre-commit hook.
+  Accepted blast radius, stated plainly: the hook is a backstop that prints, and `promote` is the actual mechanism — the guarantee comes from having removed the manual copy, not from the hook refusing a commit.
 - Hook installation and preconditions, since a guard nobody installs is not a guard.
-  The script is **tracked** in the repo under `tools/hooks/pre-commit`, and `tools/deploy` sets `core.hooksPath` to `tools/hooks` when it runs in loomyard.
-  `.git/hooks` is deliberately not used: it is untracked, and it lives in the common gitdir, so it is shared repo-wide across every warp worktree rather than being per-worktree.
-  Preconditions: when `lyx` is not on PATH, or no hub can be resolved, the hook prints a warning and exits 0.
-  It never blocks a commit for missing tooling — making the repo uncommittable whenever the build is broken would be a worse failure than the drift it guards against, and that is precisely the state a developer is in while fixing a broken build.
+  The script is **tracked** in the repo under `tools/hooks/pre-commit`, and `tools/deploy` points `core.hooksPath` at `tools/hooks`.
+  `.git/hooks` is rejected because it is **untracked** — nothing else.
+  The common-gitdir argument does not discriminate between the options and must not be used as one: `core.hooksPath` set by `git config` lives in that same repo-wide config.
+  Preconditions: when `lyx` is not on PATH, or no hub can be resolved, the hook prints a warning and exits 0, exactly as it does on divergence.
+- On `tools/deploy` detecting loomyard: the `deployment-versus-production` carve-out binds **`lyx` the shipped binary**, which must never recognise its own source repo.
+  It does not bind the repo's own build tool, which by construction only ever runs there.
+  `tools/deploy` already resolves the repo root as its own working directory, so no detection mechanism is introduced.
 - Rejected: documenting the port-back as a discipline step and leaving it to memory — that is exactly the discipline-dependent failure mode the hash stamp was introduced to eliminate for the general operator.
   Also rejected: a CI-side assertion, for the reason above.
 
@@ -213,6 +222,13 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 - Decision: seeding and refresh happen automatically on every lyx run that needs a stencil, and the resulting board write is committed through `Bolt` like any other board write.
   `lyx stencil sync` exists to force the same operation on demand, but is never the only way it happens.
+- **A `-dev` build seeds absent files but never refreshes an untouched one.**
+  The repo deliberately keeps two binaries with different embedded defaults (Dev/Prod Binary Separation;
+  `tools/deploy -dev` builds into `.dev-bin`).
+  With the plain rule, alternating dev and prod runs against the same hub would rewrite and re-commit the same untouched file in opposite directions on every single run — and that alternation *is* the prescribed test-live-then-deploy loop, so it would be the normal case rather than a corner.
+  Rule: a `-dev` build performs row 1 of the edit-detection table (seed when absent) and skips row 2 (refresh when untouched), warning once when its embedded default differs from what is on disk.
+  A production build performs the full table.
+  This requires the binary to know which it is, via a build stamp set by `tools/deploy -dev`.
 - Rationale: self-healing and always current — a deleted file reappears, and the first run after a deploy carries the changed defaults across in one commit.
   That commit is also what builds the git history `stencil diff` depends on.
   Writing only on an explicit command would leave the tree stale until the operator remembered, which would make "always readable on disk" untrue.
@@ -248,6 +264,10 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   Building the mechanism without them leaves it unoperatable.
   The CLI is additive: seeding is automatic, and `sync` only forces what already happens.
   `promote` and the `--exit-code` flag exist for the `port-back-is-mechanical-not-remembered` decision.
+- Behaviour outside loomyard: `promote` and `diff --all` are both defined against a `stencils/` source tree that exists only in this repo, while the module is registered globally.
+  In a consumer repo, or for a board copy whose name no longer matches any source file, both exit with an error naming the missing source tree or file.
+  Neither ever creates a `stencils/` directory, and neither silently no-ops — a stray source tree in a consumer repo would be read by nothing, and a silent success would misreport the guard as having run.
+  `list`, `validate`, `sync`, and `diff <name>` work everywhere, since they need only the board copy.
 - Rejected: no CLI in V1 (leaves drift undiagnosable), and `validate`-only (omits the verb that matters the day a default changes).
 
 ### drift-notification-channel
@@ -384,7 +404,15 @@ From `CONSTRAINTS.md`:
   There is no `ScopedPathspec` on this path.
   Two consequences the plan must handle rather than inherit: the commit stages everything in the board repo, so seeding must not run while unrelated board edits are in flight;
   and seeding fires on every run from every worktree and session in a hub, so concurrent seeding writes need explicit synchronisation.
-  Required rule: seeding writes only when content actually changes (the common case writes nothing at all), and the write plus commit runs under `Bolt.Sync`, which is the existing absorbing-push-lock seam on this same handle.
+  Required rule, in two parts.
+  **Write only on change** — the common case writes nothing at all, so the stage-all commit never fires on an ordinary run.
+  **Do not use `Bolt` for the seeding commit.**
+  `Bolt.Sync` takes `board.push.lock` (`internal/fabricengine/bolt.go:33` → `coalescePush`, `internal/fabricengine/coalesce.go:24`), but board's own file writes are serialised by a *different* lock, `board.lock` (`internal/boardengine/sync.go:24,63`, `internal/boardengine/board.go:109`).
+  Seeding under `Bolt.Sync` would therefore not exclude a concurrent `boardCriticalSection` mid-render, and `Bolt.Commit`'s stage-all could capture a half-written board.
+  An earlier draft of this document named `Bolt.Sync` and was wrong.
+  Instead: a new verb in `internal/fabricengine` acquires `board.lock` and commits the stencils subtree with an explicit positive pathspec via `gitrepo.StageAndCommit`, never stage-all.
+  The `board.lock` filename becomes single-declarer in `internal/fabricengine` (which already owns the board directory) with `internal/boardengine` aliasing it rather than re-declaring the literal — the same shape fabric's clone-time guard already uses for the anchor-marker names.
+  It is unexported inside `boardengine` today, so it is not reachable from a new package without this move.
 - **Test Tier Purity Invariant** — untagged tests must not spawn git or build hub fixtures.
   Satisfied by `stencilstore` taking an explicit base directory, so tests use `t.TempDir()`.
 - **Documentation Lifecycle / task-completion rule** — `manifest/designs/` for any module doc touched, `docs/overview.md` for the module table and execution stack (a new `stencil` module changes both), and CONSTRAINTS.md for the new invariant, all in the same commit.
@@ -436,7 +464,13 @@ A test that stops at `promote` would pass while leaving the file permanently cla
 `diff --all --exit-code` exits non-zero when a board copy differs from the worktree's `stencils/` source and zero when they agree — including zero immediately after a `promote`, which is the case the pre-commit hook depends on.
 Both directions need a test, because an `--exit-code` that never fires is a hook that silently passes forever.
 
-**Seeding concurrency.** Assert that a run whose defaults are unchanged writes nothing and produces no board commit, since that is what keeps `Bolt`'s wildcard `StageAllAndCommit` from sweeping up unrelated in-flight board edits on every single run.
+**Seeding concurrency.** Assert that a run whose defaults are unchanged writes nothing and produces no board commit.
+Assert the seeding commit carries a positive pathspec covering only the stencils subtree, so an unrelated dirty file elsewhere in the board is not swept into it — this is the regression guard against reverting to a stage-all commit.
+
+**Dev/prod seeding.** Assert that a `-dev`-stamped build leaves an untouched file whose content differs from its own embedded default byte-identical on disk, and that a production build overwrites the same file.
+Without both directions the thrash reappears silently.
+
+**Non-loomyard CLI.** Assert `promote` and `diff --all` error, rather than no-op or create a directory, when no `stencils/` source tree is present.
 
 **Full-suite gate.** `go build ./...` and the full `go test ./...` must pass, since this change touches five engines, one enforcement walk, one import allowlist, and the cobra root.
 
@@ -464,4 +498,7 @@ Both directions need a test, because an `--exit-code` that never fires is a hook
 - **Q:** After `promote`, the board copy's stamp still names the old default, so it stays classified edited forever and never returns to clean. What restores it? **A:** A reconciliation row in the edit-detection table — body hash equal to the shipped default's hash means restamp silently and treat as untouched, whatever the stamp said. It also covers a hand-reverted edit.
 - **Q:** Does `diff` compare against the shipped default or against the source tree? **A:** Both, in different modes, and conflating them breaks the guard. `diff <name>` is forked-from-default versus shipped default; `diff --all --exit-code` is board copy versus the worktree's `stencils/` source. A shipped-default base would block the very commit that ports a change back.
 - **Q:** How does the stencils directory reach `treadleengine`, which is barred from `lyxcwd` and told only `runDir`/`GateDir`? **A:** As a new caller-supplied field, resolved by a new `fabricengine.StencilsDir(hub)` and passed in by the round runner. Webster's five no-arg accessors take the directory and gain an error return.
+- **Q:** Does `Bolt.Sync` serialise the seeding write against board's own writes? **A:** No — `Bolt.Sync` takes `board.push.lock` while board writes take `board.lock`, and `Bolt.Commit` stages everything. Seeding gets its own `fabricengine` verb taking `board.lock` and committing a positive pathspec, and `board.lock`'s name becomes single-declarer in `fabricengine`.
+- **Q:** The board copy is hub-wide but `stencils/` is per worktree, and the hook fires in every worktree. Doesn't the guard block commits in worktrees that changed nothing? **A:** Yes, if it blocked. It warns instead and never blocks. `promote` is the real mechanism; the hook is a backstop, and that blast radius is accepted explicitly.
+- **Q:** Dev and prod binaries carry different embedded defaults against the same hub. What stops them rewriting the same untouched file in opposite directions every run? **A:** A `-dev` build seeds absent files but never refreshes untouched ones, warning instead. Only a production build performs the refresh row.
 - **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) and adding a loomyard-only pre-commit `lyx stencil diff --all --exit-code`. CI cannot be the guard, since a CI runner has no access to the operator's hub.
