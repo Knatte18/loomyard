@@ -684,7 +684,44 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	if detail != "" {
 		envelope["warp_binding_detail"] = detail
 	}
+
+	// A pair carrying an Error is a repair this verb was asked to perform and did not, so it must
+	// not be reported through the success path. Every one of Topology.Reconcile's own pr.Error sites
+	// is a genuine failure — a junction it could not re-point, a weft worktree it could not
+	// recreate, a branch it could not read — never an advisory outcome, which is exactly why prune
+	// and cleanup deliberately do NOT get this treatment: their per-entry Error doubles as the
+	// explanation for a designed refusal ("commit them or re-run with --force"), and turning that
+	// into a non-zero exit would report a documented outcome as a failure.
+	// The envelope is carried through unchanged so a caller still learns WHICH pair failed; without
+	// it, a caller would gain an exit code and lose the report it needs to act on.
+	if pairErr := failedReconcilePairs(r.Pairs); pairErr != nil {
+		return errWithRecordFields(out, rec.Snapshot(), pairErr, envelope)
+	}
+
 	return okWithRecord(out, rec.Snapshot(), envelope)
+}
+
+// failedReconcilePairs returns an error summarising every pair whose reconcile step failed, or nil
+// when every pair reconciled cleanly.
+//
+// The summary names the count and the first failing pair's worktree and reason rather than
+// concatenating all of them: the full per-pair detail already travels in the envelope's "pairs"
+// array, so repeating it in the error string would duplicate the report an operator is about to
+// read anyway.
+func failedReconcilePairs(pairs []fabricengine.ReconcilePairResult) error {
+	var failed []fabricengine.ReconcilePairResult
+	for _, pair := range pairs {
+		if pair.Error != "" {
+			failed = append(failed, pair)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"reconcile could not repair %d of %d pair(s); first failure at %s: %s",
+		len(failed), len(pairs), failed[0].WarpWorktree, failed[0].Error,
+	)
 }
 
 // runPruneWithFlags executes the prune logic with the resolved apply and force flags.

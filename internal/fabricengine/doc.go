@@ -545,8 +545,23 @@
 // error come back", but "did this call leave the hub in a state some but not all of the intended
 // change landed in". A handler that fails before ever calling its verb (cwd/location resolution,
 // `LoadConfig`, an argument usage error) carries neither key, since nothing was mutated and there
-// is no result to read a record from — see `internal/fabriccli`'s `envelope.go` for the two
-// helpers, `okWithRecord`/`errWithRecord`, that are this rule's one implementation.
+// is no result to read a record from — see `internal/fabriccli`'s `envelope.go` for the
+// helpers, `okWithRecord`/`errWithRecord`/`errWithRecordFields`, that are this rule's one
+// implementation.
+//
+// A verb whose result carries PER-ITEM outcomes has one further obligation, and `reconcile` is where
+// it was learned: an item-level failure must reach the caller as a failure, not only as a field
+// inside a success envelope. `runReconcile` used to exit unconditionally through `okWithRecord`, so
+// a junction it could not re-point produced `"ok":true`, `"partial":false`, and exit 0 with the real
+// reason buried in `pairs[].error` — an unqualified success, to every scripted caller, for a repair
+// that did not happen.
+// It now emits the same `pairs` array through `errWithRecordFields` whenever any pair carries an
+// `Error`, so the per-pair report survives and the verdict is honest.
+// `prune` and `cleanup` deliberately do NOT follow: their per-entry `Error` doubles as the
+// explanation for a DESIGNED refusal (`Protected`'s "commit them or re-run with --force",
+// `Unowned`'s "fabric will not remove it"), so treating it as a failure would report a documented
+// outcome as one. The distinction is whether the field means "this verb failed at its job" or "this
+// verb is telling you what it deliberately did not do".
 //
 // See CONSTRAINTS.md's Mutation Record Invariant for the machine-enforced half of this rule, and
 // `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
