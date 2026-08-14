@@ -27,9 +27,26 @@ import (
 // The final component of target is deliberately NOT resolved (see containmentPath): a junction
 // removal's target IS a link, and resolving it would place the target inside the weft worktree it
 // points at rather than the warp worktree it lives in, refusing every legitimate unwire.
+//
+// The refusal is a *destructiveRefusal, not a bare fmt.Errorf, and that is load-bearing rather than
+// cosmetic. Both callers (removeLaunchers, removePortal) are reached from best-effort call sites in
+// Remove and Prune that wrap them in surfaceRefusal, which by design discards anything that is NOT a
+// *destructiveRefusal. While this guard returned a plain error it was therefore silently swallowed:
+// a static symlink planted at the _launchers/_portals container made the whole teardown refuse —
+// correctly, nothing escaped — while `lyx fabric remove` reported "ok":true, "partial":false and an
+// exit 0, with the launcher scripts still on disk and no signal to the operator that a containment
+// guard had fired at all (fabric's R8 crucible round, finding L2; R2's M2 dishonest-success shape on
+// the teardown path). Typing it as the gate's own refusal is what makes CONSTRAINTS.md's "a gate
+// refusal is never discarded on a best-effort path" true for this guard too, with no change at any
+// call site, and makes RefusalOf answer for it like any other.
 func refuseUncontainedPath(container, target, what string) error {
 	if err := containmentFailure(container, target); err != nil {
-		return fmt.Errorf("refusing to remove %s: %w", what, err)
+		return &destructiveRefusal{
+			Check:  CheckContainment,
+			What:   "remove " + what,
+			Target: target,
+			Reason: err.Error(),
+		}
 	}
 	return nil
 }
