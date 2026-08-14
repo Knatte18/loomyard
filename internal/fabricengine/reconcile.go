@@ -812,18 +812,32 @@ func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string,
 
 	var removed []string
 	for _, name := range stale {
-		removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name})
-		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
-
-		var refusal *destructiveRefusal
-		if errors.As(removeErr, &refusal) {
-			// applyStaleRemoval is a void helper with no propagation path, so a gate refusal is
-			// logged rather than silently discarded — and the name must not be reported removed
-			// when the gate refused to remove it.
-			logger.Warn("fabricengine: reconcile stale-junction removal refused", "worktree", slug, "junction", name, "error", refusal.Error())
+		// The exclude-strip and the removed-tally both run only after a nil-error removal: stripping
+		// a still-present junction's .git/info/exclude entry (because its removal was refused or
+		// failed) would leave that junction showing as untracked dirt in git status, and counting it
+		// as removed would report an effect that did not land.
+		if removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name}); removeErr != nil {
+			// applyStaleRemoval is a void helper with no propagation path, so a failed removal is
+			// logged rather than silently discarded. A gate refusal and an operational failure are
+			// logged distinctly, but neither counts the junction as removed — both leave it on disk.
+			var refusal *destructiveRefusal
+			if errors.As(removeErr, &refusal) {
+				logger.Warn("fabricengine: reconcile stale-junction removal refused", "worktree", slug, "junction", name, "error", refusal.Error())
+			} else {
+				logger.Warn("fabricengine: reconcile stale-junction removal failed", "worktree", slug, "junction", name, "error", removeErr.Error())
+			}
 			continue
 		}
+		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
 		removed = append(removed, name)
+	}
+
+	// Report convergence only when a junction actually came off disk. An all-refused (or all-failed)
+	// pass converged nothing, so it must not append a possibly-empty removed-detail or flip Action to
+	// stale_removed — the same report-the-effect-not-the-intent rule the reconcile honesty fix (M2)
+	// established for the success verdict.
+	if len(removed) == 0 {
+		return
 	}
 
 	appendPrDetail(pr, fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
