@@ -64,6 +64,34 @@ var TreadleTemplateTriage []byte
 //go:embed treadle/treadle-template-targeting.md
 var TreadleTemplateTargeting []byte
 
+// WebsterTemplateMaster is webster's shipped-default Master-session prompt template.
+//
+//go:embed webster/webster-template-master.md
+var WebsterTemplateMaster []byte
+
+// WebsterTemplateIntegration is webster's shipped-default integration-suite fork prompt template.
+//
+//go:embed webster/webster-template-integration.md
+var WebsterTemplateIntegration []byte
+
+// WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix, joined ahead of
+// WebsterBodyImplementer to compose the fork prompt.
+//
+//go:embed webster/webster-prefix-fork.md
+var WebsterPrefixFork []byte
+
+// WebsterPrefixRecovery is webster's shipped-default cold-start recovery prompt prefix, joined
+// ahead of WebsterBodyImplementer to compose the recovery prompt.
+//
+//go:embed webster/webster-prefix-recovery.md
+var WebsterPrefixRecovery []byte
+
+// WebsterBodyImplementer is webster's shipped-default shared implementer-job body, composed with
+// both WebsterPrefixFork and WebsterPrefixRecovery.
+//
+//go:embed webster/webster-body-implementer.md
+var WebsterBodyImplementer []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -83,6 +111,11 @@ var entries = []registryEntry{
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
 	{"treadle-template-triage", &TreadleTemplateTriage},
 	{"treadle-template-targeting", &TreadleTemplateTargeting},
+	{"webster-template-master", &WebsterTemplateMaster},
+	{"webster-template-integration", &WebsterTemplateIntegration},
+	{"webster-prefix-fork", &WebsterPrefixFork},
+	{"webster-prefix-recovery", &WebsterPrefixRecovery},
+	{"webster-body-implementer", &WebsterBodyImplementer},
 }
 
 // registry implements stencilstore.Registry over entries.
