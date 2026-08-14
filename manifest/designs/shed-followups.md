@@ -177,7 +177,7 @@ A half-done rename is worse than either end state, because `planparser` and `web
    - `internal/planparser`
    - `internal/websterengine`
    - `internal/webstercli`
-   - `internal/loomengine`, including `plan-template.md`
+   - `internal/loomengine`, including `stencils/loom/loom-template-plan.md`, its shipped-default prompt read at call time from the hub's stencils directory
    - `internal/batcher/doc.go`
    - `docs/overview.md`
    - `docs/reference/model-spec.md`

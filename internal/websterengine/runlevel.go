@@ -749,7 +749,7 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 // ended stuck for an ordinary batch reason never reaches the integration
 // stage at all. Otherwise it confirms the one dedicated integration fork's
 // report has landed (RunIntegration — Master itself spawned that fork and
-// waited for its report per master-template.md's own integration-fork
+// waited for its report per webster-template-master.md's own integration-fork
 // bracket instruction, so the report is normally already on disk by the
 // time Run reaches this call; the bounded await here is a defensive
 // re-confirmation, mirroring the run-exit audit's own backstop posture)

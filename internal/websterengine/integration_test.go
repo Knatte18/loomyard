@@ -6,7 +6,7 @@
 // runlevel_test.go), and the Master spawn's own onWait side effect scripts
 // the integration fork's own report file the same way it scripts
 // outcome.yaml/summary.md — modeling Master having already spawned and
-// awaited that fork, per master-template.md's own integration-fork bracket
+// awaited that fork, per webster-template-master.md's own integration-fork bracket
 // instruction, before Master's session itself finishes. This package's
 // testmain_test.go already wires gitkit.HermeticGitEnv() for the whole
 // test binary; every fixture helper this file uses (newRunFixture, mustGit,
