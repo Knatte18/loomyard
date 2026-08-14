@@ -27,7 +27,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 - A new top-level `stencils/` directory holding the 15 producer prompts, one subfolder per family, renamed to the `<family>-<type>-<role>.md` convention.
 - A new `internal/stencilstore` package owning the whole stencil lifecycle: seeding, hash-stamping, edit detection, reading, and validation.
-- Runtime reading of every producer prompt from `<hub>/_board/_lyx/stencils/`, replacing direct use of the embedded bytes across four packages and five files (see the embed-site list under Technical context).
+- Runtime reading of every producer prompt from `<hub>/_board/_lyx/stencils/`, across four packages and five files (see the embed-site list under Technical context).
+  This deletes those embed declarations rather than rewiring them: `internal/burlerengine/template.go`, `internal/treadleengine/template.go`, `internal/loomengine/prompttemplate.go` and `plantemplate.go`, and the five `//go:embed` directives in `internal/websterengine/render.go` all go, since every directive moves to top-level `stencils/`.
 - Retention of `//go:embed` for the shipped default bytes only — as the seed source, never as a live read path.
 - A hash stamp written into each seeded file's existing leading `<!-- ... -->` banner, and the edit-detection rule built on it.
 - A new `lyx stencil` cobra module with `list`, `validate`, `diff`, `sync`, and `promote` subcommands, where `diff` supports `--all` and `--exit-code`.
@@ -37,6 +38,11 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
 - Renaming `internal/reedengine/header-template.md` to `console-header.md`, updating that asset's doc comment and its own leading banner for the new filename.
 - A new `fabricengine.StencilsDir(hub)` resolver beside `BoardDir`, and the signature changes that thread the resolved directory into each engine.
+- A new go-git blob-read-at-revision verb in `internal/gitrepo`, and the board-scoped `internal/fabricengine` accessor wrapping it, which `stencil diff <name>` uses to recover its base text.
+- A new mutating `internal/fabricengine` verb that acquires `board.lock`, commits the stencils subtree with an explicit positive pathspec via `gitrepo.StageAndCommit`, takes a `rec *Mutations`, and does not push.
+- Moving the `board.lock` filename literal from `internal/boardengine` (`sync.go:24`) into `internal/fabricengine` as the single declarer, with `boardengine` aliasing it.
+  No cycle risk: `boardengine` already imports `fabricengine` (`internal/boardengine/sync.go:19`).
+- `tools/deploy/main.go` gains `-ldflags "-X main.buildChannel=dev"` on the `-dev` path, and `cmd/lyx/main.go` gains the `buildChannel` var plus the reconcile call in `newRoot()`'s existing `PersistentPreRunE`.
 - Exporting two things from `internal/stencil`: the leading-comment stripper (used by webster's `joinTemplateAssets`, which now strips every asset's banner) and a top-level-marker lister, today unexported inside `unfilledTopLevelMarkers`, which `validate` needs.
 - `.gitattributes` changes: 15 new `stencils/**` LF pins, removal of the 8 stale `internal/*` rows, and a seeded `.gitattributes` in the board's stencils tree.
 - A `**Covers:** stencil` scenario in `tools/sandbox/SANDBOX-CORE-SUITE.md`.
@@ -227,14 +233,18 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   | engine | how it is told |
   |---|---|
   | `loomengine`, `burlerengine` | already carry a `*lyxcwd.Location`; the calling `*cli` package passes `fabricengine.StencilsDir(loc.HubPath)` in |
-  | `treadleengine` | a new caller-supplied field alongside the existing `runDir` / `Profile.GateDir`, set by the round runner that adapts onto treadle's vocabulary, and threaded from `run.go` into the four template-reading functions named below — treadle stays told, never deriving, so the Runner-Seam Invariant's actual rule holds |
+  | `treadleengine` | a new caller-supplied field alongside the existing `runDir` / `Profile.GateDir`, set by the round runner that adapts onto treadle's vocabulary, and threaded from `run.go` into the four template-reading functions named below — through `judgeInputs` for the two judge calls, a new parameter for triage and targeting — so treadle stays told, never deriving, and the Runner-Seam Invariant's actual rule holds |
   | `websterengine` | the no-arg accessors `MasterTemplate()`, `IntegrationTemplate()`, `ImplementerBodyTemplate()`, `ForkTemplate()`, `RecoveryTemplate()` take the directory and gain an `error` return, since a read can now fail |
 
 - Rationale: without this the design is unimplementable for treadle specifically.
   `internal/treadleengine` is barred from `internal/lyxcwd` and is told only `runDir` and `Profile.GateDir`, neither of which is the hub.
   Its embedded vars are read at four separate package-level functions, none of them methods on `Engine`: `runCircling` (`internal/treadleengine/judge.go:58`), `runMilestone` (`judge.go:73`), `runTriage` (`judge.go:147`), and `runTargeting` (`internal/treadleengine/targeting.go:31`).
   `runJudgeCall` (`judge.go:93`) takes the already-selected template as a `template []byte` parameter and reads nothing itself — an earlier draft of this document named it as the read site, which the signatures refute.
-  All four take loose scalars rather than a struct, so a new field alone reaches none of them: the directory arrives as a new field **and** as a parameter threaded through those four functions from their callers in `run.go`.
+  Two of the four — `runCircling` (`judge.go:50`) and `runMilestone` (`judge.go:64`) — take a single `judgeInputs` struct (`judge.go:35`), built as a composite literal by their callers at `run.go:322` and `run.go:357`, so one new `judgeInputs` field reaches both.
+  The other two — `runTriage` (`judge.go:140`) and `runTargeting` (`targeting.go:24`) — take loose scalars and need one new parameter each.
+  The directory therefore arrives as a caller-supplied field on the engine, plus one new `judgeInputs` field and two new function parameters, every one of them set from `run.go`.
+  A `judgeInputs` field rather than a fifth loose parameter for the two judge calls: it is the existing bundling idiom for exactly those callers, touches two call sites instead of four, and keeps "treadle is told its geometry" visibly true because the value is set in a caller-owned literal.
+  An earlier draft of this document claimed all four take loose scalars, which `judge.go:34-35` refutes.
   Webster's accessors are no-arg today and cannot stay that way once reading can fail.
 - Rejected: reading in the composition root and threading prompt bytes into every engine (changes signatures across all five engines and pushes an I/O dependency up into the CLI layer for every producer).
   Also rejected: `stencilstore` taking a hub path and joining `_board`/`_lyx` itself — it would restate geometry tokens two other packages own.
@@ -250,7 +260,7 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   `mode` is the caller-supplied dev/production build channel (see the `-dev` bullet below);
   `sourceDir` is the worktree's `stencils/` tree used for the drift comparison, and the empty string means "no source tree here", which is what makes the drift warning silent in a consumer repo.
   Both are arguments, never values `stencilstore` derives — that is what keeps its tests hermetic against a bare `t.TempDir()`.
-  The composition root hands that list to the `board.lock`-taking `fabricengine` commit verb.
+  The composition root hands that list to the `board.lock`-taking `fabricengine` commit verb, and logs — rather than envelopes — the mutation record that verb returns.
   `stencilstore` therefore never imports `fabricengine`, and `stencilstore.Read` stays a pure file read.
   This is load-bearing, not tidiness: if the pass ran lazily inside `Read`, treadle's reads — which happen four levels down in `runCircling`/`runMilestone`/`runTriage`/`runTargeting` — would drag `fabricengine` onto treadle's stack, which is exactly what the Runner-Seam allowlist amendment is being justified against.
   Running it at the root instead means treadle's dependency really is one file-reading package.
@@ -498,12 +508,18 @@ From `CONSTRAINTS.md`:
 - **Mutation Record Invariant** — the new `fabricengine` seeding verb is a mutating fabric verb, so it takes a `rec *Mutations` parameter, appends after each primitive observably changes state, and its result type embeds `MutationRecord`.
   No new `Kind` member is needed: `KindFileWritten` and `KindCommitCreated` already exist (`internal/fabricengine/mutation.go:45,50`), which also keeps the same-commit `Kind`-plus-recording-site-plus-guard-entry rule from applying.
   `lyx stencil sync`'s envelope therefore carries the fixed `mutations` array and `partial` bool like every other mutating verb outcome, while a pre-flight failure emits a bare `output.Err` with neither key, per that invariant's pre-flight carve-out.
+  Outside `lyx stencil sync` the verb runs from the root pre-run, which emits no verb-outcome envelope at all.
+  The record is therefore **not** surfaced in the triggering command's envelope — a pre-run seed is logged via `logger`, and the key set is left alone.
+  That is the only consistent reading: the invariant scopes the fixed `mutations`/`partial` keys to "every envelope emitted from a **verb outcome**", and `drift-notification-channel` already rejected widening every command's key set.
+  Without this, a `lyx board list` that happened to seed 15 files would either report nothing or silently grow `board`'s envelope.
 - **Test Tier Purity Invariant** — untagged tests must not spawn git or build hub fixtures.
   This is satisfied **for `internal/stencilstore` only**, because it takes an explicit base directory and its tests use `t.TempDir()`.
   It is not a claim about the whole task: the promote round trip, the diff-base history walk, the seeding-commit pathspec, and the mutation-record assertions all need a real board repo, so those files carry an `integration` build tag.
 - **Hermetic Git Test Environment Invariant** — every one of those git-spawning test packages needs a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, including the new `stencilcli` test files and any new `fabricengine` test file.
   `cmd/lyx/hermeticenv_test.go` fails otherwise.
-- **Documentation Lifecycle / task-completion rule** — `manifest/designs/` for any module doc touched, `docs/overview.md` for the module table and execution stack (a new `stencil` module changes both), and CONSTRAINTS.md for the new invariant, all in the same commit.
+- **Documentation Lifecycle / task-completion rule** — `manifest/designs/` for any module doc touched, `docs/overview.md`'s module table gains a `stencil` row — but its "Execution stack (orchestration layers)" section (`docs/overview.md:309`) is **not** touched: that is the proc/reed/shuttle/burler/perch spawn layering, and a file-reading CLI module is not a layer in it.
+CLAUDE.md's rule is "module table **or** execution stack", so the table alone keeps it compliant.
+CONSTRAINTS.md gains the new invariant, all in the same commit.
   The stale-reference sweep is `grep -rn` over the fifteen **current** filenames across `docs/`, `manifest/`, `CLAUDE.md`, `README.md`, and `internal/**/*.md` — not `docs/` alone, since none of these references is a markdown link and `TestEnforcement_MarkdownLinks` therefore catches none of them.
   Known hits at discussion time: `docs/overview.md:288-289`, `manifest/designs/loom.md:193`, `manifest/designs/scout-plan-symbol-fields.md` (seven mentions of `plan-template.md`, in a design whose whole subject is editing that file), `manifest/designs/shed-followups.md:180`, `CLAUDE.md:67` (`master-template.md`), and the prompts' own cross-referencing banners: `internal/burlerengine/instruction-{1,2,3}-*-template.md:3` naming `round-orchestrator-template.md`, and `internal/websterengine/fork-prefix.md:1,7` / `recovery-prefix.md:1` naming `implementer-body.md`.
   The plan re-runs the grep rather than trusting this list.
@@ -537,8 +553,12 @@ Webster needs its own case covering the composed prompts: editing `webster-prefi
 
 **Existing tests that assert on prompt content stay pointed at the embedded defaults.**
 `internal/burlerengine/template_test.go` enforces the Review Round Invariant (`TestTemplate_StatesRoundDiscipline`, `TestTemplate_StatesClusterForkDiscipline`, `TestTemplate_OrchestratorExcludesDownstreamBodies`) and is testing the *shipped* prompt, which remains the right subject.
-These should keep working with at most a rename of the variables they read.
-The plan must verify this rather than assume it.
+That file is `package burlerengine` and reads the unexported vars declared in `template.go`, which this task deletes, so the identifiers cease to exist in that package.
+It keeps its subject — the shipped default — but must import the new top-level `stencils` package and read its exported defaults.
+That is a cross-package import change, not a rename;
+an earlier draft of this document claimed "at most a rename of the variables", which the `package burlerengine` declaration and the `//go:embed` block at `template.go:17-27` refute.
+The test file stays in `internal/burlerengine` so CONSTRAINTS.md's Review Round Invariant "Enforced by" pointer stays accurate.
+The plan must verify the same for `internal/websterengine`'s and `internal/treadleengine`'s content-asserting tests rather than assume it.
 
 **Enforcement tests to re-run and extend.** `internal/lyxcwd/enforcement_test.go` with the added `stencils` root — confirm all 15 relocated files are actually visited, ideally by asserting a non-zero visit count rather than trusting a silent walk.
 `internal/treadleengine/seam_enforcement_test.go` with the amended allowlist.
@@ -577,6 +597,7 @@ The import direction is worth a guard of its own: `internal/stencilstore` must n
 The empty-diff case is the dangerous one, since it reads as "you are up to date".
 
 **Mutation record.** Assert the seeding verb's record is empty on a no-op run and carries `file_written` plus `commit_created` on a run that actually seeded.
+Assert too that a non-`stencil` command's envelope key set is unchanged by a run that seeded — the guard against the pre-run path quietly widening every command's envelope.
 
 **Banner stripping.** Assert a composed webster prompt contains no `lyx-stencil:` line and no `<!--` at all — the regression guard for the stamp leaking into a live prompt.
 
