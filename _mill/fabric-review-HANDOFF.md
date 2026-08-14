@@ -4,10 +4,20 @@ Orchestrator's own state file. Refreshed after every round's verification. Never
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 1 and round 2 both verified, closed. Round 3 (`fable-high-r3`) seed is finalized in
-`_mill/fabric-review-prompt.md` and about to be spawned: `subagent_type: crucible-reviewer-high`,
-`model: fable`. Base commit for this campaign segment: `08520a1b`; round 2 landed 13 commits
-`b0aa40b4`..`e49d81f7` on branch `fabric-crucible-hardening`, working tree clean at `e49d81f7`.
+Round 1 and round 2 both verified, closed. Round 3 (`fable-high-r3`) has FINISHED and self-reports
+1 MEDIUM (M1, the containment TOCTOU seeded from round 2's verification) fixed via a genuinely
+window-closing fix (Go 1.26 `os.Root`, not just a narrower re-check), verdict MERGEABLE. 5 commits:
+`8773625c`..`e0cb3dea` on branch `fabric-crucible-hardening`, working tree clean at `e0cb3dea`.
+Independent verification of round 3 is RUNNING (fork `ab4252fa952a6c97d`) — do not seed round 4
+until it reports back, per the standing "never trust a round's own verdict" rule.
+
+**Operator instruction (2026-08-14) — round 4 model changed from Opus to Fable:** the original
+fixed 4-round plan was r1 Opus/medium, r2 Opus/high, r3 Fable/high, r4 Opus/high (final safety
+pass). The operator has now said "Kjør Fable High for R4 også. Den var god" — round 4 is now
+**Fable/high** (`subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r4`), NOT
+Opus/high. Round 4 remains the LAST round of the 4-round plan regardless of this model change —
+still a hard cap, still needs an honest convergence verdict afterward stating any limits still
+open (Windows path/junction behavior, any accepted residuals like N4's dirtiness-probe TOCTOU).
 
 Round 2's headline finding: **M3, a real symlink-mediated containment bypass in the destruction
 chokepoint** — a symlink planted at an intermediate path segment let a gated `remove --force`
