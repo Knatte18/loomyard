@@ -777,6 +777,37 @@
 // guard rather than a routed write. See CONSTRAINTS.md's Fabric Write-Side Containment Invariant and
 // `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
+// **The launcher/portal teardown path was the last corner still holding the old shape, because every prior
+// round fixed it from the outside and none audited it on its own terms.** R3 rerouted the gate's two
+// arbitrary-path executors and R7 rerouted the two hub-level container writers, but three things in that one
+// teardown path were left standing, and R8's review found all three. First, `removeLaunchers`' launcher-DIRECTORY
+// removal ran the gate's `checkPathRequest` and then acted with a raw, unrooted single-entry removal of the
+// nominal path — a THIRD arbitrary-path removal, carrying exactly the check-then-act window R3 closed for the
+// other two, with the same false-success shape (the record naming a hub-relative path the removed inode never
+// was). It could not use `removePath`, whose directory branch is `RemoveAll` and would destroy operator content
+// beside the launchers, so it now calls `removeContainedPath` directly with `recursive` false: the non-recursive
+// branch is `os.Root.Remove`, which the OS refuses on a non-empty directory exactly as before, so the
+// preservation property is untouched while the unlink becomes one rooted `openat` chain. Second,
+// `pruneEmptyAncestors` — which runs immediately after, on both teardown paths — related its walk to the
+// container with a purely lexical `filepath.Rel` and removed the nominal path, so with a multi-segment
+// `AnchorRel` a symlink planted at an intermediate segment destroyed an out-of-hub directory outright, with no
+// race needed at all; its removal is now rooted at the sweep's stop directory, and the lexical `Rel` survives
+// only as the loop's termination condition, where it can stop the walk early but never widen it. Both files are
+// consequently OFF the destructive guard's allowlist, so a raw removal reintroduced in either now fails the
+// guard rather than inheriting a reason written for a call site that no longer exists.
+//
+// Third, and separate from containment: `refuseUncontainedPath`, the pre-gate guard both teardown helpers open
+// with, returned a bare `fmt.Errorf`. Every one of its four best-effort call sites (`Remove` twice, `Prune`
+// twice) wraps the call in `surfaceRefusal`, which by design discards anything that is not a
+// `*destructiveRefusal` — so the one refusal class that must never be dropped was dropped. A STATIC symlink at
+// the `_launchers` container (no race) made the whole teardown refuse correctly, nothing escaping, while
+// `lyx fabric remove` reported `ok:true`, `partial:false` and exit 0 with the pair's launcher scripts still on
+// disk and no reason for the operator to reach for `reconcile` — R2's M2 dishonest-success shape, relocated onto
+// the teardown path. The guard now returns the gate's own refusal type, so all four sites propagate it with no
+// call-site change and `RefusalOf` answers for it like any other. The lesson worth keeping is that a refusal's
+// TYPE is part of its contract here: a containment check that refuses correctly but is not the type the
+// best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.
+//
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
 // itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and
