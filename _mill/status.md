@@ -67,7 +67,9 @@ batches:
     commit_sha: 4364a9cdcc4e151e9025e348ffdbc33255de68bc
     verify_baseline_failures: []
   - name: treadle-runtime-read
-    state: pending
+    state: running
+    implementer_session: 43c07e8b-0519-4596-acf9-08a1db524f1d
+    start_sha: 3a22b61c39a12a71a4339f8745ba0a182ba83595
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: webster-runtime-read
     state: pending
