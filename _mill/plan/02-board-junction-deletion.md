@@ -61,7 +61,7 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
 - **Moves:** none
 - **Requirements:** In `internal/fabricengine/clone.go`, delete the `wireBoardLink(rec, l, filepath.Base(warpWorktreePath))` call, its `teardownHub` error branch, and the four-line comment above it beginning "Wire the operator-convenience `_board` junction as a named special case".
   The `l, err := lyxcwd.Resolve(primeCwd)` block above it stays — `weftBase` still needs it.
-  In `internal/fabricengine/add.go`, delete the `(10c)` comment block and the `wireBoardLink(rec, l, slug)` call together with its `rollbackAdd` error branch, leaving `(10)`'s `WireJunctionsWith` immediately followed by `(11)`'s branch push.
+  In `internal/fabricengine/add.go`, delete the `(10c)` comment block and the `wireBoardLink(rec, l, slug)` call together with its `rollbackAdd` error branch, leaving `(10b)`'s `WireJunctionsWith` immediately followed by `(11)`'s branch push.
   In `internal/fabricengine/reconcile.go`, delete the `wireBoardLink(rec, warpLayout, slug)` call and its `appendPrDetail(pr, "board junction wiring failed: …")` branch.
   Also correct the two comments in that file that name the deleted function: `reconcileWarpBinding`'s doc comment simile "like `wireBoardLink`'s board-junction repair, a binding backfill is a convenience that may never fail or downgrade a reconcile verdict" must state that property without the simile, and `appendPrDetail`'s own doc comment must drop "and `wireBoardLink`'s failure note in Reconcile above" from its list of callers.
   Do not touch `restorePortalAndLaunchers`, `applyStaleRemoval`, or the `seedWeftArtifactExcludes(boardDir)` best-effort call in `reconcileWarpBinding`.
@@ -181,6 +181,8 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
   Rewrite the comment above it — "Exactly the two wired junctions (`_lyx`, `.lyx`) plus the `_board` convenience link — an exact count, not merely non-zero: the `_board` link is removed on a separate path and contributes 1 on its own, so a non-zero assertion stayed green with the anchored sweep entirely disabled."
   The exactness still matters and the reason must be restated without the board link: with the special case gone, the anchored sweep is the sole contributor, so an exact count is what proves the sweep ran at all.
   This is a behaviour assertion, not prose — it fails without card 16.
+  Also correct the second, earlier comment in the same file: `TestRemove_SweepsAnchoredLinksOnSubpathHub`'s doc comment ends "reported `LinksRemoved: 0` while three junctions existed one directory down", and only `_lyx` and `.lyx` sit at that directory once the board link is gone.
+  Both counts in this file must agree after the edit.
   In `internal/fabricengine/livestate_manifest_test.go`, remove "warp/`_board` to the hub's `_board`" from `CaptureManifest`'s no-descend walk rationale, which enumerates fabric's wired junctions.
   The rule and the two surviving examples are unaffected.
 - **Commit:** `test(fabricengine): drop the _board link from the exact junction count`
@@ -296,7 +298,9 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
 - **Moves:** none
 - **Requirements:** Rewrite the three scenarios in `tools/sandbox/SANDBOX-FABRIC-SUITE.md` that encode the junction, all of which instruct the operator to confirm a `_board` link exists and therefore produce a false FAIL if run unchanged.
   F8 requires `_lyx`, `.lyx` and `_board` to land as links inside `<warp>/<dir>/`: drop `_board` from that list and add the opposite check, that the warp anchored directory has no `_board` entry at all.
-  F13 describes fabric-owned links as "those pointing into the paired weft worktree or the hub's `_board`": drop the board clause, matching card 18's narrowing of `linkIsFabricOwned`.
+  F9 — not F13 — describes fabric-owned links as "those pointing into the paired weft worktree or the hub's `_board`": drop the board clause, matching card 18's narrowing of `linkIsFabricOwned`.
+  That sentence is in F9's reconcile-never-eats-warp-content scenario;
+  F13 contains no `_board`-referencing text and needs no edit.
   F15 requires `/_board`, `/_lyx` and `/.lyx` to be present exactly once each in the warp `.git/info/exclude`: drop `/_board` from that list, leaving the exactly-once requirement on the surviving two.
   Do not edit `tools/sandbox/SANDBOX-REED-SUITE.md`.
   It names no `.lyx` path and needs no change;

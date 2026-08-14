@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: Move <hub>/.lyx into <hub>/_board — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-14
+```
+
+## Findings
+
+### [BLOCKING:consistency] Card 25 misattributes a sandbox sentence to F13 instead of F9
+**Location:** batch 2 / card 25 (`tools/sandbox/SANDBOX-FABRIC-SUITE.md`)
+**Issue:** Card 25 says "F13 describes fabric-owned links as 'those pointing into the paired weft worktree or the hub's `_board`': drop the board clause." That exact sentence is at `SANDBOX-FABRIC-SUITE.md:254`, inside **F9** ("Reconcile never eats warp content", lines 246-259). F13 ("Bootstrap against a genuinely empty weft remote", lines 321-335) contains no such text and needs no edit for this clause. Following the card literally would leave F9's now-stale `_board` clause unfixed while the implementer searches F13 in vain.
+**Fix:** Retarget the instruction at F9's sentence (line 254); confirm F13 has no `_board`-referencing text requiring a change.
+
+### [NIT:consistency] Card 14 cites add.go's step as "(10)" but the source labels it "(10b)"
+**Location:** batch 2 / card 14 (`internal/fabricengine/add.go`)
+**Issue:** The requirement text reads "leaving (10)'s WireJunctionsWith immediately followed by (11)'s branch push," but the actual comment in `add.go` is `// (10b) Wire the new worktree's warp junctions eagerly...`, not "(10)". The `(10c)` block to delete is identified correctly and unambiguously elsewhere in the same card, so this is cosmetic, not implementation-blocking.
+**Fix:** Say "(10b)'s WireJunctionsWith" to match the source comment verbatim.
+
+### [NIT:consistency] Card 20 leaves a stale "three junctions" reference in remove_junctions_integration_test.go
+**Location:** batch 2 / card 20 (`internal/fabricengine/remove_junctions_integration_test.go`)
+**Issue:** Line 107's comment ("...LinksRemoved: 0 while three junctions existed one directory down") describes the historical bug with a junction count that becomes wrong once `_board` is dropped from the anchored sweep (only `_lyx`/`.lyx` remain at that directory). The card only instructs updating the exact-count assertion and the comment directly above it (lines 146-150), not this earlier one.
+**Fix:** Also update line 107's comment to read "two junctions" (or otherwise flag the count change) so the two comments in the same test stay consistent.
+
+## Verdict
+
+REQUEST_CHANGES
+Retarget card 25's F13 reference to F9; the two NITs are minor and can land alongside it.
+MILL_REVIEW_END
