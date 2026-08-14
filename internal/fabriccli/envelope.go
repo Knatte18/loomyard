@@ -30,18 +30,31 @@ func okWithRecord(w io.Writer, rec fabricengine.Mutations, fields map[string]any
 	return output.Ok(w, fields)
 }
 
-// errWithRecord emits a failure envelope carrying rec's accumulated mutations, the flattened err
-// string, and — when err carries a gate refusal — a "refusal" object with exactly the four keys
-// check, what, target and reason. It sets fields["mutations"] and fields["partial"] (true when rec is
-// non-empty, since err is non-nil by construction here), overriding any caller-supplied "ok", "error",
-// "mutations" or "partial" key, then delegates to output.ErrFields. The flattened error string is
-// retained unchanged: dropping it would break the "every failure carries an error string" contract
-// every other module's envelope holds.
+// errWithRecord emits a failure envelope carrying rec's accumulated mutations and the flattened err
+// string, with no fields of the verb's own. It is errWithRecordFields with an empty field set, and
+// exists because most failing handlers have nothing left to report beyond the error.
 func errWithRecord(w io.Writer, rec fabricengine.Mutations, err error) int {
-	fields := map[string]any{
-		"mutations": rec.Entries(),
-		"partial":   rec.Len() > 0,
+	return errWithRecordFields(w, rec, err, nil)
+}
+
+// errWithRecordFields emits a failure envelope carrying rec's accumulated mutations, the flattened
+// err string, the caller's own fields, and — when err carries a gate refusal — a "refusal" object
+// with exactly the four keys check, what, target and reason. It sets fields["mutations"] and
+// fields["partial"] (true when rec is non-empty, since err is non-nil by construction here),
+// overriding any caller-supplied "ok", "error", "mutations" or "partial" key, then delegates to
+// output.ErrFields. The flattened error string is retained unchanged: dropping it would break the
+// "every failure carries an error string" contract every other module's envelope holds.
+//
+// The fields parameter exists for a verb that fails while still having a full per-item report to
+// deliver — `reconcile`, whose per-pair outcomes must reach the caller on the failure path exactly
+// as they do on the success path, since a caller learning only "one pair failed" cannot tell which.
+// A caller passing nil gets the same envelope errWithRecord has always produced.
+func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fields map[string]any) int {
+	if fields == nil {
+		fields = map[string]any{}
 	}
+	fields["mutations"] = rec.Entries()
+	fields["partial"] = rec.Len() > 0
 	if refusal, ok := fabricengine.RefusalOf(err); ok {
 		fields["refusal"] = map[string]any{
 			"check":  string(refusal.Check),

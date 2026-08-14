@@ -162,7 +162,7 @@ func weftPathspecFilter(weftPath string, pathspec []string) (filtered []string, 
 func entryMatchesWeft(weftPath, entry string) (bool, error) {
 	stdout, err := gitexec.Run([]string{"ls-files", "--cached", "--others", "--exclude-standard", "--", entry}, weftPath)
 	if err != nil {
-		return false, fmt.Errorf("fabricengine: git ls-files --cached --others --exclude-standard -- %s in %s: %w", entry, weftPath, err)
+		return false, fmt.Errorf("fabricengine: match pathspec entry %s against the weft index and worktree in %s: %w", entry, weftPath, err)
 	}
 	return strings.TrimSpace(stdout) != "", nil
 }

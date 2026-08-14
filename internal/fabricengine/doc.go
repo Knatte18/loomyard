@@ -112,6 +112,17 @@
 // reconcile` runs — which both wires the junction and, via `seedLyxJunction`'s `.lyx`-only adoption
 // branch, moves any pre-existing real `.lyx` content into the weft target rather than hard-erroring.
 // That is the documented remedy, not a bug to route around.
+// Adoption MERGES a directory present on both sides, recursively, rather than refusing it, and that
+// is load-bearing rather than lenient: `lyx fabric unwire` removes the `.lyx` junction, and the very
+// next `lyx` invocation in that worktree that logs at Info-or-above or exits non-zero opens
+// `internal/logger`'s durable sink — which is ungated outside `go test`, and whose
+// `os.MkdirAll(<anchor>/.lyx/logs)` therefore recreates a REAL warp-side `.lyx/logs` on top of the
+// `logs` an earlier adoption already moved into weft.
+// Refusing that collision left `reconcile`, the documented remedy, permanently unable to heal the
+// pair, and — because `seedLyxJunction` aborts before `seedGitExclude` re-runs — left the warp
+// worktree untracked-dirty, which then fed false input to the destruction gate's own dirtiness
+// checks. A collision that is not a directory on BOTH sides is still refused, because resolving it
+// would mean choosing a winner between two files, which fabric never does on the operator's behalf.
 // Third, the unwire output envelope changed: `UnwireVerbResult.WeftContent`'s value set is now
 // `"preserved"` | `"not_present"` (never `"cleared"`), and the `gitignore` key is gone from the CLI
 // envelope entirely — no code path removes a leftover committed `.gitignore` `.lyx/` block left by a
@@ -290,8 +301,14 @@
 // A warp-only or tags-only `Fabric.Commit` call reaches `commitWeftLocked` with an empty weft
 // pathspec, which `weftPathspecFilter` reduces to no positive entry at all.
 // A pathspec that survives filtering can still resolve to nothing by the time `git add` runs, which
-// `StageAndCommit`'s "did not match any files" tolerance absorbs — reachable only as
+// `commitWeftLocked`'s own "did not match any files" tolerance absorbs — reachable only as
 // defense-in-depth, since the filter's own pre-check normally keeps this path from firing.
+// The tolerance lives in `commitWeftLocked` (weftgit.go), not in `gitrepo.StageAndCommit`, which has
+// none: `StageAndCommit` wraps and returns `git add`'s failure like any other, and
+// `commitWeftLocked` recognises this one case by matching git's own message text on the way past.
+// That match is the single place in this package whose correctness depends on
+// `*gitexec.GitError.Error()` continuing to render git's trimmed stderr into the message, so a
+// change to that rendering would silently turn this tolerance back into a hard failure.
 // And — the genuine correctness hole this whole mechanism exists to close — a pathspec that matches
 // real, tracked content whose staged bytes are identical to HEAD's makes `StageAndCommit` report
 // `committed=false`: without the empty-commit rule, a caller re-running an identical regeneration
@@ -516,9 +533,15 @@
 // individually rewritten.
 //
 // Every mutating verb's result type embeds `MutationRecord` (mutation.go), exposing the
-// accumulated record through one accessor, `Mutated() Mutations`; the four read-only verbs' result
-// types (`StatusResult`, `DiffResult`, and their siblings for `list`/`pairs`) do not, since nothing
-// was mutated and there is no record to carry.
+// accumulated record through one accessor, `Mutated() Mutations`; the read-only verbs' result types
+// do not, since nothing was mutated and there is no record to carry.
+// There are exactly TWO such types, and which verb each serves is worth stating precisely rather
+// than approximately, because the natural guess is wrong in both directions: `StatusResult`
+// (status.go, returned by `Topology.Status`) is the **pairs** verb, and `DiffResult` (diff.go) is
+// `diff`. The other two read-only verbs have no result type at all — `Fabric.Status`, the `status`
+// verb, returns a bare `[]ChangeEntry`, and `List` returns a bare `[]WorktreeEntry` — so there is
+// nothing for `destructiveguard_test.go`'s companion table to pin for them, and a reader must not
+// conclude from its two rows that the table is under-populated.
 //
 // At the CLI envelope layer (`internal/fabriccli`), every mutating verb's JSON output therefore
 // always carries two fixed keys on top of its own fields, present on both the success and the
@@ -528,8 +551,32 @@
 // error come back", but "did this call leave the hub in a state some but not all of the intended
 // change landed in". A handler that fails before ever calling its verb (cwd/location resolution,
 // `LoadConfig`, an argument usage error) carries neither key, since nothing was mutated and there
-// is no result to read a record from — see `internal/fabriccli`'s `envelope.go` for the two
-// helpers, `okWithRecord`/`errWithRecord`, that are this rule's one implementation.
+// is no result to read a record from — see `internal/fabriccli`'s `envelope.go` for the
+// helpers, `okWithRecord`/`errWithRecord`/`errWithRecordFields`, that are this rule's one
+// implementation.
+//
+// A verb whose result carries PER-ITEM outcomes has one further obligation, and `reconcile` is where
+// it was learned: an item-level failure must reach the caller as a failure, not only as a field
+// inside a success envelope. `runReconcile` used to exit unconditionally through `okWithRecord`, so
+// a junction it could not re-point produced `"ok":true`, `"partial":false`, and exit 0 with the real
+// reason buried in `pairs[].error` — an unqualified success, to every scripted caller, for a repair
+// that did not happen.
+// It now emits the same `pairs` array through `errWithRecordFields` whenever any pair carries an
+// `Error`, so the per-pair report survives and the verdict is honest.
+// `prune` and `cleanup` deliberately do NOT follow: their per-entry `Error` doubles as the
+// explanation for a DESIGNED refusal (`Protected`'s "commit them or re-run with --force",
+// `Unowned`'s "fabric will not remove it"), so treating it as a failure would report a documented
+// outcome as one. The distinction is whether the field means "this verb failed at its job" or "this
+// verb is telling you what it deliberately did not do".
+//
+// One consequence of that rule is a new `ReconcileAction`. `Reconcile` reads `git worktree list`
+// once, before its per-pair loop, so a concurrent `remove`/`prune` can delete a pair's directory
+// between the enumeration and the iteration that reaches it. That used to fail `readBranch` and be
+// reported as `ReconcileActionUnmanagedReported` with `os/exec`'s raw `chdir …: no such file or
+// directory` as its `Error` — a verdict meaning something else entirely, and, once a per-pair
+// `Error` drives the exit code, an ordinary concurrent teardown that would fail every enclosing
+// reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
+// nothing failed to reconcile: the pair simply stopped existing.
 //
 // See CONSTRAINTS.md's Mutation Record Invariant for the machine-enforced half of this rule, and
 // `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
@@ -543,9 +590,13 @@
 // owner set: `internal/fabricengine` (this package, which implements the illusion),
 // `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
 // `internal/weftname` (the `-weft` suffix leaf), `internal/gitkit` (the test-fixture leaf that
-// builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
-// board lives at `weft:main`), `internal/configsync` (string literals and comments, never
-// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
+// builds real paired worktrees), `internal/hubforge` (the repo-wide hub-fixture factory, which
+// builds every hub fixture in the repo through `fabriccli.CloneAndWire` rather than assembling a
+// stand-in by hand, and therefore names both sides), `internal/boardengine` (the pre-existing board
+// carve-out, since board lives at `weft:main`), `internal/configsync` (string literals and
+// comments, never identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
+// `internal/hubforge` also sits in the narrower `weftname`-import subset alongside
+// `internal/fabricengine`, `internal/fabriccli`, and `internal/gitkit`.
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
 // their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
@@ -628,6 +679,134 @@
 // file that destroys," not "the only file that also happens to run `git status`" — folding the
 // probe into the gate file would muddy the one property that file's contents exist to keep
 // precise.
+//
+// **Why containment resolves symlinks, and why it stops short of the final component.**
+// The check was purely lexical — `filepath.Rel` over the nominal strings — until fabric's R2
+// crucible round planted a symlink at `<Hub>/_launchers/<slug>` and watched `removeLaunchers`'
+// gated `removePath` delete two files outside the hub, report `ok:true`, and record the removal
+// against hub-relative paths that were never the inodes removed.
+// A lexical comparison answers a question nobody is asking: it proves the SPELLING of the target
+// sits under the SPELLING of the container, while every destructive primitive acts on the inode
+// those spellings resolve to.
+// So both sides now go through `filepath.EvalSymlinks` (`ancestors.go`'s `resolveAncestorSymlinks`),
+// with an ancestor-walk fallback for the ordinary case of a target that does not exist yet.
+// The target's own final component is deliberately left unresolved (`containmentPath`): every
+// junction the gate removes is a link living inside the warp worktree and pointing into the weft
+// one, so resolving the leaf would relocate the target into weft and make the warp-worktree
+// container refuse every legitimate unwire — the fix would have broken the verb it was meant to
+// protect.
+// `ownedUnderGeometryRoot` resolves the same way for a reason worth naming: it is the ONLY
+// ownership kind with no independent authority to cross-check a target against. The two
+// worktree-shaped kinds compare against git's own worktree registration and the two link-shaped
+// kinds against `fslink.RawTarget`, both of which already carry resolved paths — which is exactly
+// why the geometry-root site was the one that fell and the others did not.
+//
+// **The gate's DIRTINESS check is not atomic with its act, and that is a stated limit rather than an
+// oversight.**
+// `checkPathDirtiness` runs `git status --porcelain` and returns; the executor then performs the
+// primitive. No lock spans the two, so a write landing in that window is destroyed. The exposure is
+// narrow by construction — `removeGitWorktree` re-checks through git itself, `resetHardTo`
+// delegates to git, and the only recursive-removal sites carrying a real dirtiness scope are the two
+// fallbacks that fire *after* git has already declined the removal — but a reader must not take
+// "the gate executes rather than approves" to mean the probe and the act are one transaction.
+// Closing the window would need a lock held across probe and act at every executor, which is a
+// larger claim about every future call path than the residual risk warrants today.
+//
+// **The gate's CONTAINMENT check, by contrast, IS bound to its act, because R3's review proved it had
+// to be.** The containment check resolves symlinks at one instant (`refuseUncontainedPath`,
+// `containmentPath`), and a symlink planted at an intermediate segment of a gate target — dangling
+// when the check ran, so the check short-circuited on an absent target, then flipped
+// live-and-escaping before the executor's own `os.Lstat`+unlink — carried a gated `remove --force`
+// outside the hub anyway, a real out-of-hub deletion reported as (partial) success. The two
+// arbitrary-path executors (`removePath`, `removeLink`) therefore no longer act on the nominal path:
+// `removeContainedPath` removes through an `os.Root` rooted at the gate's declared container, so each
+// path component is resolved and unlinked as one `openat` chain that atomically refuses any component
+// escaping the container at removal time, while still removing a final-component junction link as a
+// link. The containment check stays as defense-in-depth; the rooted act is the actual window-closer,
+// and unlike the dirtiness window it needs no lock — the atomicity comes from the kernel's `openat`
+// escape refusal, not from a span held across two calls. `removeGitWorktree` and `resetHardTo`
+// delegate their act to git, which re-validates at its own instant, so the containment binding lives
+// where the arbitrary-path removals are.
+//
+// **The two CREATE-side minters bind creation to a rooted act the same way, because R5's review proved
+// the delete-side asymmetry was live on the create side too.** `createExclusiveDir` and
+// `createGitWorktree` are the gate's only path/worktree minters, and both once resolved their target's
+// nominal path and let the create follow a symlink planted there. `createExclusiveDir` now creates its
+// leaf through an `os.Root` rooted at the parent, so an intermediate-symlink escape is refused at
+// `mkdir` time exactly as `removeContainedPath` refuses one at `unlink` time. `createGitWorktree` can
+// not be rooted the same way — `git worktree add` is a subprocess that resolves its destination
+// argument itself and FOLLOWS a symlink there, writing a whole worktree wherever it points — so
+// `containedWorktreeAdd` closes it with a two-level staging structure plus two fail-closed containment
+// checks. git's WRITE targets a leaf named after the slug inside an unguessable 0700 random PARENT
+// directory created through an `os.Root` rooted at container; the parent's unguessability and mode deny
+// a different-UID planter, and its being a real intermediate directory makes `os.Root.Rename` refuse a
+// parent-swap (it refuses a symlink at an intermediate SOURCE component). R5 stopped at that rename,
+// but `os.Root.Rename` renames a symlink standing at the SOURCE's own final component as a link rather
+// than refusing it, so a staging-LEAF symlink planted during git's write was still renamed onto the
+// target — an out-of-hub worktree reported as success (R6's review reproduced this 12/12 against a
+// same-UID observing planter). R6 binds containment to the act: after git writes, `stagedWorktreeContained`
+// confirms the staging leaf is a real directory reached without traversing a symlink, and after the
+// rename it confirms the placed target is too; either failure cleans up the escaped worktree and staging
+// debris and returns an error, then `git worktree repair` fixes git's registration on the success path.
+// A same-UID (or root) planter actively racing the add can still make git transiently write a checkout
+// into a directory it already controls — unpreventable by any staging location, since such a planter can
+// substitute any path fabric writes to — but the operation is never REPORTED as success and never leaves
+// the target a dangling out-of-hub symlink, which is the create-side twin of the delete-side guarantee.
+//
+// **The two hub-level container WRITERS bind their writes to a rooted act the same way, because R7's
+// review proved five rounds of create-side pressure had never looked at them.** `writeLaunchers`
+// (launchers.go) and `createPortal` (portals.go) write into `<hub>/_launchers/<AnchorRel>/<slug>` and
+// `<hub>/_portals/<AnchorRel>/<slug>` — hub-level structural containers, not the freshly-created worktree —
+// and both once wrote through a raw primitive that resolved and followed the container path itself:
+// `writeLaunchers` via `os.MkdirAll`+`os.WriteFile`, `createPortal` via `fslink.CreateDirLink`, whose own
+// parent-mkdir follows a planted symlink. A STATIC symlink planted at the `<slug>` leaf OR the
+// `_launchers`/`_portals` container (no race, no observation) carried the write OUTSIDE the hub — executable
+// launcher content to an attacker-chosen path, a portal junction into an out-of-hub directory — while `add`
+// reported `ok:true` with a mutation record naming the hub-relative path the bytes never reached, the exact
+// delete-side M3 false-success shape and strictly easier to exploit (no timing). This is the same asymmetry
+// the delete side already closed for `removeLaunchers`/`removePortal`, live on the create side of the same
+// two verbs. Both now write through an `os.Root` rooted at `l.HubPath` (the true containment boundary;
+// `_launchers`/`_portals` are never legitimately symlinks): `writeLaunchers` roots every mkdir/write there,
+// and `createPortal` materialises the link's parent chain through `ensureContainedLinkParent` before handing
+// the leaf to `fslink`, so any component escaping the hub is refused at write time. The remaining raw writes
+// in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a
+// worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into
+// being in the same call (clone.go, warpbinding.go, weftgit.go, junction.go's weft-target materialisation),
+// where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
+// residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
+// guard rather than a routed write. See CONSTRAINTS.md's Fabric Write-Side Containment Invariant and
+// `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
+//
+// **The launcher/portal teardown path was the last corner still holding the old shape, because every prior
+// round fixed it from the outside and none audited it on its own terms.** R3 rerouted the gate's two
+// arbitrary-path executors and R7 rerouted the two hub-level container writers, but three things in that one
+// teardown path were left standing, and R8's review found all three. First, `removeLaunchers`' launcher-DIRECTORY
+// removal ran the gate's `checkPathRequest` and then acted with a raw, unrooted single-entry removal of the
+// nominal path — a THIRD arbitrary-path removal, carrying exactly the check-then-act window R3 closed for the
+// other two, with the same false-success shape (the record naming a hub-relative path the removed inode never
+// was). It could not use `removePath`, whose directory branch is `RemoveAll` and would destroy operator content
+// beside the launchers, so it now calls `removeContainedPath` directly with `recursive` false: the non-recursive
+// branch is `os.Root.Remove`, which the OS refuses on a non-empty directory exactly as before, so the
+// preservation property is untouched while the unlink becomes one rooted `openat` chain. Second,
+// `pruneEmptyAncestors` — which runs immediately after, on both teardown paths — related its walk to the
+// container with a purely lexical `filepath.Rel` and removed the nominal path, so with a multi-segment
+// `AnchorRel` a symlink planted at an intermediate segment destroyed an out-of-hub directory outright, with no
+// race needed at all; its removal is now rooted at the sweep's stop directory, and the lexical `Rel` survives
+// only as the loop's termination condition, where it can stop the walk early but never widen it. Both files are
+// consequently OFF the destructive guard's allowlist, so a raw removal reintroduced in either now fails the
+// guard rather than inheriting a reason written for a call site that no longer exists.
+//
+// Third, and separate from containment: `refuseUncontainedPath`, the pre-gate guard both teardown helpers open
+// with, returned a bare `fmt.Errorf`. Every one of its four best-effort call sites (`Remove` twice, `Prune`
+// twice) wraps the call in `surfaceRefusal`, which by design discards anything that is not a
+// `*destructiveRefusal` — so the one refusal class that must never be dropped was dropped. A STATIC symlink at
+// the `_launchers` container (no race) made the whole teardown refuse correctly, nothing escaping, while
+// `lyx fabric remove` reported `ok:true`, `partial:false` and exit 0 with the pair's launcher scripts still on
+// disk and no reason for the operator to reach for `reconcile` — R2's M2 dishonest-success shape, relocated onto
+// the teardown path. The guard now returns the gate's own refusal type, so all four sites propagate it with no
+// call-site change and `RefusalOf` answers for it like any other. The lesson worth keeping is that a refusal's
+// TYPE is part of its contract here: a containment check that refuses correctly but is not the type the
+// best-effort wrapper propagates is, from the operator's side, indistinguishable from no check at all.
 //
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate

@@ -45,6 +45,10 @@ const (
 // trimmed stderr and the exit code in the message; callers that used to distinguish the two forms
 // collapse onto the spawn-failure wording, with the exit-code detail arriving inside the wrapped
 // error rather than as a second branch.
+// The wrapper names what this probe was for and where, never the git command itself: since the
+// gitexec split, *gitexec.GitError already renders `git status --porcelain …: exit <code>: <stderr>`,
+// so repeating the command here would push git's own actionable stderr behind a duplicate of what
+// the reader has already been told.
 //
 // detail is the trimmed stdout — the porcelain listing itself — returned even when err is nil, for
 // the one caller (warpclean.go's dirtyReason) that surfaces it to its own caller; every other site
@@ -57,7 +61,7 @@ func worktreeDirty(scope dirtyScope, dir string) (dirty bool, detail string, err
 
 	stdout, runErr := gitexec.Run(args, dir)
 	if runErr != nil {
-		return false, "", fmt.Errorf("git status --porcelain in %s: %w", dir, runErr)
+		return false, "", fmt.Errorf("check for uncommitted changes in %s: %w", dir, runErr)
 	}
 
 	trimmed := strings.TrimSpace(stdout)

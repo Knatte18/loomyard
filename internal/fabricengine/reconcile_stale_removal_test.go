@@ -542,3 +542,79 @@ func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 		t.Errorf("JunctionsRemoved is empty; Unwire removed no fabric junction, so this test proves nothing")
 	}
 }
+
+// TestReconcile_RefusedStaleRemovalReportsNothing proves the F1 honesty fix: when the only stale
+// junction's removal is refused by the destructive gate (its raw target drifted, so ownedWiredJunction
+// rejects it), applyStaleRemoval must NOT flip Action to stale_removed, must NOT append a
+// removed-detail naming a junction it did not remove, and must NOT strip that still-present junction's
+// .git/info/exclude entry (which would leave it showing as untracked dirt).
+//
+// The drift is what makes the removal refusable while keeping the junction fabric-owned:
+// scanOnDiskJunctionNames still claims it (it resolves into the weft worktree), but ownedWiredJunction
+// compares the link's raw one-hop target against the nominal weft target and refuses on the mismatch.
+func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
+	t.Parallel()
+
+	const slug = "stale-removal-refused"
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	boardDir := fabricengine.BoardDir(l.HubPath)
+	cfgPath := configengine.ConfigFile(boardDir, "fabric")
+
+	// Wire _lyx + _other with _other correct, then narrow the repo-wide pathspec so _other is stale.
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx _other\n"), 0o644); err != nil {
+		t.Fatalf("seed repo-wide pathspec: %v", err)
+	}
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("setup Add: %v", err)
+	}
+	warpLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, slug))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(warp): %v", err)
+	}
+
+	// Drift _other's target: re-point it at a decoy directory inside the same weft worktree, so it
+	// still resolves into weft (scanOnDiskJunctionNames keeps claiming it) but no longer matches its
+	// nominal weft target (ownedWiredJunction refuses removal).
+	otherLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, "_other")
+	weftDecoy := filepath.Join(fabricengine.WeftWorktreePath(l, slug), warpLayout.AnchorRel, "_decoy")
+	if err := os.MkdirAll(weftDecoy, 0o755); err != nil {
+		t.Fatalf("create weft decoy dir: %v", err)
+	}
+	if err := os.Remove(otherLink); err != nil {
+		t.Fatalf("remove _other link before re-pointing: %v", err)
+	}
+	if err := fslink.CreateDirLink(otherLink, weftDecoy); err != nil {
+		t.Fatalf("re-point _other at decoy: %v", err)
+	}
+
+	// Narrow the repo-wide pathspec so _other is now stale (absent from the desired set).
+	if err := os.WriteFile(cfgPath, []byte("branch_prefix: \"\"\npathspec: _lyx\n"), 0o644); err != nil {
+		t.Fatalf("narrow repo-wide pathspec: %v", err)
+	}
+
+	result, err := topology.Reconcile(l)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	pair := findReconcilePair(t, result.Pairs, fabricengine.WeftWorktreePath(l, slug))
+	if pair.Action == fabricengine.ReconcileActionStaleRemoved {
+		t.Errorf("Action = %q; a refused stale removal must not report stale_removed", pair.Action)
+	}
+	if strings.Contains(pair.Detail, "removed") {
+		t.Errorf("Detail = %q; must not claim a junction was removed when the removal was refused", pair.Detail)
+	}
+
+	// The refused junction must still be on disk — nothing removed it.
+	if _, statErr := os.Lstat(otherLink); statErr != nil {
+		t.Errorf("refused stale junction %s was removed after all: %v", otherLink, statErr)
+	}
+
+	// Its exclude entry must survive: stripping it while the junction is still present would make it
+	// show as untracked dirt. A clean `git status --porcelain` in the warp worktree proves it did not.
+	if status := gitkit.GitStatusPorcelain(t, warpLayout.WorktreePath()); status != "" {
+		t.Errorf("warp worktree is dirty after a refused stale removal (exclude entry stripped?):\n%s", status)
+	}
+}

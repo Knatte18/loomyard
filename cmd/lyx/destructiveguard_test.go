@@ -14,12 +14,13 @@
 // Two of the eight banned tokens were corrected against a naive first guess in opposite
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
 //
-// "RemoveAll(" rather than "os.RemoveAll(": the package's removal seam (destroy.go's
-// `var RemoveAll = os.RemoveAll`) is called bare at its call sites, so the qualified spelling
-// "os.RemoveAll(" is not a substring of a bare `RemoveAll(hubPath)` call and would miss the two
-// sites the slice most wants policed, one of them the hub teardown. The bare form "RemoveAll(" is
-// a superset that also catches the qualified "os.RemoveAll(" form, and the seam's own declaration
-// carries no trailing paren so it does not self-flag.
+// "RemoveAll(" rather than "os.RemoveAll(": the bare form is a deliberate superset. It catches the
+// qualified "os.RemoveAll(" (e.g. warpprobe.go's allowlisted probe-clone teardown) AND a
+// method-call spelling like destroy.go's own `root.RemoveAll(` — the os.Root-rooted removal the R3
+// containment fix routes through — neither of which the narrower "os.RemoveAll(" would match.
+// (An earlier binding also had a bare `var RemoveAll = os.RemoveAll` seam this token caught; that
+// seam was removed once the executors began removing through os.Root, but the bare token remains the
+// correct superset for the forms that survive.)
 //
 // "warp.ResetHard(" / "weft.ResetHard(" rather than ".ResetHard(": the broad ".ResetHard(" form
 // would flag the *correctly migrated* callers, since the gated reset is reached as a method call
@@ -45,7 +46,7 @@
 // source inspection alone, both against internal/fabricengine/destroy.go and the mutating result
 // types' declarations: that every one of destroy.go's eight executors declares a leading
 // `rec *Mutations` parameter, and that every mutating verb's result type embeds MutationRecord
-// while the four read-only verbs' result types do not. Its blind spots are deliberate and
+// while the read-only verbs' result types do not. Its blind spots are deliberate and
 // significant: it never inspects an executor's body for a `rec.Append`/`rec.AppendRef` call, so it
 // cannot tell a correctly recording executor from one whose parameter is a dead letter, and it
 // cannot tell a real recording call from one sitting inside a comment. Whether each body's
@@ -96,17 +97,14 @@ var destructiveGuardAllowlist = map[string]string{
 		"under a repo-wide flock, never operator content",
 	"internal/fabricengine/warpprobe.go": "probeWeftBinding's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier",
-	"internal/fabricengine/ancestors.go": "pruneEmptyAncestors' os.Remove(cur) is refused by the OS the moment the directory is " +
-		"non-empty, and the loop halts on the first refusal",
 	"internal/fabricengine/index.go": "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch",
-	"internal/fabricengine/junction.go": "adoptDotLyxContent's os.Remove(link) removes the warp-side directory the adoption loop " +
-		"immediately above it just emptied by rename — whole-file allowlist for this one audited site, not a blanket exemption",
+	"internal/fabricengine/junction.go": "two audited sites, both removing a directory the same call just emptied by rename and " +
+		"both using os.Remove rather than RemoveAll, so the OS itself refuses the moment anything is left inside: " +
+		"adoptDotLyxContent's os.Remove(link) for the warp-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
+		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption",
 	"internal/fabricengine/hook.go": "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
 		"ten lines earlier, on its own rollback path after a failed chain write",
-	"internal/fabricengine/launchers.go": "removeLaunchers runs the gate's own checkPathRequest immediately before its os.Remove(launcherDir) " +
-		"call, deliberately not removePath, since removePath's directory branch is RemoveAll, which would silently destroy foreign " +
-		"content beside the launchers directory",
 	"internal/fabricengine/doc.go": "the package doc's prose explains this slice's destruction rationale and must be able to name " +
 		"the banned tokens; its only non-comment line is the package clause, so it can never carry a real call",
 }
@@ -169,9 +167,15 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"PushResult", "internal/fabricengine/weftgit.go"},
 }
 
-// destructiveGuardReadOnlyResultTypes is the companion table of the four read-only verbs' result
-// types the invariant requires to NOT embed MutationRecord — the which-verbs-record scope decision
-// is machine-held here, not left to convention.
+// destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types
+// the invariant requires to NOT embed MutationRecord — the which-verbs-record scope decision is
+// machine-held here, not left to convention.
+//
+// It has two rows by construction rather than by omission, and which verb each row serves is not the
+// natural guess: StatusResult (status.go) is the **pairs** verb and DiffResult is `diff`. The other
+// two read-only verbs have no result type to pin — the `status` verb's Fabric.Status returns a bare
+// []ChangeEntry and `list`'s List returns a bare []WorktreeEntry — so a reader must not read two rows
+// here as a table that has drifted.
 var destructiveGuardReadOnlyResultTypes = []struct {
 	name string
 	file string

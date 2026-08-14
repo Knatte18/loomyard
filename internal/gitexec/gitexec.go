@@ -31,8 +31,15 @@ import (
 )
 
 // GitError reports that a git command ran and exited non-zero.
-// It carries exactly what every merged failure message needs: the command
-// that was run, the directory it ran in, its exit code, and its stderr.
+// It carries the command that was run, the directory it ran in, its exit code,
+// and its stderr.
+// Three of those four are rendered by Error; Dir deliberately is not, and is
+// carried solely for a caller that wants to name the directory itself.
+// The omission is the reason a caller can wrap a GitError without the result
+// naming the same directory twice: at nearly every call site the wrapper
+// already says which repo or worktree it was operating on, so rendering Dir
+// here would duplicate it in the one part of the message an operator reads
+// first.
 // Args are rendered verbatim, with no redaction — callers must not pass
 // credentials in args.
 type GitError struct {

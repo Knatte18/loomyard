@@ -201,3 +201,38 @@ func TestRefuseUncontainedPath(t *testing.T) {
 		})
 	}
 }
+
+// TestPruneEmptyAncestors_RefusesEscapingIntermediate proves the sweep's removal is rooted at stop
+// rather than acting on the nominal path.
+//
+// This is fabric's R8 finding L1. The walk related cur to stop with a purely lexical filepath.Rel and
+// then removed the nominal path, so with a multi-segment AnchorRel a symlink planted at an
+// intermediate component carried the removal out of the hub: both callers sweep the two hub-level
+// structural containers an attacker can plant at (<hub>/_launchers, <hub>/_portals). Only an EMPTY
+// out-of-container directory could be destroyed — a single-entry removal is refused by the OS on a
+// non-empty one — which is why the victim below is deliberately empty: a nominal removal WOULD
+// succeed on it, so this assertion is a real one rather than a vacuous OS refusal.
+func TestPruneEmptyAncestors_RefusesEscapingIntermediate(t *testing.T) {
+	t.Parallel()
+
+	stop := t.TempDir()
+	outside := t.TempDir()
+
+	victim := filepath.Join(outside, "api")
+	if err := os.MkdirAll(victim, 0o755); err != nil {
+		t.Fatalf("mkdir victim: %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(stop, "services")); err != nil {
+		t.Skipf("symlink unsupported on this platform: %v", err)
+	}
+
+	// start is <stop>/services/api, whose `services` component escapes the container.
+	pruneEmptyAncestors(filepath.Join(stop, "services", "api"), stop)
+
+	if _, err := os.Stat(victim); err != nil {
+		t.Errorf("pruneEmptyAncestors() destroyed the out-of-container directory at %s: %v; want it untouched", victim, err)
+	}
+	if _, err := os.Lstat(filepath.Join(stop, "services")); err != nil {
+		t.Errorf("pruneEmptyAncestors() removed the planted link at %s: %v; want the walk to halt on the refusal instead", filepath.Join(stop, "services"), err)
+	}
+}

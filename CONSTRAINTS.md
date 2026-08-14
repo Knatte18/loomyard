@@ -261,6 +261,18 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   the live-state builders in `package fabricengine_test` are outside this invariant's subject.
 - The banned bypass tokens are `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
 - Every destructive executor runs the gate's four checks first, always in this fixed order, stopping at the first failure: containment, ownership, dirtiness, force.
+  Ahead of the four sits a request-shape check that is not one of them: a `pathRequest` declaring no ownership kind, no dirtiness, or a `dirtinessNA` with an empty reason is refused before containment runs.
+  That refusal borrows `CheckOwnership`/`CheckDirtiness` to name the missing declaration, so its `Check` value must not be read as evidence that containment passed.
+- **Containment is resolved, not lexical, AND bound to the act.**
+  Both the container and the target's ANCESTRY go through `filepath.EvalSymlinks` before they are related;
+  the target's own final component stays unresolved, because a junction removal's target is itself a link.
+  Comparing nominal paths let a symlink planted at an intermediate segment of a gate target carry a destructive primitive outside its container while the check passed — found and closed in fabric's R2 crucible round.
+  `ownedUnderGeometryRoot` resolves the same way, since it is the one ownership kind with no independent resolved-path authority (git's worktree registration, `fslink.RawTarget`) to cross-check against.
+  The check alone is not enough: it resolves at one instant, and a symlink dangling at check time then flipped live-and-escaping before the act carried a gated removal outside the container anyway (fabric's R3 crucible round).
+  The two arbitrary-path executors (`removePath`, `removeLink`) therefore remove through `removeContainedPath`, an `os.Root` rooted at the gate's container, so component resolution and the unlink are one `openat` chain that atomically refuses any component escaping the container at removal time — binding containment to the act rather than to an earlier resolve. `removeGitWorktree`/`resetHardTo` delegate their act to git, which re-validates at its own instant.
+  `removeLaunchers`' launcher-DIRECTORY removal is the third arbitrary-path removal and routes through the same `removeContainedPath` with `recursive` false, never a raw `os.Remove` on the nominal path: it must not use `removePath` (whose directory branch is `RemoveAll` and would destroy operator content beside the launchers), but the non-recursive `os.Root.Remove` refuses a non-empty directory exactly as `os.Remove` does, so it keeps that preservation property while still binding containment to the act (fabric's R8 crucible round).
+  The two CREATE-side minters bind creation to a rooted act: `createExclusiveDir` creates its single-component leaf through an `os.Root` rooted at the parent, which refuses a symlink at the leaf it creates (EEXIST) — its parent ancestry is resolved by `os.OpenRoot`, not refused, which is safe only because its sole caller mints the hub as one new component under the operator-chosen clone parent, not inside a live hub; a caller with an attacker-influenced parent ancestry must use the fixed-container rooting pattern instead — and `createGitWorktree` routes through `containedWorktreeAdd`, which stages `git worktree add` at a slug-named leaf inside an unguessable 0700 `os.Root`-created random parent, moves it to the real target with `os.Root.Rename`, and — because `os.Root.Rename` refuses a symlink at the destination and at an intermediate source component but renames a symlink at the source's own final component as a link — verifies fail-closed via `stagedWorktreeContained` that both the staging leaf (after git writes) and the placed target (after the rename) are real directories reached without traversing a symlink, cleaning up and refusing rather than reporting an out-of-hub worktree, before `git worktree repair` fixes git's registration — since `git worktree add` is a subprocess that resolves and follows a symlinked destination argument itself and cannot be rooted directly.
+  A same-UID or root planter racing the add can still make git transiently write into a directory it already controls (unpreventable by any staging location), but the add is never reported as success and never leaves the target a dangling out-of-hub symlink.
 - `--force` answers dirtiness only.
   It never satisfies containment and never satisfies ownership.
 - A gate refusal (`*destructiveRefusal`) is never discarded on a best-effort path — every such site wraps its executor call in `surfaceRefusal` (or, where the call site cannot return an error at all, logs the refusal via `logger.Warn`) rather than swallowing it.
@@ -272,13 +284,28 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   see the Mutation Record Invariant below.
 - **Enforced by** `cmd/lyx/destructiveguard_test.go` (`TestNoDestructiveBypass_FabricengineProductionSource`).
 
+## Fabric Write-Side Containment Invariant
+
+A `package fabricengine` write to a hub-level structural container an attacker can pre-plant a static symlink at — `<hub>/_launchers/…` (`writeLaunchers`) and `<hub>/_portals/…` (`createPortal`) — must route its filesystem write through an `os.Root` rooted at the hub, never a raw `os.MkdirAll`/`os.WriteFile`/`fslink` that resolves and follows the container path itself.
+
+- This is the create-side twin of the Destruction Chokepoint's containment rule.
+  `writeLaunchers` wrote `ide.sh`/`fabric-checkout.sh` to `<hub>/_launchers/<AnchorRel>/<slug>` via raw `os.MkdirAll`+`os.WriteFile`, and `createPortal` created its junction via `fslink.CreateDirLink` whose own parent-`mkdir` followed a planted symlink — either one carried the write OUTSIDE the hub while `add` reported `ok:true` with a mutation record naming a hub-relative path (fabric's R7 crucible round, the create-side twin of the delete-side M3).
+  Both now write through an `os.Root` at `l.HubPath` (`writeLaunchers` for its files, `createPortal` via `ensureContainedLinkParent` for the link's parent chain), so any component escaping the hub is refused at write time by the kernel's `openat` chain rather than followed.
+- The banned raw-write tokens are `os.MkdirAll(`, `os.Mkdir(`, `os.WriteFile(`, `os.Create(`, `os.OpenFile(`, `os.Symlink(`, `os.Link(` — the `os.`-qualified spellings, deliberately not the bare forms, so the rooted `os.Root` method calls (`root.MkdirAll`/`root.WriteFile`) that ARE the write-side chokepoint pass.
+- The guard's allowlist covers the raw writes that are NOT in this exploit class, each with a reason: a **git-owned** path resolved by git (`hook.go`'s hooks dir, `gitexclude.go`'s `.git/info`), or a worktree/board directory fabric just minted through a **contained** minter (`createExclusiveDir`/`containedWorktreeAdd`) in the same call (`clone.go`, `warpbinding.go`, `weftgit.go`, `junction.go`'s weft-target materialisation).
+  Those are race-only — a post-creation same-UID race, never a static pre-plant, the same accepted residual class as the gate's dirtiness window — because `add.go` refuses a pre-existing worktree path and the minter is fail-closed.
+- **Known guard blind spot:** raw substring matching and a per-file allowlist, exactly as the Destruction Chokepoint guard — a new raw write inside an allowlisted file is not caught, and an aliased or dynamically-built write evades it.
+- **Enforced by** `cmd/lyx/uncontainedwrite_test.go` (`TestNoUncontainedWrite_FabricengineProductionSource`).
+
 ## Mutation Record Invariant
 
 Every mutating fabric verb accumulates a `*Mutations` record of the primitives it actually performed, and every mutating result type exposes that record under a fixed, always-present envelope key set — so a consumer can tell "no error was returned" apart from "something was actually mutated" without parsing prose.
 
 - Every destructive executor in `internal/fabricengine/destroy.go` takes a `rec *Mutations` parameter and appends its own primitive to it, **after** the primitive observably changed state — never on a no-op, never on a refusal, never before the act.
 - Every mutating verb's result type embeds `MutationRecord`;
-  the four read-only verbs' result types must not.
+  a read-only verb's result type must not.
+  There are exactly two of those, and which verb each serves is not the natural guess: `StatusResult` is the **pairs** verb and `DiffResult` is `diff`.
+  The other two read-only verbs (`status`, `list`) return bare slices with no result type, so the guard's companion table has two rows by construction, not by omission.
 - `internal/fabricengine/mutation.go` is the single declarer of the `Kind` enum.
   A new member lands in the same commit as its recording site and its guard-test entry, never ahead of either.
 - A `CheckForce` member must never be added to `Check`: force is consulted only inside `checkPathDirtiness`, where it makes the dirtiness check *pass* rather than fail, so a refusal can never be attributed to it.

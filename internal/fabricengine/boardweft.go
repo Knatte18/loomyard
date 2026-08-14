@@ -12,6 +12,7 @@ package fabricengine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -36,20 +37,22 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 		}
 	}
 
+	// Both worktree-add forms route through containedWorktreeAdd so a symlink standing at boardPath
+	// cannot carry the _board worktree outside the hub — the same create-side containment binding
+	// R5's review added for the slug worktrees. boardPath is <hub>/_board, a direct child of the hub.
+	boardContainer := filepath.Dir(boardPath)
 	if branchExistsLocally {
-		if _, err := gitexec.Run(
-			[]string{"worktree", "add", boardPath, warpBranch},
-			weftRepoRoot,
-		); err != nil {
+		if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
+			return []string{"worktree", "add", worktreePath, warpBranch}
+		}); err != nil {
 			return fmt.Errorf("add _board worktree on existing branch %q: %w", warpBranch, err)
 		}
 		return nil
 	}
 
-	if _, err := gitexec.Run(
-		[]string{"worktree", "add", "--orphan", "-b", warpBranch, boardPath},
-		weftRepoRoot,
-	); err != nil {
+	if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
+		return []string{"worktree", "add", "--orphan", "-b", warpBranch, worktreePath}
+	}); err != nil {
 		return fmt.Errorf("add orphan _board worktree on branch %q: %w", warpBranch, err)
 	}
 	return nil

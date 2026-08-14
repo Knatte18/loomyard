@@ -107,6 +107,7 @@ func addWeftVerbs(cmd *cobra.Command) {
 
 	statusCmd := &cobra.Command{
 		Use:   "status",
+		Args:  cobra.NoArgs,
 		Short: "show unified warp+weft uncommitted-change status",
 		Long: `Reports every currently-uncommitted path across both sides of the
 warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
@@ -127,6 +128,7 @@ warp<->weft pair, each labelled with which side (warp or weft) it changed on.`,
 
 	commitCmd := &cobra.Command{
 		Use:   "commit",
+		Args:  cobra.NoArgs,
 		Short: "commit weft changes",
 		Long: `Stages changes in the configured pathspec and commits them to the weft worktree.
 
@@ -162,6 +164,7 @@ Related commands:
 
 	pushCmd := &cobra.Command{
 		Use:   "push",
+		Args:  cobra.NoArgs,
 		Short: "commit and push weft changes",
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then push the weft
 branch's unpushed commits in the same process.
@@ -216,6 +219,7 @@ Related commands:
 
 	pullCmd := &cobra.Command{
 		Use:   "pull",
+		Args:  cobra.NoArgs,
 		Short: "pull warp and weft, reconciling a rebased warp",
 		Long: `Pulls both sides of the pair. Weft is fast-forwarded first via a plain
 git pull — skipped as a no-op on a freshly bootstrapped hub whose weft branch
@@ -257,6 +261,7 @@ tracking ref:
 
 	syncCmd := &cobra.Command{
 		Use:   "sync",
+		Args:  cobra.NoArgs,
 		Short: "commit and async-push weft changes",
 		Long: `Commit weft changes exactly as "lyx fabric commit" does, then hand the push
 to a detached child process and return immediately — the push happens in the

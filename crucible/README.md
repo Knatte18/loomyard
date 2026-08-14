@@ -8,9 +8,7 @@ The method is **module-agnostic** — it is written down here so the modules bui
 **The files here:**
 - [`orchestrator-prompt.md`](orchestrator-prompt.md) — paste-ready prompt that bootstraps a thread into the **orchestrator** role (drives the loop, spawns rounds, independently verifies).
 - [`review-prompt-template.md`](review-prompt-template.md) — module-agnostic skeleton for the **round agent** prompt (the reviewer-fixer a round spawns).
-  The orchestrator fills it per module into `.scratch/<module>-review-prompt.md` at run time;
-  that per-module instance is gitignored and **never checked in** — a module's state is stale the moment its review lands, so a committed instance would only rot,
-  and a fresh prompt is written from this template each time crucible is re-run.
+  The orchestrator fills it per module into `_mill/<module>-review-prompt.md` at run time and **commits it** (see "Commit deliverables continuously, not gitignored" below) — a module's state is stale the moment its review lands, so the file is rewritten and re-committed fresh each round, but every version that ever seeded a round stays in git history rather than being invisible.
 - This README — the method itself (roles, loop, verification protocol) explained in prose.
 
 > **This is the hand-executed prototype of the `perch` (see the `internal/perchengine` package documentation) + `burler` (see the `internal/burlerengine` package documentation) round loop** (and the origin of the behavior-based [`hardener`](../../manifest/designs/hardener.md) concept). The automated engine — a fresh `burler` per round that does **A: review** then **B: fix**, with **no self-grading**, looped by `perch` with an **independent** progress check — is exactly this loop with the orchestrator role moved from a human+Claude pair into Go. This is how the method was originally run by hand; this doc remains the reference the engines were modeled on. If you change the method here, reconcile it with the `internal/perchengine` and `internal/burlerengine` package documentation.
@@ -54,12 +52,13 @@ The tell that you need this loop: *"the unit tests pass but I don't trust it und
 ```
 
 1. **Seed.**
-   The prompt (`.scratch/<module>-review-prompt.md`, the orchestrator's filled instance of [`review-prompt-template.md`](review-prompt-template.md), gitignored) carries a *"round context seeded from prior-round verification"* section.
+   The prompt (`_mill/<module>-review-prompt.md`, the orchestrator's filled instance of [`review-prompt-template.md`](review-prompt-template.md), committed) carries a *"round context seeded from prior-round verification"* section.
    Each round rewrites it with the residual the last verification found — or, once clean, flips it to a **safety pass** ("no known residual;
    confirm merge-readiness or find what every prior round missed").
 2. **Spawn.**
    One fresh `subagent_type: crucible-reviewer-<effort>` Agent (the operator's pick this round) with a `model:` override, told **only** to read the prompt file and do exactly what it says, tagged `<model>-<effort>-r<N>`, told to **commit each individual fix as it lands** (message identifying the finding it closes — see "Commit per fix" in [`review-prompt-template.md`](review-prompt-template.md)) but **never push**.
-   It writes two deliverables under `.scratch/` (gitignored): `<module>-review-<tag>.md` and `<module>-review-<tag>-fixer-report.md`.
+   It writes two deliverables under `_mill/`, **committing each as soon as it is written or meaningfully updated** — not batched to round-end: `<module>-review-<tag>.md` and `<module>-review-<tag>-fixer-report.md`.
+   See "Commit deliverables continuously, not gitignored" below.
 3. **Verify — the part that actually catches residuals.**
    See the protocol below.
    The round's own verdict is **never** the gate: in the reed campaign rounds 3, 4, and 5 each self-reported "merge-ready" and each left a residual the orchestrator's independent verification caught.
@@ -82,6 +81,13 @@ Until this was noticed, Job 1 — the review itself, especially the live-substra
 This happened for real on a burler campaign's first round: killed mid-review, before `.scratch/burler-review-*.md` existed at all, with no commits either — the orchestrator had zero evidence to read, not even which live scenarios had already been run.
 The fix, now in [`review-prompt-template.md`](review-prompt-template.md)'s "Log as you go" section: the round agent appends the review report's What-was-tested section (and provisional findings) to disk immediately after each command/scenario, in real time, rather than holding it all in working context to compose in one shot at the end.
 A round that then dies at 95% leaves a 95%-complete account on disk, not an empty `.scratch/` directory.
+
+### Why deliverables are committed continuously, not gitignored
+
+Logging as you go (above) protects against losing the account *within* a single running session — but a file that only ever exists on disk, gitignored, is still gone the moment the worktree it lives in is torn down, which for this repo (per `CLAUDE.md`'s "Persistent notes go in git, not file-memory") happens routinely on merge for every short-lived mill task worktree.
+`.scratch/`'s old convention — write there, never commit, treat it as ephemeral — was correct for the seed prompt's own staleness (a module's state IS stale the moment its review lands) but wrong for the review report, the fixer report, and the handoff note: those are the campaign's actual record, and losing them to a worktree teardown is the same failure "log as you go" exists to prevent, just at a longer time horizon.
+The fix: every crucible deliverable lives under `_mill/` (a worktree's normal, git-tracked task directory) instead of `.scratch/`, and gets **committed as soon as it is written or meaningfully updated** — the review report after each logged test/scenario or finding, the fixer report after each fix (folding into that fix's own commit is fine), the re-seeded prompt each time the orchestrator rewrites it, the handoff note each time it's refreshed.
+This is the same "commit per fix" discipline extended to the paperwork: a killed session should never cost more than the single most recent update, for the review record exactly as much as for the code.
 
 ### Why rotate the model
 
@@ -184,7 +190,7 @@ Reusable rules that bit us and are worth carrying to any module's live driving:
 
 ## Instantiating this for a new module
 
-1. Fill every `<PLACEHOLDER>` in a copy of [`review-prompt-template.md`](review-prompt-template.md) and write it to `.scratch/<module>-review-prompt.md` (gitignored — not checked in): what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check.
+1. Fill every `<PLACEHOLDER>` in a copy of [`review-prompt-template.md`](review-prompt-template.md) and write it to `_mill/<module>-review-prompt.md`, then commit it: what to read, the high-yield focus list = where *this* module's bugs actually live, the exact test commands, the substrate-teardown check.
 2. Confirm the module already satisfies `CONSTRAINTS.md`'s Sandbox Suite Coverage invariant (a `**Covers:** <module>` tag somewhere under `tools/sandbox/*SUITE.md`).
    That invariant is pre-existing and independent of this method — do NOT build a new dedicated suite file or launcher just to satisfy this hardening loop;
    the round agent drives the real CLI directly (see "Driving the real substrate" above) whether or not a dedicated suite file exists.

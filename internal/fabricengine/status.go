@@ -182,7 +182,7 @@ func detectWarpPollution(warpPath, anchorRel string) ([]PollutionEntry, error) {
 
 	out, err := gitexec.Run(args, warpPath)
 	if err != nil {
-		return nil, fmt.Errorf("ls-files: %w", err)
+		return nil, fmt.Errorf("scan the warp index for lyx-managed paths: %w", err)
 	}
 
 	output := strings.TrimSpace(out)

@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // driveContainmentGateRefusal drives a real containment refusal through UnwireJunctions: a junction
@@ -92,37 +93,43 @@ func driveOwnershipGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 	return err
 }
 
-// driveDirtinessGateRefusal drives a real dirtiness refusal through the gate's own dirtyScopeAll
-// request inside removeWarpWorktreeDir (remove.go:196 the primary request, remove.go:230 the
-// fallback), reached via Remove.
+// driveDirtinessGateRefusal drives a real dirtiness refusal through Fabric.ResetHard, the gate's one
+// site whose pathRequest hardcodes force: false — so the refusal it produces can never be answered by
+// a flag, and no caller's own pre-flight stands in front of it to claim the planted dirt first.
 //
-// force is passed as true so Remove's own earlier pre-flight (remove.go:68-76 — the identical
-// worktreeDirty(scopeAll, target) check on the identical target) is skipped entirely rather than
-// claiming the planted dirt first. force=true also makes the primary gate call's own dirtiness check
-// pass immediately (force satisfies dirtiness, never containment or ownership) and run `git worktree
-// remove --force`, which git itself still refuses on a LOCKED worktree even with --force. That
-// failure sends removeWarpWorktreeDir to its fallback request, which carries no force field at all
-// (defaulting to false) — so the fallback's own dirtiness check finally sees the tracked dirt that
-// survived because the locked git call never actually removed anything.
+// It used to drive Remove(force=true) against a LOCKED, tracked-dirty worktree, relying on the
+// fallback pathRequest inside removeWarpWorktreeDir carrying no force field at all so the operator's
+// --force silently failed to reach it. That was a DEFECT (fixed in R2 as finding L1), not a property:
+// a helper whose scenario depends on a bug stops working the moment the bug is fixed, and worse, it
+// makes the bug look load-bearing to whoever next reads the test. ResetHard needs no such trick — its
+// force flag is a constant in production source, which is exactly what makes it the honest way to
+// reach a gate dirtiness refusal.
 func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error {
 	t.Helper()
 
 	hubforge.AddPair(t, h, slug)
 
+	pairLocation := &lyxcwd.Location{HubPath: h.Path, WorktreeName: slug, AnchorRel: h.Location.AnchorRel}
 	warpTarget := h.PairWarpWorktree(slug)
+
 	trackedFile := filepath.Join(warpTarget, "dirt.txt")
 	if err := os.WriteFile(trackedFile, []byte("v1\n"), 0o644); err != nil {
 		t.Fatalf("write %s: %v", trackedFile, err)
 	}
 	mustGit(warpTarget, "add", "dirt.txt")
 	mustGit(warpTarget, "commit", "-m", "livestate: seed tracked file for dirtiness refusal")
+	head := mustGitHeadSHA(t, warpTarget)
 	if err := os.WriteFile(trackedFile, []byte("v2\n"), 0o644); err != nil {
 		t.Fatalf("modify %s: %v", trackedFile, err)
 	}
-	mustGit(warpTarget, "worktree", "lock", warpTarget)
 
-	_, err := h.Topology.Remove(h.Location, slug, true)
-	return err
+	f, err := fabricengine.Open(pairLocation)
+	if err != nil {
+		t.Fatalf("fabricengine.Open(%s): %v", warpTarget, err)
+	}
+	// The gate refuses before repo.ResetHard is ever called, so this SHA is never actually reset to;
+	// it is the pair's own HEAD purely so the request is a realistic one rather than a sentinel.
+	return f.ResetHard(fabricengine.NewMutations(h.Path), head)
 }
 
 // TestRefusedByGate proves RefusedByGate matches a real gate refusal for each of the three reachable

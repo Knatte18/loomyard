@@ -11,6 +11,7 @@ package fabricengine_test
 import (
 	"os/exec"
 	"strings"
+	"testing"
 )
 
 // mustGit runs a git subcommand in dir, panicking on non-zero exit.
@@ -23,4 +24,19 @@ func mustGit(dir string, args ...string) {
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("git " + strings.Join(args, " ") + ": " + err.Error() + "; " + string(output))
 	}
+}
+
+// mustGitHeadSHA returns dir's current HEAD commit SHA, failing tb when git cannot answer.
+// Unlike mustGit it takes a testing.TB, because its one caller has one in scope and a returned value
+// is worth a proper test failure rather than a panic.
+func mustGitHeadSHA(tb testing.TB, dir string) string {
+	tb.Helper()
+
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		tb.Fatalf("git rev-parse HEAD in %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(out))
 }

@@ -74,6 +74,18 @@ const (
 	// It is reported instead of ReconcileActionAlreadyHealthy so consumers keying off Action — not
 	// just Detail — see that convergence altered the pair.
 	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
+
+	// ReconcileActionVanishedMidWalk means the warp worktree directory existed when `git worktree
+	// list` enumerated it and was gone by the time this pass reached it — a concurrent `lyx fabric
+	// remove` or `prune`, not a fault in this hub.
+	//
+	// It exists because the alternative was actively misleading: the vanished directory made
+	// readBranch fail, which was reported as ReconcileActionUnmanagedReported — a verdict meaning
+	// something entirely different ("this pair is not fabric's to manage") — carrying os/exec's raw
+	// `chdir <path>: no such file or directory` as its reason. Naming the race lets an operator, and a
+	// scripted caller reading the failure a per-pair Error now produces, tell a transient from a real
+	// defect without decoding a Go runtime message.
+	ReconcileActionVanishedMidWalk ReconcileAction = "vanished_mid_walk"
 )
 
 // WarpBindingOutcome describes the result of the once-per-Reconcile warp-URL binding backfill.
@@ -176,10 +188,22 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 			WeftWorktree: filepath.ToSlash(weftPath),
 		}
 
+		// The worktree list was read before this loop began, so a concurrent remove/prune can delete a
+		// pair's directory between the enumeration and this iteration. Naming that race here keeps it
+		// from surfacing further down as a layout or branch-read failure whose Action
+		// (unmanaged_reported) means something entirely different and whose reason is os/exec's raw
+		// chdir error.
+		if _, statErr := os.Stat(warpPath); os.IsNotExist(statErr) {
+			markVanishedMidWalk(l.WorktreePath(), warpPath, &pr)
+			result.Pairs = append(result.Pairs, pr)
+			continue
+		}
+
 		warpLayout, layoutErr := warpLayoutFor(l, warpPath)
 		if layoutErr != nil {
 			pr.Error = fmt.Sprintf("resolve layout: %v", layoutErr)
 			pr.Action = ReconcileActionUnmanagedReported
+			markVanishedMidWalk(l.WorktreePath(), warpPath, &pr)
 			result.Pairs = append(result.Pairs, pr)
 			continue
 		}
@@ -191,6 +215,7 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		if branchErr != nil {
 			pr.Error = fmt.Sprintf("read warp branch: %v", branchErr)
 			pr.Action = ReconcileActionUnmanagedReported
+			markVanishedMidWalk(l.WorktreePath(), warpPath, &pr)
 			result.Pairs = append(result.Pairs, pr)
 			continue
 		}
@@ -211,6 +236,16 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
 		if repairWiring {
 			t.repairPairWiring(rec, warpLayout, slug, &pr, weftWorktreeExists)
+		}
+
+		// The pre-check above closes only the window between enumeration and the start of this
+		// iteration; a concurrent teardown can just as easily land in the middle of the repair steps,
+		// which then fail with whatever raw error git or the filesystem produced for a directory that
+		// is no longer there. Re-checking here converts every one of those windows, not just the
+		// first, and it cannot mask a real defect: a repair that genuinely failed leaves the warp
+		// worktree exactly where it was.
+		if pr.Error != "" {
+			markVanishedMidWalk(l.WorktreePath(), warpPath, &pr)
 		}
 
 		result.Pairs = append(result.Pairs, pr)
@@ -474,10 +509,11 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
-	if _, err := gitexec.Run(
-		[]string{"worktree", "add", weftPath, branch},
-		weftRepoRoot,
-	); err != nil {
+	// Through containedWorktreeAdd so a symlink toggled at weftPath during reconcile's own
+	// enumerate-then-adopt window cannot carry the worktree outside the hub (R5's create-side escape).
+	if err := containedWorktreeAdd(weftRepoRoot, warpLayout.HubPath, weftPath, func(worktreePath string) []string {
+		return []string{"worktree", "add", worktreePath, branch}
+	}); err != nil {
 		return fmt.Errorf("adopt weft worktree %q for branch %q: %w", weftPath, branch, err)
 	}
 	return nil
@@ -521,6 +557,37 @@ func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, sl
 	return nil
 }
 
+// markVanishedMidWalk reports whether the pair at warpPath stopped existing during this pass, and
+// when it did, rewrites pr as the vanished-mid-walk verdict — clearing any Error the disappearance
+// produced along the way.
+//
+// The Error is cleared rather than kept alongside the new Action because nothing failed to
+// reconcile: the pair stopped existing, which is a concurrent `remove`/`prune` doing exactly its
+// job. Leaving the Error would make an ordinary concurrent teardown fail every enclosing reconcile,
+// since a non-empty per-pair Error is what drives the verb's own non-zero exit.
+//
+// "Stopped existing" is decided by git's own worktree registration, not by the directory alone, and
+// the difference is not academic: this pass may itself have RECREATED the directory on its way past,
+// because wiring a junction creates the link's parent. Checking only the directory therefore missed
+// exactly the interleaving where reconcile's own repair steps raced the teardown — the common case,
+// not the rare one. A path git no longer lists is gone whether or not something left a directory
+// standing there.
+// The stat runs first purely as a cheap short-circuit: an absent directory needs no git spawn to
+// settle, and the registration read only happens for a pair that is already reporting a problem.
+// Neither check can mask a genuine defect: a repair that really failed leaves the worktree both on
+// disk and registered.
+func markVanishedMidWalk(repoDir, warpPath string, pr *ReconcilePairResult) bool {
+	if _, statErr := os.Stat(warpPath); !os.IsNotExist(statErr) {
+		if isWarpCheckout(repoDir, warpPath) {
+			return false
+		}
+	}
+	pr.Action = ReconcileActionVanishedMidWalk
+	pr.Detail = "warp worktree removed by a concurrent remove or prune after this pass enumerated it"
+	pr.Error = ""
+	return true
+}
+
 // readBranch returns the current branch name for the worktree at dir, reporting "HEAD" for a
 // detached HEAD exactly as `git rev-parse --abbrev-ref HEAD` does.
 //
@@ -545,7 +612,7 @@ func readBranch(dir string) (string, error) {
 	// two-message merge.
 	var gitErr *gitexec.GitError
 	if !errors.As(err, &gitErr) {
-		return "", fmt.Errorf("rev-parse: %w", err)
+		return "", fmt.Errorf("read current branch: %w", err)
 	}
 
 	unbornOut, unbornErr := gitexec.Run(
@@ -555,9 +622,9 @@ func readBranch(dir string) (string, error) {
 	if unbornErr != nil {
 		var unbornGitErr *gitexec.GitError
 		if !errors.As(unbornErr, &unbornGitErr) {
-			return "", fmt.Errorf("branch --show-current: %w", unbornErr)
+			return "", fmt.Errorf("read current branch via the unborn-branch fallback: %w", unbornErr)
 		}
-		return "", fmt.Errorf("rev-parse exited %d and branch --show-current: %w", gitErr.ExitCode, unbornErr)
+		return "", fmt.Errorf("rev-parse exited %d and the unborn-branch fallback also failed: %w", gitErr.ExitCode, unbornErr)
 	}
 	branch := strings.TrimSpace(unbornOut)
 	if branch == "" {
@@ -746,18 +813,32 @@ func applyStaleRemoval(rec *Mutations, warpLayout *lyxcwd.Location, slug string,
 
 	var removed []string
 	for _, name := range stale {
-		removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name})
-		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
-
-		var refusal *destructiveRefusal
-		if errors.As(removeErr, &refusal) {
-			// applyStaleRemoval is a void helper with no propagation path, so a gate refusal is
-			// logged rather than silently discarded — and the name must not be reported removed
-			// when the gate refused to remove it.
-			logger.Warn("fabricengine: reconcile stale-junction removal refused", "worktree", slug, "junction", name, "error", refusal.Error())
+		// The exclude-strip and the removed-tally both run only after a nil-error removal: stripping
+		// a still-present junction's .git/info/exclude entry (because its removal was refused or
+		// failed) would leave that junction showing as untracked dirt in git status, and counting it
+		// as removed would report an effect that did not land.
+		if removeErr := removeWarpJunction(rec, warpLayout, slug, []string{name}); removeErr != nil {
+			// applyStaleRemoval is a void helper with no propagation path, so a failed removal is
+			// logged rather than silently discarded. A gate refusal and an operational failure are
+			// logged distinctly, but neither counts the junction as removed — both leave it on disk.
+			var refusal *destructiveRefusal
+			if errors.As(removeErr, &refusal) {
+				logger.Warn("fabricengine: reconcile stale-junction removal refused", "worktree", slug, "junction", name, "error", refusal.Error())
+			} else {
+				logger.Warn("fabricengine: reconcile stale-junction removal failed", "worktree", slug, "junction", name, "error", removeErr.Error())
+			}
 			continue
 		}
+		_, _ = unseedGitExclude(rec, warpLayout, slug, []string{name})
 		removed = append(removed, name)
+	}
+
+	// Report convergence only when a junction actually came off disk. An all-refused (or all-failed)
+	// pass converged nothing, so it must not append a possibly-empty removed-detail or flip Action to
+	// stale_removed — the same report-the-effect-not-the-intent rule the reconcile honesty fix (M2)
+	// established for the success verdict.
+	if len(removed) == 0 {
+		return
 	}
 
 	appendPrDetail(pr, fmt.Sprintf("stale junction(s) removed: %s", strings.Join(removed, ", ")))
