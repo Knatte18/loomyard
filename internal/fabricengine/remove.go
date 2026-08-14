@@ -73,16 +73,16 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 	if !force {
 		dirty, _, err := worktreeDirty(scopeAll, target)
 		if err != nil {
-			return RemoveResult{}, fmt.Errorf("check warp worktree status at %s: %w", target, err)
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("check warp worktree status at %s: %w", target, err))
 		}
 		if dirty {
-			return RemoveResult{}, fmt.Errorf("worktree has uncommitted changes; use --force")
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("worktree has uncommitted changes; use --force"))
 		}
 	}
 
 	if !force {
 		if err := refuseDirtyWeftWorktree(WeftWorktreePath(l, slug)); err != nil {
-			return RemoveResult{}, err
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, err)
 		}
 	}
 
@@ -131,6 +131,35 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 		Path:         target,
 		LinksRemoved: linksRemoved,
 	}, nil
+}
+
+// nameStrandedPortalTeardown appends the reconcile remedy to refusal when Remove's portal and
+// launcher teardown has already recorded a mutation, and returns refusal unchanged otherwise.
+//
+// Remove tears the portal and launchers down before the no-force dirtiness gates, deliberately: the
+// teardown must still run when the worktree directory is already gone (see this file's header).
+// The consequence is that an operator who is REFUSED — told to commit their work or pass --force —
+// has nonetheless already lost that pair's portal junction and launcher scripts by the time they
+// read the message.
+// The loss is fully self-healing, since `lyx fabric reconcile` re-wires both and reports
+// ReconcileActionPortalRestored for the pair, and the mutation record already carries the entries on
+// the failure path with partial=true. What was missing is the last step: the operator has no reason
+// to suspect their launchers just vanished, and no reason to reach for reconcile.
+// Naming it in the refusal itself closes that gap without reordering the teardown, whose position
+// this file's header justifies on its own grounds.
+//
+// The remedy is appended only when something was actually recorded, so a refusal that stranded
+// nothing — the ordinary case once a first refused attempt has already torn the portal down — does
+// not tell the operator to repair a hub that is intact.
+func nameStrandedPortalTeardown(rec *Mutations, refusal error) error {
+	// Len has a value receiver, so a nil recorder would panic on the auto-dereference rather than
+	// answering zero. Remove always constructs one, but this helper must not depend on that.
+	if rec == nil || rec.Len() == 0 {
+		return refusal
+	}
+	return fmt.Errorf(
+		"%w; this pair's portal junction and launcher scripts were already torn down before the refusal — run \"lyx fabric reconcile\" to restore them",
+		refusal)
 }
 
 // refuseDirtyWeftWorktree returns an error when the weft worktree at weftTarget carries
