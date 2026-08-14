@@ -39,7 +39,9 @@ pair's wiring; (3) M2 — a repair verb's success signal is unreliable to every 
 **Counts:** 0 BLOCKING, 3 MEDIUM, 4 LOW, 5 NIT (12 total).
 
 **Merge-readiness (pre-fix):** NOT ready — M3 and M1 both need fixing before merge.
-**Merge-readiness (post-fix): see the fixer report.**
+**Merge-readiness (post-fix):** READY — all 12 findings fixed, every gate green, every live
+scenario re-driven. See `_mill/fabric-review-opus-high-r2-fixer-report.md` for the verdict in
+full, the sabotage-proof table, and three observations recorded after this review was frozen.
 
 ## Scope assessment — plan vs shipped
 
