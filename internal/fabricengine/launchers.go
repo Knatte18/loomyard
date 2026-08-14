@@ -239,9 +239,10 @@ func writeLauncherScriptIfChanged(rec *Mutations, root *os.Root, hubPath, path s
 // non-empty real directory. A leftover file is reported by the directory removal below, never
 // silently swept.
 // rec is the calling verb's own recorder: the script removals route through removePath, which
-// records for itself, but the directory removal below stays a plain os.Remove — allowlisted for
-// exactly that reason — so it records KindPathRemoved with detail "single" itself, at its own
-// success site, using the same record-only-on-observed-effect rule the gate executors follow.
+// records for itself, while the directory removal below routes through removeContainedPath directly
+// (non-recursive, so a non-empty directory is still refused by the OS) and therefore records
+// KindPathRemoved with detail "single" itself, at its own success site, using the same
+// record-only-on-observed-effect rule the gate executors follow.
 func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	launcherDir := LauncherDir(l, slug)
 	if err := refuseUncontainedPath(launchersDir(l), launcherDir, "launcher dir"); err != nil {
@@ -266,12 +267,21 @@ func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	}
 
 	// The directory itself runs the gate's checks (containment, ownership, dirtiness) via
-	// checkPathRequest, but the actual removal stays a plain os.Remove rather than routing through
-	// removePath: removePath's directory branch is RemoveAll, which would silently destroy anything
-	// the operator had put beside the launchers — exactly the defect
+	// checkPathRequest, and then removes through removeContainedPath with recursive=false rather than
+	// through removePath: removePath's directory branch is RemoveAll, which would silently destroy
+	// anything the operator had put beside the launchers — exactly the defect
 	// TestRemoveLaunchers_PreservesForeignContent exists to police, and the portal half of the same
-	// teardown (fslink.Remove) already declines to delete a non-empty real directory for the same
-	// reason.
+	// teardown already declines to delete a non-empty real directory for the same reason.
+	// removeContainedPath's non-recursive branch is os.Root.Remove, which the OS refuses on a non-empty
+	// directory exactly as a bare os.Remove does, so that preservation property is unchanged — what the
+	// routing adds is binding containment to the ACT. This used to be a raw, unrooted single-entry
+	// removal of the nominal path, which made it the one arbitrary-path removal left in the package still resolving
+	// containment at one instant and unlinking at a later one: a symlink planted at an intermediate
+	// segment (an AnchorRel component under _launchers), dangling when checkPathRequest ran and flipped
+	// live-and-escaping before the unlink, carried the removal outside the hub while the record named the
+	// hub-relative path the removed inode never was — the same window R3 closed for removePath/removeLink
+	// and the same false-success shape as R2's M3. Rooting the unlink at the launchers container makes
+	// component resolution and the unlink one openat chain the kernel refuses to walk out of.
 	dirReq := pathRequest{
 		what:      "remove launcher dir",
 		container: launchersDir(l),
@@ -284,11 +294,11 @@ func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	if err := checkPathRequest(dirReq); err != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, err)
 	}
-	removeErr := os.Remove(launcherDir)
-	if removeErr != nil && !os.IsNotExist(removeErr) {
+	removed, _, removeErr := removeContainedPath(launchersDir(l), launcherDir, false)
+	if removeErr != nil {
 		return fmt.Errorf("remove launcher dir %s: %w", launcherDir, removeErr)
 	}
-	if removeErr == nil {
+	if removed {
 		rec.Append(KindPathRemoved, launcherDir, "single")
 	}
 

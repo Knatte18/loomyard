@@ -107,9 +107,6 @@ var destructiveGuardAllowlist = map[string]string{
 		"source subdirectory the recursive merge has just drained — whole-file allowlist for exactly these two, not a blanket exemption",
 	"internal/fabricengine/hook.go": "chainUserHook's os.Remove(userHookPath) removes the user-hook backup that same function wrote " +
 		"ten lines earlier, on its own rollback path after a failed chain write",
-	"internal/fabricengine/launchers.go": "removeLaunchers runs the gate's own checkPathRequest immediately before its os.Remove(launcherDir) " +
-		"call, deliberately not removePath, since removePath's directory branch is RemoveAll, which would silently destroy foreign " +
-		"content beside the launchers directory",
 	"internal/fabricengine/doc.go": "the package doc's prose explains this slice's destruction rationale and must be able to name " +
 		"the banned tokens; its only non-comment line is the package clause, so it can never carry a real call",
 }
