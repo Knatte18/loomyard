@@ -130,6 +130,52 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	}
 }
 
+// TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix documents the F2 behaviour: under the DEFAULT
+// empty branch_prefix, the warp branch Add creates is a bare slug the gate cannot prove is fabric's,
+// so rollbackAdd's step-5 deletion is refused and the branch is left behind — while the worktree pair
+// itself is fully rolled back. This is the conservative-by-design counterpart to
+// TestAddRollback_AdoptedWeftBranchSurvives (which uses a non-empty prefix so the branch IS
+// deletable); pinning it guards against a regression that would make the gate delete a bare-slug
+// branch indistinguishable from a user's own.
+func TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix(t *testing.T) {
+	t.Parallel()
+
+	const slug = "empty-prefix-rollback"
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+
+	// Inject a deterministic post-creation failure: a blocker file at the portal location makes
+	// createPortal (step 9) fail after the warp worktree and its branch already exist, triggering
+	// rollbackAdd.
+	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
+	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
+		t.Fatalf("mkdir portal parent: %v", err)
+	}
+	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+
+	// Default empty branch_prefix: the warp branch is exactly the bare slug.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+		t.Fatalf("Add should have failed (portal blocker)")
+	}
+
+	// The worktree pair is fully rolled back.
+	if _, err := os.Stat(fabricengine.WorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("warp worktree dir still exists at %s after rollback", fabricengine.WorktreePath(l, slug))
+	}
+	if _, err := os.Stat(fabricengine.WeftWorktreePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir still exists at %s after rollback", fabricengine.WeftWorktreePath(l, slug))
+	}
+
+	// The bare-slug warp branch is left behind: the gate cannot prove it is fabric's under an empty
+	// prefix, so it refuses deletion rather than risk deleting a user branch of the same name.
+	if !branchExistsAt(t, l.WorktreePath(), slug) {
+		t.Errorf("warp branch %q was deleted by rollback under an empty prefix; the gate must refuse to delete an unprovable bare-slug branch", slug)
+	}
+}
+
 // TestAdd_WiresJunctionsEagerly proves a successful Add leaves the new worktree's warp junctions
 // wired immediately: card 20 folds WireJunctions into Add's step 10b (after writeLaunchers, before
 // the warp push), so no dormant state and no separate `lyx init` step is needed for the pair to be

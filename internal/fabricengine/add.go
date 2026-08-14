@@ -1,6 +1,10 @@
 // add.go implements the transactional Add: it creates the warp worktree, portal, and launchers,
 // then pushes last, performing a best-effort full rollback on any post-creation failure so a
-// partial worktree pair is never left behind.
+// partial worktree PAIR is never left behind.
+// One residue the rollback cannot always clear is the warp branch this Add created: the gate deletes
+// it only when it can prove the branch is fabric's (a non-empty branch_prefix, or a -weft weft
+// branch), so under the default empty prefix the bare-slug warp branch is left behind — see
+// rollbackAdd for why, and the "already exists" remedy Add's own re-add error names for the recovery.
 // The weft side always uses the suffixed branch produced by WeftBranchName.
 
 package fabricengine
@@ -222,6 +226,12 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 // removing worktrees and branches, preserving pre-existing adopted weft branches.
 // warpTok is the token createGitWorktree minted when this Add call created the warp worktree at
 // target; it is the ownership proof the gate's warp-side removal requires.
+// The warp-branch deletion (step 5) is the one cleanup the gate may refuse: ownedManagedBranch can
+// prove a branch is fabric's only via a -weft suffix or a non-empty branch_prefix, so under the
+// default empty prefix the bare-slug warp branch is indistinguishable from a user's own branch and is
+// left behind rather than risk deleting the operator's work. That refusal is logged, not swallowed
+// (this function's return is discarded by every caller), so the leftover branch is visible in the
+// trace; recovery is the "already exists" remedy Add's own re-add error already names.
 // rec is Add's own recorder, threaded through to all six gate-bound calls this function reaches
 // (its own removeGitWorktree and deleteBranch, plus removeWeftWorktree, removeWarpJunction,
 // removePortal and removeLaunchers), so a rollback's own destructions land in the same record as
@@ -295,6 +305,14 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lyxcwd.Location, slug, warpBra
 	}
 	err = deleteBranch(rec, branchReq)
 	if refusalErr := surfaceRefusal(err); refusalErr != nil {
+		// Log the swallowed refusal so the leftover warp branch is visible in the trace: this
+		// function's return is discarded by every caller, and under the default empty branch_prefix the
+		// gate always refuses to delete the bare-slug warp branch (it cannot prove the branch is
+		// fabric's). Mirrors rollbackSwitch's own logger.Warn for the identical best-effort-void case.
+		var refusal *destructiveRefusal
+		if errors.As(refusalErr, &refusal) {
+			logger.Warn("fabricengine: rollbackAdd's warp-branch deletion was refused by the destructive gate; the branch is left behind (retry `lyx fabric add`, or `git branch -D`)", "branch", warpBranch, "check", string(refusal.Check))
+		}
 		if firstErr == nil {
 			firstErr = refusalErr
 		}
