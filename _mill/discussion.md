@@ -37,7 +37,7 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
 - Renaming `internal/reedengine/header-template.md` to `console-header.md` and fixing that file's stale doc comment.
 - A new `fabricengine.StencilsDir(hub)` resolver beside `BoardDir`, and the signature changes that thread the resolved directory into each engine.
-- Exporting `internal/stencil`'s leading-comment stripper and making webster's `joinTemplateAssets` strip every asset's banner, fixing the pre-existing second-banner leak.
+- Exporting two things from `internal/stencil`: the leading-comment stripper (used by webster's `joinTemplateAssets`, which now strips every asset's banner) and a top-level-marker lister, today unexported inside `unfilledTopLevelMarkers`, which `validate` needs.
 - `.gitattributes` changes: 15 new `stencils/**` LF pins, removal of the 8 stale `internal/*` rows, and a seeded `.gitattributes` in the board's stencils tree.
 - A `**Covers:** stencil` scenario in `tools/sandbox/SANDBOX-CORE-SUITE.md`.
 - A new CONSTRAINTS.md invariant recording stencil ownership, the amended treadle allowlist bullet, and the CLI/Cobra seam counts going from eleven/ten to twelve/eleven.
@@ -95,7 +95,7 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 ### stamp-format-and-edit-detection
 
-- Decision: each seeded file carries a stamp line inside the leading `<!-- ... -->` banner it already has, of the form `<!-- lyx-stencil: sha256=<hex> -->` (folded into the existing banner block rather than added as a second one).
+- Decision: each seeded file carries a stamp line of the form `<!-- lyx-stencil: sha256=<hex> -->` inside its leading `<!-- ... -->` banner — folded into the existing banner where one exists, or written as a new leading banner for `implementer-body.md`, the one default that ships without one.
   The hash is computed over the file's body **after** the leading comment block is stripped — that is, over exactly the text `internal/stencil` parses and the LLM ultimately sees.
   Per file, on every run:
 
@@ -114,6 +114,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   Without this the mechanism breaks completely on a machine with `core.autocrlf=true`: the board copy is a git checkout, so an LF file seeded by lyx comes back as CRLF, whose hash matches neither the stamp nor the shipped default — so *every* stencil is classified human-edited, forever, and never refreshed again.
   The `diff <name>` base lookup would diverge on the same platform for the same reason, since `internal/gitrepo` performs no CRLF conversion (`internal/gitrepo/doc.go:218`).
 - **The board's stencils tree is seeded with its own `.gitattributes`** pinning `*.md` to `text eol=lf`, since the generated board repo has none and inherits nothing from loomyard's.
+  Its lifecycle is seed-if-absent only, mirroring `configsync`'s `SeedOnly`: written when missing, never rewritten when present, never stamped, never in the registry, invisible to `list`/`validate`/`diff`, and always inside the seeding commit's positive pathspec.
+  Seed-if-absent is right because LF-normalised hashing already keeps the mechanism correct on its own, so a second edit-detection scheme for a non-markdown file buys nothing.
 - Loomyard's own `.gitattributes` changes too: the 15 new `stencils/**` paths are pinned, and the 8 now-stale `internal/*` rows (four burler, four treadle) are removed.
   Note that loom's two and webster's five are unpinned today, so the move also closes a gap rather than only relocating rows.
 
@@ -250,8 +252,10 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   Rule: a `-dev` build performs row 1 of the edit-detection table (seed when absent) and skips row 2 (refresh when untouched), warning once when its embedded default differs from what is on disk.
   A production build performs the full table.
   This requires the binary to know which it is.
-  Mechanism: `tools/deploy -dev` sets a package-level string via `-ldflags -X` at build time;
+  Mechanism: `tools/deploy -dev` sets `var buildChannel string` in `package main` (`cmd/lyx/main.go`) via `-ldflags "-X main.buildChannel=dev"`;
   `tools/deploy/main.go` passes no `-ldflags` today, so this is a new flag on that build path.
+  The composition root threads the resulting mode into `stencilstore.Reconcile` as an explicit argument — `stencilstore` never reads build identity itself, which is what keeps its dev/prod tests hermetic.
+  `package main` is the right home because the root pre-run is the only consumer.
   An **unstamped** binary — a plain `go build`/`go install`, or a `go test` binary — classifies as **production** and performs the full table.
   Production is the conservative default because it keeps the shipped defaults converging;
   dev is the exception and must opt in explicitly.
@@ -281,8 +285,13 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 ### invalid-stencil-handling
 
 - Decision: an unfillable stencil fails loudly at the point of use, and `lyx stencil validate` exists to catch it up front.
-- Rationale: `stencil.Fill` requires every top-level marker to be present, so an edit that deletes a marker breaks a producer mid-run.
-  The up-front check mirrors `reedengine`'s existing `ValidateHeader`, which exists for exactly this reason.
+- Rationale: `stencil.Fill` fails when the **template** carries a top-level marker the producer's values do not fill (`internal/stencil/stencil.go:39-43,82`), so an edit that adds or renames a marker breaks a producer mid-run — while an edit that *deletes* a marker fills cleanly and silently drops that content from the prompt, which is the invisibility class this task exists to remove.
+  An earlier draft of this document had that direction backwards.
+- `validate` therefore compares each body's top-level marker set against its shipped default's, both recoverable through the registry.
+  A marker present in the body but absent from the default is an **error** — it will break `Fill`.
+  A default marker missing from the body is a **warning** — legal customisation, but content-dropping.
+  Comparing against the default's marker set is the only workable basis, because the values each producer supplies live inside the engines and are unreachable from `stencilcli`.
+  It also matches the direction `reedengine`'s existing `ValidateHeader` already takes, erroring on an unknown top-level token (`internal/reedengine/header_test.go:51-55`).
 - Rejected: falling back to the default when an override is invalid — that silently ignores the operator's edit, which is worse than failing.
 
 ### cli-surface
@@ -342,8 +351,9 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   Verified building in the spike.
   Exporting one typed default per stencil rather than an `embed.FS` keeps a renamed or missing file a build error instead of a runtime one.
 - The same file also holds the **name → default registry**, an exported ordered map from stencil name to its default text, built beside the typed vars.
-  `stencilstore` is its only consumer;
-  no engine imports the `stencils` package directly, so treadle's allowlist needs the one `internal/stencilstore` entry and no second one.
+  `internal/stencilstore` and the composition roots that hand it the registry — `cmd/lyx`'s root pre-run and `stencilcli` — are its only consumers.
+  No engine imports it, and treadle calls only `stencilstore.Read(baseDir, name)`, which needs no registry, so treadle's allowlist needs the one `internal/stencilstore` entry and no second one.
+  The registry stays a `Reconcile` parameter rather than a package-level import inside `stencilstore`, which is what lets the edit-detection tests run against a fake registry and a bare `t.TempDir()`.
   A test in the `stencils` package walks the family subfolders and asserts the registry and the `.md` tree name exactly the same set in both directions.
   Without that test a hand-maintained map reintroduces the silent-omission failure the typed-var choice exists to prevent — a `.md` added but never registered would be invisible to `list`, never seeded, and never validated.
 - Note on naming: the package sits alongside the existing `internal/stencil` (the rendering mechanism).
@@ -353,9 +363,10 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 ### compose-strips-every-banner
 
 - Decision: `internal/stencil` exports its leading-comment stripper (today the unexported `stripLeadingComment`, `internal/stencil/stencil.go:67`), and `websterengine`'s `joinTemplateAssets` strips **every** asset's banner before concatenating, not just the first.
-- Rationale: `render.go:60-77` joins prefix and body, and `stencil.Fill` strips only the leading banner of the joined result, so the second file's banner already reaches the LLM verbatim today.
-  This task turns that latent wart into a real defect: once `implementer-body.md` carries `<!-- lyx-stencil: sha256=… -->`, that stamp line is delivered into both the fork prompt and the recovery prompt as if it were instruction text.
-  Leaking an internal bookkeeping hash into a producer's prompt is not acceptable, and the pre-existing double-banner leak is fixed by the same change rather than left standing beside it.
+- Rationale: `render.go:60-77` joins prefix and body, and `stencil.Fill` strips only the leading banner of the joined result, so a banner on the second file would reach the LLM verbatim.
+  Today `implementer-body.md` has no banner, so nothing leaks;
+  this task creates the hazard, because once that file carries `<!-- lyx-stencil: sha256=… -->` the stamp line is delivered into both the fork prompt and the recovery prompt as if it were instruction text.
+  Leaking an internal bookkeeping hash into a producer's prompt is not acceptable, and the general stripper also hardens any future banner-carrying asset.
 - Rejected: stripping only the body's banner at compose time (works, but leaves the general case wrong for any future third asset).
   Also rejected: keeping the stamp out of files that are composed — it would exempt exactly three of the fifteen from edit detection.
 
@@ -394,11 +405,12 @@ The proposal's "16 files" prose and its 15-row table are consistent.
 `composeForkTemplate` joins `fork-prefix` ahead of `implementer-body`;
 `composeRecoveryTemplate` joins `recovery-prefix` ahead of the same body.
 Three files therefore participate in two composed prompts, and both must read through `stencilstore` for an edit to any of the three to take effect.
-The composed result contains two banner comments, only the first of which `stripLeadingComment` removes.
-That is existing behaviour, but this task makes it actively harmful and therefore must fix it — see the `compose-strips-every-banner` decision.
+Today the composed result carries only the prefix's banner, which `Fill` strips, so nothing leaks.
+Once seeding stamps `implementer-body.md` it would carry two, and only the first is stripped — this task creates that hazard and must fix it, see the `compose-strips-every-banner` decision.
 
 **The banner comment already exists and is already stripped.** `internal/stencil/stencil.go:27` calls `stripLeadingComment` before parsing, and `stencil.go:67` implements it: a leading `<!--` … `-->` block is dropped, otherwise the text is returned unchanged.
-All 15 files open with such a banner today.
+14 of the 15 open with such a banner today;
+`internal/websterengine/implementer-body.md` does not — it opens on its `# Webster implementer job` heading — so seeding creates the banner there.
 This is what makes the hash stamp free — it never reaches the LLM.
 
 **Config precedent to model against, not to merge with.** `configreg.Modules()` pairs each module with a `Template func() string` from an embedded `template.yaml`;
@@ -495,7 +507,7 @@ Every state in the edit-detection table is a unit test against a `t.TempDir()`, 
 - file with a missing or malformed stamp is treated as edited and left alone
 - a file edited and then reverted to the exact default body is treated as untouched
 - hashing ignores changes confined to the leading banner comment, and reacts to any change below it
-- a stencil whose body no longer fills (a deleted top-level marker) fails validation with the offending name
+- a stencil whose body adds a top-level marker unknown to its shipped default fails validation with the offending name, while one that deletes a default marker is reported as a warning
 
 **Reading and rendering.** One test per producer family asserting that an edited on-disk file — not the embedded default — is what reaches `stencil.Fill`.
 Webster needs its own case covering the composed prompts: editing `webster-prefix-fork.md` or `webster-body-implementer.md` must change `ForkTemplate()` output, and editing the body must change both composed prompts.
@@ -524,9 +536,11 @@ Both directions need a test, because a drift check that never fires is a guard t
 Assert too that the warning is emitted via `logger.Warn` and never affects an exit code.
 
 **Seeding concurrency.** Assert that a run whose defaults are unchanged writes nothing and produces no board commit.
-Assert the seeding commit carries a positive pathspec covering only the stencils subtree, so an unrelated dirty file elsewhere in the board is not swept into it — this is the regression guard against reverting to a stage-all commit.
+Assert the seeding commit carries a positive pathspec covering only the stencils subtree — including the seeded `.gitattributes` — so an unrelated dirty file elsewhere in the board is not swept into it.
+This is the regression guard against reverting to a stage-all commit.
 
-**Dev/prod seeding.** Assert that a `-dev`-stamped build leaves an untouched file whose content differs from its own embedded default byte-identical on disk, and that a production build overwrites the same file.
+**Dev/prod seeding.** The assertions drive `Reconcile`'s explicit mode argument, not a stamped binary, so they stay hermetic.
+Assert that dev mode leaves an untouched file whose content differs from the embedded default byte-identical on disk, and that production mode overwrites the same file.
 Without both directions the thrash reappears silently.
 Assert separately that an explicit `lyx stencil sync` from a `-dev`-stamped build *does* perform the refresh — the decided exception, and the one a naive reading of the skip rule would implement backwards.
 
@@ -583,10 +597,11 @@ This is the one that silently disables the entire mechanism on a Windows checkou
 - **Q:** Isn't all of this a lot of overhead to fire on every run? **A:** Measured on the real files: 69 KB across 15 stencils, and one full read + LF-normalise + hash pass costs about 0.15 ms, against an LLM call taking seconds. The only thing that cost real time was the pre-commit hook's process spawn per commit, which is why it was dropped in favour of a run-time warning.
 - **Q:** Does an explicit `lyx stencil sync` refresh from a `-dev` build? **A:** Yes. The dev skip exists to stop incidental thrash, not to refuse an explicit request — and the dev binary is the one used in the test-live loop.
 - **Q:** How does the binary know it is a dev build, and what is an unstamped binary? **A:** `-ldflags -X` set by `tools/deploy -dev`. Unstamped — plain `go build`/`go install`, or a test binary — counts as production, since converging on shipped defaults is the safe default and dev must opt in.
-- **Q:** Once `implementer-body.md` carries a stamp, does it leak into webster's composed prompts? **A:** Yes — `stripLeadingComment` drops only the first banner of a joined pair, so the stamp would be delivered as instruction text. `internal/stencil` exports its stripper and `joinTemplateAssets` strips every asset, which also fixes the pre-existing second-banner leak.
+- **Q:** Once `implementer-body.md` carries a stamp, does it leak into webster's composed prompts? **A:** Yes — `stripLeadingComment` drops only the first banner of a joined pair, so the stamp would be delivered as instruction text. `internal/stencil` exports its stripper and `joinTemplateAssets` strips every asset, which is what makes the stamp safe to add. Note that file has no banner today, so this task creates the hazard rather than inheriting it.
 - **Q:** What happens to the hashes on a machine with `core.autocrlf=true`? **A:** Without a rule, every stencil is classified human-edited forever and never refreshed. Hashing is over an LF-normalised body, the board's stencils tree is seeded with its own `.gitattributes`, and loomyard's `.gitattributes` gains the 15 new paths and loses the 8 stale ones.
 - **Q:** Who owns the name → default registry, given typed vars rather than an `embed.FS`? **A:** The `stencils` package itself, beside the vars, consumed only by `stencilstore`. A test asserts registry and `.md` tree match in both directions, so a hand-maintained map cannot silently omit a file.
 - **Q:** Sandbox coverage — scenario or exclusion? **A:** A `**Covers:** stencil` scenario in `SANDBOX-CORE-SUITE.md`. None of the three existing exclusion reasons applies to a read-only `list`/`validate`.
+- **Q:** Does a deleted top-level marker break `Fill`? **A:** No, the opposite — an *added* or renamed marker breaks it; a deleted one fills cleanly and silently drops that content. An earlier draft had this backwards. `validate` compares the body's marker set against the shipped default's: extra marker is an error, missing marker a warning.
 - **Q:** Where does the seed/refresh pass actually run? **A:** Once per process at `cmd/lyx`'s root pre-run, never lazily inside `Read`. A lazy pass would put `fabricengine` on treadle's stack via `runJudgeCall`, defeating the very allowlist amendment it is justified against. `stencilstore` writes files and returns the list; the composition root hands that to the `fabricengine` commit verb.
 - **Q:** Does the seeding verb push? **A:** No — it commits only and rides board's next push. Pushing per run would fire on nearly every invocation.
 - **Q:** `lyx stencil`'s kernel is `stencilstore`, not `stencilengine`. Doesn't that break the CLI/Cobra naming rule? **A:** Yes, and it is recorded as a named deviation in the same CONSTRAINTS bullet. `stencilengine` would be a third package one character from `internal/stencil` and top-level `stencils`.
