@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -141,7 +142,7 @@ Example:
 
 			reedEngine := reedengine.New(reedCfg, layout)
 			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
-			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg)
+			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(layout.HubPath))
 			c.runner = runner
 			c.perchCfg = perchCfg
 			c.modelReg = modelReg

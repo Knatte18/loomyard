@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -300,7 +301,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	}
 	reedEngine := reedengine.New(reedCfg, h.Location)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
-	engine := burlerengine.New(runner, h.Location, burlerengine.Config{})
+	engine := burlerengine.New(runner, h.Location, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath))
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
 	if err != nil {

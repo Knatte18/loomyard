@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -101,7 +102,7 @@ Example:
 
 			reedEngine := reedengine.New(reedCfg, layout)
 			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
-			c.engine = burlerengine.New(runner, layout, burlerCfg)
+			c.engine = burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(layout.HubPath))
 			return nil
 		},
 	}
