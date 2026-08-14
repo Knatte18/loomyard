@@ -68,7 +68,7 @@ Get this wrong here and the failure mode is the same one hubgeometry was built t
 The as-built anchoring table — recorded in the plan's Shared Decisions — is anchor-aware, not a single blanket base: the durable, weft-synced, git-tracked `_lyx` group (`PlanDir`, `DiscussionDir`, `LoomStatusFile`, `WebsterDir`, `PatternDir`,
 and the rest) joins onto `Location.AnchorPath()`, not `cwd` directly;
 the ephemeral, machine-bound, never-git-tracked `.lyx` group (`logger.LogsDir`, renamed from `WorktreeLogsDir`; `ScoutDaemonStateFile`, `ScoutDaemonLock`) also joins onto `Location.AnchorPath()` as of slice 9, no longer `Location.WorktreePath()` — the two groups now share one anchoring rule, so a subpath-anchored repo has exactly one `.lyx` root instead of two;
-and `HubLogsDir` alone joins onto `Location.HubPath`, deliberately hub-anchored so one reed server per hub resolves to one deterministic place.
+and `HubLogsDir` alone joins onto `fabricengine.HubScratchDir(Location.HubPath)`, deliberately hub-anchored so one reed server per hub resolves to one deterministic place.
 A blanket "join onto `cwd`" would have silently relocated the last three.
 The two docs must not be allowed to disagree — re-read both after editing either.
 
@@ -146,6 +146,7 @@ What actually landed:
   `Unwire` now reverses wiring only (junctions + warp exclude entries); every weft-side directory, `_lyx`/`.lyx`/`_pattern` alike, survives untouched. `UnwireVerbResult.WeftContent`'s value set is now `"preserved"` | `"not_present"`, never `"cleared"`.
 - Removed `crossModuleMachineLocalExcludes` / the `_lyx`-transient portion of `seedWeftArtifactExcludes` once the transients moved out; retired the corresponding CONSTRAINTS "Cross-module exclusions" mechanism, replaced by the Durable-vs-Ephemeral State Invariant and the Fabric Git Invariant's junction-exclusion clause.
 - `<hub>/.lyx` shipped as a new hub-level geometry element alongside `<hub>/_board`: a real directory (the hub is not a git repo), created by `CloneHub`, reserved so no worktree slug can claim the name.
+  It was subsequently moved inside `_board`, to `<hub>/_board/.lyx`, and is no longer hub geometry of its own — see the hub-scratch-move task.
 
 Depended on slice 7.
 **Sequenced before slice 10** (not parallel) — both touch `internal/fabriccli/clone.go`'s `runCloneWithReset` in the same ~45-line span;
