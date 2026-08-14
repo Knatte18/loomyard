@@ -55,7 +55,14 @@ func run(dev bool, destArg string) error {
 	tag := gitTag(root)
 	fmt.Printf("Building lyx @ %s -> %s\n", tag, dest)
 
-	build := exec.Command("go", "build", "-o", dest, "./cmd/lyx")
+	args := []string{"build", "-o", dest}
+	if dev {
+		// Stamp buildChannel=dev so a dev-installed binary seeds but does not refresh an
+		// untouched stencil (see the dev-builds-seed-but-do-not-refresh Shared Decision).
+		args = append(args, "-ldflags", "-X main.buildChannel=dev")
+	}
+	args = append(args, "./cmd/lyx")
+	build := exec.Command("go", args...)
 	build.Dir = root
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
