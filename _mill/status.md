@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-08-14T07:40:14Z'
 discussed  '2026-08-14T10:46:07Z'
 planning  '2026-08-14T11:04:14Z'
+plan-review-r1  '2026-08-14T11:18:04Z'
+plan-fix-r1  '2026-08-14T11:18:04Z'
 ```

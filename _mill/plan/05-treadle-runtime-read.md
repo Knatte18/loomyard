@@ -75,8 +75,10 @@ This batch also amends the machine-enforced Treadle Runner-Seam import allowlist
 - **Edits:**
   - `internal/treadleengine/engine.go`
   - `internal/treadleengine/judge.go`
+  - `internal/treadleengine/judge_test.go`
   - `internal/treadleengine/targeting.go`
   - `internal/treadleengine/run.go`
+  - `internal/treadleengine/engine_test.go`
 - **Creates:** none
 - **Deletes:**
   - `internal/treadleengine/template.go`
@@ -110,6 +112,12 @@ type judgeInputs struct {
   Do not change `runJudgeCall`'s signature — it takes the already-selected `template []byte` and reads nothing.
 
   In `run.go`, inside `func (e *Engine) Run(p Profile, runDir string) (result Result, err error)`, set `StencilsDir: e.stencilsDir` in both `judgeInputs` composite literals (the milestone literal at `run.go:322` and the circling literal at `run.go:357`), and pass `e.stencilsDir` as the new argument at every `runTriage` and `runTargeting` call site.
+
+  Both new parameters break existing untagged test files in this package, which must be threaded through in this same card or the batch's own `verify:` fails to compile:
+  - `internal/treadleengine/judge_test.go` — 11 `runTriage(...)` call sites and 11 `judgeInputs{...}` composite literals. Add the new `stencilsDir` argument to each call and the new `StencilsDir` field to each literal, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
+  - `internal/treadleengine/engine_test.go` — 3 `runTargeting(...)` call sites (e.g. line 1347) needing the new `stencilsDir` argument.
+
+  `treadleengine.New`'s own arity is unchanged — `StencilsDir` arrives as an `Options` struct field — so the existing `New(...)` calls in these test files need no edit.
 
   `internal/treadleengine` must import `internal/stencilstore` and nothing else new.
   Do not import `internal/fabricengine`, `internal/lyxcwd`, or the top-level `stencils` package from this package — that is precisely the import direction the seeding pass running at the composition root exists to prevent.
@@ -146,6 +154,7 @@ type judgeInputs struct {
   - `stencils/stencils.go`
 - **Edits:**
   - `internal/perchengine/engine.go`
+  - `internal/perchengine/run_test.go`
   - `internal/perchcli/run.go`
   - `internal/treadleengine/template_test.go`
 - **Creates:** none
@@ -163,6 +172,10 @@ func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
   In `internal/perchcli/run.go:301`, change `engine.Run(profile, runDir, scratchDir)` to pass `fabricengine.StencilsDir(layout.HubPath)` as the new fourth argument, using the `*lyxcwd.Location` that `perchcli` already resolves.
   Add the `internal/fabricengine` import to `run.go` if it is not already present.
   This is the only production path that reaches `treadleengine.New`, so it is the only wiring needed.
+
+  `perchengine.Engine.Run`'s new parameter breaks `internal/perchengine/run_test.go`, which is untagged and holds 39 `e.Run(p, runDir, runDir)`-shaped call sites (e.g. line 276) — every one needs the new trailing argument, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
+  Without this the batch's own `verify:` fails to compile at `./internal/perchengine/...`.
+  No other `*_test.go` file in `internal/perchengine` calls `Engine.Run`.
 
   In `internal/treadleengine/template_test.go` (still `package treadleengine`), import `github.com/Knatte18/loomyard/stencils` and replace each read of the four deleted package vars with its exported counterpart: `judgeCirclingTemplate` becomes `stencils.TreadleTemplateJudgeCircling`, `judgeMilestoneTemplate` becomes `stencils.TreadleTemplateJudgeMilestone`, `triageTemplate` becomes `stencils.TreadleTemplateTriage`, `targetingTemplate` becomes `stencils.TreadleTemplateTargeting`.
   Keep the subject and text of `TestJudgeCirclingTemplate_StatesLoadBearingRules`, `TestJudgeMilestoneTemplate_StatesLoadBearingRules`, `TestTriageTemplate_StatesLoadBearingRules`, `TestTargetingTemplate_StatesLoadBearingRules`, and the four `*_FillsWithAllMarkers` tests unchanged — they test the shipped default, which remains the right subject.

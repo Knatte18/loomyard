@@ -36,7 +36,7 @@ batches:
     name: burler-runtime-read
     file: 04-burler-runtime-read.md
     depends-on: [3]
-    verify: go build ./... && go test ./stencils/... ./internal/burlerengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/lyxcwd/...
+    verify: go build ./... && go test ./stencils/... ./internal/burlerengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/lyxcwd/... && go vet -tags smoke ./internal/burlerengine/...
   - number: 5
     name: treadle-runtime-read
     file: 05-treadle-runtime-read.md
@@ -61,7 +61,7 @@ batches:
     name: reed-rename-and-docs
     file: 09-reed-rename-and-docs.md
     depends-on: [8]
-    verify: go build ./... && go test ./internal/reedengine/... ./internal/lyxcwd/... ./cmd/lyx/...
+    verify: go build ./... && go test ./internal/reedengine/... ./internal/lyxcwd/... ./cmd/lyx/... && go vet -tags integration ./internal/websterengine/...
 ```
 
 ## Shared Decisions
@@ -173,7 +173,11 @@ _Cross-cutting decisions every batch inherits._
 - `internal/burlercli/cli.go`
 - `internal/burlerengine/doc.go`
 - `internal/burlerengine/engine.go`
+- `internal/burlerengine/engine_test.go`
 - `internal/burlerengine/prompt.go`
+- `internal/burlerengine/prompt_test.go`
+- `internal/burlerengine/smoke_cluster_test.go`
+- `internal/burlerengine/smoke_round_test.go`
 - `internal/burlerengine/template_test.go`
 - `internal/fabricengine/junctionnames.go`
 - `internal/fabricengine/stencilcommit.go`
@@ -193,6 +197,7 @@ _Cross-cutting decisions every batch inherits._
 - `internal/perchcli/cli.go`
 - `internal/perchcli/run.go`
 - `internal/perchengine/engine.go`
+- `internal/perchengine/run_test.go`
 - `internal/reedengine/console-header.md`
 - `internal/reedengine/headertemplate.go`
 - `internal/stencil/export_test.go`
@@ -210,11 +215,15 @@ _Cross-cutting decisions every batch inherits._
 - `internal/stencilstore/validate.go`
 - `internal/stencilstore/validate_test.go`
 - `internal/treadleengine/engine.go`
+- `internal/treadleengine/engine_test.go`
 - `internal/treadleengine/judge.go`
+- `internal/treadleengine/judge_test.go`
 - `internal/treadleengine/run.go`
 - `internal/treadleengine/seam_enforcement_test.go`
 - `internal/treadleengine/targeting.go`
 - `internal/treadleengine/template_test.go`
+- `internal/websterengine/integration.go`
+- `internal/websterengine/integration_test.go`
 - `internal/websterengine/render.go`
 - `internal/websterengine/runlevel.go`
 - `internal/websterengine/template_test.go`

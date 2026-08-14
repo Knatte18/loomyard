@@ -5,7 +5,7 @@ task: "Relocate producer prompt files into a stencils/ directory"
 batch: "reed-rename-and-docs"
 number: 9
 cards: 4
-verify: go build ./... && go test ./internal/reedengine/... ./internal/lyxcwd/... ./cmd/lyx/...
+verify: go build ./... && go test ./internal/reedengine/... ./internal/lyxcwd/... ./cmd/lyx/... && go vet -tags integration ./internal/websterengine/...
 depends-on: [8]
 ```
 
@@ -132,18 +132,27 @@ It is an operator action to take through `/mill-*` after this task merges.
   - `manifest/designs/scout-plan-symbol-fields.md`
   - `manifest/designs/shed-followups.md`
   - `CLAUDE.md`
+  - `internal/websterengine/integration.go`
+  - `internal/websterengine/integration_test.go`
+  - `internal/websterengine/runlevel.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Re-run the sweep rather than trusting a recorded list: `grep -rn` for each of the fifteen **old** filenames across `docs/`, `manifest/`, `CLAUDE.md`, `README.md`, and `internal/**/*.md`, and fix every hit that names a relocated file.
-  The sweep must cover all five roots, not `docs/` alone: none of these references is a markdown link, so `TestEnforcement_MarkdownLinks` catches none of them, and a grep is the only thing that finds them.
+  Re-run the sweep rather than trusting a recorded list: `grep -rn` for each of the fifteen **old** filenames across `docs/`, `manifest/`, `CLAUDE.md`, `README.md`, `internal/**/*.md`, **and `internal/**/*.go`**, and fix every hit that names a relocated file.
+  The sweep must cover all six roots, not `docs/` alone: none of these references is a markdown link, so `TestEnforcement_MarkdownLinks` catches none of them, and a grep is the only thing that finds them.
+  The `.go` root is included because several Go doc comments name a relocated prompt in prose, outside any `//go:embed` directive, and a `.md`-only sweep leaves every one of them stale.
 
   Known hits at planning time, to be confirmed and fixed:
   - `manifest/designs/loom.md:193` — names both `discussion-template.md` and `plan-template.md` in the producers table row.
   - `manifest/designs/scout-plan-symbol-fields.md` — seven mentions of `plan-template.md`, in a design whose whole subject is editing that file. Retarget each to `stencils/loom/loom-template-plan.md`. Do not otherwise rewrite that document's argument; it remains speculative and unscoped, and this is a path correction only.
   - `manifest/designs/shed-followups.md:180` — names `internal/loomengine, including plan-template.md`.
   - `CLAUDE.md:67` — names `master-template.md` inside the Merriam terminology section. Retarget to `stencils/webster/webster-template-master.md`. Do not rename any identifier: that section explicitly states it is shorthand for talking about the session, not an instruction to rename anything.
+  - `internal/websterengine/integration.go:8` — a doc comment reading "per master-template.md's own integration-fork bracket". Retarget the filename.
+  - `internal/websterengine/integration_test.go:9` — the same phrase in a test file's header comment. Retarget the filename.
+  - `internal/websterengine/runlevel.go:752` — the same phrase again, in a comment. Retarget the filename. This file is also edited by batch 6 card 27, which changes a call argument and does not touch this comment, so the two edits do not overlap.
+
+  Rewriting a Go doc comment here changes no behaviour and no identifier — retarget the filename inside the prose and leave the surrounding sentence's meaning intact.
 
   Where a sentence describes a relocated prompt as living inside its engine package, rewrite it to say the prompt ships as an embedded default in the top-level `stencils` package and is read at call time from the hub's stencils directory.
   Do not edit any file under `_mill/` — those are this task's own planning artifacts, not repo documentation.

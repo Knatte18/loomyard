@@ -5,7 +5,7 @@ task: "Relocate producer prompt files into a stencils/ directory"
 batch: "burler-runtime-read"
 number: 4
 cards: 4
-verify: go build ./... && go test ./stencils/... ./internal/burlerengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/lyxcwd/...
+verify: go build ./... && go test ./stencils/... ./internal/burlerengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/lyxcwd/... && go vet -tags smoke ./internal/burlerengine/...
 depends-on: [3]
 ```
 
@@ -67,6 +67,10 @@ Batch-local decision: `burlerengine.New` gains a fourth `stencilsDir string` par
 - **Edits:**
   - `internal/burlerengine/engine.go`
   - `internal/burlerengine/prompt.go`
+  - `internal/burlerengine/prompt_test.go`
+  - `internal/burlerengine/engine_test.go`
+  - `internal/burlerengine/smoke_round_test.go`
+  - `internal/burlerengine/smoke_cluster_test.go`
   - `internal/burlercli/cli.go`
   - `internal/perchcli/cli.go`
 - **Creates:** none
@@ -98,7 +102,13 @@ func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
   - `internal/burlercli/cli.go:104` — `burlerengine.New(runner, layout, burlerCfg)` becomes `burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(layout.HubPath))`
   - `internal/perchcli/cli.go:144` — the same change to that file's `burlerengine.New(runner, layout, burlerCfg)` call
 
-  Add the `internal/fabricengine` import to whichever of those two files does not already carry it.
+  Add the `internal/fabricengine` import to **both** files — neither `internal/burlercli/cli.go` nor `internal/perchcli/cli.go` imports it today.
+
+  Both signature changes break existing untagged test files in this package, which must be threaded through in this same card or the batch's own `verify:` fails to compile:
+  - `internal/burlerengine/prompt_test.go` — 32 `composePrompt(...)` call sites, all positional, all needing the new leading `stencilsDir` argument. Give each a directory seeded from the `stencils` package vars, using the same helper shape card 19 establishes.
+  - `internal/burlerengine/engine_test.go` — 7 `New(shuttle, &lyxcwd.Location{...}, cfg)` call sites (e.g. lines 87, 172, 189) needing the new trailing `stencilsDir` argument.
+  - `internal/burlerengine/smoke_round_test.go` and `internal/burlerengine/smoke_cluster_test.go` — both `//go:build smoke`, both calling the old three-argument `New`. They are gated out of this batch's `verify:` and out of `pipeline.done_gate`, so a break here is silent until someone runs the smoke suite — thread the new argument through them anyway rather than leaving a build break behind a tag.
+
   Do not import `internal/fabricengine` from `internal/burlerengine`, and do not import the top-level `stencils` package from `internal/burlerengine` production code — the engine reads by name and never needs the registry.
 - **Commit:** `refactor(burlerengine): read round prompts from the stencils directory at call time`
 

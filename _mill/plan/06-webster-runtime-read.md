@@ -109,7 +109,7 @@ func joinTemplateAssets(prefix, body []byte) []byte {
   - `RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *lyxcwd.Location)` does the same — no signature change. Keep its `stencil.FillOptional(..., []string{"pattern_directive"})` optional-marker list unchanged.
   - `RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot string)` has no `*lyxcwd.Location`, so it gains a trailing `stencilsDir string` parameter.
 
-  Update the file's header doc comment (`render.go:1-2,18-19`), which names all four assets by their old filenames, to name the new ones and to state that the assets ship as embedded defaults in the top-level `stencils` package and are read from the hub's stencils directory at call time.
+  Update the file's header doc comment (`render.go:1-2,18-19`) and the `RenderMasterPrompt` doc comment at `render.go:193`, all of which name assets by their old filenames, to name the new ones and to state that the assets ship as embedded defaults in the top-level `stencils` package and are read from the hub's stencils directory at call time.
 - **Commit:** `refactor(websterengine): read composed prompts at call time and strip every banner`
 
 ### Card 27: Update webster's callers for the new signatures

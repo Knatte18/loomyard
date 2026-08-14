@@ -44,7 +44,7 @@ The mutation record is logged rather than enveloped: a pre-run seed emits no ver
   There is no cycle risk: `internal/boardengine/sync.go:19` already imports `internal/fabricengine`.
   This mirrors the shape fabric's clone-time guard already uses for the anchor-marker names — alias, never re-declare.
 
-  In `internal/boardengine/sync.go`, replace the `writeLockFile = "board.lock"` line inside the existing `const` block with an alias `writeLockFile = fabricengine.BoardWriteLockFile`, keeping the identifier `writeLockFile` so its two existing use sites — `sync.go:63` in `commitDirty` and `board.go:112` in `boardCriticalSection` — are untouched.
+  In `internal/boardengine/sync.go`, replace the `writeLockFile = "board.lock"` line inside the existing `const` block with an alias `writeLockFile = fabricengine.BoardWriteLockFile`, keeping the identifier `writeLockFile` so its two existing use sites — `sync.go:63` in `commitDirty` and `board.go:109` in `boardCriticalSection` — are untouched.
   Leave `pushLockFile` exactly as it is; it is a separate lock with a separate name and is out of this task's scope.
 
 - **Commit:** `refactor(fabricengine): own the board.lock filename, boardengine aliases it`
@@ -72,7 +72,7 @@ The mutation record is logged rather than enveloped: a pre-run seed emits no ver
 
   Behaviour:
   - When `writtenRelPaths` is empty, return the zero result with `Committed: false` and no error, taking no lock and running no git at all. This is the common case on an ordinary run, and it is what keeps the seeding pass free: the verb must never fire a commit when nothing was written.
-  - Otherwise acquire the board write lock via `lock.AcquireWriteLock(BoardWriteLockPath(hub))`, wrapping a failure as `fmt.Errorf("fabricengine: acquire board write lock: %w", err)`, and release it with `defer func() { _ = l.Release() }()` — the same idiom already used at `commit.go:182` and `weftgit.go:256`.
+  - Otherwise acquire the board write lock via `lock.AcquireWriteLock(BoardWriteLockPath(hub))`, wrapping a failure as `fmt.Errorf("fabricengine: acquire board write lock: %w", err)`, and release it with `defer func() { _ = l.Release() }()` — the same idiom already used at `commit.go:186` and `weftgit.go:260`.
   - Build the pathspec by prefixing each entry of `writtenRelPaths` (which arrive relative to the stencils directory, e.g. `loom/loom-template-discussion.md` and `.gitattributes`) with `path.Join(lyxdirs.LyxDirName, "stencils")`, producing board-repo-relative slash-separated paths such as `_lyx/stencils/loom/loom-template-discussion.md`. Use `ScopedPathspec` for this join so the construction stays on the package's own existing helper.
   - Commit via `gitrepo.New(BoardDir(hub)).StageAndCommit(message, pathspec)`. It must be `StageAndCommit` with that explicit positive pathspec, never `StageAllAndCommit` and never `Bolt.Commit` — a stage-all would sweep an unrelated dirty file elsewhere in the board into the seeding commit.
   - Never push. Do not call `Push`, `PushCoalesced`, `pushWeftAt`, or `Bolt.Sync`; the commit rides board's next push through the existing coalescing path.
