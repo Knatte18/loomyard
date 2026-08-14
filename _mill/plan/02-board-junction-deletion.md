@@ -162,7 +162,8 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
   Rewrite the file header entirely — it currently describes the junction's creation, repair and removal, all of which are gone.
   Keep the `//go:build integration` constraint and `package fabricengine_test`;
   the surviving case needs `newFabricFixture`, which lives in an integration-tagged file.
-  Prune the import block to what the single surviving case uses, dropping `fslink`, `gitexec` and `lyxcwd` if nothing else references them.
+  Prune the import block to exactly what the single surviving case uses, checking each import against its actual usage rather than trusting any fixed list.
+  As of planning time the survivor uses only `path/filepath`, `slices`, `testing` and `fabricengine`, so `os`, `fslink`, `gitexec` and `lyxcwd` all go — the five deleted cases were the file's only `os` users (`os.RemoveAll`, `os.Lstat`, `os.Remove`), and a leftover unused import fails to compile.
   It adds no `TestMain` — the package shares the single one in `testmain_test.go`.
 - **Commit:** `test(fabricengine): re-home the _board pathspec-exclusion guard off the junction file`
 

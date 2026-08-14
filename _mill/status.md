@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: plan-fix-r4
 slug: hub-dotlyx-into-board
 branch: hub-dotlyx-into-board
 plan: _mill/plan
@@ -21,4 +21,6 @@ plan-fix-r1  '2026-08-14T17:10:05Z'
 plan-review-r2  '2026-08-14T17:21:14Z'
 plan-fix-r2  '2026-08-14T17:21:14Z'
 plan-fix-r3  '2026-08-14T17:29:07Z'
+plan-review-r4  '2026-08-14T17:36:41Z'
+plan-fix-r4  '2026-08-14T17:36:41Z'
 ```

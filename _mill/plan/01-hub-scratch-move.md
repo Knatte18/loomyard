@@ -188,6 +188,7 @@ That package is already the directory's dominant convention (71 external test fi
 
 - **Context:**
   - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/gitexclude.go`
   - `internal/fabricengine/junction_pattern_integration_test.go`
