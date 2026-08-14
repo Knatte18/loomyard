@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-stencilstore-foundation
+phase: approved-stencils-package-and-loom
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-08-14T11:40:21Z'
 planned  '2026-08-14T11:40:30Z'
 implementing  '2026-08-14T11:40:58Z'
 approved-stencilstore-foundation  '2026-08-14T11:49:49Z'
+approved-stencils-package-and-loom  '2026-08-14T11:56:36Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: ca1e65acc860f90163350b2f279c2899345ce02f
     verify_baseline_failures: ["FAIL\t./internal/stencilstore/... [setup failed]"]
   - name: stencils-package-and-loom
-    state: running
+    state: approved
     implementer_session: 1ff45c71-97e0-45f7-88fd-87d48304f8e9
     start_sha: 3102a8e8a90f0c56e0cae8e92501c444165e3678
+    commit_sha: 41e1ff0db67fa67866289ddf0b310980b20b9820
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: seeding-trigger
     state: pending
