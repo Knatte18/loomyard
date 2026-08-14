@@ -161,7 +161,10 @@ It is an operator action to take through `/mill-*` after this task merges.
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./internal/reedengine/... ./internal/lyxcwd/... ./cmd/lyx/...`
+`verify: go build ./... && go test ./internal/reedengine/... ./internal/lyxcwd/... ./cmd/lyx/... && go vet -tags integration ./internal/websterengine/...`
+
+The trailing `go vet -tags integration` clause exists because card 40 edits `internal/websterengine/integration_test.go`, which carries a `//go:build integration` constraint and is therefore invisible to the untagged `go test` clause before it.
+`go vet` rather than `go test -tags integration` deliberately: the edit is a comment rewrite, so the only thing that can break is compilation, and running webster's integration suite on every implementer and fixer round would cost minutes for no added signal.
 
 `internal/reedengine` covers the rename: its existing header tests, including `TestValidateHeader_UnknownTopLevelTokenErrors` and `TestUp_BadHeaderTemplateFailsBeforeAnyTmuxContact`, fail if the `//go:embed` directive and the moved file disagree.
 `internal/lyxcwd` runs both `TestEnforcement_MarkdownLinks` — the guard on any new link this batch's doc edits introduce into `stencils/` — and the Fabric Vocabulary walk over the renamed reed asset.

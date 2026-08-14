@@ -150,6 +150,10 @@ func joinTemplateAssets(prefix, body []byte) []byte {
   `template_test.go` is `package websterengine_test` and calls the five exported accessors at many sites.
   Add a package-local helper that returns a seeded stencils directory: create a `t.TempDir()`, write `webster/webster-template-master.md`, `webster/webster-template-integration.md`, `webster/webster-prefix-fork.md`, `webster/webster-prefix-recovery.md`, and `webster/webster-body-implementer.md` into it from the corresponding `stencils` package vars, and return the directory.
   Pass that directory to every `MasterTemplate`, `IntegrationTemplate`, `ImplementerBodyTemplate`, `ForkTemplate`, and `RecoveryTemplate` call, and handle each new `error` return with a `t.Fatalf` rather than ignoring it.
+  `RenderIntegrationPrompt` also gained a trailing `stencilsDir` parameter in card 26, and this file calls it at two sites — `template_test.go:662` inside `TestRenderIntegrationPrompt_InjectsVerifyText` and `template_test.go:677` inside `TestRenderIntegrationPrompt_EmptyVerifyErrors`, both spelled `websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree")`.
+  Thread the seeded directory into both, or the batch's own `verify: go test ./internal/websterengine/...` fails to compile.
+  The other three `Render*Prompt` wrappers keep their signatures, so their call sites in this file need no argument change.
+
   Keep every existing assertion's subject and text unchanged, including `TestTemplates_ForkAndRecoveryShareImplementerBody`, `TestMasterTemplate_QuotesDigestFieldsAndNoOthers`, and the rest.
   Update the file's header comment (`template_test.go:1-2`), which names the assets by their old filenames, and the comment at `template_test.go:89`.
 

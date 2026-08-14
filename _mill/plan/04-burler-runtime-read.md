@@ -105,8 +105,10 @@ func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
   Add the `internal/fabricengine` import to **both** files — neither `internal/burlercli/cli.go` nor `internal/perchcli/cli.go` imports it today.
 
   Both signature changes break existing untagged test files in this package, which must be threaded through in this same card or the batch's own `verify:` fails to compile:
-  - `internal/burlerengine/prompt_test.go` — 32 `composePrompt(...)` call sites, all positional, all needing the new leading `stencilsDir` argument. Give each a directory seeded from the `stencils` package vars, using the same helper shape card 19 establishes.
-  - `internal/burlerengine/engine_test.go` — 7 `New(shuttle, &lyxcwd.Location{...}, cfg)` call sites (e.g. lines 87, 172, 189) needing the new trailing `stencilsDir` argument.
+  - `internal/burlerengine/prompt_test.go` — every `composePrompt(...)` call site, all positional, all needing the new leading `stencilsDir` argument. Give each a directory seeded from the `stencils` package vars, using the same helper shape card 19 establishes.
+  - `internal/burlerengine/engine_test.go` — every `New(shuttle, &lyxcwd.Location{...}, cfg)` call site (e.g. lines 87, 172, 189) needing the new trailing `stencilsDir` argument.
+
+  Do not work from a call-site count: `go build` and the batch's own `verify:` enumerate every real site, and a stale number in this plan would read as a completeness claim it cannot make.
   - `internal/burlerengine/smoke_round_test.go` and `internal/burlerengine/smoke_cluster_test.go` — both `//go:build smoke`, both calling the old three-argument `New`. They are gated out of this batch's `verify:` and out of `pipeline.done_gate`, so a break here is silent until someone runs the smoke suite — thread the new argument through them anyway rather than leaving a build break behind a tag.
 
   Do not import `internal/fabricengine` from `internal/burlerengine`, and do not import the top-level `stencils` package from `internal/burlerengine` production code — the engine reads by name and never needs the registry.
@@ -168,7 +170,10 @@ func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
 
 ## Batch Tests
 
-`verify: go build ./... && go test ./stencils/... ./internal/burlerengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/lyxcwd/...`
+`verify: go build ./... && go test ./stencils/... ./internal/burlerengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/lyxcwd/... && go vet -tags smoke ./internal/burlerengine/...`
+
+The trailing `go vet -tags smoke` clause exists because card 18 threads the new `New` argument through `smoke_round_test.go` and `smoke_cluster_test.go`, both `//go:build smoke` and therefore invisible to the untagged `go test` clause before it — and to `pipeline.done_gate`, which runs untagged and integration only.
+`go vet` rather than `go test -tags smoke` deliberately: those files need to compile, and the smoke suite spawns real substrate, which no per-round gate should do.
 
 `./stencils/...` runs the registry-completeness test, which is what fails if a `.md` lands without a registry row or vice versa.
 `internal/burlerengine` runs the repointed Review Round Invariant tests plus the new runtime-read assertion.

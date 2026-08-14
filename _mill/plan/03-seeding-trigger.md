@@ -105,16 +105,26 @@ The mutation record is logged rather than enveloped: a pre-run seed emits no ver
 
   In `newRoot()`'s existing `PersistentPreRunE`, after the `logger.SetVerbosity(verbosity)` and trace-arming block, add a single call `seedStencils(cmd.Context())`, returning `nil` regardless of its outcome — seeding must never block a command from running.
 
-  `cmd/lyx/stencilseed.go` declares `func seedStencils(ctx context.Context)` in `package main`:
+  `cmd/lyx/stencilseed.go` declares two functions in `package main`, split so the geometry resolution and the work are separately reachable.
+
+  `func seedStencils(ctx context.Context)` is the thin pre-run wrapper:
+  - **Return immediately when `testing.Testing()` is true**, before resolving anything. This mirrors the `if !testing.Testing()` guard on the trace-arming block it sits beside, and it is required rather than tidy: `lyxcwd.Resolve` spawns `git rev-parse --show-toplevel` (`internal/lyxcwd/lyxcwd.go:149`) before any gate check, and cobra runs the root `PersistentPreRunE` for every Runnable command — every parent group is Runnable because it carries `RunE: clihelp.GroupRunE`. Without the guard, dozens of existing untagged `cmd/lyx` tests that drive a Runnable command (`exitcode_test.go`'s `{"lyx board (no subcommand)", []string{"board"}}` case among them) would newly spawn git as a side effect, breaking the Test Tier Purity Invariant for the whole package.
   - Resolve cwd via `lyxcwd.CwdFrom(ctx)` and the location via `lyxcwd.Resolve(cwd)`. On **either** error, return immediately without logging an error: the root pre-run resolves no hub for commands that legitimately have none — `lyx fabric clone` and friends — so the pass is skipped there rather than failing. That is not in tension with the missing-board hard error, which belongs to the producer read path where a stencil is genuinely required.
-  - Compute `baseDir := fabricengine.StencilsDir(l.HubPath)`.
-  - Compute `sourceDir` as `filepath.Join(l.WorktreePath(), "stencils")` when that directory exists on disk, and the empty string otherwise. The empty string means "no source tree here", which is what makes the port-back drift warning silent in a consumer repo instead of firing on every run forever.
+  - Call `seedStencilsAt(l.HubPath, l.WorktreePath())`.
+
+  Accepted cost, stated rather than left implicit: outside tests, a real `lyx` invocation now pays one `git rev-parse --show-toplevel` even for a command that needs no geometry. Most commands already pay it inside their own module's `PersistentPreRunE`, so the marginal cost falls only on the few that do not, and it buys the once-per-process seeding the whole mechanism depends on.
+
+  `func seedStencilsAt(hub, worktree string)` does the work and takes no context, so a test can drive it directly against a real hub without going through the pre-run's testing guard:
+  - Compute `baseDir := fabricengine.StencilsDir(hub)`.
+  - Compute `sourceDir` as `filepath.Join(worktree, "stencils")` when that directory exists on disk, and the empty string otherwise. The empty string means "no source tree here", which is what makes the port-back drift warning silent in a consumer repo instead of firing on every run forever.
   - Compute the mode: `stencilstore.ModeDev` when `buildChannel == "dev"`, `stencilstore.ModeProduction` otherwise.
   - Call `stencilstore.Reconcile(baseDir, stencils.Registry(), mode, sourceDir)`. On error, emit one `logger.Warn` naming the failure and return.
   - When the returned slice is empty, return without calling the commit verb at all.
-  - Otherwise call `fabricengine.CommitSeededStencils(l.HubPath, written, "lyx: seed stencils", fabricengine.NewMutations(filepath.Dir(l.HubPath)))` and log the outcome via `logger.Info` on success, `logger.Warn` on error. Log the mutation record — do not surface it in any command's output envelope, and do not add any key to any envelope. A pre-run seed emits no verb-outcome envelope, and widening every command's key set was already rejected.
+  - Otherwise call `fabricengine.CommitSeededStencils(hub, written, "lyx: seed stencils", fabricengine.NewMutations(filepath.Dir(hub)))` and log the outcome via `logger.Info` on success, `logger.Warn` on error. Log the mutation record — do not surface it in any command's output envelope, and do not add any key to any envelope. A pre-run seed emits no verb-outcome envelope, and widening every command's key set was already rejected.
 
-  Do not make `seedStencils` return an error, and do not call it from anywhere other than the root pre-run — a lazy pass inside `stencilstore.Read` would drag `fabricengine` onto treadle's stack through `runTriage`/`runTargeting` and their siblings, defeating the allowlist amendment batch 5 makes.
+  Neither function references `internal/output` or any envelope key, which is what makes the no-envelope-widening rule structurally true rather than merely asserted.
+
+  Do not make either function return an error, and do not call `seedStencils` from anywhere other than the root pre-run — a lazy pass inside `stencilstore.Read` would drag `fabricengine` onto treadle's stack through `runTriage`/`runTargeting` and their siblings, defeating the allowlist amendment batch 5 makes.
 - **Commit:** `feat(cmd/lyx): seed and commit stencils once per process at root pre-run`
 
 ### Card 15: Stamp the dev build channel in `tools/deploy`
@@ -168,8 +178,10 @@ The mutation record is logged rather than enveloped: a pre-run seed emits no ver
   - the returned record is empty on the no-op run and carries `file_written` plus `commit_created` entries on the run that actually seeded
   - the verb pushes nothing: assert the board repo still reports unpushed commits after it returns
 
-  `stencilenvelope_integration_test.go` asserts that a non-`stencil` command's envelope key set is unchanged by a run that seeded: drive a read-only command through the root against a hub whose stencils directory is absent, so the pre-run seeds all of them, and assert the emitted JSON object carries neither a `mutations` nor a `partial` key.
-  This is the guard against the pre-run path quietly widening every command's envelope.
+  `stencilenvelope_integration_test.go` covers the pre-run path in the two halves the `testing.Testing()` guard splits it into, because that guard makes `seedStencils` a no-op under `go test` and an in-process assertion on "a command that seeded" therefore impossible:
+  - Call `seedStencilsAt(hub, worktree)` directly against a `hubforge` hub whose stencils directory is absent, and assert the stencils were written and committed. This is the seeding half, reached without the guard.
+  - Drive a read-only non-`stencil` command through the root against the same hub and assert the emitted JSON object carries neither a `mutations` nor a `partial` key — the guard against the pre-run path widening every command's envelope.
+  - Assert `seedStencils` itself is a no-op under test by calling it against a hub with an absent stencils directory and asserting nothing was written, which pins the `testing.Testing()` guard against removal. Without this assertion the guard is one deletion away from silently reintroducing a git spawn into every untagged `cmd/lyx` test.
 - **Commit:** `test(fabricengine): pin the scoped seeding commit and the untouched envelope keys`
 
 ## Batch Tests

@@ -114,8 +114,10 @@ type judgeInputs struct {
   In `run.go`, inside `func (e *Engine) Run(p Profile, runDir string) (result Result, err error)`, set `StencilsDir: e.stencilsDir` in both `judgeInputs` composite literals (the milestone literal at `run.go:322` and the circling literal at `run.go:357`), and pass `e.stencilsDir` as the new argument at every `runTriage` and `runTargeting` call site.
 
   Both new parameters break existing untagged test files in this package, which must be threaded through in this same card or the batch's own `verify:` fails to compile:
-  - `internal/treadleengine/judge_test.go` — 11 `runTriage(...)` call sites and 11 `judgeInputs{...}` composite literals. Add the new `stencilsDir` argument to each call and the new `StencilsDir` field to each literal, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
-  - `internal/treadleengine/engine_test.go` — 3 `runTargeting(...)` call sites (e.g. line 1347) needing the new `stencilsDir` argument.
+  - `internal/treadleengine/judge_test.go` — every `runTriage(...)` call site and every `judgeInputs{...}` composite literal. Add the new `stencilsDir` argument to each call and the new `StencilsDir` field to each literal, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
+  - `internal/treadleengine/engine_test.go` — every `runTargeting(...)` call site (e.g. line 1347) needing the new `stencilsDir` argument.
+
+  Do not work from a call-site count: `go build` and the batch's own `verify:` enumerate every real site.
 
   `treadleengine.New`'s own arity is unchanged — `StencilsDir` arrives as an `Options` struct field — so the existing `New(...)` calls in these test files need no edit.
 
@@ -173,7 +175,8 @@ func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
   Add the `internal/fabricengine` import to `run.go` if it is not already present.
   This is the only production path that reaches `treadleengine.New`, so it is the only wiring needed.
 
-  `perchengine.Engine.Run`'s new parameter breaks `internal/perchengine/run_test.go`, which is untagged and holds 39 `e.Run(p, runDir, runDir)`-shaped call sites (e.g. line 276) — every one needs the new trailing argument, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
+  `perchengine.Engine.Run`'s new parameter breaks `internal/perchengine/run_test.go`, which is untagged and holds many `e.Run(p, runDir, runDir)`-shaped call sites (e.g. line 276) — every one needs the new trailing argument, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
+  Do not work from a call-site count: `go build` and the batch's own `verify:` enumerate every real site.
   Without this the batch's own `verify:` fails to compile at `./internal/perchengine/...`.
   No other `*_test.go` file in `internal/perchengine` calls `Engine.Run`.
 
