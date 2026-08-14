@@ -35,11 +35,12 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Drift notification via `logger.Warn` when an operator-edited file falls behind a newer shipped default.
 - Amending the treadle import allowlist and its enforcement test to admit `internal/stencilstore`.
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
-- Renaming `internal/reedengine/header-template.md` to `console-header.md` and fixing that file's stale doc comment.
+- Renaming `internal/reedengine/header-template.md` to `console-header.md`, updating that asset's doc comment and its own leading banner for the new filename.
 - A new `fabricengine.StencilsDir(hub)` resolver beside `BoardDir`, and the signature changes that thread the resolved directory into each engine.
 - Exporting two things from `internal/stencil`: the leading-comment stripper (used by webster's `joinTemplateAssets`, which now strips every asset's banner) and a top-level-marker lister, today unexported inside `unfilledTopLevelMarkers`, which `validate` needs.
 - `.gitattributes` changes: 15 new `stencils/**` LF pins, removal of the 8 stale `internal/*` rows, and a seeded `.gitattributes` in the board's stencils tree.
 - A `**Covers:** stencil` scenario in `tools/sandbox/SANDBOX-CORE-SUITE.md`.
+- Updating every prose reference to the fifteen old filenames across `docs/`, `manifest/designs/`, `CLAUDE.md`, and the relocated prompts' own banners.
 - A new CONSTRAINTS.md invariant recording stencil ownership, the amended treadle allowlist bullet, and the CLI/Cobra seam counts going from eleven/ten to twelve/eleven.
 - Rewriting the wiki task's body so it describes the mechanism actually built rather than the junction layout that was disproved.
 
@@ -112,7 +113,9 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   With it, the stamp self-heals the moment body and shipped default agree.
 - **The hash is taken over an LF-normalised body**, and every comparison normalises both sides first.
   Without this the mechanism breaks completely on a machine with `core.autocrlf=true`: the board copy is a git checkout, so an LF file seeded by lyx comes back as CRLF, whose hash matches neither the stamp nor the shipped default — so *every* stencil is classified human-edited, forever, and never refreshed again.
-  The `diff <name>` base lookup would diverge on the same platform for the same reason, since `internal/gitrepo` performs no CRLF conversion (`internal/gitrepo/doc.go:218`).
+  The `diff <name>` base lookup would diverge on the same platform for a related but distinct reason: that base is read through go-git, which performs no CRLF conversion at all (`internal/gitrepo/doc.go:218`), while the working-tree copy it is compared against was written by CLI git, which does.
+  The two sides can therefore differ by line ending alone, so both must be LF-normalised before hashing or diffing.
+  Note that `doc.go`'s own conclusion from this is the opposite of "gitrepo is conversion-free": it is why `StageAndCommit`/`StageAllAndCommit` stay CLI-bound.
 - **The board's stencils tree is seeded with its own `.gitattributes`** pinning `*.md` to `text eol=lf`, since the generated board repo has none and inherits nothing from loomyard's.
   Its lifecycle is seed-if-absent only, mirroring `configsync`'s `SeedOnly`: written when missing, never rewritten when present, never stamped, never in the registry, invisible to `list`/`validate`/`diff`, and always inside the seeding commit's positive pathspec.
   Seed-if-absent is right because LF-normalised hashing already keeps the mechanism correct on its own, so a second edit-detection scheme for a non-markdown file buys nothing.
@@ -181,7 +184,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 - Decision: the port-back step in the loop above is never a manual copy.
   `lyx stencil promote <name>` copies the live board copy into the source `stencils/<family>/` tree of the current worktree, stripping the stamp on the way in (the source tree is the seed, so it carries no stamp).
-  Additionally, `lyx stencil diff` grows a `--exit-code` flag with git-diff semantics, and lyx itself emits a `logger.Warn` at run time when a board copy has drifted from the worktree's `stencils/` source — the same warning channel and the same pass over the files that the drift check already uses.
+  Additionally, `lyx stencil diff` grows a `--exit-code` flag with git-diff semantics, and lyx itself emits a `logger.Warn` at run time when a board copy has drifted from the worktree's `stencils/` source — the same `logger.Warn` channel as the upstream-drift notice, and the same `Reconcile` pass, which receives the worktree `stencils/` path as its `sourceDir` argument.
+  One pass, not two: the 0.15 ms figure this design is justified on is the cost of reading the files once.
 - Rationale: the `deployment-versus-production` loop otherwise ends in a hand-copy, and this codebase does not trust hand-steps — the Fabric Destruction Chokepoint Invariant, the Mutation Record Invariant, and this task's own allowlist and enforcement-walk amendments all exist because review discipline alone was judged insufficient.
   The failure is specifically nasty here.
   An edited board copy is permanently in the "never touched" state by design, its content lives only in `weft:main`'s commit stream rather than in the `stencils/` tree anyone reviewing this feature would read, and every later default refresh skips it forever.
@@ -209,7 +213,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 ### stencilstore-ownership
 
 - Decision: a new `internal/stencilstore` package owns the entire lifecycle — seed, hash, edit detection, read, and validate.
-  Its API takes an explicit base directory from the caller, e.g. `stencilstore.Read(baseDir, "loom-template-discussion")`.
+  Its API takes an explicit base directory from the caller, e.g. `stencilstore.Read(baseDir, "loom-template-discussion")`;
+  `Reconcile` additionally takes the registry, the build mode, and the optional worktree source directory — see `seeding-trigger` for the full signature.
 - Rationale: one package is the single truth about stencil lifecycle, and an explicit `baseDir` keeps every engine *told* its geometry rather than deriving it.
   That distinction is what makes the treadle allowlist amendment defensible rather than a hole in the invariant.
   It also means tests pass a `t.TempDir()` and need no hub, no git, and no fixture — which keeps the affected tests Tier 1 pure.
@@ -222,11 +227,14 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   | engine | how it is told |
   |---|---|
   | `loomengine`, `burlerengine` | already carry a `*lyxcwd.Location`; the calling `*cli` package passes `fabricengine.StencilsDir(loc.HubPath)` in |
-  | `treadleengine` | a new caller-supplied field alongside the existing `runDir` / `Profile.GateDir`, set by the round runner that adapts onto treadle's vocabulary — treadle stays told, never deriving, so the Runner-Seam Invariant's actual rule holds |
+  | `treadleengine` | a new caller-supplied field alongside the existing `runDir` / `Profile.GateDir`, set by the round runner that adapts onto treadle's vocabulary, and threaded from `run.go` into the four template-reading functions named below — treadle stays told, never deriving, so the Runner-Seam Invariant's actual rule holds |
   | `websterengine` | the no-arg accessors `MasterTemplate()`, `IntegrationTemplate()`, `ImplementerBodyTemplate()`, `ForkTemplate()`, `RecoveryTemplate()` take the directory and gain an `error` return, since a read can now fail |
 
 - Rationale: without this the design is unimplementable for treadle specifically.
-  `internal/treadleengine` is barred from `internal/lyxcwd` and is told only `runDir` and `Profile.GateDir`, neither of which is the hub, and its embedded vars are read deep inside `runJudgeCall` in `judge.go`/`targeting.go`.
+  `internal/treadleengine` is barred from `internal/lyxcwd` and is told only `runDir` and `Profile.GateDir`, neither of which is the hub.
+  Its embedded vars are read at four separate package-level functions, none of them methods on `Engine`: `runCircling` (`internal/treadleengine/judge.go:58`), `runMilestone` (`judge.go:73`), `runTriage` (`judge.go:147`), and `runTargeting` (`internal/treadleengine/targeting.go:31`).
+  `runJudgeCall` (`judge.go:93`) takes the already-selected template as a `template []byte` parameter and reads nothing itself — an earlier draft of this document named it as the read site, which the signatures refute.
+  All four take loose scalars rather than a struct, so a new field alone reaches none of them: the directory arrives as a new field **and** as a parameter threaded through those four functions from their callers in `run.go`.
   Webster's accessors are no-arg today and cannot stay that way once reading can fail.
 - Rejected: reading in the composition root and threading prompt bytes into every engine (changes signatures across all five engines and pushes an I/O dependency up into the CLI layer for every producer).
   Also rejected: `stencilstore` taking a hub path and joining `_board`/`_lyx` itself — it would restate geometry tokens two other packages own.
@@ -238,10 +246,13 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Decision: seeding and refresh run **once per process, at a named composition point** — `cmd/lyx`'s root pre-run — never lazily inside `stencilstore.Read`.
   `lyx stencil sync` forces the same pass on demand, but is never the only way it happens.
 - **The split that makes this work, and the import direction it fixes.**
-  `stencilstore` writes files and nothing else: a `Reconcile(baseDir, registry)` pass applies the edit-detection table and returns the list of paths it actually wrote.
+  `stencilstore` writes files and nothing else: a `Reconcile(baseDir string, registry Registry, mode Mode, sourceDir string) ([]string, error)` pass applies the edit-detection table and returns the list of paths it actually wrote.
+  `mode` is the caller-supplied dev/production build channel (see the `-dev` bullet below);
+  `sourceDir` is the worktree's `stencils/` tree used for the drift comparison, and the empty string means "no source tree here", which is what makes the drift warning silent in a consumer repo.
+  Both are arguments, never values `stencilstore` derives — that is what keeps its tests hermetic against a bare `t.TempDir()`.
   The composition root hands that list to the `board.lock`-taking `fabricengine` commit verb.
   `stencilstore` therefore never imports `fabricengine`, and `stencilstore.Read` stays a pure file read.
-  This is load-bearing, not tidiness: if the pass ran lazily inside `Read`, treadle's read — which happens deep inside `runJudgeCall` in `judge.go`/`targeting.go` — would drag `fabricengine` onto treadle's stack, which is exactly what the Runner-Seam allowlist amendment is being justified against.
+  This is load-bearing, not tidiness: if the pass ran lazily inside `Read`, treadle's reads — which happen four levels down in `runCircling`/`runMilestone`/`runTriage`/`runTargeting` — would drag `fabricengine` onto treadle's stack, which is exactly what the Runner-Seam allowlist amendment is being justified against.
   Running it at the root instead means treadle's dependency really is one file-reading package.
 - Root pre-run resolves no hub for commands that do not have one (`lyx fabric clone` and friends), so the pass is skipped there rather than failing.
   That is not in tension with `missing-board-is-a-hard-error`: the hard error belongs to the producer read path, where a stencil is genuinely required.
@@ -251,6 +262,9 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   With the plain rule, alternating dev and prod runs against the same hub would rewrite and re-commit the same untouched file in opposite directions on every single run — and that alternation *is* the prescribed test-live-then-deploy loop, so it would be the normal case rather than a corner.
   Rule: a `-dev` build performs row 1 of the edit-detection table (seed when absent) and skips row 2 (refresh when untouched), warning once when its embedded default differs from what is on disk.
   A production build performs the full table.
+  **Only row 2 is skipped.**
+  A `-dev` build performs rows 1, 3, 4 and 5 unchanged — in particular the reconciliation restamp (row 3), which is what returns a board copy to the untouched state after a `promote`, the one loop the dev binary exists for.
+  Row 3 cannot reintroduce the thrash it is grouped with: it writes only the stamp line inside the leading banner, which the hash excludes by construction, and it fires only when the body already equals *that* binary's shipped default, so two binaries can never restamp the same file in opposite directions on alternating runs.
   This requires the binary to know which it is.
   Mechanism: `tools/deploy -dev` sets `var buildChannel string` in `package main` (`cmd/lyx/main.go`) via `-ldflags "-X main.buildChannel=dev"`;
   `tools/deploy/main.go` passes no `-ldflags` today, so this is a new flag on that build path.
@@ -377,7 +391,11 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   Dropping "template" from its name stops the word denoting three unrelated things.
   `console-header.md` says what it is;
   bare `header.md` would collide visually with `header.go` beside it.
-- Additional fix in the same commit: `internal/reedengine/headertemplate.go`'s doc comment claims the asset is rendered "via internal/stencil", which is false — `header.go` uses `tokenvocab`.
+- Additional fix in the same commit: `internal/reedengine/headertemplate.go`'s doc comment (`headertemplate.go:2-4`) names the asset by its old filename and describes the `*-template.md` convention this rename retires for it.
+  Rewrite it to name `console-header.md` and to state the render path precisely — `tokenvocab.Render` (`internal/tokenvocab/render.go:12`), which is itself a thin wrapper over `stencil.Fill`.
+  The existing "rendered via internal/stencil" wording is **true** and must not be "corrected" to say otherwise;
+  an earlier draft of this document asserted it was false, which `internal/tokenvocab/render.go:12` refutes.
+  The asset's own leading banner (`header-template.md:1`) names the old filename too and moves with it.
 
 ### task-stays-whole
 
@@ -486,7 +504,10 @@ From `CONSTRAINTS.md`:
 - **Hermetic Git Test Environment Invariant** — every one of those git-spawning test packages needs a `TestMain` calling `gitkit.HermeticGitEnv()` before `m.Run()`, including the new `stencilcli` test files and any new `fabricengine` test file.
   `cmd/lyx/hermeticenv_test.go` fails otherwise.
 - **Documentation Lifecycle / task-completion rule** — `manifest/designs/` for any module doc touched, `docs/overview.md` for the module table and execution stack (a new `stencil` module changes both), and CONSTRAINTS.md for the new invariant, all in the same commit.
-  `docs/overview.md:288-289` names `discussion-template.md` and `plan-template.md` by their current paths and must be updated.
+  The stale-reference sweep is `grep -rn` over the fifteen **current** filenames across `docs/`, `manifest/`, `CLAUDE.md`, `README.md`, and `internal/**/*.md` — not `docs/` alone, since none of these references is a markdown link and `TestEnforcement_MarkdownLinks` therefore catches none of them.
+  Known hits at discussion time: `docs/overview.md:288-289`, `manifest/designs/loom.md:193`, `manifest/designs/scout-plan-symbol-fields.md` (seven mentions of `plan-template.md`, in a design whose whole subject is editing that file), `manifest/designs/shed-followups.md:180`, `CLAUDE.md:67` (`master-template.md`), and the prompts' own cross-referencing banners: `internal/burlerengine/instruction-{1,2,3}-*-template.md:3` naming `round-orchestrator-template.md`, and `internal/websterengine/fork-prefix.md:1,7` / `recovery-prefix.md:1` naming `implementer-body.md`.
+  The plan re-runs the grep rather than trusting this list.
+  The banners' cross-references are rewritten to the new names too — free, since the hash is taken over the stripped body, and a banner naming a file that no longer exists is read by a human constantly even though `stripLeadingComment` hides it from the producer.
 - **Markdown Link Integrity** — `manifest/` and `docs/` are the scan sources;
   any new link from those files into `stencils/` will be resolved, so paths must be correct.
 
@@ -541,10 +562,11 @@ This is the regression guard against reverting to a stage-all commit.
 
 **Dev/prod seeding.** The assertions drive `Reconcile`'s explicit mode argument, not a stamped binary, so they stay hermetic.
 Assert that dev mode leaves an untouched file whose content differs from the embedded default byte-identical on disk, and that production mode overwrites the same file.
+Assert that dev mode still performs the reconciliation row: a board copy whose body equals the dev binary's shipped default but whose stamp names an older one is restamped and reclassified untouched.
 Without both directions the thrash reappears silently.
 Assert separately that an explicit `lyx stencil sync` from a `-dev`-stamped build *does* perform the refresh — the decided exception, and the one a naive reading of the skip rule would implement backwards.
 
-**Trigger site.** Assert the reconcile pass runs once at the root pre-run rather than per read, and that a command with no resolvable hub skips it instead of failing.
+**Trigger site.** Assert the reconcile pass runs once at the root pre-run rather than per read, that a command with no resolvable hub skips it instead of failing, and that an empty `sourceDir` skips the drift comparison silently rather than erroring.
 The import direction is worth a guard of its own: `internal/stencilstore` must not import `internal/fabricengine`, since a lazy-read implementation would satisfy every behavioural test above while quietly putting `fabricengine` on treadle's stack.
 
 **Drift warning in a consumer repo.** Assert it is silent when no `stencils/` source tree exists, in contrast to `promote`/`diff --all`, which error.
@@ -591,18 +613,18 @@ This is the one that silently disables the entire mechanism on a Windows checkou
 - **Q:** How does the stencils directory reach `treadleengine`, which is barred from `lyxcwd` and told only `runDir`/`GateDir`? **A:** As a new caller-supplied field, resolved by a new `fabricengine.StencilsDir(hub)` and passed in by the round runner. Webster's five no-arg accessors take the directory and gain an error return.
 - **Q:** Does `Bolt.Sync` serialise the seeding write against board's own writes? **A:** No — `Bolt.Sync` takes `board.push.lock` while board writes take `board.lock`, and `Bolt.Commit` stages everything. Seeding gets its own `fabricengine` verb taking `board.lock` and committing a positive pathspec, and `board.lock`'s name becomes single-declarer in `fabricengine`.
 - **Q:** The board copy is hub-wide but `stencils/` is per worktree. Doesn't the guard then fire in worktrees that changed nothing? **A:** Yes, and that is accepted, because it only ever prints. `promote` is the real mechanism; the warning is a backstop.
-- **Q:** Dev and prod binaries carry different embedded defaults against the same hub. What stops them rewriting the same untouched file in opposite directions every run? **A:** A `-dev` build seeds absent files but never refreshes untouched ones, warning instead. Only a production build performs the refresh row.
+- **Q:** Dev and prod binaries carry different embedded defaults against the same hub. What stops them rewriting the same untouched file in opposite directions every run? **A:** A `-dev` build seeds absent files but never refreshes untouched ones, warning instead. Only the refresh row is skipped — the reconciliation restamp still runs, since it is what closes the promote round trip the dev binary exists for.
 - **Q:** Where does `diff <name>`'s base text actually come from, mechanically? **A:** A new go-git blob-read verb in `internal/gitrepo`, wrapped by a board-scoped `fabricengine` accessor. The key is the file's stamp: walk the path's history newest-first and take the first revision whose stripped-body hash matches. No match reports itself rather than rendering an empty diff.
 - **Q:** Doesn't setting `core.hooksPath` collide with fabric's own hook installer? **A:** It would — fabric resolves its hooks dir with `git rev-parse --git-path hooks`, which honours `core.hooksPath`. Moot now: there is no hook at all.
 - **Q:** Isn't all of this a lot of overhead to fire on every run? **A:** Measured on the real files: 69 KB across 15 stencils, and one full read + LF-normalise + hash pass costs about 0.15 ms, against an LLM call taking seconds. The only thing that cost real time was the pre-commit hook's process spawn per commit, which is why it was dropped in favour of a run-time warning.
 - **Q:** Does an explicit `lyx stencil sync` refresh from a `-dev` build? **A:** Yes. The dev skip exists to stop incidental thrash, not to refuse an explicit request — and the dev binary is the one used in the test-live loop.
 - **Q:** How does the binary know it is a dev build, and what is an unstamped binary? **A:** `-ldflags -X` set by `tools/deploy -dev`. Unstamped — plain `go build`/`go install`, or a test binary — counts as production, since converging on shipped defaults is the safe default and dev must opt in.
 - **Q:** Once `implementer-body.md` carries a stamp, does it leak into webster's composed prompts? **A:** Yes — `stripLeadingComment` drops only the first banner of a joined pair, so the stamp would be delivered as instruction text. `internal/stencil` exports its stripper and `joinTemplateAssets` strips every asset, which is what makes the stamp safe to add. Note that file has no banner today, so this task creates the hazard rather than inheriting it.
-- **Q:** What happens to the hashes on a machine with `core.autocrlf=true`? **A:** Without a rule, every stencil is classified human-edited forever and never refreshed. Hashing is over an LF-normalised body, the board's stencils tree is seeded with its own `.gitattributes`, and loomyard's `.gitattributes` gains the 15 new paths and loses the 8 stale ones.
+- **Q:** What happens to the hashes on a machine with `core.autocrlf=true`? **A:** Without a rule, every stencil is classified human-edited forever and never refreshed. Hashing is over an LF-normalised body, the board's stencils tree is seeded with its own `.gitattributes`, and loomyard's `.gitattributes` gains the 15 new paths and loses the 8 stale ones. The base-recovery path needs the same normalisation for the mirror-image reason: go-git returns stored blob bytes untouched while the on-disk copy went through CLI git's conversion.
 - **Q:** Who owns the name → default registry, given typed vars rather than an `embed.FS`? **A:** The `stencils` package itself, beside the vars, consumed only by `stencilstore`. A test asserts registry and `.md` tree match in both directions, so a hand-maintained map cannot silently omit a file.
 - **Q:** Sandbox coverage — scenario or exclusion? **A:** A `**Covers:** stencil` scenario in `SANDBOX-CORE-SUITE.md`. None of the three existing exclusion reasons applies to a read-only `list`/`validate`.
 - **Q:** Does a deleted top-level marker break `Fill`? **A:** No, the opposite — an *added* or renamed marker breaks it; a deleted one fills cleanly and silently drops that content. An earlier draft had this backwards. `validate` compares the body's marker set against the shipped default's: extra marker is an error, missing marker a warning.
-- **Q:** Where does the seed/refresh pass actually run? **A:** Once per process at `cmd/lyx`'s root pre-run, never lazily inside `Read`. A lazy pass would put `fabricengine` on treadle's stack via `runJudgeCall`, defeating the very allowlist amendment it is justified against. `stencilstore` writes files and returns the list; the composition root hands that to the `fabricengine` commit verb.
+- **Q:** Where does the seed/refresh pass actually run? **A:** Once per process at `cmd/lyx`'s root pre-run, never lazily inside `Read`. A lazy pass would put `fabricengine` on treadle's stack via `runTriage`/`runTargeting` and their siblings, defeating the very allowlist amendment it is justified against. `stencilstore` writes files and returns the list; the composition root hands that to the `fabricengine` commit verb.
 - **Q:** Does the seeding verb push? **A:** No — it commits only and rides board's next push. Pushing per run would fire on nearly every invocation.
 - **Q:** `lyx stencil`'s kernel is `stencilstore`, not `stencilengine`. Doesn't that break the CLI/Cobra naming rule? **A:** Yes, and it is recorded as a named deviation in the same CONSTRAINTS bullet. `stencilengine` would be a third package one character from `internal/stencil` and top-level `stencils`.
 - **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) plus a run-time `logger.Warn` on drift. CI cannot be the guard, since a CI runner has no access to the operator's hub.
