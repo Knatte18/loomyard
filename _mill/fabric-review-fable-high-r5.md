@@ -6,15 +6,93 @@ Primary target: the create-side containment gap in `createExclusiveDir`/`createG
 
 ## Executive summary
 
-(to be completed at end of Job 1)
+Round 5's primary target — a live, reproducible symlink-directed-write escape in the CREATE-side
+executor `createGitWorktree` (reached via `Topology.Add`) — is **CONFIRMED and reproduced** against
+the real substrate: a full git worktree gets written OUTSIDE the hub through a symlink toggled at the
+Add target during the wide check-then-act window.
+Root-caused, fixed with a staging-then-rooted-rename-then-repair approach that genuinely closes the
+window (git's worktree WRITE only ever targets an unpredictable fabric-chosen staging name inside the
+container; the only adversary-controllable path is touched solely by `os.Root.Rename`, which refuses
+symlink-following), and re-attacked.
+Two sibling gaps of the same class were found and fixed: `createExclusiveDir`'s intermediate-symlink
+escape (closed via `os.Root`), and the non-gated weft/board/reconcile worktree-add sites (closed via
+the same shared helper).
+One NIT: round 4's F2 WARN-log regression test does not sabotage-prove the log line.
+
+Merge-readiness: MERGEABLE after fixes (see fixer report). Windows path behavior remains a permanent
+never-executed gap (Linux host); N4's dirtiness-probe TOCTOU stays an accepted documented residual.
 
 ## Scope assessment (plan vs shipped)
 
-(to be completed)
+Scope is right and matches `doc.go`'s intent. The create-side of the destruction chokepoint's
+containment property was the one place the "resolved-and-bound-to-the-act" guarantee the delete side
+already has (`removeContainedPath`) had NOT been extended to. This round closes that asymmetry for the
+create side. No over-reach, no silently-dropped v1 requirement observed beyond this.
 
 ## Code findings (severity-ranked)
 
-(provisional findings appended as formed)
+### F1 — createGitWorktree symlink-directed-write escape via Topology.Add (MEDIUM, CONFIRMED)
+
+- `internal/fabricengine/destroy.go:900` (`createGitWorktree`), reached from
+  `internal/fabricengine/add.go:135`.
+- Scenario: an external adversary toggles a symlink on/off at the Add target path
+  (`WorktreePath(l, slug)` = `<hub>/<slug>`) during the check-then-act window between Add's
+  `os.Stat(target)` guard (add.go:83) and the eventual `git worktree add -b <branch> <target>`
+  (add.go:135) — a WIDE window spanning `git remote`, the weft-target stat, `weftBranchExists`, and
+  `rev-parse HEAD`. When the "on" state (symlink → an outside directory) coincides with the git call,
+  `git worktree add` follows the symlink and writes a full real worktree (`.git`, checked-out tree)
+  OUTSIDE the hub, registered at the resolved outside path; exit 0. Fabric's subsequent steps then
+  operate on the nominal in-hub path, fail, and roll back — but the rollback is keyed on the nominal
+  target, so the escaped worktree is orphaned outside the hub.
+- Blast radius: content written to an empty/creatable outside location; `git worktree add` refuses a
+  NON-empty outside target (`fatal: '<path>' already exists`), so nothing pre-existing outside is
+  overwritten and nothing INSIDE the hub is destroyed — a notch below M1's delete-side severity, but
+  the same escape CLASS (nominal path and actual write location diverge under adversarial timing).
+- CONFIRMED. Reproduced live: real hub built from local bare warp+weft remotes, `./deploy-dev`
+  binary, a bash toggler flipping a symlink at `<hub>/racewt` on/off in a tight loop while
+  `lyx fabric add racewt` ran repeatedly — escape hit on attempt 12 (`.git` written into the outside
+  dir). See "What was tested".
+- Fix: route the worktree creation through a staging path (a random name created via `os.Root` rooted
+  at the container), run `git worktree add` into that staging path, then `os.Root.Rename` staging →
+  target (refuses to follow a planted symlink at target), then `git worktree repair <target>` to fix
+  git's registration. git's WRITE never targets an adversary-nameable path, so the escape is closed
+  rather than narrowed.
+
+### F2 — createExclusiveDir intermediate-symlink escape (LOW, CONFIRMED)
+
+- `internal/fabricengine/destroy.go:884` (`createExclusiveDir`), call site `clone.go:233` (hub
+  create).
+- `os.Mkdir(path)` never follows a symlink at the FINAL component (EEXIST — safe), but DOES create
+  the leaf through a symlink planted at an INTERMEDIATE ancestor component, landing the new directory
+  outside the intended container. Verified directly: `os.Mkdir` through an intermediate symlink → dir
+  created in the outside dir; `os.Root.Mkdir` rooted at the parent → refused ("path escapes from
+  parent").
+- Exposure is lower than F1 (hubPath's parent is the operator cwd, far less toggleable mid-call than
+  a slug sibling path), but it is the same class and the fix is clean.
+- CONFIRMED (unit-level filesystem experiment). Fix: create the leaf via `os.Root` rooted at
+  `filepath.Dir(path)`.
+
+### F3 — non-gated weft/board/reconcile worktree-add sites share F1's escape class (LOW, CONFIRMED)
+
+- `internal/fabricengine/weftwiring.go:122` (`createWeftWorktree`), `add.go:158` (weft adopt),
+  `reconcile.go:513` (`adoptWeftWorktree`), `boardweft.go:41,50` (`ensureBoardWorktree`).
+- Each runs `git worktree add <...> <target> [...]` at a fabric-derived target with a preceding
+  check-then-act window, so each has the same symlink-follow-write exposure as F1 (weft targets are
+  hub siblings; `_board` is a hub child). These sites deliberately do NOT route through the gate's
+  `createGitWorktree` (creation, not destruction), but the containment property is identical.
+- CONFIRMED that the staging+rename+repair helper handles all their arg forms (`-b <b> <t> <start>`,
+  adopt `<t> <branch>`, `--orphan -b <b> <t>`) — tested directly against real git.
+- Fix: route all of them through the same shared helper F1 introduces.
+
+### F4 — round-4 F2 WARN-log regression test does not sabotage-prove the log line (NIT, CONFIRMED)
+
+- `internal/fabricengine/add_rollback_adopt_test.go`
+  (`TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix`) asserts the bare-slug warp branch is LEFT
+  BEHIND after rollback, but does not assert the `logger.Warn` at add.go:320 actually fires —
+  reverting that production WARN hunk leaves the test green (it only asserts pre-existing
+  branch-left-behind behavior).
+- CONFIRMED by reading the test. Fix: add a test that captures the logger output and asserts the WARN
+  line fires on the refused bare-slug branch deletion.
 
 ## Docs & operability findings
 
@@ -29,3 +107,29 @@ Exact commands and observations, appended incrementally as each scenario returns
 - `go build ./...` — rc=0.
 - `go vet ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitexec/... ./internal/gitrepo/...` — rc=0, no output.
 - `go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitexec/... ./internal/gitrepo/... ./cmd/lyx/... -count=5` — all ok.
+
+### Substrate experiments (git behavior, pre-fix)
+
+- `git worktree add -b wt <symlink→outside>` → follows the symlink, writes full worktree (`.git`,
+  files) into the outside dir, registered at the resolved path, rc=0. CONFIRMS the escape mechanism.
+- `git worktree add -b b <existing-empty-real-dir>` → succeeds, writes into it. `git worktree add`
+  into a dir containing any file → `fatal: '...' already exists` (rc=128). So git needs empty/absent
+  target → outside overwrite of pre-existing content is NOT possible (narrows blast radius).
+- `git worktree move <staging> <symlink→outside>` → FOLLOWS the symlink (re-introduces escape) — so
+  the move must NOT be done by git.
+- `os.Root.Rename(staging, target)` with a planted symlink at target → refused ("not a directory"),
+  nothing written outside; clean case (target absent) → succeeds, target is a real dir. This is the
+  window-closer.
+- Full sequence `git worktree add <staging>` → `os.Root.Rename` → `git worktree repair <target>`:
+  registration corrected, `git worktree list` shows target, git status/rev-parse inside target work.
+  Verified for all three arg forms (weft-create with start-point, adopt, `--orphan`).
+- `os.Mkdir` through an intermediate symlink → escapes; `os.Root.Mkdir` → refused. (F2.)
+
+### Primary-target live reproduction (pre-fix, CONFIRMED escape)
+
+- Built real hub: bare `warp.git` (seeded, HEAD→main) + bare `weft.git`, then
+  `lyx fabric clone <weft> <warp> --subpath backend` (dev binary from `./deploy-dev`).
+- Toggler: `ln -sfn $OUT $target; rm -f $target` in a tight loop at `<hub>/racewt` while
+  `lyx fabric add racewt` ran repeatedly (fresh branch cleanup between attempts).
+- Result: ESCAPE at attempt 12 — `$OUT/.git` (a full worktree fragment) written through the symlink
+  into the outside directory. Confirms F1 live against the real substrate.
