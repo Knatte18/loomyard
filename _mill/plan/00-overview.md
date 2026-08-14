@@ -3,7 +3,7 @@
 ```yaml
 task: "Relocate producer prompt files into a stencils/ directory"
 slug: "stencils-directory-reorg"
-approved: false
+approved: true
 started: "20260814-105122"
 parent: "main"
 root: ""

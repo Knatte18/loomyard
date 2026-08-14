@@ -109,6 +109,8 @@ func joinTemplateAssets(prefix, body []byte) []byte {
   - `RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *lyxcwd.Location)` does the same — no signature change. Keep its `stencil.FillOptional(..., []string{"pattern_directive"})` optional-marker list unchanged.
   - `RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot string)` has no `*lyxcwd.Location`, so it gains a trailing `stencilsDir string` parameter.
 
+  Add the `internal/fabricengine` import to `render.go` — it does not carry one today, and the three wrappers above now call `fabricengine.StencilsDir(l.HubPath)`.
+
   Update the file's header doc comment (`render.go:1-2,18-19`) and the `RenderMasterPrompt` doc comment at `render.go:193`, all of which name assets by their old filenames, to name the new ones and to state that the assets ship as embedded defaults in the top-level `stencils` package and are read from the hub's stencils directory at call time.
 - **Commit:** `refactor(websterengine): read composed prompts at call time and strip every banner`
 

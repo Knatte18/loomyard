@@ -105,13 +105,14 @@ type judgeInputs struct {
   - `runCircling` (`judge.go:50`) reads `stencilstore.Read(in.StencilsDir, "treadle-template-judge-circling")` at `judge.go:58`
   - `runMilestone` (`judge.go:64`) reads `stencilstore.Read(in.StencilsDir, "treadle-template-judge-milestone")` at `judge.go:73`
 
-  Add a `stencilsDir string` parameter to the two loose-scalar functions and use it for their reads:
-  - `func runTriage(sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string)` gains the parameter and reads `stencilstore.Read(stencilsDir, "treadle-template-triage")` at `judge.go:147`
-  - `func runTargeting(sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool)` gains the parameter and reads `stencilstore.Read(stencilsDir, "treadle-template-targeting")` at `targeting.go:31`
+  Add a **leading** `stencilsDir string` parameter to the two loose-scalar functions and use it for their reads.
+  Leading, not trailing, matching the convention card 18 uses for `composePrompt` — both functions already end in a run of same-typed `string` scalars (`model, effort`), so appending there would put the new argument in a position where a mis-ordered call site still compiles.
+  - `func runTriage(sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string)` becomes `func runTriage(stencilsDir string, sh Shuttle, name string, round int, question, verdictPath, model, effort string) (TriageVerdict, string)` and reads `stencilstore.Read(stencilsDir, "treadle-template-triage")` at `judge.go:147`
+  - `func runTargeting(sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool)` becomes `func runTargeting(stencilsDir string, sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool)` and reads `stencilstore.Read(stencilsDir, "treadle-template-targeting")` at `targeting.go:31`
 
   Do not change `runJudgeCall`'s signature — it takes the already-selected `template []byte` and reads nothing.
 
-  In `run.go`, inside `func (e *Engine) Run(p Profile, runDir string) (result Result, err error)`, set `StencilsDir: e.stencilsDir` in both `judgeInputs` composite literals (the milestone literal at `run.go:322` and the circling literal at `run.go:357`), and pass `e.stencilsDir` as the new argument at every `runTriage` and `runTargeting` call site.
+  In `run.go`, inside `func (e *Engine) Run(p Profile, runDir string) (result Result, err error)`, set `StencilsDir: e.stencilsDir` in both `judgeInputs` composite literals (the milestone literal at `run.go:322` and the circling literal at `run.go:357`), and pass `e.stencilsDir` as the new **leading** argument at every `runTriage` and `runTargeting` call site.
 
   Both new parameters break existing untagged test files in this package, which must be threaded through in this same card or the batch's own `verify:` fails to compile:
   - `internal/treadleengine/judge_test.go` — every `runTriage(...)` call site and every `judgeInputs{...}` composite literal. Add the new `stencilsDir` argument to each call and the new `StencilsDir` field to each literal, pointing at a `t.TempDir()` seeded from the `stencils` package vars.
@@ -139,6 +140,11 @@ type judgeInputs struct {
 - **Requirements:**
   In `seam_enforcement_test.go`, add one entry to the `allowedImports` map:
   `"github.com/Knatte18/loomyard/internal/stencilstore": true`.
+  Two prose spots in the same file enumerate the allowlist by hand and go stale the moment that entry lands — update both in this same commit:
+  - the file's header comment at lines 1-5, which reads "imports ONLY the standard library, internal/lock, internal/logger, internal/state, internal/stencil, internal/shuttleengine, and gopkg.in/yaml.v3"
+  - the failure message at line 86, whose parenthetical reads "(stdlib + lock + logger + state + stencil + shuttleengine + yaml.v3)"
+
+  A stale enumeration in the failure message is worse than a stale comment: it tells the next person who trips this test that `stencilstore` is not allowed, which is exactly backwards.
   Add no other entry — treadle calls only `stencilstore.Read(baseDir, name)`, which needs no registry, so the top-level `stencils` package never reaches treadle's import graph.
 
   In `CONSTRAINTS.md`'s **Treadle Runner-Seam Invariant** section, add `internal/stencilstore` to the import-allowlist sentence, and extend the paragraph that follows it with the justification: `stencilstore` takes a fully resolved absolute stencils directory from its caller and derives no geometry of its own, so treadle is still *told* its stencils directory exactly as it is told `runDir` and `Profile.GateDir` — the exclusion of `internal/lyxcwd` still means what it meant.
