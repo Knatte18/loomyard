@@ -1,8 +1,8 @@
 // seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant: production code in
 // internal/treadleengine imports ONLY the standard library, internal/lock, internal/logger,
-// internal/state, internal/stencil, internal/shuttleengine, and gopkg.in/yaml.v3 — never
-// internal/burlerengine, never internal/lyxcwd as a direct import, and never any internal/*cli
-// package.
+// internal/state, internal/stencil, internal/stencilstore, internal/shuttleengine, and
+// gopkg.in/yaml.v3 — never internal/burlerengine, never internal/lyxcwd as a direct import, and
+// never any internal/*cli package.
 // Like internal/modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import
 // outside the allowed set fails the test, so a future stray dependency (a round-runner's own type
 // leaking upward, a convenience lyxcwd import) is caught with no list maintenance required.
@@ -26,6 +26,7 @@ var allowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/logger":        true,
 	"github.com/Knatte18/loomyard/internal/state":         true,
 	"github.com/Knatte18/loomyard/internal/stencil":       true,
+	"github.com/Knatte18/loomyard/internal/stencilstore":  true,
 	"github.com/Knatte18/loomyard/internal/shuttleengine": true,
 	"gopkg.in/yaml.v3": true,
 }
@@ -83,6 +84,6 @@ func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("Treadle Runner-Seam Invariant violated; imports outside the allowlist (stdlib + lock + logger + state + stencil + shuttleengine + yaml.v3) found: %v", failures)
+		t.Errorf("Treadle Runner-Seam Invariant violated; imports outside the allowlist (stdlib + lock + logger + state + stencil + stencilstore + shuttleengine + yaml.v3) found: %v", failures)
 	}
 }

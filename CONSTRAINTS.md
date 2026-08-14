@@ -101,9 +101,11 @@ No hub is hand-assembled.
 `internal/treadleengine` never imports `internal/burlerengine` or any `internal/*cli` package;
 round runners adapt onto treadle's `RoundRunner` vocabulary in their own packages.
 
-- Import allowlist: stdlib, `internal/lock`, `internal/logger`, `internal/state`, `internal/stencil`, `internal/shuttleengine`, `gopkg.in/yaml.v3` — not `internal/lyxcwd` directly.
+- Import allowlist: stdlib, `internal/lock`, `internal/logger`, `internal/state`, `internal/stencil`, `internal/stencilstore`, `internal/shuttleengine`, `gopkg.in/yaml.v3` — not `internal/lyxcwd` directly.
   Policed on direct imports only, not the transitive closure: `lyxcwd` is reachable through both `logger` and `shuttleengine`, so excluding it buys no isolation.
   What the exclusion enforces is that treadle is *told* its geometry and never derives it — `Engine.Run` takes a caller-supplied absolute `runDir`, a block's `Profile` carries a caller-supplied `GateDir`, and every path this package builds is joined onto one of those.
+  `internal/stencilstore` takes a fully resolved absolute stencils directory from its caller and derives no geometry of its own, so treadle is still *told* its stencils directory exactly as it is told `runDir` and `Profile.GateDir` — the exclusion of `internal/lyxcwd` still means what it meant.
+  The seed/refresh pass that keeps that directory populated runs once at `cmd/lyx`'s root pre-run rather than lazily inside `stencilstore.Read`, which is what keeps `internal/fabricengine` off treadle's stack.
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
 ## Tokenvocab Leaf Invariant
