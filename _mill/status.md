@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-diff-base-recovery
+phase: approved-treadle-runtime-read
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-stencils-package-and-loom  '2026-08-14T11:56:36Z'
 approved-seeding-trigger  '2026-08-14T12:04:22Z'
 approved-burler-runtime-read  '2026-08-14T12:13:13Z'
 approved-diff-base-recovery  '2026-08-14T12:19:41Z'
+approved-treadle-runtime-read  '2026-08-14T12:32:23Z'
 ```
 
 ## Batches
@@ -67,9 +68,10 @@ batches:
     commit_sha: 4364a9cdcc4e151e9025e348ffdbc33255de68bc
     verify_baseline_failures: []
   - name: treadle-runtime-read
-    state: running
+    state: approved
     implementer_session: 43c07e8b-0519-4596-acf9-08a1db524f1d
     start_sha: 3a22b61c39a12a71a4339f8745ba0a182ba83595
+    commit_sha: aa66b321b54c9afa2d8b30063e1717582df0055d
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: webster-runtime-read
     state: pending
