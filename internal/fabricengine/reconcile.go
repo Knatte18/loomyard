@@ -290,9 +290,8 @@ func refuseEmptyAnchorMarker(l *lyxcwd.Location) error {
 // reconcileWarpBinding backfills the once-per-hub .lyx-warp record from the warp side's origin
 // remote, for every hub that predates the binding.
 // It runs exactly once per Reconcile call, after the pair loop, never per-pair, and it never
-// returns an error: like wireBoardLink's board-junction repair, a binding backfill is a convenience
-// that may never fail or downgrade a reconcile verdict, so any failure is folded into a Deferred
-// outcome instead.
+// returns an error: a binding backfill is a convenience that may never fail or downgrade a
+// reconcile verdict, so any failure is folded into a Deferred outcome instead.
 // rec is Reconcile's own recorder; it records KindFileWritten at the boardDir's .lyx-warp path on the
 // branch that actually calls writeWarpBinding, mirroring CloneHub's own record for the same file —
 // without it a reconcile-driven backfill is an uncovered hub-visible addition batch 7's omission
@@ -358,19 +357,12 @@ func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lyxcwd.Location) (War
 }
 
 // repairPairWiring converges one pair's junctions: it re-wires whatever checkJunctionHealth reports
-// broken, always re-wires the operator-convenience _board link, and applies declarative
-// stale-removal.
+// broken, and applies declarative stale-removal.
 //
 // setAction distinguishes the two callers. A pair whose weft worktree already existed has no Action
 // yet, so this call assigns the verdict (already_healthy / junction_repointed). A pair whose weft
 // worktree this same pass recreated already carries weft_recreated, which names what actually
 // happened and must survive the repair, so that caller passes false and gets Detail notes only.
-//
-// The _board re-wire is unconditional with respect to junction health: checkJunctionHealth only ever
-// inspects the pathspec name-set, which _board is deliberately outside, so a pair whose only broken
-// link is _board reports healthy and would never be repaired if this call sat inside the
-// unhealthy branch. A wiring failure there is surfaced as a Detail note, never as an Error or a
-// changed Action — this convenience link must never be able to downgrade a reconcile verdict.
 // rec is Reconcile's own recorder, threaded through to every gate-reaching call this helper makes.
 func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location, slug string, pr *ReconcilePairResult, setAction bool) {
 	junctionHealthy, unhealthyReason := checkJunctionHealth(warpLayout)
@@ -392,10 +384,6 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lyxcwd.Location,
 		}
 	} else if setAction {
 		pr.Action = ReconcileActionAlreadyHealthy
-	}
-
-	if boardErr := wireBoardLink(rec, warpLayout, slug); boardErr != nil {
-		appendPrDetail(pr, fmt.Sprintf("board junction wiring failed: %v", boardErr))
 	}
 
 	if restorePortalAndLaunchers(rec, warpLayout, slug, pr) && setAction && pr.Action == ReconcileActionAlreadyHealthy {
@@ -770,7 +758,7 @@ func linkIsFabricOwned(l *lyxcwd.Location, slug, linkPath string) (bool, error) 
 // appendPrDetail appends text to pr.Detail, joining on "; " when a prior
 // detail is already present. Shared by every reconcile step that annotates a
 // pair's outcome without touching its Action or Error — applyStaleRemoval's
-// skip-reasons and wireBoardLink's failure note in Reconcile above.
+// skip-reasons above.
 func appendPrDetail(pr *ReconcilePairResult, text string) {
 	if pr.Detail == "" {
 		pr.Detail = text
