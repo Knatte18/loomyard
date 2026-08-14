@@ -5,8 +5,8 @@
 // and the board's stage-all commit path never picks up anything planted inside the hub scratch tree
 // in between.
 //
-// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go) and readExcludeLines
-// (junction_pattern_integration_test.go) rather than re-declaring either; shares the single TestMain
+// Package fabricengine_test to reuse makeBareRemote (clone_adopt_test.go) and readWeftExcludeLines
+// (dotlyxjunction_integration_test.go) rather than re-declaring either; shares the single TestMain
 // in testmain_test.go — no new TestMain is added here.
 
 package fabricengine_test
@@ -51,7 +51,7 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
-	lines := readWeftExcludeLinesForHubScratch(t, res.BoardDir)
+	lines := readWeftExcludeLines(t, res.BoardDir)
 	if !containsLine(lines, ".lyx/") {
 		t.Fatalf("weft common gitdir info/exclude reached from %s = %v; want it to already contain %q at the instant CloneHub returns", res.BoardDir, lines, ".lyx/")
 	}
@@ -107,32 +107,4 @@ func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
 	if strings.Contains(stdout, plantedName) {
 		t.Errorf("board commit %s tree contains %q; want the hub scratch tree never staged into the board's own commit:\n%s", sha, plantedName, stdout)
 	}
-}
-
-// readWeftExcludeLinesForHubScratch resolves and reads the weft common gitdir's info/exclude file
-// reached from worktreePath, mirroring the resolution logic seedWeftArtifactExcludes uses (`git
-// rev-parse --git-path info/exclude`, joined with worktreePath if relative) — the same approach
-// dotlyxjunction_integration_test.go's readWeftExcludeLines takes for a weft worktree, named
-// distinctly here to avoid colliding with that unexported package-level helper.
-func readWeftExcludeLinesForHubScratch(t *testing.T, worktreePath string) []string {
-	t.Helper()
-
-	stdout, _, exitCode, err := gitexec.RunGit([]string{"rev-parse", "--git-path", "info/exclude"}, worktreePath)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("git rev-parse --git-path info/exclude in %s failed: %v (exit %d)", worktreePath, err, exitCode)
-	}
-
-	excludePath := strings.TrimSpace(stdout)
-	if !filepath.IsAbs(excludePath) {
-		excludePath = filepath.Join(worktreePath, excludePath)
-	}
-
-	content, err := os.ReadFile(excludePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		t.Fatalf("read exclude file: %v", err)
-	}
-	return strings.Split(string(content), "\n")
 }
