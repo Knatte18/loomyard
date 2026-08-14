@@ -49,3 +49,15 @@ No `SANDBOX-FABRIC-SUITE.md` change: the M1 behavior (a containment escape via a
 ## Merge-readiness
 
 MERGEABLE. The chokepoint's core promise — containment is "the one thing `--force` can never override" — is restored for the arbitrary-path executors and regression-guarded. Standing limit, unchanged from prior rounds: Windows path/junction behavior is out of scope (unreachable from a Linux host); `os.Root`'s Windows junction semantics are a stdlib cross-platform contract this review could not execute, consistent with the module's existing Windows-verification posture.
+
+---
+
+## Round-4 correction (appended by `fable-high-r4`, 2026-08-14) — M1 coverage claim overstated
+
+The "Tests added" and "Sandbox suite" sections above overstate `destroy_containment_toctou_integration_test.go`'s coverage of M1. Round 4's independent review traced the actual control flow and confirmed:
+
+- That integration test plants an **already-live** escaping symlink at the per-slug launcher directory before `Remove` runs. In `removeLaunchers`, each launcher-script `pathRequest` has that symlink as an intermediate segment of its target, so `checkPathRequest` → `containmentFailure` → `containmentPath` resolves the target's parent ancestry and **refuses at the check phase** (M3, round 2's fix) — before M1's executor-level `os.Root` act (`removeContainedPath`) is ever reached.
+- Consequently, reverting M1's production code alone (back to a nominal-path `os.RemoveAll`/`os.Remove`) leaves this integration test **green**: the check phase catches the live symlink regardless of whether the act-time binding exists. It is a genuine end-to-end guard that the whole `remove` call is safe, but it guards the **check-phase (M3)**, not M1's act-time TOCTOU.
+- The hermetic unit test `TestRemoveContainedPath_RefusesEscapingIntermediate` (`destroy_toctou_test.go`) is therefore the **sole** regression guard for M1's act-time property — which is exactly what the round-3 report's own sabotage-proof demonstrated (reverting the fix made that unit test, not the integration test, fail).
+
+No production behaviour is affected; M1's fix and its authoritative hermetic guard both stand. This note corrects the coverage claim so a reader does not mistake the integration test for an M1-specific guard. A genuine M1-specific live test is impractical (the window is closed by design and would require a build-tag/injection seam to force the pre-fix code path), so the deterministic unit test remains the intended authority — see `_mill/fabric-review-fable-high-r4.md` finding F3.
