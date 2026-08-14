@@ -5,6 +5,7 @@
 package gitexec_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -64,5 +65,32 @@ func TestGitError_Error(t *testing.T) {
 				t.Errorf("GitError.Error() = %q; want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestGitError_ErrorOmitsDir pins the deliberate omission GitError's doc comment records: Dir is
+// carried for a caller that wants to name the directory itself, and is never rendered by Error.
+// The omission is load-bearing rather than an oversight — nearly every fabricengine and gitrepo
+// wrapper already names the repo or worktree it was operating on, so rendering Dir here would put
+// the same path twice into the part of the message an operator reads first.
+// Without this test a future "make the error more informative" change would fold Dir into Error and
+// silently reintroduce that duplication at every one of those wrapping call sites at once.
+func TestGitError_ErrorOmitsDir(t *testing.T) {
+	const dir = "/tmp/some/worktree/path"
+	err := &gitexec.GitError{
+		Args:     []string{"status", "--porcelain"},
+		Dir:      dir,
+		ExitCode: 128,
+		Stderr:   "fatal: not a git repository",
+	}
+
+	got := err.Error()
+	if strings.Contains(got, dir) {
+		t.Errorf("GitError.Error() = %q; it must not render Dir (%q) — see GitError's doc comment for why the caller's own wrapper owns the \"where\"", got, dir)
+	}
+
+	const want = `git status --porcelain: exit 128: fatal: not a git repository`
+	if got != want {
+		t.Errorf("GitError.Error() = %q; want %q", got, want)
 	}
 }
