@@ -73,7 +73,7 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 	if !force {
 		dirty, _, err := worktreeDirty(scopeAll, target)
 		if err != nil {
-			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("check warp worktree status at %s: %w", target, err))
+			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("check warp worktree status: %w", err))
 		}
 		if dirty {
 			return RemoveResult{}, nameStrandedPortalTeardown(rec, fmt.Errorf("worktree has uncommitted changes; use --force"))
@@ -177,7 +177,7 @@ func refuseDirtyWeftWorktree(weftTarget string) error {
 
 	dirty, _, err := worktreeDirty(scopeAll, weftTarget)
 	if err != nil {
-		return fmt.Errorf("check weft worktree status at %s: %w", weftTarget, err)
+		return fmt.Errorf("check weft worktree status: %w", err)
 	}
 	if dirty {
 		return fmt.Errorf("weft worktree has uncommitted changes; run \"lyx fabric sync\" or use --force")

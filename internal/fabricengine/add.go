@@ -48,7 +48,7 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 
 	dirty, _, err := worktreeDirty(scopeTracked, l.WorktreePath())
 	if err != nil {
-		return AddResult{}, fmt.Errorf("read warp worktree status at %s: %w", l.WorktreePath(), err)
+		return AddResult{}, fmt.Errorf("read warp worktree status: %w", err)
 	}
 	if dirty {
 		return AddResult{}, fmt.Errorf("source worktree has uncommitted changes")

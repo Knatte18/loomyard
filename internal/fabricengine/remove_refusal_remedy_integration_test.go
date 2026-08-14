@@ -97,6 +97,48 @@ func TestRemove_RefusalNamesStrandedPortalTeardown(t *testing.T) {
 	}
 }
 
+// TestRemove_StatusFailureNamesPathAndCommandOnce drives Remove against a hub-contained directory
+// that is not a git checkout, and asserts the composed error names the probed path once and the git
+// command once.
+//
+// Both wrappers in this chain — Remove's own "check warp worktree status" and worktreeDirty's
+// "check for uncommitted changes in <dir>" — used to name the path, and, before the gitexec split,
+// the inner one also named the git command that *gitexec.GitError now renders itself. The result put
+// the same path twice and the same command twice ahead of git's own stderr, which is the only part
+// of the message an operator can act on. Each layer now contributes exactly one new fact: what
+// fabric was doing, where it probed, and what git said.
+func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFabricFixture(t)
+	l := fixture.Layout
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+
+	// A plain directory inside the hub: it passes the slug and target-exists checks, then fails at
+	// the dirtiness probe because it is not a git repository at all.
+	const slug = "not-a-checkout"
+	notACheckout := fabricengine.WorktreePath(l, slug)
+	if err := os.MkdirAll(notACheckout, 0o755); err != nil {
+		t.Fatalf("create %s: %v", notACheckout, err)
+	}
+
+	_, err := topology.Remove(l, slug, false)
+	if err == nil {
+		t.Fatalf("Remove on a non-checkout directory returned nil error; want a failure from the dirtiness probe")
+	}
+
+	msg := err.Error()
+	if occurrences := strings.Count(msg, notACheckout); occurrences != 1 {
+		t.Errorf("error names the probed path %d time(s); want exactly 1 — only one layer should own the \"where\":\n%s", occurrences, msg)
+	}
+	if occurrences := strings.Count(msg, "git status --porcelain"); occurrences != 1 {
+		t.Errorf("error names the git command %d time(s); want exactly 1 — *gitexec.GitError renders it, so no wrapper should:\n%s", occurrences, msg)
+	}
+	if !strings.Contains(msg, "not a git repository") {
+		t.Errorf("error dropped git's own stderr, the only actionable part:\n%s", msg)
+	}
+}
+
 // TestRemove_RefusalWithNothingStrandedOmitsRemedy pins the other direction: a refusal that tore
 // nothing down must not tell the operator to repair a hub that is intact. A second refused attempt
 // is the ordinary way to reach this state — the first attempt already removed the portal and
