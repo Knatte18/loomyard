@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-scope-violation
+phase: done
 slug: hub-dotlyx-into-board
 branch: hub-dotlyx-into-board
 plan: _mill/plan
@@ -35,6 +35,7 @@ holistic-fixing  '2026-08-14T18:31:46Z'
 nits-fixed-holistic  '2026-08-14T18:39:54Z'
 holistic-approved  '2026-08-14T18:40:01Z'
 self-resolved-scope-violation  '2026-08-14T18:52:00Z'
+done  '2026-08-14T18:52:23Z'
 ```
 
 ## Batches
