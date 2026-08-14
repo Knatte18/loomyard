@@ -3,7 +3,13 @@
 //
 // These unexported helpers handle the weft-side lifecycle: creating weft worktrees, pushing to the
 // weft remote, and tearing down both the weft worktree and branch.
-// All git operations use gitexec.RunGit with explicit cwd (WeftRepoRoot or WeftWorktreePath).
+// Every git operation here runs with an explicit cwd (WeftRepoRoot or WeftWorktreePath), never an
+// inherited process cwd, and all but two of them go through gitexec.Run, the checked entry point.
+// The two exceptions are this file's bool-returning predicates, weftRepoExists and
+// weftBranchExists, which are the whole of internal/fabricengine's pinned raw-site allowance under
+// CONSTRAINTS.md's gitexec Checked-Call Invariant: each carries its own //gitexec:raw marker, and
+// each is raw because its signature has no error channel, so every outcome — including an
+// exec-level failure git never got to answer — must collapse to a bool.
 // Every branch argument here is ALWAYS a concrete, already-suffixed weft branch name produced by
 // WeftBranchName — this file never derives a branch name itself, so the "-weft" literal never
 // appears in this file's Go source (see branchname.go for the single derivation point).
