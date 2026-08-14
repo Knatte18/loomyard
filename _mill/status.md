@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-14T07:40:14Z'
+discussed  '2026-08-14T10:46:07Z'
 ```
