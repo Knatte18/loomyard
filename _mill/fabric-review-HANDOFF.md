@@ -1,95 +1,111 @@
 # fabric crucible campaign — HANDOFF
 
 Orchestrator's own state file. Refreshed after every round's verification. Never read by a round
-agent (clean-room constraint).
+agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 1 (`opus-medium-r1`, spawned via `subagent_type: crucible-reviewer-medium`, `model: opus`)
-is RUNNING in the background. Seeded from `.scratch/fabric-review-prompt.md`. No verification has
-happened yet — do not act on its self-report; wait for it to finish, then run the independent
-verification protocol from a cold state, THEN re-seed round 2.
-
-Base commit for this campaign segment: `08520a1b` on branch `fabric-crucible-hardening`.
-
-## Operator correction (2026-08-14) — carry this into every future re-seed
-I (the orchestrator) initially characterized the destruction chokepoint (`internal/fabricengine/destroy.go`)
-as CLOSED-AND-VERIFIED background from the prior crucible campaign. **That was wrong, and the
-operator corrected it.** Checked the git log directly:
-
-```
-79a72a38  fabric: crucible hardening pass on V2 (slice 11)                        <- the 6-round adversarial campaign itself (81 findings, 9 BLOCKING, 8 data-loss)
-3184cd5a  fabric: one ownership-and-dirtiness gate for all destruction (slice 12) <- destroy.go is BUILT here
-1bf8e847  fabric: live-state integration harness (slice 13)
-d56b57f7  fabric: accumulate the result envelope from mutations, not control flow (slice 14)
-1e605025  fabric: close the corrindex two-phase read-modify-write race (slice 15)
-```
-
-`destroy.go` — the chokepoint consolidating ~28 destructive call sites behind one gate
-(containment → ownership → dirtiness → force) — was built in slice 12, **after** the adversarial
-review+fix rounds had already finished. It was direct implementation work in response to the
-rounds' findings, not itself the subject of an independent clean-room review+fix round. **The
-chokepoint itself has never been through crucible.** Slices 13-15 are hardening/follow-ups on top
-of it, also never independently reviewed as their own target (though round 1's seed did ask for a
-re-verification of destroy.go's properties, since the gitexec migration touched it — that's a
-narrower ask than a dedicated adversarial round targeting the chokepoint itself).
-
-**Action for round 2: make the destruction chokepoint the PRIMARY target**, not a re-verification
-side-note. Full adversarial treatment: try to construct a scenario that gets `destroy.go` to
-perform a destructive primitive it shouldn't — a containment bypass, an ownership predicate that
-accepts something it shouldn't, a dirtiness probe that reports clean when it isn't, a call site
-elsewhere in the package that reaches a destructive primitive without going through one of the
-eight executors, `--force` satisfying something other than dirtiness. This is exactly the defect
-shape (data-loss, one shape not eight mistakes) the prior campaign spent 5 rounds chasing — the
-chokepoint is the thing built to close that shape, and nobody has tried to break it since.
+Round 1 verified, closed. Round 2 (`opus-high-r2`) about to be seeded and spawned — see "Exact
+next action". Base commit for this campaign segment: `08520a1b` on branch
+`fabric-crucible-hardening`.
 
 ## CLOSED-AND-VERIFIED
-Nothing yet this campaign segment — round 1 has not been independently verified.
+**Round 1 (`opus-medium-r1`)** — 7 findings (0 BLOCKING, 0 MEDIUM, 3 LOW, 4 NIT), all fixed, 8
+commits (`fff4bdc6` F4, `509a3f4a` F5, `7297e8d2` F7, `aed410ba` F1, `22bcdac0` F2, `1bea8e09` F6,
+`33d67a6c` F3, `d5cb6a83` F1-cont). Independently verified by the orchestrator from a cold state:
+build/vet/test and live-integration gates re-run and green; 3 of the 4 new regression tests
+sabotage-proven independently (production hunk reverted, confirmed the test fails at the intended
+assertion, restored, confirmed empty diff) — `TestWorktreeDirty_ErrorNamesGitCommandOnce` (F1),
+`TestRemove_RefusalNamesStrandedPortalTeardown` (F3), and
+`TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain`; the fourth
+(`TestGitError_ErrorOmitsDir`) is a doc-only NIT with no revertible code change, correctly skipped.
+Pinned raw-site count (fabricengine 2, gitrepo 3) independently re-derived from source, matches.
+Do not re-litigate any of F1-F7 unless a later round finds a genuine regression.
 
-## RESIDUAL currently seeded
-N/A — round 1 is round 1, seeded as a fresh full review (see `.scratch/fabric-review-prompt.md`'s
-"Round context seeded" section), not a residual-closing round.
+**Do NOT re-litigate:** the gitexec migration (`74e6a6bb`) itself — round 1 drove every mixed
+error-recovery site live and found no shape-of-migration-failure defect, only the doc drift F1-F7
+already closed. The fixture-inversion (`f4ce0188`) and `t.Parallel` unblock (`16c0cfcc`) — both
+independently confirmed delivered as intended, drove real scenarios against both. Treat these
+three commits as settled unless a later round's own independent driving turns up something new.
+
+## RESIDUAL currently seeded for round 2
+**New finding, from the orchestrator's OWN independent verification pass (round 1 never found
+this — it's exactly the kind of thing "never trust the round's own verdict" exists to catch):**
+concurrent `unwire` racing something else that writes into `.lyx` can leave `.lyx` as a real,
+populated directory instead of a junction, which `reconcile` then permanently refuses to
+auto-heal.
+
+- **Repro (independently reproduced by the orchestrator):** root-anchored hub, prime worktree, no
+  `--subpath`. From the prime worktree:
+  ```
+  for i in 1 2 3 4; do
+    ( lyx fabric unwire > race_unwire_$i.json 2>&1; lyx fabric reconcile > race_reconcile_$i.json 2>&1 ) &
+  done; wait
+  ```
+  4× concurrent `(unwire; reconcile)` pairs racing each other on ONE hub — not `unwire` racing a
+  separate dedicated process. `.lyx/logs/` ends up containing real trace-log files afterward
+  (confirmed 3 existed), materializing `.lyx` as a real directory before the junction can be
+  re-wired.
+- **Exact error** on the next serial `reconcile`:
+  `"error":"re-point junction: adopt <hub>/adv/.lyx into <hub>/adv-weft/.lyx: logs already exists
+  at the weft target; an earlier adoption already ran — delete the warp-side copy at
+  <hub>/adv/.lyx/logs and re-run \`lyx fabric reconcile\`"`. `lyx fabric pairs` self-diagnoses
+  honestly: `"junction_healthy":false,"junction_reason":"warp .lyx is not a junction"` — not
+  silently wrong, just stuck.
+- **Root cause — UNCONFIRMED, round 2 must establish this itself, not assume it:** the working
+  hypothesis is that some concurrent `lyx` invocation writes into `.lyx/logs/` during the window
+  `unwire` has torn the junction down but `reconcile` hasn't re-wired it yet, and
+  `seedLyxJunction`'s adoption logic then refuses to merge a real directory back into a junction.
+  This was NOT verified against `internal/logger`'s actual write path (does a deployed binary log
+  unconditionally, or only under `LYX_TRACE=1`/`testing.Testing()`? CONSTRAINTS.md's Live-Substrate
+  Spawn Observability invariant only documents the `go test`-time gate) — round 2's first job on
+  this finding is reading that write path before proposing a fix, not patching around a guessed
+  mechanism.
+- **Severity:** LOW-MEDIUM. No data/work lost, self-diagnoses honestly via `pairs`, has a stated
+  manual remedy — but is permanently non-self-healing without operator intervention once it
+  happens, even though the trigger (racing `unwire` against itself/reconcile) is a deliberately
+  adversarial scenario, not a single realistic operator action.
+- **Fix the right layer:** once the writer is confirmed, the real fix is almost certainly making
+  the window unreachable (serialize `unwire`'s junction teardown against whatever writes `.lyx/logs`,
+  or make the adoption logic in `seedLyxJunction` merge a same-shaped `logs` directory instead of
+  refusing) rather than just improving the error message — though a clearer remedy message is
+  still worth doing regardless, per "fix every finding including NITs".
+
+## Primary emphasis for round 2 — the destruction chokepoint has never itself been through crucible
+`internal/fabricengine/destroy.go` — the chokepoint consolidating ~28 destructive call sites
+behind one gate (containment → ownership → dirtiness → force) — was built in slice 12, **after**
+the prior 6-round adversarial campaign had already finished (see git log: `79a72a38` is the
+campaign, `3184cd5a` slice 12 building the chokepoint comes after). It was direct engineering work
+in response to that campaign's findings, never itself the target of an independent review+fix
+round. Round 1 re-verified its properties (since the gitexec migration touched `destroy.go`
+directly) and the orchestrator's own independent pass tried harder to break it — both came back
+clean on the core chokepoint properties (containment/ownership/dirtiness/force ordering, allowlist
+completeness), so this is NOT a residual to close. But per the operator's explicit instruction,
+round 2 should make the chokepoint the PRIMARY adversarial target in its own right — not a
+re-verification side-note — since two rounds finding it clean is good evidence but is not the same
+as one round having been assigned to genuinely try to break it as its main mission with a full
+round's worth of adversarial budget (concurrent destructive races beyond what's been tried,
+symlink/junction trickery, TOCTOU windows between a check and its executor).
 
 ## DEFERRED list
-Empty so far.
+Empty.
 
-## Operator instruction (2026-08-14) — deliverables move to `_mill/`, committed continuously
-The operator asked for two durable changes to the method itself (applied to
-`crucible/README.md`/`orchestrator-prompt.md`/`review-prompt-template.md`, NOT yet committed —
-see incident below): (1) crucible deliverables move from gitignored `.scratch/` to committed
-`_mill/`, and (2) they get committed as soon as written/updated, not batched. **When round 1
-finishes**, move every `.scratch/fabric-*` file (this handoff note, the review prompt, the
-precount file, round 1's review + fixer report) to `_mill/` and commit them there. Every path
-below still says `.scratch/` because that's where round 1 was seeded to write — treat that as the
-last campaign segment to use the old location, not a mistake to fix retroactively.
-
-## Incident: orchestrator `git add` collided with the round's own commit (2026-08-14)
-While round 1 was live, I (the orchestrator) staged the `crucible/*.md` doc edits above. The round
-agent's own next `git add`/commit (commit-per-fix, same shared working tree, no isolation) swept
-those staged files into ITS commit (`1bea8e09 "fabric: fix F6 — ..."`), which now also carries
-unrelated crucible-doc changes under a misleading message. Not destructive — the content is fine,
-just mis-attributed — and not undone (no rebase/amend on a tree a live round is still writing to).
-Fixed the root cause in `orchestrator-prompt.md`'s hard rule 3: the orchestrator must not
-`git add`/`git commit` ANYTHING — module-related or not — while a round is live; queue it and
-commit once the round completes/pauses. That rule-3 edit, and the earlier `crucible/*.md` edits
-generally, are themselves queued uncommitted right now for exactly this reason — commit them once
-round 1 finishes, in one clean commit, before touching anything else.
+## Method-doc hygiene, already done (do not redo)
+`crucible/*.md` and all five `.claude/agents/crucible-reviewer-*.md` now point at `_mill/`
+(committed) instead of `.scratch/` (gitignored), with a commit-continuously rule, a rule banning
+orchestrator `git add`/`git commit` while a round is live (an incident during round 1 — see git
+log `74bca030`), and a clean-room-leak fix explicitly naming the HANDOFF note as off-limits to a
+round agent even though it doesn't read like a "review" (round 1 partially, briefly acted on this
+file's content before self-correcting). All committed. Round 1's own deliverables were relocated
+from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was seeded before the
+convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-1. Wait for round 1 (`opus-medium-r1`) to finish.
-2. In a clean tree (round 1 fully stopped, nothing pending): commit the queued orchestrator-only
-   changes first — `crucible/orchestrator-prompt.md`'s rule-3 strengthening (git-add-during-a-live-round
-   ban) — as its own commit, separate from anything fabric-specific.
-3. Move every `.scratch/fabric-*` file to `_mill/` (this handoff note included) and commit that
-   move as its own commit.
-4. Read `_mill/fabric-review-opus-medium-r1.md` and `-fixer-report.md` (paths after the move).
-5. Run the independent verification protocol from a cold state on the committed tree (build/vet/
-   test, live integration, sabotage-prove every new test, re-drive every BLOCKING fix live in its
-   strongest mode — `--force` for destructive verbs). Give the destruction-chokepoint findings the
-   sharpest scrutiny given the operator correction above — and note that `fix F6`'s commit also
-   carries unrelated crucible-doc changes when reading `git log`/`git show` for it, so it isn't
-   mistaken for a bigger or stranger fabric change than it is.
-6. Rewrite `_mill/fabric-review-prompt.md`'s "Round context seeded" section for round 2:
-   residual(s) verification found, PLUS the destruction-chokepoint emphasis above as the primary
-   High-yield focus item (promote it above the gitexec-migration items, which become secondary/
-   re-verify-only).
-7. Spawn round 2: `subagent_type: crucible-reviewer-high`, `model: opus`, tag `opus-high-r2`.
+1. Rewrite `_mill/fabric-review-prompt.md`'s "Round context seeded" section: residual = the
+   unwire/.lyx race above (with the explicit instruction to confirm the write-path mechanism
+   before fixing it), High-yield focus re-ordered so the destruction chokepoint is PRIMARY, the
+   CLOSED-AND-VERIFIED list from this file so F1-F7 and the three migration commits aren't
+   re-litigated. Commit the re-seed.
+2. Spawn round 2: `subagent_type: crucible-reviewer-high`, `model: opus`, tag `opus-high-r2`.
+3. Per the operator's 4-round plan: round 3 is Fable High, round 4 is Opus High (final safety
+   pass, hard cap regardless of residual state — state limits honestly in the convergence verdict
+   if anything is still open after round 4, per README's "state the limits" rule).
