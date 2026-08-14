@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-webster-runtime-read  '2026-08-14T12:42:27Z'
 approved-stencil-cli  '2026-08-14T13:00:37Z'
 approved-reed-rename-and-docs  '2026-08-14T13:07:48Z'
 holistic-reviewing  '2026-08-14T13:08:17Z'
+holistic-fixing  '2026-08-14T13:18:01Z'
 ```
 
 ## Batches
