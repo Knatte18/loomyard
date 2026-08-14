@@ -4,20 +4,47 @@ Orchestrator's own state file. Refreshed after every round's verification. Never
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 1 and round 2 both verified, closed. Round 3 (`fable-high-r3`) has FINISHED and self-reports
-1 MEDIUM (M1, the containment TOCTOU seeded from round 2's verification) fixed via a genuinely
-window-closing fix (Go 1.26 `os.Root`, not just a narrower re-check), verdict MERGEABLE. 5 commits:
-`8773625c`..`e0cb3dea` on branch `fabric-crucible-hardening`, working tree clean at `e0cb3dea`.
-Independent verification of round 3 is RUNNING (fork `ab4252fa952a6c97d`) — do not seed round 4
-until it reports back, per the standing "never trust a round's own verdict" rule.
+Rounds 1, 2, and 3 all verified, closed. Round 4 (`fable-high-r4`) seed is finalized in
+`_mill/fabric-review-prompt.md` and about to be spawned:
+`subagent_type: crucible-reviewer-high`, `model: fable`. Base commit for this campaign segment:
+`08520a1b`; round 3 landed 5 commits `8773625c`..`e0cb3dea` on branch `fabric-crucible-hardening`,
+working tree clean.
 
 **Operator instruction (2026-08-14) — round 4 model changed from Opus to Fable:** the original
 fixed 4-round plan was r1 Opus/medium, r2 Opus/high, r3 Fable/high, r4 Opus/high (final safety
-pass). The operator has now said "Kjør Fable High for R4 også. Den var god" — round 4 is now
-**Fable/high** (`subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r4`), NOT
-Opus/high. Round 4 remains the LAST round of the 4-round plan regardless of this model change —
-still a hard cap, still needs an honest convergence verdict afterward stating any limits still
-open (Windows path/junction behavior, any accepted residuals like N4's dirtiness-probe TOCTOU).
+pass). The operator said "Kjør Fable High for R4 også. Den var god" — round 4 is **Fable/high**,
+NOT Opus/high. Round 4 remains the LAST round of the 4-round plan regardless of this model change
+— still a hard cap, still needs an honest convergence verdict afterward stating any limits still
+open (Windows path/junction behavior, N4's dirtiness-probe TOCTOU — now settled as an accepted
+documented residual, see below).
+
+Round 3's finding: **M1, the containment TOCTOU seeded from the orchestrator's own verification
+of round 2's M3 fix** — fixed via `removeContainedPath`, a new helper routing the two arbitrary-
+path executors (`removePath`, `removeLink`) through Go 1.26's `os.Root`, rooted at the gate's
+container, so containment resolution and the actual removal happen as one atomic operation instead
+of two separately-timed syscalls. **This is the first fix in the campaign to survive independent
+adversarial re-attack**: the orchestrator's verification (fork `ab4252fa952a6c97d`) confirmed via
+the Go 1.26 stdlib's own documented `os.Root` semantics that the window is genuinely closed (not
+narrowed), then live-attacked it — 160 trials of the original toggle-race repro (0 escapes),
+symlink loops (refused via ELOOP), `..`-relative targets (refused) — nothing got through. One
+accuracy issue, not a functional defect: the fixer report overstated what its integration test
+proves (it's redundant with round 2's M3 check-phase fix, not a distinct guard on M1's
+executor-level fix) — carried into round 4's seed as item 1 to correct.
+Verification also flagged three more items, all folded into round 4's seed: (2) a cosmetic
+honesty gap on symlink-loop refusals (`ok:true` while silently dropping one unremoved entry), (3)
+an unconfirmed symlink-directed-write angle on the two CREATE executors
+(`createExclusiveDir`/`createGitWorktree`) — never attacked by any round yet, and (4) round 2's
+"inert leftover directory" — still open, still never independently re-driven live by anyone.
+N4's dirtiness-probe TOCTOU is now SETTLED as an accepted, documented residual (two independent
+attempts at a live repro failed; round 3 traced the reachable paths and confirmed no weak link;
+the orchestrator's verification of round 3 read that reasoning and found it sound) — treat it like
+the Windows-path limit going forward, state it, do not re-chase it.
+
+Given three rounds' worth of adversarial pressure on the chokepoint with the last fix surviving
+independent re-attack, round 4's seed broadens scope: the chokepoint graduates from primary target
+to spot-check status, and the round's main Job-1 budget goes to a comprehensive final sweep of the
+WHOLE module (the way round 1 did) plus the four carried items above — this is the last scheduled
+round, nothing catches what it misses.
 
 Round 2's headline finding: **M3, a real symlink-mediated containment bypass in the destruction
 chokepoint** — a symlink planted at an intermediate path segment let a gated `remove --force`
@@ -53,6 +80,17 @@ nothing deferred, so nothing else to fold in from that source. The "inert leftov
 post-freeze observation is folded in as a low-priority spot-check only.
 
 ## CLOSED-AND-VERIFIED
+**Round 3 (`fable-high-r3`)** — 1 MEDIUM (M1, the containment TOCTOU below), fixed via
+`removeContainedPath` (Go 1.26 `os.Root`, routing `removePath`/`removeLink`), 5 commits
+`8773625c`..`e0cb3dea`. Independently verified by the orchestrator (fork `ab4252fa952a6c97d`):
+confirmed the fix genuinely closes the window (checked against Go 1.26 stdlib `os.Root` semantics
+directly, not just the round's claim), sabotage-proved the hermetic regression test, and
+adversarially re-attacked live — 160 trials of the original toggle-race (0 escapes), symlink loops
+(refused), `..`-relative targets (refused). **First fix in this campaign to survive independent
+adversarial re-attack.** One accuracy issue (not functional): the fixer report overstated the
+integration test's coverage of M1 — carried into round 4 as item 1 to correct. N4's TOCTOU is now
+SETTLED as an accepted, documented residual, not open work. Merge-readiness: MERGEABLE, confirmed.
+
 **Round 2 (`opus-high-r2`)** — 12 findings (0 BLOCKING, 3 MEDIUM: M1 stuck-reconcile/logger-sink,
 M2 dishonest reconcile success, M3 containment-check-never-resolves-symlinks; 4 LOW: L1 dropped
 `--force`, L2 vacuous gate on absent targets, L3 `entries:null`, L4 dangling-HEAD clone; 5 NIT),
@@ -91,52 +129,28 @@ already closed. The fixture-inversion (`f4ce0188`) and `t.Parallel` unblock (`16
 independently confirmed delivered as intended, drove real scenarios against both. Treat these
 three commits as settled unless a later round's own independent driving turns up something new.
 
-## RESIDUAL currently seeded for round 3
-**New finding, from the orchestrator's OWN independent verification of round 2's M3 fix (round 2
-never found this — it's the SAME "never trust the round's own verdict" pattern that has now fired
-twice in a row: round 1 → round 2 caught the unwire/.lyx race; round 2 → orchestrator-verification
-caught this):** a symlink-target-toggle TOCTOU defeats the destruction chokepoint's containment
-check ~15-20% of the time, letting a gated `remove --force` delete files outside the hub. This is
-NOT a regression of M3's fix (M3's original problem — never resolving symlinks at all — stays
-fixed) — it is a NEW, narrower check-then-act gap inside that fix.
+## RESIDUAL currently seeded for round 4
+No single headline defect this time — four bounded, specific items (all detailed in full in
+`_mill/fabric-review-prompt.md`'s "High-yield focus" section, not repeated here):
+1. M1's fixer report overstated its integration test's coverage (redundant with M3, not a
+   distinct guard on M1's executor-level fix) — correct the claim or add a genuine regression test.
+2. Cosmetic honesty gap: a symlink-loop refusal during `remove` reports `ok:true` while silently
+   leaving that one launcher entry unremoved.
+3. Unconfirmed: do the two CREATE executors (`createExclusiveDir`/`createGitWorktree`) have a
+   symlink-directed-write angle, never attacked by any round yet?
+4. Round 2's "inert leftover directory" — still open, still never independently re-driven live.
 
-- **Mechanism (root-caused by the orchestrator's verification fork, re-confirm before fixing):**
-  `refuseUncontainedPath` (`internal/fabricengine/ancestors.go`) and `pathAtOrBelow`
-  (`internal/fabricengine/destroy.go`) each call `filepath.EvalSymlinks` at their own instant
-  during the CHECK phase; if the symlink is dangling at that instant the fallback treats it as
-  contained (correct for the legitimate not-yet-existing-target case). But `removePath`'s actual
-  `os.Lstat`+`os.Remove` runs at a LATER, separate instant with no re-check — if the symlink has
-  since been made live-and-escaping, the deletion proceeds through it, uncontained.
-- **Repro:** real hub from local bare git remotes, deployed dev binary, symlink at
-  `_launchers/<slug>` (or another intermediate path segment), a tight external loop toggling that
-  symlink's target between absent and live-outside-the-hub concurrently with one `remove --force`
-  call. Confirmed via the tool's OWN mutation record naming a path removed outside the hub. Hit
-  rate ~15-20% across multiple independent runs — reproduce with dozens of attempts, not a
-  handful.
-- **Severity:** at least MEDIUM, seriously consider BLOCKING — `doc.go` calls containment "the one
-  thing `--force` can never override"; this defeats exactly that, with real data loss outside the
-  hub as the consequence, under real (if adversarially-timed) conditions.
-- **Fix the right layer:** a second `EvalSymlinks` call immediately before act narrows the window
-  but does not close it — same class of gap, smaller. Needs real design thought: capture the
-  resolved path at check time and have the executor verify it still matches immediately before
-  acting (open with `O_NOFOLLOW`, compare device/inode via `Lstat`, or similar), not just
-  re-resolving a nominal path twice at two different instants. Full detail and specific attack
-  shapes to try post-fix (symlink loops, `..`-relative targets, other `pathRequest` call sites) are
-  in `_mill/fabric-review-prompt.md`'s "High-yield focus" section — read it there, not here.
-
-## Primary emphasis for round 3 — chokepoint, third consecutive round, now with a CONFIRMED open defect
-`internal/fabricengine/destroy.go` has now had two rounds' worth of dedicated adversarial budget
-(round 1 re-verification + round 2 as primary target) and both a round's own review AND the
-orchestrator's independent verification of that round's fix have each found a real containment
-bypass in it — round 2 found M3 itself, the orchestrator's verification found the follow-on TOCTOU
-above. This is no longer "probably clean, verify once more" — it is "this file has broken twice
-under adversarial pressure, in the same function, and deserves continued dedicated attention until
-a round produces a fix that survives independent re-attack." Round 3 (Fable High) carries the
-chokepoint as PRIMARY target for a third consecutive round, per the operator's explicit
-instruction, headlined by fixing and then re-attacking the CONFIRMED residual above.
+## Primary emphasis for round 4 — LAST round, chokepoint graduates to spot-check, broaden to the whole module
+Three consecutive rounds hammered the chokepoint; the round 3 fix survived independent adversarial
+re-attack (first one in the campaign to do so) — see CLOSED-AND-VERIFIED above. This earns
+"closed, watch for regressions" status. Round 4's Job-1 budget goes to a comprehensive final sweep
+of the WHOLE module (the way round 1 did), plus the four carried items above — this is the last
+scheduled round of the fixed 4-round plan, nothing catches what it misses.
 
 ## DEFERRED list
-Empty — round 2 fixed all 12 of its own findings, nothing deferred.
+Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
+by either. (Round 3's deliberate call to leave N4 as an accepted residual is not a deferral — it's
+a considered, independently-confirmed-sound judgment call, see CLOSED-AND-VERIFIED above.)
 
 ## Method-doc hygiene, already done (do not redo)
 `crucible/*.md` and all five `.claude/agents/crucible-reviewer-*.md` now point at `_mill/`
@@ -149,14 +163,16 @@ from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was see
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-1. `_mill/fabric-review-prompt.md` is already rewritten for round 3 (residual = the containment
-   TOCTOU above, chokepoint re-affirmed PRIMARY for a third round, CLOSED-AND-VERIFIED updated
-   with round 2, deferred/round-context sections updated). Commit it together with this HANDOFF
-   update.
-2. Spawn round 3: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r3`.
-3. Per the operator's 4-round plan: round 4 is Opus High (final safety pass, hard cap regardless
-   of residual state — state limits honestly in the convergence verdict if anything is still open
-   after round 4, per README's "state the limits" rule). If round 3 does not manage to produce a
-   containment fix that survives independent re-attack, that itself is important information for
-   round 4's seed and the eventual convergence verdict — do not treat "round 4 is the last one" as
-   pressure to understate an unresolved chokepoint defect.
+1. `_mill/fabric-review-prompt.md` is already rewritten for round 4 (chokepoint graduated to
+   spot-check, broad whole-module final sweep as primary, four carried items detailed,
+   CLOSED-AND-VERIFIED updated with round 3, deferred/round-context sections updated). Commit it
+   together with this HANDOFF update.
+2. Spawn round 4: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r4` —
+   Fable per the operator's 2026-08-14 override, NOT the original plan's Opus.
+3. This is the LAST round of the fixed 4-round plan — hard cap, no round 5. After round 4's own
+   independent verification, write the campaign's convergence verdict: state honestly what's fixed
+   and confirmed (the chokepoint's containment property, now survived two rounds of independent
+   re-attack across M3 and M1), and what limits remain open regardless (Windows path/junction
+   behavior — never executed, permanent gap on this Linux host; N4's dirtiness-probe TOCTOU —
+   settled as a real-in-theory, no-demonstrated-exploit, documented residual; anything round 4
+   itself leaves open). Do not treat "this is the last round" as pressure to overstate closure.
