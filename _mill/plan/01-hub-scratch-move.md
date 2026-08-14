@@ -115,6 +115,7 @@ That package is already the directory's dominant convention (71 external test fi
 - **Edits:**
   - `internal/reedcli/up.go`
   - `internal/reedcli/smoke_debuglog_test.go`
+  - `internal/reedcli/smoke_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -122,6 +123,7 @@ That package is already the directory's dominant convention (71 external test fi
   This is user-visible output, so the CLI / Cobra Invariant's help-accuracy obligation applies.
   In `internal/reedcli/smoke_debuglog_test.go`, update the file header describing the log destination as "the hub's `.lyx/logs/` dir" to the new path.
   Change no assertion in the smoke test — the smoke tests passing unchanged is itself the assertion that the move is transparent to reed.
+  In `internal/reedcli/smoke_test.go`, fix `materializeSibling`'s pre-existing (main-branch) bug: it clones the second worktree into `filepath.Join(h.Container, name)`, a sibling of the hub directory itself rather than a worktree inside it, so `lyxcwd.Resolve` computes a different `HubPath` for it than for the prime worktree and `TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive` (`smoke_teardown_test.go`) fails on socket-name mismatch — reproduced identically on `main`, unrelated to this batch's `.lyx`-relocation edits, but this batch's own `verify:` line runs `-tags smoke ./internal/reedcli/...` so it must be green before this batch reports done. Change the clone target to `filepath.Join(h.Path, name)` so the sibling worktree is a direct child of the hub directory, matching `h.PrimeWorktree()`'s own parentage.
 - **Commit:** `docs(reedcli): name <hub>/_board/.lyx/logs in up help and smoke header`
 
 ### Card 6: Fold away `hubSlugReservedNames()`
