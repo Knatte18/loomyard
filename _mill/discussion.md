@@ -27,7 +27,7 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 - A new top-level `stencils/` directory holding the 15 producer prompts, one subfolder per family, renamed to the `<family>-<type>-<role>.md` convention.
 - A new `internal/stencilstore` package owning the whole stencil lifecycle: seeding, hash-stamping, edit detection, reading, and validation.
-- Runtime reading of every producer prompt from `<hub>/_board/_lyx/stencils/`, replacing direct use of the embedded bytes at all five producer call sites.
+- Runtime reading of every producer prompt from `<hub>/_board/_lyx/stencils/`, replacing direct use of the embedded bytes across four packages and five files (see the embed-site list under Technical context).
 - Retention of `//go:embed` for the shipped default bytes only — as the seed source, never as a live read path.
 - A hash stamp written into each seeded file's existing leading `<!-- ... -->` banner, and the edit-detection rule built on it.
 - A new `lyx stencil` cobra module with `list`, `validate`, `diff`, `sync`, and `promote` subcommands, where `diff` supports `--all` and `--exit-code`.
@@ -36,7 +36,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Amending the treadle import allowlist and its enforcement test to admit `internal/stencilstore`.
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
 - Renaming `internal/reedengine/header-template.md` to `console-header.md` and fixing that file's stale doc comment.
-- A new CONSTRAINTS.md invariant recording stencil ownership, plus the amended treadle bullet.
+- A new `fabricengine.StencilsDir(hub)` resolver beside `BoardDir`, and the signature changes that thread the resolved directory into each engine.
+- A new CONSTRAINTS.md invariant recording stencil ownership, the amended treadle allowlist bullet, and the CLI/Cobra seam counts going from eleven/ten to twelve/eleven.
 - Rewriting the wiki task's body so it describes the mechanism actually built rather than the junction layout that was disproved.
 
 **Out:**
@@ -99,8 +100,13 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   |---|---|
   | file absent | write the shipped default, stamp it |
   | `hash(body) == stamp` | untouched by a human → overwrite with the new default if it changed, restamp, silently |
-  | `hash(body) != stamp` | human-edited → never touched, the on-disk version is used |
+  | `hash(body) == hash(shipped default)` | already equals what we would write → restamp to that hash, silently, and treat as untouched from now on |
+  | `hash(body) != stamp` and `!= hash(shipped default)` | human-edited → never touched, the on-disk version is used |
   | stamp missing or unparseable | treated as human-edited → never touched |
+
+  The rows are evaluated in that order, and the third is a reconciliation rule that is load-bearing rather than an optimisation.
+  Without it a file whose body has legitimately caught up with the shipped default — after a `promote` and the deploy that follows it, or after an operator reverts an edit by hand — keeps a stamp naming the *old* default forever, is classified edited forever, is skipped by every future refresh forever, and never returns to a clean state.
+  With it, the stamp self-heals the moment body and shipped default agree.
 
 - Rationale: hashing the stripped body is not merely convenient, it is required — a hash stored inside the file cannot cover itself, and stripping the leading comment is what removes the self-reference.
   It also has the right semantics: editing banner prose is not editing the instructions, while editing the instructions always changes the hash.
@@ -120,6 +126,16 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   The diff carries almost all the value at a fraction of the risk.
 - Rationale for where the base text comes from: `_lyx` is tracked content and lyx commits its own `_lyx` writes, so every default-refresh lands as a commit in the board repo.
   The board repo's own git history is therefore the archive of every default version that hub has ever seen, which is what makes `diff` possible with no historical versions embedded in the binary and no base copies on disk.
+- The two diff modes have **different base texts**, and conflating them would make the pre-commit guard unusable:
+
+  | mode | base | target | purpose |
+  |---|---|---|---|
+  | `lyx stencil diff <name>` | the default this file was forked from, recovered from the board repo's git history of that file | the currently shipped default | upstream changes the operator has not yet taken |
+  | `lyx stencil diff --all --exit-code` | the worktree's own `stencils/<family>/<name>.md` source body | the live board copy's body | an edit made in the board copy that was never ported back |
+
+  The port-back guard must compare against the **source tree**, not the shipped default.
+  Comparing against the shipped default would make the guard fire on exactly the commit that fixes it: the developer edits the board copy, runs `promote`, and commits — but the shipped default is still the old embedded one until the next deploy, so a shipped-default base would block that commit and every later one until a rebuild.
+  Against the source tree, `promote` brings the two into agreement immediately and the hook passes.
 - Rejected: `git merge-file` three-way rebase of an override (technically feasible since all three texts are recoverable, but it writes into the file the operator owns).
   Also rejected: auto-merging only when conflict-free — silent writes into the operator's file precisely when they are not watching.
 
@@ -158,6 +174,11 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   The two are complementary, not alternatives.
 - Note on why CI cannot be the guard: a CI runner has no access to the operator's hub, so it cannot compare `stencils/` against a `_board/_lyx/stencils/` that only exists on the developer's machine.
   The check has to run where the hub is, which is the pre-commit hook, not CI.
+- Hook installation and preconditions, since a guard nobody installs is not a guard.
+  The script is **tracked** in the repo under `tools/hooks/pre-commit`, and `tools/deploy` sets `core.hooksPath` to `tools/hooks` when it runs in loomyard.
+  `.git/hooks` is deliberately not used: it is untracked, and it lives in the common gitdir, so it is shared repo-wide across every warp worktree rather than being per-worktree.
+  Preconditions: when `lyx` is not on PATH, or no hub can be resolved, the hook prints a warning and exits 0.
+  It never blocks a commit for missing tooling — making the repo uncommittable whenever the build is broken would be a worse failure than the drift it guards against, and that is precisely the state a developer is in while fixing a broken build.
 - Rejected: documenting the port-back as a discipline step and leaving it to memory — that is exactly the discipline-dependent failure mode the hash stamp was introduced to eliminate for the general operator.
   Also rejected: a CI-side assertion, for the reason above.
 
@@ -168,7 +189,23 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Rationale: one package is the single truth about stencil lifecycle, and an explicit `baseDir` keeps every engine *told* its geometry rather than deriving it.
   That distinction is what makes the treadle allowlist amendment defensible rather than a hole in the invariant.
   It also means tests pass a `t.TempDir()` and need no hub, no git, and no fixture — which keeps the affected tests Tier 1 pure.
+- Decision on what `baseDir` actually is and how it reaches each engine.
+  `baseDir` is the **fully resolved absolute stencils directory**, not a hub path — `stencilstore` never joins `_board` itself.
+  Resolution lives in `internal/fabricengine` beside `BoardDir`, as a new `fabricengine.StencilsDir(hub string) string` returning `<hub>/_board/_lyx/stencils`, because `fabricengine` already owns the `_board` token (`BoardDirName`) and `internal/lyxdirs` owns `_lyx`.
+  Duplicating either literal inside `stencilstore` would trip `TestEnforcement_GeometryLiterals`.
+  Per engine:
+
+  | engine | how it is told |
+  |---|---|
+  | `loomengine`, `burlerengine` | already carry a `*lyxcwd.Location`; the calling `*cli` package passes `fabricengine.StencilsDir(loc.HubPath)` in |
+  | `treadleengine` | a new caller-supplied field alongside the existing `runDir` / `Profile.GateDir`, set by the round runner that adapts onto treadle's vocabulary — treadle stays told, never deriving, so the Runner-Seam Invariant's actual rule holds |
+  | `websterengine` | the no-arg accessors `MasterTemplate()`, `IntegrationTemplate()`, `ImplementerBodyTemplate()`, `ForkTemplate()`, `RecoveryTemplate()` take the directory and gain an `error` return, since a read can now fail |
+
+- Rationale: without this the design is unimplementable for treadle specifically.
+  `internal/treadleengine` is barred from `internal/lyxcwd` and is told only `runDir` and `Profile.GateDir`, neither of which is the hub, and its embedded vars are read deep inside `runJudgeCall` in `judge.go`/`targeting.go`.
+  Webster's accessors are no-arg today and cannot stay that way once reading can fail.
 - Rejected: reading in the composition root and threading prompt bytes into every engine (changes signatures across all five engines and pushes an I/O dependency up into the CLI layer for every producer).
+  Also rejected: `stencilstore` taking a hub path and joining `_board`/`_lyx` itself — it would restate geometry tokens two other packages own.
   Also rejected: a package-level root injected once at startup (global mutable state).
   Also rejected: putting seeding in `configsync` beside config materialisation — it splits stencil logic across two packages and drags `configsync` into treadle's import path.
 
@@ -335,11 +372,19 @@ From `CONSTRAINTS.md`:
 - **Treadle Runner-Seam Invariant** — the allowlist must be amended to admit `internal/stencilstore`, with the justification (treadle is still *told* its base directory, never deriving it) recorded in the CONSTRAINTS bullet.
 - **CLI / Cobra Invariant** — `lyx stencil` needs `Command()`/`RunCLI` (and `RunCLIIn`, since it reads geometry), a non-empty `Short` on parent and every subcommand, registration in `newRoot()` plus the root `Long` module list, `RunE = clihelp.GroupRunE` on the parent, and JSON errors through the `internal/output` envelope.
   `cmd/lyx/helptree_test.go`, `registration_test.go`, `longlist_test.go`, `drift_test.go`, and `seamsignature_test.go` all react to a new module.
+  The invariant's own text hardcodes the seam counts — "eleven seam modules" and "ten of the eleven" carrying `RunCLIIn` — so adding `stencil` makes those twelve and eleven, and that edit belongs in the same commit as the rest.
+  `stencil` carries `RunCLIIn`, since it reads geometry.
 - **Sandbox Suite Coverage** — a newly registered module needs either a `**Covers:** stencil` scenario in a `tools/sandbox/*SUITE.md` file or an `excludedModules` entry with a reason;
   `cmd/lyx/sandbox_coverage_test.go` fails otherwise.
 - **Durable-vs-Ephemeral State Invariant** — `_lyx` holds tracked content only, which is correct for stencils.
   Nothing in this task writes under `.lyx`.
-- **Fabric Git Invariant** — the board write is a `Bolt` operation, never raw git, and the pathspec is positive-only via `fabricengine.ScopedPathspec`.
+- **Fabric Git Invariant** — the board write is a `Bolt` operation, never raw git.
+  Note what `Bolt` actually does, since an earlier draft of this document got it wrong: `Bolt.Commit` (`internal/fabricengine/bolt.go:23`) delegates to `commitWeftAt` (`internal/fabricengine/weftgit.go:336-341`), which takes **no pathspec** and calls `gitrepo.StageAllAndCommit`, and whose own doc states it "does not acquire the weft write lock;
+  the caller is responsible for synchronization".
+  There is no `ScopedPathspec` on this path.
+  Two consequences the plan must handle rather than inherit: the commit stages everything in the board repo, so seeding must not run while unrelated board edits are in flight;
+  and seeding fires on every run from every worktree and session in a hub, so concurrent seeding writes need explicit synchronisation.
+  Required rule: seeding writes only when content actually changes (the common case writes nothing at all), and the write plus commit runs under `Bolt.Sync`, which is the existing absorbing-push-lock seam on this same handle.
 - **Test Tier Purity Invariant** — untagged tests must not spawn git or build hub fixtures.
   Satisfied by `stencilstore` taking an explicit base directory, so tests use `t.TempDir()`.
 - **Documentation Lifecycle / task-completion rule** — `manifest/designs/` for any module doc touched, `docs/overview.md` for the module table and execution stack (a new `stencil` module changes both), and CONSTRAINTS.md for the new invariant, all in the same commit.
@@ -385,9 +430,13 @@ The plan must verify this rather than assume it.
 `diff` produces output against a seeded-then-changed default;
 `sync` is idempotent on a second run.
 
-**Port-back guard.** `promote` copies an edited board copy into the source tree, strips the stamp, and leaves a file that seeds back to a matching hash on the next run — assert that round trip explicitly, since it is what makes the loop closed.
-`diff --all --exit-code` exits non-zero when any board copy has been edited away from its shipped default and zero when none has;
-both directions need a test, because an `--exit-code` that never fires is a hook that silently passes forever.
+**Port-back guard.** `promote` copies an edited board copy into the source tree and strips the stamp on the way in.
+Assert the full round trip explicitly, since it is what closes the loop: promote, then re-seed from the new default, and assert the board copy ends up restamped and back in the untouched state via the reconciliation row of the edit-detection table.
+A test that stops at `promote` would pass while leaving the file permanently classified edited.
+`diff --all --exit-code` exits non-zero when a board copy differs from the worktree's `stencils/` source and zero when they agree — including zero immediately after a `promote`, which is the case the pre-commit hook depends on.
+Both directions need a test, because an `--exit-code` that never fires is a hook that silently passes forever.
+
+**Seeding concurrency.** Assert that a run whose defaults are unchanged writes nothing and produces no board commit, since that is what keeps `Bolt`'s wildcard `StageAllAndCommit` from sweeping up unrelated in-flight board edits on every single run.
 
 **Full-suite gate.** `go build ./...` and the full `go test ./...` must pass, since this change touches five engines, one enforcement walk, one import allowlist, and the cobra root.
 
@@ -412,4 +461,7 @@ both directions need a test, because an `--exit-code` that never fires is a hook
 - **Q:** Drift notification channel? **A:** `logger.Warn`.
 - **Q:** Does `stencilstore` own writing and hashing too, or only reading? **A:** All of it.
 - **Q:** Still one task? **A:** Yes, with the wiki task body rewritten to match what is actually being built.
+- **Q:** After `promote`, the board copy's stamp still names the old default, so it stays classified edited forever and never returns to clean. What restores it? **A:** A reconciliation row in the edit-detection table — body hash equal to the shipped default's hash means restamp silently and treat as untouched, whatever the stamp said. It also covers a hand-reverted edit.
+- **Q:** Does `diff` compare against the shipped default or against the source tree? **A:** Both, in different modes, and conflating them breaks the guard. `diff <name>` is forked-from-default versus shipped default; `diff --all --exit-code` is board copy versus the worktree's `stencils/` source. A shipped-default base would block the very commit that ports a change back.
+- **Q:** How does the stencils directory reach `treadleengine`, which is barred from `lyxcwd` and told only `runDir`/`GateDir`? **A:** As a new caller-supplied field, resolved by a new `fabricengine.StencilsDir(hub)` and passed in by the round runner. Webster's five no-arg accessors take the directory and gain an error return.
 - **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) and adding a loomyard-only pre-commit `lyx stencil diff --all --exit-code`. CI cannot be the guard, since a CI runner has no access to the operator's hub.
