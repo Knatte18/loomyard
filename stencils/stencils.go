@@ -43,6 +43,27 @@ var BurlerStep2Review []byte
 //go:embed burler/burler-step-3-fix.md
 var BurlerStep3Fix []byte
 
+// TreadleTemplateJudgeCircling is treadle's shipped-default per-round circling-check judge prompt.
+//
+//go:embed treadle/treadle-template-judge-circling.md
+var TreadleTemplateJudgeCircling []byte
+
+// TreadleTemplateJudgeMilestone is treadle's shipped-default milestone continuation-gate judge
+// prompt.
+//
+//go:embed treadle/treadle-template-judge-milestone.md
+var TreadleTemplateJudgeMilestone []byte
+
+// TreadleTemplateTriage is treadle's shipped-default asking-triage prompt.
+//
+//go:embed treadle/treadle-template-triage.md
+var TreadleTemplateTriage []byte
+
+// TreadleTemplateTargeting is treadle's shipped-default pre-round targeting judge prompt.
+//
+//go:embed treadle/treadle-template-targeting.md
+var TreadleTemplateTargeting []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -58,6 +79,10 @@ var entries = []registryEntry{
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
 	{"burler-step-3-fix", &BurlerStep3Fix},
+	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
+	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
+	{"treadle-template-triage", &TreadleTemplateTriage},
+	{"treadle-template-targeting", &TreadleTemplateTargeting},
 }
 
 // registry implements stencilstore.Registry over entries.
