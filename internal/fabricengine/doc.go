@@ -728,6 +728,21 @@
 // delegate their act to git, which re-validates at its own instant, so the containment binding lives
 // where the arbitrary-path removals are.
 //
+// **The two CREATE-side minters bind creation to a rooted act the same way, because R5's review proved
+// the delete-side asymmetry was live on the create side too.** `createExclusiveDir` and
+// `createGitWorktree` are the gate's only path/worktree minters, and both once resolved their target's
+// nominal path and let the create follow a symlink planted there. `createExclusiveDir` now creates its
+// leaf through an `os.Root` rooted at the parent, so an intermediate-symlink escape is refused at
+// `mkdir` time exactly as `removeContainedPath` refuses one at `unlink` time. `createGitWorktree` can
+// not be rooted the same way — `git worktree add` is a subprocess that resolves its destination
+// argument itself and FOLLOWS a symlink there, writing a whole worktree wherever it points — so
+// `containedWorktreeAdd` closes it structurally instead: git's WRITE only ever targets a collision-free
+// random staging path created through an `os.Root` (unnameable by an adversary, escape-refusing at
+// creation), and the worktree is then moved to the real target with `os.Root.Rename`, which refuses to
+// follow a symlink planted at the target, before `git worktree repair` fixes git's registration. The
+// only adversary-controllable path is touched solely by an operation that cannot escape, so a worktree
+// is never written outside the container — the create-side twin of the delete-side guarantee above.
+//
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
 // itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and

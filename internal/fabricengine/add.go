@@ -132,7 +132,9 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 	parentBranch := strings.TrimSpace(headStdout)
 	parentWeftBranch := WeftBranchName(parentBranch)
 
-	warpTok, err := createGitWorktree(rec, l.WorktreePath(), []string{"worktree", "add", "-b", warpBranch, target}, target)
+	warpTok, err := createGitWorktree(rec, l.WorktreePath(), l.HubPath, target, func(worktreePath string) []string {
+		return []string{"worktree", "add", "-b", warpBranch, worktreePath}
+	})
 	if err != nil {
 		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed: %w", target, warpBranch, err)
 	}
