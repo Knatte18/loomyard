@@ -29,25 +29,7 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
 
 ## Cards
 
-### Card 13: Delete `wireBoardLink`
-
-- **Context:**
-  - `internal/fabricengine/junctionnames.go`
-  - `internal/fabricengine/gitexclude.go`
-  - `internal/fslink/fslink.go`
-  - `CONSTRAINTS.md`
-- **Edits:**
-  - `internal/fabricengine/junction.go`
-- **Creates:** none
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** Delete `wireBoardLink` from `internal/fabricengine/junction.go` in full, including its doc comment beginning "wireBoardLink creates or repairs the operator-convenience `_board` junction".
-  Its standalone `seedGitExclude(rec, l, slug, []string{BoardDirName})` tail goes with it — `seedGitExclude` itself stays, since `WireJunctions` still calls it.
-  Do not change `seedLyxJunction`, `repointLink`, `ownedDriftedWiredJunction`, `WireJunctions`, `WireJunctionsWith`, or `UnwireResult` in this card.
-  The Fabric Destruction Chokepoint Invariant is unaffected here: `wireBoardLink` is a create-side function and its only destructive call was the `repointLink` re-point branch, which remains reachable from `seedLyxJunction`.
-- **Commit:** `refactor(fabricengine): delete wireBoardLink`
-
-### Card 14: Delete `wireBoardLink`'s three call sites
+### Card 13: Delete `wireBoardLink`'s three call sites
 
 - **Context:**
   - `internal/fabricengine/junction.go`
@@ -68,29 +50,28 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
   Do not touch `restorePortalAndLaunchers`, `applyStaleRemoval`, or the `seedWeftArtifactExcludes(boardDir)` best-effort call in `reconcileWarpBinding`.
 - **Commit:** `refactor(fabricengine): stop wiring the _board junction at clone, add and reconcile`
 
-### Card 15: Delete `unwireBoardLink` and the `BoardJunctionRemoved` result field
+### Card 14: Delete `wireBoardLink`
 
 - **Context:**
-  - `internal/fabricengine/junction.go`
   - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/gitexclude.go`
-  - `internal/fabricengine/destroy.go`
+  - `internal/fslink/fslink.go`
   - `CONSTRAINTS.md`
 - **Edits:**
-  - `internal/fabricengine/unwire.go`
+  - `internal/fabricengine/junction.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `unwireBoardLink` from `internal/fabricengine/unwire.go` in full, including its doc comment and its trailing `unseedGitExclude(rec, l, slug, []string{BoardDirName})` call.
-  `unseedGitExclude` itself stays — `UnwireJunctions` still calls it.
-  Delete the `BoardJunctionRemoved bool` field from `UnwireVerbResult` together with its explanatory comment block beginning "BoardJunctionRemoved reports whether the operator-convenience _board link was present and removed".
-  In `Unwire`, delete the `boardRemoved, err := unwireBoardLink(rec, l, slug)` call, its error branch, and the `result.BoardJunctionRemoved = boardRemoved` assignment, plus the comment above the call beginning "Remove the operator-convenience `_board` junction as an explicitly named case".
-  Rewrite `Unwire`'s own doc comment only where it is now false;
-  its statement that the junction name-set is enumerated from a full on-disk scan becomes unconditionally true rather than true-except-for-`_board`.
-  Removing this `removeLink` call site must not weaken the Fabric Destruction Chokepoint Invariant for the remaining callers: `removeLink`, `pathRequest`, `ownedWiredJunction` and `dirtinessNA` all stay, still reached from `unseedJunctionRecords` and `removePortal`.
-- **Commit:** `refactor(fabricengine): delete unwireBoardLink and UnwireVerbResult.BoardJunctionRemoved`
+- **Requirements:** Card 13 must already have landed before this card starts.
+  Deleting the function while `clone.go`, `add.go` and `reconcile.go` still call it produces a commit that fails to compile with "undefined: wireBoardLink";
+  the reverse order is safe, because Go accepts an unused package-level function.
+  Delete `wireBoardLink` from `internal/fabricengine/junction.go` in full, including its doc comment beginning "wireBoardLink creates or repairs the operator-convenience `_board` junction".
+  Its standalone `seedGitExclude(rec, l, slug, []string{BoardDirName})` tail goes with it — `seedGitExclude` itself stays, since `WireJunctions` still calls it.
+  Do not change `seedLyxJunction`, `repointLink`, `ownedDriftedWiredJunction`, `WireJunctions`, `WireJunctionsWith`, or `UnwireResult` in this card.
+  The Fabric Destruction Chokepoint Invariant is unaffected here: `wireBoardLink` is a create-side function and its only destructive call was the `repointLink` re-point branch, which remains reachable from `seedLyxJunction`.
+- **Commit:** `refactor(fabricengine): delete wireBoardLink`
 
-### Card 16: Restore `Remove`'s natural link-sweep shape
+### Card 15: Restore `Remove`'s natural link-sweep shape
 
 - **Context:**
   - `internal/fabricengine/unwire.go`
@@ -108,7 +89,7 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
   that reasoning is unaffected.
 - **Commit:** `refactor(fabricengine): drop the _board special case from Remove's link sweep`
 
-### Card 17: Drop the `board_junction_removed` envelope key
+### Card 16: Drop the `board_junction_removed` envelope key
 
 - **Context:**
   - `internal/fabricengine/unwire.go`
@@ -123,6 +104,33 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
   This is a CLI-observable contract change under the CLI / Cobra Invariant, deliberate and covered by the deletion of its only asserting test in card 21.
   Leave every other key in that envelope unchanged.
 - **Commit:** `feat(fabriccli)!: remove board_junction_removed from the unwire envelope`
+
+### Card 17: Delete `unwireBoardLink` and the `BoardJunctionRemoved` result field
+
+- **Context:**
+  - `internal/fabricengine/junction.go`
+  - `internal/fabricengine/junctionnames.go`
+  - `internal/fabricengine/gitexclude.go`
+  - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/remove.go`
+  - `internal/fabriccli/unwire.go`
+  - `CONSTRAINTS.md`
+- **Edits:**
+  - `internal/fabricengine/unwire.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Cards 15 and 16 must already have landed before this card starts.
+  They remove the last two readers of the symbols deleted here — `remove.go`'s `unwireBoardLink` call and `internal/fabriccli/unwire.go`'s `res.BoardJunctionRemoved` read — and deleting the definitions first would break `internal/fabricengine` and `internal/fabriccli` across two intervening commits.
+  The reverse order is safe: Go accepts both an unused package-level function and an unread struct field.
+  Delete `unwireBoardLink` from `internal/fabricengine/unwire.go` in full, including its doc comment and its trailing `unseedGitExclude(rec, l, slug, []string{BoardDirName})` call.
+  `unseedGitExclude` itself stays — `UnwireJunctions` still calls it.
+  Delete the `BoardJunctionRemoved bool` field from `UnwireVerbResult` together with its explanatory comment block beginning "BoardJunctionRemoved reports whether the operator-convenience _board link was present and removed".
+  In `Unwire`, delete the `boardRemoved, err := unwireBoardLink(rec, l, slug)` call, its error branch, and the `result.BoardJunctionRemoved = boardRemoved` assignment, plus the comment above the call beginning "Remove the operator-convenience `_board` junction as an explicitly named case".
+  Rewrite `Unwire`'s own doc comment only where it is now false;
+  its statement that the junction name-set is enumerated from a full on-disk scan becomes unconditionally true rather than true-except-for-`_board`.
+  Removing this `removeLink` call site must not weaken the Fabric Destruction Chokepoint Invariant for the remaining callers: `removeLink`, `pathRequest`, `ownedWiredJunction` and `dirtinessNA` all stay, still reached from `unseedJunctionRecords` and `removePortal`.
+- **Commit:** `refactor(fabricengine): delete unwireBoardLink and UnwireVerbResult.BoardJunctionRemoved`
 
 ### Card 18: Narrow `linkIsFabricOwned` to the weft worktree alone
 
@@ -182,7 +190,7 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
 - **Requirements:** In `internal/fabricengine/remove_junctions_integration_test.go`, change the expected `result.LinksRemoved` from 3 to 2 and update the failure message to name only `_lyx` and `.lyx`.
   Rewrite the comment above it — "Exactly the two wired junctions (`_lyx`, `.lyx`) plus the `_board` convenience link — an exact count, not merely non-zero: the `_board` link is removed on a separate path and contributes 1 on its own, so a non-zero assertion stayed green with the anchored sweep entirely disabled."
   The exactness still matters and the reason must be restated without the board link: with the special case gone, the anchored sweep is the sole contributor, so an exact count is what proves the sweep ran at all.
-  This is a behaviour assertion, not prose — it fails without card 16.
+  This is a behaviour assertion, not prose — it fails without card 15.
   Also correct the second, earlier comment in the same file: `TestRemove_SweepsAnchoredLinksOnSubpathHub`'s doc comment ends "reported `LinksRemoved: 0` while three junctions existed one directory down", and only `_lyx` and `.lyx` sit at that directory once the board link is gone.
   Both counts in this file must agree after the edit.
   In `internal/fabricengine/livestate_manifest_test.go`, remove "warp/`_board` to the hub's `_board`" from `CaptureManifest`'s no-descend walk rationale, which enumerates fabric's wired junctions.
@@ -204,7 +212,7 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Delete `TestRunCLI_Unwire_ReportsBoardJunctionRemoval` and its doc comment from `internal/fabriccli/cli_test.go` outright — its entire subject is the envelope key card 17 removes.
+- **Requirements:** Delete `TestRunCLI_Unwire_ReportsBoardJunctionRemoval` and its doc comment from `internal/fabriccli/cli_test.go` outright — its entire subject is the envelope key card 16 removes.
   Re-home `TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject` onto the portal junction rather than deleting it: rename it to `TestRunCLI_Remove_RefusesDriftedPortalJunctionWithRefusalObject`, add a pair via `fabriccli.RunCLIIn(h.PrimeWorktree(), …, []string{"add", slug})`, re-point `h.PairPortalLink(slug)` at a `t.TempDir()` using `fslink.Remove` then `fslink.CreateDirLink`, and drive `[]string{"remove", "--force", slug}` instead of `unwire`.
   Keep every assertion unchanged: exit code 1, `ok` false, a non-empty flattened `"error"` string, a `"refusal"` object carrying non-empty `check`, `what`, `target` and `reason`, `refusal["check"]` equal to `fabricengine.CheckOwnership`, and a `"mutations"` key present on the failure path.
   This test is the repo's only positive assertion that the `"refusal"` object reaches an envelope — `envelope_test.go` asserts only its absence — so losing it as collateral would silently weaken a CLI contract this task has no business touching.
@@ -315,7 +323,7 @@ Both were verified absent on every hub on disk, and cleanup code for a state tha
 `verify:` runs the untagged tier for the two packages this batch changes plus `cmd/lyx`, then the integration tier for both — the tier where nearly all of this batch's coverage lives.
 
 - `-tags integration ./internal/fabricengine/... ./internal/fabriccli/...` is load-bearing, not defensive: cards 19, 20, 21 and 22 all touch or create `//go:build integration` files (`hubreservedroutes_integration_test.go`, `remove_junctions_integration_test.go`, `livestate_manifest_test.go`, `cli_test.go`, `hubcontainment_integration_test.go`), every one of which is invisible to an untagged run.
-- The two assertions that actually prove the deletion landed are card 20's exact `LinksRemoved` count (2, not 3 — it fails without card 16) and card 22's per-verb absence checks (they fail if any of card 14's three call sites survives).
+- The two assertions that actually prove the deletion landed are card 20's exact `LinksRemoved` count (2, not 3 — it fails without card 15) and card 22's per-verb absence checks (they fail if any of card 13's three call sites survives).
 - Card 21's re-homed refusal test is the regression guard for the CLI contract the deletion would otherwise have taken with it;
   it fails if `removePortal`'s ownership gate stops reaching `removeLink`.
 - `cmd/lyx` is in scope for the repo-wide guards over this batch's new files and doc edits — `tierpurity_test.go`, `hermeticenv_test.go`, and the Markdown Link Integrity check.
