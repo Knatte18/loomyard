@@ -6,11 +6,23 @@ Report is built incrementally during Job 1; executive summary and final severity
 
 ## Executive summary
 
-(to be written after the findings list is complete)
+Round 3 was weighted, as instructed, on the destruction chokepoint, and the seeded residual is REAL and REPRODUCED: a containment TOCTOU in `destroy.go` lets a gated `remove --force` delete a file OUTSIDE the hub through an intermediate symlink flipped in the window between the gate's check and the executor's act (finding **M1**). It defeats exactly the property `doc.go` calls "the one thing `--force` can never override." I graded it **MEDIUM** — real out-of-hub data loss, but requiring an adversarial concurrent writer inside hub geometry plus tight timing; the normal single-instance flow is unaffected.
+
+The fix closes the window rather than shrinking it: the two arbitrary-path executors (`removePath`, `removeLink`) now perform their removal through an `os.Root` (Go 1.26) rooted at the gate's declared container, so component resolution and the unlink are one `openat` chain that atomically refuses to traverse a symlink escaping the container, while still removing a final-component junction link as a link. This binds resolution to the act — a second `EvalSymlinks` would only have narrowed the same class of gap. I verified the `os.Root` semantics against every case the executors depend on (intermediate escape, escaping leaf link, dir-link, absent target, `..`-escape, recursive tree with escaping children) via standalone probes before writing the fix.
+
+Secondary target **N4** (dirtiness-probe TOCTOU) was given a dedicated attempt; I could not improve it beyond PLAUSIBLE / CONFIRMED-by-source and traced exactly why (the only reachable probe→RemoveAll paths are either pre-checked or bypass the probe via `force`), matching the accepted documented residual. No unrelated defects surfaced in the rest of the module during this pass.
+
+**Top risks:** M1 (fixed this round). No BLOCKING findings.
+
+Counts: 1 MEDIUM (M1), 0 LOW, 0 NIT beyond the residuals noted. Windows path behavior remains out of scope (unreachable from Linux) and is the standing limit on the verdict.
+
+**Merge-readiness:** MERGEABLE once M1's fix lands green (it does — see fixer report). The chokepoint's core promise is restored and regression-guarded.
 
 ## Scope assessment (plan vs shipped)
 
-(to be written)
+- The module's scope matches `doc.go`'s spec: the one-repo illusion, the destruction chokepoint, the mutation record, the correspondence-index write path, snapshot trailers, clone-does-everything. Nothing plan-promised is silently dropped that this pass found.
+- The destruction chokepoint delivers its intended shape (closed ownership enum, gate-executes-not-approves, `--force`-answers-dirtiness-only, bypass guard) — the ONE gap is M1, which is a completeness hole in the containment CHECK→ACT binding, not a scope omission. The chokepoint's own doc already names "the gate's checks are not atomic with its acts" as a stated limit; M1 shows that limit had real teeth for the arbitrary-path executors, and the fix removes those teeth for the containment dimension via act-time rooted resolution.
+- No shipped-beyond-scope over-reach found. No deferred-that-should-be-v1 found beyond the acknowledged Windows gap and the accepted N4/RebuildIndex residuals.
 
 ## Code findings
 
@@ -24,9 +36,30 @@ Report is built incrementally during Job 1; executive summary and final severity
 - **Fix (window-closing, not window-shrinking):** perform the removal through an `os.Root` (Go 1.26) rooted at the gate's declared `container`, using the container-relative path. `os.OpenRoot`+`Root.Remove`/`Root.RemoveAll` resolve each path component and unlink as one openat chain that atomically REFUSES to traverse a symlink escaping the container ("path escapes from parent"), while still removing a final-component link as a link (junction removal unaffected). Verified via standalone probes: intermediate escape refused + outside preserved; escaping-leaf link removed as a link, target preserved; legitimate nested removal works; absent target → IsNotExist (idempotence preserved). This binds resolution to the act, closing the window rather than narrowing it. Apply to both `removePath` and `removeLink`; add an integration regression test racing the toggle the same way, plus a deterministic escaping-symlink test that would fail on the old nominal-path executor.
 - **Note:** the existing check-phase resolution stays as defense-in-depth; the act-time rooted removal is the actual closer.
 
+### N4 (secondary target) — dirtiness-probe TOCTOU: attempted, still PLAUSIBLE, not improvable to CONFIRMED
+
+- **Where:** `checkPathDirtiness` (destroy.go) runs `git status --porcelain` then the executor acts, with no lock spanning the two.
+- **Attempt / analysis (source-traced, this round):** enumerated every reachable probe-then-destructive-act path where the dirtiness scope is real (not `dirtinessNA`) AND force is false (force short-circuits the probe at destroy.go:636):
+  - `removeGitWorktree` / `resetHardTo` delegate the act to git, which re-validates at its own instant — no window this review can widen.
+  - The only `RemoveAll`/`os.Remove` sites carrying a real scope are the two teardown fallbacks (`removeWarpWorktreeDir`, `removeStalePair`), and BOTH pass `force: true`, so `checkPathDirtiness` returns before probing — there is no probe→RemoveAll pairing there at all.
+  - `removeWarpWorktreeDir`'s primary request can carry `force:false`+`dirtyScopeAll`, but `Remove` runs its OWN `worktreeDirty(scopeAll)` pre-check first (remove.go:73-81) and aborts if dirty, so the fallback-with-force=false path is reached only when the worktree was clean at the pre-check but `git worktree remove` failed for a NON-dirtiness reason (e.g. a `git worktree lock`). Only in that already-narrow state does a probe→RemoveAll window exist, and threading it needs the target to be clean at the pre-check, still-clean at the fallback probe, and dirty by the RemoveAll instant.
+- **Verdict:** I could not construct a live, isolable repro either, for the same reason round 2 and the orchestrator could not — the reachable window is guarded by an earlier pre-check and/or bypassed by `force`. Recording as PLAUSIBLE / CONFIRMED-by-source, matching the accepted documented residual in `doc.go` ("The gate's checks are not atomic with its acts"). Not separately fixed: it is the documented accepted narrow residual, and no evidence this round shows it worse than documented. The M1 fix does not address it (dirtiness is orthogonal to containment), nor need it.
+
+### Other adversarial chokepoint shapes tried (no new escape)
+
+- **Symlink loop (A→B→A)** at a gate-resolved intermediate: `EvalSymlinks` fails ELOOP → `resolveAncestorSymlinks` lexical fallback (current behavior). Under the M1 `os.Root` fix the act-time `openat` returns ELOOP → refused. No escape survives the fix.
+- **`..`-relative symlink target**: `os.Root` probe confirms `Remove("../out/leaf")` → "path escapes from parent", target preserved. Handled by the fix.
+- **Launcher-dir direct `os.Remove(launcherDir)`** (launchers.go:242, allowlisted): removes the FINAL-component link only (never follows it), so a symlink AT `_launchers/<slug>` is removed as a link — safe. An escape would require `_launchers` itself (the container / hub geometry) to be replaced by a symlink, a materially higher bar than the confirmed `_launchers/<slug>` intermediate. Recorded as a lower-priority residual; the M1 executors are the confirmed-vulnerable path. Left as-is (routing it through a destroy.go helper would move an allowlisted call and is not justified by the narrower exposure).
+- **Worktree-removal fallback recursion**: `Root.RemoveAll(<slug>)` over a worktree tree containing escaping junction children removes the children as links and preserves their targets (probed) — the fallback is safe, indeed safer, under the fix.
+
 ## Docs & operability findings
 
-(provisional entries appended as formed)
+- `doc.go`'s "The gate's checks are not atomic with its acts" section correctly states the general limit but implied the exposure was bounded to dirtiness ("a write landing in that window is destroyed") — M1 shows the CONTAINMENT dimension had a real out-of-hub escape for the arbitrary-path executors. The M1 fix's doc update (in the same commit) records that the arbitrary-path executors now bind resolution to the act via `os.Root`, so containment is no longer subject to that window; the dirtiness window (N4) remains as documented.
+- No other doc/code drift found this pass. Help text (`lyx fabric --help`) matches the shipped verb set.
+
+## Review status
+
+Job 1 (independent review) COMPLETE at this point — findings formed and written to disk before any production/test file is touched for the fix. Job 2 (fixes) follows below in the fixer report file.
 
 ## What was tested
 
