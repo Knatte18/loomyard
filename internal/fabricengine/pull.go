@@ -428,7 +428,7 @@ func (f *Fabric) patternResidueCommits(fromWeftSHA, toWeftSHA string) ([]Pattern
 
 	stdout, err := gitexec.Run(args, f.weftPath)
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: git log --name-only %s in %s: %w", rangeArg, f.weftPath, err)
+		return nil, fmt.Errorf("fabricengine: scan PATTERN residue over %s in %s: %w", rangeArg, f.weftPath, err)
 	}
 
 	return parsePatternResidueRecords(stdout), nil

@@ -545,7 +545,7 @@ func readBranch(dir string) (string, error) {
 	// two-message merge.
 	var gitErr *gitexec.GitError
 	if !errors.As(err, &gitErr) {
-		return "", fmt.Errorf("rev-parse: %w", err)
+		return "", fmt.Errorf("read current branch: %w", err)
 	}
 
 	unbornOut, unbornErr := gitexec.Run(
@@ -555,9 +555,9 @@ func readBranch(dir string) (string, error) {
 	if unbornErr != nil {
 		var unbornGitErr *gitexec.GitError
 		if !errors.As(unbornErr, &unbornGitErr) {
-			return "", fmt.Errorf("branch --show-current: %w", unbornErr)
+			return "", fmt.Errorf("read current branch via the unborn-branch fallback: %w", unbornErr)
 		}
-		return "", fmt.Errorf("rev-parse exited %d and branch --show-current: %w", gitErr.ExitCode, unbornErr)
+		return "", fmt.Errorf("rev-parse exited %d and the unborn-branch fallback also failed: %w", gitErr.ExitCode, unbornErr)
 	}
 	branch := strings.TrimSpace(unbornOut)
 	if branch == "" {
