@@ -35,7 +35,13 @@ implementing  '2026-08-14T17:53:58Z'
 ```yaml
 batches:
   - name: hub-scratch-move
-    state: pending
+    state: running
+    implementer_session: 96a6fd81-756a-41ac-a743-c3e6043a8e87
+    start_sha: c14458134fccace6c2bb08fcd38dd19bd0d368b5
+    verify_baseline_failures: ['--- FAIL: TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive (0.47s)', "FAIL\t\
+    github.com/Knatte18/loomyard/internal/reedcli\t21.906s", '--- FAIL: TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive
+    (0.46s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/reedcli\t22.925s"]
   - name: board-junction-deletion
     state: pending
+    verify_baseline_failures: []
 ```
