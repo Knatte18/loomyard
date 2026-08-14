@@ -165,6 +165,7 @@ type judgeInputs struct {
   - `internal/perchengine/run_test.go`
   - `internal/perchcli/run.go`
   - `internal/treadleengine/template_test.go`
+  - `internal/treadleengine/engine_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -189,6 +190,9 @@ func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
   In `internal/treadleengine/template_test.go` (still `package treadleengine`), import `github.com/Knatte18/loomyard/stencils` and replace each read of the four deleted package vars with its exported counterpart: `judgeCirclingTemplate` becomes `stencils.TreadleTemplateJudgeCircling`, `judgeMilestoneTemplate` becomes `stencils.TreadleTemplateJudgeMilestone`, `triageTemplate` becomes `stencils.TreadleTemplateTriage`, `targetingTemplate` becomes `stencils.TreadleTemplateTargeting`.
   Keep the subject and text of `TestJudgeCirclingTemplate_StatesLoadBearingRules`, `TestJudgeMilestoneTemplate_StatesLoadBearingRules`, `TestTriageTemplate_StatesLoadBearingRules`, `TestTargetingTemplate_StatesLoadBearingRules`, and the four `*_FillsWithAllMarkers` tests unchanged — they test the shipped default, which remains the right subject.
   Add one new test seeding a `t.TempDir()` with the four treadle `.md` files, overwriting `treadle/treadle-template-triage.md` with a modified body, and asserting `runTriage` composes its prompt from the modified on-disk text rather than the embedded default.
+
+  Card 22's claim that `internal/treadleengine/engine_test.go` "needs no edit" beyond its `runTargeting` call sites covers arity only.
+  In practice several `Engine.Run`-level round-loop tests in that file (e.g. `TestEngine_RetrySemantics`, `TestEngine_LadderAndGateParity`, `TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced`) exercise `runTriage`/`runCircling`/`runMilestone` for real rather than only their fail-safe paths, so every `New(..., Options{...})` construction site in that file must also set `StencilsDir` to a `t.TempDir()` seeded from the `stencils` package vars (the same `newTestStencilsDir` helper `judge_test.go` declares) or those calls silently take the stencilstore-read-failure fail-safe path instead of the behavior under test.
 - **Commit:** `refactor(perch): pass the resolved stencils directory into treadle`
 
 ## Batch Tests
