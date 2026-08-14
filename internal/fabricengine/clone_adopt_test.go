@@ -741,3 +741,81 @@ func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
 		})
 	}
 }
+
+// TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch is R2's regression for a clone
+// that reported total success against a hub that could never work.
+//
+// A bare repo created without -b main has HEAD -> refs/heads/master; pushing only `main` to it leaves
+// HEAD naming a ref that does not exist. `git clone` warns on stderr and exits 0, so cloneRepo
+// reported success and CloneHub went on to wire every junction, record the anchor and the binding, and
+// return ok:true — for a warp prime with an unborn HEAD and zero tracked files.
+//
+// The counter-assertion in the second subtest is what keeps the refusal narrow: a warp remote with NO
+// branches at all is the genuine empty-remote bootstrap and must still clone, since an unborn warp
+// HEAD is a legitimate documented state on its own. Only the conjunction is refused.
+func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("UnbornHeadWithBranchesOnTheRemoteIsRefused", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		weftRemote := makeBareRemote(t, dir, "dangling-head-weft")
+		warpRemote := makeBareRemote(t, dir, "dangling-head-warp")
+		// makeBareRemote pushes `main`; repoint the bare repo's HEAD at a branch that was never
+		// created, which is exactly the state `git init --bare` (no -b) leaves behind.
+		gitkit.MustRun(t, warpRemote, "git", "symbolic-ref", "HEAD", "refs/heads/master")
+
+		into := filepath.Join(dir, "into-dangling")
+		if err := os.Mkdir(into, 0o755); err != nil {
+			t.Fatalf("mkdir into: %v", err)
+		}
+
+		_, err := fabricengine.CloneHub(into, fabricengine.CloneOptions{
+			WeftURL:        filepath.ToSlash(weftRemote),
+			WarpURL:        filepath.ToSlash(warpRemote),
+			ForceBootstrap: true,
+		})
+		if err == nil {
+			t.Fatalf("CloneHub against a warp remote whose HEAD names a nonexistent ref = nil; want a refusal")
+		}
+		if !strings.Contains(err.Error(), "nothing checked out") {
+			t.Errorf("CloneHub error = %q; want it to name the unchecked-out clone", err)
+		}
+
+		// The strict-abort teardown must leave no residual hub, exactly as every other CloneHub
+		// failure site does.
+		entries, readErr := os.ReadDir(into)
+		if readErr != nil {
+			t.Fatalf("read into dir: %v", readErr)
+		}
+		if len(entries) != 0 {
+			t.Errorf("residual hub left behind after the refusal: %v", entries)
+		}
+	})
+
+	t.Run("EmptyWarpRemoteStillClones", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		weftRemote := makeBareRemote(t, dir, "empty-warp-weft")
+		emptyWarp := filepath.Join(dir, "empty-warp.git")
+		if err := os.Mkdir(emptyWarp, 0o755); err != nil {
+			t.Fatalf("mkdir empty warp bare: %v", err)
+		}
+		gitkit.MustRun(t, emptyWarp, "git", "init", "--bare")
+
+		into := filepath.Join(dir, "into-empty")
+		if err := os.Mkdir(into, 0o755); err != nil {
+			t.Fatalf("mkdir into: %v", err)
+		}
+
+		if _, err := fabricengine.CloneHub(into, fabricengine.CloneOptions{
+			WeftURL:        filepath.ToSlash(weftRemote),
+			WarpURL:        filepath.ToSlash(emptyWarp),
+			ForceBootstrap: true,
+		}); err != nil {
+			t.Fatalf("CloneHub against a genuinely EMPTY warp remote = %v; want nil — an unborn warp HEAD with no remote branches is the documented bootstrap state, not the refused conjunction", err)
+		}
+	})
+}

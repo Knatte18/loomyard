@@ -264,6 +264,10 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// the coarsest-covering-root rule, mirroring cloneRepo's own single-call-site posture.
 	rec.Append(KindWorktreeCreated, warpWorktreePath, "")
 
+	if err := refuseUncheckedOutWarpClone(warpWorktreePath, warpURL); err != nil {
+		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+	}
+
 	// Install the post-checkout hook after the warp worktree exists so drift
 	// warnings fire on every subsequent git checkout within this repo.
 	// Hook installation is non-fatal: a failure is logged but does not abort
@@ -547,6 +551,40 @@ func cloneRepo(url, dest string) error {
 	}
 
 	return nil
+}
+
+// refuseUncheckedOutWarpClone returns an error when the freshly cloned warp worktree sits on an
+// UNBORN branch even though its remote carries branches — the shape a remote whose HEAD names a
+// nonexistent ref produces.
+//
+// `git clone` treats that remote as a success: it warns on stderr ("remote HEAD refers to nonexistent
+// ref, unable to checkout"), exits 0, and leaves a worktree with zero files on a branch that has no
+// commits. CloneHub then wired every junction, recorded the anchor and the binding, and reported
+// ok:true for a hub that can never work — an operator's only clue being a mutation record that looked
+// entirely normal.
+//
+// The refusal is deliberately narrow, because an unborn warp HEAD is a legitimate documented state
+// elsewhere: a warp remote with NO branches at all is the genuine empty-remote bootstrap, which this
+// function must not touch. Only the conjunction — unborn locally AND at least one branch on the
+// remote — is unreachable by any correct setup, and it is that conjunction alone that is refused.
+//
+// An enumeration failure answers "no refusal": this check exists to catch a specific misconfiguration
+// loudly, never to invent a new way for a clone against an awkward remote to fail.
+func refuseUncheckedOutWarpClone(warpWorktreePath, warpURL string) error {
+	head, headErr := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "HEAD"}, warpWorktreePath)
+	if headErr == nil && strings.TrimSpace(head) != "" {
+		return nil
+	}
+
+	remoteBranches, listErr := gitexec.Run([]string{"branch", "--remotes", "--format=%(refname:short)"}, warpWorktreePath)
+	if listErr != nil || strings.TrimSpace(remoteBranches) == "" {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"warp repo %s cloned with nothing checked out: its default branch (remote HEAD) names a ref that does not exist, while the remote does carry branches (%s) — point the remote's HEAD at a real branch (`git remote set-head origin --auto` against a working clone, or the repo host's default-branch setting) and re-run `lyx fabric clone`",
+		warpURL, strings.Join(strings.Fields(remoteBranches), ", "),
+	)
 }
 
 // resetHub implements --reset: it removes an existing hub at hubPath, but only once it has
