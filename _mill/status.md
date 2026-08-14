@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-stencils-package-and-loom
+phase: approved-seeding-trigger
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -27,6 +27,7 @@ planned  '2026-08-14T11:40:30Z'
 implementing  '2026-08-14T11:40:58Z'
 approved-stencilstore-foundation  '2026-08-14T11:49:49Z'
 approved-stencils-package-and-loom  '2026-08-14T11:56:36Z'
+approved-seeding-trigger  '2026-08-14T12:04:22Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     commit_sha: 41e1ff0db67fa67866289ddf0b310980b20b9820
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: seeding-trigger
-    state: running
+    state: approved
     implementer_session: b9b92d06-a5cc-46d1-905c-61aa02eb2dac
     start_sha: 30a9047f15e7a10d50c6de081273768b71ac2abc
+    commit_sha: 7be02382e7fce6184261b8d8722187b84f23d1cf
     verify_baseline_failures: []
   - name: burler-runtime-read
     state: pending
