@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-seeding-trigger
+phase: approved-burler-runtime-read
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-08-14T11:40:58Z'
 approved-stencilstore-foundation  '2026-08-14T11:49:49Z'
 approved-stencils-package-and-loom  '2026-08-14T11:56:36Z'
 approved-seeding-trigger  '2026-08-14T12:04:22Z'
+approved-burler-runtime-read  '2026-08-14T12:13:13Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 7be02382e7fce6184261b8d8722187b84f23d1cf
     verify_baseline_failures: []
   - name: burler-runtime-read
-    state: running
+    state: approved
     implementer_session: aa7de156-96b5-4c29-9146-2b61d982582d
     start_sha: 38a8395c18c2f581c75b63ef968cc062d892d0b5
+    commit_sha: de09c60c3c4bf1ccf27ea1cb5efdbcbef9b20a59
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: diff-base-recovery
     state: pending
