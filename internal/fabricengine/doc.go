@@ -543,9 +543,13 @@
 // owner set: `internal/fabricengine` (this package, which implements the illusion),
 // `internal/fabriccli` (fabric's own CLI, which exposes the weft to an operator deliberately),
 // `internal/weftname` (the `-weft` suffix leaf), `internal/gitkit` (the test-fixture leaf that
-// builds real paired worktrees), `internal/boardengine` (the pre-existing board carve-out, since
-// board lives at `weft:main`), `internal/configsync` (string literals and comments, never
-// identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
+// builds real paired worktrees), `internal/hubforge` (the repo-wide hub-fixture factory, which
+// builds every hub fixture in the repo through `fabriccli.CloneAndWire` rather than assembling a
+// stand-in by hand, and therefore names both sides), `internal/boardengine` (the pre-existing board
+// carve-out, since board lives at `weft:main`), `internal/configsync` (string literals and
+// comments, never identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
+// `internal/hubforge` also sits in the narrower `weftname`-import subset alongside
+// `internal/fabricengine`, `internal/fabriccli`, and `internal/gitkit`.
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
 // their vocabulary (naming the real `lyx-test-weft`/`lyx-fabric-test-weft` GitHub repos) is a
