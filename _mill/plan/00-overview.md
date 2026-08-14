@@ -3,7 +3,7 @@
 ```yaml
 task: "Move <hub>/.lyx into <hub>/_board"
 slug: "hub-dotlyx-into-board"
-approved: false
+approved: true
 started: "20260814-165510"
 parent: "main"
 root: ""
