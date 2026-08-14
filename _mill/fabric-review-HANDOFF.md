@@ -4,14 +4,27 @@ Orchestrator's own state file. Refreshed after every round's verification. Never
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 4 (`fable-high-r4`) has FINISHED and been independently verified (fork `a8439474ef0d70b10`).
-**Operator confirmed round 5 (2026-08-14): "Ja. Og R6 også. Dersom nødvendig"** — round 5 is
-approved, Fable/high per the operator's earlier stated preference, AND round 6 is pre-approved
-too, conditional on round 5's own independent verification actually warranting it. This means: do
-NOT stop to ask again before spawning round 6 if round 5's verification finds something that
-warrants it — that permission is already granted. Only stop and ask if something outside this
-pattern comes up (e.g. a finding severe enough to reconsider the dedicated-engineering-work fork
-instead of another review round).
+Round 5 (`fable-high-r5`) has FINISHED and been independently verified (fork `afd8fb60fc7bd525e`).
+**NOT mergeable — round 5's own fix introduced a NEW, worse attack surface. Round 6 is being
+spawned now, per the operator's standing pre-approval (2026-08-14: "Ja. Og R6 også. Dersom
+nødvendig") — no need to stop and ask again for this specific case.**
+
+Round 5 correctly reproduced and fixed the create-side gap seeded from round 4's verification
+(`createGitWorktree`'s symlink-directed-write escape via `Topology.Add`) — but the FIX itself
+(`containedWorktreeAdd`: git writes to a crypto-random `os.Root`-created staging path inside the
+hub, then `os.Root.Rename`s it into place) only defends against a GUESSING adversary, not an
+OBSERVING one. Independent verification built an inotify watcher on the staging parent directory,
+caught the staging path's creation the instant it happened (before git had written anything into
+it), planted a symlink there, and hit **8/8 (100%)** across two batches — MORE reliable than the
+original bug's ~1.7%. This affects the shared helper, so F3's four "sibling" sites (which correctly
+route through the same helper) inherit the same exposure — not per-site bugs, one shared-mechanism
+bug. `os.Root.Rename`'s own claimed semantics (refuses a destination symlink) checked out fine
+against Go 1.26 docs — the flaw is earlier, in the staging path's observability, not in the final
+move. Round 5's own re-attack (1200 trials, 0 escapes) only re-tried the ORIGINAL attack shape
+(toggle a symlink at the final target) — it never attacked the NEW surface its own fix introduced
+(the staging directory's observable creation). Same category of blind spot as round 4's "carried
+item 3" mistake, one level more subtle: round 5 DID run a timing attack, just not the right one.
+This is round 6's seeded residual — see below.
 Round 4's F1, F3, F4 fixes are genuinely solid (sabotage-proven independently). But round 4's
 "carried item 3" conclusion — that the two CREATE executors (`createExclusiveDir`/
 `createGitWorktree`) have no symlink-directed-write exposure — is WRONG. Independent verification
@@ -118,6 +131,23 @@ nothing deferred, so nothing else to fold in from that source. The "inert leftov
 post-freeze observation is folded in as a low-priority spot-check only.
 
 ## CLOSED-AND-VERIFIED
+**Round 5 (`fable-high-r5`) — PARTIALLY closed, see round 6's residual below for what is NOT
+closed.** 1 MEDIUM (F1) + 2 LOW (F2, F3) + 1 NIT (F4), 8 commits `6034464d`..`88fe81fb`.
+Independently verified (fork `afd8fb60fc7bd525e`): gates green cold; F1's regression test
+(`TestContainedWorktreeAdd_RefusesSymlinkedTarget`) and F4's (`TestAddRollback_...WarnsLog`)
+both sabotage-proven genuinely. `os.Root.Rename`'s specific claimed semantics (refuses a
+destination symlink) checked out against actual Go 1.26 docs — that part of the design is sound.
+**But the overall F1 fix does NOT close the window — it substitutes one exposure for a worse
+one.** The staging path's "crypto-random, so unguessable" defense only stops a GUESSING
+adversary; independent verification built an inotify watcher on the staging parent, caught the
+staging directory's creation the instant it happened, planted a symlink there, and hit 8/8 (100%)
+— more reliable than the original bug. F2/F3 (the sibling `createExclusiveDir` fix and the four
+newly-gated weft/board/reconcile sites) correctly route through the same shared helper, so they
+inherit the identical exposure — not per-site bugs, one shared-mechanism bug. F2/F3 also have no
+dedicated regression test of their own (minor, secondary test-architecture gap). Round 5's own
+1200-trial re-attack only re-tried the ORIGINAL attack shape; it never attacked the NEW surface
+its own fix introduced. **This is round 6's seeded residual, not closed work — see below.**
+
 **Round 4 (`fable-high-r4`) — PARTIALLY closed, see round 5's residual below for what is NOT
 closed.** 4 LOW (F1-F4) + 1 NIT (F5), 6 commits `7f49049d`..`f19bc1d6`. Independently verified
 (fork `a8439474ef0d70b10`): gates green cold; F1 (`applyStaleRemoval` false-convergence report)
@@ -185,54 +215,63 @@ already closed. The fixture-inversion (`f4ce0188`) and `t.Parallel` unblock (`16
 independently confirmed delivered as intended, drove real scenarios against both. Treat these
 three commits as settled unless a later round's own independent driving turns up something new.
 
-## RESIDUAL currently seeded for round 5 (proposed to operator, not yet confirmed)
-**New finding, from the orchestrator's OWN independent verification of round 4's "carried item 3"
-conclusion (round 4 investigated this and got it WRONG — same "never trust the round's own
-verdict" pattern, fifth time it's fired in this campaign):** the two CREATE executors
-(`createExclusiveDir`, and specifically `createGitWorktree` via `Topology.Add`) have a live,
-reproducible symlink-directed-write escape — the write-side twin of M3/M1's delete-side
-containment bypasses.
+## RESIDUAL currently seeded for round 6
+**New finding, from the orchestrator's OWN independent verification of round 5's `containedWorktreeAdd`
+fix (round 5 investigated this and got it WRONG — sixth time this "never trust the round's own
+verdict" pattern has fired in this campaign):** the fix for round 5's own seeded residual
+(create-side symlink-directed-write) substitutes one exposure for a worse one. The staging path is
+crypto-random but lives INSIDE the hub tree, where the same adversary who can plant a symlink can
+also watch the directory (`inotify`) for the staging path's creation and plant a symlink there the
+instant it appears — before git has written anything into it.
 
-- **Mechanism:** `add.go`'s `os.Stat(target)` guard runs, then several git subprocess calls
-  execute (list remotes, stat weft target, check weft branch, rev-parse HEAD), THEN
-  `createGitWorktree`'s real `git worktree add` finally runs — a multi-syscall, multi-subprocess
-  check-then-act window, much wider than M1's original nanosecond-scale gap. A symlink toggled at
-  the target path during that window can make `git worktree add` write a complete real worktree
-  through it to a location OUTSIDE the hub.
-- **Repro (independently reproduced):** a goroutine toggling a symlink at the Add target (pointing
-  to a genuinely-outside-the-hub temp dir) on/off every 20µs, racing one `Topology.Add` call.
-  240 trials (6 batches of 40): **4 escapes (~1.7%)** — a full worktree (`.git`, `README`, source
-  dirs) written outside the hub; fabric's own subsequent `wire junctions` step then fails with a
-  `chdir` error on the nominal in-hub path once the racer removes the symlink, so the nominal path
-  and the actual write location have diverged — same shape as M3, opposite direction.
-- **Why round 4 got this wrong:** they tested only STATIC symlink placement (already live before
-  the call) and reasoned from `os.Mkdir` EEXIST semantics, `os.Stat`-follow behavior, and git's own
-  lstat refusal — sound for the non-racing case, but never subjected to an actual timing attack.
-  Their stated threat model ("no concurrent fabric writer is expected at the unique slug path")
-  mis-scoped the threat: it's an external adversarial symlink-planter, exactly the model this
-  campaign has used for M3 and M1 throughout.
-- **Severity:** likely MEDIUM, same class as M1 — real data can be written to an unintended
-  location outside the hub under adversarial timing, though (unlike M1) nothing inside the hub is
-  destroyed; grade it once reproduced and root-caused independently by round 5.
-- **Fix the right layer:** likely the same shape as M1's fix — route `createGitWorktree`/
-  `createExclusiveDir` through the same `os.Root`-rooted containment machinery
-  `removeContainedPath` already uses for `removePath`/`removeLink`, so creation and the
-  containment check happen as one atomic operation the way removal now does. Round 5 should
-  verify this is actually the right generalization, not assume it.
+- **Mechanism:** `containedWorktreeAdd` has git write to a crypto-random, `os.Root`-created
+  staging path inside the hub, then `os.Root.Rename`s it into place. `os.Root.Rename`'s own
+  destination-symlink refusal is real and correctly implemented (independently checked against Go
+  1.26 stdlib docs). But "crypto-random" only defends against a GUESSING adversary — it does
+  nothing against an OBSERVING one, and this campaign's threat model has assumed exactly that
+  since M3 (an adversary with write access to plant symlinks inside the hub also has read/list
+  access to watch it).
+- **Repro (independently reproduced):** an inotify watcher on the staging parent directory,
+  triggering on `IN_CREATE` of the staging path pattern, plants a symlink at
+  `<staging>/<slug>` pointing outside the hub the instant the staging directory appears — before
+  git's subprocess (which has real process-spawn latency, milliseconds) has written into it.
+  **8/8 (100%) across two batches** — MORE reliable than round 5's own bug (~1.7%). Confirmed via
+  filesystem evidence: `<hub>/<slug>` ends up as a symlink pointing outside, a full worktree lands
+  outside the hub, and `lyx fabric add` reports `ok:true`/`partial:false`/exit 0 — the exact
+  false-success shape M3 had.
+- **Scope:** this is a SHARED-MECHANISM bug, not per-site. F2/F3's fixes from round 5
+  (`createExclusiveDir`, and the four weft/board/reconcile worktree-add sites) correctly route
+  through the same `containedWorktreeAdd` helper, so they inherit the identical exposure — fixing
+  the helper fixes all of them; there is no separate per-site work needed for THIS specific gap.
+- **Why round 5 got this wrong:** its own re-attack (1200 trials, 0 escapes) only re-tried the
+  ORIGINAL attack shape (toggle a symlink at the final target) — it never attacked the NEW surface
+  its own fix introduced (the staging directory's observable creation). One level more subtle than
+  round 4's mistake: round 5 DID run a timing attack, just not the right one against its own new
+  mechanism.
+- **Severity:** at least MEDIUM, arguably worse than what it replaced given the 100% vs 1.7% hit
+  rate — grade it once reproduced and root-caused independently by round 6.
+- **Fix direction (a hypothesis for round 6 to verify, not a prescription):** the staging area
+  needs to be unobservable to the adversary, not just unguessable — e.g. create it under a
+  private, restrictively-permissioned location OUTSIDE the hub tree entirely (a per-process temp
+  directory the adversary has no read/list access to), write the worktree there, and only then
+  move it into the hub via `os.Root.Rename` or an equivalent contained operation. Secrecy inside a
+  directory the adversary can already write into does not survive an adversary who can also watch
+  that directory. Round 6 must verify this direction is actually right, not assume it — and must
+  re-attack its own fix with BOTH the toggle-race AND the inotify-observation attack (and ideally
+  think about whether there's a THIRD attack shape neither round 5 nor round 6's seed anticipated)
+  before declaring it closed. This pattern — one round's fix opening a new gap the next round's
+  independent verification catches — has now repeated at every single step of this campaign's
+  chokepoint work; do not assume round 6's fix is the last one needed either, verify it as hard as
+  everything before it.
 
-**Operator confirmed (2026-08-14): round 5 approved, Fable/high, AND round 6 pre-approved
-conditional on round 5's own verification warranting it** — see "Right now" above. Seed is
-finalized in `_mill/fabric-review-prompt.md`.
-
-## Primary emphasis for round 5 — the create-side containment gap, chokepoint's write-side twin
-The delete-side containment property (`removePath`/`removeLink`) has now survived two rounds of
-independent adversarial re-attack. The create-side has never been attacked with live timing
-pressure until the orchestrator's verification of round 4 did it — and it broke. Round 5's Job-1
-task: reproduce the above independently, root-cause it the way M1 was root-caused, fix it with the
-same rigor (a fix that provably CLOSES the window, not narrows it, verified against the language's
-actual concurrency/filesystem-API semantics the way M1's `os.Root` fix was), then adversarially
-re-attack the fix itself before declaring it closed — the same discipline that made M1 the first
-fix in this campaign to survive re-attack.
+## Primary emphasis for round 6 — the staging-path observability gap in round 5's own fix
+Round 6 is pre-approved by the operator (2026-08-14: "Ja. Og R6 også. Dersom nødvendig") —
+spawned directly without re-asking, per that standing instruction. Job-1 task: reproduce the
+inotify-observation attack independently, root-cause it (confirmed above), fix it by removing the
+staging area from the adversary's observable surface entirely (verify the hypothesized direction,
+don't assume it), then adversarially re-attack the fix with every attack shape tried across this
+finding's whole history (toggle-race, inotify-observation, and anything new round 6 itself
+devises) before declaring it closed.
 
 ## DEFERRED list
 Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
@@ -250,17 +289,20 @@ from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was see
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-1. `_mill/fabric-review-prompt.md` is rewritten for round 5 (primary target = the create-side
-   containment gap, CLOSED-AND-VERIFIED updated with round 4's partial closure, deferred/round-
-   context sections updated). Commit it together with this HANDOFF update.
-2. Spawn round 5: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r5`.
-3. After round 5's own independent verification: if it finds something warranting round 6, spawn
-   it directly — the operator has pre-approved this (2026-08-14: "Ja. Og R6 også. Dersom
-   nødvendig"), no need to stop and ask again for that specific case. If round 5 is clean and the
-   campaign looks converged, write a status verdict either way, stating what's fixed and confirmed
-   and what remains open (Windows path/junction behavior; N4's dirtiness-probe TOCTOU). If a
-   finding looks like it needs dedicated engineering work rather than another review round — the
-   fork the operator took after the ORIGINAL 6-round campaign, which is why `destroy.go` exists
-   and why this campaign exists — say so explicitly and propose it, rather than defaulting to "run
-   another round" or "declare
-   done."
+1. `_mill/fabric-review-prompt.md` is rewritten for round 6 (primary target = the staging-path
+   observability gap in round 5's own fix, CLOSED-AND-VERIFIED updated with round 5's partial
+   closure, deferred/round-context sections updated). Commit it together with this HANDOFF update.
+2. Spawn round 6: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r6` —
+   pre-approved by the operator, no need to re-ask.
+3. After round 6's own independent verification: this finding has now taken THREE rounds to close
+   (M3→M1→create-side→staging-observability) — do not assume round 6's fix is the last one needed
+   just because it's round 6; verify it with the same rigor as every prior link in this chain
+   before declaring it closed. If round 6 IS genuinely clean and re-attack-proof, and the rest of
+   the campaign looks converged, write a status verdict stating what's fixed and confirmed and what
+   remains open (Windows path/junction behavior; N4's dirtiness-probe TOCTOU) — and check with the
+   operator whether to continue further or wrap up, since round count is open-ended per their
+   2026-08-14 correction, not something to decide unilaterally either way. If a finding looks like
+   it needs dedicated engineering work rather than another review round — the fork the operator
+   took after the ORIGINAL 6-round campaign, which is why `destroy.go` exists and why this campaign
+   exists — say so explicitly and propose it, rather than defaulting to "run another round" or
+   "declare done."

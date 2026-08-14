@@ -1,12 +1,12 @@
 # `fabric` — independent review + fix (prompt template)
 
 > Filled instance of `crucible/review-prompt-template.md` for the `fabric` module's crucible
-> campaign, round 5. The campaign's ORIGINAL plan was a fixed 4 rounds (r1 Opus/medium, r2
-> Opus/high, r3 Fable/high, r4 Fable/high); the operator has since clarified that round count was
-> never a hard decision, only "the last round pre-configured at the start" — this round exists
-> because the orchestrator's independent verification of round 4 found a genuine, live,
-> reproducible defect that round 4 itself wrongly cleared. Model/effort for this round: Fable/high,
-> confirmed by the operator (consistent with rounds 3 and 4's strong results at that tier).
+> campaign, round 6. The campaign's ORIGINAL plan was a fixed 4 rounds; the operator has since
+> clarified round count was never a hard decision, only "the last round pre-configured at the
+> start," and has PRE-APPROVED this round specifically ("Ja. Og R6 også. Dersom nødvendig") —
+> it exists because the orchestrator's independent verification of round 5 found that round 5's
+> OWN fix for round 4's seeded residual introduced a new, worse attack surface (see "High-yield
+> focus" below). Model/effort for this round: Fable/high, consistent with rounds 3-5.
 > Committed under `_mill/` — see `crucible/README.md` for the loop this prompt runs inside, and
 > "Commit deliverables continuously, not gitignored" for why this file (and your own deliverables)
 > live here instead of a gitignored scratch dir.
@@ -87,9 +87,11 @@ regressed and (b) re-evaluate deferred items.
     `internal/fabricengine/doc.go` FIRST, in full, before anything else — it is dense and
     authoritative about *why* the current shape exists, not just what it does)
   - `internal/fabricengine/destroy.go` and `internal/fabricengine/ancestors.go` — read
-    `removeContainedPath` (the delete-side fix, CLOSED-AND-VERIFIED, read for the pattern to
-    generalize) and closely, adversarially, `createExclusiveDir`/`createGitWorktree` (this round's
-    primary target, see "High-yield focus" below) and their call sites in `add.go`.
+    `removeContainedPath` (the delete-side fix, CLOSED-AND-VERIFIED, read for contrast) and
+    closely, adversarially, `containedWorktreeAdd` (this round's primary target, see "High-yield
+    focus" below — the create-side fix from round 5, which independent verification found is
+    itself defeatable) and its call sites in `add.go`, `weftwiring.go`, `reconcile.go`,
+    `boardweft.go`.
   - `internal/fabriccli/**` (the CLI surface)
   - `internal/gitexec/**`, `internal/gitrepo/**` (the checked/raw git-exec split — round 1
     reviewed this thoroughly and found it sound; read it for context, not as a primary hunting
@@ -114,94 +116,108 @@ regressed and (b) re-evaluate deferred items.
 2. Correctness — bugs, races, error handling, edge cases; concentrate on the historically-fragile
    areas below. Also assess docs accuracy (do the docs match the code?) and operability.
 
-## High-yield focus — PRIMARY TARGET: the create-side containment gap, chokepoint's write-side twin
+## High-yield focus — PRIMARY TARGET: the staging-path observability gap in round 5's own fix
 
-**A live, reproducible symlink-directed-write escape exists in the two CREATE executors
-(`createExclusiveDir`, and specifically `createGitWorktree` via `Topology.Add`) — this is your
-primary Job-1 task, the same treatment M1 got in round 3.** Round 4 investigated this exact
-question ("could `createExclusiveDir`/`createGitWorktree` be tricked into writing through a
-symlink to somewhere outside the hub?"), tested only STATIC symlink placement, and concluded "not
-a defect." The orchestrator's independent verification of round 4 subjected the same question to
-an actual live timing attack and found the conclusion wrong.
+**Round 5's fix for round 4's seeded residual (create-side symlink-directed-write) substitutes one
+exposure for a worse one — this is your primary Job-1 task, the same treatment M1's residual got
+in round 3, and round 4's create-side gap got in round 5.** This finding is now three links deep
+in one chain: M3 (round 2, delete-side, never resolved symlinks) → M1 (round 3, delete-side
+TOCTOU in M3's fix) → create-side gap (round 4 wrongly cleared it, round 5 found and "fixed" it) →
+**this** (round 5's own fix defeated by a different attack shape against the same underlying
+problem: an adversary who can write into the hub can also watch it).
 
 - **Mechanism (already root-caused by the orchestrator's independent verification, re-confirm it
-  yourself before fixing):** `add.go`'s `os.Stat(target)` guard runs, THEN several git subprocess
-  calls execute (list remotes, stat the weft target, check the weft branch, `rev-parse HEAD`),
-  THEN `createGitWorktree`'s real `git worktree add` finally runs. That is a multi-syscall,
-  multi-subprocess check-then-act window — much WIDER than M1's original nanosecond-scale gap
-  (which needed dozens of racing attempts to catch even once). A symlink toggled at the Add target
-  path during that window causes `git worktree add` to follow it and write a complete real
-  worktree through it, to a location OUTSIDE the hub.
+  yourself before fixing):** round 5's `containedWorktreeAdd` has git write to a crypto-random,
+  `os.Root`-created staging path INSIDE the hub tree, then `os.Root.Rename`s it into place.
+  `os.Root.Rename`'s own destination-symlink refusal is real (independently checked against Go
+  1.26 stdlib docs — that half of the design is sound). But "crypto-random" only defends against
+  an adversary who has to GUESS the staging path's name. It does nothing against an adversary who
+  can OBSERVE the staging path's creation — and this campaign's threat model has assumed exactly
+  that kind of adversary since M3 (write access to plant a symlink inside the hub implies
+  read/list access to watch it).
 - **Repro (already independently reproduced once):** build a real hub from local bare git remotes
-  (no mocks), deploy the current source. Run a goroutine/background loop toggling a symlink at the
-  intended `Topology.Add` target path on/off roughly every 20µs — the "off" state absent, the "on"
-  state pointing to a genuinely-outside-the-hub directory (e.g. a throwaway temp dir) — racing
-  concurrently with a single `lyx fabric add <slug>` (or the equivalent `Topology.Add` call).
-  Across 240 trials (6 batches of 40) the orchestrator's verification hit **4 escapes (~1.7%)**: a
-  full worktree (`.git`, `README`, source dirs) written through the symlink into the outside
-  directory, while fabric's own subsequent `wire junctions` step then fails with a `chdir: no such
-  file or directory` on the nominal in-hub path (since the symlink had since been removed by the
-  racer) — the nominal path and the actual write location have diverged, the same shape as M3's
-  original delete-side bypass, just on the write side. Reproduce with dozens-to-hundreds of
-  attempts, not a handful — the hit rate is real but not every trial catches the window.
-- **Why round 4 got this wrong — read this before you start, so you don't repeat the mistake on a
-  DIFFERENT finding this round:** round 4's own reasoning ("no concurrent fabric writer is
-  expected at the unique slug path") mis-scoped the threat model. The threat this whole campaign
-  has used for M3 and M1 throughout is an EXTERNAL ADVERSARIAL symlink-planter, not a concurrent
-  fabric writer — a "confirmed not a defect" verdict from static reasoning alone, without an
-  actual timing attack, deserves exactly the same skepticism a "confirmed defect" claim would get.
-  Apply that skepticism to your OWN conclusions this round too, on this finding and everything
-  else you investigate.
-- **Severity:** likely MEDIUM, same class as M1 — real content gets written to an unintended
-  location outside the hub under adversarial timing. Unlike M1, nothing INSIDE the hub is
-  destroyed by this specific mechanism, which may argue for a notch below M1's grading — decide
-  for yourself once you've reproduced it and traced the actual blast radius (what if the outside
-  target already contained something? does `git worktree add` overwrite, or does it also need an
-  empty/absent target, meaning the realistic damage is narrower than a full-hub-remove?).
-- **Fix the right layer.** The prompt's working hypothesis is that the same shape of fix that
-  closed M1 generalizes here: route `createGitWorktree`/`createExclusiveDir` through the same
-  `os.Root`-rooted containment machinery `removeContainedPath` already uses for `removePath`/
-  `removeLink`, so path resolution and the actual creation happen as one atomic operation instead
-  of separately-timed syscalls. VERIFY this is actually the right generalization yourself — don't
-  assume it; `os.Root` has both `Create`-family and `Mkdir`-family methods, but `createGitWorktree`
-  ultimately shells out to `git worktree add`, which is a subprocess call, not a Go stdlib call
-  operating on an already-open root-relative handle the way `removePath`'s direct `os.Remove` was
-  — think through whether `os.Root` genuinely reaches all the way through a `git` subprocess
-  invocation, or whether the right fix here is structurally different (e.g. resolve+verify the
-  containment of the FINAL target immediately before invoking `git worktree add`, as close to
-  atomic as an external-subprocess call allows, or create the worktree at a `os.Root`-opened
-  temp-then-atomic-rename location and only then symlink/register it). Explain in the fix commit
-  exactly why your chosen approach closes the window rather than narrows it — the same standard
-  M1's fix was independently held to.
-- **Once your fix lands, adversarially re-attack it yourself** — the same discipline that made M1
-  the first fix in this campaign to survive independent re-attack. Re-run the toggle-race repro
-  many times (hundreds of trials, not a handful — the original bug's ~1.7% hit rate means a
-  residual gap could easily hide in a small sample), and also try `createExclusiveDir`
-  specifically (the repro above was via `Topology.Add`/`createGitWorktree` — confirm
-  `createExclusiveDir`'s own call sites independently, don't assume the same fix mechanically
-  covers both without checking).
+  (no mocks), deploy the current source. Watch the staging parent directory for the staging path's
+  creation (e.g. `inotify`/`fsnotify` on `IN_CREATE`, matching the staging naming pattern), and the
+  INSTANT it appears — before git's subprocess (which has real process-spawn latency, on the order
+  of milliseconds) has written anything into it — plant a symlink at the staging path pointing to
+  a genuinely-outside-the-hub directory. Race this against a single `lyx fabric add <slug>` (or
+  the equivalent `Topology.Add`/other call sites routing through `containedWorktreeAdd`). The
+  orchestrator's independent verification hit **8/8 (100%)** across two batches — MORE reliable
+  than round 4's original bug (~1.7%), because this is an observation-triggered attack, not a
+  blind timing race: git's subprocess startup overhead vastly exceeds inotify-reaction +
+  symlink-creation latency, so there is no meaningful timing luck involved once the watcher is
+  armed. Confirmed via filesystem evidence: `<hub>/<slug>` ends up as a symlink pointing outside
+  the hub, a fully populated worktree lands in the outside directory, and `lyx fabric add` reports
+  `ok:true`/`partial:false`/exit 0 — the exact false-success shape M3 had.
+- **Scope — this is a SHARED-MECHANISM bug, not per-site.** Round 5's F2/F3 fixes
+  (`createExclusiveDir`, and the four weft/board/reconcile worktree-add sites) correctly route
+  through the same `containedWorktreeAdd` helper, so fixing the helper fixes all of them — you do
+  not need separate per-site work for THIS specific gap, but DO independently confirm each site
+  still routes through whatever you build as the fix, the same way you'd confirm any shared-helper
+  change didn't miss a caller.
+- **Why round 5 got this wrong — read this before you start, so you don't repeat the pattern on a
+  DIFFERENT finding this round:** round 5's own re-attack (1200 trials, 0 escapes) only re-tried
+  the ORIGINAL attack shape from round 4's seed (toggle a symlink at the FINAL target). It never
+  attacked the NEW surface its own fix introduced (the staging directory's existence and
+  observability). This is one level more subtle than round 4's mistake (which never ran a timing
+  attack at all) — round 5 DID run one, just not the right one against its own new mechanism.
+  When YOU land a fix this round, explicitly ask yourself: "what new surface does this fix itself
+  introduce, and have I attacked THAT, not just re-run the old repro?" — the same question that
+  would have caught round 5's gap before it shipped.
+- **Severity:** at least MEDIUM, arguably worse than what it replaced (100% vs ~1.7% hit rate) —
+  grade it once reproduced and root-caused independently.
+- **Fix direction (a hypothesis to verify, not a prescription):** the staging area needs to be
+  UNOBSERVABLE to the adversary, not just unguessable. A natural direction: create the staging
+  location OUTSIDE the hub tree entirely, under a private, restrictively-permissioned per-process
+  location (e.g. a temp directory the adversary has no read/list access to — think about actual
+  filesystem permissions, not just "a different path"), write the worktree there via git, and only
+  THEN move it into the hub via `os.Root.Rename` or an equivalent contained operation performed
+  from a root rooted at the DESTINATION side. VERIFY this direction is actually right yourself —
+  consider whether moving a fully-formed worktree across a filesystem/mount boundary changes
+  `rename`'s atomicity guarantees (a cross-device rename cannot use a single `rename(2)` syscall in
+  POSIX — does Go's `os.Root.Rename` handle that transparently, refuse it, or fall back to
+  copy+delete, and does that reopen a window?), and whether `git worktree repair` (which needs to
+  run after the location is final) has any check-then-act exposure of its own worth closing in the
+  same pass.
+- **Once your fix lands, adversarially re-attack it with EVERY attack shape tried across this
+  finding's whole history** — the toggle-race from round 4/5's original repro, the
+  inotify-observation attack from this residual, AND at least one attack shape neither round 5 nor
+  this prompt anticipated (think about what a THIRD kind of adversary — e.g. one who can predict
+  timing from process/CPU scheduling, or one attacking the cross-device-rename path specifically if
+  you take that direction — might try). Do not declare this closed on the strength of re-running
+  only the attacks already known to have worked before; the pattern in this campaign has
+  specifically been that the NEXT attack shape is the one that gets through.
 
-**Everything else is now closed across rounds 2-4, independently re-confirmed — do not
+**Everything else is now closed across rounds 2-5, independently re-confirmed — do not
 re-litigate unless you find a genuine regression:** the delete-side containment/TOCTOU property of
-`removePath`/`removeLink` via `os.Root` (survived its own independent adversarial re-attack — 160
-trials, symlink loops, `..`-relative targets, all refused); the ownership predicates, `createdToken`
-unforgeability, `--force`-answers-dirtiness-only, the raw-primitive inventory, concurrent-race
-combinations; round 4's F1 (`applyStaleRemoval` false-convergence), F3 (corrected coverage claim,
-independently confirmed accurate), F4 (leftover-dir-blocks-add remedy); the symlink-loop honesty
-gap (F5, round 4's documented-tradeoff call held up); the "inert leftover directory" (round 4
-fixed it). See CLOSED-AND-VERIFIED below for full detail. **One minor open item, low priority,
-fix if convenient but do not let it distract from the primary target above:** round 4's F2 fix
-(surfacing `rollbackAdd`'s swallowed warp-branch-deletion refusal via a WARN log) is confirmed
-real and live, but its own regression test doesn't actually sabotage-prove the log line — reverting
-the whole production diff leaves the test green, since the test only asserts pre-existing behavior.
-If you have budget after the primary target, add a test that actually asserts the WARN log fires;
-if not, note it in your fixer report and move on.
+`removePath`/`removeLink` via `os.Root` (survived its own independent adversarial re-attack); the
+ownership predicates, `createdToken` unforgeability, `--force`-answers-dirtiness-only, the
+raw-primitive inventory, concurrent-race combinations; round 4's F1/F3/F4; round 5's `os.Root.Rename`
+destination-symlink-refusal design (that specific piece checked out — the flaw is earlier, in
+staging-path observability, not in the final move); F1/F4's regression tests (sabotage-proven).
+See CLOSED-AND-VERIFIED below for full detail. **Two minor open items, low priority, fix if
+convenient but do not let them distract from the primary target above:** (a) round 4's F2 fix
+(WARN log on `rollbackAdd`'s swallowed refusal) has a regression test that doesn't actually
+sabotage-prove the log line; (b) round 5's F2/F3 fixes have no dedicated regression test of their
+own beyond F1's shared-mechanism test — if your primary-target fix changes `containedWorktreeAdd`'s
+shape significantly, consider whether a per-call-site test is now warranted as a byproduct, but
+don't manufacture separate work here just to check a box.
 
 **N4's dirtiness-probe TOCTOU stays an accepted, documented residual — do not re-attempt unless
-you have a genuinely new attack angle.** Settled since round 3; re-confirmed sound by round 4's
-verification. Treat it the same as the Windows-path limit: state it, don't re-chase it.
+you have a genuinely new attack angle.** Settled since round 3; re-confirmed sound by rounds 4 and
+5's verification. Treat it the same as the Windows-path limit: state it, don't re-chase it.
 
 ## CLOSED-AND-VERIFIED — do not re-litigate unless you find a genuine regression
+**Round 5 (`fable-high-r5`), independently verified by the orchestrator from a cold state —
+PARTIALLY closed, the primary defect NOT closed (see "High-yield focus" above).** 1 MEDIUM (F1) +
+2 LOW (F2, F3) + 1 NIT (F4), 8 commits. Independent verification sabotage-proved F1's
+(`TestContainedWorktreeAdd_RefusesSymlinkedTarget`) and F4's regression tests genuinely. Checked
+`os.Root.Rename`'s claimed destination-symlink-refusal against actual Go 1.26 stdlib docs — sound,
+correctly implemented. **But the overall fix does not close the window** — see "High-yield focus"
+above for the full mechanism; do not describe F1 as closed, and do not describe F2/F3 (which
+correctly route through the same now-broken shared helper) as closed either, since they inherit
+the identical exposure. F2/F3 also lack their own dedicated regression test (minor, secondary).
+
 **Round 4 (`fable-high-r4`), independently verified by the orchestrator from a cold state —
 PARTIALLY closed, one item explicitly NOT closed (see "High-yield focus" above).** 4 LOW (F1-F4)
 + 1 NIT (F5), 6 commits. Independent verification (fork `a8439474ef0d70b10`) sabotage-proved F1
@@ -297,14 +313,15 @@ source of truth.
   unless you find a real polling consumer that doesn't exist today.
 
 ## Round context seeded from prior-round verification
-See "High-yield focus" above for the primary target (the create-side containment gap) in full.
-Unlike round 4, this round IS anchored to one seeded, orchestrator-confirmed residual — reproduce
-it first (it gives you a working hub to continue driving from, the same pattern rounds 2 and 3
-used), root-cause it, fix it, then re-attack your own fix. After that primary task, do a
-reasonable secondary sweep of the rest of the module (you do not need to redo round 1 or round
-4's breadth from scratch — four rounds have now covered it hard), watching especially for anything
-adjacent to the create-side fix you land, since fixing one gap in this codebase's history has
-repeatedly turned up a sibling gap nearby (M3→M1, and now round 4's delete-vs-create asymmetry).
+See "High-yield focus" above for the primary target (the staging-path observability gap) in full.
+This round IS anchored to one seeded, orchestrator-confirmed residual — reproduce it first (it
+gives you a working hub to continue driving from), root-cause it, fix it, then re-attack your own
+fix with EVERY attack shape this finding's history has produced, not just the newest one. After
+that primary task, do a reasonable secondary sweep of the rest of the module (five rounds have now
+covered it hard; you do not need to redo round 1's breadth from scratch). This specific finding
+has now taken three rounds to close (and counting) — treat "does my fix survive independent
+re-attack" as the actual bar, not "does my fix look right" or "does my fix pass the repro I
+already know about."
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; an N×-concurrent suite is a diagnostic amplifier, not a merge blocker on its own — but a
@@ -376,12 +393,13 @@ something you cannot do alone this round. Even then say so explicitly, with the 
 in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None deferred from round 4 in the usual sense — it fixed everything it correctly identified (4/4
-LOW + the F5 documented-tradeoff call). The primary target this round (the create-side containment
-gap) is not a "deferred" item either — round 4 investigated it and got the conclusion WRONG; it
-was never something round 4 knowingly left for later. Treat it as this round's primary Job-1
-finding to independently reproduce and root-cause, not as something to merely re-evaluate. The one
-minor open item (F2's test-coverage gap, see "High-yield focus" above) is low priority, fix if
+None deferred from round 5 in the usual sense — it fixed everything it identified (1/1 MEDIUM +
+2/2 LOW + 1/1 NIT). The primary target this round (the staging-path observability gap) is not a
+"deferred" item either — round 5 built a fix in good faith and re-attacked it, but with the wrong
+attack shape against its own new mechanism; it was never something round 5 knowingly left for
+later. Treat it as this round's primary Job-1 finding to independently reproduce and root-cause,
+not as something to merely re-evaluate. The two minor open items (round 4's F2 test-coverage gap,
+round 5's F2/F3 missing dedicated tests — see "High-yield focus" above) are low priority, fix if
 convenient.
 
 ## Fixing — after the review
