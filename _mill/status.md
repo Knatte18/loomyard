@@ -46,7 +46,9 @@ batches:
     commit_sha: 41e1ff0db67fa67866289ddf0b310980b20b9820
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: seeding-trigger
-    state: pending
+    state: running
+    implementer_session: b9b92d06-a5cc-46d1-905c-61aa02eb2dac
+    start_sha: 30a9047f15e7a10d50c6de081273768b71ac2abc
     verify_baseline_failures: []
   - name: burler-runtime-read
     state: pending
