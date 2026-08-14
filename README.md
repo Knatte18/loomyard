@@ -56,9 +56,9 @@ LoomYard keeps the Fabric repo pristine by routing all its own artifacts into a 
   ├── <slug>/                       (additional warp worktree)
   ├── <slug>-weft/                  (weft worktree for <slug>)
   ├── _board/                       (weft:main worktree; the task store)
+  │     └── .lyx/                   (hub-wide machine-local scratch)
   ├── _portals/                     (junctions into each worktree's _lyx)
-  ├── _launchers/                   (per-worktree launcher scripts)
-  └── .lyx/                         (hub-level machine-local scratch)
+  └── _launchers/                   (per-worktree launcher scripts)
 ```
 
 Each warp worktree uses a **junction** (Windows) or symlink to route writes (`_lyx/config/`) into its sibling weft worktree — transparently, so code that writes `_lyx/config/board.yaml` never sees the indirection.

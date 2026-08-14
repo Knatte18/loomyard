@@ -56,7 +56,7 @@ That alone would exercise `samePath`'s case-insensitive branch, `fslink`'s junct
 
 Beyond the suite, the scenarios worth driving by hand on Windows are the ones the campaign found defects in on Linux:
 
-- a `--subpath` anchored hub — junction targets, `_lyx`/`.lyx`/`_board` placement, the cwd gate refusing the warp root and its subdirectories;
+- a `--subpath` anchored hub — junction targets, `_lyx`/`.lyx` placement, the cwd gate refusing the warp root and its subdirectories;
 - `add`/`remove` slug hygiene;
 - `prune` / `clone --reset` ownership refusals.
 

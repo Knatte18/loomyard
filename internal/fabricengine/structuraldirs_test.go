@@ -7,7 +7,11 @@
 
 package fabricengine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
+)
 
 // wiredNamesFromConfig reproduces junctionNames' pure name-arithmetic (dedupUnion of
 // structuralCommittedDirs, structuralNeverCommittedDirs, and the hub-reserved-filtered pathspec
@@ -116,6 +120,18 @@ func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *test
 	}
 	if containsName(got, ".lyx") {
 		t.Errorf("HubReservedNames() = %v; want it to NEVER contain %q", got, ".lyx")
+	}
+}
+
+// TestSlugReservedNames_StillRefusesDotLyxAfterTheHubSlugReservedNamesFold asserts that
+// slugReservedNames(Config{Pathspec: "_extra"}) contains lyxdirs.DotLyxDirName exactly once, sourced
+// from structuralNeverCommittedDirs, proving the removal of hubSlugReservedNames() is
+// behaviour-preserving: the refusal must hold identically on both sides of that fold.
+func TestSlugReservedNames_StillRefusesDotLyxAfterTheHubSlugReservedNamesFold(t *testing.T) {
+	cfg := Config{Pathspec: "_extra"}
+	got := slugReservedNames(cfg)
+	if count := countName(got, lyxdirs.DotLyxDirName); count != 1 {
+		t.Errorf("slugReservedNames(%+v) = %v; want exactly one %q, got %d", cfg, got, lyxdirs.DotLyxDirName, count)
 	}
 }
 

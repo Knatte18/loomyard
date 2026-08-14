@@ -56,13 +56,23 @@ Fuller design/how-to lives in godoc and `docs/`.
 
 Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to. `_lyx` holds tracked content only.
 
-- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception `reedengine.HubLogsDir` (hub-anchored).
+- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception the hub-wide pair under `BoardDir(hub)`.
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
 - `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key, which is reserved for optional, explicitly-named dirs only.
 - `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
-- `<hub>/.lyx` is hub-level geometry alongside `<hub>/_board`, created by `fabricengine.CloneHub` — a real directory, never a junction, reserved so no worktree slug can claim the name.
+- The hub-wide never-tracked tree is `<hub>/_board/.lyx`, the mirrored sibling of `<hub>/_board/_lyx`, created by `fabricengine.CloneHub` after the board worktree exists — a real directory, never a junction. `fabricengine.HubScratchDir` is its sole constructor;
+  `.lyx` stays slug-reserved via `structuralNeverCommittedDirs`, not via hub geometry.
 - **Enforced by** `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `internal/fabricengine/structuraldirs_test.go`, `template_test.go`, `dotlyxjunction_integration_test.go`.
   A newly added transient's mirrored-subpath placement is a review obligation.
+
+## Hub Containment Invariant
+
+No hub-level container is ever junctioned into a worktree. `_board`, `_portals` and `_launchers` are reachable from the hub and only from the hub.
+
+- A worktree sees warp and weft woven into one repo and nothing else — that is the fabric illusion, and it is also what makes worktree isolation geometric rather than a rule agents must remember.
+- `_portals`/`_launchers` links point hub-inward (`<hub>/_portals/<anchor>/<slug>` → the worktree's `_lyx`), never worktree-outward. A per-worktree link to either is banned, not merely unbuilt.
+- The `_board` convenience junction was wired until this rule landed and is now removed; the board is reached at `<hub>/_board`.
+- **Enforced by** review discipline plus `internal/fabricengine`'s wiring having no worktree-side hub-container call site.
 
 ## gitkit Leaf Invariant
 
@@ -105,7 +115,8 @@ round runners adapt onto treadle's `RoundRunner` vocabulary in their own package
   Policed on direct imports only, not the transitive closure: `lyxcwd` is reachable through both `logger` and `shuttleengine`, so excluding it buys no isolation.
   What the exclusion enforces is that treadle is *told* its geometry and never derives it — `Engine.Run` takes a caller-supplied absolute `runDir`, a block's `Profile` carries a caller-supplied `GateDir`, and every path this package builds is joined onto one of those.
   `internal/stencilstore` takes a fully resolved absolute stencils directory from its caller and derives no geometry of its own, so treadle is still *told* its stencils directory exactly as it is told `runDir` and `Profile.GateDir` — the exclusion of `internal/lyxcwd` still means what it meant.
-  The seed/refresh pass that keeps that directory populated runs once at `cmd/lyx`'s root pre-run rather than lazily inside `stencilstore.Read`, which is what keeps `internal/fabricengine` off treadle's stack.
+  The seed/refresh pass that keeps that directory populated runs once at `cmd/lyx`'s root pre-run rather than lazily inside `stencilstore.Read` — what that buys is that treadle is told its stencils directory and derives none of its own,
+  not a transitive exclusion of `internal/fabricengine` from treadle's stack: `internal/treadleengine` → `internal/shuttleengine` → `internal/reedengine` → `internal/fabricengine` is a real transitive path (`reedengine.HubLogsDir` calls `fabricengine.HubScratchDir`).
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
 ## Tokenvocab Leaf Invariant

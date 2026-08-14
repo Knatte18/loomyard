@@ -109,13 +109,14 @@ lyx organizes overlay artifacts (configuration, task state, raddle docs, and the
   ├── <slug>/                       (additional warp worktree; git repo root)
   ├── <slug>-weft/                  (weft worktree for <slug>; git repo root)
   ├── _board/                       (weft:main worktree; the task store)
+  │     └── .lyx/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── _portals/<anchor>/<slug>      (junction into <slug>'s _lyx; anchor-mirrored)
-  ├── _launchers/<anchor>/<slug>    (per-worktree launcher scripts; anchor-mirrored)
-  └── .lyx/                         (hub-level machine-local scratch; a real dir, never a junction)
+  └── _launchers/<anchor>/<slug>    (per-worktree launcher scripts; anchor-mirrored)
 ```
 
-`_board`, `_portals`, `_launchers`, and `.lyx` are hub geometry, so none of them can be claimed as a worktree slug
-(`fabricengine.IsReservedHubName`).
+`_board`, `_portals`, and `_launchers` are hub geometry, so none of them can be claimed as a worktree slug
+(`fabricengine.IsReservedHubName`); `.lyx` stays slug-reserved too, but via `structuralNeverCommittedDirs`
+rather than as hub geometry, since it no longer has a hub-level presence of its own.
 
 ### Git ownership
 
@@ -162,13 +163,11 @@ only the third piece comes from the **repo-wide** `pathspec` list recorded once 
 Because the pathspec is repo-wide, `lyx fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lyxcwd` itself stays config-blind;
 it only resolves the cwd coordinates that `fabricengine` builds the junction records onto.
-This produces the three concrete junctions this repo ships with today, all placed at the repo's lyx-anchor (`<warp>/<anchor>/…`, which is `<warp>/` itself at the default `.` anchor):
+This produces the two concrete junctions this repo ships with today, both placed at the repo's lyx-anchor (`<warp>/<anchor>/…`, which is `<warp>/` itself at the default `.` anchor):
 - `<anchor>/_lyx` → `<hub>/<slug>-weft/<anchor>/_lyx` (config junction, structural)
 - `<anchor>/.lyx` → `<hub>/<slug>-weft/<anchor>/.lyx` (machine-local scratch junction, structural)
-- `<anchor>/_board` → `<hub>/_board` (operator-convenience link into the shared board worktree)
 
-The `_board` link is wire-only and unmonitored: no health check inspects it, so it is re-wired unconditionally on clone, add, and every reconcile, and no lyx code path reads through it — every `BoardDir` consumer resolves `<hub>/_board` directly.
-It is deliberately not a `pathspec` entry, since `pathspec` also feeds the weft commit routing and `_board` is a weft worktree rather than committable content.
+The Hub Containment Invariant (`CONSTRAINTS.md`) is the rule that forbids re-adding a junction into `<hub>/_board`: no hub-level container is ever junctioned into a worktree.
 
 The optional `pathspec` default is empty today.
 A future weft-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lyxcwd` code change needed — but that mechanism now applies to *optional* directories only;

@@ -144,8 +144,9 @@ func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
 // The earliest of teardownHub's call sites in CloneHub run before either exists — with the hub
 // predicate instead, teardown would refuse at nearly every early failure site and leave a residual
 // hub where it works today. A real CloneHub run against an unreachable warp URL fails at exactly
-// that early point (hub created, only .lyx materialised, no warp clone and no weft clone yet), so
-// this drives the scenario end to end through the exported entry point.
+// that early point (hub directory created and nothing else — no warp clone, no weft clone, no board
+// worktree, so no hub scratch tree yet either), so this drives the scenario end to end through the
+// exported entry point.
 func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 	t.Parallel()
 

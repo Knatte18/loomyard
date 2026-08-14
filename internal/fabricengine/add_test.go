@@ -200,8 +200,10 @@ func TestAdd_RejectsPathspecJunctionNameSlug(t *testing.T) {
 
 // TestAdd_RejectsDotLyxSlug asserts that Add refuses a slug of ".lyx" even for a Config naming
 // neither structural directory: the refusal must come from IsReservedHubName's
-// structuralNeverCommittedDirs union, not from any pathspec the caller happens to configure. A
-// worktree slug of ".lyx" would collide with the hub-level "<hub>/.lyx" batch 8 recognises.
+// structuralNeverCommittedDirs union, not from any pathspec the caller happens to configure. ".lyx"
+// is not hub geometry — it is barred as a slug via structuralNeverCommittedDirs, the same
+// structural-reservation set every worktree pair's own ephemeral tree is refused a name collision
+// against.
 // Validation runs before any git op, so this stays untagged Tier-1.
 func TestAdd_RejectsDotLyxSlug(t *testing.T) {
 	topology := fabricengine.NewTopology(fabricengine.Config{})

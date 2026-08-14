@@ -198,15 +198,6 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
-	// (10c) Wire the operator-convenience _board junction as a named special
-	// case, alongside the pathspec junctions above — see junction.go's
-	// wireBoardLink doc for why it is wired unconditionally rather than
-	// folded into names.
-	if err := wireBoardLink(rec, l, slug); err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
-		return AddResult{}, fmt.Errorf("wire board junction: %w", err)
-	}
-
 	// (11) Push warp branch (LAST step for warp)
 	if _, err := gitexec.Run([]string{"push", "-u", "origin", warpBranch}, l.WorktreePath()); err != nil {
 		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
