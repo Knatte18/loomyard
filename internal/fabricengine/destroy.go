@@ -565,17 +565,21 @@ func resolveManagedBranch(l *lyxcwd.Location, branchPrefix, branch string) (bool
 // checkPathRequest runs the gate's four checks against req, in fixed order, stopping at the first
 // failure: containment, ownership, dirtiness, force.
 //
-// An absent target is a no-op success before any check runs — most ownership predicates fail on a
-// path that is not there, and removePortal, removeJunctionRecords, removeLaunchers and Remove's
-// tolerance of an already-absent weft worktree are all documented as idempotent today, so refusing
-// here would turn those into hard failures. os.Lstat, not os.Stat, is what decides "absent": a
-// dangling link is present as a link even though its target is not, and ownedDriftedWiredJunction
-// must still see it.
+// The request's SHAPE is validated first, ahead of everything including the absent-target rule: a
+// declaration that is missing is missing regardless of what is on disk, and validating a struct
+// costs no syscall. The order matters more than it looks. It used to run after the absent-target
+// short-circuit, which meant a request declaring no ownership and no dirtiness passed the gate
+// vacuously whenever its target happened not to exist — so the property this file claims, that an
+// omitted check is a loud failure rather than a forgotten one, held only for targets that were
+// there, which is precisely the case a new call site's first test is least likely to cover.
+//
+// An absent target is then a no-op success before the four checks run — most ownership predicates
+// fail on a path that is not there, and removePortal, removeJunctionRecords, removeLaunchers and
+// Remove's tolerance of an already-absent weft worktree are all documented as idempotent today, so
+// refusing here would turn those into hard failures. os.Lstat, not os.Stat, is what decides
+// "absent": a dangling link is present as a link even though its target is not, and
+// ownedDriftedWiredJunction must still see it.
 func checkPathRequest(req pathRequest) error {
-	if _, statErr := os.Lstat(req.target); os.IsNotExist(statErr) {
-		return nil
-	}
-
 	if req.ownership.kind == pathOwnershipUnset {
 		return &destructiveRefusal{Check: CheckOwnership, What: req.what, Target: req.target, Reason: "no ownership kind declared"}
 	}
@@ -584,6 +588,10 @@ func checkPathRequest(req pathRequest) error {
 	}
 	if req.dirtiness.kind == pathDirtinessNA && req.dirtiness.reason == "" {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.target, Reason: "dirtinessNA requires a non-empty reason"}
+	}
+
+	if _, statErr := os.Lstat(req.target); os.IsNotExist(statErr) {
+		return nil
 	}
 
 	if req.slug != nil {

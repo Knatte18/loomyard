@@ -447,7 +447,64 @@ func TestGate_DirtinessNAEmptyReason(t *testing.T) {
 
 // TestGate_ZeroValueDeclarationsAreRefusals proves an omitted ownership or dirtiness declaration is a
 // loud failure, for both request shapes.
+//
+// The AbsentTarget subtests are R2's addition and the reason the shape check now runs ahead of the
+// absent-target short-circuit: with the short-circuit first, a request declaring nothing at all
+// passed the gate vacuously whenever its target happened not to exist — so "an omitted check is a
+// loud failure" held only for targets that were there, which is exactly the case a new call site's
+// first test is least likely to cover.
 func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
+	t.Run("PathZeroOwnershipWithAbsentTarget", func(t *testing.T) {
+		container := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    filepath.Join(container, "never-created"),
+			dirtiness: dirtyScopeTracked(),
+		}
+		assertRefusalCheck(t, checkPathRequest(req), CheckOwnership)
+	})
+
+	t.Run("PathZeroDirtinessWithAbsentTarget", func(t *testing.T) {
+		container := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    filepath.Join(container, "never-created"),
+			ownership: ownedFabricHub(),
+		}
+		assertRefusalCheck(t, checkPathRequest(req), CheckDirtiness)
+	})
+
+	t.Run("PathEmptyNAReasonWithAbsentTarget", func(t *testing.T) {
+		container := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    filepath.Join(container, "never-created"),
+			ownership: ownedFabricHub(),
+			dirtiness: dirtinessNA(""),
+		}
+		assertRefusalCheck(t, checkPathRequest(req), CheckDirtiness)
+	})
+
+	t.Run("WellFormedRequestOnAnAbsentTargetIsStillANoOpSuccess", func(t *testing.T) {
+		// The counter-assertion, as load-bearing as the three above: moving the shape check ahead of
+		// the absent-target rule must not turn the idempotent teardown sites (removePortal,
+		// removeLaunchers, Remove's already-absent weft worktree) into hard failures.
+		container := t.TempDir()
+		req := pathRequest{
+			what:      "test",
+			container: container,
+			target:    filepath.Join(container, "never-created"),
+			ownership: ownedFabricHub(),
+			dirtiness: dirtinessNA("nothing is there to lose"),
+		}
+		if err := checkPathRequest(req); err != nil {
+			t.Errorf("checkPathRequest on a well-formed request with an absent target = %v; want nil", err)
+		}
+	})
+
 	t.Run("PathZeroOwnership", func(t *testing.T) {
 		container := t.TempDir()
 		target := filepath.Join(container, "child")
