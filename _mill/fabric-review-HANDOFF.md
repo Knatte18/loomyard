@@ -24,10 +24,14 @@ intermediate ancestor, at its sole call site.
 
 **Independent verifier's own assessment: no concrete evidence surfaced to justify a mandatory
 round 8.** The module appears genuinely MERGEABLE on the write-side containment property this
-round targeted. This is a natural point to check with the operator: continue (there may still be
-value in one more broad sweep, or the operator may have a specific area in mind), or treat the
-campaign as converged and write the convergence verdict. Not deciding unilaterally either way —
-see "Exact next action" below.
+round targeted.
+
+**Operator decision (2026-08-14): "Kjør en SISTE runde som tester generelle ting. Den bør ikke
+finne mye. Opus medium."** Round 8 is the operator's explicitly stated LAST round of this
+campaign — not "last configured," genuinely last this time. Model/effort: Opus/medium (a
+deliberate step down from the high-effort rounds that chased specific hard-to-find TOCTOUs —
+appropriate for a general confidence sweep, not a targeted hunt). No seeded residual — general
+final pass, explicit operator expectation that it should not find much. Seed and spawn now.
 
 **Round 6's fix (the good news):** rejected the seed's own hypothesis (relocate staging outside
 the hub) after testing it — found that breaks `os.Root.Rename` across a mount boundary (EXDEV,
@@ -308,18 +312,15 @@ already closed. The fixture-inversion (`f4ce0188`) and `t.Parallel` unblock (`16
 independently confirmed delivered as intended, drove real scenarios against both. Treat these
 three commits as settled unless a later round's own independent driving turns up something new.
 
-## RESIDUAL — none currently seeded (decision point, 2026-08-14)
-Round 7 closed the write-side audit residual (`writeLaunchers` + the newly-found `createPortal`
-sibling) and it is now CLOSED-AND-VERIFIED above. As of this writing there is no open,
-orchestrator-confirmed defect anywhere in `fabric` — this is the first time in the campaign this
-file has nothing to seed a next round with. If the operator chooses to continue, the next round's
-seed needs to come from either (a) a fresh clean-room sweep with no specific target (the way round
-1 and round 4's "broad sweep" halves worked), or (b) a specific area the operator wants scrutinized
-that hasn't had dedicated attention yet — theoretical residuals worth naming as candidates if asked:
-the `add.go` post-`containedWorktreeAdd` steps round 6/7 didn't fully individually audit beyond
-`writeLaunchers`/`createPortal` (`InstallPostCheckoutHook`, `WireJunctionsWith`, `wireBoardLink`),
-or a fresh full-module pass now that the write-side guard test exists to lean on. If the operator
-chooses to wrap up, write the convergence verdict per "Exact next action" below.
+## RESIDUAL — none seeded for round 8 (operator's choice, general final sweep)
+Round 7 closed the write-side audit residual and it is now CLOSED-AND-VERIFIED above. Round 8 is
+the operator's confirmed, explicitly final round of this campaign — "Kjør en SISTE runde som
+tester generelle ting. Den bør ikke finne mye. Opus medium." No seeded target; round 8's seed
+(`_mill/fabric-review-prompt.md`) is a general confidence sweep with an explicit instruction to
+report honestly rather than manufacture findings. Optional (not required) spot areas named in the
+seed if round 8 wants somewhere specific to look: the `add.go` post-`containedWorktreeAdd` steps
+never individually audited beyond `writeLaunchers`/`createPortal` (`InstallPostCheckoutHook`,
+`WireJunctionsWith`, `wireBoardLink`).
 
 ## DEFERRED list
 Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
@@ -337,22 +338,26 @@ from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was see
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-Round 7 finished clean and was independently verified with no counter-evidence and no new sibling
-gap found (see CLOSED-AND-VERIFIED and "RESIDUAL" above). **This is reported to the operator now
-as a genuine decision point** — continue (round 8, scope TBD per the candidates in "RESIDUAL"
-above) or wrap up with a convergence verdict. Do not decide unilaterally.
-
-If the operator says wrap up, the convergence verdict should state plainly: the destruction
-chokepoint's delete-side containment (M3/M1, `removePath`/`removeLink` via `os.Root`) and
-create-side containment (the create-worktree chain via `containedWorktreeAdd`, AND the write-side
-audit's `writeLaunchers`/`createPortal` fixes) have all independently survived adversarial
-re-attack; a durable write-side guard test now exists as a permanent check against future regressions
-on this class of defect (there was none before this campaign — this is arguably the single most
-durable outcome of the whole campaign, more than any individual fix); remaining permanent limits
-are Windows path/junction behavior (never executed, Linux host) and N4's dirtiness-probe TOCTOU
-(accepted, documented, real-in-theory-only residual). State honestly that 7 rounds each finding
-something the previous round's own verdict missed is itself informative — not proof the module is
-now perfect, but strong evidence the specific properties hammered this hard are now sound.
+1. `_mill/fabric-review-prompt.md` is rewritten for round 8 (no seeded residual, general final
+   confidence sweep, CLOSED-AND-VERIFIED updated with round 7's clean closure, deferred/round-
+   context sections cleared). Commit it together with this HANDOFF update.
+2. Spawn round 8: `subagent_type: crucible-reviewer-medium`, `model: opus`, tag `opus-medium-r8`
+   — per the operator's explicit choice, confirmed 2026-08-14.
+3. After round 8's own independent verification: this is the operator's confirmed FINAL round —
+   write the convergence verdict regardless of what round 8 finds (a genuine finding still gets
+   independently verified and fixed first, per standard discipline, before the verdict is
+   written). The verdict should state plainly: the destruction chokepoint's delete-side
+   containment (M3/M1, `removePath`/`removeLink` via `os.Root`) and create-side containment (the
+   create-worktree chain via `containedWorktreeAdd`, AND the write-side audit's
+   `writeLaunchers`/`createPortal` fixes) have all independently survived adversarial re-attack; a
+   durable write-side guard test now exists as a permanent check against future regressions on
+   this class of defect (there was none before this campaign — arguably the single most durable
+   outcome of the whole campaign, more than any individual fix); remaining permanent limits are
+   Windows path/junction behavior (never executed, Linux host) and N4's dirtiness-probe TOCTOU
+   (accepted, documented, real-in-theory-only residual). State honestly that most of the first 7
+   rounds each found something the previous round's own verdict missed, and that this is itself
+   informative — not proof the module is now perfect, but strong evidence the specific properties
+   hammered this hard (the chokepoint's containment guarantees, both directions) are now sound.
 
 If the operator says continue, rewrite `_mill/fabric-review-prompt.md` for round 8 using one of
 the candidate directions in "RESIDUAL" above (or a direction the operator specifies), commit, spawn

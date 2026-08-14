@@ -1,16 +1,18 @@
 # `fabric` — independent review + fix (prompt template)
 
 > Filled instance of `crucible/review-prompt-template.md` for the `fabric` module's crucible
-> campaign, round 7. The campaign's ORIGINAL plan was a fixed 4 rounds; the operator has since
-> clarified round count was never a hard decision. Round 6 (the prior round) fully closed the
-> chain of create-side containment fixes that had been defeated repeatedly across rounds 2-6 —
-> good news — but the orchestrator's independent verification of round 6 found a SEPARATE,
-> previously-unaudited defect while sweeping for anything else worth checking:
-> `writeLaunchers` has zero containment protection, exploitable with a static symlink and no
-> timing attack at all. The operator's explicit decision (2026-08-14): this round is NOT scoped
-> to `writeLaunchers` alone — it is a FULL WRITE-SIDE CONTAINMENT AUDIT across
-> `internal/fabricengine`, given this campaign's repeated pattern of "fixed gap reveals an
-> unaudited sibling." Model/effort: Fable/high, consistent with rounds 3-6.
+> campaign, round 8 — the operator's explicitly stated LAST round of this campaign ("Kjør en
+> SISTE runde som tester generelle ting. Den bør ikke finne mye."). Round 7 (the prior round) ran
+> a full write-side containment audit and closed it clean: independent verification found NO
+> counter-evidence and NO new sibling gap, the first time that has happened in this campaign's
+> seven rounds. Every seeded-residual chain this campaign has chased (delete-side containment,
+> create-side containment, write-side containment) is now CLOSED-AND-VERIFIED. This round has
+> NO seeded residual — it is a general final confidence sweep, not a hunt for a specific known
+> gap. The operator's expectation, stated explicitly, is that this round should not find much;
+> your job is to verify that expectation is actually true, not to manufacture findings to justify
+> the round. Model/effort: Opus/medium (a deliberate choice — lighter than the high-effort rounds
+> that chased specific hard-to-find TOCTOUs, appropriate for a broad confidence pass over a module
+> that has already had heavy adversarial pressure).
 > Committed under `_mill/` — see `crucible/README.md` for the loop this prompt runs inside, and
 > "Commit deliverables continuously, not gitignored" for why this file (and your own deliverables)
 > live here instead of a gitignored scratch dir.
@@ -91,21 +93,16 @@ regressed and (b) re-evaluate deferred items.
     `internal/fabricengine/doc.go` FIRST, in full, before anything else — it is dense and
     authoritative about *why* the current shape exists, not just what it does)
   - `internal/fabricengine/destroy.go` and `internal/fabricengine/ancestors.go` — read
-    `removeContainedPath` and `containedWorktreeAdd` as the two WORKING PATTERNS to generalize
-    from (both CLOSED-AND-VERIFIED, both survived independent adversarial re-attack) — this
-    round is not attacking either of them, it's auditing everything else for the same gap they
-    once had.
-  - `internal/fabricengine/launchers.go`'s `writeLaunchers` (this round's confirmed starting
-    point, see "High-yield focus" below) and EVERY other file under `internal/fabricengine/` —
-    this round's Job-1 task requires reading the whole package with one specific question in
-    mind: does this call site write to a hub-relative path, and if so, does it route through
-    `refuseUncontainedPath` or an `os.Root`-based helper, or does it use a raw
-    `os.MkdirAll`/`os.WriteFile`/`os.Create`/`os.OpenFile` (or similar) directly?
-  - `cmd/lyx/destructiveguard_test.go` — read this closely as the MODEL for the write-side guard
-    test this round should build: it's the delete-side allowlist test that made round 2's
-    raw-primitive re-derivation possible and repeatable in every subsequent round. There is no
-    write-side equivalent today; consider whether building one is this round's most durable
-    output.
+    `removeContainedPath` and `containedWorktreeAdd` as reference points for what a CLOSED,
+    independently-re-attack-proof fix looks like in this codebase. Not a hunting ground.
+  - `internal/fabricengine/launchers.go`, `portal.go` (or wherever `createPortal` lives) — the
+    write-side audit's fixes, also CLOSED-AND-VERIFIED. Read for reference, spot-check briefly if
+    you like, do not expect to find anything.
+  - `cmd/lyx/destructiveguard_test.go` and `TestNoUncontainedWrite_FabricengineProductionSource`
+    (round 7's new write-side guard) — both exist now specifically so future code changes get
+    caught automatically; you do not need to re-derive either inventory from scratch the way
+    rounds 2 and 7 did, though a quick sanity check that both are still green and still match
+    reality is reasonable.
   - `internal/fabriccli/**` (the CLI surface)
   - `internal/gitexec/**`, `internal/gitrepo/**` (the checked/raw git-exec split — round 1
     reviewed this thoroughly and found it sound; read it for context, not as a primary hunting
@@ -130,91 +127,72 @@ regressed and (b) re-evaluate deferred items.
 2. Correctness — bugs, races, error handling, edge cases; concentrate on the historically-fragile
    areas below. Also assess docs accuracy (do the docs match the code?) and operability.
 
-## High-yield focus — PRIMARY TARGET: a full write-side containment audit
+## High-yield focus — no seeded residual this round; a general final confidence sweep
 
-**This round is structurally different from rounds 2-6: instead of one seeded residual to
-reproduce/fix/re-attack, your Job-1 task is a systematic audit.** Rounds 2-6 spent five rounds
-chasing one chain of containment gaps on the DELETE side and then the create-worktree path
-specifically (M3 → M1 → create-side gap → staging-observability gap), and round 6's fix for the
-last of those finally survived independent adversarial re-attack — that chain is genuinely closed,
-see CLOSED-AND-VERIFIED below. But the orchestrator's independent verification of round 6, while
-sweeping for anything else worth checking, found a SEPARATE defect on a call path nobody had
-looked at: `internal/fabricengine/launchers.go`'s `writeLaunchers` (called on every `add`, the
-create-side counterpart of `removeLaunchers`, which round 2's M3 finding fixed on the delete side)
-has **zero containment protection whatsoever.**
+**This round has no specific known gap to chase.** Every chain this campaign has hunted —
+delete-side containment (M3/M1, `removePath`/`removeLink`), create-side containment
+(`containedWorktreeAdd`'s full history including the staging-observability defeat), and the
+write-side audit (`writeLaunchers`/`createPortal` plus the new guard test) — is CLOSED-AND-VERIFIED
+below, each having survived at least one fully independent adversarial re-attack. Round 7's own
+independent verification found no counter-evidence and no new sibling gap for the first time in
+the campaign. The operator's own words on this round: it should not find much.
 
-- **Confirmed starting point (already reproduced once, 100% first attempt, no timing needed):**
-  `writeLaunchers` writes to `<hub>/_launchers/<AnchorRel>/<slug>` via plain
-  `os.MkdirAll`+`os.WriteFile` — no `refuseUncontainedPath`, no `os.Root`. A symlink planted at
-  that path BEFORE running `add` (no race, no observation, just a static symlink) is sufficient:
-  ```sh
-  ln -s <outside-the-hub> <hub>/_launchers/<slug>
-  lyx fabric add <slug>
-  ```
-  writes `ide.sh`/`fabric-checkout.sh` to the outside target while reporting `ok:true` and a
-  mutation record claiming the files landed inside the hub — M3's exact false-success shape,
-  strictly EASIER to exploit than everything the last five rounds worked on, since it needs no
-  timing attack at all.
-- **Why this matters beyond just fixing one function:** five rounds of adversarial pressure on
-  ONE chain (`containedWorktreeAdd`'s ancestors) never touched this sibling call site in the SAME
-  `add` code path. The pattern this campaign has repeated at every step — fixing one gap reveals
-  an unaudited sibling nearby — held again, and this time the sibling needed less sophistication
-  to find than anything before it. That is the operator's explicit reason for scoping this round
-  as a full audit rather than a `writeLaunchers`-only point-fix: fixing just this one function
-  risks finding an eighth link in the chain next time, the same way fixing just `containedWorktreeAdd`
-  each time left `writeLaunchers` undiscovered for five rounds running.
-- **Your Job-1 task, concretely:**
-  1. Reproduce `writeLaunchers`'s live bug yourself first (fast, gives you a working hub to
-     continue driving from).
-  2. Grep `internal/fabricengine/` for every raw filesystem-write primitive — `os.MkdirAll(`,
-     `os.WriteFile(`, `os.Create(`, `os.OpenFile(`, `os.Symlink(`, `os.Link(`, and anything else
-     that creates or writes filesystem state — and for EACH hit, determine: does this write to a
-     path derived from a hub-relative/operator-controlled location, and if so, does the path
-     resolution go through `refuseUncontainedPath` or an `os.Root`-based helper before the write
-     happens? Read every hit, don't just count them.
-  3. For every gap you find (there may be more than one — do not stop at `writeLaunchers`), record
-     it as its own finding, grade its severity individually (a static-symlink zero-race exploit
-     like `writeLaunchers` is likely worse than a gap that needs a timing attack — grade by actual
-     exploitability, not by uniform severity), and fix it.
-  4. Also independently investigate the theoretical residual round 6's verification flagged:
-     `add.go`'s steps AFTER `containedWorktreeAdd` returns (`InstallPostCheckoutHook`,
-     `createPortal`, `writeLaunchers`, `WireJunctionsWith`, `wireBoardLink`) trust the earlier
-     containment check without re-verifying — `writeLaunchers` is the confirmed-live instance of
-     this pattern; check whether the OTHER steps in that list have their own version of it.
-  5. Build a write-side guard test, modeled on `cmd/lyx/destructiveguard_test.go`'s allowlist
-     pattern (the delete-side equivalent) — an automated inventory of every raw-write-primitive
-     call site under `internal/fabricengine`, cross-checked against an explicit allowlist of
-     sites that are genuinely safe to write raw (if any exist) vs. sites that must route through
-     containment. This is the durable, re-derivable answer to "how do we stop finding an eighth
-     link in this chain" — treat building it as part of this round's primary deliverable, not an
-     optional nice-to-have.
-- **Once you've fixed everything the audit finds, adversarially re-attack each fix** with the
-  attack shapes appropriate to what you found (a static-symlink attack for zero-race gaps like
-  `writeLaunchers`; a timing/observation attack if any gap you find has a check-then-act window
-  the way `containedWorktreeAdd` used to). Do not assume a fix is closed just because it passes the
-  ONE repro you built it against.
+**Your job is genuinely two things, in tension, and you must do both honestly:**
+1. Do a real, unprimed, adversarial pass across the whole module — not a rubber stamp. Read
+   `doc.go` fresh, drive the real substrate, look for anything genuinely wrong: scope gaps,
+   correctness bugs, doc/code drift, operability rough edges. Treat this like round 1's original
+   broad sweep, not like a search for a specific thing.
+2. Do NOT manufacture findings to justify the round's existence. If the module genuinely looks
+   solid after a real pass, say so plainly and grade findings honestly (most things you notice at
+   this point are more likely to be NIT-level polish than BLOCKING/MEDIUM defects, given how much
+   adversarial pressure this module has already absorbed) — an honest "I looked hard and it's
+   solid, here are three small NITs" is a MORE valuable outcome for this round than inflating
+   severity or inventing scope to seem thorough. The operator explicitly wants to know if the
+   expectation of "not much left to find" is actually true, not to see effort quantified in
+   finding-count.
 
-**Everything else is now closed across rounds 2-6, independently re-confirmed — do not
-re-litigate unless you find a genuine regression:** the delete-side containment/TOCTOU property of
-`removePath`/`removeLink` via `os.Root`; the create-side `containedWorktreeAdd` chain (M3, M1,
-the create-side gap, AND the staging-observability gap — round 6's pre/post fail-closed checks
-survived a fully independent re-attack with an independently-built inotify tool, 70 live trials,
-0 escapes — this is the FIRST sub-fix in this whole campaign to survive that level of scrutiny);
-the ownership predicates, `createdToken` unforgeability, `--force`-answers-dirtiness-only, the
-raw-DELETE-primitive inventory, concurrent-race combinations; round 4's F1/F3/F4; round 5's
-`os.Root.Rename` destination-symlink-refusal design. See CLOSED-AND-VERIFIED below for full
-detail. **Two minor open items, low priority, fix if convenient but do not let them distract from
-the audit above:** (a) round 4's F2 fix (WARN log on `rollbackAdd`'s swallowed refusal) has a
-regression test that doesn't actually sabotage-prove the log line (NOTE: round 6 investigated this
-specific claim and found it's WRONG — an existing test already sabotage-proves it; independently
-confirm which is correct rather than assuming either prior round); (b) round 5's F2/F3 fixes have
-no dedicated regression test of their own beyond the shared-mechanism test.
+**Suggested areas for a broad but not exhaustive pass** (not a mandatory checklist — use judgment,
+this is a confidence sweep, not another audit):
+- All 16 verbs driven live, foreground, against a real hub — does anything feel off relative to
+  `doc.go`'s promises?
+- A light-touch confidence check (not a full re-attack) on the delete-side and create-side
+  containment fixes — e.g. one or two spot-check symlink attempts against `remove`/`add`, not a
+  hundred-trial campaign. If something DOES get through, that's a real regression and deserves
+  full adversarial treatment; if not, a light touch is enough given the prior independent
+  re-attacks already did the heavy lifting.
+- Whether the two guard tests (`destructiveguard_test.go`, `TestNoUncontainedWrite_...`) are
+  actually still accurate — quick sanity check, not a full re-derivation.
+- Docs vs. code drift — `doc.go`, `CONSTRAINTS.md`, `docs/overview.md` — anything that's fallen
+  out of sync across 7 rounds of changes.
+- Anything in `internal/fabriccli/**` that hasn't had dedicated attention recently.
+- If you have genuine spare capacity: the theoretical (never-live-reproduced) residual noted by
+  round 6/7's verification — whether `add.go`'s `InstallPostCheckoutHook`/`WireJunctionsWith`/
+  `wireBoardLink` steps (which run after containment checks return, without re-verifying) have any
+  exploitable version of the pattern `writeLaunchers`/`createPortal` had. This is optional, not
+  required — only chase it if your general pass doesn't turn up enough to fill the round
+  meaningfully otherwise.
 
-**N4's dirtiness-probe TOCTOU stays an accepted, documented residual — do not re-attempt unless
-you have a genuinely new attack angle.** Settled since round 3; re-confirmed sound by rounds 4-6's
-verification. Treat it the same as the Windows-path limit: state it, don't re-chase it.
+**N4's dirtiness-probe TOCTOU stays an accepted, documented residual — do not re-attempt.**
+Settled since round 3, re-confirmed sound across rounds 4-7's verification. State it as a limit in
+your merge-readiness verdict, do not re-chase it.
 
 ## CLOSED-AND-VERIFIED — do not re-litigate unless you find a genuine regression
+**Round 7 (`fable-high-r7`), independently verified by the orchestrator from a cold state — FULLY
+closed, first round with a genuinely clean independent verification (no counter-evidence, no new
+sibling found).** 1 MEDIUM (F1, `writeLaunchers` routed through `os.Root`) + 3 LOW (F2
+`createPortal`'s container-symlink gap, fixed the same way; F3 the new write-side guard test
+`TestNoUncontainedWrite_FabricengineProductionSource` + a new CONSTRAINTS.md Write-Side
+Containment Invariant; F4 a doc-accuracy correction on `createExclusiveDir`'s overstated
+guarantee). Independent verification re-derived the write-primitive inventory from scratch and it
+matched the guard test's allowlist exactly; sabotage-proved F1/F2's tests and confirmed the guard
+test's OWN detection mechanism works (injected a throwaway uncontained write, watched it get
+caught); live-re-attacked F1 and F2 against the real deployed binary, fails closed in every case;
+independently scrutinized F4's "not exploitable at this call site" claim (the highest-risk kind
+given round 4's history of an identically-shaped wrong claim) and confirmed it holds —
+`DeriveWarpName` structurally cannot inject a path separator, so the gap can only ever land on the
+leaf at its sole call site. This closes the write-side chain. Do not re-open unless you find a
+genuine regression.
+
 **Round 6 (`fable-high-r6`), independently verified by the orchestrator from a cold state —
 FULLY closed, first fix in the create-side chain to survive fully independent re-attack.** 1
 MEDIUM (F1, `containedWorktreeAdd`'s pre/post fail-closed `stagedWorktreeContained` checks around
@@ -334,15 +312,9 @@ source of truth.
   unless you find a real polling consumer that doesn't exist today.
 
 ## Round context seeded from prior-round verification
-See "High-yield focus" above for the primary target (the full write-side audit, starting from the
-confirmed `writeLaunchers` defect) in full. Unlike rounds 2-6, this round is NOT anchored to one
-seeded fix-and-reattack cycle — it's a systematic sweep whose scope was explicitly widened by the
-operator specifically to avoid repeating the "fix one gap, miss its sibling" pattern one more time.
-Budget your Job-1 time accordingly: less time re-deriving already-settled chokepoint properties
-(five rounds have covered those hard), more time reading every write call site in the package with
-real attention, not a fast skim. Building the write-side guard test (see "What to read" above) is
-as important a deliverable as the individual fixes — it's what prevents this campaign needing an
-eighth round for a ninth link in the chain.
+None — see "High-yield focus" above for why. This is the operator's stated final round; there is
+no round 9 planned. Do a genuine pass, report honestly, and produce a merge-readiness verdict that
+reflects reality rather than either inflating findings or rubber-stamping.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; an N×-concurrent suite is a diagnostic amplifier, not a merge blocker on its own — but a
@@ -384,12 +356,13 @@ Live driving — YOU drive it directly, no launcher (PRIMARY — where the bugs 
   source change or you validate a stale binary. Deploy first, always.
 - Build your own throwaway local warp+weft pair with plain `git init` in a scratch temp dir. Drive
   every one of fabric's 16 verbs directly, foreground, waiting for each to return.
-- Reproduce the seeded residual yourself first (see the repro in "High-yield focus" above),
-  confirm it, THEN establish root cause, THEN fix and adversarially re-attack your own fix — the
-  repro gives you a working local hub to continue driving from. Then do a reasonable secondary
-  sweep of the rest of the module.
-- The suite/list is a FLOOR — devise and run MANY more adversarial scenarios of your own beyond
-  it, weighted toward the primary target.
+- No seeded residual this round — build a working hub via any verb, then drive a genuine broad
+  sweep per "High-yield focus" above. Do not skip live driving just because the round has no
+  specific known target; that is exactly when a rubber-stamp pass is tempting and exactly when it
+  would be least valuable to the operator.
+- The suite/list is a FLOOR — devise and run adversarial scenarios of your own beyond it, but
+  calibrate effort to what a genuine confidence sweep needs, not to matching the depth of the
+  high-effort rounds that chased a specific hard-to-find TOCTOU.
 - **"Headless" means "no human required" — NOT "no time/token cost to me."** You are explicitly
   forbidden from writing "operator-assisted", "cost-bearing", "long-running", "impractical", or
   "automated context" as a reason to skip live driving.
@@ -414,13 +387,9 @@ something you cannot do alone this round. Even then say so explicitly, with the 
 in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None deferred from round 6 — it fixed everything it identified (1/1 MEDIUM, both NITs resolved,
-one reversed to not-a-finding). `writeLaunchers` is not a "deferred" item either — it was never
-found by any round's own review; only by the orchestrator's independent verification of round 6,
-sweeping beyond its assigned scope. Treat it and whatever else the audit finds as this round's
-primary Job-1 work, not a re-evaluation. The two minor open items (round 4's F2 test-coverage
-claim — contested, see "High-yield focus" above — and round 5's F2/F3 missing dedicated tests)
-are low priority, fix if convenient.
+None — round 7 fixed everything it found (1/1 MEDIUM, 3/3 LOW), nothing deferred. Nothing carried
+forward into this round either; see "High-yield focus" above for the optional (not required) spot
+areas if your general pass needs more to fill the round.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
@@ -459,5 +428,7 @@ are low priority, fix if convenient.
    two report paths + an explicit merge-readiness verdict). Do not paste the whole reports.
 
 Begin with the clean-room review (read `internal/fabricengine/doc.go` + code + docs, then drive
-the real substrate — reproduce the seeded residual first for a working hub, then a secondary sweep
-of the rest of the module), produce your independent findings, then implement and verify the fixes.
+the real substrate across a genuine broad sweep — no seeded residual to anchor to this round),
+produce your independent findings, then implement and verify the fixes. This is the operator's
+stated final round of the campaign — give it a real, honest pass, and report honestly whether the
+operator's expectation ("should not find much") held up.
