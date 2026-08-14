@@ -37,8 +37,12 @@
 // toggled at the target during Add's check-then-act window and wrote a whole worktree outside the hub.
 // createExclusiveDir now creates its leaf through an os.Root rooted at the parent (same openat refusal
 // as removeContainedPath), and createGitWorktree routes through containedWorktreeAdd, which stages the
-// worktree at a collision-free rooted path and moves it into place with os.Root.Rename rather than
-// letting git resolve the target itself — see those functions' own comments.
+// worktree under a rooted 0700 random parent and moves it into place with os.Root.Rename. R5 stopped
+// there, but os.Root.Rename renames a symlink standing at the source's own final component as a link, so
+// a staging-leaf symlink planted during git's write still produced an out-of-hub worktree reported as
+// success; R6 adds the fail-closed containment checks (stagedWorktreeContained, on the staging leaf and
+// again on the placed target) that make containedWorktreeAdd refuse rather than report such an add — see
+// its own comment.
 // The Check enum below names only the three checks a refusal can ever be attributed to —
 // containment, ownership, dirtiness — because force never fails: it is consulted only to make the
 // dirtiness check pass, never to cause a refusal of its own.
@@ -933,36 +937,48 @@ func createGitWorktree(rec *Mutations, repoDir, container, target string, buildA
 	return createdToken{path: filepath.Clean(target), worktree: true}, nil
 }
 
-// containedWorktreeAdd runs `git worktree add` in a way that cannot be tricked into writing the
-// worktree OUTSIDE container through a symlink planted at target during the caller's check-then-act
-// window — the create-side twin of removeContainedPath's delete-side guarantee, and the defect
-// fabric's R5 crucible round reproduced live.
+// containedWorktreeAdd runs `git worktree add` in a way that never REPORTS a worktree placed inside
+// container while it was actually written OUTSIDE it through a symlink planted at the staging or target
+// path during the caller's check-then-act window — the create-side twin of removeContainedPath's
+// delete-side guarantee. Round 5 built the staging structure below but never verified, after the move,
+// that the placed target was a real directory rather than a followed symlink, so a planted staging-leaf
+// symlink still produced an out-of-hub worktree reported as success; round 6 closes that by binding the
+// containment check to the act at both the staging write and the placement.
 //
-// The escape it closes: `git worktree add <path>` resolves its destination-path argument itself and
+// The escape it must close: `git worktree add <path>` resolves its destination-path argument itself and
 // FOLLOWS a symlink standing there, writing a full real worktree wherever the symlink points and
-// registering it at the resolved path. A target toggled between absent (past the caller's os.Stat
-// guard) and a symlink-to-outside (by the time git runs) therefore carried a whole worktree out of the
-// hub. os.Root cannot reach through the git subprocess the way it reaches through removeContainedPath's
-// own os.Remove, so this cannot be closed by rooting the git call; it is closed structurally instead.
+// registering it at the resolved path. os.Root cannot reach through the git subprocess the way it
+// reaches through removeContainedPath's own os.Remove, so this cannot be closed by rooting the git
+// call; it is closed by a two-level staging structure plus two fail-closed containment checks.
 //
-// git's WRITE only ever targets a collision-free staging location this function creates through an
-// os.Root rooted at container (openat-atomic, refusing any intermediate-symlink escape): an
-// unpredictable random PARENT directory an adversary cannot pre-plant a symlink at, holding a leaf
-// named after target's own base so git names the worktree's internal admin directory
-// (`<gitdir>/worktrees/<name>`) after the slug exactly as it would have unstaged. The worktree is then
-// moved to target with os.Root.Rename, which relates the final component to container's own directory
-// handle and REFUSES to follow a symlink planted at target (renameat returns ENOTDIR rather than
-// dereferencing it), so the only adversary-controllable path is touched solely by an operation that
-// cannot escape. `git worktree repair` then rewrites git's registration to name target rather than the
-// staging path. The residual — an adversary swapping target for a symlink between the rename and the
-// repair — is not an escape: repair only rewrites small pointer files and never writes a worktree tree,
-// so the worst case is a failed repair and a rolled-back add, never a worktree written outside container.
+// git's WRITE targets a two-level staging location: a collision-free random PARENT directory created
+// through an os.Root rooted at container (openat-atomic, mode 0700, unpredictable so a different-UID
+// planter can neither guess nor write the leaf, and any intermediate-symlink escape refused at mkdir
+// time), holding a leaf named after target's base so git names its admin directory
+// (`<gitdir>/worktrees/<name>`) after the slug exactly as it would have unstaged. The two-level shape is
+// load-bearing: os.Root.Rename refuses a symlink at an INTERMEDIATE source component, so a planter who
+// swaps the random parent (writable only from container itself) makes the rename fail closed rather than
+// escape; a single-level staging dir directly under container would have no such protective parent.
 //
-// target must be a direct child of container (every fabric worktree target — a hub-sibling slug
-// worktree or `<hub>/_board` — is), which is what lets the single-component rename land it in place.
-// buildArgs returns the full argument slice given the path git should write to; every caller embeds
-// exactly the staging path this function hands it, never target, so no caller can reintroduce the
-// followed-symlink write.
+// os.Root.Rename refuses to follow a symlink at the rename DESTINATION but renames a symlink standing at
+// the source's own FINAL component as a link (it moves the link, not its target), so the two checks
+// below are what actually bind containment to the act: after git writes, stagedWorktreeContained
+// confirms the staging leaf git wrote to is a real directory reached without traversing any symlink (a
+// symlink there means git followed a planted link and wrote outside); after the rename, the same check
+// on target catches a leaf swapped in the narrow pre-check→rename window, whose symlink would otherwise
+// have been renamed onto target. Either failure cleans up the escaped worktree and staging debris and
+// returns an error, so an out-of-hub worktree is never reported as a placed one.
+//
+// A same-UID (or root) planter actively racing the add can still make git transiently write a checkout
+// into a directory it already controls and can read the repo from anyway; that is not preventable by any
+// staging location, since such a planter can substitute any path fabric writes to. What is guaranteed is
+// that this function never returns nil for such an add and never leaves target a dangling out-of-hub
+// symlink — it fails closed.
+//
+// target must be a direct child of container (every fabric worktree target — a hub-sibling slug worktree
+// or `<hub>/_board` — is), which is what lets the single-component rename land it in place. buildArgs
+// returns the full argument slice given the path git should write to; every caller embeds exactly the
+// staging path this function hands it, never target, so no caller can reintroduce the followed-symlink write.
 func containedWorktreeAdd(repoDir, container, target string, buildArgs func(worktreePath string) []string) error {
 	rel, relErr := filepath.Rel(filepath.Clean(container), filepath.Clean(target))
 	if relErr != nil {
@@ -987,6 +1003,16 @@ func containedWorktreeAdd(repoDir, container, target string, buildArgs func(work
 	stagingRel := filepath.Join(stagingParent, rel)
 	stagingPath := filepath.Join(container, stagingRel)
 
+	// cleanupStagingDebris removes whatever the staging path currently resolves to — an in-container tree
+	// or a worktree that escaped through a planted symlink, both of which git may have registered — then
+	// drops the staging parent and prunes any dangling registration, so no debris survives a failed or
+	// tampered add.
+	cleanupStagingDebris := func() {
+		_, _ = gitexec.Run([]string{"worktree", "remove", "--force", stagingPath}, repoDir)
+		_ = root.RemoveAll(stagingParent)
+		_, _ = gitexec.Run([]string{"worktree", "prune"}, repoDir)
+	}
+
 	if _, err := gitexec.Run(buildArgs(stagingPath), repoDir); err != nil {
 		// git left at most an empty (or partial) staging tree it never registered as a worktree: drop the
 		// whole staging parent through the same root so no debris survives a failed add.
@@ -994,35 +1020,80 @@ func containedWorktreeAdd(repoDir, container, target string, buildArgs func(work
 		return err
 	}
 
+	// Fail closed if git followed a symlink planted at the staging leaf and wrote the worktree outside
+	// container: the leaf git actually wrote to must be a real directory reached without traversing a
+	// symlink. This binds containment to the act — a nominal-path resolve done before git ran cannot see
+	// a symlink toggled in during git's write.
+	if !stagedWorktreeContained(root, stagingRel) {
+		cleanupStagingDebris()
+		return fmt.Errorf("place worktree at %s: staging leaf was not a contained directory after git wrote it (a symlink planted during the add carried the worktree outside %s)", target, container)
+	}
+
 	if err := root.Rename(stagingRel, rel); err != nil {
-		// The staging worktree is registered with git; remove it through git so no dangling registration
-		// or on-disk tree survives, then surface the placement failure.
-		_, _ = gitexec.Run([]string{"worktree", "remove", "--force", stagingPath}, repoDir)
-		_ = root.RemoveAll(stagingParent)
+		cleanupStagingDebris()
 		return fmt.Errorf("place worktree at %s: %w", target, err)
 	}
-	// The staging parent is now empty (its leaf moved to target); drop it. A failure here leaves only an
-	// empty hidden dir, never the worktree, so it is not worth failing the add over.
-	_ = root.Remove(stagingParent)
+
+	// Fail closed if the source leaf was swapped for a symlink in the window between the check above and
+	// the rename: os.Root.Rename would then have renamed that link onto target. Confirm target is a real
+	// directory; otherwise unlink the symlink (os.Root.Remove never follows the final component) after
+	// removing the worktree it points at, so target is left absent rather than a link pointing outside.
+	if !stagedWorktreeContained(root, rel) {
+		if dest, readErr := root.Readlink(rel); readErr == nil {
+			if !filepath.IsAbs(dest) {
+				dest = filepath.Join(container, filepath.Dir(rel), dest)
+			}
+			_, _ = gitexec.Run([]string{"worktree", "remove", "--force", dest}, repoDir)
+		}
+		_ = root.Remove(rel)
+		cleanupStagingDebris()
+		return fmt.Errorf("place worktree at %s: target was replaced by a symlink during placement (worktree escaped %s)", target, container)
+	}
+
+	// The staging parent's real leaf has moved to target; drop the parent through the root. RemoveAll,
+	// not Remove, so a planter that polluted the parent with stray entries (a symlink named after the
+	// weft leaf, say) cannot leave the empty-but-non-empty staging dir behind — os.Root removes each
+	// entry as a link without following it, and the worktree is already out, so nothing of value is lost.
+	// A failure here still leaves only a hidden staging dir, never the worktree, so it does not fail the add.
+	_ = root.RemoveAll(stagingParent)
 
 	if _, err := gitexec.Run([]string{"worktree", "repair", target}, repoDir); err != nil {
+		// The worktree is placed but its registration still names the staging path; remove the
+		// half-registered worktree so the caller's rollback sees a clean slate rather than a target whose
+		// broken registration `git worktree remove` would itself choke on.
+		_, _ = gitexec.Run([]string{"worktree", "remove", "--force", target}, repoDir)
+		_, _ = gitexec.Run([]string{"worktree", "prune"}, repoDir)
 		return fmt.Errorf("repair worktree registration at %s: %w", target, err)
 	}
 	return nil
 }
 
-// mkWorktreeStagingDir creates a fresh, collision-free staging parent directory directly under root
-// and returns its base name. The name is unpredictable (crypto/rand) so an adversary racing the caller
-// cannot pre-plant a symlink at it, and the create goes through root's own directory handle so an
-// intermediate-symlink escape is refused rather than followed.
+// stagedWorktreeContained reports whether rel, resolved through root's own directory handle, is a real
+// directory containedWorktreeAdd can trust as a placed worktree: not a symlink git followed out of the
+// container, and not a path whose ancestry escapes root. os.Root.Lstat resolves every component through
+// container's handle and returns an error for an escaping intermediate component, so a non-nil error and
+// a symlink leaf are both reported as not contained — the conservative, fail-closed direction.
+func stagedWorktreeContained(root *os.Root, rel string) bool {
+	info, err := root.Lstat(rel)
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeSymlink == 0 && info.IsDir()
+}
+
+// mkWorktreeStagingDir creates a fresh, collision-free staging parent directory directly under root and
+// returns its base name. The name is unpredictable (crypto/rand) so a different-UID planter with hub
+// write access cannot pre-plant a symlink at it, the mode is 0700 so such a planter can neither list nor
+// write the leaf git will create inside it, and the create goes through root's own directory handle so
+// an intermediate-symlink escape is refused rather than followed.
 func mkWorktreeStagingDir(root *os.Root) (string, error) {
 	for attempt := 0; attempt < 100; attempt++ {
-		var buf [8]byte
+		var buf [16]byte
 		if _, err := rand.Read(buf[:]); err != nil {
 			return "", fmt.Errorf("generate worktree staging name: %w", err)
 		}
 		name := ".fabric-wt-staging-" + hex.EncodeToString(buf[:])
-		err := root.Mkdir(name, 0o755)
+		err := root.Mkdir(name, 0o700)
 		if err == nil {
 			return name, nil
 		}

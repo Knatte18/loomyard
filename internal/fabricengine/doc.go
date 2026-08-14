@@ -736,12 +736,22 @@
 // `mkdir` time exactly as `removeContainedPath` refuses one at `unlink` time. `createGitWorktree` can
 // not be rooted the same way — `git worktree add` is a subprocess that resolves its destination
 // argument itself and FOLLOWS a symlink there, writing a whole worktree wherever it points — so
-// `containedWorktreeAdd` closes it structurally instead: git's WRITE only ever targets a collision-free
-// random staging path created through an `os.Root` (unnameable by an adversary, escape-refusing at
-// creation), and the worktree is then moved to the real target with `os.Root.Rename`, which refuses to
-// follow a symlink planted at the target, before `git worktree repair` fixes git's registration. The
-// only adversary-controllable path is touched solely by an operation that cannot escape, so a worktree
-// is never written outside the container — the create-side twin of the delete-side guarantee above.
+// `containedWorktreeAdd` closes it with a two-level staging structure plus two fail-closed containment
+// checks. git's WRITE targets a leaf named after the slug inside an unguessable 0700 random PARENT
+// directory created through an `os.Root` rooted at container; the parent's unguessability and mode deny
+// a different-UID planter, and its being a real intermediate directory makes `os.Root.Rename` refuse a
+// parent-swap (it refuses a symlink at an intermediate SOURCE component). R5 stopped at that rename,
+// but `os.Root.Rename` renames a symlink standing at the SOURCE's own final component as a link rather
+// than refusing it, so a staging-LEAF symlink planted during git's write was still renamed onto the
+// target — an out-of-hub worktree reported as success (R6's review reproduced this 12/12 against a
+// same-UID observing planter). R6 binds containment to the act: after git writes, `stagedWorktreeContained`
+// confirms the staging leaf is a real directory reached without traversing a symlink, and after the
+// rename it confirms the placed target is too; either failure cleans up the escaped worktree and staging
+// debris and returns an error, then `git worktree repair` fixes git's registration on the success path.
+// A same-UID (or root) planter actively racing the add can still make git transiently write a checkout
+// into a directory it already controls — unpreventable by any staging location, since such a planter can
+// substitute any path fabric writes to — but the operation is never REPORTED as success and never leaves
+// the target a dangling out-of-hub symlink, which is the create-side twin of the delete-side guarantee.
 //
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
