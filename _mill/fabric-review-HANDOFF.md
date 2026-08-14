@@ -32,7 +32,14 @@ plain `os.MkdirAll`+`os.WriteFile` — no `refuseUncontainedPath`, no `os.Root`,
 symlink planted at that path BEFORE running `add` (no timing, no race, no observation) makes `add`
 write `ide.sh`/`fabric-checkout.sh` OUTSIDE the hub while reporting `ok:true` — M3's exact
 false-success shape, strictly EASIER to exploit than everything this campaign has spent five
-rounds on, on a call path nobody has audited before. Verification also flagged a related, only
+rounds on, on a call path nobody has audited before.
+
+**Operator decision (2026-08-14): round 7 = full write-side audit, Fable/high.** Not scoped to
+`writeLaunchers` alone — the round must grep for every hub-relative write call site under
+`internal/fabricengine` missing containment, fix all of them, not just the one the verification
+happened to find. Seed and spawn round 7 now.
+
+Verification also flagged a related, only
 theoretical (not live-reproduced) residual: `add.go`'s later steps after `containedWorktreeAdd`
 returns (`InstallPostCheckoutHook`, `createPortal`, `writeLaunchers`, `WireJunctionsWith`,
 `wireBoardLink`) all trust the earlier containment check without re-verifying — exactly the design
@@ -164,6 +171,25 @@ nothing deferred, so nothing else to fold in from that source. The "inert leftov
 post-freeze observation is folded in as a low-priority spot-check only.
 
 ## CLOSED-AND-VERIFIED
+**Round 6 (`fable-high-r6`) — FULLY closed, the create-side chain's fix finally holds.** 1 MEDIUM
+(F1, `containedWorktreeAdd`'s pre/post fail-closed `stagedWorktreeContained` checks around
+`os.Root.Rename`) + NIT-F2 (folded into F1) + NIT-F3 (reversed to "not a finding" — round 5's F2
+WARN-log test already sabotage-proved itself, independently confirmed correct), 5 commits
+`d58d61b8`..`4050c5af`. Independently verified (fork `a54217f6d5db7273a`, using an
+independently-built inotify attack tool, not reusing round 6's own harness): full timeline mapped
+(git write → pre-check → rename → post-check → cleanup → `git worktree repair` → return), 70 live
+trials against the real deployed binary — 0 escapes, 0 false success, 0 debris. Round 6's
+rejection of the seed's own hypothesis (relocate staging outside the hub) was independently
+assessed as sound: the EXDEV/mount-boundary claim is architecturally real (POSIX `rename(2)`),
+the different-UID regression claim is plausible by the permission-bit reasoning though not
+independently re-derived (would need a second-UID test environment). **First sub-fix in the
+M3→M1→create-side→staging-observability chain to survive a fully independent re-attack.**
+One theoretical (not live-reproduced) residual noted: `add.go`'s steps AFTER
+`containedWorktreeAdd` returns (`InstallPostCheckoutHook`, `createPortal`, `writeLaunchers`,
+`WireJunctionsWith`, `wireBoardLink`) trust the earlier containment check without re-verifying —
+the same design pattern that produced round 7's seeded residual below, worth remembering if a
+future round is hunting for more siblings.
+
 **Round 5 (`fable-high-r5`) — PARTIALLY closed, see round 6's residual below for what is NOT
 closed.** 1 MEDIUM (F1) + 2 LOW (F2, F3) + 1 NIT (F4), 8 commits `6034464d`..`88fe81fb`.
 Independently verified (fork `afd8fb60fc7bd525e`): gates green cold; F1's regression test
@@ -248,63 +274,60 @@ already closed. The fixture-inversion (`f4ce0188`) and `t.Parallel` unblock (`16
 independently confirmed delivered as intended, drove real scenarios against both. Treat these
 three commits as settled unless a later round's own independent driving turns up something new.
 
-## RESIDUAL currently seeded for round 6
-**New finding, from the orchestrator's OWN independent verification of round 5's `containedWorktreeAdd`
-fix (round 5 investigated this and got it WRONG — sixth time this "never trust the round's own
-verdict" pattern has fired in this campaign):** the fix for round 5's own seeded residual
-(create-side symlink-directed-write) substitutes one exposure for a worse one. The staging path is
-crypto-random but lives INSIDE the hub tree, where the same adversary who can plant a symlink can
-also watch the directory (`inotify`) for the staging path's creation and plant a symlink there the
-instant it appears — before git has written anything into it.
+## RESIDUAL currently seeded for round 7
+**New finding, from the orchestrator's OWN independent verification of round 6's fix — but this
+time NOT a defeat of round 6's own assigned work (that held). This is a NEW, separate, previously
+unaudited defect the verification found while sweeping for anything else worth checking.**
+`internal/fabricengine/launchers.go`'s `writeLaunchers` (the CREATE-side counterpart of
+`removeLaunchers`, which round 2's M3 finding fixed on the DELETE side, called on every `add`) has
+**zero containment protection.**
 
-- **Mechanism:** `containedWorktreeAdd` has git write to a crypto-random, `os.Root`-created
-  staging path inside the hub, then `os.Root.Rename`s it into place. `os.Root.Rename`'s own
-  destination-symlink refusal is real and correctly implemented (independently checked against Go
-  1.26 stdlib docs). But "crypto-random" only defends against a GUESSING adversary — it does
-  nothing against an OBSERVING one, and this campaign's threat model has assumed exactly that
-  since M3 (an adversary with write access to plant symlinks inside the hub also has read/list
-  access to watch it).
-- **Repro (independently reproduced):** an inotify watcher on the staging parent directory,
-  triggering on `IN_CREATE` of the staging path pattern, plants a symlink at
-  `<staging>/<slug>` pointing outside the hub the instant the staging directory appears — before
-  git's subprocess (which has real process-spawn latency, milliseconds) has written into it.
-  **8/8 (100%) across two batches** — MORE reliable than round 5's own bug (~1.7%). Confirmed via
-  filesystem evidence: `<hub>/<slug>` ends up as a symlink pointing outside, a full worktree lands
-  outside the hub, and `lyx fabric add` reports `ok:true`/`partial:false`/exit 0 — the exact
-  false-success shape M3 had.
-- **Scope:** this is a SHARED-MECHANISM bug, not per-site. F2/F3's fixes from round 5
-  (`createExclusiveDir`, and the four weft/board/reconcile worktree-add sites) correctly route
-  through the same `containedWorktreeAdd` helper, so they inherit the identical exposure — fixing
-  the helper fixes all of them; there is no separate per-site work needed for THIS specific gap.
-- **Why round 5 got this wrong:** its own re-attack (1200 trials, 0 escapes) only re-tried the
-  ORIGINAL attack shape (toggle a symlink at the final target) — it never attacked the NEW surface
-  its own fix introduced (the staging directory's observable creation). One level more subtle than
-  round 4's mistake: round 5 DID run a timing attack, just not the right one against its own new
-  mechanism.
-- **Severity:** at least MEDIUM, arguably worse than what it replaced given the 100% vs 1.7% hit
-  rate — grade it once reproduced and root-caused independently by round 6.
-- **Fix direction (a hypothesis for round 6 to verify, not a prescription):** the staging area
-  needs to be unobservable to the adversary, not just unguessable — e.g. create it under a
-  private, restrictively-permissioned location OUTSIDE the hub tree entirely (a per-process temp
-  directory the adversary has no read/list access to), write the worktree there, and only then
-  move it into the hub via `os.Root.Rename` or an equivalent contained operation. Secrecy inside a
-  directory the adversary can already write into does not survive an adversary who can also watch
-  that directory. Round 6 must verify this direction is actually right, not assume it — and must
-  re-attack its own fix with BOTH the toggle-race AND the inotify-observation attack (and ideally
-  think about whether there's a THIRD attack shape neither round 5 nor round 6's seed anticipated)
-  before declaring it closed. This pattern — one round's fix opening a new gap the next round's
-  independent verification catches — has now repeated at every single step of this campaign's
-  chokepoint work; do not assume round 6's fix is the last one needed either, verify it as hard as
-  everything before it.
+- **Mechanism:** `writeLaunchers` writes to `<hub>/_launchers/<AnchorRel>/<slug>` via plain
+  `os.MkdirAll`+`os.WriteFile` — no `refuseUncontainedPath` call, no `os.Root`, nothing. Unlike
+  every other finding in this campaign's chokepoint chain, this needs NO timing attack, NO race,
+  NO observation — a symlink planted at that exact path BEFORE running `add` is sufficient.
+- **Repro (independently reproduced, 100% first attempt):**
+  ```sh
+  ln -s <outside-the-hub> <hub>/_launchers/<slug>
+  lyx fabric add <slug>
+  ```
+  writes `ide.sh`/`fabric-checkout.sh` to the OUTSIDE target while reporting `ok:true` and a
+  mutation record claiming the files landed inside the hub — M3's exact false-success shape.
+- **Why this was never caught before:** five rounds of adversarial pressure on the chokepoint's
+  create-side chain (M3→M1→create-side-gap→staging-observability, all through
+  `containedWorktreeAdd`/`createGitWorktree`/`createExclusiveDir`) never audited `writeLaunchers`
+  at all — it's a sibling call site in the SAME `add` code path, not part of the chain anyone was
+  looking at. Confirms the pattern the campaign has repeated at every step: fixing one gap reveals
+  an unaudited sibling nearby, and this one didn't even need the sophistication of a timing attack
+  to find, just looking at a call site nobody had looked at yet.
+- **Operator decision (2026-08-14): round 7 is NOT scoped to `writeLaunchers` alone.** Per the
+  operator's explicit choice, round 7 must do a FULL WRITE-SIDE CONTAINMENT AUDIT: grep for every
+  `os.MkdirAll`/`os.WriteFile`/`os.Create` (and any other raw filesystem-write primitive) call
+  site under `internal/fabricengine` that writes to a hub-relative path WITHOUT going through
+  `refuseUncontainedPath` or an `os.Root`-based helper, fix every one found (not just
+  `writeLaunchers`), and re-derive the raw-write-primitive inventory the way round 2 re-derived
+  the raw-DELETE-primitive inventory against `destructiveguard_test.go`'s allowlist — except this
+  time for writes, which currently have no equivalent allowlist/guard test at all. Building that
+  guard test (a write-side sibling of the delete-side `destructiveguard_test.go`) is itself
+  probably the right permanent fix for "how do we stop this happening an eighth time," and should
+  be considered as part of this round's scope, not just fixing the specific sites found.
+- **Also worth reproducing/confirming independently, lower priority:** round 6's verification
+  flagged a THEORETICAL (not live-reproduced) residual — `add.go`'s steps after
+  `containedWorktreeAdd` returns (`InstallPostCheckoutHook`, `createPortal`, `writeLaunchers`,
+  `WireJunctionsWith`, `wireBoardLink`) trust the earlier containment check without re-verifying.
+  `writeLaunchers` above is the confirmed-live instance of exactly this pattern; the other steps
+  in that list should get the same scrutiny during the audit rather than being assumed safe by
+  association.
 
-## Primary emphasis for round 6 — the staging-path observability gap in round 5's own fix
-Round 6 is pre-approved by the operator (2026-08-14: "Ja. Og R6 også. Dersom nødvendig") —
-spawned directly without re-asking, per that standing instruction. Job-1 task: reproduce the
-inotify-observation attack independently, root-cause it (confirmed above), fix it by removing the
-staging area from the adversary's observable surface entirely (verify the hypothesized direction,
-don't assume it), then adversarially re-attack the fix with every attack shape tried across this
-finding's whole history (toggle-race, inotify-observation, and anything new round 6 itself
-devises) before declaring it closed.
+## Primary emphasis for round 7 — full write-side containment audit, not a point-fix
+This is a scope change from every prior round in this chain: instead of chasing one specific
+seeded residual, round 7's Job-1 task is a systematic sweep. Reproduce `writeLaunchers`'s live
+bug first (fast, gives a working hub), then do the grep-and-audit work across the whole package,
+fix every gap found (severity-graded individually — do not lump them into one finding), and build
+the write-side guard test. Adversarially re-attack every fix the same way every prior round in
+this chain has been held to. Given the campaign's own track record, do not assume this audit is
+exhaustive just because it's systematic — a completeness check (did the guard test's own allowlist
+derivation miss anything a manual read would catch?) is itself part of the job.
 
 ## DEFERRED list
 Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
@@ -322,20 +345,21 @@ from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was see
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-1. `_mill/fabric-review-prompt.md` is rewritten for round 6 (primary target = the staging-path
-   observability gap in round 5's own fix, CLOSED-AND-VERIFIED updated with round 5's partial
-   closure, deferred/round-context sections updated). Commit it together with this HANDOFF update.
-2. Spawn round 6: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r6` —
-   pre-approved by the operator, no need to re-ask.
-3. After round 6's own independent verification: this finding has now taken THREE rounds to close
-   (M3→M1→create-side→staging-observability) — do not assume round 6's fix is the last one needed
-   just because it's round 6; verify it with the same rigor as every prior link in this chain
-   before declaring it closed. If round 6 IS genuinely clean and re-attack-proof, and the rest of
-   the campaign looks converged, write a status verdict stating what's fixed and confirmed and what
-   remains open (Windows path/junction behavior; N4's dirtiness-probe TOCTOU) — and check with the
-   operator whether to continue further or wrap up, since round count is open-ended per their
-   2026-08-14 correction, not something to decide unilaterally either way. If a finding looks like
-   it needs dedicated engineering work rather than another review round — the fork the operator
-   took after the ORIGINAL 6-round campaign, which is why `destroy.go` exists and why this campaign
-   exists — say so explicitly and propose it, rather than defaulting to "run another round" or
-   "declare done."
+1. `_mill/fabric-review-prompt.md` is rewritten for round 7 (primary target = full write-side
+   containment audit, seeded by `writeLaunchers`'s zero-protection defect, CLOSED-AND-VERIFIED
+   updated with round 6's FULL closure — first link in this chain to genuinely hold —
+   deferred/round-context sections updated). Commit it together with this HANDOFF update.
+2. Spawn round 7: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r7` —
+   scope confirmed by the operator (2026-08-14): full audit, not a `writeLaunchers`-only point-fix.
+3. After round 7's own independent verification: check whether the audit was genuinely exhaustive
+   (did it find everything a completeness pass would?) with the same skepticism every prior round
+   in this campaign has been held to — this campaign's pattern has been that a "fixed" gap
+   reveals a sibling, and a systematic audit is not automatically immune to that pattern just
+   because it's systematic. If round 7 IS genuinely clean and the campaign looks converged, write
+   a status verdict stating what's fixed and confirmed and what remains open (Windows path/junction
+   behavior; N4's dirtiness-probe TOCTOU) — and check with the operator whether to continue further
+   or wrap up, since round count is open-ended per their 2026-08-14 correction, not something to
+   decide unilaterally either way. If a finding looks like it needs dedicated engineering work
+   rather than another review round — the fork the operator took after the ORIGINAL 6-round
+   campaign, which is why `destroy.go` exists and why this campaign exists — say so explicitly and
+   propose it, rather than defaulting to "run another round" or "declare done."
