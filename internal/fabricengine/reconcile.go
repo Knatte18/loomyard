@@ -690,8 +690,8 @@ func junctionRepointedDetail(warpLayout *lyxcwd.Location) string {
 // Treating every link as fabric's made `applyStaleRemoval` delete such a symlink out of the user's
 // working tree, which is exactly the "fabric never deletes what might be user content" rule
 // seedLyxJunction and unseedJunctionRecords already enforce everywhere else.
-// A link is fabric-owned only when it resolves inside the paired weft worktree or onto the hub's
-// board directory — the only two targets any fabric junction is ever created with.
+// A link is fabric-owned only when it resolves inside the paired weft worktree — the only root any
+// fabric junction is ever created with.
 // A link that cannot be resolved at all is deliberately NOT claimed: an unresolvable link cannot be
 // proven fabric's, and unseedJunctionRecords already refuses to remove one for the same reason.
 func scanOnDiskJunctionNames(l *lyxcwd.Location, slug string) ([]string, error) {
@@ -731,10 +731,14 @@ func scanOnDiskJunctionNames(l *lyxcwd.Location, slug string) ([]string, error) 
 }
 
 // linkIsFabricOwned reports whether the link at linkPath resolves to a location fabric itself
-// would have pointed a junction at: somewhere inside the slug's paired weft worktree, or the hub's
-// board directory.
+// would have pointed a junction at: somewhere inside the slug's paired weft worktree.
 // It returns (false, nil) — never an error — for a link whose target does not resolve, so an
 // unreadable or dangling link is left alone rather than swept.
+//
+// The Hub Containment Invariant is why the weft worktree is the only root considered: with no
+// fabric junction pointing at the board any more, claiming a link that resolves onto
+// BoardDir(l.HubPath) would let the sweep remove an operator hand-made link pointing at
+// <hub>/_board, which is exactly what the invariant says is never fabric's to claim.
 func linkIsFabricOwned(l *lyxcwd.Location, slug, linkPath string) (bool, error) {
 	resolved, err := fslink.PointsTo(linkPath)
 	if err != nil {
@@ -742,15 +746,14 @@ func linkIsFabricOwned(l *lyxcwd.Location, slug, linkPath string) (bool, error) 
 	}
 	resolved = filepath.Clean(resolved)
 
-	for _, root := range []string{WeftWorktreePath(l, slug), BoardDir(l.HubPath)} {
-		normalizedRoot, rootErr := filepath.EvalSymlinks(root)
-		if rootErr != nil {
-			continue
-		}
-		normalizedRoot = filepath.Clean(normalizedRoot)
-		if resolved == normalizedRoot || strings.HasPrefix(resolved, normalizedRoot+string(filepath.Separator)) {
-			return true, nil
-		}
+	root := WeftWorktreePath(l, slug)
+	normalizedRoot, rootErr := filepath.EvalSymlinks(root)
+	if rootErr != nil {
+		return false, nil
+	}
+	normalizedRoot = filepath.Clean(normalizedRoot)
+	if resolved == normalizedRoot || strings.HasPrefix(resolved, normalizedRoot+string(filepath.Separator)) {
+		return true, nil
 	}
 	return false, nil
 }
