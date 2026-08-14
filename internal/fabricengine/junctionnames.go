@@ -82,6 +82,19 @@ func PathspecNames(baseDir string) ([]string, error) {
 	return pathspecNames(cfg), nil
 }
 
+// BoardWriteLockFile is the single exported declarer of the board write-lock filename: the lock
+// serialising every write to the board directory, held by internal/boardengine's own critical
+// section (boardCriticalSection, commitDirty) and by this package's stencil-seeding commit verb
+// (CommitSeededStencils).
+// internal/boardengine aliases its own writeLockFile constant to this value rather than declaring
+// the literal a second time.
+const BoardWriteLockFile = "board.lock"
+
+// BoardWriteLockPath returns the absolute path to the board write lock file inside hub.
+func BoardWriteLockPath(hub string) string {
+	return filepath.Join(BoardDir(hub), BoardWriteLockFile)
+}
+
 // BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
 // It is the single exported source of this literal;
 // use BoardDir(hub) to obtain the full path.
