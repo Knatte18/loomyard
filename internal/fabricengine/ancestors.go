@@ -117,11 +117,38 @@ func resolveAncestorSymlinks(dir string) string {
 // pruneEmptyAncestors walks upward from start, removing empty directories up to
 // (but not including) stop. All errors are silently swallowed. The helper is
 // idempotent: calling it on an already-pruned tree is safe.
+//
+// Both the boundary test and the removal go through an os.Root rooted at stop, and that is the same
+// bind-containment-to-the-act rule the gate's own arbitrary-path executors follow rather than a
+// redundant precaution. The sweep used to relate cur to stop with a purely lexical filepath.Rel over
+// the NOMINAL strings — the comparison R2 proved answers a question nobody is asking — and then act
+// with an equally nominal single-entry removal. Its two callers walk the two hub-level structural
+// containers an attacker can plant at (<hub>/_launchers, <hub>/_portals), so with a multi-segment
+// AnchorRel (say `services/api`) a symlink planted at `services` made the first removal resolve that
+// component and destroy an out-of-hub `/victim/api` before the loop unlinked the link itself and
+// halted (fabric's R8 crucible round, finding L1). Rooting the sweep makes every component resolve
+// through stop's own directory handle, so an escaping component is refused by the kernel instead of
+// followed.
+//
+// The exposure this closed was genuinely narrow — a single-entry removal is refused by the OS the
+// moment the directory is non-empty, so only an EMPTY out-of-hub directory could be destroyed, and
+// nothing here is ever recorded to the mutation record — but it was the last lexical-containment
+// plus raw-nominal-act pair left in the package, on exactly the containers the campaign has now
+// hardened on both the write and the delete side.
 func pruneEmptyAncestors(start, stop string) {
-	cur := start
+	root, err := os.OpenRoot(stop)
+	if err != nil {
+		// The stop directory itself is gone or unopenable: there is nothing above start left to
+		// prune, and the swallow-everything contract above applies here too.
+		return
+	}
+	defer func() { _ = root.Close() }()
 
+	cur := start
 	for {
-		// Boundary guard: check if cur is still strictly under stop
+		// Boundary guard: cur must still be strictly under stop. This stays lexical because it is the
+		// loop's TERMINATION condition, not its containment guarantee — the removal below is what
+		// refuses an escape, and a lexical Rel can only ever stop the walk early, never widen it.
 		rel, err := filepath.Rel(stop, cur)
 		if err != nil {
 			// Filesystem error on Rel (rare)
@@ -134,9 +161,12 @@ func pruneEmptyAncestors(start, stop string) {
 			return
 		}
 
-		// Attempt to remove the empty directory
-		if err := os.Remove(cur); err != nil {
-			// Directory is not empty, already gone, or other error; halt
+		// Remove through the root: a single-entry removal, so a non-empty directory is refused by the
+		// OS exactly as before, and an intermediate component escaping stop is refused rather than
+		// resolved. A final-component link is unlinked as a link, since os.Root never follows the last
+		// component.
+		if err := root.Remove(rel); err != nil {
+			// Directory is not empty, already gone, escapes the container, or other error; halt.
 			return
 		}
 

@@ -97,8 +97,6 @@ var destructiveGuardAllowlist = map[string]string{
 		"under a repo-wide flock, never operator content",
 	"internal/fabricengine/warpprobe.go": "probeWeftBinding's os.RemoveAll(probeDir) removes the throwaway probe clone directory the " +
 		"same function created moments earlier",
-	"internal/fabricengine/ancestors.go": "pruneEmptyAncestors' os.Remove(cur) is refused by the OS the moment the directory is " +
-		"non-empty, and the loop halts on the first refusal",
 	"internal/fabricengine/index.go": "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch",
 	"internal/fabricengine/junction.go": "two audited sites, both removing a directory the same call just emptied by rename and " +
