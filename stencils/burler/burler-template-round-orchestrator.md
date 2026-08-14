@@ -1,5 +1,9 @@
-<!-- This is the burler round orchestrator. It is filled by composePrompt
-     (prompt.go) via internal/stencil and handed to the shuttle as the agent's entire visible instruction set for the round — the three instruction files it names below are read one at a time, only when the round reaches that step, never previewed early.
+<!-- This is the burler round orchestrator. It is shipped as an embedded default in the top-level
+     stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/burler/ and read
+     from there at call time by composePrompt (prompt.go) via internal/stencil, then handed to the
+     shuttle as the agent's entire visible instruction set for the round — the three instruction
+     files it names below are read one at a time, only when the round reaches that step, never
+     previewed early.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      This file deliberately never repeats the downstream instruction files' bodies — the review-file YAML format, the fix-everything body, and the cluster fork-spawn prose all live in the instruction files it names, not here — see TestTemplate_OrchestratorExcludesDownstreamBodies in template_test.go. -->

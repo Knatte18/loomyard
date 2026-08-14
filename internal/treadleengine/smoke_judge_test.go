@@ -41,16 +41,34 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
+	"github.com/Knatte18/loomyard/stencils"
 )
 
 // smokePwshPath is the PowerShell 7 binary for the orphaned-conhost teardown probe.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
+
+// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
+// through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs, and returns that
+// directory for the caller to pass as judgeInputs.StencilsDir. hubforge.NewHub builds a fabric, not
+// a seeded board, and treadle reads its judge templates from disk at call time via
+// stencilstore.Read — so an unseeded fixture hub degrades the judge to its fail-safe default, which
+// is exactly what this test exists to catch.
+func seedHubStencils(t *testing.T, hub string) string {
+	t.Helper()
+	baseDir := fabricengine.StencilsDir(hub)
+	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
+		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
+	}
+	return baseDir
+}
 
 // claudeBinaryPath returns the claude CLI's path, skipping the test if absent.
 func claudeBinaryPath(t *testing.T) string {
@@ -215,6 +233,7 @@ func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
 	// (outcome 1 of the SeedConfig triage).
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.PrimeWorktree())
+	stencilsDir := seedHubStencils(t, h.Location.HubPath)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -281,6 +300,7 @@ The chair is red and the table is blue; they must match.
 		VerdictPath:  verdictPath,
 		HandoffPath:  handoffPath,
 		Model:        "haiku",
+		StencilsDir:  stencilsDir,
 	})
 
 	// runCircling never errors — a spawn/parse failure would silently

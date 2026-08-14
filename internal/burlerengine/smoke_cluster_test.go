@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -108,6 +109,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 
 	h := hubforge.NewHub(t, ".")
 	deferHubRelease(t, h.Path)
+	seedHubStencils(t, h.Location.HubPath)
 	t.Chdir(h.PrimeWorktree())
 	t.Cleanup(func() {
 		var buf bytes.Buffer
@@ -133,7 +135,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 	reedEngine := reedengine.New(reedCfg, h.Location)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
 	cfg := burlerengine.Config{Lenses: clusterSmokeLenses, Fans: clusterSmokeFans}
-	engine := burlerengine.New(runner, h.Location, cfg)
+	engine := burlerengine.New(runner, h.Location, cfg, fabricengine.StencilsDir(h.Location.HubPath))
 	return engine, h
 }
 

@@ -1,34 +1,41 @@
 // template_test.go is the machine half of the Review Round Invariant (CONSTRAINTS.md): it pins each
-// of the four embedded round-prompt assets' load-bearing statements as substring assertions — the
+// of the four shipped round-prompt assets' load-bearing statements as substring assertions — the
 // orchestrator's sequencing statements, instruction 3's fix-everything/ never-push statements,
 // instruction 2's cluster/origin statements — it proves each asset actually fills through stencil
 // with its own required marker subset, and it guards that the orchestrator never carries a
 // downstream instruction body back into itself.
+// The four assets are read from the top-level stencils package's exported embedded defaults
+// (stencils.BurlerTemplateRoundOrchestrator etc.) rather than this package's own now-deleted
+// package-private vars — a cross-package import, not a rename, since composePrompt itself reads its
+// four prompts from disk at call time via stencilstore.Read (see prompt.go).
 
 package burlerengine
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/stencils"
 )
 
 // TestTemplate_StatesRoundDiscipline asserts each asset's bytes carry the load-bearing
 // round-discipline phrases in prose, so an edit that silently waters down the sequencing rule or
 // the fix-everything rule fails this test rather than only a human review.
 func TestTemplate_StatesRoundDiscipline(t *testing.T) {
-	orchestrator := string(roundOrchestratorTemplate)
+	orchestrator := string(stencils.BurlerTemplateRoundOrchestrator)
 	requireContains(t, orchestrator, "Sequencing rule")
 	requireContains(t, orchestrator, "fully written to")
 	requireContains(t, orchestrator, "before you touch")
 
-	instruction3 := string(instruction3Template)
+	instruction3 := string(stencils.BurlerStep3Fix)
 	requireContains(t, instruction3, "not whether it gets fixed")
 	requireContains(t, instruction3, "never push")
 	requireContains(t, instruction3, "nothing fixed")
 
-	instruction2 := string(instruction2Template)
+	instruction2 := string(stencils.BurlerStep2Review)
 	requireContains(t, instruction2, "origin")
 }
 
@@ -36,7 +43,7 @@ func TestTemplate_StatesRoundDiscipline(t *testing.T) {
 // rules" section and its {{.cluster_rules}} marker, so an edit that drops the section heading or
 // renames the marker fails this test rather than only a human review.
 func TestTemplate_HasClusterRulesSection(t *testing.T) {
-	text := string(instruction2Template)
+	text := string(stencils.BurlerStep2Review)
 
 	requireContains(t, text, "Cluster rules")
 	requireContains(t, text, "{{.cluster_rules}}")
@@ -47,18 +54,19 @@ func TestTemplate_HasClusterRulesSection(t *testing.T) {
 // discipline, that consolidation happens before job B, the origin labels, and the Rejected section
 // — following this file's existing pin style but sourced from a full composePrompt render for a
 // cluster profile rather than the static template bytes: this content is composed dynamically by
-// clusterRulesBlock (prompt.go) into instruction 2, not baked into instruction-2-review-template.md
+// clusterRulesBlock (prompt.go) into instruction 2, not baked into burler-step-2-review.md
 // itself.
 // An edit that silently waters any of these statements down fails this test rather than only a
 // human review.
 func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
 	p := newComposableProfile(t)
+	stencilsDir := newTestStencilsDir(t)
 	p.ClusterFan = "standard"
 	p.clusterLenses = []Lens{
 		{Name: "style", Text: "pay extra attention to style"},
 	}
 
-	_, files, err := composePrompt(&p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	_, files, err := composePrompt(stencilsDir, &p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -88,8 +96,9 @@ func TestTemplate_StatesClusterForkDiscipline(t *testing.T) {
 // "findings" usage.
 func TestTemplate_OrchestratorExcludesDownstreamBodies(t *testing.T) {
 	p := newComposableProfile(t)
+	stencilsDir := newTestStencilsDir(t)
 
-	orchestrator, _, err := composePrompt(&p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	orchestrator, _, err := composePrompt(stencilsDir, &p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
 	if err != nil {
 		t.Fatalf("composePrompt() = %v; want nil error", err)
 	}
@@ -176,26 +185,26 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 	}{
 		{
 			name:            "orchestrator",
-			template:        roundOrchestratorTemplate,
+			template:        stencils.BurlerTemplateRoundOrchestrator,
 			values:          orchestratorMarkerValues(),
 			requiredMarkers: []string{"instruction_1_path", "instruction_2_path", "instruction_3_path", "review_path"},
 		},
 		{
 			name:            "instruction 1 (explore)",
-			template:        instruction1Template,
+			template:        stencils.BurlerStep1Explore,
 			values:          instruction1MarkerValues(),
 			optional:        []string{"pattern_directive"},
 			requiredMarkers: []string{"target", "fasit", "rubric", "tool_use_rules"},
 		},
 		{
 			name:            "instruction 2 (review)",
-			template:        instruction2Template,
+			template:        stencils.BurlerStep2Review,
 			values:          instruction2MarkerValues(),
 			requiredMarkers: []string{"cluster_rules", "review_path", "prior_rounds"},
 		},
 		{
 			name:            "instruction 3 (fix)",
-			template:        instruction3Template,
+			template:        stencils.BurlerStep3Fix,
 			values:          instruction3MarkerValues(),
 			requiredMarkers: []string{"fix_scope_rules", "review_path", "fixer_report_path"},
 		},
@@ -242,7 +251,7 @@ func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
 		values := instruction1MarkerValues()
 		values["pattern_directive"] = ""
-		got, err := stencil.FillOptional(instruction1Template, values, []string{"pattern_directive"})
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -260,7 +269,7 @@ func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 
 	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
 		values := instruction1MarkerValues()
-		got, err := stencil.FillOptional(instruction1Template, values, []string{"pattern_directive"})
+		got, err := stencil.FillOptional(stencils.BurlerStep1Explore, values, []string{"pattern_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -271,4 +280,29 @@ func TestTemplate_PatternDirectiveOptional(t *testing.T) {
 			t.Errorf("pattern_directive (idx %d) does not precede the first work instruction (idx %d)", directiveIdx, workIdx)
 		}
 	})
+}
+
+// TestComposePrompt_ReadsEditedStencilFromDisk proves composePrompt reads a round prompt from
+// stencilsDir on every call rather than from any compiled-in default: overwriting
+// burler/burler-step-2-review.md on disk with a modified body, after building stencilsDir from the
+// shipped defaults, must have that modified text — not the shipped default's own text — reach the
+// composed instruction 2 file. This pins the runtime-read-not-embed Shared Decision at the
+// burlerengine call site.
+func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
+	p := newComposableProfile(t)
+	stencilsDir := newTestStencilsDir(t)
+
+	const modifiedMarker = "MODIFIED-BY-TEST: this line does not exist in the shipped default"
+	edited := append(append([]byte{}, stencils.BurlerStep2Review...), []byte("\n"+modifiedMarker+"\n")...)
+	path := filepath.Join(stencilsDir, "burler", "burler-step-2-review.md")
+	if err := os.WriteFile(path, edited, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+	}
+
+	_, files, err := composePrompt(stencilsDir, &p, "", "/tmp/instruction-1-explore.md", "/tmp/instruction-2-review.md", "/tmp/instruction-3-fix.md")
+	if err != nil {
+		t.Fatalf("composePrompt() = %v; want nil error", err)
+	}
+
+	requireContains(t, files[1].Content, modifiedMarker)
 }

@@ -74,10 +74,12 @@ func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, op
 // gate/caps/tuning fields (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and
 // delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run — then maps the
 // treadleengine.Result back onto perch's own Result/RoundSummary.
-// Run stays fabric-blind and geometry-blind and constructs neither path itself — runDir and
-// scratchDir are both caller-supplied absolutes; treadleengine.Engine.Run owns creating both
-// directories, so Run must not duplicate that here.
-func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
+// Run stays fabric-blind and geometry-blind and constructs neither path itself — runDir,
+// scratchDir, and stencilsDir are all caller-supplied absolutes; treadleengine.Engine.Run owns
+// creating runDir and scratchDir, so Run must not duplicate that here. stencilsDir is the absolute
+// stencils directory treadleengine's judge and utility prompts read from at call time, resolved by
+// perchcli (the caller that already holds the *lyxcwd.Location) via fabricengine.StencilsDir.
+func (e *Engine) Run(p Profile, runDir, scratchDir, stencilsDir string) (Result, error) {
 	hash, err := ProfileHash(p)
 	if err != nil {
 		return Result{}, err
@@ -114,6 +116,7 @@ func (e *Engine) Run(p Profile, runDir, scratchDir string) (Result, error) {
 		PauseRequested: e.pauseRequested,
 		RunCommand:     runCommand,
 		ScratchDir:     scratchDir,
+		StencilsDir:    stencilsDir,
 	})
 
 	result, err := te.Run(tp, runDir)

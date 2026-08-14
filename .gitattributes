@@ -4,20 +4,28 @@
 # machine's core.autocrlf setting, so they are pinned to LF here. The same
 # byte-exact requirement applies to golden test fixtures compared verbatim
 # against literal \n-embedded expectations in Go source (planparser below).
-internal/burlerengine/round-orchestrator-template.md text eol=lf
-internal/burlerengine/instruction-1-explore-template.md text eol=lf
-internal/burlerengine/instruction-2-review-template.md text eol=lf
-internal/burlerengine/instruction-3-fix-template.md text eol=lf
+stencils/loom/loom-template-discussion.md text eol=lf
+stencils/loom/loom-template-plan.md text eol=lf
+stencils/burler/burler-template-round-orchestrator.md text eol=lf
+stencils/burler/burler-step-1-explore.md text eol=lf
+stencils/burler/burler-step-2-review.md text eol=lf
+stencils/burler/burler-step-3-fix.md text eol=lf
+stencils/treadle/treadle-template-judge-circling.md text eol=lf
+stencils/treadle/treadle-template-judge-milestone.md text eol=lf
+stencils/treadle/treadle-template-triage.md text eol=lf
+stencils/treadle/treadle-template-targeting.md text eol=lf
+stencils/webster/webster-template-master.md text eol=lf
+stencils/webster/webster-template-integration.md text eol=lf
+stencils/webster/webster-prefix-fork.md text eol=lf
+stencils/webster/webster-prefix-recovery.md text eol=lf
+stencils/webster/webster-body-implementer.md text eol=lf
 internal/boardengine/template.yaml text eol=lf
 internal/modelspec/template.yaml text eol=lf
 internal/reedengine/template_posix.yaml text eol=lf
 internal/reedengine/template_windows.yaml text eol=lf
+internal/reedengine/console-header.md text eol=lf
 internal/perchengine/template.yaml text eol=lf
 internal/shuttleengine/template.yaml text eol=lf
-internal/treadleengine/judge-circling-template.md text eol=lf
-internal/treadleengine/judge-milestone-template.md text eol=lf
-internal/treadleengine/targeting-template.md text eol=lf
-internal/treadleengine/triage-template.md text eol=lf
 internal/fabricengine/post-checkout.sh text eol=lf
 plugins/prowler/scripts/*.sh text eol=lf
 # Root POSIX deploy launchers run via `#!/usr/bin/env bash` shebang -- a CRLF

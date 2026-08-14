@@ -27,10 +27,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// composePlanPrompt builds the Plan producer's prompt by filling the template.
-func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirective string) ([]byte, error) {
+// composePlanPrompt builds the Plan producer's prompt by reading the "loom-template-plan" stencil
+// from stencilsDir and filling it.
+func composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, patternDirective string) ([]byte, error) {
+	template, err := stencilstore.Read(stencilsDir, "loom-template-plan")
+	if err != nil {
+		return nil, err
+	}
+
 	values := map[string]string{
 		"decision_record_path": decisionRecordPath,
 		"plan_dir":             planDir,
@@ -38,7 +45,7 @@ func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirecti
 		"pattern_directive":    patternDirective,
 	}
 
-	rendered, err := stencil.FillOptional(planTemplate, values, []string{"pattern_directive"})
+	rendered, err := stencil.FillOptional(template, values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose plan prompt: %w", err)
 	}
@@ -46,7 +53,7 @@ func composePlanPrompt(decisionRecordPath, planDir, overviewPath, patternDirecti
 }
 
 // PlanSpec builds the shuttleengine.Spec for one Plan producer run.
-func PlanSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
+func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	spec, err := modelspec.Parse(cfg.Plan)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: plan role model-spec: %w", err)
@@ -61,7 +68,7 @@ func PlanSpec(layout *lyxcwd.Location, cfg Config, reg modelspec.Registry) (shut
 	overviewPath := PlanOverview(layout)
 
 	directive := pattern.Directive(layout, pattern.RoleImplementer)
-	prompt, err := composePlanPrompt(decisionRecordPath, planDir, overviewPath, directive)
+	prompt, err := composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, directive)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}

@@ -21,7 +21,10 @@ import (
 )
 
 const (
-	writeLockFile = "board.lock"
+	// writeLockFile aliases fabricengine.BoardWriteLockFile, which is the single declarer of this
+	// literal — internal/fabricengine owns the name because a stencil-seeding commit verb outside
+	// boardengine must take the same lock.
+	writeLockFile = fabricengine.BoardWriteLockFile
 	pushLockFile  = "board.push.lock"
 )
 

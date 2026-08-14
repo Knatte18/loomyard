@@ -1,24 +1,30 @@
-// render.go implements the four embedded prompt-template assets (fork-prefix.md,
-// recovery-prefix.md, implementer-body.md, master-template.md, integration-template.md) and the
-// rendering functions that fill them: RenderForkPrompt (called by begin-batch immediately before
-// each in-session fork), RenderRecoveryPrompt (called by recover-batch immediately before spawning
-// the separate cold recovery strand), RenderMasterPrompt (called by run at Master's own spawn), and
+// render.go implements the five producer prompt assets webster composes and renders
+// (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md,
+// webster-template-master.md, webster-template-integration.md) and the rendering functions that
+// fill them: RenderForkPrompt (called by begin-batch immediately before each in-session fork),
+// RenderRecoveryPrompt (called by recover-batch immediately before spawning the separate cold
+// recovery strand), RenderMasterPrompt (called by run at Master's own spawn), and
 // RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when
 // ShouldRunIntegration reports true), plus the two batch-list/progress renderers those prompts
 // embed (RenderBatchIndex, RenderProgress).
-// The go:embed directives and their accessors live here rather than in template.go, which stays
-// config-only, keeping template.go's ConfigTemplate/ImplementerTemplate/OrchestratorTemplate
-// accessors separate from this package's own render-time logic.
+// Every asset ships as an embedded default in the top-level stencils package and is read from the
+// hub's stencils directory (fabricengine.StencilsDir) at call time via stencilstore.Read, per the
+// runtime-read-not-embed Shared Decision — this file carries no //go:embed directive of its own.
 //
 // Per the fork-context-hygiene Shared Decision, RenderForkPrompt's output feeds two callers with
 // opposite context situations — beginbatch.go's in-session fork (which already inherits Master's
 // whole context) and recoverbatch.go's cold recovery strand (a separate process that inherits
 // nothing) — so one prompt cannot honestly serve both.
 // This file instead composes each of the two prompts, at render time, from one shared
-// implementer-job body (implementer-body.md) plus a caller-specific prefix (fork-prefix.md or
-// recovery-prefix.md): joinTemplateAssets concatenates the raw template bytes before either is
-// handed to stencil.Fill/ FillOptional, since internal/stencil has no {{template}} include
-// mechanism of its own (see stencil.go's own doc comment).
+// implementer-job body (webster-body-implementer) plus a caller-specific prefix
+// (webster-prefix-fork or webster-prefix-recovery): joinTemplateAssets strips each asset's leading
+// banner via stencil.StripLeadingComment, then concatenates the stripped bodies before either is
+// handed to stencil.Fill/FillOptional, since internal/stencil has no {{template}} include mechanism
+// of its own (see stencil.go's own doc comment).
+// Stripping every asset's banner, not just the joined result's first one, matters once a seeded
+// stencil carries a `lyx-stencil:` stamp: stencil.Fill strips only one leading banner from the
+// joined text, so an unstripped second asset's banner would otherwise reach the LLM verbatim as if
+// it were instruction text.
 // Card content reaches both prompts as a worktree-relative card-file pointer
 // (planparser.Card.SourcePath, `_lyx/plan/NN-<slug>.md`) rendered verbatim by renderCardPointers,
 // never as inlined What/file-op fields — the implementer reads its own card file in its own turn
@@ -27,77 +33,86 @@
 package websterengine
 
 import (
-	_ "embed"
 	"fmt"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-//go:embed master-template.md
-var masterTemplate []byte
-
-// MasterTemplate returns the embedded Master-session prompt template's raw bytes.
-func MasterTemplate() []byte {
-	return masterTemplate
+// MasterTemplate reads webster-template-master's current content from stencilsDir via
+// stencilstore.Read.
+func MasterTemplate(stencilsDir string) ([]byte, error) {
+	return stencilstore.Read(stencilsDir, "webster-template-master")
 }
 
-//go:embed fork-prefix.md
-var forkPrefix []byte
+// IntegrationTemplate reads webster-template-integration's current content from stencilsDir via
+// stencilstore.Read.
+func IntegrationTemplate(stencilsDir string) ([]byte, error) {
+	return stencilstore.Read(stencilsDir, "webster-template-integration")
+}
 
-//go:embed recovery-prefix.md
-var recoveryPrefix []byte
+// ImplementerBodyTemplate reads webster-body-implementer's current content from stencilsDir via
+// stencilstore.Read — the shared job body both ForkTemplate and RecoveryTemplate compose with
+// their own prefix.
+func ImplementerBodyTemplate(stencilsDir string) ([]byte, error) {
+	return stencilstore.Read(stencilsDir, "webster-body-implementer")
+}
 
-//go:embed implementer-body.md
-var implementerBody []byte
-
-// joinTemplateAssets concatenates prefix and body's raw template bytes
-// separated by a blank line. stencil.stripLeadingComment removes the leading banner.
+// joinTemplateAssets concatenates prefix and body's raw template bytes separated by a blank line,
+// after stripping each asset's own leading banner comment via stencil.StripLeadingComment.
+// Stripping both, not relying on stencil.Fill to strip only the joined result's first banner, is
+// load-bearing: once a seeded stencil carries a `lyx-stencil:` stamp in its banner, Fill would
+// otherwise deliver the second asset's stamp into the composed prompt as if it were instruction
+// text.
 func joinTemplateAssets(prefix, body []byte) []byte {
-	joined := append([]byte{}, prefix...)
-	joined = append(joined, []byte("\n\n")...)
-	joined = append(joined, body...)
-	return joined
+	strippedPrefix := stencil.StripLeadingComment(string(prefix))
+	strippedBody := stencil.StripLeadingComment(string(body))
+	return []byte(strippedPrefix + "\n\n" + strippedBody)
 }
 
-// composeForkTemplate returns the thin in-session fork prompt: fork-prefix.md
-// joined ahead of implementer-body.md.
-func composeForkTemplate() []byte {
-	return joinTemplateAssets(forkPrefix, implementerBody)
+// composeForkTemplate returns the thin in-session fork prompt: webster-prefix-fork joined ahead of
+// webster-body-implementer, both read from stencilsDir.
+func composeForkTemplate(stencilsDir string) ([]byte, error) {
+	prefix, err := stencilstore.Read(stencilsDir, "webster-prefix-fork")
+	if err != nil {
+		return nil, err
+	}
+	body, err := stencilstore.Read(stencilsDir, "webster-body-implementer")
+	if err != nil {
+		return nil, err
+	}
+	return joinTemplateAssets(prefix, body), nil
 }
 
-// composeRecoveryTemplate returns the full cold-start recovery prompt:
-// recovery-prefix.md joined ahead of implementer-body.md.
-func composeRecoveryTemplate() []byte {
-	return joinTemplateAssets(recoveryPrefix, implementerBody)
+// composeRecoveryTemplate returns the full cold-start recovery prompt: webster-prefix-recovery
+// joined ahead of webster-body-implementer, both read from stencilsDir.
+func composeRecoveryTemplate(stencilsDir string) ([]byte, error) {
+	prefix, err := stencilstore.Read(stencilsDir, "webster-prefix-recovery")
+	if err != nil {
+		return nil, err
+	}
+	body, err := stencilstore.Read(stencilsDir, "webster-body-implementer")
+	if err != nil {
+		return nil, err
+	}
+	return joinTemplateAssets(prefix, body), nil
 }
 
-// ForkTemplate returns the composed thin in-session fork prompt template.
-func ForkTemplate() []byte {
-	return composeForkTemplate()
+// ForkTemplate returns the composed thin in-session fork prompt template, read from stencilsDir.
+func ForkTemplate(stencilsDir string) ([]byte, error) {
+	return composeForkTemplate(stencilsDir)
 }
 
-// RecoveryTemplate returns the composed full cold-start recovery prompt template.
-func RecoveryTemplate() []byte {
-	return composeRecoveryTemplate()
-}
-
-// ImplementerBodyTemplate returns implementer-body.md's raw bytes — the shared job body both
-// ForkTemplate and RecoveryTemplate compose with their own prefix.
-func ImplementerBodyTemplate() []byte {
-	return implementerBody
-}
-
-//go:embed integration-template.md
-var integrationTemplate []byte
-
-// IntegrationTemplate returns the embedded integration-suite fork prompt template's raw bytes.
-func IntegrationTemplate() []byte {
-	return integrationTemplate
+// RecoveryTemplate returns the composed full cold-start recovery prompt template, read from
+// stencilsDir.
+func RecoveryTemplate(stencilsDir string) ([]byte, error) {
+	return composeRecoveryTemplate(stencilsDir)
 }
 
 // noPrecedingBatchDigest is the literal sentinel RenderForkPrompt and
@@ -134,7 +149,11 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyx
 		"worktree_root": l.AnchorPath(),
 		"prev_digest":   digestLine,
 	}
-	prompt, err := stencil.Fill(composeForkTemplate(), values)
+	template, err := composeForkTemplate(fabricengine.StencilsDir(l.HubPath))
+	if err != nil {
+		return nil, fmt.Errorf("webster: read fork template: %w", err)
+	}
+	prompt, err := stencil.Fill(template, values)
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
@@ -159,17 +178,21 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l 
 		"prev_digest":       digestLine,
 		"pattern_directive": pattern.Directive(l, pattern.RoleImplementer),
 	}
-	prompt, err := stencil.FillOptional(composeRecoveryTemplate(), values, []string{"pattern_directive"})
+	template, err := composeRecoveryTemplate(fabricengine.StencilsDir(l.HubPath))
+	if err != nil {
+		return nil, fmt.Errorf("webster: read recovery template: %w", err)
+	}
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}
 	return prompt, nil
 }
 
-// RenderIntegrationPrompt fills integration-template.md for the plan's single integration-suite
-// fork.
+// RenderIntegrationPrompt fills webster-template-integration for the plan's single
+// integration-suite fork, read from stencilsDir.
 // Returns an error if plan.Verify is empty.
-func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot string) ([]byte, error) {
+func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, stencilsDir string) ([]byte, error) {
 	verify := strings.TrimSpace(plan.Verify)
 	if verify == "" {
 		return nil, fmt.Errorf("webster: render integration prompt: plan carries no plan-level \"## verify:\" section")
@@ -180,7 +203,11 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot str
 		"report_path":   reportPath,
 		"worktree_root": worktreeRoot,
 	}
-	prompt, err := stencil.Fill(IntegrationTemplate(), values)
+	template, err := IntegrationTemplate(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("webster: read integration template: %w", err)
+	}
+	prompt, err := stencil.Fill(template, values)
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill integration template: %w", err)
 	}
@@ -190,7 +217,8 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot str
 // noIntegrationPromptPath is the sentinel RenderMasterPrompt renders when no integration prompt file.
 const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 
-// RenderMasterPrompt fills master-template.md for one `lyx webster run` invocation.
+// RenderMasterPrompt fills webster-template-master for one `lyx webster run` invocation, read from
+// the hub's stencils directory (fabricengine.StencilsDir(l.HubPath)).
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
 func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *lyxcwd.Location) ([]byte, error) {
@@ -209,7 +237,11 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
 		"pattern_directive":       pattern.Directive(l, pattern.RoleOrchestrator),
 	}
-	prompt, err := stencil.FillOptional(MasterTemplate(), values, []string{"pattern_directive"})
+	template, err := MasterTemplate(fabricengine.StencilsDir(l.HubPath))
+	if err != nil {
+		return nil, fmt.Errorf("webster: read master template: %w", err)
+	}
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive"})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill master template: %w", err)
 	}

@@ -34,6 +34,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -42,8 +43,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/loomyard/stencils"
 )
+
+// seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
+// through the same stencilstore.Reconcile pass cmd/lyx's root pre-run runs -- webster's prompts are
+// read from disk at call time now, so a fixture hub that is never seeded fails every verb that
+// renders one.
+func seedHubStencils(t *testing.T, hub string) {
+	t.Helper()
+	baseDir := fabricengine.StencilsDir(hub)
+	if _, err := stencilstore.Reconcile(baseDir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
+		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", baseDir, err)
+	}
+}
 
 // newScratchRepo initializes a fresh git repo at t.TempDir() and returns its path.
 func newScratchRepo(t *testing.T) string {
@@ -204,6 +219,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "."}
 	seedValidPlanDir(t, loomengine.PlanDir(layout))
+	seedHubStencils(t, layout.HubPath)
 
 	reed := &verbsFakeReed{}
 	engine := &verbsFakeEngine{}

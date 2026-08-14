@@ -21,10 +21,36 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/stencils"
 )
 
 // stateFileName mirrors treadleengine's own state.json file name constant.
 const stateFileName = "state.json"
+
+// newTestStencilsDir builds a t.TempDir() seeded with treadle's four stencils, copied byte-for-byte
+// from the stencils package's embedded defaults, and returns the directory to pass as
+// Engine.Run's stencilsDir argument.
+func newTestStencilsDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	treadleDir := filepath.Join(dir, "treadle")
+	if err := os.MkdirAll(treadleDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", treadleDir, err)
+	}
+	files := map[string][]byte{
+		"treadle-template-judge-circling.md":  stencils.TreadleTemplateJudgeCircling,
+		"treadle-template-judge-milestone.md": stencils.TreadleTemplateJudgeMilestone,
+		"treadle-template-triage.md":          stencils.TreadleTemplateTriage,
+		"treadle-template-targeting.md":       stencils.TreadleTemplateTargeting,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(treadleDir, name), content, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
+		}
+	}
+	return dir
+}
 
 // roundRecord and runState are test-local mirrors of treadleengine's persisted-state shapes with the same JSON tags.
 type roundRecord struct {
@@ -273,7 +299,7 @@ func TestRun_LoopUntilDry(t *testing.T) {
 	e := New(fb, qs, Config{}, layout, Options{})
 	p := testProfile(GateLLMVerdict, nil, []int{10})
 
-	got, err := e.Run(p, runDir, runDir)
+	got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
@@ -317,7 +343,7 @@ func TestRun_HardCap(t *testing.T) {
 	e := New(fb, qs, Config{}, layout, Options{})
 	p := testProfile(GateLLMVerdict, nil, []int{2})
 
-	got, err := e.Run(p, runDir, runDir)
+	got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
@@ -382,7 +408,7 @@ func TestRun_MilestoneGate(t *testing.T) {
 			e := New(fb, qs, Config{}, layout, Options{})
 			p := testProfile(GateLLMVerdict, nil, []int{1, 3})
 
-			got, err := e.Run(p, runDir, runDir)
+			got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 			if err != nil {
 				t.Fatalf("Run() error = %v; want nil", err)
 			}
@@ -430,7 +456,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -493,7 +519,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -527,7 +553,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -607,7 +633,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 			e := New(fb, qs, Config{}, layout, Options{})
 			p := testProfile(GateLLMVerdict, nil, []int{10})
 
-			got, err := e.Run(p, runDir, runDir)
+			got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 			if err != nil {
 				t.Fatalf("Run() error = %v; want nil — a judge infrastructure failure must never surface as an engine error", err)
 			}
@@ -662,7 +688,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -699,7 +725,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -750,7 +776,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -782,7 +808,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"nope"}, []int{10})
 
-		_, err := e.Run(p, runDir, runDir)
+		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("Run() error = nil; want a could-not-start gate error")
 		}
@@ -859,7 +885,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -950,7 +976,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateBoth, []string{"make", "test"}, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -987,7 +1013,7 @@ func TestRun_GateModes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
 		p := testProfile(GateBoth, []string{"make", "test"}, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -1023,7 +1049,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -1054,7 +1080,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		_, err := e.Run(p, runDir, runDir)
+		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("Run() error = nil; want an error for two consecutive non-done attempts")
 		}
@@ -1087,7 +1113,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -1145,7 +1171,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		_, err := e.Run(p, runDir, runDir)
+		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("Run() error = nil; want an error for two consecutive asking attempts")
 		}
@@ -1180,7 +1206,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		_, err := e.Run(p, runDir, runDir)
+		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("Run() error = nil; want an error carrying the triage rationale")
 		}
@@ -1216,7 +1242,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 		e := New(fb, qs, Config{}, layout, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil — triage's own fail-safe must default to retry", err)
 		}
@@ -1263,7 +1289,7 @@ func TestRun_Resume(t *testing.T) {
 		}
 		e1 := New(fb1, qs1, Config{}, layout, Options{PauseRequested: pauseAfterTwo})
 
-		first, err := e1.Run(p, runDir, runDir)
+		first, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
@@ -1281,7 +1307,7 @@ func TestRun_Resume(t *testing.T) {
 		}
 		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
 
-		second, err := e2.Run(p, runDir, runDir)
+		second, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("second Run() error = %v; want nil", err)
 		}
@@ -1318,7 +1344,7 @@ func TestRun_Resume(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 		}
 		e1 := New(fb1, &queuedShuttle{}, Config{RoundCaps: []int{2}}, layout, Options{PauseRequested: pauseAfterOne})
-		first, err := e1.Run(p, runDir, runDir)
+		first, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
@@ -1339,7 +1365,7 @@ func TestRun_Resume(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
 		}
 		e2 := New(fb2, &queuedShuttle{}, Config{RoundCaps: []int{5}}, layout, Options{})
-		second, err := e2.Run(p2, runDir, runDir)
+		second, err := e2.Run(p2, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("second Run() error = %v; want nil — a config default change must not invalidate resume", err)
 		}
@@ -1364,13 +1390,13 @@ func TestRun_Resume(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s1"}},
 		}
 		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{})
-		if _, err := e1.Run(p, runDir, runDir); err != nil {
+		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
 
 		fb2 := &fakeBurler{}
 		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
-		_, err := e2.Run(p, runDir, runDir)
+		_, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("second Run() error = nil; want an error refusing to resume a finished block")
 		}
@@ -1400,7 +1426,7 @@ func TestRun_Resume(t *testing.T) {
 		}
 		p1 := testProfile(GateLLMVerdict, nil, []int{10})
 		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: pauseAfterOne})
-		first, err := e1.Run(p1, runDir, runDir)
+		first, err := e1.Run(p1, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
@@ -1414,7 +1440,7 @@ func TestRun_Resume(t *testing.T) {
 		p2.Rubric = "a completely different rubric"
 		fb2 := &fakeBurler{}
 		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
-		_, err = e2.Run(p2, runDir, runDir)
+		_, err = e2.Run(p2, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("second Run() error = nil; want a profile-hash mismatch error")
 		}
@@ -1444,7 +1470,7 @@ func TestRun_Resume(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 		}
 		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: pauseAfterOne})
-		if _, err := e1.Run(p, runDir, runDir); err != nil {
+		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
 
@@ -1464,7 +1490,7 @@ func TestRun_Resume(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s2"}},
 		}
 		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
-		got, err := e2.Run(p, runDir, runDir)
+		got, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("second Run() error = %v; want nil", err)
 		}
@@ -1524,7 +1550,7 @@ func TestRun_Resume(t *testing.T) {
 			{err: errors.New("gate command [nope] failed to start: not found")},
 		}
 		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
-		if _, err := e1.Run(p, runDir, runDir); err == nil {
+		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err == nil {
 			t.Fatalf("first Run() error = nil; want a could-not-start gate error at the hard-cap round")
 		}
 
@@ -1535,7 +1561,7 @@ func TestRun_Resume(t *testing.T) {
 		// hard cap's guaranteed termination.
 		fb2 := &fakeBurler{}
 		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
-		got, err := e2.Run(p, runDir, runDir)
+		got, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("resume Run() error = %v; want nil (a past-cap resume finalizes STUCK)", err)
 		}
@@ -1571,7 +1597,7 @@ func TestRun_Resume(t *testing.T) {
 			{err: errors.New("gate command [nope] failed to start: not found")},
 		}
 		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
-		if _, err := e1.Run(p, runDir, runDir); err == nil {
+		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err == nil {
 			t.Fatalf("first Run() error = nil; want a could-not-start gate error at the hard-cap round")
 		}
 
@@ -1589,7 +1615,7 @@ func TestRun_Resume(t *testing.T) {
 			PauseRequested: func() bool { return true },
 			RunCommand:     fcr.run,
 		})
-		got, err := e2.Run(p, runDir, runDir)
+		got, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("resume Run() error = %v; want nil", err)
 		}
@@ -1622,7 +1648,7 @@ func TestRun_ConcurrentSameRunDir(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = e1.Run(p, runDir, runDir)
+		_, _ = e1.Run(p, runDir, runDir, newTestStencilsDir(t))
 	}()
 
 	// Wait for the first call to actually enter its (blocked) burler round,
@@ -1635,7 +1661,7 @@ func TestRun_ConcurrentSameRunDir(t *testing.T) {
 
 	fb2 := &fakeBurler{}
 	e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
-	_, err := e2.Run(p, runDir, runDir)
+	_, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 	if err == nil {
 		t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run dir")
 	}
@@ -1696,7 +1722,7 @@ func TestRun_Pause(t *testing.T) {
 		}
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: pauseAfterOne})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -1745,7 +1771,7 @@ func TestRun_Pause(t *testing.T) {
 		}
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: checkFlag})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}
@@ -1776,7 +1802,7 @@ func TestRun_Pause(t *testing.T) {
 		}
 		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
 
-		got, err := e.Run(p, runDir, runDir)
+		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("Run() error = %v; want nil", err)
 		}

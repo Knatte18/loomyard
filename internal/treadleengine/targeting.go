@@ -16,16 +16,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // runTargeting spawns the pre-round targeting call: reads a handoff and
-// writes a prose seed brief. Fail-safe: any failure logs a Warn and returns
-// ("", false), so the round runs without a seed.
-func runTargeting(sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
+// writes a prose seed brief. Fail-safe: any failure — including the prompt's
+// stencilstore.Read — logs a Warn and returns ("", false), so the round runs
+// without a seed. stencilsDir is the absolute stencils directory this call
+// reads its prompt from, leading rather than trailing so a mis-ordered call
+// site still compiles (see the composePrompt convention this mirrors).
+func runTargeting(stencilsDir string, sh Shuttle, name string, round int, previousHandoffPath, seedPath, model, effort string) (string, bool) {
 	values := map[string]string{
 		"round":            strconv.Itoa(round),
 		"previous_handoff": previousHandoffMarker(previousHandoffPath),
 		"seed_path":        seedPath,
+	}
+
+	targetingTemplate, err := stencilstore.Read(stencilsDir, "treadle-template-targeting")
+	if err != nil {
+		logger.Warn(name+": targeting judge template unreadable, round runs without a seed", "round", round, "cause", err)
+		return "", false
 	}
 
 	prompt, err := stencil.Fill(targetingTemplate, values)

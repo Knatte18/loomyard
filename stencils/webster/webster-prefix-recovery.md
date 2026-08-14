@@ -1,4 +1,4 @@
-<!-- This is the cold-start recovery prefix, composed with implementer-body.md
+<!-- This is the cold-start recovery prefix, composed with webster-body-implementer.md
      by RenderRecoveryPrompt (render.go) via internal/stencil, then written to a prompt file under _lyx/webster/prompts/ and handed to the SEPARATE, cold recovery-strand process recover-batch spawns when a fork reports stuck or writes no report — see the fork-context-hygiene Shared Decision.
      Unlike a fork prefix, this strand inherits NOTHING from Master's session: no codebase orientation, no plan framing, no constraints.
      It must earn its own orientation before the shared implementer body runs.

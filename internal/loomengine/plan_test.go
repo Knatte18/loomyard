@@ -32,7 +32,7 @@ func TestPlanSpec(t *testing.T) {
 	}
 	wantTimeout := 120 * time.Minute
 
-	spec, err := PlanSpec(layout, cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -76,7 +76,7 @@ func TestPlanSpec_PromptFilled(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	spec, err := PlanSpec(layout, cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -106,7 +106,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		spec, err := PlanSpec(layout, cfg, reg)
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
 		if err != nil {
 			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 		}
@@ -138,7 +138,7 @@ func TestPlanSpec_PatternDirectiveOptional(t *testing.T) {
 		if err != nil {
 			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 		}
-		spec, err := PlanSpec(layout, cfg, reg)
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
 		if err != nil {
 			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 		}
@@ -268,7 +268,7 @@ func renderedPlanPrompt(t *testing.T) string {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	spec, err := PlanSpec(layout, cfg, reg)
+	spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
 	if err != nil {
 		t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
 	}
@@ -286,7 +286,7 @@ func TestPlanSpec_MalformedModelSpec(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := PlanSpec(layout, cfg, reg); err == nil {
+	if _, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg); err == nil {
 		t.Fatal("PlanSpec(..., Plan=\"opus[effort\") = _, nil; want non-nil error")
 	}
 }

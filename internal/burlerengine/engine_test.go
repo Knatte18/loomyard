@@ -83,8 +83,9 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 	return root, p
 }
 
-func newEngineForTest(root string, shuttle Shuttle) *Engine {
-	return New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{})
+func newEngineForTest(t *testing.T, root string, shuttle Shuttle) *Engine {
+	t.Helper()
+	return New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{}, newTestStencilsDir(t))
 }
 
 const (
@@ -105,7 +106,7 @@ func TestEngine_Run_SpecConstruction(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	e := newEngineForTest(root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	opts := RunOpts{Model: "opus", Effort: "high", Timeout: 5 * time.Minute, Round: "1"}
 	if _, err := e.Run(p, opts); err != nil {
@@ -169,7 +170,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 				},
 			},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -186,7 +187,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -219,7 +220,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -244,7 +245,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -269,7 +270,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
 			},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg)
+		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -312,7 +313,7 @@ func TestEngine_Run_NonDoneOutcomes(t *testing.T) {
 					RunDir:               "/kept/run/dir",
 				},
 			}
-			e := newEngineForTest(root, shuttle)
+			e := newEngineForTest(t, root, shuttle)
 
 			got, err := e.Run(p, RunOpts{})
 			if err != nil {
@@ -347,7 +348,7 @@ func TestEngine_Run_DoneBlockingVerdict(t *testing.T) {
 		fixerContent:  "fixed the mismatch",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, RunDir: "/kept/run/dir"},
 	}
-	e := newEngineForTest(root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	got, err := e.Run(p, RunOpts{})
 	if err != nil {
@@ -373,7 +374,7 @@ func TestEngine_Run_DoneApprovedVerdict(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	e := newEngineForTest(root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	got, err := e.Run(p, RunOpts{})
 	if err != nil {
@@ -398,7 +399,7 @@ func TestEngine_Run_DoneMissingReviewFile(t *testing.T) {
 		fixerContent: "nothing fixed",
 		result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	e := newEngineForTest(root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {
@@ -415,7 +416,7 @@ func TestEngine_Run_DoneMalformedReviewFile(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	e := newEngineForTest(root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {
@@ -430,7 +431,7 @@ func TestEngine_Run_DoneMalformedReviewFile(t *testing.T) {
 func TestEngine_Run_ShuttleError(t *testing.T) {
 	root, p := newEngineTestProfile(t)
 	shuttle := &fakeShuttle{err: errors.New("reed: add strand failed")}
-	e := newEngineForTest(root, shuttle)
+	e := newEngineForTest(t, root, shuttle)
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {
@@ -455,7 +456,7 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	// AnchorRel is a real subpath here so the instruction dir's AnchorPath
 	// anchoring (as opposed to WorktreePath) is actually observable.
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: filepath.Join("sub", "dir")}
-	e := New(shuttle, layout, Config{})
+	e := New(shuttle, layout, Config{}, newTestStencilsDir(t))
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
@@ -508,7 +509,7 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	}
 
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{})
+	e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{}, newTestStencilsDir(t))
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {

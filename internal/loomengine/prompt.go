@@ -1,6 +1,6 @@
-// prompt.go composes the discussion producer's interview prompt: it builds the four marker values
-// the embedded template (prompttemplate.go) requires and fills it via internal/stencil, mirroring
-// internal/burlerengine's composePrompt shape.
+// prompt.go composes the discussion producer's interview prompt: it reads the discussion stencil
+// from stencilsDir at call time, builds the four marker values it requires, and fills it via
+// internal/stencil, mirroring internal/burlerengine's composePrompt shape.
 
 package loomengine
 
@@ -8,11 +8,18 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// composePrompt builds the discussion producer's interview prompt by filling
-// the discussion template with the four top-level marker values.
-func composePrompt(slug, decisionRecordPath, supportLogPath string, autonomous bool) ([]byte, error) {
+// composePrompt builds the discussion producer's interview prompt by reading the
+// "loom-template-discussion" stencil from stencilsDir and filling it with the four top-level marker
+// values.
+func composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath string, autonomous bool) ([]byte, error) {
+	template, err := stencilstore.Read(stencilsDir, "loom-template-discussion")
+	if err != nil {
+		return nil, err
+	}
+
 	values := map[string]string{
 		"slug":                 slug,
 		"decision_record_path": decisionRecordPath,
@@ -20,7 +27,7 @@ func composePrompt(slug, decisionRecordPath, supportLogPath string, autonomous b
 		"mode_rules":           modeRules(autonomous),
 	}
 
-	rendered, err := stencil.Fill(discussionTemplate, values)
+	rendered, err := stencil.Fill(template, values)
 	if err != nil {
 		return nil, fmt.Errorf("loom: compose discussion prompt: %w", err)
 	}

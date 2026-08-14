@@ -1,22 +1,27 @@
-// template_test.go pins the four embedded judge/triage/targeting prompt templates' load-bearing
-// statements as substring assertions,
+// template_test.go pins the four shipped-default judge/triage/targeting prompt templates'
+// load-bearing statements as substring assertions,
 // and separately proves each template actually fills through stencil with its required markers —
 // mirroring burlerengine's TestTemplate_StatesRoundDiscipline / TestTemplate_FillsWithAllMarkers
-// style.
+// style. It also proves runTriage composes its prompt from an on-disk edit rather than the shipped
+// default, per the runtime-read-not-embed Shared Decision.
 
 package treadleengine
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/stencils"
 )
 
 // TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the template's load-bearing phrases are
 // present.
 func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(judgeCirclingTemplate)
+	text := string(stencils.TreadleTemplateJudgeCircling)
 
 	requireContains(t, text, "PROGRESSING")
 	requireContains(t, text, "CIRCLING")
@@ -32,7 +37,7 @@ func TestJudgeCirclingTemplate_StatesLoadBearingRules(t *testing.T) {
 // TestJudgeMilestoneTemplate_StatesLoadBearingRules is the milestone continuation gate's analogue
 // of the circling-check test above.
 func TestJudgeMilestoneTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(judgeMilestoneTemplate)
+	text := string(stencils.TreadleTemplateJudgeMilestone)
 
 	requireContains(t, text, "CONTINUE")
 	requireContains(t, text, "STOP")
@@ -72,7 +77,7 @@ func requireHandoffMaintenanceRules(t *testing.T, text string) {
 // TestTriageTemplate_StatesLoadBearingRules is the asking-triage template's analogue: its
 // vocabulary, the one-line-restate-the-blocker rule, and the single-output-file instruction.
 func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(triageTemplate)
+	text := string(stencils.TreadleTemplateTriage)
 
 	requireContains(t, text, "RETRY")
 	requireContains(t, text, "GIVE_UP")
@@ -87,7 +92,7 @@ func TestTriageTemplate_StatesLoadBearingRules(t *testing.T) {
 // template in this package, targeting produces no verdict and so has no rationale-quoting rule to
 // pin.
 func TestTargetingTemplate_StatesLoadBearingRules(t *testing.T) {
-	text := string(targetingTemplate)
+	text := string(stencils.TreadleTemplateTargeting)
 
 	requireContains(t, text, "Read the previous handoff at")
 	requireContains(t, text, "EXACTLY ONE")
@@ -166,7 +171,7 @@ func targetingMarkerValues() map[string]string {
 // and fails — naming the marker — when any single one is absent.
 func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(judgeCirclingTemplate, judgeCirclingMarkerValues()); err != nil {
+		if _, err := stencil.Fill(stencils.TreadleTemplateJudgeCircling, judgeCirclingMarkerValues()); err != nil {
 			t.Fatalf("stencil.Fill() = %v; want nil", err)
 		}
 	})
@@ -175,7 +180,7 @@ func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := judgeCirclingMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(judgeCirclingTemplate, values)
+			_, err := stencil.Fill(stencils.TreadleTemplateJudgeCircling, values)
 			if err == nil {
 				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -190,7 +195,7 @@ func TestJudgeCirclingTemplate_FillsWithAllMarkers(t *testing.T) {
 // circling-check fill test above.
 func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(judgeMilestoneTemplate, judgeMilestoneMarkerValues()); err != nil {
+		if _, err := stencil.Fill(stencils.TreadleTemplateJudgeMilestone, judgeMilestoneMarkerValues()); err != nil {
 			t.Fatalf("stencil.Fill() = %v; want nil", err)
 		}
 	})
@@ -199,7 +204,7 @@ func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := judgeMilestoneMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(judgeMilestoneTemplate, values)
+			_, err := stencil.Fill(stencils.TreadleTemplateJudgeMilestone, values)
 			if err == nil {
 				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -214,7 +219,7 @@ func TestJudgeMilestoneTemplate_FillsWithAllMarkers(t *testing.T) {
 // tests above.
 func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(triageTemplate, triageMarkerValues()); err != nil {
+		if _, err := stencil.Fill(stencils.TreadleTemplateTriage, triageMarkerValues()); err != nil {
 			t.Fatalf("stencil.Fill() = %v; want nil", err)
 		}
 	})
@@ -223,7 +228,7 @@ func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := triageMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(triageTemplate, values)
+			_, err := stencil.Fill(stencils.TreadleTemplateTriage, values)
 			if err == nil {
 				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -238,7 +243,7 @@ func TestTriageTemplate_FillsWithAllMarkers(t *testing.T) {
 // three fill tests above.
 func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(targetingTemplate, targetingMarkerValues()); err != nil {
+		if _, err := stencil.Fill(stencils.TreadleTemplateTargeting, targetingMarkerValues()); err != nil {
 			t.Fatalf("stencil.Fill() = %v; want nil", err)
 		}
 	})
@@ -247,7 +252,7 @@ func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := targetingMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(targetingTemplate, values)
+			_, err := stencil.Fill(stencils.TreadleTemplateTargeting, values)
 			if err == nil {
 				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -255,5 +260,41 @@ func TestTargetingTemplate_FillsWithAllMarkers(t *testing.T) {
 				t.Errorf("stencil.Fill() error = %q; want it to name marker %q", err.Error(), marker)
 			}
 		})
+	}
+}
+
+// TestRunTriage_ReadsFromDiskAtCallTime proves runTriage composes its prompt from the on-disk
+// triage stencil at call time, not the embedded shipped default — the runtime-read-not-embed Shared
+// Decision's whole point. It overwrites the seeded stencils directory's triage file with a modified
+// body (markers intact) and asserts the shuttle spec's Prompt carries the on-disk sentinel text.
+func TestRunTriage_ReadsFromDiskAtCallTime(t *testing.T) {
+	dir := newTestStencilsDir(t)
+	sentinel := "SENTINEL-ON-DISK-EDIT-NOT-THE-SHIPPED-DEFAULT"
+	modified := strings.Replace(string(stencils.TreadleTemplateTriage), "# Perch asking-triage", "# Perch asking-triage — "+sentinel, 1)
+	triagePath := filepath.Join(dir, "treadle", "treadle-template-triage.md")
+	if err := os.WriteFile(triagePath, []byte(modified), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", triagePath, err)
+	}
+
+	verdictContent := `---
+verdict: RETRY
+rationale: "fine"
+---
+`
+	sh := &fakeJudgeShuttle{
+		verdictContent: verdictContent,
+		result:         shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+	}
+
+	runTriage(dir, sh, "perch", 1, "a question", filepath.Join(t.TempDir(), "v.md"), "haiku", "low")
+
+	if !sh.called {
+		t.Fatal("runTriage() never called the shuttle")
+	}
+	if !strings.Contains(sh.spec.Prompt, sentinel) {
+		t.Error("runTriage() prompt does not contain the on-disk edit; it composed from the embedded shipped default instead")
+	}
+	if strings.Contains(string(stencils.TreadleTemplateTriage), sentinel) {
+		t.Fatal("the embedded shipped default unexpectedly already contains the sentinel; the test setup is broken")
 	}
 }

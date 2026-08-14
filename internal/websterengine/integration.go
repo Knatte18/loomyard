@@ -5,7 +5,7 @@
 // in-process SHA-bisect + escalation path a FAILED report triggers (bisect,
 // RecordIntegrationFailure, BisectAndEscalate).
 // The integration fork itself is spawned the same way a batch's own implementer is — Master's own
-// in-session Agent-tool fork call, per master-template.md's own integration-fork bracket
+// in-session Agent-tool fork call, per webster-template-master.md's own integration-fork bracket
 // instruction — so this file never spawns anything;
 // it only confirms the fork's report has landed, interprets it, and — on failure — localizes and
 // records the offending card entirely in-process (no fork per bisect candidate), per the

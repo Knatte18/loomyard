@@ -328,6 +328,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					HandoffPath:         outcome.Paths.Handoff,
 					Model:               p.JudgeModel,
 					Effort:              p.JudgeEffort,
+					StencilsDir:         e.stencilsDir,
 				})
 				// Only a REAL verdict is recorded — a fail-safe fallback
 				// (judgeOK false) leaves the record's judge fields empty, so
@@ -362,6 +363,7 @@ func (e *Engine) Run(p Profile, runDir string) (result Result, err error) {
 					HandoffPath:         outcome.Paths.Handoff,
 					Model:               p.JudgeModel,
 					Effort:              p.JudgeEffort,
+					StencilsDir:         e.stencilsDir,
 				})
 				// See the milestone-rung branch above: only a REAL verdict
 				// is recorded, never the fail-safe fallback, and a failed
@@ -421,7 +423,7 @@ func (e *Engine) runPreRoundTargeting(runDir string, round int, p Profile, round
 		return ""
 	}
 	seedPath := artifactPaths(runDir, round, 1).Seed
-	if _, ok := runTargeting(e.shuttle, e.name, round, handoffPath, seedPath, p.JudgeModel, p.JudgeEffort); !ok {
+	if _, ok := runTargeting(e.stencilsDir, e.shuttle, e.name, round, handoffPath, seedPath, p.JudgeModel, p.JudgeEffort); !ok {
 		return ""
 	}
 	return seedPath
@@ -506,7 +508,7 @@ func (e *Engine) runRound(runDir string, round int, p Profile, priorReviews, pri
 			// plausibly proceed. Triage itself is fail-safe (never an
 			// error) and defaults to RETRY on any of its own
 			// infrastructure failures.
-			triageVerdict, rationale := runTriage(e.shuttle, e.name, round, result.LastAssistantMessage, paths.Triage, p.JudgeModel, p.JudgeEffort)
+			triageVerdict, rationale := runTriage(e.stencilsDir, e.shuttle, e.name, round, result.LastAssistantMessage, paths.Triage, p.JudgeModel, p.JudgeEffort)
 			triagePath = paths.Triage
 			if triageVerdict == TriageGiveUp {
 				return roundOutcome{}, e.errf("round %d agent gave up asking: %s (session %s, run dir %s)", round, rationale, result.SessionID, result.RunDir)

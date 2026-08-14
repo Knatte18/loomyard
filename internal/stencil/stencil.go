@@ -77,14 +77,38 @@ func stripLeadingComment(text string) string {
 	return strings.TrimLeft(rest, "\r\n")
 }
 
-// unfilledTopLevelMarkers returns the deduplicated names of every top-level
-// marker absent or empty in values, skipping names in optional.
-func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optional map[string]bool) []string {
+// StripLeadingComment drops a leading `<!-- ... -->` block from text and returns text unchanged
+// when there is none.
+// It is the same stripper Fill and FillOptional apply to a template before parsing it.
+func StripLeadingComment(text string) string {
+	return stripLeadingComment(text)
+}
+
+// TopLevelMarkers parses template and returns the deduplicated, sorted names of every top-level
+// {{.X}} marker it declares.
+// It is the marker-set accessor `lyx stencil validate` uses to compare two templates,
+// not a validity check: a marker is listed here regardless of whether any value would fill it.
+func TopLevelMarkers(template []byte) ([]string, error) {
+	stripped := stripLeadingComment(string(template))
+
+	t, err := tmpl.New("stencil").Option("missingkey=error").Parse(stripped)
+	if err != nil {
+		return nil, fmt.Errorf("parse template: %w", err)
+	}
+
+	names := topLevelMarkerNames(t)
+	sort.Strings(names)
+	return names, nil
+}
+
+// topLevelMarkerNames returns the deduplicated names of every top-level {{.X}} marker declared in
+// t's parsed tree, with no filtering by value or optionality.
+func topLevelMarkerNames(t *tmpl.Template) []string {
 	if t.Tree == nil || t.Tree.Root == nil {
 		return nil
 	}
 
-	var offenders []string
+	var names []string
 	seen := make(map[string]bool)
 	for _, node := range t.Tree.Root.Nodes {
 		actionNode, ok := node.(*parse.ActionNode)
@@ -104,16 +128,26 @@ func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optiona
 		}
 
 		name := fieldNode.Ident[0]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return names
+}
+
+// unfilledTopLevelMarkers returns the deduplicated names of every top-level
+// marker absent or empty in values, skipping names in optional.
+func unfilledTopLevelMarkers(t *tmpl.Template, values map[string]string, optional map[string]bool) []string {
+	var offenders []string
+	for _, name := range topLevelMarkerNames(t) {
 		if optional[name] {
 			continue
 		}
 		if strings.TrimSpace(values[name]) != "" {
 			continue
 		}
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
 		offenders = append(offenders, name)
 	}
 	return offenders

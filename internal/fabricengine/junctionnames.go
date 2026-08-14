@@ -82,6 +82,19 @@ func PathspecNames(baseDir string) ([]string, error) {
 	return pathspecNames(cfg), nil
 }
 
+// BoardWriteLockFile is the single exported declarer of the board write-lock filename: the lock
+// serialising every write to the board directory, held by internal/boardengine's own critical
+// section (boardCriticalSection, commitDirty) and by this package's stencil-seeding commit verb
+// (CommitSeededStencils).
+// internal/boardengine aliases its own writeLockFile constant to this value rather than declaring
+// the literal a second time.
+const BoardWriteLockFile = "board.lock"
+
+// BoardWriteLockPath returns the absolute path to the board write lock file inside hub.
+func BoardWriteLockPath(hub string) string {
+	return filepath.Join(BoardDir(hub), BoardWriteLockFile)
+}
+
 // BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
 // It is the single exported source of this literal;
 // use BoardDir(hub) to obtain the full path.
@@ -99,6 +112,19 @@ const HubSuffix = "-HUB"
 // BoardDir returns the absolute path to the board data directory inside hub.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
+}
+
+// stencilsDirName is the name of the stencils directory nested under BoardDir's `_lyx` component.
+// It is unexported because "stencils" is not a policed geometry token — it needs no
+// geometryTokenOwners row, unlike BoardDirName or lyxdirs.LyxDirName.
+const stencilsDirName = "stencils"
+
+// StencilsDir returns the hub-wide stencils directory shared by every worktree in the hub:
+// <hub>/_board/_lyx/stencils.
+// internal/stencilstore receives this value as its baseDir and never joins `_board` or `_lyx`
+// itself — see the told-never-derives Shared Decision.
+func StencilsDir(hub string) string {
+	return filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)
 }
 
 // HubPath returns the absolute path to the hub container directory for the given repo name inside

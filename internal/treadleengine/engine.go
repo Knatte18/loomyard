@@ -37,6 +37,12 @@ type Options struct {
 	// internal/lyxdirs so a caller such as perchengine, which knows its own
 	// .lyx-anchored geometry, is the one deriving it.
 	ScratchDir string
+	// StencilsDir is the absolute stencils directory judge.go's and
+	// targeting.go's read sites pass to stencilstore.Read at call time. The
+	// engine never derives this path itself — same told-never-derives
+	// posture as ScratchDir and GateDir — a caller such as perchengine
+	// resolves it from its own *lyxcwd.Location and hands it in.
+	StencilsDir string
 }
 
 // Engine drives one treadle block's generalized round loop.
@@ -47,6 +53,7 @@ type Engine struct {
 	pauseRequested func() bool
 	runCommand     CommandRunner
 	scratchDir     string
+	stencilsDir    string
 }
 
 // New returns an Engine ready to run one treadle block's round loop.
@@ -58,6 +65,7 @@ func New(name string, runner RoundRunner, shuttle Shuttle, opts Options) *Engine
 		pauseRequested: opts.PauseRequested,
 		runCommand:     opts.RunCommand,
 		scratchDir:     opts.ScratchDir,
+		stencilsDir:    opts.StencilsDir,
 	}
 }
 
