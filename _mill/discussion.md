@@ -29,7 +29,9 @@ The `_board` junction is therefore removed in this same task, and the general ru
 - Move the hub-wide never-tracked tree from `<hub>/.lyx` to `<hub>/_board/.lyx`.
 - Add `fabricengine.HubScratchDir(hub string) string` as the sole constructor of that path.
 - Relocate `CloneHub`'s creation of the directory from step 4 to after step 7 (`ensureBoardWorktree`), and add an explicit `seedWeftArtifactExcludes(boardDir)` call before it.
-- Re-point `reedengine.HubLogsDir` at the new location via `HubScratchDir`.
+- Re-point `reedengine.HubLogsDir` at the new location via `HubScratchDir`, and move `clone_test.go`'s reed idempotency test to `package fabricengine_test` so the new import edge does not close a test-binary cycle.
+- Update the reed prose that names the old path: `internal/reedcli/up.go:33` (cobra help) and `internal/reedengine/lifecycle.go:29-33` (doc comment).
+- Update the sandbox suite scenarios that encode the `_board` junction: `tools/sandbox/SANDBOX-FABRIC-SUITE.md` F8 (`:237`), F13 (`:254`), F15 (`:364`).
 - Drop the now-redundant `.lyx` append in `hubSlugReservedNames()`.
 - Delete the `_board` convenience junction in full: both the wiring and the unwiring half, the result field, the CLI envelope key, and their tests.
 - Rewrite `CONSTRAINTS.md`'s Durable-vs-Ephemeral State Invariant and add the new Hub Containment Invariant. **Already done in the discussion commit** — see "CONSTRAINTS pre-written" below.
@@ -67,7 +69,13 @@ The `_board` junction is therefore removed in this same task, and the general ru
 
 - Decision: add `fabricengine.HubScratchDir(hub string) string` returning `<hub>/_board/.lyx`. `reedengine.HubLogsDir` becomes `filepath.Join(fabricengine.HubScratchDir(l.HubPath), "logs")`.
 - Rationale: `reedengine` may not name `_board` — `TestEnforcement_GeometryLiterals` restricts that token to `internal/lyxcwd` and `internal/fabricengine`, so `reedengine` must obtain the segment from `fabricengine` regardless. A named constructor follows the told-never-derives pattern `StencilsDir` already established, and gives future tenants one opening to hang off. `reedengine → fabricengine` is a safe new edge: `fabricengine` does not import `reedengine`, and nothing in `fabricengine`'s dependency set does.
-- Rejected: `reedengine` calling `BoardDir` and joining `.lyx` itself (same import, repeats the composition at every future tenant); moving `HubLogsDir` into `fabricengine` (gives fabric ownership of a reed-specific path).
+- Rejected: `reedengine` calling `BoardDir` and joining `.lyx` itself (same import, repeats the composition at every future tenant); moving `HubLogsDir` into `fabricengine` (gives fabric ownership of a reed-specific path); injecting the scratch path into `reedengine` from `reedcli` (architecturally cleanest, but changes `HubLogsDir`'s signature and every caller for no gain here).
+
+### import-cycle-disposition
+
+- Decision: move `TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` out of `internal/fabricengine/clone_test.go` into a file declaring `package fabricengine_test` in the **same directory**, and drop `clone_test.go`'s `reedengine` import.
+- Rationale: `clone_test.go` is `package fabricengine` (in-package), so its imports are compiled into the `fabricengine` test binary and count as `fabricengine`'s own. Adding a production `reedengine → fabricengine` import would therefore close a cycle — `fabricengine`[test] → `reedengine` → `fabricengine` — and Go rejects it at test-binary compile time. The production binary is unaffected: `go list -deps ./internal/fabricengine` reports zero `reedengine` hits, and `clone_test.go` is the **only** file in the package with that import (verified). An external test package is a leaf nothing imports, so it may import both sides without closing any cycle. The test uses only exported API (`lyxdirs.DotLyxDirName`, `lyxcwd.Location`, `reedengine.HubLogsDir`), so it compiles unchanged after the move, and `package fabricengine_test` is already the directory's dominant convention: 71 external test files against 42 in-package.
+- Rejected: moving `HubLogsDir` into `fabricengine` so `reedengine` never gains the import; injecting the path from `reedcli`. Both avoid the cycle but change the design settled in `hub-scratch-constructor` to work around a one-file test-package detail.
 
 ### slug-reservation-simplified
 
@@ -98,6 +106,12 @@ The `_board` junction is therefore removed in this same task, and the general ru
 - Decision: no migration code of any kind. The old `<hub>/.lyx` is left for the operator to delete by hand, and no code tears down `_board` junctions.
 - Rationale: verified on disk — the only hub carrying `<hub>/.lyx` is `/home/knatte/Code/lyx-test-HUB`, whose entire content is four tmux log files that reed recreates; `/home/knatte/Code/lyx-fabric-test-HUB` has no `.lyx` at all. No `_board` junction exists in either. There are no lyx-initialised repos beyond the sandbox.
 - Rejected: auto-migrating `<hub>/.lyx` → `<hub>/_board/.lyx` on reconcile; auto-removing the old directory on reconcile; a reconcile-time `_board` junction sweep.
+
+### stale-exclude-line-accepted
+
+- Decision: no code removes a leftover `_board` line from a warp repo's `.git/info/exclude`. Accepted and documented; the remedy, if one is ever found, is deleting the line by hand.
+- Rationale: `wireBoardLink` seeds that line (`junction.go:441`) and `unwireBoardLink` is its only unseeder (`unwire.go:168`), so deleting both halves would strand the line in any hub a current binary had already wired — silently git-ignoring an operator's own future `_board` path. Verified on disk that no such hub exists: both `lyx-test-HUB` and `lyx-fabric-test-HUB` carry only `_lyx` in their warp exclude files, no `_board` line, so there is nothing to clean up. Writing an unseeder purely for a state that exists nowhere is the same dead-code trap the `board-junction-deleted` decision rejected for the junction sweeper.
+- Rejected: keeping `unseedGitExclude(..., BoardDirName)` alive as a reconcile-time cleanup; leaving the disposition unstated (the reviewer's point — the "zero junctions on disk" evidence does not by itself cover the exclude line, which is why it is verified separately here).
 
 ### no-board-access-replacement
 
@@ -153,7 +167,15 @@ Result and CLI surface:
 
 Docs and comments referencing it: `internal/fabricengine/doc.go:406`, `reconcile.go:293`, `reconcile.go:773`, `docs/overview.md:168-171`, `manifest/designs/fabric-unified-view.md:97-105`.
 
-Tests: `internal/fabricengine/boardjunction_integration_test.go` (delete outright — the file's entire subject is this junction), `internal/fabriccli/cli_test.go:887-896` (two cases keyed on `unwireBoardLink`'s ownership refusal), and `internal/fabriccli/envelopecontract_integration_test.go` (the envelope key).
+Tests: `internal/fabricengine/boardjunction_integration_test.go` (delete outright — the file's entire subject is this junction), `internal/fabriccli/cli_test.go:768-791` (`TestRunCLI_Unwire_ReportsBoardJunctionRemoval`, a standalone test asserting the envelope key is present and true), `internal/fabriccli/cli_test.go:887-896` (two cases keyed on `unwireBoardLink`'s ownership refusal), and `internal/fabriccli/envelopecontract_integration_test.go` (the envelope key).
+
+### Prose and scenario surfaces naming the old paths
+
+Beyond code, three user-visible or operator-facing texts assert the current geometry and go stale silently:
+
+- `internal/reedcli/up.go:33` — cobra long help: "enables server verbose logging to `<hub>/.lyx/logs/`".
+- `internal/reedengine/lifecycle.go:29-33` — `HubLogsDir`'s doc comment, which describes the directory as hub-anchored.
+- `tools/sandbox/SANDBOX-FABRIC-SUITE.md` — F8 (`:237`) requires `_lyx`, `.lyx` **and `_board`** to "land as links inside `<warp>/<dir>/`"; F13 (`:254`) describes fabric-owned links as "those pointing into the paired weft worktree **or the hub's `_board`**"; F15 (`:364`) requires `/_board`, `/_lyx` and `/.lyx` to be present "exactly once each" in the warp `.git/info/exclude` after every round. All three become false once the junction is gone.
 
 ### Why the junction needed its own machinery
 
@@ -206,7 +228,7 @@ The two changes already committed:
 
 **`internal/fabricengine`** — the bulk of the work.
 
-- Update `clone_test.go:140` to assert the new path, and `clone_test.go:155`'s `TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` to pre-create the board-anchored path. That test's value survives the move intact and should be kept, not deleted.
+- Update `clone_test.go:140` to assert the new path. `clone_test.go:155`'s `TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` **moves to `package fabricengine_test`** (same directory) and pre-creates the board-anchored path. Its value survives the move intact and it must be kept, not deleted — but it cannot stay in-package, per the `import-cycle-disposition` decision. After the move, `clone_test.go` must import `reedengine` nowhere; that absence is what keeps the production edge legal.
 - New coverage for `HubScratchDir`: it returns `<hub>/_board/.lyx` and composes from `BoardDir`, including on a `--subpath`-anchored hub, where it must **not** pick up `AnchorRel` (the board's `_lyx` tree is flat).
 - Clone-ordering coverage: after `CloneHub`, `_board/.lyx` exists **and** the weft repo's `.git/info/exclude` already carries `.lyx/`, so a `git status` in `_board` reports clean. TDD candidate — this is the decision most likely to be silently mis-ordered, and the assertion is what makes the ordering load-bearing rather than incidental.
 - `structuraldirs_test.go:58` — `slugReservedNames`'s composition changes; the assertion that `.lyx` is still refused as a slug must survive, sourced from `structuralNeverCommittedDirs`. TDD candidate: write the "`.lyx` is still a refused slug" assertion against the simplified `hubSlugReservedNames()` before removing the append, so the removal is proven behaviour-preserving rather than assumed.
@@ -215,7 +237,9 @@ The two changes already committed:
 - Regression coverage that no `_board` link is created: after `clone`, `add`, and `reconcile`, `<worktree>/<anchorRel>/_board` does not exist, and the warp `.git/info/exclude` carries no `_board` line. This is the assertion that gives the new Hub Containment Invariant teeth, and it should exist for all three verbs, not just clone.
 - `Remove`'s `LinksRemoved` count must stay correct once the manual `linksRemoved++` is deleted.
 
-**`internal/reedengine`** — `HubLogsDir` re-points. Its existing callers (`lifecycle.go:255`, `internal/reedcli/smoke_debuglog_test.go:40,169`) exercise it end-to-end; the smoke tests should keep passing unchanged, which is itself the assertion that the move is transparent to reed.
+**`internal/reedengine`** — `HubLogsDir` re-points. Its existing callers (`lifecycle.go:255`, `internal/reedcli/smoke_debuglog_test.go:40,169`) exercise it end-to-end; the smoke tests should keep passing unchanged, which is itself the assertion that the move is transparent to reed. The `up.go:33` help string and the `lifecycle.go:29-33` doc comment are prose, not behaviour — the CLI/Cobra Invariant's help-accuracy obligation is what makes them a review check rather than a test.
+
+**`tools/sandbox`** — F8, F13 and F15 in `SANDBOX-FABRIC-SUITE.md` must be rewritten before either suite is run, not after: their current text instructs the operator to *confirm* a `_board` link exists, so running them unchanged produces a false FAIL. F8 drops `_board` from its link list and should instead confirm the warp anchored directory has **no** `_board` entry; F13 drops "or the hub's `_board`" from its ownership description; F15 drops `/_board` from the exactly-once exclude list. `SANDBOX-REED-SUITE.md` names no `.lyx` path and needs no edit (verified).
 
 **`cmd/lyx`** — `constructoranchoring_test.go` at 96 and 144, plus the header comment at line 17. `notransients_test.go` needs no change (it is `AnchorPath()`-scoped).
 
@@ -236,3 +260,6 @@ The two changes already committed:
 - **Q:** Do `_portals` and `_launchers` break the same illusion? **A:** Not as they exist today — their links live at hub level and point inward, so nothing is visible from inside a worktree. But the operator's unbuilt plan to junction them *into* every worktree is cancelled by the new invariant, because `<worktree-A>/_portals/<worktree-B>` would make worktree isolation prose instead of geometry.
 - **Q:** Does `_board` stop being reserved? **A:** No — it stays in `HubReservedNames()` for the slug reservation and the wiring guard. What it loses is its exception status.
 - **Q:** Write CONSTRAINTS now or in the implementation commit? **A:** Now, before the discussion reviewer runs, so reviewers do not read the superseded invariant and treat the design as a violation.
+- **Q:** (Review r1, blocking) A production `reedengine → fabricengine` import closes a cycle through `clone_test.go`, which is `package fabricengine` and imports `reedengine`. How is it resolved? **A:** Move that one test to `package fabricengine_test` in the same directory — not a new directory, and already the directory's dominant convention (71 external files against 42 in-package). The `HubScratchDir` design is unchanged; moving `HubLogsDir` into fabric or injecting the path from `reedcli` were rejected as reworking a settled design around a one-file test-package detail.
+- **Q:** (Review r1) Does a leftover `_board` line in a warp `.git/info/exclude` need cleanup code? **A:** No — verified on disk that neither sandbox hub has one. Accepted and documented, with hand-removal as the remedy if one is ever found.
+- **Q:** How are the remaining review rounds handled? **A:** Operator handed the rest to auto mode: every finding is fixed by best judgment with no further prompts.
