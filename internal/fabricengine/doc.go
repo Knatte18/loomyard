@@ -569,6 +569,15 @@
 // outcome as one. The distinction is whether the field means "this verb failed at its job" or "this
 // verb is telling you what it deliberately did not do".
 //
+// One consequence of that rule is a new `ReconcileAction`. `Reconcile` reads `git worktree list`
+// once, before its per-pair loop, so a concurrent `remove`/`prune` can delete a pair's directory
+// between the enumeration and the iteration that reaches it. That used to fail `readBranch` and be
+// reported as `ReconcileActionUnmanagedReported` with `os/exec`'s raw `chdir …: no such file or
+// directory` as its `Error` — a verdict meaning something else entirely, and, once a per-pair
+// `Error` drives the exit code, an ordinary concurrent teardown that would fail every enclosing
+// reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
+// nothing failed to reconcile: the pair simply stopped existing.
+//
 // See CONSTRAINTS.md's Mutation Record Invariant for the machine-enforced half of this rule, and
 // `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
 // guard itself.

@@ -648,3 +648,56 @@ func TestBranchOwnership_RefusalHoldsAtOtherDeletionSites(t *testing.T) {
 		t.Fatalf("warp branch %q — which the gate must refuse to delete, since it carries neither the -weft suffix nor a configured prefix — did not survive Add's rollback", slug)
 	}
 }
+
+// TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch is R2's regression for a misleading verdict under
+// a race reconcile cannot avoid: `git worktree list` is read once, before the per-pair loop, so a
+// concurrent `lyx fabric remove`/`prune` can delete a pair's directory between the enumeration and
+// the iteration that reaches it.
+//
+// That used to surface as ReconcileActionUnmanagedReported — a verdict meaning "this pair is not
+// fabric's to manage" — carrying os/exec's raw `chdir <path>: no such file or directory` as its
+// reason, which is neither what happened nor something an operator can act on. Worse, it set
+// pr.Error, so once reconcile started reporting a failed pair as a failure (R2's finding M2), a
+// perfectly ordinary concurrent teardown would have turned every enclosing reconcile into a non-zero
+// exit.
+//
+// Deleting the directory directly, with the registration deliberately left in place, is exactly the
+// state the race produces and needs no actual concurrency to construct — which is what makes this
+// test deterministic rather than timing-dependent.
+func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
+	t.Parallel()
+
+	const slug = "vanished-mid-walk"
+	h := hubforge.NewHub(t, ".")
+	hubforge.AddPair(t, h, slug)
+
+	warpPath := h.PairWarpWorktree(slug)
+	if err := os.RemoveAll(warpPath); err != nil {
+		t.Fatalf("remove warp worktree directory (leaving git's registration behind): %v", err)
+	}
+
+	result, err := h.Topology.Reconcile(h.Location)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var found bool
+	for _, pair := range result.Pairs {
+		if filepath.Base(filepath.FromSlash(pair.WarpWorktree)) != slug {
+			continue
+		}
+		found = true
+		if pair.Action != fabricengine.ReconcileActionVanishedMidWalk {
+			t.Errorf("vanished pair Action = %q; want %q", pair.Action, fabricengine.ReconcileActionVanishedMidWalk)
+		}
+		if pair.Error != "" {
+			t.Errorf("vanished pair Error = %q; want empty — nothing failed to reconcile, the pair stopped existing", pair.Error)
+		}
+		if pair.Detail == "" {
+			t.Errorf("vanished pair carries no Detail; want one naming the concurrent teardown")
+		}
+	}
+	if !found {
+		t.Fatalf("Reconcile reported no pair for the vanished slug %q; pairs: %+v", slug, result.Pairs)
+	}
+}

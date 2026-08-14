@@ -74,6 +74,18 @@ const (
 	// It is reported instead of ReconcileActionAlreadyHealthy so consumers keying off Action — not
 	// just Detail — see that convergence altered the pair.
 	ReconcileActionStaleRemoved ReconcileAction = "stale_removed"
+
+	// ReconcileActionVanishedMidWalk means the warp worktree directory existed when `git worktree
+	// list` enumerated it and was gone by the time this pass reached it — a concurrent `lyx fabric
+	// remove` or `prune`, not a fault in this hub.
+	//
+	// It exists because the alternative was actively misleading: the vanished directory made
+	// readBranch fail, which was reported as ReconcileActionUnmanagedReported — a verdict meaning
+	// something entirely different ("this pair is not fabric's to manage") — carrying os/exec's raw
+	// `chdir <path>: no such file or directory` as its reason. Naming the race lets an operator, and a
+	// scripted caller reading the failure a per-pair Error now produces, tell a transient from a real
+	// defect without decoding a Go runtime message.
+	ReconcileActionVanishedMidWalk ReconcileAction = "vanished_mid_walk"
 )
 
 // WarpBindingOutcome describes the result of the once-per-Reconcile warp-URL binding backfill.
@@ -174,6 +186,19 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		pr := ReconcilePairResult{
 			WarpWorktree: filepath.ToSlash(warpPath),
 			WeftWorktree: filepath.ToSlash(weftPath),
+		}
+
+		// The worktree list was read before this loop began, so a concurrent remove/prune can delete a
+		// pair's directory between the enumeration and this iteration. Naming that race here keeps it
+		// from surfacing further down as a layout or branch-read failure whose Action
+		// (unmanaged_reported) means something entirely different and whose reason is os/exec's raw
+		// chdir error. It is deliberately not an Error: nothing failed to reconcile, the pair simply
+		// stopped existing, so a caller keying off a failed pair must not see this as one.
+		if _, statErr := os.Stat(warpPath); os.IsNotExist(statErr) {
+			pr.Action = ReconcileActionVanishedMidWalk
+			pr.Detail = "warp worktree removed by a concurrent remove or prune after this pass enumerated it"
+			result.Pairs = append(result.Pairs, pr)
+			continue
 		}
 
 		warpLayout, layoutErr := warpLayoutFor(l, warpPath)
