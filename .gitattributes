@@ -23,6 +23,7 @@ internal/boardengine/template.yaml text eol=lf
 internal/modelspec/template.yaml text eol=lf
 internal/reedengine/template_posix.yaml text eol=lf
 internal/reedengine/template_windows.yaml text eol=lf
+internal/reedengine/console-header.md text eol=lf
 internal/perchengine/template.yaml text eol=lf
 internal/shuttleengine/template.yaml text eol=lf
 internal/fabricengine/post-checkout.sh text eol=lf
