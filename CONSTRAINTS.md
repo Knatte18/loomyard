@@ -261,6 +261,13 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   the live-state builders in `package fabricengine_test` are outside this invariant's subject.
 - The banned bypass tokens are `RemoveAll(`, `os.Remove(`, `"worktree", "remove"`, `"branch", "-D"`, `warp.ResetHard(`, `weft.ResetHard(`, `fslink.Remove(`, and `createdToken{`.
 - Every destructive executor runs the gate's four checks first, always in this fixed order, stopping at the first failure: containment, ownership, dirtiness, force.
+  Ahead of the four sits a request-shape check that is not one of them: a `pathRequest` declaring no ownership kind, no dirtiness, or a `dirtinessNA` with an empty reason is refused before containment runs.
+  That refusal borrows `CheckOwnership`/`CheckDirtiness` to name the missing declaration, so its `Check` value must not be read as evidence that containment passed.
+- **Containment is resolved, not lexical.**
+  Both the container and the target's ANCESTRY go through `filepath.EvalSymlinks` before they are related;
+  the target's own final component stays unresolved, because a junction removal's target is itself a link.
+  Comparing nominal paths let a symlink planted at an intermediate segment of a gate target carry a destructive primitive outside its container while the check passed — found and closed in fabric's R2 crucible round.
+  `ownedUnderGeometryRoot` resolves the same way, since it is the one ownership kind with no independent resolved-path authority (git's worktree registration, `fslink.RawTarget`) to cross-check against.
 - `--force` answers dirtiness only.
   It never satisfies containment and never satisfies ownership.
 - A gate refusal (`*destructiveRefusal`) is never discarded on a best-effort path — every such site wraps its executor call in `surfaceRefusal` (or, where the call site cannot return an error at all, logs the refusal via `logger.Warn`) rather than swallowing it.

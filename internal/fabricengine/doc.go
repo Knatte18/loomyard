@@ -639,6 +639,38 @@
 // probe into the gate file would muddy the one property that file's contents exist to keep
 // precise.
 //
+// **Why containment resolves symlinks, and why it stops short of the final component.**
+// The check was purely lexical — `filepath.Rel` over the nominal strings — until fabric's R2
+// crucible round planted a symlink at `<Hub>/_launchers/<slug>` and watched `removeLaunchers`'
+// gated `removePath` delete two files outside the hub, report `ok:true`, and record the removal
+// against hub-relative paths that were never the inodes removed.
+// A lexical comparison answers a question nobody is asking: it proves the SPELLING of the target
+// sits under the SPELLING of the container, while every destructive primitive acts on the inode
+// those spellings resolve to.
+// So both sides now go through `filepath.EvalSymlinks` (`ancestors.go`'s `resolveAncestorSymlinks`),
+// with an ancestor-walk fallback for the ordinary case of a target that does not exist yet.
+// The target's own final component is deliberately left unresolved (`containmentPath`): every
+// junction the gate removes is a link living inside the warp worktree and pointing into the weft
+// one, so resolving the leaf would relocate the target into weft and make the warp-worktree
+// container refuse every legitimate unwire — the fix would have broken the verb it was meant to
+// protect.
+// `ownedUnderGeometryRoot` resolves the same way for a reason worth naming: it is the ONLY
+// ownership kind with no independent authority to cross-check a target against. The two
+// worktree-shaped kinds compare against git's own worktree registration and the two link-shaped
+// kinds against `fslink.RawTarget`, both of which already carry resolved paths — which is exactly
+// why the geometry-root site was the one that fell and the others did not.
+//
+// **The gate's checks are not atomic with its acts, and that is a stated limit rather than an
+// oversight.**
+// `checkPathDirtiness` runs `git status --porcelain` and returns; the executor then performs the
+// primitive. No lock spans the two, so a write landing in that window is destroyed. The exposure is
+// narrow by construction — `removeGitWorktree` re-checks through git itself, `resetHardTo`
+// delegates to git, and the only `RemoveAll` sites carrying a real dirtiness scope are the two
+// fallbacks that fire *after* git has already declined the removal — but a reader must not take
+// "the gate executes rather than approves" to mean the probe and the act are one transaction.
+// Closing the window would need a lock held across probe and act at every executor, which is a
+// larger claim about every future call path than the residual risk warrants today.
+//
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate
 // itself created this, moments ago, in this same call" — the fabric-hub bootstrap teardown and

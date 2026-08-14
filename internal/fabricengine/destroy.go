@@ -7,9 +7,21 @@
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
 // containment, ownership, dirtiness, force.
+// Ahead of all four sits a request-shape check that is not one of them: a pathRequest declaring no
+// ownership kind, no dirtiness, or a dirtinessNA with an empty reason is refused before any of the
+// four runs, since a malformed request cannot be evaluated at all. That refusal borrows
+// CheckOwnership/CheckDirtiness to name which declaration is missing, so a reader must not conclude
+// from its Check value that containment passed — containment had not run yet.
 // --force answers dirtiness only: it never satisfies containment and never satisfies ownership, so a
 // containment failure — the class of defect that once destroyed an entire hub — can never be
 // overridden by a flag.
+//
+// Containment is resolved, not lexical: both the container and target's ancestry are put through
+// filepath.EvalSymlinks before they are related (see ancestors.go's refuseUncontainedPath and
+// containmentPath). It was purely lexical until R2's review drove a symlink planted at an
+// intermediate segment of a gate target and watched a gated removal delete files outside the hub
+// while the check passed. Target's FINAL component stays unresolved on purpose — a junction
+// removal's target is itself a link.
 // The Check enum below names only the three checks a refusal can ever be attributed to —
 // containment, ownership, dirtiness — because force never fails: it is consulted only to make the
 // dirtiness check pass, never to cause a refusal of its own.
@@ -148,7 +160,8 @@ type createdToken struct {
 type pathRequest struct {
 	// what names the act being attempted, for the refusal message (e.g. "remove worktree").
 	what string
-	// container is the path target must resolve strictly below; see refuseUncontainedPath.
+	// container is the path target must resolve strictly below, symlinks in target's ancestry
+	// resolved before the comparison; see refuseUncontainedPath.
 	container string
 	// target is the path the executor will act on.
 	target string
@@ -391,7 +404,12 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		// The geometry-root set has exactly one member today, the value launchersDir returns: a
 		// directory whose base name is launchersDirName. A root outside that set is itself a
 		// refusal, so a call site cannot satisfy this check by naming a convenient parent.
-		if filepath.Base(filepath.Clean(own.root)) != launchersDirName {
+		//
+		// The base-name test runs against the RESOLVED root, not the nominal one, for the same
+		// reason pathAtOrBelow now resolves: a link standing where the geometry root belongs is
+		// not the geometry root, and testing the nominal spelling would let one masquerade as it.
+		resolvedRoot := resolveAncestorSymlinks(own.root)
+		if filepath.Base(resolvedRoot) != launchersDirName {
 			return false, fmt.Sprintf("%s is not a fabric geometry root", own.root)
 		}
 		if !pathAtOrBelow(own.root, target) {
@@ -472,8 +490,15 @@ func isWarpCheckout(repoDir, target string) bool {
 
 // pathAtOrBelow reports whether target resolves at or below root, admitting deep descendants and
 // non-directory targets alike.
+//
+// It relates the two through the same resolveAncestorSymlinks/containmentPath pair
+// refuseUncontainedPath uses, and for the same reason: ownedUnderGeometryRoot is the one ownership
+// kind with no independent authority to cross-check against — the worktree-shaped kinds compare
+// against git's own registration and the link-shaped ones against fslink.RawTarget, both of which
+// already carry resolved paths — so a nominal-path comparison here left it the single predicate a
+// planted intermediate symlink could satisfy.
 func pathAtOrBelow(root, target string) bool {
-	rel, err := filepath.Rel(root, target)
+	rel, err := filepath.Rel(resolveAncestorSymlinks(root), containmentPath(target))
 	if err != nil {
 		return false
 	}
@@ -567,7 +592,7 @@ func checkPathRequest(req pathRequest) error {
 		}
 	}
 
-	if err := refuseUncontainedPath(req.container, req.target, req.what); err != nil {
+	if err := containmentFailure(req.container, req.target); err != nil {
 		return &destructiveRefusal{Check: CheckContainment, What: req.what, Target: req.target, Reason: err.Error()}
 	}
 
