@@ -1,9 +1,10 @@
 # `fabric` — independent review + fix (prompt template)
 
 > Filled instance of `crucible/review-prompt-template.md` for the `fabric` module's crucible
-> campaign, round 2. Committed under `_mill/` — see `crucible/README.md` for the loop this prompt
-> runs inside, and "Commit deliverables continuously, not gitignored" for why this file (and your
-> own deliverables) live here instead of a gitignored scratch dir.
+> campaign, round 3 (of a fixed 4-round plan: r1 Opus/medium, r2 Opus/high, r3 Fable/high, r4
+> Opus/high final safety pass). Committed under `_mill/` — see `crucible/README.md` for the loop
+> this prompt runs inside, and "Commit deliverables continuously, not gitignored" for why this file
+> (and your own deliverables) live here instead of a gitignored scratch dir.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `fabric`
 module in the loomyard repo, followed by FIXING what you find.
@@ -86,11 +87,8 @@ regressed and (b) re-evaluate deferred items.
   - `internal/gitexec/**`, `internal/gitrepo/**` (the checked/raw git-exec split — round 1
     reviewed this thoroughly and found it sound; read it for context, not as your primary hunting
     ground this round).
-  - `internal/logger/**` — NEW for this round: you need this to establish the root cause of the
-    seeded residual below (does a deployed `lyx` binary write trace/log files unconditionally on
-    every invocation, or only under `LYX_TRACE=1`/`testing.Testing()`? CONSTRAINTS.md's
-    Live-Substrate Spawn Observability invariant only documents the `go test`-time gate — read the
-    actual write path, don't infer from that invariant's prose alone).
+  - `internal/fabricengine/ancestors.go` — `refuseUncontainedPath`, the other half of this round's
+    seeded residual alongside `destroy.go`'s `pathAtOrBelow`.
   - `internal/weftname/**`, `internal/gitkit/**` (fabric's paired leaf/fixture dependencies)
   - `cmd/lyx/*guard_test.go` — specifically `checkedcall_test.go`, `gitrepoboundary_test.go`,
     `destructiveguard_test.go`, `cwdmutation_test.go`.
@@ -113,88 +111,113 @@ regressed and (b) re-evaluate deferred items.
 
 ## High-yield focus — where `fabric`'s real bugs live (drive these, do not just read them)
 
-**PRIMARY TARGET this round: the destruction chokepoint itself, adversarially, as your main
-mission.** `internal/fabricengine/destroy.go` — the gate consolidating ~28 destructive call sites
-behind one pipeline (containment → ownership → dirtiness → force, in that fixed order, stopping
-at the first failure) — was built in slice 12 (commit `3184cd5a`), **after** fabric's original
-6-round adversarial crucible campaign had already finished (commit `79a72a38`). It was direct
-engineering work in response to that campaign's findings (eight data-loss defects, one shape, not
-eight mistakes), but the chokepoint's own implementation has never itself been the subject of an
-independent clean-room review+fix round. Two things have re-verified its properties since — round
-1 of this campaign (because the gitexec migration touched `destroy.go` directly) and the
-orchestrator's own independent verification pass — and both came back clean on the core
-properties. That is good evidence, but it is not the same as one round having been assigned to
-genuinely try to break it as ITS main mission with a full round's worth of adversarial budget.
-That round is this one. Spend the majority of your review effort here. Concretely, try to
-construct a scenario that gets `destroy.go` to perform a destructive primitive it should have
-refused:
-- A containment bypass — not just the obvious `../../etc` traversal already tried twice before,
-  but symlink-mediated containment: plant a symlink somewhere fabric's containment check resolves
-  through, and see whether the check resolves the real path or trusts the nominal one.
-- An ownership predicate that accepts a target it shouldn't — read `resolvePathOwnership` and
-  `resolveBranchOwnership` in `destroy.go` closely and try to construct an input each of the 8
-  `pathOwnershipKind`/2 `branchOwnershipKind` predicates would wrongly accept. `ownedFreshlyCreatedPath`/
-  `ownedFreshlyCreatedWorktree`'s `createdToken` unforgeability rests entirely on the bypass
-  guard's `createdToken{` ban, not the type system (the doc comment says this explicitly) — is
-  that actually still true, or has a same-package composite literal snuck past the guard anywhere?
-- A dirtiness probe that reports clean when it isn't — a TOCTOU window between `checkPathDirtiness`
-  running its probe and the executor actually acting, where something modifies the target
-  in between (a concurrent write landing in that exact window).
-- `--force` satisfying something other than dirtiness — re-derive from source (not from the doc
-  comment's claim) that `CheckForce` genuinely has no member in the `Check` enum and that `force`
-  is consulted ONLY inside `checkPathDirtiness`.
-- A call site elsewhere in the package reaching a destructive primitive without going through one
-  of the eight executors — re-derive the full raw-primitive inventory yourself
-  (`os.RemoveAll(`/`os.Remove(`/`"worktree", "remove"`/`"branch", "-D"`/`warp.ResetHard(`/
-  `weft.ResetHard(`/`fslink.Remove(`/`createdToken{` outside `destroy.go`) and cross-check every
-  hit against `destructiveguard_test.go`'s allowlist yourself — don't trust that a prior round
-  did this correctly, re-derive it.
-- Concurrent destructive races beyond what's been tried — round 1 and the orchestrator both drove
-  `add`/`sync`/`reconcile` concurrency and one `unwire`-vs-`unwire`/`reconcile` race (see the
-  seeded residual below, which THAT race surfaced). Try other combinations: concurrent `remove`
-  calls on the *same* target, a `remove --force` racing a `reconcile` on the same pair, a `prune`
-  racing an `add`.
+**PRIMARY TARGET this round, again: the destruction chokepoint, adversarially, as your main
+mission.** This is the THIRD consecutive round asked to make `internal/fabricengine/destroy.go`
+its main mission (the operator's explicit instruction: chokepoint testing stays a named focus
+every round, not a one-off). Round 2 made it primary for the first time and it broke — see the
+seeded residual below, which is a live, CONFIRMED, still-OPEN defect in exactly this file. Do not
+treat two clean prior passes as license to go easy; the record so far is: round 2 found one real
+containment bypass (M3, now fixed), and the orchestrator's own independent verification of round
+2's fix immediately found a SECOND, more severe one in the same fixed function. This pattern
+— fix one gap, find another one right next to it — is exactly why the chokepoint gets a third
+dedicated round instead of being declared clean.
 
-**Residual to close, from the orchestrator's own independent verification (round 1 never found
-this):** concurrent `unwire` (racing itself/`reconcile`) can leave `.lyx` as a real, populated
-directory instead of a junction, which `reconcile` then permanently refuses to auto-heal.
+**Residual to close (CONFIRMED live, not yet fixed — this is your primary Job-1 task):** a
+symlink-target-toggle TOCTOU defeats `destroy.go`'s containment check ~15–20% of the time,
+letting a gated `remove --force` delete files outside the hub. This is DIFFERENT from M3 (M3 was
+"the containment check never resolves symlinks at all", now fixed by resolving via
+`filepath.EvalSymlinks`) — this is a check-then-act gap IN that fix itself.
 
-- **Repro (already independently reproduced once):** root-anchored hub, prime worktree, no
-  `--subpath`. From the prime worktree:
-  ```sh
-  for i in 1 2 3 4; do
-    ( lyx fabric unwire > race_unwire_$i.json 2>&1; lyx fabric reconcile > race_reconcile_$i.json 2>&1 ) &
-  done; wait
-  ```
-  4× concurrent `(unwire; reconcile)` pairs racing each other on ONE hub. `.lyx/logs/` ends up
-  containing real trace-log files afterward (3 were observed), materializing `.lyx` as a real
-  directory before the junction can be re-wired.
-- **Exact error** on the next serial `reconcile`: `"error":"re-point junction: adopt
-  <hub>/adv/.lyx into <hub>/adv-weft/.lyx: logs already exists at the weft target; an earlier
-  adoption already ran — delete the warp-side copy at <hub>/adv/.lyx/logs and re-run \`lyx fabric
-  reconcile\`"`. `lyx fabric pairs` self-diagnoses honestly:
-  `"junction_healthy":false,"junction_reason":"warp .lyx is not a junction"` — not silently wrong,
-  just permanently stuck without intervention.
-- **Root cause — UNCONFIRMED. Establish this yourself before proposing a fix, do not patch around
-  a guessed mechanism.** Working hypothesis: some concurrent `lyx` invocation writes into
-  `.lyx/logs/` during the window `unwire` has torn the junction down but nothing has re-wired it
-  yet, and `seedLyxJunction`'s adoption logic then refuses to merge a real directory back into a
-  junction. Read `internal/logger`'s actual write path first — does a deployed binary log
-  unconditionally on every CLI invocation, or only under `LYX_TRACE=1`/`testing.Testing()`? If the
-  writer isn't `internal/logger` at all, find out what it actually is.
-- **Severity: LOW-MEDIUM as seeded** — no data/work lost, self-diagnoses honestly, has a stated
-  manual remedy, but permanently non-self-healing without operator intervention, reachable only
-  via deliberate racing rather than a single realistic operator action. Re-grade it yourself once
-  you understand the actual mechanism — if it turns out to be reachable more easily than 4-way
-  deliberate racing, or if it turns out to interact with the destruction chokepoint above in a way
-  that's worse than "an inert real directory", raise the severity accordingly.
-- **Fix the right layer.** Once the writer is confirmed, the real fix is almost certainly making
-  the window unreachable (serialize `unwire`'s junction teardown against whatever writes into
-  `.lyx/logs`, or make `seedLyxJunction`'s adoption logic merge a same-shaped `logs` directory
-  instead of refusing) rather than only improving the error message — though a clearer remedy
-  message is still worth doing regardless, per "fix every finding including NITs" below.
+- **Mechanism (already root-caused by the orchestrator's independent verification, re-confirm it
+  yourself before fixing):** `refuseUncontainedPath` (`internal/fabricengine/ancestors.go`) and
+  `pathAtOrBelow` (`destroy.go`) each independently call `filepath.EvalSymlinks` at their OWN
+  instant during the check phase. If that instant catches the symlink dangling (target doesn't
+  exist yet), the code's fallback treats the path as nominally contained — by design, for the
+  legitimate case of a target that doesn't exist yet. But the executor's actual removal
+  (`removePath`'s final `os.Lstat`+`os.Remove`) runs at a DIFFERENT, later instant with no
+  re-check. If the symlink has since been made live-and-escaping in the gap between the check's
+  `EvalSymlinks` and the executor's `Lstat`/`Remove`, the deletion proceeds through it, uncontained.
+- **Repro:** build a real hub from local bare git remotes (no mocks), deploy the current source
+  (`./deploy-dev`), plant a symlink at `_launchers/<slug>` (or another intermediate path segment
+  feeding a `pathRequest`), then run a tight external loop that rapidly toggles that symlink's
+  target between absent and a live path OUTSIDE the hub, concurrently with a single `lyx fabric
+  remove --force <slug>` invocation. Confirmed via the tool's OWN mutation record: a
+  `"kind":"path_removed"` entry naming a target that, at the moment of removal, resolved outside
+  the hub. Hits ~15–20% of trials across multiple independent runs — not a one-off fluke, budget
+  enough attempts (dozens, not a handful) to reliably reproduce it yourself before fixing.
+- **Severity: at least MEDIUM, seriously consider BLOCKING.** `doc.go`'s own package comment calls
+  containment "the one thing `--force` can never override" — this defeats exactly that property,
+  under real (if adversarial-timed) conditions, with real data loss outside the hub as the
+  consequence. Grade it yourself once you've reproduced it and understood the blast radius, but
+  do not under-grade a live escape of the chokepoint's core promise just because it needs tight
+  timing to trigger.
+- **Fix the right layer — this needs actual design thought, not just "call EvalSymlinks again".**
+  Calling `EvalSymlinks` a second time immediately before `Lstat`/`Remove` narrows the window but
+  does not close it (same class of gap, smaller). Consider: capturing the RESOLVED real path at
+  check time and having the executor operate on that resolved path (verifying it still matches
+  what a final resolve returns, atomically or as close to it as this filesystem API allows,
+  immediately before acting — e.g. open with `O_NOFOLLOW`, or `Lstat` the resolved path and
+  compare device/inode before removing, or hold the containing directory open and use
+  `unlinkat`-style relative removal) rather than re-resolving a nominal path twice at two
+  different instants. Whatever you choose, explain in the fix commit why it closes the window
+  rather than just shrinking it, and add a regression test that races the toggle against the fix
+  the same way the repro above does — a single-instant symlink test would NOT have caught this
+  bug and would not catch a regression of it either.
+- **Once your fix lands, adversarially re-attack it yourself**, the same way the orchestrator's
+  verification pass re-attacked M3's fix and found this. Also try shapes nobody has explicitly
+  driven yet: a symlink LOOP (A→B→A) at a path the gate resolves; a `..`-relative symlink target
+  planted at various path depths; the same toggle-race idea against OTHER `pathRequest`
+  construction sites (`remove.go`, `prune.go`, `reconcile.go` — not just `_launchers/<slug>`).
+
+**Secondary chokepoint target — N4's dirtiness-probe TOCTOU, still open.** `checkPathDirtiness`'s
+`git status --porcelain` probe is a check, and the executor's act happens later — a classic
+check-then-act gap if something dirties the target in between. Both round 2 and the orchestrator's
+own verification tried and failed to construct a live, isolable repro (recorded
+CONFIRMED-by-source / PLAUSIBLE-as-event only — a racing dirtying-write kept getting caught by the
+probe itself on every trial, which doesn't distinguish "probe caught it" from "the window was
+actually threaded"). Give it a real, dedicated attempt with a tighter timing strategy than
+"just race a write in a loop" — e.g. pause/resume the dirtying process via a signal timed against
+instrumentation, or add temporary logging to `checkPathDirtiness` in a throwaway branch to find
+the actual window size before attacking it blind. If you cannot improve on PLAUSIBLE, say so
+explicitly and record exactly what you tried — that is still useful information for round 4.
+
+**Already closed by round 2 and independently re-confirmed — do not re-litigate:** the ownership
+predicates (`resolvePathOwnership`/`resolveBranchOwnership`, all 8+2 kinds), `createdToken`
+unforgeability via the bypass guard, `--force`-answers-dirtiness-only (re-derived from source,
+`CheckForce` has no `Check` enum member), the full raw-primitive inventory against
+`destructiveguard_test.go`'s allowlist, and concurrent-race combinations (4× concurrent `remove
+--force` on one target, `remove` vs `reconcile`, `prune` vs `add`) — see CLOSED-AND-VERIFIED below
+for detail. Re-open only if your own driving turns up a genuine regression.
+
+**Low-priority spot-check, only if you have budget left after the above:** round 2's fixer report
+records a "post-freeze observation" — a `remove`/`reconcile` race can leave an inert leftover
+directory with no git-worktree registration and no verb reporting it; round 2's own reasoning for
+"blocks nothing" is internally consistent but was not independently re-verified live by anyone
+yet. Worth a quick attempt to construct a case where it DOES block something, but do not let it
+crowd out the two items above.
 
 ## CLOSED-AND-VERIFIED — do not re-litigate unless you find a genuine regression
+**Round 2 (`opus-high-r2`), independently verified by the orchestrator from a cold state**: 12
+findings (0 BLOCKING, 3 MEDIUM — M1 stuck-reconcile/logger-sink, M2 dishonest reconcile success,
+M3 containment-check-never-resolves-symlinks; 4 LOW — L1 dropped `--force`, L2 vacuous gate on
+absent targets, L3 `entries:null`, L4 dangling-HEAD clone; 5 NIT), all fixed, 13 commits
+(`b0aa40b4`..`e49d81f7`). Independent verification re-ran build/vet/test and live-integration gates
+cold (green), sabotage-proved ALL 9 new regression tests itself (reverted each production hunk
+in turn, confirmed the associated test failed at the exact assertion claimed, restored, confirmed
+empty diff — including N5's follow-up fix, proved via a compile-time dependency check). M1's fix
+(merge a same-shaped directory during `.lyx` adoption instead of refusing) closes round 2's own
+seeded residual — the `unwire`/`.lyx` race from round 1's verification — confirmed. The
+`remove`-vs-`reconcile` 8/8-exit-1 regression M2's fix briefly introduced (self-caught and
+re-fixed by round 2 as N5's follow-up, using git-worktree-registration instead of directory
+presence to decide "vanished mid-walk") is confirmed genuinely fixed, not just claimed.
+**M3's ORIGINAL finding is closed** — the containment check now resolves symlinks instead of
+trusting the nominal path. What is NOT closed is a follow-on TOCTOU in that same fix — see the
+seeded residual in "High-yield focus" above, this round's primary task.
+Ownership predicates, `createdToken` unforgeability, `--force`-answers-dirtiness-only, the raw
+primitive inventory, and 4×-concurrent-`remove`/`remove`-vs-`reconcile`/`prune`-vs-`add` race
+combinations were all re-derived/re-driven by round 2 and hold — do not re-litigate these
+specifically either.
+
 **Round 1 (`opus-medium-r1`), independently verified by the orchestrator from a cold state**: 7
 findings (0 BLOCKING, 0 MEDIUM, 3 LOW, 4 NIT) — all doc/message drift the gitexec migration left
 behind, all fixed, 8 commits. Independent verification re-ran build/vet/test and live-integration
@@ -232,13 +255,13 @@ source of truth.
   unless you find a real polling consumer that doesn't exist today.
 
 ## Round context seeded from prior-round verification
-See "High-yield focus" above for the primary target (the destruction chokepoint) and the residual
-(the `unwire`/`.lyx` race) — both are stated there in full rather than repeated here. Do a
-genuinely adversarial pass weighted toward the chokepoint, but do not skip the rest of the module:
-an unrelated defect is just as real a finding, and this campaign has now had two consecutive
-rounds find zero BLOCKING/MEDIUM findings outside doc drift — if that pattern holds a third time
-it is itself useful evidence for the eventual convergence verdict, but it is not evidence to
-relax how hard you look.
+See "High-yield focus" above for the primary target (the destruction chokepoint, and specifically
+the CONFIRMED, still-open containment TOCTOU) — stated there in full rather than repeated here.
+Do a genuinely adversarial pass weighted toward the chokepoint, but do not skip the rest of the
+module: an unrelated defect is just as real a finding. Unlike round 2's seed, this campaign no
+longer has a "two consecutive clean rounds" pattern to lean on outside the chokepoint — round 2
+found real MEDIUM findings both inside (M3) and outside (M1, M2) `destroy.go`, so treat the rest
+of the module as live hunting ground too, not just the gate.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the
 gate; an N×-concurrent suite is a diagnostic amplifier, not a merge blocker on its own — but a
@@ -309,8 +332,12 @@ something you cannot do alone this round. Even then say so explicitly, with the 
 in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these (after your own pass)
-None deferred from round 1 (it fixed everything it found). The seeded residual above is new work,
-not a re-evaluation of something previously deferred.
+None deferred from round 2 — it fixed everything it found (12/12), and it self-caught and
+re-fixed its own mid-round regression rather than leaving it. The seeded residual above (the
+containment TOCTOU) is not a "deferred" item in the usual sense either — it was never found by a
+round's own review at all, only by the orchestrator's independent verification of round 2's fix.
+Treat it as this round's primary Job-1 finding to reproduce and root-cause-confirm yourself, not
+as something to merely re-evaluate.
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
