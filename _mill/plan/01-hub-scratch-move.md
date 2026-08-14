@@ -45,6 +45,7 @@ That package is already the directory's dominant convention (71 external test fi
   - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/fabricengine/reconcile.go`
+  - `internal/fabricengine/bolt.go`
   - `internal/fabriccli/clone.go`
   - `internal/lyxdirs/dirs.go`
   - `CONSTRAINTS.md`
@@ -62,7 +63,28 @@ That package is already the directory's dominant convention (71 external test fi
   Do not seed excludes on the warp side and do not touch `wireBoardLink` or its call site in this card.
 - **Commit:** `refactor(fabricengine): create hub scratch at <hub>/_board/.lyx after the board worktree`
 
-### Card 3: Re-point `reedengine.HubLogsDir` at the board-anchored path
+### Card 3: Break the test-binary import cycle in `clone_test.go`
+
+- **Context:**
+  - `internal/fabricengine/testmain_test.go`
+  - `internal/fabricengine/junctionnames.go`
+- **Edits:**
+  - `internal/fabricengine/clone_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Remove `TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` and its doc comment from `internal/fabricengine/clone_test.go` entirely — card 8 re-creates it in an external test package.
+  Remove the `github.com/Knatte18/loomyard/internal/reedengine` import from this file's import block, and the `github.com/Knatte18/loomyard/internal/lyxcwd` import if that test was its only user.
+  After this card `clone_test.go` must import `reedengine` nowhere;
+  that absence is what keeps card 4's production `reedengine → fabricengine` edge legal, since this file is `package fabricengine` and its imports compile into the `fabricengine` test binary.
+  This card must land **before** card 4, not after: the moment `reedengine` imports `fabricengine` while `clone_test.go` still imports `reedengine`, `go test ./internal/fabricengine/...` fails to compile with "import cycle not allowed in test", so any intermediate commit in the other order is broken.
+  The idempotency test is absent from the tree between this card and card 8, which re-creates it in an external test package;
+  that gap is deliberate and closes inside this same batch.
+  Update `TestCloneHub_CreatesHubDotLyx`: rename it to `TestCloneHub_CreatesHubScratchDir`, change its assertion target from `filepath.Join(res.HubPath, lyxdirs.DotLyxDirName)` to `HubScratchDir(res.HubPath)`, and rewrite its doc comment — the directory is now the hub-wide ephemeral sibling of `<hub>/_board/_lyx`, created after the board worktree exists, still a real directory rather than a junction.
+  Update the file's own header comment, which says the file covers "CloneHub's hub-level `<hub>/.lyx` materialisation".
+- **Commit:** `test(fabricengine): drop reedengine import from in-package clone_test`
+
+### Card 4: Re-point `reedengine.HubLogsDir` at the board-anchored path
 
 - **Context:**
   - `internal/fabricengine/junctionnames.go`
@@ -75,7 +97,8 @@ That package is already the directory's dominant convention (71 external test fi
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Change `HubLogsDir` in `internal/reedengine/lifecycle.go` to return `filepath.Join(fabricengine.HubScratchDir(l.HubPath), "logs")`, adding the `github.com/Knatte18/loomyard/internal/fabricengine` import.
+- **Requirements:** Card 3 must already have landed before this card starts — this is the card that introduces the `reedengine → fabricengine` production edge, and it does not compile against a `clone_test.go` that still imports `reedengine`.
+  Change `HubLogsDir` in `internal/reedengine/lifecycle.go` to return `filepath.Join(fabricengine.HubScratchDir(l.HubPath), "logs")`, adding the `github.com/Knatte18/loomyard/internal/fabricengine` import.
   Drop the now-unused `lyxdirs` import only if no other reference to it survives in that file — `stateDir()` still uses `lyxdirs.DotLyxDirName` and must not change, so the import stays.
   Rewrite `HubLogsDir`'s doc comment: it is still hub-anchored (one server per hub, one deterministic place) but now lives under the hub-wide `<hub>/_board/.lyx` scratch tree obtained from `fabricengine.HubScratchDir`, never derived here.
   Update the two inline comments in this file reading "its own cwd is the hub's `.lyx/logs` dir" — one in the `Down` teardown branch, one in the pane-reap comment below it — to name `<hub>/_board/.lyx/logs`.
@@ -84,7 +107,7 @@ That package is already the directory's dominant convention (71 external test fi
   Do not change the `os.MkdirAll(logsDir, 0o755)` call in the boot path — it stays and is what the idempotency test in card 8 pins.
 - **Commit:** `refactor(reedengine): anchor HubLogsDir on fabricengine.HubScratchDir`
 
-### Card 4: Update reed's user-visible help and smoke-test prose
+### Card 5: Update reed's user-visible help and smoke-test prose
 
 - **Context:**
   - `internal/reedengine/lifecycle.go`
@@ -101,7 +124,7 @@ That package is already the directory's dominant convention (71 external test fi
   Change no assertion in the smoke test — the smoke tests passing unchanged is itself the assertion that the move is transparent to reed.
 - **Commit:** `docs(reedcli): name <hub>/_board/.lyx/logs in up help and smoke header`
 
-### Card 5: Fold away `hubSlugReservedNames()`
+### Card 6: Fold away `hubSlugReservedNames()`
 
 - **Context:**
   - `internal/fabricengine/structuraldirs_test.go`
@@ -119,7 +142,7 @@ That package is already the directory's dominant convention (71 external test fi
   This must be behaviour-preserving: `.lyx` stays refused as a slug because `structuralNeverCommittedDirs` is `[]string{lyxdirs.DotLyxDirName}` and `IsReservedHubName` already checks that set.
 - **Commit:** `refactor(fabricengine): fold hubSlugReservedNames into HubReservedNames`
 
-### Card 6: Prove the slug reservation survives the fold
+### Card 7: Prove the slug reservation survives the fold
 
 - **Context:**
   - `internal/fabricengine/junctionnames.go`
@@ -131,30 +154,12 @@ That package is already the directory's dominant convention (71 external test fi
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/fabricengine/structuraldirs_test.go`, add a test asserting `slugReservedNames(Config{Pathspec: "_extra"})` contains `lyxdirs.DotLyxDirName` exactly once, sourced from `structuralNeverCommittedDirs`.
-  Write this assertion before card 5's fold is applied if implementing TDD-first, so the removal is proven behaviour-preserving rather than assumed;
+  Write this assertion before card 6's fold is applied if implementing TDD-first, so the removal is proven behaviour-preserving rather than assumed;
   it must pass identically on both sides of the fold.
   Leave the existing `TestDeployedLyxPathspec_YieldsNoDuplicateLyx` and `TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens` cases unchanged.
   In `internal/fabricengine/junctionnames_test.go`, update the comment block above the "default pathspec union reserves exactly four names" subtest: the two sentences attributing `_board`/`_portals`/`_launchers` and `.lyx` to `hubSlugReservedNames()` must name `HubReservedNames()` and `structuralNeverCommittedDirs` respectively.
   The assertions in that subtest are unchanged.
 - **Commit:** `test(fabricengine): pin .lyx slug reservation on structuralNeverCommittedDirs`
-
-### Card 7: Break the test-binary import cycle in `clone_test.go`
-
-- **Context:**
-  - `internal/fabricengine/testmain_test.go`
-  - `internal/fabricengine/junctionnames.go`
-- **Edits:**
-  - `internal/fabricengine/clone_test.go`
-- **Creates:** none
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** Remove `TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx` and its doc comment from `internal/fabricengine/clone_test.go` entirely — card 8 re-creates it in an external test package.
-  Remove the `github.com/Knatte18/loomyard/internal/reedengine` import from this file's import block, and the `github.com/Knatte18/loomyard/internal/lyxcwd` import if that test was its only user.
-  After this card `clone_test.go` must import `reedengine` nowhere;
-  that absence is what keeps card 3's production `reedengine → fabricengine` edge legal, since this file is `package fabricengine` and its imports compile into the `fabricengine` test binary.
-  Update `TestCloneHub_CreatesHubDotLyx`: rename it to `TestCloneHub_CreatesHubScratchDir`, change its assertion target from `filepath.Join(res.HubPath, lyxdirs.DotLyxDirName)` to `HubScratchDir(res.HubPath)`, and rewrite its doc comment — the directory is now the hub-wide ephemeral sibling of `<hub>/_board/_lyx`, created after the board worktree exists, still a real directory rather than a junction.
-  Update the file's own header comment, which says the file covers "CloneHub's hub-level `<hub>/.lyx` materialisation".
-- **Commit:** `test(fabricengine): drop reedengine import from in-package clone_test`
 
 ### Card 8: New external-package coverage for `HubScratchDir` and reed idempotency
 
@@ -184,6 +189,7 @@ That package is already the directory's dominant convention (71 external test fi
 - **Context:**
   - `internal/fabricengine/clone.go`
   - `internal/fabricengine/weftgit.go`
+  - `internal/fabricengine/gitexclude.go`
   - `internal/fabricengine/junction_pattern_integration_test.go`
   - `internal/fabricengine/clone_adopt_test.go`
   - `internal/fabricengine/testmain_test.go`
@@ -209,6 +215,7 @@ That package is already the directory's dominant convention (71 external test fi
   - `internal/reedengine/lifecycle.go`
   - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/destroy.go`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `cmd/lyx/constructoranchoring_test.go`

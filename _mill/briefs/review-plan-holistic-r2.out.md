@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: Move <hub>/.lyx into <hub>/_board — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Sonnet 5 (claude-sonnet-5)
+reviewed_file: plan/
+date: 2026-08-14
+```
+
+## Findings
+
+### [BLOCKING:design] Batch 1 card order breaks fabricengine's test compile mid-batch
+**Location:** batch 1 (hub-scratch-move), cards 3 and 7
+**Issue:** Card 3 adds the production import edge `reedengine → fabricengine` (`HubLogsDir` now calls `fabricengine.HubScratchDir`). Card 7, which removes the `reedengine` import from `internal/fabricengine/clone_test.go` (an in-package `package fabricengine` test file) to close the resulting `fabricengine[test] → reedengine → fabricengine` cycle, comes four cards later. Between card 3's commit and card 7's commit, `clone_test.go` still imports `reedengine` while `reedengine` now imports `fabricengine`, so `go test ./internal/fabricengine/...` fails to compile with "import cycle not allowed in test." Verified: `clone_test.go` currently imports `reedengine` and calls `reedengine.HubLogsDir` in `TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx`, exactly the test card 7 removes.
+**Fix:** Move card 7's import-cycle-breaking edit (or all of card 7) to land no later than card 3 — e.g. resequence card 7 immediately after card 1 (its only real dependency is `HubScratchDir`), or fold card 7's mechanical change into card 3's own commit.
+
+### [BLOCKING:scope] Context omits files whose functions Requirements name
+**Location:** batch 1, cards 2, 9, 10
+**Issue:** Card 2's Requirements cite `Bolt.Commit`'s `commitWeftAt` path (`Bolt.Commit`/`NewBolt` are declared in `internal/fabricengine/bolt.go`), but `bolt.go` is not in card 2's `Context:`. Card 9's Requirements cite `mutateGitExclude`'s resolution behaviour (declared in `internal/fabricengine/gitexclude.go`), but `gitexclude.go` is not in card 9's `Context:` (it is correctly included in sibling cards 13 and 15). Card 10's Requirements cite `containedWorktreeAdd` and `createExclusiveDir` (both declared in `internal/fabricengine/destroy.go`), but `destroy.go` is not in card 10's `Context:`.
+**Fix:** Add `internal/fabricengine/bolt.go` to card 2's Context, `internal/fabricengine/gitexclude.go` to card 9's Context, and `internal/fabricengine/destroy.go` to card 10's Context.
+
+## Verdict
+
+REQUEST_CHANGES — a real intra-batch import-cycle window plus three Context-completeness gaps; both mechanical, low-risk fixes.
+MILL_REVIEW_END
