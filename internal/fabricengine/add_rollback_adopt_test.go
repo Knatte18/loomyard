@@ -17,6 +17,7 @@
 package fabricengine_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -173,6 +175,55 @@ func TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix(t *testing.T) {
 	// prefix, so it refuses deletion rather than risk deleting a user branch of the same name.
 	if !branchExistsAt(t, l.WorktreePath(), slug) {
 		t.Errorf("warp branch %q was deleted by rollback under an empty prefix; the gate must refuse to delete an unprovable bare-slug branch", slug)
+	}
+}
+
+// TestAddRollback_RefusedWarpBranchDeletionLogsWarn sabotage-proves the WARN log round 4 added:
+// TestAddRollback_WarpBranchLeftBehindUnderEmptyPrefix above only asserts the branch is left behind,
+// which is refusal behavior that predates the log line — reverting rollbackAdd's logger.Warn hunk
+// leaves that test green. This test captures the logger's stderr half and asserts the specific WARN
+// line actually fires when the gate refuses the bare-slug branch deletion, so a regression that drops
+// the log is caught rather than silently tolerated.
+//
+// It is deliberately NOT parallel: it rebinds the process-global logger sink via SetOutput, and Go
+// pauses t.Parallel() tests until the sequential ones finish, so a non-parallel test owns the sink for
+// its duration with no cross-talk from a concurrently-logging sibling.
+func TestAddRollback_RefusedWarpBranchDeletionLogsWarn(t *testing.T) {
+	const slug = "warn-on-refused-branch"
+	h := hubforge.NewHub(t, ".")
+	l := h.Location
+
+	// Deterministic post-creation failure: a blocker file at the portal makes createPortal fail after
+	// the warp worktree and its bare-slug branch already exist, triggering rollbackAdd.
+	portalLink := filepath.Join(fabricengine.PortalsDir(l), slug)
+	if err := os.MkdirAll(filepath.Dir(portalLink), 0o755); err != nil {
+		t.Fatalf("mkdir portal parent: %v", err)
+	}
+	if err := os.WriteFile(portalLink, []byte("blocker"), 0o644); err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+
+	// Capture the logger's stderr half for the duration of the Add.
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+
+	// Default empty branch_prefix: the warp branch is the bare slug the gate cannot prove is fabric's.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	if _, err := topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+		t.Fatalf("Add should have failed (portal blocker)")
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, "rollbackAdd's warp-branch deletion was refused by the destructive gate") {
+		t.Fatalf("expected a WARN line surfacing the refused bare-slug branch deletion; got logger output:\n%s", logged)
+	}
+	// The refusal names the branch and the check that refused, so the trace is actionable.
+	if !strings.Contains(logged, slug) {
+		t.Errorf("WARN line does not name the left-behind branch %q; got:\n%s", slug, logged)
+	}
+	if !strings.Contains(logged, "ownership") {
+		t.Errorf("WARN line does not name the ownership check as the refusal cause; got:\n%s", logged)
 	}
 }
 
