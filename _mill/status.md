@@ -60,7 +60,9 @@ batches:
     commit_sha: de09c60c3c4bf1ccf27ea1cb5efdbcbef9b20a59
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: diff-base-recovery
-    state: pending
+    state: running
+    implementer_session: 77fbd99c-765b-4979-808c-4d74ea6fc264
+    start_sha: b89ac310fc5e6ce23a825ab152c31e70c2d49663
     verify_baseline_failures: []
   - name: treadle-runtime-read
     state: pending
