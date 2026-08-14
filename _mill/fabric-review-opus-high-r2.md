@@ -91,6 +91,57 @@ Two extra observations from the same run, both findings of their own:
 - the same envelope carried `"partial":false` while `"mutations"` was non-empty and a pair
   had failed (finding M2).
 
+### Live substrate — chokepoint scenario 1: symlink-mediated containment bypass (`scratchpad/symlink_containment.sh`)
+
+The gate's containment check (`ancestors.go:20` `refuseUncontainedPath`) and the one
+lexical-only ownership kind (`destroy.go:475` `pathAtOrBelow`, used by
+`ownedUnderGeometryRoot`) both work on NOMINAL paths via `filepath.Rel` — no
+`filepath.EvalSymlinks` anywhere. So I planted a symlink at an intermediate segment of a
+gate target and drove the real CLI:
+
+```
+lyx fabric add t1                       -> <Hub>/_launchers/t1/{ide.sh,fabric-checkout.sh}
+rm -rf <Hub>/_launchers/t1
+ln -s <outside-the-hub>/VICTIM <Hub>/_launchers/t1
+lyx fabric remove t1 --force
+```
+
+Result — the gate DESTROYED two files outside the hub and reported success:
+
+```
+{"links_removed":3,"mutations":[ ...,
+  {"kind":"path_removed","target":"_launchers/t1/ide.sh","detail":"single"},
+  {"kind":"path_removed","target":"_launchers/t1/fabric-checkout.sh","detail":"single"},
+  {"kind":"path_removed","target":"_launchers/t1","detail":"single"}, ... ],
+ "ok":true,"partial":false,...}
+remove rc=0
+
+  ide.sh:             *** DESTROYED OUTSIDE CONTAINER ***
+  fabric-checkout.sh: *** DESTROYED OUTSIDE CONTAINER ***
+  unrelated.txt:      SURVIVED
+  victim dir itself:  SURVIVED
+```
+
+`unrelated.txt` and the victim directory survived only because `removeLaunchers` names
+exactly two files and then `os.Remove`s the directory entry (which removed the SYMLINK, not
+its target) — a bound on blast radius that comes from the launcher script list, not from
+anything the gate checked. See finding M3.
+
+### Re-derivation: `--force` satisfies dirtiness and nothing else
+
+Re-derived from source, not from the doc comment. `grep -rn "\.force"` over
+`internal/fabricengine/*.go` minus tests yields exactly two non-comment reads:
+`destroy.go:593` (inside `checkPathDirtiness`, where it makes the check PASS) and
+`destroy.go:692` (inside `removeGitWorktree`, where it appends `--force` to the git argv —
+not a check). The `Check` enum (`destroy.go:58-68`) has exactly three members and no
+`CheckForce`. **Claim holds.**
+
+### Re-derivation: `createdToken{` outside `destroy.go`
+
+`grep -rn -F 'createdToken{'` over production source: hits only in `destroy.go` (the two
+minters plus its own doc prose) and `doc.go` prose. **No same-package composite literal has
+snuck past the guard.**
+
 ## Findings
 
 ### M1 (MEDIUM, CONFIRMED) — a deployed `lyx` materialises a real warp-side `.lyx/logs`, permanently sticking `reconcile` after one `unwire`
@@ -122,7 +173,64 @@ alone would leave the hub just as stuck.
 
 ### M2 (MEDIUM, CONFIRMED) — `lyx fabric reconcile` reports `ok:true` / exit 0 / `partial:false` when a pair fails to repair
 
-Observed above. To be traced to its exact `file:line` before fixing.
+`internal/fabriccli/fabric.go:680-687` (`runReconcile`'s tail) always exits through
+`okWithRecord`. `ReconcilePairResult.Error` (`internal/fabricengine/reconcile.go:121-122`) is
+serialized into the `pairs` array and consulted by nothing else.
+
+Scenario (observed in the M1 run above): with the hub in the stuck state, `lyx fabric
+reconcile` printed
+`{"mutations":[...3 entries...],"ok":true,"pairs":[{...,"error":"re-point junction: adopt ..."}],"partial":false}`
+and exited **0**. A scripted caller — mill, an agent, a CI step — that checks `$?` or reads
+`ok` sees an unqualified success for a repair that did not happen. Worse, `"partial":false`
+is emitted in exactly the state `doc.go`'s own definition of `partial` says the key exists to
+name: "did this call leave the hub in a state some but not all of the intended change landed
+in" — mutations landed, one pair failed.
+
+Note this is NOT the documented carve-out: `runReconcile`'s doc comment explicitly exempts
+only the warp-binding backfill's commit/push ("a convenience repair may never downgrade a
+reconcile verdict"). A junction it failed to re-point is the verb's primary job, not a
+convenience.
+
+Fix: after the pair loop, if any pair carries a non-empty `Error`, emit through
+`output.ErrFields` (keeping the `pairs` array and `mutations` intact, adding `partial` =
+record-non-empty) so `ok` is false and the exit code is non-zero. `runPrune` has the same
+shape and is checked below.
+
+### M3 (MEDIUM, CONFIRMED) — the gate's containment check is lexical, so a symlinked intermediate segment lets a destructive primitive act outside its container
+
+`internal/fabricengine/ancestors.go:20-29` (`refuseUncontainedPath`) and
+`internal/fabricengine/destroy.go:475-484` (`pathAtOrBelow`, `ownedUnderGeometryRoot`'s
+predicate).
+
+Both compare NOMINAL paths through `filepath.Rel`. `destroy.go`'s own file header and its
+`pathRequest.container` field comment both say the target must "**resolve** strictly below its
+declared container" — the code never resolves anything. Reproduced live above: a symlink
+planted at `<Hub>/_launchers/<slug>` makes `removeLaunchers`' gated `removePath` delete
+`<somewhere-else>/ide.sh` and `<somewhere-else>/fabric-checkout.sh`, with `ok:true`, exit 0,
+and a `mutations` record naming hub-relative paths that were never the inodes removed — so
+the record's own commission guarantee ("every entry corresponds to a real, completed effect"
+at the named target) is violated too.
+
+`ownedUnderGeometryRoot` is the ONLY ownership kind with no independent resolved-path
+cross-check, which is why this site is the one that falls: `ownedRegisteredLinkedWorktree`
+and `ownedWarpCheckout` compare against git's own worktree registration (git records
+resolved paths, and `filepath.Clean` of a symlinked nominal path will not match it, so those
+sites refuse); `ownedWiredJunction` compares `fslink.RawTarget`; the two token kinds compare
+a gate-minted path.
+
+Blast radius today is bounded to the two launcher script names, and reachability requires a
+symlink planted inside fabric's own hub geometry — which no fabric code path creates. Hence
+MEDIUM, not BLOCKING. But it falsifies the property the chokepoint's own documentation calls
+the one thing `--force` can never override ("a containment failure — the class of defect that
+once destroyed an entire hub — can never be overridden by a flag"): it can be bypassed
+without a flag at all.
+
+Fix: resolve both sides consistently before comparing — `filepath.EvalSymlinks` the
+container, and resolve the target by walking up to its deepest EXISTING ancestor, resolving
+that, and re-appending the remaining components (so an absent target and a target that is
+itself a symlink both still work, and a hub path that legitimately contains a symlinked
+ancestor is not falsely refused). Apply it in `refuseUncontainedPath` (which every gated
+path request runs) and in `pathAtOrBelow`.
 
 ### L4 (LOW, CONFIRMED) — `lyx fabric clone` succeeds against a warp remote whose HEAD names a nonexistent branch
 
