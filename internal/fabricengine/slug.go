@@ -1,9 +1,11 @@
 // slug.go holds the single worktree-slug validator every topology verb that takes a slug shares.
 // It lives in its own file because the rule binds both directions of the pair lifecycle: Add must
 // refuse a slug that would create a booby-trapped pair, and Remove must refuse the same names for
-// the stronger reason that they already exist as hub geometry — `<Hub>/_board`, `<Hub>/.lyx`, and
-// the weft siblings are real directories a teardown verb handed one of those names would otherwise
-// walk straight into.
+// the stronger reason that they already exist as hub geometry — `<Hub>/_board` and the weft siblings
+// are real directories a teardown verb handed one of those names would otherwise walk straight into.
+// `.lyx` is refused for a different reason: it is not hub geometry at all, but a worktree slug of
+// that name is barred via structuralNeverCommittedDirs, the same structural-reservation set that
+// keeps it out of every slug regardless of what a repo's fabric.yaml configures.
 // The same rule bars the relative path elements `.` and `..`, which name no reserved directory and
 // carry no separator yet resolve, once joined onto hub geometry, onto the hub itself.
 
