@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-stencil-cli
+phase: approved-reed-rename-and-docs
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-diff-base-recovery  '2026-08-14T12:19:41Z'
 approved-treadle-runtime-read  '2026-08-14T12:32:23Z'
 approved-webster-runtime-read  '2026-08-14T12:42:27Z'
 approved-stencil-cli  '2026-08-14T13:00:37Z'
+approved-reed-rename-and-docs  '2026-08-14T13:07:48Z'
 ```
 
 ## Batches
@@ -88,8 +89,9 @@ batches:
     commit_sha: a2c2becb05212ad8cfe34ffa9f20d1983c1f99b7
     verify_baseline_failures: ["FAIL\t./internal/stencilcli/... [setup failed]"]
   - name: reed-rename-and-docs
-    state: running
+    state: approved
     implementer_session: a1c0df87-2bee-4fb7-8790-7fc379bb28ed
     start_sha: 9eb3370b197ae3704e41393d9556321154661ce5
+    commit_sha: 23443700b96e489f53b8529b37cd1163c7f23b1c
     verify_baseline_failures: []
 ```
