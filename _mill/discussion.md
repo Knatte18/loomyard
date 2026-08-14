@@ -190,6 +190,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   The moment worktree A promotes an edit and deploys, every other task worktree's older source differs from the shared board copy through no fault of its own — and concurrent task worktrees are the normal mode of work in this repo, not an edge case.
   Distinguishing "unported edit" from "another worktree moved ahead" would require asking whether the board body appears anywhere in the source's reachable history, which is far more work than the signal is worth.
   Accepted blast radius, stated plainly: the drift warning can fire in a worktree that changed nothing, and that is tolerable precisely because it only prints.
+  In a repo with no `stencils/` source tree — every consumer repo — the warning is skipped silently, since there is nothing to port back to.
+  It is the one member of this trio that stays quiet rather than erroring: `promote` and `diff --all` are explicit operator requests and must say why they cannot run, while the warning is unsolicited and would otherwise fire on every run in every consumer repo forever.
 - **No git hook.**
   An earlier draft put this check in a loomyard-only `pre-commit` hook.
   Rejected on measurement and on entanglement.
@@ -231,8 +233,16 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 ### seeding-trigger
 
-- Decision: seeding and refresh happen automatically on every lyx run that needs a stencil, and the resulting board write is committed through `Bolt` like any other board write.
-  `lyx stencil sync` exists to force the same operation on demand, but is never the only way it happens.
+- Decision: seeding and refresh run **once per process, at a named composition point** — `cmd/lyx`'s root pre-run — never lazily inside `stencilstore.Read`.
+  `lyx stencil sync` forces the same pass on demand, but is never the only way it happens.
+- **The split that makes this work, and the import direction it fixes.**
+  `stencilstore` writes files and nothing else: a `Reconcile(baseDir, registry)` pass applies the edit-detection table and returns the list of paths it actually wrote.
+  The composition root hands that list to the `board.lock`-taking `fabricengine` commit verb.
+  `stencilstore` therefore never imports `fabricengine`, and `stencilstore.Read` stays a pure file read.
+  This is load-bearing, not tidiness: if the pass ran lazily inside `Read`, treadle's read — which happens deep inside `runJudgeCall` in `judge.go`/`targeting.go` — would drag `fabricengine` onto treadle's stack, which is exactly what the Runner-Seam allowlist amendment is being justified against.
+  Running it at the root instead means treadle's dependency really is one file-reading package.
+- Root pre-run resolves no hub for commands that do not have one (`lyx fabric clone` and friends), so the pass is skipped there rather than failing.
+  That is not in tension with `missing-board-is-a-hard-error`: the hard error belongs to the producer read path, where a stencil is genuinely required.
 - **A `-dev` build seeds absent files but never refreshes an untouched one.**
   The repo deliberately keeps two binaries with different embedded defaults (Dev/Prod Binary Separation;
   `tools/deploy -dev` builds into `.dev-bin`).
@@ -428,6 +438,9 @@ From `CONSTRAINTS.md`:
   `cmd/lyx/helptree_test.go`, `registration_test.go`, `longlist_test.go`, `drift_test.go`, and `seamsignature_test.go` all react to a new module.
   The invariant's own text hardcodes the seam counts — "eleven seam modules" and "ten of the eleven" carrying `RunCLIIn` — so adding `stencil` makes those twelve and eleven, and that edit belongs in the same commit as the rest.
   `stencil` carries `RunCLIIn`, since it reads geometry.
+  **Named deviation from the package-naming rule**, to be recorded in the same CONSTRAINTS bullet: the invariant pairs `<module>cli` with a `<module>engine` kernel, but `stencilcli`'s kernel is `internal/stencilstore`, not `stencilengine`.
+  Reason: `internal/stencil` already holds the singular name and top-level `stencils` holds the plural, so a third near-homograph would make three packages one character apart, and `stencilstore` says what the package actually is.
+  This is a deviation with a reason, not an oversight, and the CONSTRAINTS bullet must say so rather than leaving the next reader to find a rule apparently broken.
 - **Sandbox Suite Coverage** — resolved rather than restated: a `**Covers:** stencil` scenario is added to `tools/sandbox/SANDBOX-CORE-SUITE.md`, not an `excludedModules` row.
   `list` and `validate` are read-only and trivially black-box exercisable, so none of the three existing exclusion reasons (interactive stdin, real GitHub writes, external binary on `$PATH`) applies here.
   `cmd/lyx/sandbox_coverage_test.go` fails without one or the other.
@@ -446,6 +459,10 @@ From `CONSTRAINTS.md`:
   Seeding under `Bolt.Sync` would therefore not exclude a concurrent `boardCriticalSection` mid-render, and `Bolt.Commit`'s stage-all could capture a half-written board.
   An earlier draft of this document named `Bolt.Sync` and was wrong.
   Instead: a new verb in `internal/fabricengine` acquires `board.lock` and commits the stencils subtree with an explicit positive pathspec via `gitrepo.StageAndCommit`, never stage-all.
+  **It commits only and does not push.**
+  Pushing per run would fire a push on nearly every lyx invocation;
+  the commit rides board's next push through the existing coalescing path instead.
+  Residual risk the plan must confirm rather than assume: two hubs seeding independently produce identical *content* (the bytes are deterministic from the binary) but distinct commits, so the plan must verify board's existing push path tolerates that the same way it already tolerates any other independently-made board commit.
   The `board.lock` filename becomes single-declarer in `internal/fabricengine` (which already owns the board directory) with `internal/boardengine` aliasing it rather than re-declaring the literal — the same shape fabric's clone-time guard already uses for the anchor-marker names.
   It is unexported inside `boardengine` today, so it is not reachable from a new package without this move.
 - **Mutation Record Invariant** — the new `fabricengine` seeding verb is a mutating fabric verb, so it takes a `rec *Mutations` parameter, appends after each primitive observably changes state, and its result type embeds `MutationRecord`.
@@ -511,6 +528,12 @@ Assert the seeding commit carries a positive pathspec covering only the stencils
 
 **Dev/prod seeding.** Assert that a `-dev`-stamped build leaves an untouched file whose content differs from its own embedded default byte-identical on disk, and that a production build overwrites the same file.
 Without both directions the thrash reappears silently.
+Assert separately that an explicit `lyx stencil sync` from a `-dev`-stamped build *does* perform the refresh — the decided exception, and the one a naive reading of the skip rule would implement backwards.
+
+**Trigger site.** Assert the reconcile pass runs once at the root pre-run rather than per read, and that a command with no resolvable hub skips it instead of failing.
+The import direction is worth a guard of its own: `internal/stencilstore` must not import `internal/fabricengine`, since a lazy-read implementation would satisfy every behavioural test above while quietly putting `fabricengine` on treadle's stack.
+
+**Drift warning in a consumer repo.** Assert it is silent when no `stencils/` source tree exists, in contrast to `promote`/`diff --all`, which error.
 
 **Non-loomyard CLI.** Assert `promote` and `diff --all` error, rather than no-op or create a directory, when no `stencils/` source tree is present.
 
@@ -564,4 +587,7 @@ This is the one that silently disables the entire mechanism on a Windows checkou
 - **Q:** What happens to the hashes on a machine with `core.autocrlf=true`? **A:** Without a rule, every stencil is classified human-edited forever and never refreshed. Hashing is over an LF-normalised body, the board's stencils tree is seeded with its own `.gitattributes`, and loomyard's `.gitattributes` gains the 15 new paths and loses the 8 stale ones.
 - **Q:** Who owns the name → default registry, given typed vars rather than an `embed.FS`? **A:** The `stencils` package itself, beside the vars, consumed only by `stencilstore`. A test asserts registry and `.md` tree match in both directions, so a hand-maintained map cannot silently omit a file.
 - **Q:** Sandbox coverage — scenario or exclusion? **A:** A `**Covers:** stencil` scenario in `SANDBOX-CORE-SUITE.md`. None of the three existing exclusion reasons applies to a read-only `list`/`validate`.
+- **Q:** Where does the seed/refresh pass actually run? **A:** Once per process at `cmd/lyx`'s root pre-run, never lazily inside `Read`. A lazy pass would put `fabricengine` on treadle's stack via `runJudgeCall`, defeating the very allowlist amendment it is justified against. `stencilstore` writes files and returns the list; the composition root hands that to the `fabricengine` commit verb.
+- **Q:** Does the seeding verb push? **A:** No — it commits only and rides board's next push. Pushing per run would fire on nearly every invocation.
+- **Q:** `lyx stencil`'s kernel is `stencilstore`, not `stencilengine`. Doesn't that break the CLI/Cobra naming rule? **A:** Yes, and it is recorded as a named deviation in the same CONSTRAINTS bullet. `stencilengine` would be a third package one character from `internal/stencil` and top-level `stencils`.
 - **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) plus a run-time `logger.Warn` on drift. CI cannot be the guard, since a CI runner has no access to the operator's hub.
