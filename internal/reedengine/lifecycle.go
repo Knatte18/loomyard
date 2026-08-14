@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -28,11 +29,11 @@ import (
 
 // HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
 // writes its runtime log.
-// It is hub-anchored so one server per hub resolves to one deterministic place.
-// It lives under the ephemeral .lyx directory;
-// server logs are runtime artifacts, never fabric-synced.
+// It is hub-anchored so one server per hub resolves to one deterministic place, and now lives under
+// the hub-wide <hub>/_board/.lyx scratch tree obtained from fabricengine.HubScratchDir — never
+// derived here (the told-never-derives rule fabricengine.HubScratchDir's own comment states).
 func HubLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.HubPath, lyxdirs.DotLyxDirName, "logs")
+	return filepath.Join(fabricengine.HubScratchDir(l.HubPath), "logs")
 }
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
@@ -744,7 +745,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// list-sessions means the socket-holder is unreachable — a zombie
 		// server cannot be hosting healthy sibling sessions, so it is torn
 		// down too rather than left squatting on the socket (the server's
-		// own cwd is the hub's .lyx/logs dir, not this worktree, since the
+		// own cwd is the hub's _board/.lyx/logs dir, not this worktree, since the
 		// debug-logging batch — the same sessionless-holder reasoning the
 		// pre-boot check applies regardless).
 		var serverErr error
@@ -769,7 +770,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// timeout and aborted down BEFORE this reap under CPU saturation,
 		// leaking pane children that kept the worktree directory busy (the
 		// server itself no longer holds a worktree busy since the
-		// debug-logging batch — its own cwd is now the hub's .lyx/logs dir,
+		// debug-logging batch — its own cwd is now the hub's _board/.lyx/logs dir,
 		// not this worktree — though a lingering server process is still its
 		// own leak worth reaping). kill-session / kill-server terminate pane
 		// children asynchronously, so force-kill any that outlive the

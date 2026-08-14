@@ -14,8 +14,8 @@
 // filepath.Join computed independently in this file.
 // For the subpath-anchored fixture, every worktree-level constructor -- the _lyx-durable group and
 // the .lyx group alike -- moves down by AnchorRel, since this batch re-anchors the whole .lyx group
-// onto AnchorPath; only reedengine.HubLogsDir (HubPath-anchored, one server per hub) stays
-// byte-identical.
+// onto AnchorPath; only reedengine.HubLogsDir (hub-anchored through the board, one server per hub)
+// stays byte-identical.
 //
 // As of this batch there are two groups, not three: the _lyx-durable group, and the .lyx group in
 // full (loomengine.LoomStatusLock, websterengine.PromptsDir/ScratchDir,
@@ -91,9 +91,9 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
 	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
-	// HubPath-anchored: HubLogsDir alone, so one reed server per hub
+	// HubPath-anchored through the board: HubLogsDir alone, so one reed server per hub
 	// resolves to one deterministic place.
-	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, ".lyx", "logs"))
+	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, "_board", ".lyx", "logs"))
 }
 
 // TestConstructorAnchoring_SubpathAnchored asserts the anchor-aware move: every worktree-level
@@ -140,8 +140,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
 	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
-	// HubPath-anchored: stays byte-identical, ignoring AnchorRel entirely.
-	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, ".lyx", "logs"))
+	// Hub-anchored through the board: stays byte-identical, ignoring AnchorRel entirely.
+	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, "_board", ".lyx", "logs"))
 
 	// Regression guard for the two-roots bug this whole re-anchoring exists
 	// to remove: every worktree-level .lyx constructor's result must have

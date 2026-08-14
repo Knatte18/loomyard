@@ -104,7 +104,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 // directory rather than the worktree root.
 // On a subpath-anchored hub the root holds no junction at all — every one of them sits at
 // <worktree>/<anchorRel> — so a root sweep saw nothing, left the links behind, and reported
-// LinksRemoved: 0 while three junctions existed one directory down.
+// LinksRemoved: 0 while two junctions existed one directory down.
 func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	t.Setenv("WEFT_SKIP_PUSH", "1")
 
@@ -143,11 +143,11 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	// Exactly the two wired junctions (_lyx, .lyx) plus the _board convenience link — an exact
-	// count, not merely non-zero: the _board link is removed on a separate path and contributes 1
-	// on its own, so a non-zero assertion stayed green with the anchored sweep entirely disabled.
-	if result.LinksRemoved != 3 {
-		t.Errorf("LinksRemoved = %d; want 3 (_lyx, .lyx, _board at the anchored directory)", result.LinksRemoved)
+	// Exactly the two wired junctions (_lyx, .lyx) — an exact count, not merely non-zero: with the
+	// _board special case gone, the anchored sweep is the sole contributor to LinksRemoved, so an
+	// exact count is what proves the sweep ran at all.
+	if result.LinksRemoved != 2 {
+		t.Errorf("LinksRemoved = %d; want 2 (_lyx, .lyx at the anchored directory)", result.LinksRemoved)
 	}
 }
 

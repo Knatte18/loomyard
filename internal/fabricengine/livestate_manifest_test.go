@@ -93,9 +93,9 @@ type Manifest map[string]Entry
 // answers the question uniformly for a POSIX symlink and a Windows junction alike.
 // This rule is load-bearing, not an optimisation.
 // Fabric's wired junctions carry absolute targets that point back inside the same hub — warp/_lyx to
-// the hub's weft-side _lyx, warp/.lyx likewise, warp/_board to the hub's _board — so a walk that
-// descended through a junction would record the weft sibling's contents twice: once under its own
-// path, and again under every warp junction chaining into it.
+// the hub's weft-side _lyx, warp/.lyx likewise — so a walk that descended through a junction would
+// record the weft sibling's contents twice: once under its own path, and again under every warp
+// junction chaining into it.
 // Every legitimate weft-side change would then surface as an unpermitted mutation under a warp key,
 // while a permit root written against a warp path would silently license weft destruction.
 // The link's identity is fully captured by its kind plus its raw one-hop target; whatever the target

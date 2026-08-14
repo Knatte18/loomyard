@@ -63,11 +63,11 @@ func pathspecNames(cfg Config) []string {
 }
 
 // slugReservedNames returns the full slug-reservation set for cfg: both structural directory sets
-// unioned with cfg.Dirs() taken raw (unfiltered by filterHubReserved) and hubSlugReservedNames().
+// unioned with cfg.Dirs() taken raw (unfiltered by filterHubReserved) and HubReservedNames().
 // cfg.Dirs() is taken raw, not routing-filtered, because a worktree slug must be refused for every
 // one of these names regardless of whether that name would actually wire a junction.
 func slugReservedNames(cfg Config) []string {
-	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, cfg.Dirs(), hubSlugReservedNames())
+	return dedupUnion(structuralCommittedDirs, structuralNeverCommittedDirs, cfg.Dirs(), HubReservedNames())
 }
 
 // PathspecNames loads the fabric config at baseDir and returns its pathspec/commit-routing set (see
@@ -127,6 +127,15 @@ func StencilsDir(hub string) string {
 	return filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)
 }
 
+// HubScratchDir returns the hub-wide, machine-local scratch tree shared by every worktree in the hub:
+// <hub>/_board/.lyx.
+// It is the ephemeral sibling of StencilsDir's durable <hub>/_board/_lyx tree, is always a real
+// directory and never a junction, and is the sole constructor of this path — see StencilsDir's own
+// told-never-derives comment for the pattern this follows.
+func HubScratchDir(hub string) string {
+	return filepath.Join(BoardDir(hub), lyxdirs.DotLyxDirName)
+}
+
 // HubPath returns the absolute path to the hub container directory for the given repo name inside
 // parent.
 func HubPath(parent, name string) string {
@@ -150,28 +159,17 @@ func HubReservedNames() []string {
 	return []string{BoardDirName, portalsDirName, launchersDirName}
 }
 
-// hubSlugReservedNames returns the slug-reservation set: names a worktree slug may never claim.
-// It is HubReservedNames() with lyxdirs.DotLyxDirName appended — `.lyx` is included because a
-// worktree named `.lyx` would collide with the hub-level `<hub>/.lyx` batch 8 recognises.
-// The returned slice is freshly allocated on every call, never a mutation of HubReservedNames()'s
-// own backing array.
-func hubSlugReservedNames() []string {
-	base := HubReservedNames()
-	names := make([]string, 0, len(base)+1)
-	names = append(names, base...)
-	names = append(names, lyxdirs.DotLyxDirName)
-	return names
-}
-
 // IsReservedHubName reports whether name is one of the hub-level entry names a worktree slug must
-// never claim: hubSlugReservedNames() (HubReservedNames() plus `.lyx`) UNION structuralCommittedDirs
-// UNION structuralNeverCommittedDirs UNION the caller-supplied junctionNames (the weft-backed
-// junction name-set injected from fabric config).
+// never claim: HubReservedNames() UNION structuralCommittedDirs UNION structuralNeverCommittedDirs
+// UNION the caller-supplied junctionNames (the weft-backed junction name-set injected from fabric
+// config).
+// `.lyx` is refused via structuralNeverCommittedDirs, not via HubReservedNames() — see that
+// function's own doc comment for why `.lyx` is deliberately excluded from it.
 // Folding in both structural sets directly means Topology.Add's existing
 // IsReservedHubName(slug, t.cfg.Dirs()) call site needs no change and still refuses `_lyx` and `.lyx`
 // even for a config naming neither.
 func IsReservedHubName(name string, junctionNames []string) bool {
-	for _, reserved := range hubSlugReservedNames() {
+	for _, reserved := range HubReservedNames() {
 		if name == reserved {
 			return true
 		}

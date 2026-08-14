@@ -101,14 +101,6 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 			linksRemoved = len(ownedNames)
 		}
 	}
-	boardRemoved, boardErr := unwireBoardLink(rec, l, slug)
-	if err := surfaceRefusal(boardErr); err != nil {
-		return RemoveResult{}, err
-	}
-	if boardErr == nil && boardRemoved {
-		linksRemoved++
-	}
-
 	if err := removeWarpWorktreeDir(rec, l, target, force); err != nil {
 		return RemoveResult{}, err
 	}

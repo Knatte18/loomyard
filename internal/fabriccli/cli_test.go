@@ -764,37 +764,6 @@ func TestRunCLI_ReconcileBackfillFailureIsNonFatal(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Unwire_ReportsBoardJunctionRemoval pins the unwire envelope's
-// board_junction_removed key at the CLI boundary: the _board link is a named special case outside
-// the pathspec-derived sweep, so its removal can never appear in junctions_removed — a CLI envelope
-// without its own key silently hid that the link was torn down.
-func TestRunCLI_Unwire_ReportsBoardJunctionRemoval(t *testing.T) {
-	h := hubforge.NewHub(t, ".")
-	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
-
-	// The operator-convenience _board link is already wired by fabriccli.CloneAndWire as part of
-	// building h -- unlike the old fixture, no manual fslink.CreateDirLink is needed here.
-	boardLink := filepath.Join(h.PrimeWorktree(), fabricengine.BoardDirName)
-
-	var out bytes.Buffer
-	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"unwire"})
-	if exitCode != 0 {
-		t.Fatalf("RunCLI(unwire) = %d; want 0\noutput: %s", exitCode, out.String())
-	}
-
-	result := decodeResult(t, &out)
-	removed, present := result["board_junction_removed"].(bool)
-	if !present {
-		t.Fatalf("RunCLI(unwire) output missing 'board_junction_removed' key; got %v", result)
-	}
-	if !removed {
-		t.Errorf("RunCLI(unwire) board_junction_removed = false; want true (the link was present and must be reported removed)")
-	}
-	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
-		t.Errorf("board link %s still exists after unwire", boardLink)
-	}
-}
-
 // TestRunCLI_WeftSiblingNonAnchoredCwd_GetsWeftRefusal pins the refusal an operator sees from a
 // weft sibling's NON-anchored directory on a subpath-anchored hub: the specific
 // weft-sibling message, never the generic cwd-gate error — which names the weft's own anchored
@@ -881,45 +850,57 @@ func TestRunCLI_ReadOnlyVerbsOmitMutationsKey(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject drives a real gate refusal through
-// "fabric unwire", reached via fabricengine.RefusalOf's own contract rather than a hand-rolled stub:
-// the _board link is hand-wired pointing at a directory OTHER than this hub's real board dir, so
-// unwireBoardLink's ownedWiredJunction ownership check refuses — its error propagates through
-// Unwire's %w-wrapped chain all the way to runUnwire's errWithRecord call. Asserts the "refusal"
-// object carries all four keys (check, what, target, reason), and that the flattened "error" string is
-// still present alongside it.
-func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T) {
+// TestRunCLI_Remove_RefusesDriftedPortalJunctionWithRefusalObject drives a real gate refusal through
+// "fabric remove --force", reached via fabricengine.RefusalOf's own contract rather than a
+// hand-rolled stub: the pair's portal link is hand-wired pointing at a directory OTHER than its real
+// portal target, so removePortal's ownedWiredJunction ownership check refuses — its error propagates
+// through Remove's %w-wrapped chain all the way to runRemove's errWithRecord call. Asserts the
+// "refusal" object carries all four keys (check, what, target, reason), and that the flattened
+// "error" string is still present alongside it.
+//
+// This is the repo's only positive assertion that the "refusal" object reaches an envelope
+// (envelope_test.go asserts only its absence), re-homed here from the deleted _board junction's own
+// unwire test onto the portal junction: removePortal builds
+// ownedWiredJunction([]string{PortalLink(l, slug)}, portalTarget(l, slug)), structurally identical to
+// the deleted unwireBoardLink's own gate, and Remove propagates the resulting *destructiveRefusal
+// through surfaceRefusal.
+func TestRunCLI_Remove_RefusesDriftedPortalJunctionWithRefusalObject(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: \"\"\n")
 
-	// The correct _board link is already wired by fabriccli.CloneAndWire as part of building h; drift
-	// it onto a WRONG target — anywhere other than the real board dir — so unwireBoardLink's ownership
-	// check (raw target must equal BoardDir(l.HubPath)) refuses.
-	wrongTarget := t.TempDir()
-	boardLink := filepath.Join(h.PrimeWorktree(), fabricengine.BoardDirName)
-	if err := fslink.Remove(boardLink); err != nil {
-		t.Fatalf("remove correctly-wired board link: %v", err)
+	const slug = "remove-refusal-portal"
+	var addOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &addOut, []string{"add", slug}); exitCode != 0 {
+		t.Fatalf("RunCLI(add) = %d; want 0\noutput: %s", exitCode, addOut.String())
 	}
-	if err := fslink.CreateDirLink(boardLink, wrongTarget); err != nil {
-		t.Fatalf("create drifted board link: %v", err)
+
+	// The correct portal link is already wired by "fabric add" above; drift it onto a WRONG target —
+	// anywhere other than its real portal target — so removePortal's ownership check refuses.
+	wrongTarget := t.TempDir()
+	portalLink := h.PairPortalLink(slug)
+	if err := fslink.Remove(portalLink); err != nil {
+		t.Fatalf("remove correctly-wired portal link: %v", err)
+	}
+	if err := fslink.CreateDirLink(portalLink, wrongTarget); err != nil {
+		t.Fatalf("create drifted portal link: %v", err)
 	}
 
 	var out bytes.Buffer
-	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"unwire"})
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"remove", "--force", slug})
 	if exitCode != 1 {
-		t.Fatalf("RunCLI(unwire) = %d; want 1 (a drifted board junction must be refused)\noutput: %s", exitCode, out.String())
+		t.Fatalf("RunCLI(remove) = %d; want 1 (a drifted portal junction must be refused)\noutput: %s", exitCode, out.String())
 	}
 
 	result := decodeResult(t, &out)
 	if ok, _ := result["ok"].(bool); ok {
-		t.Errorf("RunCLI(unwire) ok = true; want false")
+		t.Errorf("RunCLI(remove) ok = true; want false")
 	}
 	if errMsg, _ := result["error"].(string); errMsg == "" {
-		t.Errorf("RunCLI(unwire) output missing non-empty 'error'; want the flattened error string alongside the refusal object")
+		t.Errorf("RunCLI(remove) output missing non-empty 'error'; want the flattened error string alongside the refusal object")
 	}
 	refusal, ok := result["refusal"].(map[string]any)
 	if !ok {
-		t.Fatalf("RunCLI(unwire) output missing 'refusal' object; got %v", result)
+		t.Fatalf("RunCLI(remove) output missing 'refusal' object; got %v", result)
 	}
 	for _, key := range []string{"check", "what", "target", "reason"} {
 		val, present := refusal[key]
@@ -935,7 +916,7 @@ func TestRunCLI_Unwire_RefusesDriftedBoardJunctionWithRefusalObject(t *testing.T
 		t.Errorf("refusal[\"check\"] = %q; want %q", check, fabricengine.CheckOwnership)
 	}
 	if _, present := result["mutations"]; !present {
-		t.Errorf("RunCLI(unwire) output missing 'mutations' key on the failure path")
+		t.Errorf("RunCLI(remove) output missing 'mutations' key on the failure path")
 	}
 }
 

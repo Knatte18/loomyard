@@ -770,14 +770,18 @@ func claudeBinaryPath(t *testing.T) string {
 	return path
 }
 
-// materializeSibling clones h's warp bare origin into a second worktree alongside the primary hub
-// and seeds reed config into it.
+// materializeSibling clones h's warp bare origin into a second worktree inside the primary hub
+// directory and seeds reed config into it.
+// It clones to filepath.Join(h.Path, name), a direct child of the hub directory, matching
+// h.PrimeWorktree()'s own parentage — not filepath.Join(h.Container, name), which is the hub
+// directory's own parent and would give lyxcwd.Resolve a different HubPath for the sibling than
+// for the prime worktree, breaking the shared-per-hub-socket invariant the "sibling" name promises.
 // The clone is a plain repo, not a hub, so it stays on gitkit.SeedConfig rather than
 // hubforge.SeedConfig — the third, ad-hoc "sibling" resolution of the SeedConfig triage.
 func materializeSibling(t *testing.T, h *hubforge.Hub, name string) string {
 	t.Helper()
-	sibling := filepath.Join(h.Container, name)
-	gitkit.MustRun(t, h.Container, "git", "clone", h.WarpBare, sibling)
+	sibling := filepath.Join(h.Path, name)
+	gitkit.MustRun(t, h.Path, "git", "clone", h.WarpBare, sibling)
 	gitkit.MustRun(t, sibling, "git", "config", "user.email", "test@test.com")
 	gitkit.MustRun(t, sibling, "git", "config", "user.name", "Test")
 	gitkit.SeedConfig(t, sibling, map[string]string{

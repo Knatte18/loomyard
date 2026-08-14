@@ -30,7 +30,7 @@ Bringing strand content back after a server restart is "lyx reed resume"'s
 job, not up's.
 
 Setting debug_log in reed.yaml (or LYX_REED_DEBUG=1) enables server verbose
-logging to <hub>/.lyx/logs/, as forensics for unexplained server deaths; it
+logging to <hub>/_board/.lyx/logs/, as forensics for unexplained server deaths; it
 applies only when this up actually boots the shared per-hub server, and
 existing hubs need "lyx config reconcile" after upgrading to adopt the key.
 

@@ -1,5 +1,5 @@
 // clone_test.go — unit tests for URL-derivation helpers, cloneRepo's error path, and CloneHub's
-// hub-level <hub>/.lyx materialisation.
+// hub-scratch materialisation at <hub>/_board/.lyx.
 
 package fabricengine
 
@@ -10,9 +10,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 func TestDeriveWarpName(t *testing.T) {
@@ -111,11 +108,11 @@ func initTinyRepo(t *testing.T, dir string) {
 	gitkit.MustRun(t, dir, "git", "commit", "-m", "init")
 }
 
-// TestCloneHub_CreatesHubDotLyx asserts that CloneHub's hub-materialisation step creates <hub>/.lyx:
-// a fabric-recognised hub-level geometry element alongside <hub>/_board, a real directory rather than
-// a junction, since the hub itself is not a git repo and has nothing to exclude and no weft to point
-// at.
-func TestCloneHub_CreatesHubDotLyx(t *testing.T) {
+// TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates
+// HubScratchDir(res.HubPath) (<hub>/_board/.lyx): the hub-wide ephemeral sibling of
+// <hub>/_board/_lyx, created only after the board worktree exists, a real directory rather than a
+// junction.
+func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 	fixtures := t.TempDir()
 	warpSrc := filepath.Join(fixtures, "warp-src")
 	weftSrc := filepath.Join(fixtures, "weft-src")
@@ -137,33 +134,12 @@ func TestCloneHub_CreatesHubDotLyx(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
-	dotLyx := filepath.Join(res.HubPath, lyxdirs.DotLyxDirName)
-	info, statErr := os.Stat(dotLyx)
+	scratchDir := HubScratchDir(res.HubPath)
+	info, statErr := os.Stat(scratchDir)
 	if statErr != nil {
-		t.Fatalf("stat %s: %v; want CloneHub to have created it", dotLyx, statErr)
+		t.Fatalf("stat %s: %v; want CloneHub to have created it", scratchDir, statErr)
 	}
 	if !info.IsDir() {
-		t.Errorf("%s exists but is not a directory", dotLyx)
-	}
-}
-
-// TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx asserts the second half of card
-// 50's coverage: reedengine's own idempotent os.MkdirAll(HubLogsDir(...)) boot-path call still
-// succeeds, twice in a row, when <hub>/.lyx already exists as a real directory — the shape CloneHub
-// now produces. No import cycle exists between fabricengine and reedengine (verified: reedengine does
-// not depend on fabricengine), so this half lives here rather than in the integration file.
-func TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx(t *testing.T) {
-	hubPath := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(hubPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
-		t.Fatalf("mkdir <hub>/.lyx: %v", err)
-	}
-
-	l := &lyxcwd.Location{HubPath: hubPath}
-	logsDir := reedengine.HubLogsDir(l)
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		t.Fatalf("first MkdirAll(%s) = %v; want nil", logsDir, err)
-	}
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		t.Fatalf("second MkdirAll(%s) = %v; want nil (idempotent)", logsDir, err)
+		t.Errorf("%s exists but is not a directory", scratchDir)
 	}
 }

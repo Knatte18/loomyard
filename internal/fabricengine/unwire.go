@@ -13,11 +13,9 @@
 package fabricengine
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -37,13 +35,6 @@ type UnwireVerbResult struct {
 	// re-run.
 	WeftContent string
 	GitExclude  string // "reverted" or "unchanged"
-	// BoardJunctionRemoved reports whether the operator-convenience _board
-	// link was present and removed. It is surfaced separately from
-	// JunctionsRemoved because _board is a named special case, not a member
-	// of the pathspec-derived names scanOnDiskJunctionNames enumerates: that
-	// scan skips every HubReservedNames() entry (_board included), so _board
-	// can never appear in JunctionsRemoved.
-	BoardJunctionRemoved bool
 }
 
 // Unwire reverses every warp junction wired for the worktree at cwd and their warp
@@ -78,18 +69,7 @@ func Unwire(cwd string) (res UnwireVerbResult, err error) {
 		return UnwireVerbResult{}, err
 	}
 
-	// Remove the operator-convenience _board junction as an explicitly named
-	// case: scanOnDiskJunctionNames above skips every HubReservedNames()
-	// entry (_board included), so the generic sweep above can never see or
-	// remove it — the same skip that keeps reconcile's stale sweep from
-	// touching it (see reconcile.go's scanOnDiskJunctionNames doc).
-	boardRemoved, err := unwireBoardLink(rec, l, slug)
-	if err != nil {
-		return UnwireVerbResult{}, err
-	}
-
 	var result UnwireVerbResult
-	result.BoardJunctionRemoved = boardRemoved
 
 	// A pure observation, never a mutation: the weft-side _lyx (and, since it is never
 	// touched by unwire either, .lyx) is left exactly as it was found. It disappears
@@ -120,54 +100,4 @@ func Unwire(cwd string) (res UnwireVerbResult, err error) {
 	}
 
 	return result, nil
-}
-
-// unwireBoardLink removes the _board junction wireBoardLink creates, if
-// present, and its matching .git/info/exclude entry via a standalone
-// unseedGitExclude(l, slug, []string{BoardDirName}) call — the unwire
-// counterpart to wireBoardLink's own standalone seedGitExclude call, since
-// _board has no WarpJunctions mirror-pair record either function can drive
-// generically.
-//
-// Removing an absent link is not an error: it returns (false, nil). A
-// present real directory (not a link) is refused, matching
-// unseedJunctionRecords' refusal to delete user content sitting where a
-// junction belongs.
-// rec is the calling verb's own recorder, threaded through to removeLink.
-func unwireBoardLink(rec *Mutations, l *lyxcwd.Location, slug string) (removed bool, err error) {
-	link := filepath.Join(WorktreePath(l, slug), l.AnchorRel, BoardDirName)
-
-	if _, statErr := os.Lstat(link); statErr == nil {
-		isLink, linkErr := fslink.IsLink(link)
-		if linkErr != nil {
-			return false, fmt.Errorf("islink %s: %w", link, linkErr)
-		}
-		if !isLink {
-			return false, fmt.Errorf(
-				"warp repo already contains a real %s at %s; it is not a junction — refusing to remove it",
-				filepath.Base(link), link,
-			)
-		}
-		req := pathRequest{
-			what:      "remove board junction",
-			container: WorktreePath(l, slug),
-			target:    link,
-			slug:      nil,
-			ownership: ownedWiredJunction([]string{link}, BoardDir(l.HubPath)),
-			dirtiness: dirtinessNA("a junction holds no content; the weft target it points at is untouched"),
-			force:     false,
-		}
-		if err := removeLink(rec, req); err != nil {
-			return false, fmt.Errorf("remove board junction %s: %w", link, err)
-		}
-		removed = true
-	} else if !os.IsNotExist(statErr) {
-		return false, fmt.Errorf("lstat %s: %w", link, statErr)
-	}
-
-	if _, err := unseedGitExclude(rec, l, slug, []string{BoardDirName}); err != nil {
-		return removed, err
-	}
-
-	return removed, nil
 }
