@@ -194,5 +194,28 @@ Commands and observations logged incrementally below.
 
 ## Secondary sweep
 
-Pending (see later commits to this file): a focused sweep of the rest of the module after the primary
-fix, weighted per the merge bar (normal single-instance correctness is the gate).
+Focused sweep (the module has had five hard rounds + a CLOSED-AND-VERIFIED list; this is a targeted
+pass, not a re-run of round 1's breadth):
+
+- **All six worktree-add call sites route through the one `containedWorktreeAdd` helper** and every
+  one passes a `container` that is the direct parent of `target` (add.go warp+weft-adopt →
+  `l.HubPath`; weftwiring.go `createWeftWorktree` → `l.HubPath`; reconcile.go `adoptWeftWorktree` →
+  `warpLayout.HubPath`; boardweft.go x2 → `filepath.Dir(boardPath)`). Confirmed by reading each. The
+  single-helper fix covers all six; no per-site work needed. (F1)
+- **NIT-F2 — CONFIRMED — `containedWorktreeAdd` repair-failure leaves a half-placed worktree.**
+  `destroy.go:1008`: on `git worktree repair <target>` failure the function returns an error but the
+  worktree is already renamed into `target` with a STALE git registration (still naming the staging
+  path). The caller's rollback then calls `git worktree remove <target>`, which can itself fail on the
+  broken registration. Pre-existing, minor. Fold into the F1 rewrite: on repair failure, `git worktree
+  remove --force <target>` + `git worktree prune` so rollback sees a clean slate. Fixed as part of F1.
+- **NIT-F3 — round-4 F2 follow-up — `rollbackAdd`'s WARN-on-refused-branch-deletion (add.go:316-323)
+  has no test that sabotage-proves the log line.** Named as a minor open item in the seed. Low value
+  (a log-line assertion), deferred unless the F1 test work makes it convenient — see fixer report.
+- No new BLOCKING/MEDIUM found outside F1. The delete-side `removeContainedPath` act-binding, the
+  ownership predicates, `createdToken` unforgeability, and the gitexec checked/raw split were read for
+  context and match their CLOSED-AND-VERIFIED characterisation; not re-litigated per the seed.
+
+## Job 1 status: COMPLETE
+
+Findings: F1 (MEDIUM, CONFIRMED), NIT-F2 (CONFIRMED, folded into F1's rewrite), NIT-F3 (test-coverage,
+low). Proceeding to Job 2.
