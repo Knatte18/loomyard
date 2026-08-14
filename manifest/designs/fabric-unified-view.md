@@ -104,6 +104,11 @@ it is **unconditionally re-wired** on every reconcile pass, since nothing diagno
 and it is **read by no lyx code path** — every `BoardDir` consumer keeps resolving `<HubPath>/_board` directly, and all board mutation continues through `internal/boardengine`.
 It is deliberately **not** added to `fabric.yaml`'s `pathspec`: `pathspec` is dual-purpose (it also feeds the raw, unfiltered weft *commit* pathspec), and `_board` is itself a weft worktree, not committable content from the warp side, so folding it into that list would be wrong, not merely awkward.
 
+**Reversed (hub-dotlyx-into-board, 2026-08-14): the `_board` convenience junction is deleted.**
+The link was pure redundancy — the board is already reachable at `<hub>/_board` and no lyx code path ever read through it (see the "read by no lyx code path" property above, which held from the day it shipped) — and it turned out to be the one thing that broke the fabric illusion from the inside: unlike `_lyx`/`.lyx`, it was neither warp nor weft, it was shared across every worktree in the hub rather than paired to one, and it was physically writable while bypassing `BoardWriteLockPath`.
+millhouse's own `.wiki` junction — cited above as the model this link followed — is the empirical case for the risk: same shape, a distinctly named link into a shared store, guarded by an explicit prohibition against editing through it, and still edited by mistake anyway.
+The unbuilt plan two paragraphs below to junction `_portals` and `_launchers` into every worktree is cancelled by the same invariant — see `CONSTRAINTS.md`'s Hub Containment Invariant, which now forbids junctioning any hub-level container into a worktree.
+
 **CONSTRAINTS.md**: retire the Hub Geometry Invariant in its current ("the shared resolver owns all geometry/paths") form;
 record the narrower replacement (it owns only cwd/root/anchor resolution;
 Fabric owns weft-sibling and junction plumbing;
