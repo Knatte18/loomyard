@@ -4,10 +4,43 @@ Orchestrator's own state file. Refreshed after every round's verification. Never
 agent (clean-room constraint — this file matches the banned `<module>-review-*` glob).
 
 ## Right now
-Round 5 (`fable-high-r5`) has FINISHED and been independently verified (fork `afd8fb60fc7bd525e`).
-**NOT mergeable — round 5's own fix introduced a NEW, worse attack surface. Round 6 is being
-spawned now, per the operator's standing pre-approval (2026-08-14: "Ja. Og R6 også. Dersom
-nødvendig") — no need to stop and ask again for this specific case.**
+Round 6 (`fable-high-r6`) has FINISHED and been independently verified (fork `a54217f6d5db7273a`).
+**Mixed result: round 6's ASSIGNED fix genuinely holds — first sub-fix in the M3→M1→create-side→
+staging-observability chain to survive a fully independent re-attack with an independently-built
+tool. But verification found a NEW, separate, unscoped defect during its sweep: `writeLaunchers`
+has ZERO containment protection — no race needed, a static pre-planted symlink is 100% reliable,
+first attempt.** This is now beyond the operator's R5→R6 pre-approval scope — reporting to the
+operator for a decision on how to proceed (see below), not spawning round 7 unilaterally.
+
+**Round 6's fix (the good news):** rejected the seed's own hypothesis (relocate staging outside
+the hub) after testing it — found that breaks `os.Root.Rename` across a mount boundary (EXDEV,
+architecturally real per POSIX `rename(2)`, independently confirmed sound) and regresses a
+different-UID posture (plausible by the permission-bit reasoning, not independently re-derived —
+would need a genuine second-UID test environment). Instead kept round 5's two-level staging
+design and added `stagedWorktreeContained` — `os.Root.Lstat`-based checks BOTH before and after
+`os.Root.Rename`, failing closed (cleaning up any escape) on either check. Independent
+verification mapped every gap in the timeline (git write → pre-check → rename → post-check →
+cleanup → `git worktree repair` → return) and built its OWN inotify-based attack tool (not reusing
+round 6's harness) — 70 live trials against the real deployed binary, **0 escapes, 0 false
+success, 0 debris.** NIT-F3's reversal (round 5's F2 WARN-log test actually already sabotage-proves
+itself, contrary to what round 5's verification found) was independently confirmed correct too.
+
+**The new finding (the bad news) — round 7's likely seed, pending operator direction:**
+`internal/fabricengine/launchers.go`'s `writeLaunchers` (the CREATE-side counterpart of
+`removeLaunchers`, called on every `add`) writes to `<hub>/_launchers/<AnchorRel>/<slug>` via
+plain `os.MkdirAll`+`os.WriteFile` — no `refuseUncontainedPath`, no `os.Root`, nothing. A static
+symlink planted at that path BEFORE running `add` (no timing, no race, no observation) makes `add`
+write `ide.sh`/`fabric-checkout.sh` OUTSIDE the hub while reporting `ok:true` — M3's exact
+false-success shape, strictly EASIER to exploit than everything this campaign has spent five
+rounds on, on a call path nobody has audited before. Verification also flagged a related, only
+theoretical (not live-reproduced) residual: `add.go`'s later steps after `containedWorktreeAdd`
+returns (`InstallPostCheckoutHook`, `createPortal`, `writeLaunchers`, `WireJunctionsWith`,
+`wireBoardLink`) all trust the earlier containment check without re-verifying — exactly the design
+pattern that produced the `writeLaunchers` bug. Verification's explicit recommendation: round 7
+should NOT fix `writeLaunchers` in isolation — it should grep for every `os.MkdirAll`/
+`os.WriteFile`/`os.Create` call site under `internal/fabricengine` writing to a hub-relative path
+without going through `refuseUncontainedPath`/`os.Root`, given the pattern that every "fixed" gap
+in this campaign has had an unaudited sibling.
 
 Round 5 correctly reproduced and fixed the create-side gap seeded from round 4's verification
 (`createGitWorktree`'s symlink-directed-write escape via `Topology.Add`) — but the FIX itself
