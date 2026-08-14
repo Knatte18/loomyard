@@ -175,15 +175,18 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("%s marker missing at %s: %v", lyxcwd.AnchorFileName, anchorMarker, err)
 	}
 
-	hubDotLyx := filepath.Join(h.Path, lyxdirs.DotLyxDirName)
-	if _, err := os.Stat(hubDotLyx); err != nil {
-		t.Errorf("hub-level %s missing at %s: %v", lyxdirs.DotLyxDirName, hubDotLyx, err)
+	// The hub's scratch directory lives under _board, not at hub level, and its path is sourced from
+	// fabricengine.HubScratchDir — the same constructor CloneHub materialises it through — so this
+	// assertion cannot drift from the geometry it is checking.
+	hubScratch := fabricengine.HubScratchDir(h.Path)
+	if _, err := os.Stat(hubScratch); err != nil {
+		t.Errorf("hub scratch %s missing at %s: %v", lyxdirs.DotLyxDirName, hubScratch, err)
 	}
-	isLink, err := fslink.IsLink(hubDotLyx)
+	isLink, err := fslink.IsLink(hubScratch)
 	if err != nil {
-		t.Errorf("fslink.IsLink(%s): %v", hubDotLyx, err)
+		t.Errorf("fslink.IsLink(%s): %v", hubScratch, err)
 	} else if isLink {
-		t.Errorf("hub-level %s at %s: want a real directory, got a link", lyxdirs.DotLyxDirName, hubDotLyx)
+		t.Errorf("hub scratch %s at %s: want a real directory, got a link", lyxdirs.DotLyxDirName, hubScratch)
 	}
 
 	names, err := fabricengine.WiredNames(h.BoardDir())
