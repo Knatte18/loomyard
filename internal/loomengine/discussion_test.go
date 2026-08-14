@@ -5,7 +5,9 @@
 package loomengine
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,7 +42,7 @@ func TestDiscussionSpec(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spec, err := DiscussionSpec(layout, cfg, reg, "add-json-flag", tt.autonomous)
+			spec, err := DiscussionSpec(layout, newTestStencilsDir(t), cfg, reg, "add-json-flag", tt.autonomous)
 			if err != nil {
 				t.Fatalf("DiscussionSpec(..., autonomous=%v) = _, %v; want nil error", tt.autonomous, err)
 			}
@@ -86,7 +88,61 @@ func TestDiscussionSpec_EmptySlug(t *testing.T) {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
 	}
 
-	if _, err := DiscussionSpec(layout, cfg, reg, "", false); err == nil {
+	if _, err := DiscussionSpec(layout, newTestStencilsDir(t), cfg, reg, "", false); err == nil {
 		t.Fatal("DiscussionSpec(..., slug=\"\", ...) = _, nil; want non-nil error")
+	}
+}
+
+// TestDiscussionSpec_ReadsStencilAtCallTime verifies DiscussionSpec's prompt reflects an on-disk edit
+// to the stencils directory rather than the embedded default, per the runtime-read-not-embed Shared
+// Decision.
+func TestDiscussionSpec_ReadsStencilAtCallTime(t *testing.T) {
+	worktreeRoot := filepath.Join("home", "user", "repo")
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	stencilsDir := newTestStencilsDir(t)
+	const marker = "THIS-BODY-WAS-EDITED-ON-DISK"
+	discussionPath := filepath.Join(stencilsDir, "loom", "loom-template-discussion.md")
+	edited := "<!-- banner --> \n\n" + marker + "\n\n" +
+		"{{.slug}} {{.decision_record_path}} {{.support_log_path}} {{.mode_rules}} lyx board get"
+	if err := os.WriteFile(discussionPath, []byte(edited), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", discussionPath, err)
+	}
+
+	spec, err := DiscussionSpec(layout, stencilsDir, cfg, reg, "add-json-flag", false)
+	if err != nil {
+		t.Fatalf("DiscussionSpec(...) = _, %v; want nil error", err)
+	}
+	if !strings.Contains(spec.Prompt, marker) {
+		t.Errorf("DiscussionSpec(...).Prompt does not contain the on-disk-edited marker %q; want the modified stencil, not the embedded default, to reach the composed prompt", marker)
+	}
+}
+
+// TestDiscussionSpec_MissingStencilsDirIsHardError verifies DiscussionSpec returns an error naming
+// the missing stencil, rather than silently falling back to the embedded default, when stencilsDir
+// does not exist, per the missing-board-is-a-hard-error Shared Decision.
+func TestDiscussionSpec_MissingStencilsDirIsHardError(t *testing.T) {
+	worktreeRoot := filepath.Join("home", "user", "repo")
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
+	cfg := Config{Discussion: "opus[effort=high]", DiscussionTimeoutMin: 480}
+
+	reg, err := modelspec.LoadRegistry(t.TempDir())
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
+	_, err = DiscussionSpec(layout, missingStencilsDir, cfg, reg, "add-json-flag", false)
+	if err == nil {
+		t.Fatal("DiscussionSpec(..., stencilsDir=<missing>, ...) = _, nil; want non-nil error")
+	}
+	if !strings.Contains(err.Error(), "loom-template-discussion") {
+		t.Errorf("DiscussionSpec(..., stencilsDir=<missing>, ...) error = %q; want it to name the missing stencil %q", err.Error(), "loom-template-discussion")
 	}
 }

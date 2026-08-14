@@ -1,13 +1,38 @@
 // prompt_test.go — untagged Tier-1 unit tests for composePrompt and modeRules.
 // Assertions are stable substrings on load-bearing tokens, not full golden-file equality, so the
 // template's prose can evolve without breaking this test.
+// It also declares newTestStencilsDir, the package-local test helper every loomengine test uses to
+// seed a hermetic stencils directory from the shipped stencils package defaults.
 
 package loomengine
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/stencils"
 )
+
+// newTestStencilsDir builds a t.TempDir() seeded with loom's two stencils, copied byte-for-byte from
+// the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
+func newTestStencilsDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	loomDir := filepath.Join(dir, "loom")
+	if err := os.MkdirAll(loomDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", loomDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-discussion.md"), stencils.LoomTemplateDiscussion, 0o644); err != nil {
+		t.Fatalf("WriteFile(loom-template-discussion.md) = %v; want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-plan.md"), stencils.LoomTemplatePlan, 0o644); err != nil {
+		t.Fatalf("WriteFile(loom-template-plan.md) = %v; want nil", err)
+	}
+	return dir
+}
 
 // TestComposePrompt_RendersMarkers verifies the rendered prompt has no unrendered markers, contains
 // the slug and paths, and contains the board-read command.
@@ -21,13 +46,14 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			stencilsDir := newTestStencilsDir(t)
 			slug := "add-json-flag"
 			decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 			supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-			got, err := composePrompt(slug, decisionRecordPath, supportLogPath, tt.autonomous)
+			got, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, tt.autonomous)
 			if err != nil {
-				t.Fatalf("composePrompt(%q, %q, %q, %v) = _, %v; want nil error", slug, decisionRecordPath, supportLogPath, tt.autonomous, err)
+				t.Fatalf("composePrompt(%q, %q, %q, %q, %v) = _, %v; want nil error", stencilsDir, slug, decisionRecordPath, supportLogPath, tt.autonomous, err)
 			}
 			rendered := string(got)
 
@@ -53,15 +79,16 @@ func TestComposePrompt_RendersMarkers(t *testing.T) {
 // TestComposePrompt_ModeLanguageDiffers verifies the mode renderings carry different language and
 // are not identical.
 func TestComposePrompt_ModeLanguageDiffers(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
 	slug := "add-json-flag"
 	decisionRecordPath := "/hub/repo/_lyx/discussion/decision-record.md"
 	supportLogPath := "/hub/repo/_lyx/discussion/support-log.md"
 
-	autonomousOut, err := composePrompt(slug, decisionRecordPath, supportLogPath, true)
+	autonomousOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, true)
 	if err != nil {
 		t.Fatalf("composePrompt(autonomous=true) = _, %v; want nil error", err)
 	}
-	interactiveOut, err := composePrompt(slug, decisionRecordPath, supportLogPath, false)
+	interactiveOut, err := composePrompt(stencilsDir, slug, decisionRecordPath, supportLogPath, false)
 	if err != nil {
 		t.Fatalf("composePrompt(autonomous=false) = _, %v; want nil error", err)
 	}
