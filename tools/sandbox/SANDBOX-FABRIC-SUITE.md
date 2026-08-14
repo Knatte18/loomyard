@@ -234,7 +234,7 @@ the record's filename is the one the fabric module documents (`.lyx-warp`), so c
 **Goal:** "Clone a hub anchored at a subdirectory of the warp repo rather than its root, and confirm the whole verb surface works from the anchored directory and nowhere else."
 
 **Watch:** Clone with `lyx fabric clone --subpath <dir> <weft-url> <warp-url>`, where `<dir>` is a directory that really exists in the warp repo.
-Confirm `_lyx`, `.lyx` and `_board` land as links inside `<warp>/<dir>/`, and that the warp repo ROOT has none of them — `ls -la` both.
+Confirm `_lyx` and `.lyx` land as links inside `<warp>/<dir>/`, that `<warp>/<dir>/` has no `_board` entry at all, and that the warp repo ROOT has none of `_lyx`/`.lyx` either — `ls -la` both.
 Confirm every verb runs from `<warp>/<dir>` (`status`, `pairs`, `list`, `reconcile`, `prune`, `cleanup`, `sync`), and that running any of them from the warp repo root, from a subdirectory of `<dir>`, or from a sibling directory is REFUSED with an error naming both cwd and the anchored directory — not a confusing downstream failure.
 Confirm `lyx fabric add <slug>` produces a second pair anchored identically (`<hub>/<slug>/<dir>/_lyx`), and that `lyx fabric commit` after editing `<dir>/_lyx/...` commits to the weft at `<dir>/_lyx/...` while leaving the warp side untouched (`git -C <warp> status`).
 Confirm a bad `--subpath` is refused before anything is created and leaves no hub behind: an absolute path (`--subpath /<dir>`), one escaping the repo (`--subpath ../..`), one naming a file, and one naming a directory that does not exist.
@@ -251,7 +251,7 @@ Confirm a bad `--subpath` is refused before anything is created and leaves no hu
 
 **Watch:** In a wired worktree, commit a real symlink of your own beside the junctions at the anchored directory — e.g. `ln -s <existing-dir> latest && git add latest && git commit`.
 Run `lyx fabric reconcile`.
-The symlink must still be there afterwards, and `git status` must be clean: fabric owns only the links it created (those pointing into the paired weft worktree or the hub's `_board`), and a link pointing anywhere else is the operator's, never a "stale junction" to sweep.
+The symlink must still be there afterwards, and `git status` must be clean: fabric owns only the links it created (those pointing into the paired weft worktree), and a link pointing anywhere else is the operator's, never a "stale junction" to sweep.
 Then check the anchor-marker migration guard: rename `<hub>/_board/.lyx-anchor` to `.fabric-anchor` and run any verb.
 Every verb must hard-error naming both marker names and the rename remedy — it must NOT fall back to treating the repo as root-anchored, which on a subpath hub would wire a second junction set at the warp repo root.
 Rename it back and confirm normal operation resumes.
@@ -361,7 +361,7 @@ Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` a
 **Watch:** On a hub with six added pairs, append a pattern of your own -- say `/my-secret-build-dir` -- to `<warp>/.git/info/exclude`, and note that the file also carries git's default six-line comment block.
 That file lives in the repo's COMMON gitdir, so it is ONE file for the whole hub, not one per worktree.
 Now launch all six worktrees at once (background five, run one in the foreground, `wait`), alternating `lyx fabric unwire` and `lyx fabric reconcile`, and repeat for ten rounds, printing the file's line count after each.
-The count must never drop and your own pattern must be present after every round, alongside `/_board`, `/_lyx` and `/.lyx` exactly once each.
+The count must never drop and your own pattern must be present after every round, alongside `/_lyx` and `/.lyx` exactly once each.
 (Historical: the count collapsed from 10 lines to 3 at round 6 and to 1 at round 9 on two independent hubs -- the operator's pattern and git's comment block destroyed, and fabric's own junction exclusions transiently lost, which makes every worktree's junctions show as untracked and a plain `git add -A` commit symlinks into the warp repo. The identical sequence run sequentially never lost a line.)
 Also run the destructive verbs against each other -- `prune --apply` alongside `checkout`, `cleanup --apply` alongside `commit`, `add` alongside `remove` -- and confirm every verb either succeeds or refuses with git's real message, and `lyx fabric pairs` afterwards reports every surviving pair `in_sync` and `junction_healthy`.
 
