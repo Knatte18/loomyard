@@ -509,10 +509,11 @@ func adoptWeftWorktree(warpLayout *lyxcwd.Location, weftPath, branch string) err
 	if weftRepoRootErr != nil {
 		return fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
-	if _, err := gitexec.Run(
-		[]string{"worktree", "add", weftPath, branch},
-		weftRepoRoot,
-	); err != nil {
+	// Through containedWorktreeAdd so a symlink toggled at weftPath during reconcile's own
+	// enumerate-then-adopt window cannot carry the worktree outside the hub (R5's create-side escape).
+	if err := containedWorktreeAdd(weftRepoRoot, warpLayout.HubPath, weftPath, func(worktreePath string) []string {
+		return []string{"worktree", "add", worktreePath, branch}
+	}); err != nil {
 		return fmt.Errorf("adopt weft worktree %q for branch %q: %w", weftPath, branch, err)
 	}
 	return nil

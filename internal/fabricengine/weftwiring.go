@@ -119,11 +119,13 @@ func createWeftWorktree(rec *Mutations, l *lyxcwd.Location, slug, branch, startP
 	if err != nil {
 		return fmt.Errorf("resolve weft repo root: %w", err)
 	}
-	_, err = gitexec.Run(
-		[]string{"worktree", "add", "-b", branch, weftPath, startPoint},
-		weftRepoRoot,
-	)
-	if err != nil {
+	// Route through containedWorktreeAdd, not a bare `git worktree add`: git resolves and follows a
+	// symlink standing at weftPath itself, so a target toggled during the caller's check-then-act window
+	// would carry the worktree outside the hub (R5's create-side escape). This is not the gate's
+	// createGitWorktree minter — creation is not destruction — but the containment property is identical.
+	if err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
+		return []string{"worktree", "add", "-b", branch, worktreePath, startPoint}
+	}); err != nil {
 		return fmt.Errorf("create weft worktree %q for branch %q failed: %w", weftPath, branch, err)
 	}
 	rec.Append(KindWorktreeCreated, weftPath, "")

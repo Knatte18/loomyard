@@ -155,11 +155,11 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 		if weftRepoRootErr != nil {
 			return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 		}
-		// Adopt: git worktree add <path> <branch> (no -b, branch exists)
-		_, err := gitexec.Run(
-			[]string{"worktree", "add", weftPath, weftBranch},
-			weftRepoRoot,
-		)
+		// Adopt: git worktree add <path> <branch> (no -b, branch exists), through
+		// containedWorktreeAdd so a symlink toggled at weftPath cannot carry the worktree outside the hub.
+		err := containedWorktreeAdd(weftRepoRoot, l.HubPath, weftPath, func(worktreePath string) []string {
+			return []string{"worktree", "add", worktreePath, weftBranch}
+		})
 		if err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: %w", weftBranch, err)
