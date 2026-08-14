@@ -31,7 +31,7 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 - Retention of `//go:embed` for the shipped default bytes only — as the seed source, never as a live read path.
 - A hash stamp written into each seeded file's existing leading `<!-- ... -->` banner, and the edit-detection rule built on it.
 - A new `lyx stencil` cobra module with `list`, `validate`, `diff`, `sync`, and `promote` subcommands, where `diff` supports `--all` and `--exit-code`.
-- A pre-commit hook in loomyard only, running `lyx stencil diff --all --exit-code`, guarding against an unported board-copy edit.
+- A run-time `logger.Warn` when a board copy has drifted from the worktree's `stencils/` source, folded into the pass lyx already makes over the files.
 - Drift notification via `logger.Warn` when an operator-edited file falls behind a newer shipped default.
 - Amending the treadle import allowlist and its enforcement test to admit `internal/stencilstore`.
 - Extending the Fabric Vocabulary enforcement walk to cover the new `stencils/` root.
@@ -135,7 +135,7 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   The diff carries almost all the value at a fraction of the risk.
 - Rationale for where the base text comes from: `_lyx` is tracked content and lyx commits its own `_lyx` writes, so every default-refresh lands as a commit in the board repo.
   The board repo's own git history is therefore the archive of every default version that hub has ever seen, which is what makes `diff` possible with no historical versions embedded in the binary and no base copies on disk.
-- The two diff modes have **different base texts**, and conflating them would make the pre-commit guard unusable:
+- The two diff modes have **different base texts**, and conflating them would make the port-back guard unusable:
 
   | mode | base | target | purpose |
   |---|---|---|---|
@@ -143,8 +143,8 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
   | `lyx stencil diff --all --exit-code` | the worktree's own `stencils/<family>/<name>.md` source body | the live board copy's body | an edit made in the board copy that was never ported back |
 
   The port-back guard must compare against the **source tree**, not the shipped default.
-  Comparing against the shipped default would make the guard fire on exactly the commit that fixes it: the developer edits the board copy, runs `promote`, and commits — but the shipped default is still the old embedded one until the next deploy, so a shipped-default base would block that commit and every later one until a rebuild.
-  Against the source tree, `promote` brings the two into agreement immediately and the hook passes.
+  Comparing against the shipped default would leave the warning firing right through the fix: the developer edits the board copy, runs `promote`, and is still told the copy has drifted, because the shipped default stays the old embedded one until the next deploy.
+  Against the source tree, `promote` brings the two into agreement immediately and the warning stops.
 - **How the `diff <name>` base is actually recovered**, since "from git history" names no owner and no API.
   `internal/gitrepo` gains a read-blob-at-revision verb, built on go-git — the gitrepo Client Boundary Invariant assigns commit/tree/blob lookups and ref reads to go-git, so this adds no `gitexec` call site and does not touch the Checked-Call Invariant.
   `internal/fabricengine` wraps it as the board-scoped accessor, because the Fabric Git Invariant routes every git operation on either repo through that package and its read-only carve-out is scoped to warp alone.
@@ -179,35 +179,28 @@ The task therefore changed shape mid-discussion: it is no longer a file move, it
 
 - Decision: the port-back step in the loop above is never a manual copy.
   `lyx stencil promote <name>` copies the live board copy into the source `stencils/<family>/` tree of the current worktree, stripping the stamp on the way in (the source tree is the seed, so it carries no stamp).
-  Additionally, `lyx stencil diff` grows a `--exit-code` flag with git-diff semantics, and loomyard alone wires `lyx stencil diff --all --exit-code` as a pre-commit hook so an unported board edit cannot land silently.
+  Additionally, `lyx stencil diff` grows a `--exit-code` flag with git-diff semantics, and lyx itself emits a `logger.Warn` at run time when a board copy has drifted from the worktree's `stencils/` source — the same warning channel and the same pass over the files that the drift check already uses.
 - Rationale: the `deployment-versus-production` loop otherwise ends in a hand-copy, and this codebase does not trust hand-steps — the Fabric Destruction Chokepoint Invariant, the Mutation Record Invariant, and this task's own allowlist and enforcement-walk amendments all exist because review discipline alone was judged insufficient.
   The failure is specifically nasty here.
   An edited board copy is permanently in the "never touched" state by design, its content lives only in `weft:main`'s commit stream rather than in the `stencils/` tree anyone reviewing this feature would read, and every later default refresh skips it forever.
   The drift is therefore silent, permanent, and not self-healing, and it is worst in the one repo that exercises the mechanism most.
-- Rationale for the shape: `promote` removes the manual step rather than guarding it, which is the stronger of the two fixes;
-  the pre-commit `--exit-code` check catches the case where someone edits the board copy and forgets `promote` entirely.
-  The two are complementary, not alternatives.
-- Note on why CI cannot be the guard: a CI runner has no access to the operator's hub, so it cannot compare `stencils/` against a `_board/_lyx/stencils/` that only exists on the developer's machine.
-  The check has to run where the hub is, which is the pre-commit hook, not CI.
-- **The hook warns, it never blocks.**
-  It cannot block, because the comparison is inherently cross-worktree: the board copy is one per hub while `stencils/` is per warp worktree, and `core.hooksPath` lives in the common gitdir so the hook fires in every worktree.
-  The moment worktree A promotes an edit and deploys, every other task worktree's older `stencils/` source differs from the shared board copy through no fault of its own — and concurrent task worktrees are the normal mode of work in this repo, not an edge case.
-  A blocking hook would therefore lock up every worktree that changed nothing.
-  Distinguishing "unported edit" from "another worktree moved ahead" would require asking whether the board body appears anywhere in the source's reachable history, which is far too heavy for a pre-commit hook.
-  Accepted blast radius, stated plainly: the hook is a backstop that prints, and `promote` is the actual mechanism — the guarantee comes from having removed the manual copy, not from the hook refusing a commit.
-- Hook installation and preconditions, since a guard nobody installs is not a guard.
-  The script is **tracked** in the repo as the source at `tools/hooks/pre-commit`, and `tools/deploy` installs a copy into the git-resolved hooks directory.
-  `core.hooksPath` is deliberately **not** set.
-  Setting it would collide with fabric's own installer: `internal/fabricengine/hook.go:63-80` resolves its hooks directory with `git rev-parse --git-path hooks`, which answers with `core.hooksPath` when one is set, so fabric would start writing its generated `post-checkout` — and moving any pre-existing hook aside to `post-checkout.user` — into a tracked source directory, in every warp worktree.
-  Installing a copy instead keeps both installers writing to the one directory git actually consults, which is what fabric's chaining behaviour already assumes.
-  The tracked source stays the reviewable artefact;
-  the installed copy is generated and untracked.
-  Preconditions: when `lyx` is not on PATH, or no hub can be resolved, the hook prints a warning and exits 0, exactly as it does on divergence.
-- On `tools/deploy` detecting loomyard: the `deployment-versus-production` carve-out binds **`lyx` the shipped binary**, which must never recognise its own source repo.
-  It does not bind the repo's own build tool, which by construction only ever runs there.
-  `tools/deploy` already resolves the repo root as its own working directory, so no detection mechanism is introduced.
+- Rationale for the shape: `promote` removes the manual step rather than guarding it, and the run-time warning catches the case where someone edits the board copy and forgets `promote` entirely.
+  The two are complementary, not alternatives, and the guarantee comes from having removed the manual copy — the warning is a backstop, not the mechanism.
+- **The warning never blocks anything**, and cannot, because the comparison is inherently cross-worktree: the board copy is one per hub while `stencils/` is per warp worktree.
+  The moment worktree A promotes an edit and deploys, every other task worktree's older source differs from the shared board copy through no fault of its own — and concurrent task worktrees are the normal mode of work in this repo, not an edge case.
+  Distinguishing "unported edit" from "another worktree moved ahead" would require asking whether the board body appears anywhere in the source's reachable history, which is far more work than the signal is worth.
+  Accepted blast radius, stated plainly: the drift warning can fire in a worktree that changed nothing, and that is tolerable precisely because it only prints.
+- **No git hook.**
+  An earlier draft put this check in a loomyard-only `pre-commit` hook.
+  Rejected on measurement and on entanglement.
+  Measurement: the whole per-run pass — reading all 15 files, normalising line endings, and hashing — costs about 0.15 ms, so folding the check into the run lyx already performs is free, while a hook pays a process spawn on every commit in every worktree.
+  Entanglement: installing it meant a tracked script, an install step in `tools/deploy`, and a coexistence contract with `internal/fabricengine`'s own hook installer, which resolves its directory via `git rev-parse --git-path hooks` and would have been affected by any `core.hooksPath` we set.
+  `fabricengine.InstallPostCheckoutHook` stays the only hook installer in the repo.
+  The hook could only warn anyway, so nothing was lost but the commit-time timing of the message.
+- Note on why CI cannot be the guard either: a CI runner has no access to the operator's hub, so it cannot compare `stencils/` against a `_board/_lyx/stencils/` that only exists on the developer's machine.
+  The check has to run where the hub is, which is inside lyx itself.
 - Rejected: documenting the port-back as a discipline step and leaving it to memory — that is exactly the discipline-dependent failure mode the hash stamp was introduced to eliminate for the general operator.
-  Also rejected: a CI-side assertion, for the reason above.
+  Also rejected: a CI-side assertion, and the pre-commit hook, both for the reasons above.
 
 ### stencilstore-ownership
 
@@ -509,10 +502,9 @@ The plan must verify this rather than assume it.
 **Port-back guard.** `promote` copies an edited board copy into the source tree and strips the stamp on the way in.
 Assert the full round trip explicitly, since it is what closes the loop: promote, then re-seed from the new default, and assert the board copy ends up restamped and back in the untouched state via the reconciliation row of the edit-detection table.
 A test that stops at `promote` would pass while leaving the file permanently classified edited.
-`diff --all --exit-code` exits non-zero when a board copy differs from the worktree's `stencils/` source and zero when they agree — including zero immediately after a `promote`, which is the case the hook's warning suppression depends on.
-The hook itself always exits 0;
-the exit code decides only whether it prints.
-Both directions need a test, because an `--exit-code` that never fires is a hook that silently passes forever.
+`diff --all --exit-code` exits non-zero when a board copy differs from the worktree's `stencils/` source and zero when they agree — including zero immediately after a `promote`, which is what makes the run-time warning stop.
+Both directions need a test, because a drift check that never fires is a guard that silently passes forever.
+Assert too that the warning is emitted via `logger.Warn` and never affects an exit code.
 
 **Seeding concurrency.** Assert that a run whose defaults are unchanged writes nothing and produces no board commit.
 Assert the seeding commit carries a positive pathspec covering only the stencils subtree, so an unrelated dirty file elsewhere in the board is not swept into it — this is the regression guard against reverting to a stage-all commit.
@@ -561,14 +553,15 @@ This is the one that silently disables the entire mechanism on a Windows checkou
 - **Q:** Does `diff` compare against the shipped default or against the source tree? **A:** Both, in different modes, and conflating them breaks the guard. `diff <name>` is forked-from-default versus shipped default; `diff --all --exit-code` is board copy versus the worktree's `stencils/` source. A shipped-default base would block the very commit that ports a change back.
 - **Q:** How does the stencils directory reach `treadleengine`, which is barred from `lyxcwd` and told only `runDir`/`GateDir`? **A:** As a new caller-supplied field, resolved by a new `fabricengine.StencilsDir(hub)` and passed in by the round runner. Webster's five no-arg accessors take the directory and gain an error return.
 - **Q:** Does `Bolt.Sync` serialise the seeding write against board's own writes? **A:** No — `Bolt.Sync` takes `board.push.lock` while board writes take `board.lock`, and `Bolt.Commit` stages everything. Seeding gets its own `fabricengine` verb taking `board.lock` and committing a positive pathspec, and `board.lock`'s name becomes single-declarer in `fabricengine`.
-- **Q:** The board copy is hub-wide but `stencils/` is per worktree, and the hook fires in every worktree. Doesn't the guard block commits in worktrees that changed nothing? **A:** Yes, if it blocked. It warns instead and never blocks. `promote` is the real mechanism; the hook is a backstop, and that blast radius is accepted explicitly.
+- **Q:** The board copy is hub-wide but `stencils/` is per worktree. Doesn't the guard then fire in worktrees that changed nothing? **A:** Yes, and that is accepted, because it only ever prints. `promote` is the real mechanism; the warning is a backstop.
 - **Q:** Dev and prod binaries carry different embedded defaults against the same hub. What stops them rewriting the same untouched file in opposite directions every run? **A:** A `-dev` build seeds absent files but never refreshes untouched ones, warning instead. Only a production build performs the refresh row.
 - **Q:** Where does `diff <name>`'s base text actually come from, mechanically? **A:** A new go-git blob-read verb in `internal/gitrepo`, wrapped by a board-scoped `fabricengine` accessor. The key is the file's stamp: walk the path's history newest-first and take the first revision whose stripped-body hash matches. No match reports itself rather than rendering an empty diff.
-- **Q:** Doesn't setting `core.hooksPath` collide with fabric's own hook installer? **A:** Yes — fabric resolves its hooks dir with `git rev-parse --git-path hooks`, which honours `core.hooksPath`, so it would write generated hooks into a tracked source directory. `core.hooksPath` is not set; `tools/deploy` installs a copy into the directory git already consults.
+- **Q:** Doesn't setting `core.hooksPath` collide with fabric's own hook installer? **A:** It would — fabric resolves its hooks dir with `git rev-parse --git-path hooks`, which honours `core.hooksPath`. Moot now: there is no hook at all.
+- **Q:** Isn't all of this a lot of overhead to fire on every run? **A:** Measured on the real files: 69 KB across 15 stencils, and one full read + LF-normalise + hash pass costs about 0.15 ms, against an LLM call taking seconds. The only thing that cost real time was the pre-commit hook's process spawn per commit, which is why it was dropped in favour of a run-time warning.
 - **Q:** Does an explicit `lyx stencil sync` refresh from a `-dev` build? **A:** Yes. The dev skip exists to stop incidental thrash, not to refuse an explicit request — and the dev binary is the one used in the test-live loop.
 - **Q:** How does the binary know it is a dev build, and what is an unstamped binary? **A:** `-ldflags -X` set by `tools/deploy -dev`. Unstamped — plain `go build`/`go install`, or a test binary — counts as production, since converging on shipped defaults is the safe default and dev must opt in.
 - **Q:** Once `implementer-body.md` carries a stamp, does it leak into webster's composed prompts? **A:** Yes — `stripLeadingComment` drops only the first banner of a joined pair, so the stamp would be delivered as instruction text. `internal/stencil` exports its stripper and `joinTemplateAssets` strips every asset, which also fixes the pre-existing second-banner leak.
 - **Q:** What happens to the hashes on a machine with `core.autocrlf=true`? **A:** Without a rule, every stencil is classified human-edited forever and never refreshed. Hashing is over an LF-normalised body, the board's stencils tree is seeded with its own `.gitattributes`, and loomyard's `.gitattributes` gains the 15 new paths and loses the 8 stale ones.
 - **Q:** Who owns the name → default registry, given typed vars rather than an `embed.FS`? **A:** The `stencils` package itself, beside the vars, consumed only by `stencilstore`. A test asserts registry and `.md` tree match in both directions, so a hand-maintained map cannot silently omit a file.
 - **Q:** Sandbox coverage — scenario or exclusion? **A:** A `**Covers:** stencil` scenario in `SANDBOX-CORE-SUITE.md`. None of the three existing exclusion reasons applies to a read-only `list`/`validate`.
-- **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) and adding a loomyard-only pre-commit `lyx stencil diff --all --exit-code`. CI cannot be the guard, since a CI runner has no access to the operator's hub.
+- **Q:** The loomyard loop ends in a hand-copy from the board copy back into `stencils/`. What stops a real edit becoming permanently invisible to the source tree? **A:** Nothing, as originally written — raised by the orchestrator review. Resolved by making the port-back mechanical (`lyx stencil promote`) plus a run-time `logger.Warn` on drift. CI cannot be the guard, since a CI runner has no access to the operator's hub.
