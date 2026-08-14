@@ -931,9 +931,14 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			}
 		})
 
-		// Coverage additionally includes a plain internal/**/*.md walk -- not a //go:embed
-		// parse, so a future non-embedded template is policed rather than silently skipped.
-		walkEnforcementRoots(t, repoRoot, []string{"internal"}, []string{".md"}, func(relPath string, data []byte) {
+		// Coverage additionally includes a plain internal/**/*.md and stencils/**/*.md walk --
+		// not a //go:embed parse, so a future non-embedded template is policed rather than
+		// silently skipped. stencils/ is a walked root alongside internal/ so a prompt
+		// relocated out of internal/ (see stencils/stencils.go) does not silently leave
+		// Fabric Vocabulary coverage.
+		mdVisitCount := 0
+		walkEnforcementRoots(t, repoRoot, []string{"internal", "stencils"}, []string{".md"}, func(relPath string, data []byte) {
+			mdVisitCount++
 			dir := filepath.ToSlash(filepath.Dir(relPath))
 			text := string(data)
 
@@ -944,6 +949,9 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 				fail(relPath, "fabric-sense host phrase")
 			}
 		})
+		if mdVisitCount == 0 {
+			t.Fatal("the internal/stencils .md walk visited zero files; want a mistyped or missing root to fail loudly rather than pass vacuously")
+		}
 
 		if len(failures) > 0 {
 			t.Errorf("fabric-vocabulary leak found:\n%s", strings.Join(failures, "\n"))

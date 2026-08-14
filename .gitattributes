@@ -4,6 +4,8 @@
 # machine's core.autocrlf setting, so they are pinned to LF here. The same
 # byte-exact requirement applies to golden test fixtures compared verbatim
 # against literal \n-embedded expectations in Go source (planparser below).
+stencils/loom/loom-template-discussion.md text eol=lf
+stencils/loom/loom-template-plan.md text eol=lf
 internal/burlerengine/round-orchestrator-template.md text eol=lf
 internal/burlerengine/instruction-1-explore-template.md text eol=lf
 internal/burlerengine/instruction-2-review-template.md text eol=lf
