@@ -167,6 +167,13 @@ Examples:
 			stencilsDir := fabricengine.StencilsDir(l.HubPath)
 			sourceDir := resolveSourceDir(l)
 
+			// ForceRefresh's returned written slice is a plain list of stencil names, not a
+			// fabricengine.Mutations record -- no rec exists yet at this point (it is constructed
+			// below, scoped to the CommitSeededStencils call only), and stencilstore is not a
+			// fabricengine verb, so there is no Kind to classify these writes under. Treated as a
+			// pre-flight-style failure: a bare output.Err deliberately, not errWithRecord's
+			// mutations/partial pair. Any partially-written state is re-detected and completed by
+			// the next sync via Classify, so this is a reporting gap, not a correctness bug.
 			written, err := stencilstore.ForceRefresh(stencilsDir, stencils.Registry(), sourceDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
