@@ -144,3 +144,38 @@ func TestRemoveContainedPath_AbsentIsNoOp(t *testing.T) {
 		t.Fatalf("absent target must report removed=false")
 	}
 }
+
+// TestCreateExclusiveDir_RefusesLeafSymlink pins createExclusiveDir's actual containment guarantee — the
+// dedicated regression round 5's F2/F3 lacked (they leaned on the shared-mechanism coverage): a symlink
+// planted at the leaf createExclusiveDir would mint is refused as an EEXIST rather than followed, so the
+// gate never mints a createdToken for a directory it did not itself bring into being. This is the leaf
+// property CloneHub's hub bootstrap relies on; the intermediate-ancestor case is documented as NOT
+// refused (os.OpenRoot resolves the parent), so this test deliberately pins only the leaf guarantee.
+func TestCreateExclusiveDir_RefusesLeafSymlink(t *testing.T) {
+	base := t.TempDir()
+	container := filepath.Join(base, "container")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(container, 0o755); err != nil {
+		t.Fatalf("mkdir container: %v", err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+
+	// Plant a symlink at the exact leaf createExclusiveDir would mint, pointing at an existing outside
+	// directory — the shape that would let a mkdir-follows-symlink adopt an out-of-container directory as
+	// though the gate had created it.
+	leaf := filepath.Join(container, "hub")
+	if err := os.Symlink(outside, leaf); err != nil {
+		t.Fatalf("plant leaf symlink: %v", err)
+	}
+
+	rec := NewMutations(base)
+	if _, err := createExclusiveDir(rec, leaf); err == nil {
+		t.Fatalf("createExclusiveDir minted a token for a pre-planted leaf symlink; want a refusal")
+	}
+	// The refusal must not have recorded a dir_created for a directory it did not create.
+	if got := rec.Len(); got != 0 {
+		t.Fatalf("createExclusiveDir recorded %d mutation(s) on a refused leaf symlink; want 0", got)
+	}
+}

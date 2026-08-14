@@ -886,15 +886,20 @@ func deleteBranch(rec *Mutations, req branchRequest) error {
 // createExclusiveDir creates path as a directory the gate can later authorise the removal of, and
 // returns the createdToken proving it.
 //
-// It creates the leaf through an os.Root rooted at path's parent, not a bare os.Mkdir, and the
-// distinction is a containment property, not a style choice: os.Mkdir never follows a symlink at
-// path's FINAL component (so a link planted there fails EEXIST), but it DOES create the leaf through a
-// symlink planted at an INTERMEDIATE ancestor of path, landing the new directory outside the intended
-// parent — the create-side twin of the delete-side escape removeContainedPath closes. Rooting the
-// Mkdir at the parent makes component resolution and the mkdir one openat chain that atomically
-// refuses any intermediate component escaping the parent, so an already-present path still fails
-// EEXIST (the token is only ever minted for a directory this call actually brought into being) while
-// a planted-intermediate-symlink escape is refused rather than followed.
+// It roots at path's parent and creates only path's final component (filepath.Base) through the root,
+// so a symlink planted AT that final component is refused as an EEXIST — os.Root.Mkdir, like os.Mkdir,
+// never follows a symlink standing at the entry it creates — and the token is only ever minted for a
+// directory this call actually brought into being.
+// The rooting is NOT, and is not relied on to be, a defence against a symlink planted at an INTERMEDIATE
+// ancestor of path: os.OpenRoot resolves the parent argument (symlinks in it included) before rooting,
+// and the single-component leaf handed to root.Mkdir has no intermediate segment left for the root to
+// refuse, so a link in path's parent ancestry is followed exactly as a bare os.Mkdir would follow it.
+// That is safe at this function's sole call site — CloneHub mints the hub as a single new component
+// under the operator-chosen clone parent, an operator-controlled location an attacker cannot plant a
+// symlink inside the way it can inside a live hub — but a future caller passing a path whose parent
+// ancestry is attacker-influenced must not treat createExclusiveDir as sufficient containment on its
+// own; removeContainedPath and containedWorktreeAdd, which root at a FIXED hub container and resolve the
+// whole relative tail through it, are the pattern for that case.
 //
 // createdToken is only unforgeable because the bypass guard batch 6 adds bans the token
 // `createdToken{` outside this file, with destroy.go itself on the guard's allowlist — being
