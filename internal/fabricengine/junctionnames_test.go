@@ -241,11 +241,10 @@ func TestIsReservedHubName(t *testing.T) {
 	// With junctionNames now empty, the four survivors no longer share one
 	// source: _lyx is reserved via structuralCommittedDirs (never the config
 	// arm), while _board, _portals, and _launchers are reserved via
-	// hubSlugReservedNames() (through HubReservedNames()).
-	// `.lyx` is reserved too, via structuralNeverCommittedDirs and
-	// hubSlugReservedNames(), but was never a member of this list and still is
-	// not -- this is a positive "these are reserved" set, not an exhaustiveness
-	// assertion over every reserved name.
+	// HubReservedNames().
+	// `.lyx` is reserved too, via structuralNeverCommittedDirs, but was never a
+	// member of this list and still is not -- this is a positive "these are
+	// reserved" set, not an exhaustiveness assertion over every reserved name.
 	t.Run("default pathspec union reserves exactly four names", func(t *testing.T) {
 		t.Parallel()
 
