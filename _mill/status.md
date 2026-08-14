@@ -6,6 +6,7 @@ slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Relocate producer prompt files into a stencils/ directory
 task_description: |
   Relocate producer prompt files into a stencils/ directory
@@ -31,21 +32,32 @@ implementing  '2026-08-14T11:40:58Z'
 ```yaml
 batches:
   - name: stencilstore-foundation
-    state: pending
+    state: running
+    implementer_session: 2a017dfc-d07f-4960-b0dd-ad31caf3b990
+    start_sha: 12794a23d95be890edc84b13e0de9a4a0e9013c6
+    verify_baseline_failures: ["FAIL\t./internal/stencilstore/... [setup failed]"]
   - name: stencils-package-and-loom
     state: pending
+    verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: seeding-trigger
     state: pending
+    verify_baseline_failures: []
   - name: burler-runtime-read
     state: pending
+    verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: diff-base-recovery
     state: pending
+    verify_baseline_failures: []
   - name: treadle-runtime-read
     state: pending
+    verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: webster-runtime-read
     state: pending
+    verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: stencil-cli
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/stencilcli/... [setup failed]"]
   - name: reed-rename-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
