@@ -69,9 +69,9 @@ var uncontainedWriteAllowlist = map[string]string{
 	"internal/fabricengine/gitexclude.go": "mutateGitExclude's os.MkdirAll(excludeDir) creates the git-owned .git/info directory " +
 		"resolved by git rev-parse --git-path info/exclude; the file replacement itself is a same-directory CreateTemp+Rename under " +
 		"a repo-wide flock, never a caller-derived path",
-	"internal/fabricengine/clone.go": "the hub .lyx directory and the .lyx-anchor marker are written into a hub just minted by " +
-		"createExclusiveDir (os.Root) and a _board worktree just added by containedWorktreeAdd, both in this same CloneHub call — " +
-		"race-only, not statically pre-plantable",
+	"internal/fabricengine/clone.go": "the hub scratch directory (<hub>/_board/.lyx) and the .lyx-anchor marker are written into " +
+		"the _board worktree containedWorktreeAdd just added, not the bare hub createExclusiveDir (os.Root) minted, both in this " +
+		"same CloneHub call — race-only, not statically pre-plantable",
 	"internal/fabricengine/warpbinding.go": "writeWarpBinding writes .lyx-warp into the _board weft worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto weft:main by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path",
