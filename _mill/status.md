@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: hub-dotlyx-into-board
 branch: hub-dotlyx-into-board
-plan: null
+plan: _mill/plan
 parent: main
 task: Move <hub>/.lyx into <hub>/_board
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-14T15:25:11Z'
 discussed  '2026-08-14T16:50:25Z'
+planning  '2026-08-14T17:01:26Z'
 ```
