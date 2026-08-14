@@ -152,6 +152,7 @@ Example:
 	// add <slug>
 	cmd.AddCommand(&cobra.Command{
 		Use:   "add <slug>",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "create a dual warp+weft worktree pair",
 		Long: `Create a new paired warp and weft git worktree for the given slug.
 
@@ -172,6 +173,7 @@ Example:
 	// list
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
+		Args:  cobra.NoArgs,
 		Short: "list warp worktrees (use 'lyx fabric pairs' for full pair geometry)",
 		Long: `List all warp worktrees registered in the current hub.
 
@@ -185,6 +187,7 @@ use "lyx fabric pairs".`,
 	var removeCmd *cobra.Command
 	removeCmd = &cobra.Command{
 		Use:   "remove [--force] <slug>",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "destroy a dual warp+weft worktree pair",
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
 (_lyx, .lyx, and the _board convenience link), portal junctions, and
@@ -214,6 +217,7 @@ Example:
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "checkout [branch]",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "coordinated branch switch across warp+weft with junction re-point",
 		Long: `Switch the warp worktree to <branch> and its weft sibling to the
 suffix-paired weft branch, re-pointing junctions in the same operation.
@@ -240,6 +244,7 @@ Example:
 	// pairs
 	cmd.AddCommand(&cobra.Command{
 		Use:   "pairs",
+		Args:  cobra.NoArgs,
 		Short: "show full warp↔weft pair geometry with drift and junction-health fields",
 		Long: `Show every warp↔weft pair's branch, in-sync verdict, junction health, and
 warp-pollution scan.
@@ -256,6 +261,7 @@ remedy.`,
 	// reconcile
 	cmd.AddCommand(&cobra.Command{
 		Use:   "reconcile",
+		Args:  cobra.NoArgs,
 		Short: "repair a managed pair whose weft side drifted or broke",
 		Long: `Reconcile walks every warp worktree and applies the minimal corrective
 action needed to restore a valid paired topology: recreate a missing weft
@@ -278,6 +284,7 @@ skipped: it never had either, so there is nothing there to repair.`,
 	var pruneCmd *cobra.Command
 	pruneCmd = &cobra.Command{
 		Use:   "prune [--apply] [--force]",
+		Args:  cobra.NoArgs,
 		Short: "identify and optionally remove stale or orphaned warp↔weft pairs",
 		Long: `Prune scans for on-disk pair debris in two passes: a registered pair whose
 warp worktree directory is gone (stale), and a weft worktree with no warp
@@ -323,6 +330,7 @@ Example:
 	var cleanupCmd *cobra.Command
 	cleanupCmd = &cobra.Command{
 		Use:   "cleanup [--apply] [--force]",
+		Args:  cobra.NoArgs,
 		Short: "delete weft branches whose warp sibling is gone",
 		Long: `cleanup finds weft branches with no corresponding warp worktree sibling.
 
@@ -365,6 +373,7 @@ weft remote, if it was ever pushed, is left untouched.`,
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "unwire",
+		Args:  cobra.NoArgs,
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
 junction present (_lyx, .lyx, and the _board convenience link) and their
