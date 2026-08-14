@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: stencils-directory-reorg
 branch: stencils-directory-reorg
 plan: _mill/plan
@@ -41,6 +41,7 @@ holistic-fixing  '2026-08-14T13:32:11Z'
 nits-fixed-holistic  '2026-08-14T13:35:58Z'
 holistic-approved  '2026-08-14T13:36:06Z'
 done  '2026-08-14T14:12:11Z'
+pr-pending  '2026-08-14T14:12:58Z'
 ```
 
 ## Batches
