@@ -466,7 +466,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		if err != nil {
 			return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
 		}
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.WorktreeRoot)
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.WorktreeRoot, fabricengine.StencilsDir(deps.Layout.HubPath))
 		if err != nil {
 			return RunResult{}, err
 		}
