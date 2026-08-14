@@ -44,6 +44,8 @@ batches:
     github.com/Knatte18/loomyard/internal/reedcli\t21.906s", '--- FAIL: TestSmokeDownInOneWorktreeLeavesSiblingSessionAlive
     (0.46s)', "FAIL\tgithub.com/Knatte18/loomyard/internal/reedcli\t22.925s"]
   - name: board-junction-deletion
-    state: pending
+    state: running
+    implementer_session: f61f9135-954a-4792-89f0-5e61bcc839d9
+    start_sha: 28eca4b0d6c7fbeb52170423e3e87817e3c84fca
     verify_baseline_failures: []
 ```
