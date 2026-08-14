@@ -5,7 +5,13 @@ agent (clean-room constraint — this file matches the banned `<module>-review-*
 
 ## Right now
 Round 4 (`fable-high-r4`) has FINISHED and been independently verified (fork `a8439474ef0d70b10`).
-**The module is NOT yet fully mergeable — round 5 is warranted and being proposed to the operator.**
+**Operator confirmed round 5 (2026-08-14): "Ja. Og R6 også. Dersom nødvendig"** — round 5 is
+approved, Fable/high per the operator's earlier stated preference, AND round 6 is pre-approved
+too, conditional on round 5's own independent verification actually warranting it. This means: do
+NOT stop to ask again before spawning round 6 if round 5's verification finds something that
+warrants it — that permission is already granted. Only stop and ask if something outside this
+pattern comes up (e.g. a finding severe enough to reconsider the dedicated-engineering-work fork
+instead of another review round).
 Round 4's F1, F3, F4 fixes are genuinely solid (sabotage-proven independently). But round 4's
 "carried item 3" conclusion — that the two CREATE executors (`createExclusiveDir`/
 `createGitWorktree`) have no symlink-directed-write exposure — is WRONG. Independent verification
@@ -214,20 +220,19 @@ containment bypasses.
   containment check happen as one atomic operation the way removal now does. Round 5 should
   verify this is actually the right generalization, not assume it.
 
-**Not yet an operator-approved seed** — the operator's own position ("Det er ikke bestemt siste
-runde... Vi kan fint kjøre flere") means round count isn't fixed, but round 5 itself should be
-proposed and confirmed, not launched unilaterally, since it's beyond the originally-agreed 4-round
-schedule. See "Exact next action" below.
+**Operator confirmed (2026-08-14): round 5 approved, Fable/high, AND round 6 pre-approved
+conditional on round 5's own verification warranting it** — see "Right now" above. Seed is
+finalized in `_mill/fabric-review-prompt.md`.
 
-## Primary emphasis for round 5 (proposed) — the create-side containment gap, chokepoint's write-side twin
+## Primary emphasis for round 5 — the create-side containment gap, chokepoint's write-side twin
 The delete-side containment property (`removePath`/`removeLink`) has now survived two rounds of
 independent adversarial re-attack. The create-side has never been attacked with live timing
 pressure until the orchestrator's verification of round 4 did it — and it broke. Round 5's Job-1
-task, if approved: reproduce the above independently, root-cause it the way M1 was root-caused,
-fix it with the same rigor (a fix that provably CLOSES the window, not narrows it, verified against
-the language's actual concurrency/filesystem-API semantics the way M1's `os.Root` fix was), then
-adversarially re-attack the fix itself before declaring it closed — the same discipline that made
-M1 the first fix in this campaign to survive re-attack.
+task: reproduce the above independently, root-cause it the way M1 was root-caused, fix it with the
+same rigor (a fix that provably CLOSES the window, not narrows it, verified against the language's
+actual concurrency/filesystem-API semantics the way M1's `os.Root` fix was), then adversarially
+re-attack the fix itself before declaring it closed — the same discipline that made M1 the first
+fix in this campaign to survive re-attack.
 
 ## DEFERRED list
 Empty — round 2 fixed all 12 of its own findings, round 3 fixed its one finding, nothing deferred
@@ -245,20 +250,17 @@ from `.scratch/` to `_mill/` after the fact (commit `eea90e7a`) since it was see
 convention changed — round 2 onward is seeded directly at `_mill/` from the start.
 
 ## Exact next action
-1. Round 4 finished and was independently verified (fork `a8439474ef0d70b10`). Its F1/F3/F4 fixes
-   hold; F2 has a minor test-coverage caveat (not urgent); its "carried item 3" conclusion is
-   WRONG — a real, live, reproducible create-side symlink-write escape exists. This has been
-   reported to the operator with a recommendation to run round 5, seeded with that escape as the
-   primary residual (see above). **Awaiting operator confirmation before spawning round 5** — do
-   not spawn unilaterally, this is beyond the originally-agreed 4-round schedule.
-2. Once confirmed: rewrite `_mill/fabric-review-prompt.md` for round 5 (residual = the create-side
-   TOCTOU above, CLOSED-AND-VERIFIED updated with round 4's partial closure, deferred/round-context
-   sections updated), commit, then spawn round 5. Model/effort: ask the operator, or default to
-   Fable/high given round 3 and round 4's strong results at that tier — but this is the operator's
-   call, not a default to assume silently.
-3. After round 5's own independent verification: assess again whether to continue or wrap up, same
-   honest-either-way judgment as after round 4. If a future round's finding looks like it needs
-   dedicated engineering work rather than another review round — the fork the operator took after
-   the ORIGINAL 6-round campaign, which is why `destroy.go` exists and why this campaign exists —
-   say so explicitly and propose it, rather than defaulting to "run another round" or "declare
+1. `_mill/fabric-review-prompt.md` is rewritten for round 5 (primary target = the create-side
+   containment gap, CLOSED-AND-VERIFIED updated with round 4's partial closure, deferred/round-
+   context sections updated). Commit it together with this HANDOFF update.
+2. Spawn round 5: `subagent_type: crucible-reviewer-high`, `model: fable`, tag `fable-high-r5`.
+3. After round 5's own independent verification: if it finds something warranting round 6, spawn
+   it directly — the operator has pre-approved this (2026-08-14: "Ja. Og R6 også. Dersom
+   nødvendig"), no need to stop and ask again for that specific case. If round 5 is clean and the
+   campaign looks converged, write a status verdict either way, stating what's fixed and confirmed
+   and what remains open (Windows path/junction behavior; N4's dirtiness-probe TOCTOU). If a
+   finding looks like it needs dedicated engineering work rather than another review round — the
+   fork the operator took after the ORIGINAL 6-round campaign, which is why `destroy.go` exists
+   and why this campaign exists — say so explicitly and propose it, rather than defaulting to "run
+   another round" or "declare
    done."
