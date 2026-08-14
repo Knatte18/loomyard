@@ -101,6 +101,19 @@ func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
 }
 
+// stencilsDirName is the name of the stencils directory nested under BoardDir's `_lyx` component.
+// It is unexported because "stencils" is not a policed geometry token — it needs no
+// geometryTokenOwners row, unlike BoardDirName or lyxdirs.LyxDirName.
+const stencilsDirName = "stencils"
+
+// StencilsDir returns the hub-wide stencils directory shared by every worktree in the hub:
+// <hub>/_board/_lyx/stencils.
+// internal/stencilstore receives this value as its baseDir and never joins `_board` or `_lyx`
+// itself — see the told-never-derives Shared Decision.
+func StencilsDir(hub string) string {
+	return filepath.Join(BoardDir(hub), lyxdirs.LyxDirName, stencilsDirName)
+}
+
 // HubPath returns the absolute path to the hub container directory for the given repo name inside
 // parent.
 func HubPath(parent, name string) string {
