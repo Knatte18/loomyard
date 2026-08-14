@@ -1,2 +1,0 @@
-- promote never errors on a board copy with no matching source file: **Location:** `internal/stencilcli/promote.go:51-74`
-- Webster's relocated banners still name the pre-move filename: **Location:** `stencils/webster/webster-prefix-fork.md:1,7`, `stencils/webster/webster-prefix-recovery.md:1`
