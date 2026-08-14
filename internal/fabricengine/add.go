@@ -81,7 +81,13 @@ func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (res Ad
 
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		return AddResult{}, fmt.Errorf("worktree directory %q already exists", target)
+		// Name the recovery path, since a directory here is not always a live pair: an empty leftover
+		// stranded by an interrupted remove/reconcile is invisible to `lyx fabric list`/`prune`
+		// (they enumerate only git-registered worktrees), so an operator hitting one otherwise has no
+		// clue why the slug is blocked. If it IS a live pair, a different slug is the answer.
+		return AddResult{}, fmt.Errorf(
+			"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory from an interrupted remove/reconcile (which `lyx fabric list` and `prune` cannot see, as they list only git-registered worktrees), remove the directory and retry",
+			target)
 	}
 
 	stdout, err := gitexec.Run([]string{"remote"}, l.WorktreePath())
