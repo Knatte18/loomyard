@@ -39,7 +39,9 @@ batches:
     commit_sha: ca1e65acc860f90163350b2f279c2899345ce02f
     verify_baseline_failures: ["FAIL\t./internal/stencilstore/... [setup failed]"]
   - name: stencils-package-and-loom
-    state: pending
+    state: running
+    implementer_session: 1ff45c71-97e0-45f7-88fd-87d48304f8e9
+    start_sha: 3102a8e8a90f0c56e0cae8e92501c444165e3678
     verify_baseline_failures: ["FAIL\t./stencils/... [setup failed]"]
   - name: seeding-trigger
     state: pending
