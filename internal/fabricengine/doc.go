@@ -701,16 +701,32 @@
 // kinds against `fslink.RawTarget`, both of which already carry resolved paths — which is exactly
 // why the geometry-root site was the one that fell and the others did not.
 //
-// **The gate's checks are not atomic with its acts, and that is a stated limit rather than an
+// **The gate's DIRTINESS check is not atomic with its act, and that is a stated limit rather than an
 // oversight.**
 // `checkPathDirtiness` runs `git status --porcelain` and returns; the executor then performs the
 // primitive. No lock spans the two, so a write landing in that window is destroyed. The exposure is
 // narrow by construction — `removeGitWorktree` re-checks through git itself, `resetHardTo`
-// delegates to git, and the only `RemoveAll` sites carrying a real dirtiness scope are the two
+// delegates to git, and the only recursive-removal sites carrying a real dirtiness scope are the two
 // fallbacks that fire *after* git has already declined the removal — but a reader must not take
 // "the gate executes rather than approves" to mean the probe and the act are one transaction.
 // Closing the window would need a lock held across probe and act at every executor, which is a
 // larger claim about every future call path than the residual risk warrants today.
+//
+// **The gate's CONTAINMENT check, by contrast, IS bound to its act, because R3's review proved it had
+// to be.** The containment check resolves symlinks at one instant (`refuseUncontainedPath`,
+// `containmentPath`), and a symlink planted at an intermediate segment of a gate target — dangling
+// when the check ran, so the check short-circuited on an absent target, then flipped
+// live-and-escaping before the executor's own `os.Lstat`+unlink — carried a gated `remove --force`
+// outside the hub anyway, a real out-of-hub deletion reported as (partial) success. The two
+// arbitrary-path executors (`removePath`, `removeLink`) therefore no longer act on the nominal path:
+// `removeContainedPath` removes through an `os.Root` rooted at the gate's declared container, so each
+// path component is resolved and unlinked as one `openat` chain that atomically refuses any component
+// escaping the container at removal time, while still removing a final-component junction link as a
+// link. The containment check stays as defense-in-depth; the rooted act is the actual window-closer,
+// and unlike the dirtiness window it needs no lock — the atomicity comes from the kernel's `openat`
+// escape refusal, not from a span held across two calls. `removeGitWorktree` and `resetHardTo`
+// delegate their act to git, which re-validates at its own instant, so the containment binding lives
+// where the arbitrary-path removals are.
 //
 // **Why the two token-carrying ownership kinds exist, and the honest limit of what backs them.**
 // `ownedFreshlyCreatedPath`/`ownedFreshlyCreatedWorktree` let a rollback site prove "the gate

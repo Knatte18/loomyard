@@ -14,12 +14,13 @@
 // Two of the eight banned tokens were corrected against a naive first guess in opposite
 // directions, and the reasons are recorded here because both mistakes are easy to reintroduce.
 //
-// "RemoveAll(" rather than "os.RemoveAll(": the package's removal seam (destroy.go's
-// `var RemoveAll = os.RemoveAll`) is called bare at its call sites, so the qualified spelling
-// "os.RemoveAll(" is not a substring of a bare `RemoveAll(hubPath)` call and would miss the two
-// sites the slice most wants policed, one of them the hub teardown. The bare form "RemoveAll(" is
-// a superset that also catches the qualified "os.RemoveAll(" form, and the seam's own declaration
-// carries no trailing paren so it does not self-flag.
+// "RemoveAll(" rather than "os.RemoveAll(": the bare form is a deliberate superset. It catches the
+// qualified "os.RemoveAll(" (e.g. warpprobe.go's allowlisted probe-clone teardown) AND a
+// method-call spelling like destroy.go's own `root.RemoveAll(` — the os.Root-rooted removal the R3
+// containment fix routes through — neither of which the narrower "os.RemoveAll(" would match.
+// (An earlier binding also had a bare `var RemoveAll = os.RemoveAll` seam this token caught; that
+// seam was removed once the executors began removing through os.Root, but the bare token remains the
+// correct superset for the forms that survive.)
 //
 // "warp.ResetHard(" / "weft.ResetHard(" rather than ".ResetHard(": the broad ".ResetHard(" form
 // would flag the *correctly migrated* callers, since the gated reset is reached as a method call

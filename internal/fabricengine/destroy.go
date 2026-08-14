@@ -22,6 +22,15 @@
 // intermediate segment of a gate target and watched a gated removal delete files outside the hub
 // while the check passed. Target's FINAL component stays unresolved on purpose — a junction
 // removal's target is itself a link.
+//
+// That check resolves at one instant, though, and R3's review drove the gap it left: a symlink at an
+// intermediate segment, dangling when the check ran and flipped live-and-escaping before the executor
+// acted, carried a gated removal outside the hub anyway — the check-then-act window a nominal path
+// resolved once and unlinked later cannot close. So the two arbitrary-path executors (removePath,
+// removeLink) no longer act on the nominal path: removeContainedPath removes through an os.Root rooted
+// at the gate's container, resolving each component and unlinking as one openat chain that refuses any
+// component escaping the container at removal time. The containment check above stays as
+// defense-in-depth; the rooted act is what binds resolution to the unlink and closes the window.
 // The Check enum below names only the three checks a refusal can ever be attributed to —
 // containment, ownership, dirtiness — because force never fails: it is consulted only to make the
 // dirtiness check pass, never to cause a refusal of its own.
@@ -683,39 +692,94 @@ func checkBranchDirtiness(req branchRequest) error {
 	return nil
 }
 
+// removeContainedPath removes the container-relative form of target through an os.Root rooted at
+// container, so that path-component resolution and the unlink are one openat chain that atomically
+// refuses to traverse a symlink escaping container.
+// This is what binds the gate's containment resolution to the act rather than to an earlier instant:
+// a symlink planted at an intermediate segment of target and flipped live-and-escaping between the
+// pipeline's check and this removal can no longer carry the unlink outside container, because os.Root
+// rejects the escaping component at removal time — a nominal path resolved once and acted on later
+// left exactly that window open.
+// A final-component link is still removed as a link, since os.Root.Remove/RemoveAll never follow the
+// target's own last component, so a junction removal is unaffected.
+//
+// recursive selects RemoveAll (a directory and its subtree) over Remove (a single entry, which the OS
+// itself refuses the moment a directory is non-empty).
+// It reports whether an entry was actually removed — false for an already-absent target, preserving
+// the idempotence every executor here relies on — and whether that entry was a directory, for the
+// caller's mutation-record detail.
+// container must be a strict ancestor of target;
+// a target equal to or outside container is a programming error and is returned as one, never a silent
+// no-op, since a request the gate built with a mismatched container/target pair is a bug in the gate.
+func removeContainedPath(container, target string, recursive bool) (removed, wasDir bool, err error) {
+	rel, relErr := filepath.Rel(filepath.Clean(container), filepath.Clean(target))
+	if relErr != nil {
+		return false, false, fmt.Errorf("relate %s to container %s: %w", target, container, relErr)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false, false, fmt.Errorf("%s is not strictly below container %s", target, container)
+	}
+
+	root, err := os.OpenRoot(container)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// The container itself is gone, so anything under it is too: the same idempotent no-op an
+			// already-absent target is, not a failure.
+			return false, false, nil
+		}
+		return false, false, fmt.Errorf("open container %s: %w", container, err)
+	}
+	defer root.Close()
+
+	info, statErr := root.Lstat(rel)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return false, false, nil
+		}
+		// A "path escapes from parent" error lands here when an intermediate component of rel resolves
+		// through a symlink pointing outside container — exactly the escape this helper exists to
+		// refuse, so it surfaces as an error rather than a removal.
+		return false, false, statErr
+	}
+
+	wasDir = info.IsDir()
+	if wasDir && recursive {
+		err = root.RemoveAll(rel)
+	} else {
+		err = root.Remove(rel)
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return false, false, err
+	}
+	return true, wasDir, nil
+}
+
 // removePath is the executor for the os.RemoveAll/os.Remove primitive: it runs the pipeline, then
-// removes req.target via RemoveAll for a directory or os.Remove otherwise, tolerating an
-// already-absent target on either path.
+// removes req.target through removeContainedPath rooted at req.container — RemoveAll for a directory
+// or Remove otherwise — tolerating an already-absent target.
 // It is named removePath, not removeDir, because removeLaunchers deletes script FILES as well as
 // their directory, and both must route through one executor.
-// On success it appends KindPathRemoved to rec, with detail "recursive" for the RemoveAll branch and
-// "single" for the os.Remove branch; the already-absent early return records nothing, since that is
-// a successful no-op, not a removal.
+// On success it appends KindPathRemoved to rec, with detail "recursive" for the directory branch and
+// "single" for the single-entry branch; the already-absent case records nothing, since that is a
+// successful no-op, not a removal.
 func removePath(rec *Mutations, req pathRequest) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
 	}
 
-	info, statErr := os.Lstat(req.target)
-	if os.IsNotExist(statErr) {
-		return nil
-	}
-	if statErr != nil {
-		return fmt.Errorf("stat %s: %w", req.target, statErr)
-	}
-
-	if info.IsDir() {
-		if err := RemoveAll(req.target); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove %s: %w", req.target, err)
-		}
-		rec.Append(KindPathRemoved, req.target, "recursive")
-		return nil
-	}
-
-	if err := os.Remove(req.target); err != nil && !os.IsNotExist(err) {
+	removed, wasDir, err := removeContainedPath(req.container, req.target, true)
+	if err != nil {
 		return fmt.Errorf("remove %s: %w", req.target, err)
 	}
-	rec.Append(KindPathRemoved, req.target, "single")
+	if !removed {
+		return nil
+	}
+
+	detail := "single"
+	if wasDir {
+		detail = "recursive"
+	}
+	rec.Append(KindPathRemoved, req.target, detail)
 	return nil
 }
 
@@ -744,24 +808,25 @@ func removeGitWorktree(rec *Mutations, req pathRequest, repoDir string) error {
 	return err
 }
 
-// removeLink is the executor for the fslink.Remove primitive: it runs the pipeline, then removes
-// req.target via fslink.Remove.
-// It appends KindLinkRemoved to rec only when the link was actually there: fslink.Remove is
-// documented as idempotent and returns nil for an already-absent target, so a nil error alone is not
-// sufficient evidence of a real removal. The probe uses os.Lstat, not os.Stat, for the same reason
-// checkPathRequest does: a dangling link is present as a link even though its target is not.
+// removeLink is the executor for the link-removal primitive: it runs the pipeline, then removes
+// req.target through removeContainedPath rooted at req.container.
+// It routes through removeContainedPath rather than fslink.Remove for the same reason removePath does:
+// a link removal's own intermediate ancestry is exactly where a planted symlink carried a gated
+// removal outside its container, and rooting the unlink at container is what refuses that escape at
+// act time rather than trusting a path resolved earlier. The link's own final component is still
+// removed as a link, since os.Root never follows the target's last component.
+// It appends KindLinkRemoved to rec only when the link was actually there: removeContainedPath reports
+// removed=false for an already-absent target, so an idempotent no-op is not recorded as a removal.
 func removeLink(rec *Mutations, req pathRequest) error {
 	if err := checkPathRequest(req); err != nil {
 		return err
 	}
 
-	_, statErr := os.Lstat(req.target)
-	wasPresent := statErr == nil
-
-	if err := fslink.Remove(req.target); err != nil {
-		return err
+	removed, _, err := removeContainedPath(req.container, req.target, false)
+	if err != nil {
+		return fmt.Errorf("remove link %s: %w", req.target, err)
 	}
-	if wasPresent {
+	if removed {
 		rec.Append(KindLinkRemoved, req.target, "")
 	}
 	return nil
@@ -840,21 +905,6 @@ func createGitWorktree(rec *Mutations, repoDir string, addArgs []string, target 
 	rec.Append(KindWorktreeCreated, target, "")
 	return createdToken{path: filepath.Clean(target), worktree: true}, nil
 }
-
-// RemoveAll is an exported testability seam over the gate's own directory-removal primitive,
-// allowing tests to inject errors into it. It moved here from clone.go, which it used to serve as a
-// clone-teardown-only seam: removePath is now its only caller once batches 3 and 4 land, and the one
-// file allowed to destroy should own the function that destroys.
-//
-// The seam is worth naming as a known limit rather than leaving a reader to notice it: inside the one
-// file whose whole purpose is that no other code may reach a destructive primitive, the primitive
-// itself is a mutable, EXPORTED package-level variable. Any package in the module can replace it, two
-// tests assigning it concurrently are a data race, and the bypass guard — which reads raw source for
-// banned call tokens — cannot see either. Nothing outside this package assigns it today.
-// It is kept because the error-injection coverage it buys is real and unexported alternatives buy no
-// safety here: a test in package fabricengine can reach an unexported var just as easily, so making
-// it unexported would move the exposure rather than remove it.
-var RemoveAll = os.RemoveAll
 
 // resetHardTo is the executor for the ResetHard primitive: it runs the pipeline against req, and
 // only once that passes does it call repo's own ResetHard(sha) — repo is the raw gitrepo.Repo handle
