@@ -190,8 +190,7 @@ use "lyx fabric pairs".`,
 		Args:  cobra.MaximumNArgs(1),
 		Short: "destroy a dual warp+weft worktree pair",
 		Long: `Remove a paired warp and weft git worktree, plus every warp junction
-(_lyx, .lyx, and the _board convenience link), portal junctions, and
-launchers.
+(_lyx, .lyx), portal junctions, and launchers.
 
 By default the command refuses to remove a worktree with uncommitted changes
 on either the warp or weft side. Use --force to remove anyway.
@@ -376,9 +375,9 @@ weft remote, if it was ever pushed, is left untouched.`,
 		Args:  cobra.NoArgs,
 		Short: "fully deactivate fabric wiring for this worktree",
 		Long: `unwire is a full per-warp-worktree deactivation: it removes every warp
-junction present (_lyx, .lyx, and the _board convenience link) and their
-warp .git/info/exclude entries. It leaves every weft-side directory intact —
-weft-side content is never deleted by unwire.
+junction present (_lyx, .lyx) and their warp .git/info/exclude entries. It
+leaves every weft-side directory intact — weft-side content is never deleted
+by unwire.
 
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
@@ -423,8 +422,8 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 //
 // Every topology verb goes through it rather than calling lyxcwd.Resolve directly, because
 // lyxcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a
-// weft sibling, or inside the `_board` link fabric wires at every anchor, otherwise resolves
-// cleanly and drives the verb against geometry that does not exist.
+// weft sibling, or inside the hub's own `_board` worktree, otherwise resolves cleanly and drives the
+// verb against geometry that does not exist.
 // It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
 func resolveWarpLocation(ctx context.Context) (cwd string, l *lyxcwd.Location, err error) {
 	cwd, err = lyxcwd.CwdFrom(ctx)

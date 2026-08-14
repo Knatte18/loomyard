@@ -400,24 +400,6 @@
 // repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
 // a concurrent reader sees either the whole old file or the whole new one.
 //
-// # The `_board` convenience junction
-//
-// Alongside the pathspec junctions, fabric wires one more link at every anchor: `<anchor>/_board`,
-// pointing at `<Hub>/_board` (`wireBoardLink`, junction.go). It exists so the shared board data is
-// reachable from inside an ordinary worktree, on the same model as millhouse's `.wiki` link, and it
-// carries three properties a later caller may not quietly opt out of.
-// It is **wire-only and unmonitored** — `Healthy`, `checkJunctionHealth` and `junctionRepointedDetail`
-// never inspect it, so a broken `_board` link can never block loom preflight.
-// It is **unconditionally re-wired** on clone, add, and every reconcile pass, precisely because
-// nothing diagnoses its breakage, so the repair cannot be conditioned on detection.
-// And it is **read by no lyx code path** — every `BoardDir` consumer resolves `<Hub>/_board`
-// directly, and board mutation continues through `internal/boardengine`.
-// It is deliberately absent from `fabric.yaml`'s `pathspec`: that key is dual-purpose (it also feeds
-// the weft commit pathspec), and `_board` is itself a weft worktree, never committable content from
-// the warp side.
-// `Unwire` removes it as an explicitly named case, since `scanOnDiskJunctionNames` skips every
-// `HubReservedNames()` entry and so can never see it.
-//
 // The lyx-anchor subpath (e.g. `backend` or `.`) is recorded once, on `weft:main`, as the plain
 // `.lyx-anchor` marker at `BoardDir(Hub)` (see `internal/lyxcwd/anchor.go`);
 // `lyxcwd.Resolve` is the reader. `Resolve` treats the record as truth once present — it sets
