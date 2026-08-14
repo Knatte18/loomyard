@@ -221,6 +221,21 @@ Does `lyx fabric unwire` cleanly remove the junctions, clear the weft `_lyx` con
 
 ---
 
+### S7 -- Stencil registry inspection
+
+**Goal:** "List the board's stencil prompts and confirm they validate cleanly."
+
+**Covers:** stencil
+
+**Durability note:** Like `_board` itself, the board's stencils tree is seeded on first run and persists across sessions -- it is not reseeded or rewritten by an ordinary `lyx` invocation once every registered stencil is present and untouched. Do not assume a fresh seed on this run.
+
+**Watch:** Does `lyx stencil list` name all fifteen registered stencils, each with a board-copy path and an edit state (`absent`/`untouched`/`edited`)? Does `lyx stencil validate` report a clean tree (no `error`-severity findings) against an unmodified board copy? Is the JSON output for both sane -- a well-formed envelope, no raw tool output leaking through?
+This scenario is deliberately read-only: `promote` and `sync` both mutate the operator's tree and are exercised by `internal/stencilcli`'s own integration tests, not by hand here.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
@@ -238,6 +253,7 @@ S3: <OK|WARN|FAIL> -- <one-line note if not OK>
 S4: <OK|WARN|FAIL> -- <one-line note if not OK>
 S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
+S7: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

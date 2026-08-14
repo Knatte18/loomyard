@@ -1,10 +1,10 @@
-<!-- This is the in-session fork prefix, composed with implementer-body.md by
+<!-- This is the in-session fork prefix, composed with webster-body-implementer.md by
      RenderForkPrompt (render.go) via internal/stencil, then written to a prompt file under _lyx/webster/prompts/;
      Master's own Agent-tool fork call is exactly "Read this file and follow it exactly: <this file's own path>" — the prompt text itself never sits in Master's own context, so there is no paraphrase surface between what Go rendered and what the fork reads.
      This fork is forked IN-SESSION from Master, so it inherits Master's whole context already: the codebase orientation, the plan's framing, and every constraint Master already read up front.
      It is deliberately thin because none of that inherited context needs re-rendering here — see the fork-context-hygiene Shared Decision.
      It carries no {{.X}} markers of its own;
-     every marker in the composed template lives in implementer-body.md. -->
+     every marker in the composed template lives in webster-body-implementer.md. -->
 
 # Webster fork implementer — one batch of cards, inheriting Master's context
 

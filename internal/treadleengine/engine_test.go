@@ -198,7 +198,7 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 		Timeout:     5 * time.Minute,
 	}
 
-	e := New("perch", fr, &queuedShuttle{}, Options{RunCommand: fcr.run})
+	e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 	got, err := e.Run(p, runDir)
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
@@ -276,7 +276,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 			{result: AttemptResult{Outcome: shuttleengine.OutcomeTimeout, SessionID: "died-2", RunDir: "/kept/died-2"}},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, &queuedShuttle{}, Options{})
+		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
 
 		_, err := e.Run(p, runDir)
 		if err == nil {
@@ -302,7 +302,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -330,7 +330,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageGiveUp), "the fasit file referenced does not exist")},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		_, err := e.Run(p, runDir)
 		if err == nil {
@@ -358,7 +358,7 @@ func TestEngine_NameParameterization(t *testing.T) {
 	fr1 := &blockingRunner{entered: make(chan struct{}), release: release}
 
 	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e1 := New("tenter", fr1, &queuedShuttle{}, Options{})
+	e1 := New("tenter", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
 
 	done := make(chan struct{})
 	go func() {
@@ -373,7 +373,7 @@ func TestEngine_NameParameterization(t *testing.T) {
 	}
 
 	fr2 := &fakeRunner{}
-	e2 := New("tenter", fr2, &queuedShuttle{}, Options{})
+	e2 := New("tenter", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
 	_, err := e2.Run(p, runDir)
 	if err == nil {
 		t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run dir")
@@ -425,7 +425,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 		}
 		qs := &queuedShuttle{}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{1}}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -450,7 +450,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 			{verdictContent: verdictFileContent(string(JudgeStop), "the trajectory does not justify continuing")},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{1, 3}}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -482,7 +482,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 			GateDir:     gateDir,
 			RoundCaps:   []int{10},
 		}
-		e := New("perch", fr, &queuedShuttle{}, Options{RunCommand: fcr.run})
+		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -527,7 +527,7 @@ func TestEngine_ProfileValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			runDir := filepath.Join(t.TempDir(), "run")
 			fr := &fakeRunner{}
-			e := New("perch", fr, &queuedShuttle{}, Options{})
+			e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t)})
 
 			_, err := e.Run(tt.profile, runDir)
 			if err == nil {
@@ -593,7 +593,7 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 				handoffContent: "---\ncovers_rounds: [1, 2]\nledger: []\n---\n\nstill moving.\n",
 			},
 		}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(newProfile(), runDir)
 		if err != nil {
@@ -631,7 +631,7 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 			// like from the loop's perspective.
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(newProfile(), runDir)
 		if err != nil {
@@ -712,7 +712,7 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 		GateDir:     gateDir,
 		RoundCaps:   []int{10},
 	}
-	e := New("perch", fr, qs, Options{RunCommand: fcr.run})
+	e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -807,7 +807,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 	}
 	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e := New("tenter", fr, qs, Options{})
+	e := New("tenter", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -856,7 +856,7 @@ func TestEngine_HandoffLifecycle_NoValidHandoffDegradesToAllReviews(t *testing.T
 		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 	}
 	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e := New("perch", fr, qs, Options{})
+	e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -943,7 +943,7 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 		GateDir:     gateDir,
 		RoundCaps:   []int{10},
 	}
-	e := New("perch", fr, qs, Options{RunCommand: fcr.run})
+	e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t), RunCommand: fcr.run})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -1013,7 +1013,7 @@ func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.
 	}
 
 	p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-	e := New("tenter", fr, qs, Options{})
+	e := New("tenter", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 	got, err := e.Run(p, runDir)
 	if err != nil {
@@ -1078,7 +1078,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		fr.queue = append(fr.queue, queuedAttemptResult{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s3"}})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1112,7 +1112,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		qs.queue = append(qs.queue, queuedShuttleEntry{verdictContent: "prioritize the auth findings; leave the docs alone"})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1177,7 +1177,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		}
 		qs := &queuedShuttle{}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1201,7 +1201,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 		qs.queue = append(qs.queue, queuedShuttleEntry{err: errors.New("targeting shuttle unavailable")})
 
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1257,7 +1257,7 @@ func TestEngine_PreRoundTargeting(t *testing.T) {
 			{verdictContent: "fresh targeting brief for round 3"},
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}, PreRoundTargeting: true}
-		e := New("perch", fr, qs, Options{})
+		e := New("perch", fr, qs, Options{StencilsDir: newTestStencilsDir(t)})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1344,7 +1344,7 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 			seedPath := filepath.Join(runDir, "round-3-seed.md")
 			sh := tt.shSet(seedPath)
 
-			content, ok := runTargeting(sh, "perch", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
+			content, ok := runTargeting(newTestStencilsDir(t), sh, "perch", 3, "/run/round-2-handoff.md", seedPath, "opus", "high")
 			if ok {
 				t.Errorf("runTargeting() ok = true; want false")
 			}
@@ -1382,7 +1382,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			}
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, &queuedShuttle{}, Options{PauseRequested: pauseFn})
+		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), PauseRequested: pauseFn})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1418,7 +1418,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			}
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e := New("perch", fr, &queuedShuttle{}, Options{ScratchDir: scratchDir, PauseRequested: pauseFn})
+		e := New("perch", fr, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir, PauseRequested: pauseFn})
 
 		got, err := e.Run(p, runDir)
 		if err != nil {
@@ -1464,7 +1464,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 		release := make(chan struct{})
 		fr1 := &blockingRunner{entered: make(chan struct{}), release: release}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e1 := New("perch", fr1, &queuedShuttle{}, Options{ScratchDir: scratchDir})
+		e1 := New("perch", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
 
 		done := make(chan struct{})
 		go func() {
@@ -1479,7 +1479,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 		}
 
 		fr2 := &fakeRunner{}
-		e2 := New("perch", fr2, &queuedShuttle{}, Options{ScratchDir: scratchDir})
+		e2 := New("perch", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
 		_, err := e2.Run(p, runDir)
 		if err == nil {
 			t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run/scratch lock")
@@ -1512,7 +1512,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 			}
 		}
 		p := Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
-		e1 := New("perch", fr1, &queuedShuttle{}, Options{ScratchDir: scratchDir, PauseRequested: pauseFn})
+		e1 := New("perch", fr1, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir, PauseRequested: pauseFn})
 
 		got, err := e1.Run(p, runDir)
 		if err != nil {
@@ -1533,7 +1533,7 @@ func TestEngine_ScratchDirSeam(t *testing.T) {
 		// then proceeds to completion untouched by it.
 		fr2 := &fakeRunner{}
 		fr2.queue = []queuedAttemptResult{{result: AttemptResult{Outcome: shuttleengine.OutcomeDone, Verdict: VerdictApproved, SessionID: "s2"}}}
-		e2 := New("perch", fr2, &queuedShuttle{}, Options{ScratchDir: scratchDir})
+		e2 := New("perch", fr2, &queuedShuttle{}, Options{StencilsDir: newTestStencilsDir(t), ScratchDir: scratchDir})
 
 		got2, err := e2.Run(p, runDir)
 		if err != nil {

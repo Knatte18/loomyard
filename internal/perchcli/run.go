@@ -298,7 +298,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				},
 			})
 
-			result, runErr := engine.Run(profile, runDir, scratchDir)
+			result, runErr := engine.Run(profile, runDir, scratchDir, fabricengine.StencilsDir(c.layout.HubPath))
 
 			// A busy fail-fast means ANOTHER invocation owns this block and
 			// is mid-round right now; this invocation changed nothing on

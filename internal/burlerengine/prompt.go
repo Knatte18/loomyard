@@ -1,14 +1,15 @@
-// prompt.go composes the burler round prompt: it renders the four embedded assets (template.go) —
-// the orchestrator plus three instruction files — each with only its own marker subset,
-// and returns the orchestrator string plus the three rendered (path, content) instruction pairs the
-// caller (Engine.Run) writes to disk.
+// prompt.go composes the burler round prompt: it reads the four round prompts from stencilsDir at
+// call time via stencilstore.Read — the orchestrator plus three instruction files — each with only
+// its own marker subset, and returns the orchestrator string plus the three rendered (path, content)
+// instruction pairs the caller (Engine.Run) writes to disk.
 // composePrompt is called only after (*Profile).validate has run, so every path field it reads is
 // already a cleaned absolute path and p.clusterLenses (when ClusterFan was set) is already
 // resolved.
 // composePrompt itself does no filesystem access beyond the directory check formatFileSet already
-// performs on each Target/Fasit path — it takes the three instruction paths as plain string
-// parameters rather than a *lyxcwd.Location, so it never gains geometry awareness of its own;
-// the caller computes both the directive and the three paths.
+// performs on each Target/Fasit path and the stencilstore.Read calls at its top — it takes the three
+// instruction paths as plain string parameters rather than a *lyxcwd.Location, so it never gains
+// geometry awareness of its own; the caller computes the directive, the stencils directory, and the
+// three paths.
 
 package burlerengine
 
@@ -18,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // instructionFile is one rendered instruction asset paired with the
@@ -33,8 +35,14 @@ type instructionFile struct {
 // composePrompt builds the burler round prompt for p, returning the
 // orchestrator string and three instruction files. patternDirective is not
 // gated on target type because loomyard has no target-type classification;
-// a heuristic would risk silently dropping constraints.
-func composePrompt(p *Profile, patternDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
+// a heuristic would risk silently dropping constraints. stencilsDir is the
+// absolute stencils directory composePrompt reads all four round prompts
+// from via stencilstore.Read.
+func composePrompt(stencilsDir string, p *Profile, patternDirective, inst1Path, inst2Path, inst3Path string) (string, []instructionFile, error) {
+	roundOrchestratorTemplate, err := stencilstore.Read(stencilsDir, "burler-template-round-orchestrator")
+	if err != nil {
+		return "", nil, err
+	}
 	orchestratorValues := map[string]string{
 		"instruction_1_path": inst1Path,
 		"instruction_2_path": inst2Path,
@@ -46,6 +54,10 @@ func composePrompt(p *Profile, patternDirective, inst1Path, inst2Path, inst3Path
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
+	instruction1Template, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
+	if err != nil {
+		return "", nil, err
+	}
 	instruction1Values := map[string]string{
 		"pattern_directive": patternDirective,
 		"target":            formatFileSet(p.Target),
@@ -58,6 +70,10 @@ func composePrompt(p *Profile, patternDirective, inst1Path, inst2Path, inst3Path
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
+	instruction2Template, err := stencilstore.Read(stencilsDir, "burler-step-2-review")
+	if err != nil {
+		return "", nil, err
+	}
 	instruction2Values := map[string]string{
 		"cluster_rules": clusterRulesBlock(p),
 		"review_path":   p.ReviewPath,
@@ -68,6 +84,10 @@ func composePrompt(p *Profile, patternDirective, inst1Path, inst2Path, inst3Path
 		return "", nil, fmt.Errorf("burler: compose prompt: %w", err)
 	}
 
+	instruction3Template, err := stencilstore.Read(stencilsDir, "burler-step-3-fix")
+	if err != nil {
+		return "", nil, err
+	}
 	instruction3Values := map[string]string{
 		"fix_scope_rules":   fixScopeRules(p),
 		"review_path":       p.ReviewPath,

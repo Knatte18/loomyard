@@ -1,5 +1,7 @@
-<!-- This is the loom Plan producer's autonomous prompt. It is filled by
-     composePlanPrompt (plan.go) via internal/stencil and handed to shuttle as the plan agent's entire instruction set.
+<!-- This is the loom Plan producer's autonomous prompt. It is shipped as an embedded default in the
+     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/loom/
+     and read from there at call time by composePlanPrompt (plan.go) via internal/stencil, then handed
+     to shuttle as the plan agent's entire instruction set.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive is the fourth marker,
      and the one optional one: it is filled via stencil.FillOptional and renders as nothing when PATTERN is inactive. -->

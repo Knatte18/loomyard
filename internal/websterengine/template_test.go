@@ -1,6 +1,6 @@
-// template_test.go pins webster's embedded prompt templates (master-template.md, the composed
-// fork/recovery templates, and integration-template.md) against the Go contracts they key off of —
-// the template-parser-co-versioning decision applied here: the master template's digest-field
+// template_test.go pins webster's producer prompt assets (webster-template-master, the composed
+// fork/recovery templates, and webster-template-integration) against the Go contracts they key off
+// of — the template-parser-co-versioning decision applied here: the master template's digest-field
 // bullet list is pinned against webster's own Digest field set and order, the outcome-file bullet
 // list against the outcome schema, and the fork/recovery templates' report-schema section against
 // the minimal fork-return contract's field set (status, head_sha, deviations) — all as
@@ -9,8 +9,12 @@
 // fork-context-hygiene Shared Decision: a thin in-session fork prompt that injects nothing already
 // inherited from Master, a full cold-start recovery prompt, and card content delivered by a
 // SourcePath pointer rather than inlined fields.
+// Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds
+// itself: newTestStencilsDir builds a t.TempDir() from the shipped stencils package defaults, per
+// the runtime-read-not-embed Shared Decision.
 // Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond
-// a plain t.TempDir() PATTERN.md fixture) — only embedded bytes, stencil.Fill/FillOptional, and
+// a plain t.TempDir() PATTERN.md fixture and the seeded stencils t.TempDir() itself) — only
+// on-disk bytes read via stencilstore.Read, stencil.Fill/FillOptional, and
 // RenderForkPrompt/RenderRecoveryPrompt/RenderProgress, per the batch's own
 // test-tiers-and-hermetic-git decision.
 
@@ -26,38 +30,149 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/Knatte18/loomyard/stencils"
 )
 
-// testLayout returns a *lyxcwd.Location anchored at a fixed, non-existent
-// "/worktree" path — every RenderForkPrompt/RenderRecoveryPrompt test in
+// newTestStencilsDir builds a t.TempDir() seeded with webster's five stencils, copied byte-for-byte
+// from the stencils package's embedded defaults (unstamped), and returns the directory to pass as
+// stencilsDir.
+func newTestStencilsDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	websterDir := filepath.Join(dir, "webster")
+	if err := os.MkdirAll(websterDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", websterDir, err)
+	}
+	files := map[string][]byte{
+		"webster-template-master.md":      stencils.WebsterTemplateMaster,
+		"webster-template-integration.md": stencils.WebsterTemplateIntegration,
+		"webster-prefix-fork.md":          stencils.WebsterPrefixFork,
+		"webster-prefix-recovery.md":      stencils.WebsterPrefixRecovery,
+		"webster-body-implementer.md":     stencils.WebsterBodyImplementer,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(websterDir, name), content, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
+		}
+	}
+	return dir
+}
+
+// mustMasterTemplate, mustIntegrationTemplate, mustForkTemplate, and mustRecoveryTemplate wrap the
+// matching accessor with a t.Fatalf on error, so call sites unrelated to the error path itself stay
+// terse.
+func mustMasterTemplate(t *testing.T, stencilsDir string) []byte {
+	t.Helper()
+	got, err := websterengine.MasterTemplate(stencilsDir)
+	if err != nil {
+		t.Fatalf("MasterTemplate(%q) = _, %v; want nil error", stencilsDir, err)
+	}
+	return got
+}
+
+func mustIntegrationTemplate(t *testing.T, stencilsDir string) []byte {
+	t.Helper()
+	got, err := websterengine.IntegrationTemplate(stencilsDir)
+	if err != nil {
+		t.Fatalf("IntegrationTemplate(%q) = _, %v; want nil error", stencilsDir, err)
+	}
+	return got
+}
+
+func mustForkTemplate(t *testing.T, stencilsDir string) []byte {
+	t.Helper()
+	got, err := websterengine.ForkTemplate(stencilsDir)
+	if err != nil {
+		t.Fatalf("ForkTemplate(%q) = _, %v; want nil error", stencilsDir, err)
+	}
+	return got
+}
+
+func mustRecoveryTemplate(t *testing.T, stencilsDir string) []byte {
+	t.Helper()
+	got, err := websterengine.RecoveryTemplate(stencilsDir)
+	if err != nil {
+		t.Fatalf("RecoveryTemplate(%q) = _, %v; want nil error", stencilsDir, err)
+	}
+	return got
+}
+
+func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
+	t.Helper()
+	got, err := websterengine.ImplementerBodyTemplate(stencilsDir)
+	if err != nil {
+		t.Fatalf("ImplementerBodyTemplate(%q) = _, %v; want nil error", stencilsDir, err)
+	}
+	return got
+}
+
+// seedHubStencils writes webster's five stencils under hub's real
+// fabricengine.StencilsDir(hub) location, byte-for-byte from the stencils
+// package's embedded defaults — the geometry RenderForkPrompt,
+// RenderRecoveryPrompt, and RenderMasterPrompt now derive internally via
+// fabricengine.StencilsDir(l.HubPath) before reading through
+// stencilstore.Read.
+func seedHubStencils(t *testing.T, hub string) {
+	t.Helper()
+	websterDir := filepath.Join(fabricengine.StencilsDir(hub), "webster")
+	if err := os.MkdirAll(websterDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", websterDir, err)
+	}
+	files := map[string][]byte{
+		"webster-template-master.md":      stencils.WebsterTemplateMaster,
+		"webster-template-integration.md": stencils.WebsterTemplateIntegration,
+		"webster-prefix-fork.md":          stencils.WebsterPrefixFork,
+		"webster-prefix-recovery.md":      stencils.WebsterPrefixRecovery,
+		"webster-body-implementer.md":     stencils.WebsterBodyImplementer,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(websterDir, name), content, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
+		}
+	}
+}
+
+// testLayout returns a *lyxcwd.Location rooted at a real t.TempDir() hub,
+// seeded with webster's five stencils at fabricengine.StencilsDir(hub) —
+// every RenderForkPrompt/RenderRecoveryPrompt/RenderMasterPrompt test in
 // this file that does not itself exercise pattern_directive's active branch
-// uses this fixture, since pattern.Directive's os.Stat on a path that never
-// exists on disk always resolves PATTERN inactive, matching every one of
-// these tests' pre-existing expectation of an empty pattern_directive.
-func testLayout() *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: filepath.Dir("/worktree"), WorktreeName: filepath.Base("/worktree"), AnchorRel: "."}
+// uses this fixture. Its worktree subdirectory is never created on disk, so
+// pattern.Directive's os.Stat on the never-existing PATTERN.md path always
+// resolves PATTERN inactive, matching every one of these tests'
+// pre-existing expectation of an empty pattern_directive.
+func testLayout(t *testing.T) *lyxcwd.Location {
+	t.Helper()
+	hub := t.TempDir()
+	seedHubStencils(t, hub)
+	return &lyxcwd.Location{HubPath: hub, WorktreeName: "worktree", AnchorRel: "."}
 }
 
 // patternActiveLayout builds a *lyxcwd.Location rooted at a real
-// t.TempDir() that contains a real _lyx/PATTERN.md file, so
-// pattern.Directive returns non-empty — mirroring pattern.isActive's own
-// PatternFileHere() check (see internal/pattern/pattern_test.go's
-// writePatternFile/layoutAt fixtures).
+// t.TempDir() hub that contains a real _lyx/PATTERN.md file under its
+// worktree subdirectory, so pattern.Directive returns non-empty —
+// mirroring pattern.isActive's own PatternFileHere() check (see
+// internal/pattern/pattern_test.go's writePatternFile/layoutAt fixtures) —
+// and seeded with webster's five stencils at fabricengine.StencilsDir(hub)
+// like testLayout.
 func patternActiveLayout(t *testing.T) *lyxcwd.Location {
 	t.Helper()
-	root := t.TempDir()
-	dir := filepath.Join(root, "_lyx")
+	hub := t.TempDir()
+	seedHubStencils(t, hub)
+	dir := filepath.Join(hub, "worktree", "_lyx")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", dir, err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
 	}
-	return &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: "."}
+	return &lyxcwd.Location{HubPath: hub, WorktreeName: "worktree", AnchorRel: "."}
 }
 
 // requireContains fails the test, naming the missing needle, if text does
@@ -86,7 +201,7 @@ func requireNotContains(t *testing.T, text, needle string) {
 // token from every "- `token`" bullet line appearing strictly between
 // heading (matched by trimmed equality) and the next "## " heading or EOF —
 // the shape both the digest-field and outcome-key bullet lists take in
-// master-template.md.
+// webster-template-master.
 func extractBacktickBullets(text, heading string) []string {
 	lines := strings.Split(text, "\n")
 
@@ -190,7 +305,7 @@ func cardWithSourcePath(number int, slug, intent string) planparser.Card {
 // declared order — no fewer, no extras — the mechanical half of "Master reads only the minimal
 // fork-return digest".
 func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
-	text := string(websterengine.MasterTemplate())
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
 	want := []string{"batch", "status", "head_sha", "deviations", "dead_reason", "elapsed_s"}
 	got := extractBacktickBullets(text, digestSectionHeading)
@@ -209,7 +324,7 @@ func TestMasterTemplate_QuotesDigestFieldsAndNoOthers(t *testing.T) {
 // names exactly the three outcome.yaml schema keys, immediately followed by the literal yaml block
 // spelling out their values, and separately names summary_path's own "# <title>" first-line rule.
 func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
-	text := string(websterengine.MasterTemplate())
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
 	requireContains(t, text, outcomeKeysHeadingSub)
 
@@ -238,7 +353,7 @@ func TestMasterTemplate_QuotesOutcomeSchemaKeys(t *testing.T) {
 // fails this test rather than only a human review — the Cwd Resolution Invariant's prompt-template
 // half plus webster's own fork-discipline bans.
 func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
-	text := string(websterengine.MasterTemplate())
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
 	requireContains(t, text, "NEVER run any git command against `_lyx`")
 	requireContains(t, text, "NEVER edit, create, or delete any file other than")
@@ -268,7 +383,7 @@ func TestMasterTemplate_ForbidsLyxGitModelAndNamedSubagents(t *testing.T) {
 // a CLI driven via the Bash tool (never a listed tool), and that the session gets its bearings via
 // `lyx webster status` rather than ending its turn to ask.
 func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.T) {
-	text := string(websterengine.MasterTemplate())
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
 	requireContains(t, text, "get your bearings against the real state on disk")
 	requireContains(t, text, "non-interactively by `lyx webster run`")
@@ -284,7 +399,7 @@ func TestMasterTemplate_GroundsHarnessRealityAgainstInjectionRefusal(t *testing.
 // prompt forwarding, the backgrounded-fork wait discipline, and the flat-model recovery ladder in
 // prose.
 func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
-	text := string(websterengine.MasterTemplate())
+	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
 	requireContains(t, text, "`begin-batch` before every fork")
 	requireContains(t, text, `subagent_type: "fork"`)
@@ -333,8 +448,10 @@ func TestMasterTemplate_StatesBracketSequenceAndRecoveryLadder(t *testing.T) {
 // pattern_directive is deliberately excluded from this deletion sweep: it is the one optional
 // marker (see the template's own banner comment), so deleting it must not error.
 func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(websterengine.MasterTemplate(), masterTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
+		if _, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), masterTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
 	})
@@ -343,7 +460,7 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := masterTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.FillOptional(websterengine.MasterTemplate(), values, []string{"pattern_directive"})
+			_, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), values, []string{"pattern_directive"})
 			if err == nil {
 				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -359,10 +476,12 @@ func TestMasterTemplate_FillsWithAllMarkers(t *testing.T) {
 // and no stray blank-line block where the directive would have sat, and a non-empty value places
 // the directive block ahead of the first work instruction ("## Orientation").
 func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+
 	t.Run("empty pattern_directive renders cleanly", func(t *testing.T) {
 		values := masterTemplateMarkerValues()
 		values["pattern_directive"] = ""
-		got, err := stencil.FillOptional(websterengine.MasterTemplate(), values, []string{"pattern_directive"})
+		got, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), values, []string{"pattern_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -380,7 +499,7 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 
 	t.Run("non-empty pattern_directive precedes the first work instruction", func(t *testing.T) {
 		values := masterTemplateMarkerValues()
-		got, err := stencil.FillOptional(websterengine.MasterTemplate(), values, []string{"pattern_directive"})
+		got, err := stencil.FillOptional(mustMasterTemplate(t, stencilsDir), values, []string{"pattern_directive"})
 		if err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
@@ -399,7 +518,7 @@ func TestMasterTemplate_PatternDirectiveOptional(t *testing.T) {
 // statement and the commit-per-card statement, so a silent edit to any of these fails here rather
 // than only a human review.
 func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
-	text := string(websterengine.ForkTemplate())
+	text := string(mustForkTemplate(t, newTestStencilsDir(t)))
 
 	requireContains(t, text, "status:")
 	requireContains(t, text, "head_sha:")
@@ -426,7 +545,7 @@ func TestForkTemplate_PinsReportSchemaKeys(t *testing.T) {
 // Card-Index-intent Shared Decision), and the Commit-pin-lives-in-the-card- file wording, rather
 // than any inlined-block phrasing.
 func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
-	text := string(websterengine.ForkTemplate())
+	text := string(mustForkTemplate(t, newTestStencilsDir(t)))
 
 	requireContains(t, text, "Read the card file")
 	requireContains(t, text, "fall back to that card's one-line intent from the Card Index")
@@ -440,8 +559,10 @@ func TestForkTemplate_CardLoopReadsCardFileWithWhatFallback(t *testing.T) {
 // rename_mechanic, and pattern_directive are gone, per the fork-context-hygiene Shared Decision),
 // so this uses plain stencil.Fill rather than stencil.FillOptional.
 func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.Fill(websterengine.ForkTemplate(), forkTemplateMarkerValues()); err != nil {
+		if _, err := stencil.Fill(mustForkTemplate(t, stencilsDir), forkTemplateMarkerValues()); err != nil {
 			t.Fatalf("stencil.Fill() = %v; want nil", err)
 		}
 	})
@@ -450,7 +571,7 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := forkTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.Fill(websterengine.ForkTemplate(), values)
+			_, err := stencil.Fill(mustForkTemplate(t, stencilsDir), values)
 			if err == nil {
 				t.Fatalf("stencil.Fill() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -468,8 +589,10 @@ func TestForkTemplate_FillsWithAllMarkers(t *testing.T) {
 // pattern_directive is excluded from the deletion sweep: it is the recovery template's one optional
 // marker, so deleting it must not error.
 func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+
 	t.Run("all markers supplied", func(t *testing.T) {
-		if _, err := stencil.FillOptional(websterengine.RecoveryTemplate(), recoveryTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
+		if _, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), recoveryTemplateMarkerValues(), []string{"pattern_directive"}); err != nil {
 			t.Fatalf("stencil.FillOptional() = %v; want nil", err)
 		}
 	})
@@ -478,7 +601,7 @@ func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 		t.Run("missing "+marker, func(t *testing.T) {
 			values := recoveryTemplateMarkerValues()
 			delete(values, marker)
-			_, err := stencil.FillOptional(websterengine.RecoveryTemplate(), values, []string{"pattern_directive"})
+			_, err := stencil.FillOptional(mustRecoveryTemplate(t, stencilsDir), values, []string{"pattern_directive"})
 			if err == nil {
 				t.Fatalf("stencil.FillOptional() with %q missing = nil error; want error naming the marker", marker)
 			}
@@ -495,14 +618,16 @@ func TestRecoveryTemplate_FillsWithAllMarkers(t *testing.T) {
 // not a byte-equality of the two renderers' own rendered output, which legitimately diverges on
 // per-caller values (card_pointers, prev_digest, and so on).
 func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
-	body := websterengine.ImplementerBodyTemplate()
+	stencilsDir := newTestStencilsDir(t)
+
+	body := mustImplementerBodyTemplate(t, stencilsDir)
 	if len(body) == 0 {
 		t.Fatalf("ImplementerBodyTemplate() = empty; want non-empty shared body bytes")
 	}
-	if !bytes.Contains(websterengine.ForkTemplate(), body) {
+	if !bytes.Contains(mustForkTemplate(t, stencilsDir), body) {
 		t.Errorf("ForkTemplate() does not contain ImplementerBodyTemplate()'s bytes")
 	}
-	if !bytes.Contains(websterengine.RecoveryTemplate(), body) {
+	if !bytes.Contains(mustRecoveryTemplate(t, stencilsDir), body) {
 		t.Errorf("RecoveryTemplate() does not contain ImplementerBodyTemplate()'s bytes")
 	}
 }
@@ -511,13 +636,15 @@ func TestTemplates_ForkAndRecoveryShareImplementerBody(t *testing.T) {
 // three dropped batch-era concepts — oversized batches, deferred-verify chains, and the per-batch
 // "## Scope" section — anywhere in its bytes.
 func TestTemplates_NoDroppedBatchConceptsRemain(t *testing.T) {
+	stencilsDir := newTestStencilsDir(t)
+
 	for _, tc := range []struct {
 		name string
 		text string
 	}{
-		{"master", string(websterengine.MasterTemplate())},
-		{"fork", string(websterengine.ForkTemplate())},
-		{"recovery", string(websterengine.RecoveryTemplate())},
+		{"master", string(mustMasterTemplate(t, stencilsDir))},
+		{"fork", string(mustForkTemplate(t, stencilsDir))},
+		{"recovery", string(mustRecoveryTemplate(t, stencilsDir))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requireNotContains(t, strings.ToLower(tc.text), "oversized")
@@ -539,7 +666,7 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	}}
 
 	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", testLayout(), 2)
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", testLayout(t), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -548,7 +675,7 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 
 	t.Run("non-empty prevDigest passes through verbatim", func(t *testing.T) {
 		digest := "01-seam-extensions: done head_sha=abc123"
-		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", testLayout(), 2)
+		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", testLayout(t), 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -580,7 +707,7 @@ func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
 	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", testLayout(), 2)
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", testLayout(t), 2)
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
@@ -599,7 +726,7 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 	card.Moves = []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", testLayout(), 2)
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", testLayout(t), 2)
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
@@ -619,7 +746,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
 	t.Run("PATTERN inactive", func(t *testing.T) {
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", testLayout(), 2)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", testLayout(t), 2)
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -659,7 +786,7 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 	plan := &planparser.Plan{Verify: "go test ./internal/boardcli/... ./cmd/lyx/..."}
 
-	got, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree")
+	got, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree", newTestStencilsDir(t))
 	if err != nil {
 		t.Fatalf("RenderIntegrationPrompt() = _, %v; want nil error", err)
 	}
@@ -674,7 +801,7 @@ func TestRenderIntegrationPrompt_InjectsVerifyText(t *testing.T) {
 func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 	plan := &planparser.Plan{Verify: ""}
 
-	if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree"); err == nil {
+	if _, err := websterengine.RenderIntegrationPrompt(plan, "/reports/integration.yaml", "/worktree", newTestStencilsDir(t)); err == nil {
 		t.Fatalf("RenderIntegrationPrompt() error = nil; want an error for a plan with no plan-level verify")
 	}
 }
@@ -685,11 +812,13 @@ func TestRenderIntegrationPrompt_EmptyVerifyErrors(t *testing.T) {
 // of running the verify and writing that report itself — deadlocks the run via plain shell polls
 // the lyx-webster fork hook cannot see.
 func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
-	integration := string(websterengine.IntegrationTemplate())
+	stencilsDir := newTestStencilsDir(t)
+
+	integration := string(mustIntegrationTemplate(t, stencilsDir))
 	requireContains(t, integration, "NEVER poll or wait for the integration")
 	requireContains(t, integration, "YOU are the one who WRITES")
 
-	master := string(websterengine.MasterTemplate())
+	master := string(mustMasterTemplate(t, stencilsDir))
 	requireContains(t, master, "you do NOT poll or wait for any report file")
 	requireContains(t, master, "Your FIRST action is to Read this file")
 }
@@ -698,13 +827,89 @@ func TestIntegrationTemplate_ForbidsPollingForOwnReport(t *testing.T) {
 // template's bytes carry no per-card or commit instructions of any kind: the integration fork runs
 // the plan-level verify ONCE and makes NO commit, unlike a batch's own fork template.
 func TestIntegrationTemplate_CarriesNoPerCardOrCommitInstructions(t *testing.T) {
-	text := string(websterengine.IntegrationTemplate())
+	text := string(mustIntegrationTemplate(t, newTestStencilsDir(t)))
 
 	requireNotContains(t, text, "**Commit:**")
 	requireNotContains(t, text, "One commit per card")
 	requireNotContains(t, text, "{{.cards}}")
 	requireContains(t, text, "implement NO cards")
 	requireContains(t, text, "make NO commit")
+}
+
+// TestTemplates_ComposedOutputCarriesNoBannerLeak is the regression guard for the hazard this
+// batch's joinTemplateAssets fix closes: it seeds the stencils directory through
+// stencilstore.Reconcile, so every one of webster's five assets carries a real `lyx-stencil:` stamp
+// in its banner, then asserts ForkTemplate and RecoveryTemplate's output contains no `lyx-stencil:`
+// substring and no `<!--` at all — the assertion that fails if joinTemplateAssets ever stops
+// stripping the second asset's banner.
+func TestTemplates_ComposedOutputCarriesNoBannerLeak(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := stencilstore.Reconcile(dir, stencils.Registry(), stencilstore.ModeProduction, ""); err != nil {
+		t.Fatalf("stencilstore.Reconcile(%q) = %v; want nil error", dir, err)
+	}
+
+	fork := string(mustForkTemplate(t, dir))
+	requireNotContains(t, fork, "lyx-stencil:")
+	requireNotContains(t, fork, "<!--")
+
+	recovery := string(mustRecoveryTemplate(t, dir))
+	requireNotContains(t, recovery, "lyx-stencil:")
+	requireNotContains(t, recovery, "<!--")
+}
+
+// TestTemplates_ComposedReadsReflectOnDiskEdits asserts the composed reads are genuinely runtime
+// reads, not a cached copy: overwriting webster-prefix-fork.md changes only ForkTemplate's output,
+// and overwriting webster-body-implementer.md — the body shared by both composed prompts — changes
+// BOTH ForkTemplate's and RecoveryTemplate's output, since three files participate in two composed
+// prompts.
+func TestTemplates_ComposedReadsReflectOnDiskEdits(t *testing.T) {
+	dir := newTestStencilsDir(t)
+
+	beforeFork := mustForkTemplate(t, dir)
+	beforeRecovery := mustRecoveryTemplate(t, dir)
+
+	forkPrefixPath := filepath.Join(dir, "webster", "webster-prefix-fork.md")
+	editedPrefix := append(append([]byte{}, stencils.WebsterPrefixFork...), []byte("\n\nEDITED FORK PREFIX MARKER\n")...)
+	if err := os.WriteFile(forkPrefixPath, editedPrefix, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", forkPrefixPath, err)
+	}
+
+	afterPrefixEditFork := mustForkTemplate(t, dir)
+	if bytes.Equal(afterPrefixEditFork, beforeFork) {
+		t.Errorf("ForkTemplate() unchanged after editing webster-prefix-fork.md; want the on-disk edit to reach the composed output")
+	}
+	afterPrefixEditRecovery := mustRecoveryTemplate(t, dir)
+	if !bytes.Equal(afterPrefixEditRecovery, beforeRecovery) {
+		t.Errorf("RecoveryTemplate() changed after editing webster-prefix-fork.md; want it unaffected by a fork-only prefix edit")
+	}
+
+	bodyPath := filepath.Join(dir, "webster", "webster-body-implementer.md")
+	editedBody := append(append([]byte{}, stencils.WebsterBodyImplementer...), []byte("\n\nEDITED SHARED BODY MARKER\n")...)
+	if err := os.WriteFile(bodyPath, editedBody, 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", bodyPath, err)
+	}
+
+	afterBodyEditFork := mustForkTemplate(t, dir)
+	if bytes.Equal(afterBodyEditFork, afterPrefixEditFork) {
+		t.Errorf("ForkTemplate() unchanged after editing the shared webster-body-implementer.md; want the on-disk edit to reach the composed output")
+	}
+	afterBodyEditRecovery := mustRecoveryTemplate(t, dir)
+	if bytes.Equal(afterBodyEditRecovery, afterPrefixEditRecovery) {
+		t.Errorf("RecoveryTemplate() unchanged after editing the shared webster-body-implementer.md; want the on-disk edit to reach both composed prompts")
+	}
+}
+
+// TestMasterTemplate_MissingBoardIsAHardError asserts MasterTemplate returns an error naming the
+// missing stencil when the stencils directory does not exist, rather than falling back to the
+// embedded default — the missing-board-is-a-hard-error Shared Decision.
+func TestMasterTemplate_MissingBoardIsAHardError(t *testing.T) {
+	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
+
+	_, err := websterengine.MasterTemplate(missingDir)
+	if err == nil {
+		t.Fatalf("MasterTemplate(%q) error = nil; want an error naming the missing stencil", missingDir)
+	}
+	requireContains(t, err.Error(), "webster-template-master")
 }
 
 // TestRenderProgress_ListsOnlyTerminalBatches asserts RenderProgress lists exactly the batches

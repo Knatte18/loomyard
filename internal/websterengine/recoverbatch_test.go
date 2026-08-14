@@ -182,6 +182,9 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	reed := &recoverFakeReed{}
 	engine := &recoverFakeEngine{}
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
+	// webster's prompts are read from disk at call time now, so the fixture's
+	// hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
+	seedHubStencils(t, layout.HubPath)
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
 	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
 

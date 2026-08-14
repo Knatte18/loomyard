@@ -1,5 +1,7 @@
-<!-- This is the loom Discussion producer's interview prompt. It is filled by
-     composePrompt (prompt.go) via internal/stencil and handed to shuttle as the discussion agent's entire instruction set.
+<!-- This is the loom Discussion producer's interview prompt. It is shipped as an embedded default
+     in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lyx/stencils/loom/
+     and read from there at call time by composePrompt (prompt.go) via internal/stencil, then handed to
+     shuttle as the discussion agent's entire instruction set.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go).
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->

@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/scoutcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
+	"github.com/Knatte18/loomyard/internal/stencilcli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
 )
 
@@ -71,7 +72,7 @@ It assembles every module's cobra command tree under a single root so that
 all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, scout, webster.`,
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, perch, scout, webster, stencil.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Modules' PersistentPreRunE hooks run after root's via EnableTraverseRunHooks.
@@ -82,6 +83,8 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
 			}
+			// Seeding must never block a command from running, regardless of its outcome.
+			seedStencils(cmd.Context())
 			return nil
 		},
 	}
@@ -104,6 +107,7 @@ Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler
 		burlercli.Command(),
 		perchcli.Command(),
 		scoutcli.Command(),
+		stencilcli.Command(),
 		webstercli.Command(),
 	)
 

@@ -27,16 +27,19 @@ var _ Shuttle = (*shuttleengine.Runner)(nil)
 // Engine drives burler rounds through a Shuttle, resolving Profile paths against layout's worktree
 // root and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
-	shuttle Shuttle
-	layout  *lyxcwd.Location
-	cfg     Config
+	shuttle     Shuttle
+	layout      *lyxcwd.Location
+	cfg         Config
+	stencilsDir string
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
 // against layout.WorktreePath() and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
 // library, loaded via LoadConfig).
-func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config) *Engine {
-	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg}
+// stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) composePrompt reads
+// burler's four round prompts from at call time via stencilstore.Read.
+func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config, stencilsDir string) *Engine {
+	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg, stencilsDir: stencilsDir}
 }
 
 // Result is one round's outcome: how the shuttle run classified (Outcome), the parsed verdict and
@@ -117,7 +120,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	inst2Path := filepath.Join(roundDir, "instruction-2-review.md")
 	inst3Path := filepath.Join(roundDir, "instruction-3-fix.md")
 
-	prompt, files, err := composePrompt(&p, directive, inst1Path, inst2Path, inst3Path)
+	prompt, files, err := composePrompt(e.stencilsDir, &p, directive, inst1Path, inst2Path, inst3Path)
 	if err != nil {
 		return Result{}, err
 	}

@@ -1,6 +1,9 @@
 <!-- This is burler round instruction 3 of 3: job B — fix every finding,
      the write-surface/git discipline for the fix, the fixer-report, and the never-push/never-touch-`_lyx` rule.
-     It is filled by composePrompt (prompt.go) via internal/stencil and read by the agent only when the round orchestrator (round-orchestrator-template.md) directs it here, after instructions 1 and 2.
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
+     seeded to <hub>/_board/_lyx/stencils/burler/ and read from there at call time by composePrompt
+     (prompt.go) via internal/stencil, then read by the agent only when the round orchestrator
+     (burler-template-round-orchestrator.md) directs it here, after instructions 1 and 2.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires all three non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). -->
 

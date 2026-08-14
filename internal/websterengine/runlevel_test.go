@@ -259,6 +259,9 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 	reed := &runFakeReed{}
 	starter := &runFakeStarter{}
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
+	// webster's prompts are read from disk at call time now, so the fixture's
+	// hub must carry them before Run reaches RenderMasterPrompt.
+	seedHubStencils(t, layout.HubPath)
 	shuttleRunRoot := t.TempDir()
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 
