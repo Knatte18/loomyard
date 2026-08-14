@@ -23,3 +23,9 @@ Primary target: the create-side containment gap in `createExclusiveDir`/`createG
 ## What was tested
 
 Exact commands and observations, appended incrementally as each scenario returns.
+
+### Hermetic gates (pre-review baseline, clean tree at 08520a1b + report skeleton)
+
+- `go build ./...` — rc=0.
+- `go vet ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitexec/... ./internal/gitrepo/...` — rc=0, no output.
+- `go test ./internal/fabricengine/... ./internal/fabriccli/... ./internal/gitexec/... ./internal/gitrepo/... ./cmd/lyx/... -count=5` — all ok.
