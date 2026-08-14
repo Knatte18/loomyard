@@ -56,13 +56,23 @@ Fuller design/how-to lives in godoc and `docs/`.
 
 Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to. `_lyx` holds tracked content only.
 
-- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception `reedengine.HubLogsDir` (hub-anchored).
+- `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception the hub-wide pair under `BoardDir(hub)`.
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
 - `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key, which is reserved for optional, explicitly-named dirs only.
 - `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
-- `<hub>/.lyx` is hub-level geometry alongside `<hub>/_board`, created by `fabricengine.CloneHub` — a real directory, never a junction, reserved so no worktree slug can claim the name.
+- The hub-wide never-tracked tree is `<hub>/_board/.lyx`, the mirrored sibling of `<hub>/_board/_lyx`, created by `fabricengine.CloneHub` after the board worktree exists — a real directory, never a junction. `fabricengine.HubScratchDir` is its sole constructor;
+  `.lyx` stays slug-reserved via `structuralNeverCommittedDirs`, not via hub geometry.
 - **Enforced by** `cmd/lyx/notransients_test.go`, `cmd/lyx/constructoranchoring_test.go`, `internal/fabricengine/structuraldirs_test.go`, `template_test.go`, `dotlyxjunction_integration_test.go`.
   A newly added transient's mirrored-subpath placement is a review obligation.
+
+## Hub Containment Invariant
+
+No hub-level container is ever junctioned into a worktree. `_board`, `_portals` and `_launchers` are reachable from the hub and only from the hub.
+
+- A worktree sees warp and weft woven into one repo and nothing else — that is the fabric illusion, and it is also what makes worktree isolation geometric rather than a rule agents must remember.
+- `_portals`/`_launchers` links point hub-inward (`<hub>/_portals/<anchor>/<slug>` → the worktree's `_lyx`), never worktree-outward. A per-worktree link to either is banned, not merely unbuilt.
+- The `_board` convenience junction was wired until this rule landed and is now removed; the board is reached at `<hub>/_board`.
+- **Enforced by** review discipline plus `internal/fabricengine`'s wiring having no worktree-side hub-container call site.
 
 ## gitkit Leaf Invariant
 
