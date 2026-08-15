@@ -6,9 +6,12 @@
 package shedengine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
@@ -317,5 +320,118 @@ func TestRun_ResumeAfterHalt(t *testing.T) {
 				t.Errorf("persisted State = %q; want %q -- the halted state must be overwritten as the loop advances", got.State, StateDone)
 			}
 		})
+	}
+}
+
+func TestRun_RerunIdempotence(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
+		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	if _, err := shed.Run(context.Background()); err != nil {
+		t.Fatalf("first Run(...) = _, %v; want nil error", err)
+	}
+
+	before, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read status file after first Run: %v", err)
+	}
+
+	// Without the short-circuit a second invocation would re-call the final producer,
+	// which for a merge-shaped terminal producer means re-running a merge.
+	rerunA := fixedOutcomeProducer(Done, "")
+	rerunB := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: rerunA},
+		{Name: "B", Producer: rerunB},
+	}
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("second Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunDone {
+		t.Errorf("second Run(...).Outcome = %q; want %q", result.Outcome, RunDone)
+	}
+	if rerunA.calls != 0 {
+		t.Errorf("rerunA.calls = %d; want 0", rerunA.calls)
+	}
+	if rerunB.calls != 0 {
+		t.Errorf("rerunB.calls = %d; want 0", rerunB.calls)
+	}
+
+	after, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("read status file after second Run: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("status file bytes changed across the short-circuited re-run:\nbefore: %s\nafter:  %s", before, after)
+	}
+}
+
+func TestRun_RerunResultEquality(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
+		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	first, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("first Run(...) = _, %v; want nil error", err)
+	}
+
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
+		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
+	}
+	second, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("second Run(...) = _, %v; want nil error", err)
+	}
+
+	// This is what proves the short-circuit fills both fields from the file rather than
+	// returning a bare RunDone, and that idempotence is meant at the API surface, not
+	// merely on disk.
+	if second.Outcome != first.Outcome {
+		t.Errorf("second.Outcome = %q; want %q (equal to first)", second.Outcome, first.Outcome)
+	}
+	if second.HaltedProducer != first.HaltedProducer {
+		t.Errorf("second.HaltedProducer = %q; want %q (equal to first)", second.HaltedProducer, first.HaltedProducer)
+	}
+	if !reflect.DeepEqual(second.History, first.History) {
+		t.Errorf("second.History = %+v; want %+v (equal to first)", second.History, first.History)
+	}
+}
+
+func TestRun_RerunWithChangedProducerList(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	seed := commonSeed("Retired-Producer")
+	seed.State = StateDone
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	// The producer list no longer contains the name the file records. This confirms the
+	// short-circuit sits after the read and before the lookup, and that the position is a
+	// decision rather than an accident: a finished task must not become un-queryable
+	// because someone later edited the producer list, and the never-guess protection
+	// exists to stop a live run resuming into the wrong producer, a risk that does not
+	// exist once nothing more will be called.
+	shed.Producers = []ProducerDef{
+		{Name: "Current-Producer", Producer: fixedOutcomeProducer(Done, "")},
+	}
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error, not the step-2 lookup error", err)
+	}
+	if result.Outcome != RunDone {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
 	}
 }
