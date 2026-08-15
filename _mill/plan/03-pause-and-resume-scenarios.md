@@ -18,8 +18,10 @@ This batch adds no production code and exposes no interface to a later batch.
 It runs in parallel with batch 4;
 neither touches the other's file, and neither may edit `internal/shedengine/testsupport_test.go` or `internal/shedengine/run_routing_test.go`, both owned by batch 2.
 
-Batch-local decision, beyond `## Shared Decisions` in the overview: several scenarios here need a producer that mutates external state mid-`Call` (cancelling a context, setting a flag).
-Every such mutation happens from inside the fake producer's own closure, because that is the only point in the loop where the test is guaranteed to be between step 1's read and step 5's persist.
+Batch-local decisions, beyond `## Shared Decisions` in the overview:
+
+- Several scenarios here need a producer that mutates external state mid-`Call` (cancelling a context, setting a flag). Every such mutation happens from inside the fake producer's own closure, because that is the only point in the loop where the test is guaranteed to be between step 1's read and step 5's persist.
+- Any mid-`Call` mutation of the **status file** in this batch goes through `internal/state` — `state.UpdateJSON` against a lenient map type, or `state.WriteJSON` — using the same `StatusLockPath` the `Shed` was told, never a bare `os.WriteFile` or an unlocked struct write. That is the lock-cooperating shape the package doc states as a caller-side obligation, and it is the only external-writer shape this design supports; batch 4 pins the identical rule for its own scenarios. Cancelling a context is not a status-file mutation and is unaffected by this rule.
 
 ## Cards
 
@@ -28,6 +30,7 @@ Every such mutation happens from inside the fake producer's own closure, because
 - **Context:**
   - `_mill/discussion.md`
   - `manifest/designs/shed.md`
+  - `internal/state/state.go`
   - `internal/shedengine/testsupport_test.go`
   - `internal/shedengine/status.go`
   - `internal/shedengine/shed.go`
@@ -41,6 +44,7 @@ Every such mutation happens from inside the fake producer's own closure, because
 - **Requirements:** Create `internal/shedengine/run_pause_test.go` in `package shedengine` with a file-level comment naming its scope as the clean-stop, resume, and idempotence scenarios, and add these tests:
 
   **Pause requested mid-list.** A three-producer list where the first producer sets `pause_requested` to true from inside its own `Call`, then returns `Done`.
+  That write goes through `state.UpdateJSON` against a lenient map type using the same status path and status lock path the `Shed` was told, per this batch's second local decision — never a bare unlocked write.
   Assert the run exits before calling the next producer — the second and third producers' call counters are zero;
   `Run` returns `RunPaused` with a **nil** error;
   the persisted state is `StatePaused`;
