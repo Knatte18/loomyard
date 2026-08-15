@@ -64,9 +64,9 @@ Many producers share the same engine: every `*-Review` producer is `engine: perc
 
 1. Read the status file. Missing → **hard error, halt.** `Shed` never seeds one itself — a status file must already exist before `Shed`'s first call, written by whatever spawns the task (see `status-schema.md`'s "seed / handover" section for `loom`'s own instance of this). Seeding is a one-time, product-specific bootstrapping act, not part of `Shed`'s per-invocation loop; if `Shed` seeded on missing, a product whose own precondition producer checks for a coherent fresh seed (`loom`'s already-shipped `Preflight`, `CheckSeedMissing`) would find that check permanently unreachable, since `Shed`'s own seed would always land first.
 2. Look up the `ProducerDef` at `current_producer`. Not found in `Producers` (the list changed since this status file was last written — a producer renamed, removed, or reordered) → **hard error, halt, change nothing on disk.** `Shed` never guesses which entry was meant, and never restarts from `producers[0]` or advances to the nearest match — both are ways of silently fabricating a status a human never confirmed. A human reconciles.
-3. Check `pause_requested`. Set → write `state: "paused"`, exit cleanly; nothing more happens until the next `lyx run`.
+3. Check `pause_requested` **and** `ctx.Err()`. Either set → write `state: "paused"` (`Result.Outcome = RunPaused`, nil `error`), exit cleanly; nothing more happens until the next `lyx run`. Treated identically on purpose: an operator's Ctrl-C or a parent deadline is an operational stop, not a failure, exactly as resumable as an explicit pause request — one clean-stop path, not two. Checked here, at the top of every loop iteration (not only once, and not left to producers to notice on their own) — a `Shed` that only checked `ctx` inside producers would keep launching *new* producer calls after cancellation, for however long the current one takes to notice.
 4. Call `producer.Call(ctx)` → `(Outcome, OutputPointer, error)`.
-5. Append `{producer, outcome, output, at}` to `history`; persist the status file. This append-then-persist is the entire crash-safety mechanism: a crash before it means step 4 simply runs again next time; a crash after it means step 6 already knows where to go.
+5. Append `{producer, outcome, output, at}` to `history`; persist the status file. This append-then-persist is the entire crash-safety mechanism: a crash before it means step 4 simply runs again next time; a crash after it means step 6 already knows where to go. **If the persist itself fails** (disk full, lock unavailable, `state.WriteJSON` errors): halt and return the error from `Run` immediately, without attempting a `state: "failed"` write — that write would be the exact same operation that just failed, so retrying it to record the failure is the one action already known not to work. The file keeps its last-good contents, so `current_producer` still names the producer whose `Call()` just ran; it is simply re-called next time, exactly like any other crash.
 6. Route on the result:
    - `error` → write `state: "failed"` and `error: err.Error()`, halt, exit. An engine-level failure, not a producer verdict — never routed anywhere, always a human resolves it.
    - `Stuck` → look up this producer's `OnStuck` and check the bounce budget (below). Named target *and* budget remaining → `current_producer` becomes that target, back to step 2 (bounce back). No target, **or** budget exhausted → write `state: "blocked"` (and, if exhausted, `error: "bounce budget exhausted"`), exit (escalate to human).
@@ -77,10 +77,10 @@ Many producers share the same engine: every `*-Review` producer is `engine: perc
 **The exact `ShedProducer` contract:**
 
 ```go
-type Outcome int
+type Outcome string
 const (
-    Done Outcome = iota
-    Stuck
+    Done  Outcome = "done"
+    Stuck Outcome = "stuck"
 )
 
 type OutputPointer struct {
@@ -93,6 +93,7 @@ type ShedProducer interface {
 ```
 
 One method, three return values. `Shed` never introspects `Path`'s contents and never validates it against anything — an opaque string it stores for a human to read, per the "no opinion on Output's shape" rule above.
+**String-typed, not `int`+`iota`** — matching `internal/treadleengine.Outcome` (`type Outcome string; const (OutcomeApproved Outcome = "APPROVED", ...)`) exactly, and for the same reason: `history`'s persisted `outcome` field below is the literal string `"done"`, so a string-typed `Outcome` makes the in-memory value and the on-disk value one vocabulary, never a hand-maintained int→string mapping between the two.
 
 **The exact producer definition — the contract plus what the list needs around it:**
 
@@ -105,21 +106,24 @@ type ProducerDef struct {
 
 type Shed struct {
     Producers  []ProducerDef
-    MaxBounces int // total Stuck-routed bounces across the whole run; exhausted behaves as OnStuck == ""
+    StatusPath string // absolute path to the status file; Shed is told it, never derives it
+    LockPath   string // absolute path to the run lock (see Run's own locking, below)
+    MaxBounces int    // total Stuck-routed bounces across the whole run; 0 = an internal sane default, never "no bounces allowed"
 }
 ```
 
 `OnStuck` is what makes "`Plan-Review`'s stuck routes back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
 `MaxBounces` is the total-bounce budget from above — one field on `Shed` itself, not per-`ProducerDef`, since the risk it guards is total wasted spend across the run, not any single producer's own bounce count.
+`StatusPath`/`LockPath` are exactly the caller-supplied, told-not-derived paths from the geometry question above — `Shed` never constructs either from a `_lyx` convention of its own; the caller (`loom`, eventually `Hardener`) resolves them from its own geometry and hands them in.
 
 **The entrypoint:**
 
 ```go
-type RunOutcome int
+type RunOutcome string
 const (
-    RunDone RunOutcome = iota
-    RunBlocked
-    RunPaused
+    RunDone    RunOutcome = "done"
+    RunBlocked RunOutcome = "blocked"
+    RunPaused  RunOutcome = "paused"
 )
 
 type Result struct {
@@ -132,9 +136,14 @@ type Result struct {
 func (s *Shed) Run(ctx context.Context) (Result, error)
 ```
 
-`RunOutcome` is deliberately its own type, not a reuse of `ShedProducer`'s `Outcome` above — the two describe different things (one producer's call vs. the whole run's exit) and `Done` already names a value on the first; a shared type would force a naming collision or an overloaded meaning for no benefit.
+`RunOutcome` is deliberately its own type, not a reuse of `ShedProducer`'s `Outcome` above — the two describe different things (one producer's call vs. the whole run's exit) and `Done` already names a value on the first; a shared type would force a naming collision or an overloaded meaning for no benefit. String-typed for the same reason `Outcome` is: `RunDone`/`RunBlocked`/`RunPaused`'s values are exactly `state`'s persisted values below, one vocabulary, not two kept in sync by hand.
 
-Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Result, err error)` exactly — same `(Result, error)` shape one level up, not a coincidence: `perch`'s own adapter into `treadle` is the concrete precedent this follows. `Run` walks the whole six-step loop in one call, from wherever the status file's `current_producer` currently sits, until it hits a stopping condition (`pause_requested`, `blocked`, `done`, or an `error`) — never a `Step()`-per-call API the caller loops over, since the loop itself is `Shed`'s entire deliverable; pushing it out to every caller would mean `loom` and `Hardener` each reimplementing the same sequencing/pause-check/routing logic, exactly the duplication `Shed` exists to centralize. A non-nil `error` return covers both step 1's and step 2's hard-error cases above (missing or incoherent status file) and a producer's own `Call()` returning `error`; `Result.Outcome` covers the three clean exits, mirroring `state`'s three non-failure values below.
+Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Result, err error)` exactly — same `(Result, error)` shape one level up, not a coincidence: `perch`'s own adapter into `treadle` is the concrete precedent this follows. `Run` walks the whole six-step loop in one call, from wherever the status file's `current_producer` currently sits, until it hits a stopping condition (`pause_requested`/cancellation, `blocked`, `done`, or an `error`) — never a `Step()`-per-call API the caller loops over, since the loop itself is `Shed`'s entire deliverable; pushing it out to every caller would mean `loom` and `Hardener` each reimplementing the same sequencing/pause-check/routing logic, exactly the duplication `Shed` exists to centralize. A non-nil `error` return covers both step 1's and step 2's hard-error cases above (missing or incoherent status file) and a producer's own `Call()` returning `error`; `Result.Outcome` covers the three clean exits, mirroring `state`'s three non-failure values below.
+
+**Two things `Run` does before step 1, both fail loud, neither touches the status file:**
+
+- **Validates `Producers`** — an empty list, a duplicate `Name`, or an `OnStuck` naming a `Name` not present in the list are all a returned `error`, before any producer is ever called. Caught here rather than lazily (only when a producer actually goes `Stuck` and its `OnStuck` typo surfaces) because that is the worst possible timing — a config mistake compounding an unrelated failure, hours into a real run, instead of failing on the very first invocation. `Shed` stays the plain exported-field struct this doc pins throughout — no `New(...)` constructor, which would create a second, unvalidated way to build one (a bare struct literal) alongside the validated one.
+- **Acquires `LockPath` non-blocking**, mirroring `internal/treadleengine/run.go`'s own `lock.TryAcquireWriteLock` / `ErrBlockBusy` precedent exactly (`run.go:119–128`): already held → a sentinel error (e.g. `ErrShedBusy`), `Run` returns immediately, nothing on disk touched. `internal/state`'s own per-write lock does not substitute for this — it is held only for the duration of one write, not across a whole `Call()`, so two concurrent `lyx loom run` invocations could otherwise both read the same `current_producer` and both spawn it, double-spending an LLM session. Released via `defer`, OS-reclaimed on crash even if `Release` is never reached, so a killed process never bricks a later resume.
 
 **The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/loom/status.json` is one instance of it, not a `loom`-specific shape):
 
