@@ -165,10 +165,12 @@ Building `Shed`'s skeleton doesn't need a real producer list to validate against
 Plug in a short, disposable list — a couple of steps that just succeed immediately, including a stub `Finalize` — and sequencing, resume, crash-recovery, and pause can all be exercised end-to-end without any of `loom`'s or `Hardener`'s real producers needing to exist yet.
 This mirrors `loom.md`'s own stated approach ("testable against fake phases before real producers are wired in... the same fake-tested approach `perch` used against a fake `burler`") — reused here to validate the *extraction*, the same way `perch`'s existing behavior validates `Treadle`'s extraction.
 
-## Process — one task, not many
+## Process — decomposed into several small tasks
 
-`Shed`'s skeleton, its two adapters (`perch`, `Webster`), and the `Finalize` producer are **one Planned task** — `Finalize` is a producer definition like any other now, not a second, separately-scoped piece of shared code, so there is no reason to split it out.
-Same reasoning as the combined `Treadle` + `perch`-rewrite task.
+`Shed`'s own skeleton (the loop, the status file, the `ShedProducer` interface) is one task on its own — no adapters, no `Finalize`, nothing `loom`-specific.
+The three engine adapters (`SingleLLMProducer`, `perch`, `Webster`) are a separate task: each is a small, self-contained wrapper around an already-shipped engine, sharing nothing with `Shed`'s own skeleton beyond the `ShedProducer` interface each implements.
+`Finalize` is bundled with neither — it is genuinely new code (see [finalize.md](finalize.md)), scoped as its own task once `loom`'s producer list reaches it, on the same footing as the not-yet-detailed Plan and Webster phases.
+See `manifest/roadmap.md`'s Planned section for the concrete task sequence this decomposes into.
 
 ## Why this doc doesn't rewrite loom.md's full detail
 

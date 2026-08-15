@@ -12,9 +12,13 @@ Committed to, in this order, next.
 1. **Shed: shared outer phase-FSM, no predefined slots** — a generic engine that walks one flat, ordered list of producers, honoring resume/crash-recovery/pause uniformly across every entry; `loom` and `Hardener` are each `Shed` plus their own producer list.
    See [designs/shed.md](designs/shed.md).
 
-1. **loom: phase-machine skeleton + session bootstrap** — the status-file-driven engine (sequencing, resume, crash-recovery, pause), plus the `lyx loom run` entry point.
-   Builds on `Shed` above.
-   See [designs/loom.md](designs/loom.md).
+1. **Shed's engine adapters — `SingleLLMProducer`, the `perch` adapter, the `Webster` adapter** — the three reusable `ShedProducer` implementations, each a thin wrapper around an already-shipped engine.
+   Own task, separate from `Shed`'s own skeleton above.
+   See [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer).
+
+1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer `discussion-format.md` already specs), `Discussion-Review` (wired via the `perch` adapter above).
+   First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings become real, directly-editable stencil files instead of Go source, same as every other producer prompt.
    Independent of `Shed`/`loom` above, no ordering dependency either way.
