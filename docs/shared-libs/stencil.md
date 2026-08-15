@@ -54,8 +54,12 @@ Centralizing this guard is worth more than the substitution itself, which is tri
 
 The built scoping: every **top-level** absent-or-empty marker is collected and reported together, sorted, in one error,
 and the template is never executed.
-A **branch-internal** reached-but-absent marker is instead caught incrementally, one per call, via `missingkey=error` — this is not "every hole in one error" for branch-internal markers, only for top-level ones.
-A caller-required marker (like `fasit`/`target`) must therefore live at the template's top level, never inside a conditional branch.
+A **branch-internal** reached-but-*absent* marker is instead caught incrementally, one per call, via `missingkey=error` — this is not "every hole in one error" for branch-internal markers, only for top-level ones.
+
+**A branch-internal marker *present* as `""` is a third case, closed 2026-08-15.** Neither guard above catches it on its own: it isn't top-level (so the batch check never sees it), and it isn't absent (so `missingkey=error` never fires — a present empty-string value is a valid map entry, not a missing key). Left alone, it would render silently blank — exactly the risk every producer template's own header comment warns "`{{if}}`/`{{range}}` conditionals" carry.
+`FillOptional` closes this specific case with a third, additive check: for a simple `{{if .X}}` or `{{if eq .X "literal"}}` condition confidently evaluated true against `values` (an absent or unresolvable condition is left entirely to the existing `missingkey=error` path, never newly flagged), any non-optional marker inside that branch present as `""`/whitespace-only is folded into the same batch error as top-level offenders.
+It does not descend into `{{range}}`/`{{with}}`/`{{template}}`, and it does not resolve an `{{else}}` branch — both remain exactly as unguarded as before this check existed.
+A caller-required marker (like `fasit`/`target`) should still live at the template's top level when practical — the branch-internal guarantee only covers the one specific shape above, not every conditional a template could write.
 
 ## The optional-marker exemption — `FillOptional`
 
