@@ -7,6 +7,7 @@ package shedengine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -200,5 +201,121 @@ func TestRun_CancelledDuringProducerCall(t *testing.T) {
 	}
 	if got.CurrentProducer != "A" {
 		t.Errorf("persisted CurrentProducer = %q; want %q -- the next Run must re-call this producer", got.CurrentProducer, "A")
+	}
+}
+
+func TestRun_CrashRecovery(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	wantErr := errors.New("plan-write: disk full")
+	p1a := fixedOutcomeProducer(Done, "")
+	p2a := &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
+		return "", OutputPointer{}, wantErr
+	}}
+	p3a := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: p1a},
+		{Name: "B", Producer: p2a},
+		{Name: "C", Producer: p3a},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	if _, err := shed.Run(context.Background()); err == nil {
+		t.Fatalf("first Run(...) = _, nil; want a non-nil error")
+	}
+
+	halted := readStatus(t, statusPath, statusLockPath)
+	if halted.CurrentProducer != "B" {
+		t.Fatalf("persisted CurrentProducer after halt = %q; want %q", halted.CurrentProducer, "B")
+	}
+	if p3a.calls != 0 {
+		t.Fatalf("p3a.calls = %d; want 0 -- the run must halt at B, never reaching C", p3a.calls)
+	}
+
+	// A fresh Shed value against the same status file and lock paths is the point of this
+	// scenario: nothing carries over in memory, so everything the resume relies on must
+	// have survived on disk.
+	freshShed := &Shed{
+		StatusPath:     statusPath,
+		LockPath:       shed.LockPath,
+		StatusLockPath: statusLockPath,
+	}
+	p1b := fixedOutcomeProducer(Done, "")
+	p2b := fixedOutcomeProducer(Done, "")
+	p3b := fixedOutcomeProducer(Done, "")
+	freshShed.Producers = []ProducerDef{
+		{Name: "A", Producer: p1b},
+		{Name: "B", Producer: p2b},
+		{Name: "C", Producer: p3b},
+	}
+
+	result, err := freshShed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("second Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunDone {
+		t.Errorf("second Run(...).Outcome = %q; want %q", result.Outcome, RunDone)
+	}
+	if p1b.calls != 0 {
+		t.Errorf("p1b.calls = %d; want 0 -- the resumed run must not re-call the first producer", p1b.calls)
+	}
+	if p2b.calls != 1 {
+		t.Errorf("p2b.calls = %d; want 1", p2b.calls)
+	}
+	if p3b.calls != 1 {
+		t.Errorf("p3b.calls = %d; want 1", p3b.calls)
+	}
+
+	// The file's history is cumulative across invocations: Result.History reports the
+	// first run's entries as well as its own.
+	wantLen := len(halted.History) + 2
+	if len(result.History) != wantLen {
+		t.Fatalf("len(result.History) = %d; want %d (the first run's entry plus this run's two)", len(result.History), wantLen)
+	}
+	for i, entry := range halted.History {
+		if result.History[i] != entry {
+			t.Errorf("result.History[%d] = %+v; want %+v (carried over from the first run)", i, result.History[i], entry)
+		}
+	}
+}
+
+func TestRun_ResumeAfterHalt(t *testing.T) {
+	tests := []struct {
+		name  string
+		state State
+	}{
+		{"StateBlocked", StateBlocked},
+		{"StateFailed", StateFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+
+			producer := fixedOutcomeProducer(Done, "")
+			shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
+
+			seed := commonSeed("A")
+			seed.State = tt.state
+			seed.Error = "seeded halt for resume test"
+			seedStatus(t, statusPath, statusLockPath, seed)
+
+			// This is deliberately asymmetric with StateDone, so a human can resume after
+			// fixing whatever caused the halt without hand-editing the status file.
+			result, err := shed.Run(context.Background())
+			if err != nil {
+				t.Fatalf("Run(...) = _, %v; want nil error", err)
+			}
+			if result.Outcome != RunDone {
+				t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
+			}
+			if producer.calls != 1 {
+				t.Errorf("producer.calls = %d; want 1 -- %s must not short-circuit", producer.calls, tt.state)
+			}
+
+			got := readStatus(t, statusPath, statusLockPath)
+			if got.State != StateDone {
+				t.Errorf("persisted State = %q; want %q -- the halted state must be overwritten as the loop advances", got.State, StateDone)
+			}
+		})
 	}
 }
