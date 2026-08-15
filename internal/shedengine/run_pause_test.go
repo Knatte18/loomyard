@@ -128,3 +128,77 @@ func TestRun_ResumeAfterPause(t *testing.T) {
 		t.Errorf("resumed producer B calls = %d; want 1", resumed.calls)
 	}
 }
+
+func TestRun_CancelledBetweenProducers(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	p1 := &funcProducer{}
+	p1.fn = func(innerCtx context.Context) (Outcome, OutputPointer, error) {
+		cancel()
+		return Done, OutputPointer{}, nil
+	}
+	p2 := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: p1},
+		{Name: "B", Producer: p2},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(ctx)
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunPaused {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunPaused)
+	}
+	// Checking the context at the top of every iteration, rather than leaving it to
+	// producers, is what stops a cancelled run from launching new producer calls for
+	// however long the current one takes to notice.
+	if p2.calls != 0 {
+		t.Errorf("p2.calls = %d; want 0 -- no producer is called after the cancellation", p2.calls)
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.State != StatePaused {
+		t.Errorf("persisted State = %q; want %q", got.State, StatePaused)
+	}
+}
+
+func TestRun_CancelledDuringProducerCall(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Models a well-behaved producer handed a cancelled context: it cancels and then
+	// returns the context's own error from inside the same Call, the common Ctrl-C shape.
+	// The returned error's identity is never asserted anywhere in this test -- the branch
+	// keys on the context's own state, not a cancellation sentinel.
+	p1 := &funcProducer{}
+	p1.fn = func(innerCtx context.Context) (Outcome, OutputPointer, error) {
+		cancel()
+		return "", OutputPointer{}, ctx.Err()
+	}
+	shed.Producers = []ProducerDef{{Name: "A", Producer: p1}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(ctx)
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error, not a failure -- without this scenario the top-of-iteration check passes while every real cancellation still lands in StateFailed", err)
+	}
+	if result.Outcome != RunPaused {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunPaused)
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.State != StatePaused {
+		t.Errorf("persisted State = %q; want %q", got.State, StatePaused)
+	}
+	if len(got.History) != 0 {
+		t.Errorf("persisted History = %+v; want no entry appended -- the producer never reached a verdict", got.History)
+	}
+	if got.CurrentProducer != "A" {
+		t.Errorf("persisted CurrentProducer = %q; want %q -- the next Run must re-call this producer", got.CurrentProducer, "A")
+	}
+}
