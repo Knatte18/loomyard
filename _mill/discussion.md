@@ -126,12 +126,14 @@ This file records the decisions that discussion produced;
 
 ### reread-and-merge-persist
 
-- Decision: two changes to the loop, together:
+- Decision: three changes to the loop, together:
   1. Step 6 routes back to **step 1**, not step 2 — the status file is re-read (via `state.ReadJSONStrict`) at the top of every iteration, so step 3's `pause_requested` check sees a pause requested *during* the producer call that just returned.
   2. Step 5 persists via `state.UpdateJSON` (locked read-modify-write), whose mutate function overwrites only the Shed-owned fields above and carries `pause_requested` and `product` forward from the on-disk copy.
+  3. **Routing is computed before persisting, and steps 5 and 6 share exactly one `UpdateJSON` call per iteration** — the `history` append, the new `current_producer`, and the new `state`/`error` all land in a single mutate.
 - Rationale: as originally specified, the loop read the file once and rewrote it whole from an in-memory copy, so a pause requested during a 20-minute producer call was both **never observed** (step 6 routed to step 2, past the step-3 check's data source) and **silently destroyed** (step 5's blind rewrite), along with any external `product` update. `state.UpdateJSON` exists for exactly this hazard — it holds one exclusive lock across read, mutate, and write, so a concurrent writer's value can never be clobbered by a payload composed from a base that writer already superseded (`internal/state/state.go:99-133`).
-- Consequence for `shed.md`: the loop's step-6 text ("back to step 2") and the "Shed is the file's only writer" sentence under `activity` must be corrected in this task's commit, alongside the other doc updates.
-- Rejected: re-reading only `pause_requested` before each step-3 check (sees the pause, still clobbers external `product` writes on every persist); leaving the loop as-is and accepting lost pauses.
+- Rationale for the single persist: written as two separate writes — step 5 appending `history`, step 6 then writing `state` and advancing `current_producer` — a crash landing between them leaves `current_producer` still naming the producer that just finished, so the next `Run` re-calls it and appends a **duplicate** `history` entry. That defeats the very crash-safety property step 5 exists to provide ("a crash after it means step 6 already knows where to go"), which only holds if "after it" and "step 6 decided" are the same instant. Computing the route first and committing it atomically makes the persist the single commit point of the whole iteration.
+- Consequence for `shed.md`: the loop's step-6 text ("back to step 2"), the "Shed is the file's only writer" sentence under `activity`, and the step-5/step-6 split as two separate persists must all be corrected in this task's commit — see `docs-and-roadmap` for the full inventory.
+- Rejected: re-reading only `pause_requested` before each step-3 check (sees the pause, still clobbers external `product` writes on every persist); leaving the loop as-is and accepting lost pauses; two persists per iteration with a duplicate `history` entry on crash accepted as harmless (it is not — `history` is the audit trail a human and a future progress judge both read, and a phantom re-run entry misrepresents what happened).
 
 ### pause-is-a-consumed-request
 
@@ -162,7 +164,8 @@ This file records the decisions that discussion produced;
 
 ### total-bounce-budget
 
-- Decision: one **total** bounce budget across the whole run — `MaxBounces int` on `Shed`, decremented on every `Stuck`-routed bounce regardless of which producers are involved. Exhausted behaves exactly like "no `OnStuck` target": `state: "blocked"`, not a distinct third case. `MaxBounces: 0` means "use the internal default"; the default is **10**.
+- Decision: one **total** bounce budget per `Run` **call**, held in memory — `MaxBounces int` on `Shed`, decremented on every `Stuck`-routed bounce regardless of which producers are involved. It is deliberately **not** persisted: the status file carries no bounces-used field, so a crash-restart or a human-resumed `blocked` run starts again with the full budget.
+- Scope rationale: "run" means one `Run` invocation, not the task's whole lifetime. That is the right scope because the budget guards *unattended* runaway spend inside a single invocation, and every event that resets it — a crash-restart, or a human resuming a `blocked` task — is a new human-initiated invocation where a person has already been pulled in, which is precisely the outcome the budget exists to force. Persisting it would also mean a legitimate resume inherits an exhausted budget and blocks immediately, and it would add a field to a status shape that is otherwise fully pinned. The `history` trail still records every bounce across every invocation, so nothing is hidden from a human reading the file. Exhausted behaves exactly like "no `OnStuck` target": `state: "blocked"`, not a distinct third case. `MaxBounces: 0` means "use the internal default"; the default is **10**.
 - Rationale: `OnStuck` permits a cycle and every hop can be a full LLM session, so an unbounded cycle is the default outcome whenever a bounced-back producer keeps failing the same way. `internal/treadleengine` already carries the identical discipline for the identical risk shape (a hard round cap). A **per-producer** budget would let an A↔B cycle run 2×budget bounces before either individually trips, which does not bound the thing actually being guarded — total wasted spend before a human is pulled in. The default of 10 matches the magnitude of `perchengine`'s own shipped hard cap (`defaultRoundCaps = []int{5, 8, 10}`, `internal/perchengine/profile.go:43`), where each round is likewise a real LLM spend.
 - Rejected: no cap at all as `shed.md` originally had it; a per-`ProducerDef` budget.
 
@@ -227,13 +230,28 @@ This file records the decisions that discussion produced;
 
 ### shed-producer-seam-invariant
 
-- Decision: add a **Shed Producer-Seam Invariant** to `CONSTRAINTS.md`, modeled on the Treadle Runner-Seam Invariant, with a matching `internal/shedengine/seam_enforcement_test.go` allowlist test in the same commit. `internal/shedengine` production imports are capped at stdlib, `internal/state`, `internal/lock`, and `internal/logger` — never `internal/loomengine`, never any `*engine` adapter package, and never `internal/lyxcwd`, since `Shed` is told its paths and derives none.
-- Rationale: the told-never-derived property is the entire reason `Shed` is generic, and it is exactly the property that erodes silently without a machine check. Every import-boundary invariant in this codebase is machine-enforced; the one review-only exception (the Producer Pointer-Rule Invariant) is a content rule, not an import boundary, so it sets no precedent here. Follow Treadle's own wording: policed on **direct** imports only, not the transitive closure, and state plainly what the exclusion buys — that `Shed` is *told* its geometry, never derives it.
+- Decision: add a **Shed Producer-Seam Invariant** to `CONSTRAINTS.md`, modeled on the Treadle Runner-Seam Invariant, with a matching `internal/shedengine/seam_enforcement_test.go` allowlist test in the same commit. `internal/shedengine` production imports are capped at **stdlib, `internal/state`, and `internal/lock`** — never `internal/loomengine`, never any `*engine` adapter package, and never `internal/lyxcwd`, since `Shed` is told its paths and derives none.
+- **`internal/logger` is deliberately excluded.** No decision in this file gives `shedengine` anything to log — it starts no OS process, so the Live-Substrate Spawn Observability invariant does not engage, and the product CLI owns operator-facing output. Excluding it also buys a genuinely stronger property than treadle's: `internal/logger` imports `internal/lyxcwd` (`internal/logger/sink.go:21`), whereas `internal/lock` imports no internal package at all and `internal/state` imports only `internal/fsx` and `internal/lock`. So for `shedengine` alone, "never `internal/lyxcwd`" holds **transitively**, not merely on direct imports — a claim treadle explicitly cannot make.
+- Rationale: the told-never-derived property is the entire reason `Shed` is generic, and it is exactly the property that erodes silently without a machine check. Every import-boundary invariant in this codebase is machine-enforced; the one review-only exception (the Producer Pointer-Rule Invariant) is a content rule, not an import boundary, so it sets no precedent here. Follow Treadle's wording for the **policing** half — direct imports only, not the transitive closure, since that is what the test actually checks — while stating the stronger transitive fact above as an observation about today's allowlist, not as something the test enforces. Do not copy treadle's "excluding it buys no isolation" caveat verbatim: for this allowlist it would be false.
+- Rejected: keeping `internal/logger` on the allowlist for future convenience (nothing needs it, and it would forfeit the transitive property for zero present benefit).
 - Rejected: a review-obligation-only invariant; no invariant at all.
 
 ### docs-and-roadmap
 
-- Decision: four doc updates land in the same commit as the code — (1) `manifest/designs/shed.md`'s status banner flips from "Design sketch, Planned" to reflect the shipped skeleton, with the adapters still Planned, **plus three corrections this discussion produced**: the loop's step-6 routing target becomes step 1 rather than step 2, the "Shed is the file's only writer" sentence is replaced by the explicit field-ownership split, and the `Shed` struct gains `StatusLockPath` beside `StatusPath`/`LockPath`; (2) `docs/overview.md` gains a module-table entry and a tree line for `internal/shedengine`; (3) `CONSTRAINTS.md` gains the invariant above; (4) `manifest/roadmap.md` moves the **Shed: shared outer phase-FSM, no predefined slots** item from Planned to Done.
+- Decision: four doc updates land in the same commit as the code — (1) `manifest/designs/shed.md` is **reconciled against every decision in this file**; (2) `docs/overview.md` gains a module-table entry and a tree line for `internal/shedengine`; (3) `CONSTRAINTS.md` gains the invariant above; (4) `manifest/roadmap.md` moves the **Shed: shared outer phase-FSM, no predefined slots** item from Planned to Done.
+- **The `shed.md` reconciliation is a whole-document pass, not a fixed checklist.** This discussion changed enough of the pinned design that an enumerated list would read as exhaustive and let the rest silently rot. The known edits, non-exhaustively:
+  - Status banner: "Design sketch, Planned" → shipped skeleton, adapters still Planned.
+  - Step-6 routing target: "back to step 2" → back to step 1 (re-read each iteration).
+  - Steps 5 and 6 are one atomic `UpdateJSON` persist, not two writes.
+  - The "Shed is the file's only writer" sentence → the explicit field-ownership split.
+  - `pause_requested` is consumed (cleared) in the same persist that writes `state: "paused"`.
+  - The `Shed` struct gains `StatusLockPath` beside `StatusPath`/`LockPath`, with the never-the-same-file rule.
+  - `Run` `MkdirAll`s both lock parents; the "nothing on disk touched" wording (`shed.md:146`) is corrected, since acquiring a lock creates the lock file.
+  - The status-file JSON example (`shed.md:150-162`) gains the `product` field, which is currently absent from it.
+  - `current_producer`'s value on completion (the last producer's name) and the already-`done` short-circuit.
+  - `MaxBounces`'s concrete default (10) and its per-`Run`-call, in-memory scope.
+  - `history[].at` as RFC3339 UTC, and `Result.History` as the full persisted history.
+  - The plan must re-read `shed.md` against this file's Decisions section as a whole and fix anything else that has drifted, rather than treating the above as complete.
 - Rationale: CLAUDE.md's task-completion rule requires the module doc, `docs/overview.md`, and `CONSTRAINTS.md` in the same commit for a change adding a module and cross-cutting infrastructure. The roadmap move is correct and not premature: the adapters are a **separately numbered** Planned item, split that way deliberately this session precisely so the skeleton could land without them.
 - Rejected: holding the roadmap move until the adapters land (re-merges two items the roadmap deliberately split); deferring `overview.md` and the roadmap to the adapters task (breaks the same-commit docs rule).
 
@@ -289,7 +307,7 @@ From `CONSTRAINTS.md`:
 
 New, added by this task:
 
-- **Shed Producer-Seam Invariant** — `internal/shedengine` production imports capped at stdlib, `internal/state`, `internal/lock`, `internal/logger`; never `loomengine`, never an adapter package, never `lyxcwd`. Policed on direct imports only. Enforced by `internal/shedengine/seam_enforcement_test.go`.
+- **Shed Producer-Seam Invariant** — `internal/shedengine` production imports capped at stdlib, `internal/state`, and `internal/lock`; never `loomengine`, never an adapter package, never `lyxcwd`, never `logger`. Policed on direct imports only, though with this allowlist the `lyxcwd` exclusion happens to hold transitively too. Enforced by `internal/shedengine/seam_enforcement_test.go`.
 
 Also binding:
 
@@ -319,8 +337,8 @@ No mocked persistence — the `internal/state` round-trip is the thing most like
 - Cancelled `ctx` mid-list — same observable outcome as pause, and specifically: no producer is called after cancellation.
 - Crash recovery — run a list partway, then construct a **fresh** `Shed` against the same status file and `Run` again; assert it resumes at the persisted `current_producer` and does not re-run completed producers.
 - Unconditional re-call — a producer whose `OutputPointer.Path` names an existing file is still called again on resume, never skipped. This is an explicit design guarantee and deserves its own test.
-- Missing status file — hard error, and nothing is created on disk.
-- `current_producer` naming an absent producer — hard error, and the file is byte-identical afterwards.
+- Missing status file — hard error, and **the status file is not created** (the lock files and their parent directories *are*, per `run-lock`; an assertion of "nothing created on disk" would be false).
+- `current_producer` naming an absent producer — hard error, and the status file is byte-identical afterwards.
 - Malformed status file, and one carrying an unknown top-level key — both hard errors via the strict decode.
 - Run lock already held — `Run` returns the busy sentinel immediately and the status file is untouched. Acquire the lock directly in the test via `internal/lock`; no second process needed.
 - Persist failure — assert `Run` returns a non-nil error and that no `state: "failed"` write happened. **Fault injection must fail the write only, and reaching that is harder than it looks:**
@@ -371,3 +389,6 @@ No mocked persistence — the `internal/state` round-trip is the thing most like
 - **Q:** Who creates the lock files' parent directories? **A:** `Shed`, via `MkdirAll` before acquiring — `internal/lock` opens with `O_CREATE` but never creates parents, which is why both `loomengine` and `treadleengine` already do this. Also corrected the false claim that lock acquisition touches nothing on disk; it creates the lock file.
 - **Q:** How do you actually provoke a persist failure in a test? **A:** From inside a fake producer's `Call`, after the read gate has passed — replacing the status file's parent directory with a regular file. Every simpler method either fails to fail (`MkdirAll` runs first; unwritable dirs are no-ops under root and on Windows) or fails too early at step 1's read. The byte-identical last-good assertion was dropped as unstageable, since that injection destroys the file it would check.
 - **Q:** Does a `product` payload survive byte-for-byte? **A:** No — `json.MarshalIndent` re-indents an embedded `json.RawMessage`. The assertion is semantic equality, not byte identity.
+- **Q:** Are steps 5 and 6 one persist or two? **A:** One. Routing is computed first, then the `history` append, the new `current_producer`, and the new `state` land in a single `UpdateJSON` mutate. Two writes would let a crash between them re-call the finished producer and append a duplicate `history` entry — defeating the exact crash-safety property step 5 exists to provide.
+- **Q:** Does the bounce budget survive a crash or a resume? **A:** No — it is per-`Run`-call and in-memory, deliberately unpersisted. Every event that resets it is a new human-initiated invocation, which is the outcome the budget exists to force; persisting it would make a legitimate resume inherit an exhausted budget.
+- **Q:** Should `internal/logger` be on the seam allowlist? **A:** No — nothing in `shedengine` logs, and excluding it makes "never `lyxcwd`" hold *transitively* (logger imports lyxcwd; `lock` and `state` import nothing that does), a stronger property than treadle's own invariant can claim.
