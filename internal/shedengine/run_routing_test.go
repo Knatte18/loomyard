@@ -117,3 +117,148 @@ func TestRun_UnconditionalRecall(t *testing.T) {
 		t.Errorf("producer.calls = %d; want 1 -- Run must never skip a call because its output already exists", producer.calls)
 	}
 }
+
+func TestRun_StuckWithOnStuckTarget(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	a := fixedOutcomeProducer(Done, "")
+	b := &funcProducer{}
+	b.fn = func(ctx context.Context) (Outcome, OutputPointer, error) {
+		if b.calls == 1 {
+			return Stuck, OutputPointer{}, nil
+		}
+		return Done, OutputPointer{}, nil
+	}
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a},
+		{Name: "B", Producer: b, OnStuck: "A"},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunDone {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
+	}
+
+	if a.calls != 2 {
+		t.Errorf("a.calls = %d; want 2 -- the bounce-back target must run again", a.calls)
+	}
+	if b.calls != 2 {
+		t.Errorf("b.calls = %d; want 2", b.calls)
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	foundBounce := false
+	for _, entry := range got.History {
+		if entry.Producer == "B" && entry.Outcome == Stuck {
+			foundBounce = true
+		}
+	}
+	if !foundBounce {
+		t.Errorf("persisted History = %+v; want an entry recording B's stuck outcome", got.History)
+	}
+}
+
+func TestRun_StuckWithNoTarget(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	producer := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{{Name: "Plan-Write", Producer: producer}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("Plan-Write"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	if result.HaltedProducer != "Plan-Write" {
+		t.Errorf("Result.HaltedProducer = %q; want %q", result.HaltedProducer, "Plan-Write")
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.State != StateBlocked {
+		t.Errorf("persisted State = %q; want %q", got.State, StateBlocked)
+	}
+
+	const wantReason = "stuck with no OnStuck target"
+	if result.Reason != wantReason {
+		t.Errorf("Result.Reason = %q; want %q", result.Reason, wantReason)
+	}
+	if got.Error != wantReason {
+		t.Errorf("persisted Error = %q; want %q", got.Error, wantReason)
+	}
+	if result.Reason != got.Error {
+		t.Errorf("Result.Reason (%q) and persisted Error (%q) must be equal", result.Reason, got.Error)
+	}
+}
+
+func TestRun_BounceBudgetExhaustion(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 3
+
+	a := fixedOutcomeProducer(Stuck, "")
+	b := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "B"},
+		{Name: "B", Producer: b, OnStuck: "A"},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	// MaxBounces bounces are permitted -- the (MaxBounces+1)-th Stuck is the one refused. The
+	// exact total call count is the whole point of the assertion, because this is the classic
+	// off-by-one seam.
+	wantTotalCalls := shed.MaxBounces + 1
+	gotTotalCalls := a.calls + b.calls
+	if gotTotalCalls != wantTotalCalls {
+		t.Errorf("total Stuck calls = %d; want %d (MaxBounces=%d bounces, then the next Stuck blocks)", gotTotalCalls, wantTotalCalls, shed.MaxBounces)
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	const wantReason = "bounce budget exhausted"
+	if result.Reason != wantReason {
+		t.Errorf("Result.Reason = %q; want %q", result.Reason, wantReason)
+	}
+	if got.Error != wantReason {
+		t.Errorf("persisted Error = %q; want %q", got.Error, wantReason)
+	}
+}
+
+func TestRun_MaxBouncesZeroResolvesToDefault(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 0 // zero means "use the default", never "no bounces allowed".
+
+	a := fixedOutcomeProducer(Stuck, "")
+	b := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "B"},
+		{Name: "B", Producer: b, OnStuck: "A"},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	wantTotalCalls := defaultMaxBounces + 1
+	gotTotalCalls := a.calls + b.calls
+	if gotTotalCalls != wantTotalCalls {
+		t.Errorf("total Stuck calls = %d; want %d (defaultMaxBounces=%d bounces, then the next Stuck blocks)", gotTotalCalls, wantTotalCalls, defaultMaxBounces)
+	}
+}
