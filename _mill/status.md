@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pause-and-resume-scenarios
+phase: approved-persistence-and-hard-error-scenarios
 slug: shed
 branch: shed
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-15T10:11:22Z'
 approved-package-skeleton  '2026-08-15T10:16:58Z'
 approved-run-loop  '2026-08-15T10:26:26Z'
 approved-pause-and-resume-scenarios  '2026-08-15T10:31:16Z'
+approved-persistence-and-hard-error-scenarios  '2026-08-15T10:37:53Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     commit_sha: 6e49966578f0c4bc2e65342830fe0727e2c8ccf9
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: persistence-and-hard-error-scenarios
-    state: running
+    state: approved
     implementer_session: 9c7560d9-b431-47a2-b190-9af68408920a
     start_sha: 6194cabee8fcdd20eb8318fd483044186740b2eb
+    commit_sha: 93402f019f8b98f278985cc350cb4a8c3c126c9a
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: seam-invariant
     state: pending
