@@ -130,6 +130,10 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 - **The status file (`_lyx/status.json`, JSON via `internal/state` — see [status-schema.md](../../docs/reference/status-schema.md)) is the single source of truth** for orchestration state: current phase, current review stage, and a **per-phase outcome** trail (`history`) — per-round verdicts live in perch's block files, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
+
+  **Rename owed, not yet done (recorded 2026-08-15).** `_lyx/status.json`'s bare path is a `loom`-only assumption baked into already-shipped code (`internal/loomengine.LoomStatusFile`) and `status-schema.md`'s own pinned contract — but `Shed` (see [shed.md](shed.md)) is instantiated by more than one product, and the Someday `Hardener` will need its own status file too.
+  A bare `_lyx/status.json` cannot serve two products at once without colliding.
+  This needs to become product-scoped — `_lyx/loom/status.json` for `loom`, and whatever `Hardener` picks for its own, once it exists — but that rename is `loom`'s own rewiring-onto-`Shed` work, not the `Shed`-skeleton task's: `Shed` itself is told its status-file path, never derives it (see `shed.md`'s own producer-contract section), so this is entirely a `loom`-side fix, deliberately deferred until `loom` is actually rewired onto `Shed`.
 - **It also carries a human-readable *current-activity* narration** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
   The driver writes the file;

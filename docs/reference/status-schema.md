@@ -1,6 +1,8 @@
 # Status schema — loom's spawn/handover status file
 
 > **Status: Contract — pinned.** This doc pins the `_lyx/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-contract.md](webster-contract.md) and [plan-format.md](plan-format.md).
+>
+> **The path itself is owed a rename, not yet done** (recorded 2026-08-15, see [loom.md's own note](../../manifest/designs/loom.md#state--contracts)): `_lyx/status.json`'s bare path is a `loom`-only assumption that collides once the Someday `Hardener` product also needs its own `Shed`-driven status file. Becomes `_lyx/loom/status.json` when `loom` is rewired onto `Shed` — this doc's schema itself is unaffected, only the path changes.
 
 ## What it is
 
