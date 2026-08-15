@@ -44,7 +44,9 @@ batches:
     commit_sha: 51327e2efff83d223dcbedda24b1a045c80ed461
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: pause-and-resume-scenarios
-    state: pending
+    state: running
+    implementer_session: 392ceb53-e0f9-4666-8491-f140c4534546
+    start_sha: cc75fba0feaa58dd19d2b2147de68e33c787b7e3
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: persistence-and-hard-error-scenarios
     state: pending
