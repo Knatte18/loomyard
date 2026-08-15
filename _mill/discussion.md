@@ -30,8 +30,8 @@ This file records the decisions that discussion produced;
 - A new package `internal/shedengine` holding the whole skeleton.
 - The `ShedProducer` interface, `OutputPointer`, `Outcome`, `ProducerDef`, and the `Shed` struct — the exact shapes pinned in `shed.md`.
 - The `Run(ctx) (Result, error)` entrypoint and the six-step loop it walks: read status → look up producer → check pause/cancellation → `Call` → append-and-persist → route on outcome.
-- The status-file Go type and its locked, atomic, strict JSON round-trip through `internal/state`, including the opaque `product` passthrough field.
-- Pre-loop `Run` work: producer-list validation and non-blocking run-lock acquisition.
+- The status-file Go type and its locked, atomic round-trip through `internal/state` — a strict read gate plus a read-modify-write persist — including the opaque `product` passthrough field.
+- Pre-loop `Run` work: producer-list validation, the two-distinct-lock-paths check, and non-blocking run-lock acquisition.
 - The total bounce budget (`MaxBounces`) guarding an unbounded `OnStuck` cycle.
 - Tier 1 tests driving every path with hand-written fake producers.
 - A new **Shed Producer-Seam Invariant** in `CONSTRAINTS.md` plus its enforcement test.
@@ -81,7 +81,7 @@ This file records the decisions that discussion produced;
 
 ### told-never-derived-paths
 
-- Decision: `Shed` is **told** its status-file path and its lock path via the `StatusPath`/`LockPath` fields on the struct. It never derives either, never calls `lyxcwd`, and never joins an `_lyx`-relative constant of its own.
+- Decision: `Shed` is **told** all three of its paths via struct fields — `StatusPath` (the durable status file), `LockPath` (the run lock), and `StatusLockPath` (the lock `internal/state` itself takes). It never derives any of them, never calls `lyxcwd`, and never joins an `_lyx`-relative constant of its own.
 - Rationale: this is precisely `internal/treadleengine`'s shipped contract (`Engine.Run(p Profile, runDir string)`, `Profile.GateDir`) and the reason its own seam invariant excludes `internal/lyxcwd`. It is also what keeps the Cwd Resolution Invariant intact — a module's durable subdirectory is that module's own concern, and `Shed` is generic across products that will not share one. It makes every test hermetic against a `t.TempDir()`.
 - Rejected: `Shed` resolving `_lyx/loom/status.json` itself — bakes one product's geometry into a generic engine, and forces every test to stand up a real anchored worktree.
 
@@ -115,10 +115,33 @@ This file records the decisions that discussion produced;
 - Rationale: `Result`'s `Outcome`+`Reason` exist only in memory for one `Run` call. Without the on-disk equivalent, a restarted run — or a human reading a future `lyx loom status` — cannot tell "paused, resumable" from "blocked, needs a human" from "crashed": all three look identical, an unattended status file sitting still.
 - Rejected: `state` alone with the error text folded into `activity.wait` (buries a hard engine failure in a prose field nothing parses); neither field, with the terminal condition living only in `Result` (does not survive a process exit).
 
+### field-ownership-split
+
+- Decision: `Shed` is **not** the status file's only writer, and the design must not claim it is. Ownership splits explicitly:
+  - **Shed-owned, rewritten on every persist:** `current_producer`, `state`, `error`, `activity`, `history`.
+  - **External-writer-owned, only ever read and carried through by Shed:** `pause_requested` (set by a product's own pause verb while a producer runs) and `product` (the opaque product payload).
+- Rationale: `status-schema.md:69` pins `pause_requested` as kept **in-status**, deliberately diverging from webster's separate flag file, which means an outside actor writes the same file `Shed` writes. The seed itself is likewise written by a spawn-time command, not by `Shed`. Asserting sole ownership would license exactly the whole-file clobber the persist decision below exists to prevent.
+- Rejected: moving pause to a separate flag file so `Shed` genuinely is the only writer — clean in isolation, but it reverses a decision `status-schema.md` pins deliberately and puts this task in the business of redesigning `loom`'s pause contract, which is out of scope.
+
+### reread-and-merge-persist
+
+- Decision: two changes to the loop, together:
+  1. Step 6 routes back to **step 1**, not step 2 — the status file is re-read (via `state.ReadJSONStrict`) at the top of every iteration, so step 3's `pause_requested` check sees a pause requested *during* the producer call that just returned.
+  2. Step 5 persists via `state.UpdateJSON` (locked read-modify-write), whose mutate function overwrites only the Shed-owned fields above and carries `pause_requested` and `product` forward from the on-disk copy.
+- Rationale: as originally specified, the loop read the file once and rewrote it whole from an in-memory copy, so a pause requested during a 20-minute producer call was both **never observed** (step 6 routed to step 2, past the step-3 check's data source) and **silently destroyed** (step 5's blind rewrite), along with any external `product` update. `state.UpdateJSON` exists for exactly this hazard — it holds one exclusive lock across read, mutate, and write, so a concurrent writer's value can never be clobbered by a payload composed from a base that writer already superseded (`internal/state/state.go:99-133`).
+- Consequence for `shed.md`: the loop's step-6 text ("back to step 2") and the "Shed is the file's only writer" sentence under `activity` must be corrected in this task's commit, alongside the other doc updates.
+- Rejected: re-reading only `pause_requested` before each step-3 check (sees the pause, still clobbers external `product` writes on every persist); leaving the loop as-is and accepting lost pauses.
+
+### strictness-is-scoped-to-the-read-gate
+
+- Decision: strict decoding is the contract of the **top-of-iteration read** (`state.ReadJSONStrict`), not of the persist's internal merge base. `state.UpdateJSON` re-reads through `readJSONUnlocked` — plain `json.Unmarshal`, no `DisallowUnknownFields` (`internal/state/state.go:122`, `:80-97`) — and that is accepted rather than worked around.
+- Rationale: this would otherwise be a silent contradiction between `strict-decode` and `reread-and-merge-persist`, so it is stated outright. The looser merge base is harmless here: malformed JSON still fails loud (`json.Unmarshal` errors, so `UpdateJSON` returns an error and the persist-failure path takes over), and the only thing lenient decoding permits that strict would not is an **unknown top-level key** being dropped on the merge — which is acceptable because every external-writer-owned field is a known field of Shed's own type, and any such key would be rejected by the very next iteration's strict read anyway. What must not happen is `Shed` reaching for `ReadJSON` at the gate to make the two match; the gate stays strict.
+- Rejected: adding a strict variant of `UpdateJSON` to `internal/state` (out of scope, and a change to a primitive four modules share); dropping the strict gate to match the merge (loses the fail-loud parse discipline `status-schema.md` pins).
+
 ### activity-mechanical-fill
 
 - Decision: `Shed` fills `activity` itself, mechanically, from data it already holds — `now` is `current_producer`'s name, `last` is the most recent `history` entry's producer + outcome formatted for a human, `wait` is set only when `state` is `"blocked"` or `"failed"` (the `error` text or a short reason) and `""` otherwise.
-- Rationale: `Shed` is the file's only writer, so if `Shed` does not fill this, nothing can. Every field is either already a `Shed`-owned value or trivially derived from one. Depends on the `state` field existing, so the two decisions fit together.
+- Rationale: `activity` is a Shed-owned field per `field-ownership-split`, composed entirely from values `Shed` already holds — no external actor has the data to fill it, and no product needs it filled differently. Depends on the `state` field existing, so the two decisions fit together.
 - Rejected: a caller-supplied `func(...) Activity` hook (indirection with one trivial implementation and zero product variance today); omitting `activity` entirely (drops a field the design's own status-file shape pins).
 
 ### total-bounce-budget
@@ -145,16 +168,23 @@ This file records the decisions that discussion produced;
 - Rationale: mirrors `internal/treadleengine/run.go:119-128` exactly (`lock.TryAcquireWriteLock`, `ErrBlockBusy`). `internal/state`'s own per-write lock does not substitute: it is held only for the duration of one write, never across a whole `Call()`, so two concurrent `lyx loom run` invocations could otherwise both read the same `current_producer` and both spawn it, double-spending an LLM session. An OS advisory lock is reclaimed on process death, so a killed run never bricks a later resume.
 - Rejected: relying on `internal/state`'s write lock alone; pushing the lock out to the product CLI (every product then reimplements it, and `Shed` owns the loop the lock protects).
 
+### two-lock-paths-never-the-same-file
+
+- Decision: the run lock and the `internal/state` lock are **two distinct, separately-supplied paths** — `LockPath` and `StatusLockPath`. `Shed` passes `StatusLockPath` (never `LockPath`) to every `state.ReadJSONStrict`/`state.UpdateJSON` call. `Run`'s pre-loop validation rejects a `Shed` whose `LockPath` and `StatusLockPath` name the same file, and both fields' doc comments state the rule outright.
+- Rationale: `state.WriteJSON`/`UpdateJSON` acquire the **blocking** `lock.AcquireWriteLock` (`internal/state/state.go:34`, `:116`), and `UpdateJSON`'s own doc comment (`state.go:108-109`) says nesting on the same path "hangs rather than failing". With one shared path, `Run` would deadlock on its first persist — a hang, not an error, which is the worst possible failure shape. `internal/treadleengine` already keeps `run.lock` and `state.json.lock` deliberately distinct (see `internal/treadleengine/state.go`'s header comment). The caller already has both paths on hand: `loomengine.LoomStatusLock` returns the `.lyx`-side state lock today, and the run lock is its sibling.
+- Rejected: deriving the state lock internally as `StatusPath + ".lock"` — `Shed` would be constructing a path, breaking told-never-derived, and it would place the lock beside the durable status file under `_lyx` rather than at its mirrored `.lyx` subpath, violating the Durable-vs-Ephemeral State Invariant. Also rejected: one lock serving both by reaching into `internal/state`'s unlocked internals, which are unexported and out of scope to change.
+
 ### validate-at-run-top
 
-- Decision: `Run` validates `Producers` before step 1 and before acquiring the lock — an empty list, a duplicate `Name`, or an `OnStuck` naming a `Name` absent from the list are each a returned error, before any producer is called. A negative `MaxBounces` is likewise a validation error (`0` means "use the default", per `total-bounce-budget`).
+- Decision: `Run` validates before step 1 and before acquiring the lock — an empty `Producers` list, a duplicate `Name`, or an `OnStuck` naming a `Name` absent from the list are each a returned error, before any producer is called. A negative `MaxBounces` is likewise a validation error (`0` means "use the default", per `total-bounce-budget`), as is a `LockPath` equal to `StatusLockPath` (per `two-lock-paths-never-the-same-file`) or any of the three paths being empty.
 - Rationale: an `OnStuck` typo then fails on the very first invocation rather than only when that producer first goes `Stuck`, hours into a real run, compounding an unrelated failure. Keeps `Shed` the plain exported-field struct `shed.md` pins throughout.
 - Rejected: a `New(...) (*Shed, error)` constructor (creates a second, unvalidated door via a bare struct literal alongside the validated one); lazy validation only on the `Stuck` path (worst possible timing).
 
 ### product-field-passthrough
 
 - Decision: the status type carries one opaque `product` field (`json.RawMessage`) that `Shed` round-trips **verbatim** and never inspects, validates, or interprets.
-- Rationale: `Shed` is the file's only writer and rewrites it whole, but `status-schema.md` requires `loom`'s file to carry `slug`, `parent`, `start_sha`, and `next_action` — fields `Shed` knows nothing about and would otherwise destroy on its next write. An opaque passthrough is the same discipline already established for `OutputPointer.Path` ("`Shed` never introspects it"), and it is the only option compatible with the strict decode below, since the product's keys sit inside one known field rather than as stray top-level keys `DisallowUnknownFields` would reject.
+- Rationale: `Shed` rewrites the file's Shed-owned fields on every persist, so a product needs somewhere durable to keep state `Shed` knows nothing about. An opaque passthrough is the same discipline already established for `OutputPointer.Path` ("`Shed` never introspects it"), and it is the only option compatible with the strict read gate, since the product's keys sit inside one known field rather than as stray top-level keys `DisallowUnknownFields` would reject.
+- **Carries no compatibility claim for `loom`'s shipped schema.** A Shed-written status file would still fail `loomengine.checkCoherence`: `status-schema.md` mandates `phase`, `stage`, and `narration` as **top-level** fields and pins a `{phase, outcome, bounced_to, ts}` history shape, none of which a `product` sub-object satisfies. `product` is a generic mechanism for whatever a product needs to keep, not a bridge to `loom`'s current schema — reconciling those two shapes is the later `loom` rewiring task, exactly as `loom-status-schema-untouched` states. This wording must not drift into the package-doc divergence note as an implied compatibility guarantee.
 - Rejected: lenient decode into `map[string]any` with a merge-back (loses the fail-loud parse discipline and lets `Shed` silently propagate a corrupt file); a separate product-owned file beside Shed's (splits "loom's single source of truth for orchestration state" across two files, which `status-schema.md` explicitly commits against).
 
 ### strict-decode
@@ -162,6 +192,14 @@ This file records the decisions that discussion produced;
 - Decision: the status file is read via `state.ReadJSONStrict` — `DisallowUnknownFields`, so an unknown or malformed field is a hard error.
 - Rationale: not a new rule; `status-schema.md`'s "Parse discipline" section already pins exactly this, and `Shed` inherits it. Works cleanly with `product-field-passthrough`.
 - Rejected: `state.ReadJSON` (lenient) — silently ignores what it cannot parse.
+
+### timestamps-and-result-history-scope
+
+- Decision: two one-line pins the design left unstated.
+  - `history[].at` is **RFC3339 UTC**, written from a direct `time.Now().UTC()` call — no injectable clock field, since that would add a field to the struct shape `shed.md` pins, for a value tests can assert structurally instead. Tests assert that each `at` parses as RFC3339 with a zero UTC offset and that entries are non-decreasing, never an exact literal.
+  - `Result.History` is the **full persisted history** as it stands when `Run` returns — every entry in the status file, not only the entries this invocation appended.
+- Rationale: RFC3339 UTC matches the timestamp rule `status-schema.md` already pins for every timestamp field, and `loomengine.isRFC3339UTC` (`internal/loomengine/coherence.go:103-110`) is the existing in-repo validator for exactly that shape. Full-history scope makes `Result` a faithful view of the file `Shed` just wrote, which is what the crash-recovery test needs to assert against — a this-run-only slice would make a resumed run's `Result` silently incomparable to a fresh one's.
+- Rejected: an injectable clock (changes a doc-pinned struct for test convenience alone); this-run-only `History` scope.
 
 ### tier1-fake-producer-tests
 
@@ -177,7 +215,7 @@ This file records the decisions that discussion produced;
 
 ### docs-and-roadmap
 
-- Decision: four doc updates land in the same commit as the code — (1) `manifest/designs/shed.md`'s status banner flips from "Design sketch, Planned" to reflect the shipped skeleton, with the adapters still Planned; (2) `docs/overview.md` gains a module-table entry and a tree line for `internal/shedengine`; (3) `CONSTRAINTS.md` gains the invariant above; (4) `manifest/roadmap.md` moves the **Shed: shared outer phase-FSM, no predefined slots** item from Planned to Done.
+- Decision: four doc updates land in the same commit as the code — (1) `manifest/designs/shed.md`'s status banner flips from "Design sketch, Planned" to reflect the shipped skeleton, with the adapters still Planned, **plus three corrections this discussion produced**: the loop's step-6 routing target becomes step 1 rather than step 2, the "Shed is the file's only writer" sentence is replaced by the explicit field-ownership split, and the `Shed` struct gains `StatusLockPath` beside `StatusPath`/`LockPath`; (2) `docs/overview.md` gains a module-table entry and a tree line for `internal/shedengine`; (3) `CONSTRAINTS.md` gains the invariant above; (4) `manifest/roadmap.md` moves the **Shed: shared outer phase-FSM, no predefined slots** item from Planned to Done.
 - Rationale: CLAUDE.md's task-completion rule requires the module doc, `docs/overview.md`, and `CONSTRAINTS.md` in the same commit for a change adding a module and cross-cutting infrastructure. The roadmap move is correct and not premature: the adapters are a **separately numbered** Planned item, split that way deliberately this session precisely so the skeleton could land without them.
 - Rejected: holding the roadmap move until the adapters land (re-merges two items the roadmap deliberately split); deferring `overview.md` and the roadmap to the adapters task (breaks the same-commit docs rule).
 
@@ -197,10 +235,13 @@ The sibling generic engine, one level down (inner round loop rather than outer p
 - `CONSTRAINTS.md`'s Treadle Runner-Seam Invariant plus `internal/treadleengine/seam_enforcement_test.go` — the shape the new invariant and its test copy.
 
 **Persistence — `internal/state`.**
-`state.ReadJSONStrict[T](path, lockPath)` returns `(zero, false, nil)` on a missing file (so "missing" is distinguishable from an error, which `no-seeding-hard-error-on-missing` needs), and `state.ErrRead`/`state.ErrDecode` sentinel the two failure classes.
-`state.WriteJSON[T](path, lockPath, v)` is locked and atomic via `internal/fsx`.
-Note `ReadJSONStrict` does **not** create parent directories, unlike `ReadJSON` — correct here, since `Shed` never creates the file.
-Do not compose `UpdateJSON` from `ReadJSON`+`WriteJSON`; that package's doc comment explains why.
+Three entry points matter, and which one is used where is a decision above, not an implementation detail:
+
+- `state.ReadJSONStrict[T](path, lockPath)` — the **top-of-iteration read gate**. Returns `(zero, false, nil)` on a missing file, so "missing" is distinguishable from an error, which `no-seeding-hard-error-on-missing` needs; `state.ErrRead`/`state.ErrDecode` sentinel the two failure classes. It does **not** create parent directories, unlike `ReadJSON` — correct here, since `Shed` never creates the file.
+- `state.UpdateJSON[T](path, lockPath, mutate)` — the **step-5 persist**. Holds one exclusive lock across read, mutate, and write (`state.go:99-133`), which is what makes the merge safe against a concurrent external writer.
+- `state.WriteJSON` — **not used by the loop.** `UpdateJSON` must never be composed from `ReadJSON`+`WriteJSON`: both acquire `lockPath` internally, so nesting hangs rather than failing (`state.go:108-109`). That same hazard is why `LockPath` and `StatusLockPath` must be different files.
+
+Both locking calls inside `internal/state` are the **blocking** `lock.AcquireWriteLock`/`AcquireReadLock`, never the `TryAcquire` form — only Shed's own run lock uses `TryAcquireWriteLock`.
 
 **The `loom` side, for context only — not to be modified.**
 `internal/loomengine/status.go` (`Status`, `HistoryEntry`), `coherence.go` (`checkCoherence`), `preflight.go:135` (`CheckSeedMissing`), and `config.go`'s `LoomStatusFile`/`LoomStatusLock` — the latter now product-scoped to `_lyx/loom/status.json` and `.lyx/loom/status.json.lock` so `Hardener` can coexist.
@@ -264,8 +305,10 @@ No mocked persistence — the `internal/state` round-trip is the thing most like
 - `current_producer` naming an absent producer — hard error, and the file is byte-identical afterwards.
 - Malformed status file, and one carrying an unknown top-level key — both hard errors via the strict decode.
 - Run lock already held — `Run` returns the busy sentinel immediately and the status file is untouched. Acquire the lock directly in the test via `internal/lock`; no second process needed.
-- Persist failure — force `state.WriteJSON` to fail (an unwritable directory, or a `StatusPath` whose parent does not exist) and assert `Run` returns the error, the file keeps its last-good contents, and no `state: "failed"` write was attempted.
-- `product` passthrough — a status file carrying an arbitrary product payload survives a full `Run` unchanged.
+- Persist failure — assert `Run` returns the error, the file keeps its last-good contents, and no `state: "failed"` write was attempted. **Fault-injection method matters here:** a `StatusPath` whose parent directory merely does not exist will *not* fail, because `state.WriteJSON` and `UpdateJSON` both call `os.MkdirAll(filepath.Dir(path))` before locking (`internal/state/state.go:29-32`, `:111-114`), and an unwritable directory is a no-op under root and on Windows — either method would silently assert nothing. Use a `StatusPath` whose **parent path component is an existing regular file** (e.g. write a file `x`, then point `StatusPath` at `x/status.json`): `MkdirAll` fails with `ENOTDIR` there, on every platform and regardless of privilege.
+- `product` passthrough — a status file carrying an arbitrary product payload survives a full `Run` byte-identically.
+- External mid-producer write — while a fake producer is executing, the test writes `pause_requested: true` (and mutates `product`) directly into the status file from inside that producer's own `Call`. Assert both survive the persist and that the pause is honoured at the very next iteration. This is the regression test for the whole-file-clobber hazard, and it is the reason the loop re-reads and merges rather than rewriting from an in-memory copy.
+- Two-lock validation — a `Shed` whose `LockPath` and `StatusLockPath` name the same file is rejected by `Run`'s pre-loop validation with an error, and specifically **does not hang**. Assert the error; a test that deadlocks here would hang the suite rather than fail it.
 
 **The seam-enforcement test** follows `internal/treadleengine/seam_enforcement_test.go`: walk the package's non-test `.go` files, collect direct imports, and fail on anything outside the allowlist.
 
@@ -289,3 +332,9 @@ No mocked persistence — the `internal/state` round-trip is the thing most like
 - **Q:** Mock the persistence layer in tests? **A:** No — that defeats the point of the crash-recovery test, whose real risk is the `internal/state` round-trip itself.
 - **Q:** New `CONSTRAINTS.md` invariant, and machine-enforced or review-only? **A:** Machine-enforced, modeled on the Treadle Runner-Seam Invariant. Every import-boundary invariant here gets a test; the one review-only exception is a content rule, not an import boundary.
 - **Q:** Does the roadmap item move to Done in this commit? **A:** Yes — the skeleton and the adapters were split into two separately-numbered Planned items this session precisely so one could land without the other.
+- **Q:** Can one `LockPath` serve both the run lock and `internal/state`'s own lock? **A:** No — `state.WriteJSON`/`UpdateJSON` use the *blocking* acquire, so a shared path deadlocks on the first persist rather than erroring. Two separately-supplied paths, with a same-path check in `Run`'s validation so the mistake fails loud instead of hanging.
+- **Q:** Is `Shed` really the status file's only writer? **A:** No, and the design must not claim it. `pause_requested` is set in-status by an outside actor by deliberate design (`status-schema.md:69`), so the loop re-reads the file each iteration and persists via `state.UpdateJSON`, carrying `pause_requested` and `product` forward instead of clobbering them. A pause requested during a long producer call was otherwise both unobserved and destroyed.
+- **Q:** Doesn't `UpdateJSON` break the strict-decode decision? **A:** Its internal re-read is lenient (`state.go:122`), so strictness is scoped explicitly to the read gate. Accepted rather than worked around: malformed JSON still fails loud, and the only thing leniency permits is dropping an unknown top-level key that the next iteration's strict read would reject anyway.
+- **Q:** Does the `product` field make a Shed-written file satisfy `loom`'s schema? **A:** No, and the rationale must not imply it — `phase`/`stage`/`narration` are top-level in `status-schema.md` and would still fail `checkCoherence`. `product` is a generic mechanism; reconciling the two shapes is `loom`'s own later task.
+- **Q:** How is a persist failure actually provoked in a test? **A:** Not by a missing parent directory — `state` calls `os.MkdirAll` first — and not by an unwritable directory, which is a no-op under root and on Windows. Point `StatusPath` through an existing regular file so `MkdirAll` fails with `ENOTDIR` on every platform.
+- **Q:** What writes `history[].at`, and what does `Result.History` contain? **A:** RFC3339 UTC from a direct `time.Now().UTC()` (no injectable clock — tests assert the format and ordering, not literals), and the full persisted history, not just this run's entries.
