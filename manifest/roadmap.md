@@ -16,6 +16,10 @@ Committed to, in this order, next.
    Builds on `Shed` above.
    See [designs/loom.md](designs/loom.md).
 
+1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings become real, directly-editable stencil files instead of Go source, same as every other producer prompt.
+   Independent of `Shed`/`loom` above, no ordering dependency either way.
+   See [designs/pattern-directive-stencils.md](designs/pattern-directive-stencils.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
