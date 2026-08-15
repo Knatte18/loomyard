@@ -65,6 +65,8 @@ batches:
     commit_sha: bc9221cf8aa0dc94c83273ade4bc97f8077345a7
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: docs-reconciliation
-    state: pending
+    state: running
+    implementer_session: 25693569-14cd-4ac4-adfa-1361c9bee795
+    start_sha: 73b4471b95ef462e65fa42fd0dae141784ed5efa
     verify_baseline_failures: []
 ```
