@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shed
 branch: shed
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Shed: outer phase-FSM skeleton'
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-15T07:48:47Z'
 discussed  '2026-08-15T09:29:54Z'
+planning  '2026-08-15T09:44:04Z'
 ```
