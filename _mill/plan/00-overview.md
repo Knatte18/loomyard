@@ -3,7 +3,7 @@
 ```yaml
 task: 'Shed: outer phase-FSM skeleton'
 slug: shed
-approved: false
+approved: true
 started: '20260815-093520'
 parent: main
 root: ""
