@@ -8,7 +8,7 @@
 
 ## Naming: two things, not one
 
-Earlier drafts of this doc used "hardener" for both the review mechanism and the whole on-demand campaign, which turned out to conflate two distinct layers once the shared-engine design (the `internal/treadleengine` package documentation, [shed.md](shed.md)) was pinned:
+Two distinct layers, split out once the shared-engine design (the `internal/treadleengine` package documentation, [shed.md](shed.md)) was pinned:
 
 - **`Tenter`** — the review-loop alone: `Treadle` (the generic round-loop engine — judge, gate, round-spawn, cap, pause, lock) configured with a live-substrate-driving round-runner and a behavior-review profile, instead of `perch`'s `burlerengine` + text-review profile.
   Perch's direct structural sibling.

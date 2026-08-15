@@ -13,12 +13,11 @@ Every raddle file lives under `_lyx/raddle/` inside each worktree, mirroring tha
 It is resolved by plain path lookup joined onto the anchor path, with no junction of its own and no hub-level presence at all.
 It reaches the weft through the already-wired `_lyx` junction, like every other `_lyx` subtree.
 
-`_raddle` is **not** a reserved hub name and never was junction-reached.
-This supersedes the earlier hub-level framing that survived in `finalize.md`, `shed.md`, `loom.md`, and `fabric-unified-view.md` until this task.
+`_raddle` is **not** a reserved hub name and is never junction-reached.
 
 Raddle content is tracked `_lyx` content and therefore needs no `.lyx` mirror, per the Durable-vs-Ephemeral State Invariant.
 
-This section records the geometry so the raddle implementation task does not start from the superseded design; it does not build it — raddle's actual implementation, including the shadow tree's path-lookup code and any accessor, is explicitly out of scope here.
+This section records the geometry only — raddle's actual implementation, including the shadow tree's path-lookup code and any accessor, is explicitly out of scope here.
 
 ## Parallel regeneration — unlike card implementation, this is safe
 
