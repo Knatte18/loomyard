@@ -9,9 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **Shed: shared outer phase-FSM, no predefined slots** — a generic engine that walks one flat, ordered list of producers, honoring resume/crash-recovery/pause uniformly across every entry; `loom` and `Hardener` are each `Shed` plus their own producer list.
-   See [designs/shed.md](designs/shed.md).
-
 1. **Shed's engine adapters — `SingleLLMProducer`, the `perch` adapter, the `Webster` adapter** — the three reusable `ShedProducer` implementations, each a thin wrapper around an already-shipped engine.
    Own task, separate from `Shed`'s own skeleton above.
    See [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer).
@@ -195,6 +192,11 @@ No build order is implied between these items.
 1. **`PATTERN.md` — loomyard's own invariants mechanism, wired into every code-touching agent** — a from-scratch equivalent of Millhouse's `CONSTRAINTS.md` (present in this repo only because mill develops loomyard), owned by loomyard instead.
    Supersedes the constraints-hiding half of Someday's `warp-visibility`.
    See the `internal/pattern` package documentation.
+
+1. **Shed: shared outer phase-FSM, no predefined slots** — shipped the skeleton: `internal/shedengine`'s loop, status file, `ShedProducer` interface, and producer-list validation, which `loom` and the eventual `Hardener` are each `Shed` plus their own producer list on top of.
+   This is the skeleton only — the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) remain their own Planned item above.
+   Landed the Shed Producer-Seam Invariant in `CONSTRAINTS.md`.
+   See the `internal/shedengine` package documentation and [designs/shed.md](designs/shed.md), which survives this landing because it also covers the still-Planned adapters the Planned item above links into it for.
 
 ## Maintenance
 
