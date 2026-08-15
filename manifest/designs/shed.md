@@ -1,10 +1,10 @@
 # Shed — a shared Go outer phase-FSM for `loom` and `Hardener`
 
-> **Status: Design sketch, Planned** (after `Treadle`, before the `perch` rewrite — see `manifest/roadmap.md`). Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the contract/definition split, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the engine-level detail (crash recovery, pause, session bootstrap) this doc doesn't restate.
+> **Status: Design sketch, Planned** (after `Treadle`, before the `perch` rewrite — see `manifest/roadmap.md`). Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the loop, the status file, the producer contract, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
 
 ## What it is
 
-**Revised model (2026-08-08), superseding an earlier "two swappable slots" description:** `Shed` has no predefined slots at all — no Preflight-slot, no Producer-slot, no shared Finalize.
+`Shed` has no predefined slots at all — no Preflight-slot, no Producer-slot, no shared Finalize.
 It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across every entry;
 atomicity — one mechanical action or LLM session, never an internal multi-step process of its own — binds **simple** producers only, per the carve-out in [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) below.
 Everything that used to look "special" — Preflight, Finalize, review gates — is just a producer like any other in that list.
@@ -17,7 +17,7 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
   not part of this doc's Planned scope.
 
 `Finalize` is not `Shed`'s own special code — it is an ordinary producer both `loom` and `Hardener` happen to reference (by *reference* — the same producer definition named in both lists, so a change to `Finalize`'s definition is visible to both without either copying it), not something `Shed` special-cases.
-**Raddle folds into `Finalize`'s own contract**, not a separate producer or a separate slot: updating Raddle before the Finalize merge is impractical given merge-conflict risk, so Raddle-regeneration is scoped as part of the merge itself (resolves the open question an earlier draft left open).
+**Raddle folds into `Finalize`'s own contract**, not a separate producer or a separate slot: updating Raddle before the Finalize merge is impractical given merge-conflict risk, so Raddle-regeneration is scoped as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
 ### Producer contract vs. producer definition
@@ -60,7 +60,7 @@ Many producers share the same engine: every `*-Review` producer is `engine: perc
 
 ### The `Shed` loop — exact mechanics
 
-**`Shed`'s own scaffolding, stated precisely (2026-08-15).** Six steps, nothing else — everything a producer does past its own `Call()` return value is invisible to this loop:
+`Shed`'s own scaffolding is six steps, nothing else — everything a producer does past its own `Call()` return value is invisible to this loop:
 
 1. Read the status file. Missing → seed at `producers[0]`.
 2. Look up the `ProducerDef` at `current_producer`.
@@ -177,7 +177,7 @@ What this doc does *not* redo is `loom.md`'s remaining `loom`-specific detail �
 
 ## Related
 
-- [loom.md](loom.md) — `loom`'s concrete producer list built on `Shed`, plus the remaining engine detail (crash recovery, pause, session bootstrap) this doc doesn't restate.
+- [loom.md](loom.md) — `loom`'s concrete producer list built on `Shed`, plus the remaining `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
 - [finalize.md](finalize.md) — `Finalize`'s own contract in detail; here it is one producer definition among others, not special-cased.
 - [raddle.md](raddle.md) — the merge-time regeneration decision and merge-lock scope `Finalize`'s own contract must honor, now that Raddle folds into it rather than keeping a separate slot.
 - `internal/treadleengine` package documentation — the sibling generic engine (inner round-loop, not outer phase-FSM), and the precedent for `Shed`'s own engine-adapter seam (`RoundRunner`).
