@@ -1,9 +1,9 @@
-// status.go defines the canonical Go type for _lyx/status.json: loom's single source of truth for
+// status.go defines the canonical Go type for _lyx/loom/status.json: loom's single source of truth for
 // orchestration state, from the t=0 seed a spawn-time lyx command writes through to the fields loom
 // rewrites on every phase-machine step.
 
 // Package loomengine implements loom's Preflight precondition validator: the four checks (worktree
-// geometry, worktree cleanliness, fabric readiness/sync, and _lyx/status.json coherence) that must
+// geometry, worktree cleanliness, fabric readiness/sync, and _lyx/loom/status.json coherence) that must
 // all pass before a task is fit to run.
 //
 // Callers MUST NOT invoke Preflight except when the task is at the fresh/preflight stage.
@@ -12,7 +12,7 @@
 // Preflight is a stateless validator.
 package loomengine
 
-// Status is the canonical Go type for _lyx/status.json: loom's single source of truth for
+// Status is the canonical Go type for _lyx/loom/status.json: loom's single source of truth for
 // orchestration state pinned by docs/reference/status-schema.md.
 // The t=0 "seed" has only handoff fields populated;
 // StartSha and NextAction are *string (nil for JSON null/absent) because they are optional;

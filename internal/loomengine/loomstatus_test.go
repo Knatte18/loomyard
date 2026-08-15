@@ -23,7 +23,7 @@ func TestLoomStatusFile(t *testing.T) {
 		AnchorRel: filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "status.json")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "loom", "status.json")
 	if got := LoomStatusFile(l); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}
@@ -36,7 +36,7 @@ func TestLoomStatusLock(t *testing.T) {
 		AnchorRel:    filepath.Join("sub", "dir"),
 	}
 
-	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "status.json.lock")
+	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "status.json.lock")
 	if got := LoomStatusLock(l); got != want {
 		t.Errorf("LoomStatusLock() = %q; want %q", got, want)
 	}
@@ -49,7 +49,7 @@ func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 		AnchorRel:    ".",
 	}
 
-	want := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName, "status.json")
+	want := filepath.Join(l.WorktreePath(), lyxdirs.LyxDirName, "loom", "status.json")
 	if got := LoomStatusFile(l); got != want {
 		t.Errorf("LoomStatusFile() = %q; want %q", got, want)
 	}
@@ -66,7 +66,7 @@ func TestLoomStatusLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 		AnchorRel:    ".",
 	}
 
-	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "status.json.lock")
+	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "loom", "status.json.lock")
 	if got := LoomStatusLock(l); got != want {
 		t.Errorf("LoomStatusLock() = %q; want %q", got, want)
 	}

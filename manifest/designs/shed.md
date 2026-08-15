@@ -108,7 +108,7 @@ type Shed struct {
 
 `OnStuck` is what makes "`Plan-Review`'s stuck routes back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
 
-**The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/status.json` is one instance of it, not a `loom`-specific shape):
+**The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/loom/status.json` is one instance of it, not a `loom`-specific shape):
 
 ```json
 {

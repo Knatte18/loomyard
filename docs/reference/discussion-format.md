@@ -40,7 +40,7 @@ Two fields plan-format needs are deliberately absent here:
 
 - **No `format:`** — see [status-schema.md](status-schema.md)'s `no-schema-version`: at this scale a version stamp is a rarely-exercised guard that goes stale;
   reintroduce only if a real incompatibility ever forces it.
-- **No `approved:`** — approval is recorded in `_lyx/status.json`'s `history` (`{"phase": "discussion", "outcome": "approved", ...}`) — the status file is loom's single total-status locus, so a lone `approved:` flag here would duplicate it.
+- **No `approved:`** — approval is recorded in `_lyx/loom/status.json`'s `history` (`{"phase": "discussion", "outcome": "approved", ...}`) — the status file is loom's single total-status locus, so a lone `approved:` flag here would duplicate it.
   This differs from `plan-format.md`, whose `approved:` exists because `lyx webster run` can be invoked standalone, outside loom;
   loom always drives `Plan-Write` *after* approval, so the record needs no standalone gate of its own.
 
