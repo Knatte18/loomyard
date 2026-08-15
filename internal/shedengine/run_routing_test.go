@@ -8,6 +8,7 @@ package shedengine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -345,8 +346,9 @@ func TestRun_UnrecognisedOutcome(t *testing.T) {
 			if err == nil {
 				t.Fatalf("Run(...) = %+v, nil; want a non-nil error", result)
 			}
-			if !strings.Contains(err.Error(), string(tt.outcome)) {
-				t.Errorf("Run(...) error = %q; want it to name the offending value %q", err.Error(), tt.outcome)
+			wantQuoted := fmt.Sprintf("%q", tt.outcome)
+			if !strings.Contains(err.Error(), wantQuoted) {
+				t.Errorf("Run(...) error = %q; want it to name the offending value %s", err.Error(), wantQuoted)
 			}
 			if !strings.Contains(err.Error(), "Plan-Write") {
 				t.Errorf("Run(...) error = %q; want it to name the producer %q", err.Error(), "Plan-Write")
