@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-reconciliation
+phase: holistic-reviewing
 slug: shed
 branch: shed
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-pause-and-resume-scenarios  '2026-08-15T10:31:16Z'
 approved-persistence-and-hard-error-scenarios  '2026-08-15T10:37:53Z'
 approved-seam-invariant  '2026-08-15T10:39:47Z'
 approved-docs-reconciliation  '2026-08-15T10:47:35Z'
+holistic-reviewing  '2026-08-15T10:48:01Z'
 ```
 
 ## Batches
