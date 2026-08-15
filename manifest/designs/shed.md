@@ -1,6 +1,6 @@
 # Shed — a shared Go outer phase-FSM for `loom` and `Hardener`
 
-> **Status: Design sketch, Planned** (after `Treadle`, before the `perch` rewrite — see `manifest/roadmap.md`). Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the loop, the status file, the producer contract, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
+> **Status: the skeleton — the loop, the status file, the `ShedProducer` interface, and the producer-list validation — is shipped as `internal/shedengine`.** The three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) remain **Planned** as their own roadmap item — see `manifest/roadmap.md`. See the `internal/shedengine` package documentation for the as-built contract; this doc stays the design's own narrative rather than a duplicate of it. This doc survives its module landing — which the Documentation Lifecycle would otherwise read as grounds for deletion — because it also describes the still-Planned engine adapters, and the roadmap's own Planned adapters item links here. Naming: a loom's shed is the gap formed between warp threads for the shuttle to pass through — apt for the generic engine that opens a slot for whichever producer list a product configures it with. Pairs naturally with the shipped `shuttle` (the thing that passes through it). This doc is the authoritative description of `Shed`'s own generic mechanism (the flat producer list, the loop, the status file, the producer contract, engine adapters); [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it, plus the `loom`-specific detail (session bootstrap, auto-mode, module decomposition) this doc doesn't restate.
 
 ## What it is
 
@@ -24,12 +24,18 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
 
 `Shed` has no opinion on what a producer's Input or Output *is* — only on how it drives one.
 Its own contract is exactly this: **call it**, however it decides to do that internally is invisible to `Shed`;
-**get back an outcome** (done / approved / stuck / blocked);
+**get back an outcome**, exactly one of two values — `Done` or `Stuck`, nothing else;
 **get back an optional output pointer**, a path `Shed` can check for completeness on resume.
 A producer with no output pointer — a **gate producer**, pass/fail only, or a **terminal producer** with no downstream consumer — simply re-runs on resume, since the resume-on-output-files rule degrades gracefully: a cheap idempotent re-check for a gate, and the terminal producer's own recovery obligation, not designed here, if its effect was mid-flight.
 That is the entire `ShedProducer` contract — see [Engine adapters](#engine-adapters--a-thin-shared-seam-not-one-per-producer) below.
 `Shed` never reads a producer's Input and never inspects the shape of its Output;
 it has no concept of a "format-contract file."
+
+**Two obligations a producer must honour and `Shed` cannot enforce.**
+First, `Call` must return exactly `Done` or `Stuck` — `Outcome` is an open `string` type, so any other value returned with a nil error is treated as an engine-level failure, never a third verdict.
+Second, `Call` must surface context cancellation as a non-nil `error`, never as `Stuck`.
+The second obligation carries real stakes: `Shed` cannot tell a `Stuck` return with a cancelled context from a genuine producer verdict, so a producer that reports cancellation as `Stuck` would silently consume bounce budget, or escalate to blocked, for what was actually an operator stop.
+This is written down rather than assumed because three of the four planned adapters — `perch`, `Webster`, and a bespoke multi-spawn engine — own their own error taxonomies and are not designed yet.
 
 **The producer-authoring convention** — a separate concern from `Shed`'s own contract above, governing how instruction files and format-contract docs are written, not how `Shed` runs: a producer's Input and Output, where documented, are pointers into a format-contract file, never a restated copy of its content.
 [CONSTRAINTS.md](../../CONSTRAINTS.md)'s Producer Pointer-Rule Invariant is what enforces this, by review, over instruction files and format-contract docs — not over `Shed` itself, which has no Go-level dependency on the rule.
