@@ -1,5 +1,5 @@
 // preflight.go implements Preflight, the orchestrator that runs loom's four preconditions —
-// worktree geometry, worktree cleanliness, fabric readiness/sync, and _lyx/status.json coherence —
+// worktree geometry, worktree cleanliness, fabric readiness/sync, and _lyx/loom/status.json coherence —
 // over git and filesystem state, and reports a determined Report rather than erroring on anything
 // short of an infra failure.
 // See the error-vs-Report contract Shared Decision.
@@ -18,7 +18,7 @@ import (
 )
 
 // Preflight validates that the worktree at cwd is fit for loom to run: the worktree is resolvable
-// and at its root, the worktree is clean, fabric is ready and in sync, and _lyx/status.json
+// and at its root, the worktree is clean, fabric is ready and in sync, and _lyx/loom/status.json
 // is coherent and fresh.
 //
 // cwd is the caller-resolved seam cwd — Preflight itself reads no process or context cwd, so a
@@ -108,7 +108,7 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			// branch mismatch classifies as CheckFabricSync, and every other
 			// cause classifies as CheckJunction and also blocks the seed
 			// read, since each of those causes means the junction that would
-			// carry _lyx/status.json is itself broken.
+			// carry _lyx/loom/status.json is itself broken.
 			var check CheckID
 			switch reason.Cause {
 			case fabricengine.CauseBranchMismatch:

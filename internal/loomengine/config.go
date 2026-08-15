@@ -69,8 +69,11 @@ func DiscussionSupportLog(l *lyxcwd.Location) string {
 // worktree.
 // It is AnchorPath-anchored so a caller invoked from anywhere else within the worktree still
 // resolves the one true status.json at the anchored subpath.
+// Scoped under a "loom" subdirectory, not bare _lyx, because Shed (see manifest/designs/shed.md) is
+// a generic engine more than one product configures -- the Someday Hardener product will need its
+// own status file too, and a bare _lyx/status.json could not serve both without colliding.
 func LoomStatusFile(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "status.json")
+	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, "loom", "status.json")
 }
 
 // LoomStatusLock returns the path to the advisory lock file guarding concurrent access to
@@ -79,8 +82,9 @@ func LoomStatusFile(l *lyxcwd.Location) string {
 // LoomStatusFile's lyxdirs.LyxDirName: the lock is a never-tracked transient, not durable orchestration
 // status, so it is stated outright at its mirrored .lyx subpath rather than derived by analogy --
 // loomengine has no Dir(l) accessor for a ScratchDir(l) to mirror.
+// Scoped under the same "loom" subdirectory as LoomStatusFile, for the same product-collision reason.
 func LoomStatusLock(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "status.json.lock")
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "status.json.lock")
 }
 
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.

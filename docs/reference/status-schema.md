@@ -1,10 +1,11 @@
 # Status schema — loom's spawn/handover status file
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-contract.md](webster-contract.md) and [plan-format.md](plan-format.md).
+> **Status: Contract — pinned.** This doc pins the `_lyx/loom/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-contract.md](webster-contract.md) and [plan-format.md](plan-format.md).
+> Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (see [shed.md](../../manifest/designs/shed.md)) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
 
-`_lyx/status.json` is loom's single source of truth for orchestration state: current phase, current review sub-state, the phase-level outcome trail,
+`_lyx/loom/status.json` is loom's single source of truth for orchestration state: current phase, current review sub-state, the phase-level outcome trail,
 and the human-readable narration `lyx loom status --watch` prints. `lyx loom run` rewrites it on every step;
 its t=0 "seed" — the handoff instant a task is spawned and given to loom, before any `lyx loom run` has executed — is written once at spawn time (see [The seed / handover](#the-seed--handover) below).
 
@@ -17,12 +18,12 @@ The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`
 
 This **overrides the board brief's "plain YAML."**
 The brief's real point was "structured, not markdown-with-frontmatter" — and that point stands, unchanged.
-But JSON was chosen over YAML deliberately: `_lyx/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
+But JSON was chosen over YAML deliberately: `_lyx/loom/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
 Reusing `internal/state` gives locking and atomic writes for free and keeps one state primitive across modules, rather than a second one-off for loom.
 
 ## The seed / handover
 
-The **seed** is the t=0 contents of `_lyx/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting (see [status-single-schema-superset](#the-schema)).
+The **seed** is the t=0 contents of `_lyx/loom/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting (see [status-single-schema-superset](#the-schema)).
 
 It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent.
 This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand;
