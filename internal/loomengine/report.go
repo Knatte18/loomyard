@@ -26,18 +26,18 @@ const (
 	// CheckJunction fails when the _lyx junction is missing or points somewhere other than its
 	// correct target.
 	CheckJunction CheckID = "junction"
-	// CheckSeedMissing fails when _lyx/status.json does not exist and fabric is otherwise ready and
+	// CheckSeedMissing fails when _lyx/loom/status.json does not exist and fabric is otherwise ready and
 	// healthy.
 	CheckSeedMissing CheckID = "seed-missing"
-	// CheckSeedUnreadable fails when _lyx/status.json cannot be stat'd or read for a reason other than
+	// CheckSeedUnreadable fails when _lyx/loom/status.json cannot be stat'd or read for a reason other than
 	// not-existing,
 	// or when a stat failure (including not-exist) is attributable to fabric not being ready or
 	// healthy rather than a genuinely missing seed.
 	CheckSeedUnreadable CheckID = "seed-unreadable"
-	// CheckSeedIncoherent fails when _lyx/status.json exists and decodes but violates the coherence
+	// CheckSeedIncoherent fails when _lyx/loom/status.json exists and decodes but violates the coherence
 	// validator's rules (see checkCoherence).
 	CheckSeedIncoherent CheckID = "seed-incoherent"
-	// CheckHalfFinished fails when _lyx/status.json is otherwise coherent but its fresh-start
+	// CheckHalfFinished fails when _lyx/loom/status.json is otherwise coherent but its fresh-start
 	// invariants are violated — the task has already advanced past the point Preflight is meant to
 	// gate.
 	CheckHalfFinished CheckID = "half-finished"
