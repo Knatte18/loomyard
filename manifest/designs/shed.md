@@ -22,34 +22,34 @@ See [loom.md's own producer-list table](loom.md#the-phase-machine--a-flat-produc
 
 ### Producer contract vs. producer definition
 
-A producer's **contract** — the only thing any other producer or instruction file may reference — is exactly two parts: **Input** (a pointer to the format-contract file defining consumed artifact(s)' shape, never a restated copy) and **Output** (same pointer discipline).
-**Thin-Input carve-out:** the Input contract permits **no Input at all** for a chain-head producer, because its input is human intent expressed in an interactive session rather than an artifact with a format contract.
-A producer with no Input has nothing to re-read on resume, so a crashed chain-head producer re-runs from its own partial output plus fresh human input — correct, since the human is present at that boundary by definition.
-This explicitly **rejects** the alternative framing that the task record is the Input, making the pointer target a task record rather than a format-contract file: that is a mill-ism which does not transfer, since `lyx` has no wiki and no task record.
-Admitting a second kind of pointer target would weaken the pointer rule for a target that does not exist in `lyx`.
-**Thin-Output carve-out, stated as two cases, never one:** first, a **gate producer** genuinely emits nothing at all — the Output contract permits a bare pass/fail gate signal with no artifact, and the resume-on-output-files rule degrades gracefully, because a producer with no artifact simply re-runs on resume, which is correct since a gate is a cheap idempotent re-check.
-Second, a **terminal producer** (the last in the list) is a different case and must not be folded into the first: it may plainly have effects, and what it has no instance of is a **contract-level output artifact** — nothing downstream consumes its output through a format pointer, because nothing runs after it.
-Its thin Output is therefore "no *pointer target*", not "no effect", and its resume story is not the graceful degradation above, since a partially-completed terminal effect is not a cheap idempotent re-run;
-that recovery is the terminal producer's own obligation and is explicitly not designed here.
-**The pointer rule**: an instruction file (a producer's own prompt/skill) must never duplicate or paraphrase another producer's format-contract content, only point at it — so editing that one format file alone is sufficient to change what both its producer and its consumers do.
+`Shed` has no opinion on what a producer's Input or Output *is* — only on how it drives one.
+Its own contract is exactly this: **call it**, however it decides to do that internally is invisible to `Shed`;
+**get back an outcome** (done / approved / stuck / blocked);
+**get back an optional output pointer**, a path `Shed` can check for completeness on resume.
+A producer with no output pointer — a **gate producer**, pass/fail only, or a **terminal producer** with no downstream consumer — simply re-runs on resume, since the resume-on-output-files rule degrades gracefully: a cheap idempotent re-check for a gate, and the terminal producer's own recovery obligation, not designed here, if its effect was mid-flight.
+That is the entire `ShedProducer` contract — see [Engine adapters](#engine-adapters--a-thin-shared-seam-not-one-per-producer) below.
+`Shed` never reads a producer's Input and never inspects the shape of its Output;
+it has no concept of a "format-contract file."
+
+**The producer-authoring convention** — a separate concern from `Shed`'s own contract above, governing how instruction files and format-contract docs are written, not how `Shed` runs: a producer's Input and Output, where documented, are pointers into a format-contract file, never a restated copy of its content.
+[CONSTRAINTS.md](../../CONSTRAINTS.md)'s Producer Pointer-Rule Invariant is what enforces this, by review, over instruction files and format-contract docs — not over `Shed` itself, which has no Go-level dependency on the rule.
+See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for each of `loom`'s concrete producers' Input/Output pointers under this convention, including the thin-Input case (a chain-head producer, whose input is human intent rather than an artifact with a format contract) and the thin-Output case (gate and terminal producers, per above).
 Review is never a property attached to the producer it reviews; it is always the next, separate producer in the list.
 
-See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for which of `loom`'s concrete producers falls into each carve-out.
-
-Producers split into two kinds, and the atomicity rule stated above is scoped to the first:
+Producers split into two kinds — **Kind has no bearing on `Shed`'s own mechanism.**
+`Shed` calls and resumes every producer identically regardless of Kind;
+the axis exists purely to say who owns crash-recovery *inside* a producer's own execution, and the atomicity rule stated above is scoped to the first:
 
 - A **simple, single-agent-spawn producer** is one mechanical action or one LLM session.
   This kind does not typically need its own crash-recovery, since re-running one spawn from scratch is cheap.
   A single-LLM-spawn instance of this kind is a `SingleLLMProducer` — see [Engine adapters](#engine-adapters--a-thin-shared-seam-not-one-per-producer) below.
 - A **bespoke, multi-spawn producer** owns its own internal loop — many LLM spawns, or an agent orchestrating sub-agents.
-  Bespoke producers are **exempt from the atomicity rule by design, not in violation of it.**
+  Bespoke producers are **exempt from the atomicity rule by design, not in violation of it,** and if they would otherwise lose expensive internal progress on a crash, they need their **own** internal crash-recovery — a capability `Shed` does not provide.
+  Both current bespoke examples already ship it — `internal/websterengine` re-drives the first unreported batch from its recorded state (see its package documentation's crash/resume section), and `internal/treadleengine`'s round loop keeps its own resumable run-dir state under an OS advisory lock released automatically if the holding process dies.
 
 See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for which of `loom`'s concrete producers is simple versus bespoke, and which engine drives each.
 
-`Shed`'s own contract stays exactly two parts, Input and Output pointers.
-Its resume/crash-recovery/pause guarantee operates at **producer granularity only**, re-driving a crashed producer from its last recorded pointer and never mid-producer.
-A bespoke multi-spawn producer that would lose expensive internal progress on a crash needs its **own** internal crash-recovery, a capability `Shed` does not provide;
-both current bespoke examples already ship it — `internal/websterengine` re-drives the first unreported batch from its recorded state (see its package documentation's crash/resume section), and `internal/treadleengine`'s round loop keeps its own resumable run-dir state under an OS advisory lock released automatically if the holding process dies.
+`Shed`'s resume/crash-recovery/pause guarantee operates at **producer granularity only**, re-driving a crashed producer from its last recorded output pointer and never mid-producer — the same mechanism regardless of Kind.
 
 A producer's worst-case internal shape, not its happy path, decides its typology classification — a producer that is pure Go on the common path but spawns an internal multi-step process (an LLM session, several forks) on an exceptional path is bespoke, because the axis exists to say who owns crash-recovery, and the exceptional path is exactly where that ownership question bites.
 See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [finalize.md](finalize.md) for `Finalize`'s own worked example of this — bespoke on the typology axis despite a zero-LLM happy path, and adapter-free on the engine axis at the same time, which is exactly the two-axis independence the next section states.
