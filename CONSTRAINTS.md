@@ -119,6 +119,17 @@ round runners adapt onto treadle's `RoundRunner` vocabulary in their own package
   not a transitive exclusion of `internal/fabricengine` from treadle's stack: `internal/treadleengine` → `internal/shuttleengine` → `internal/reedengine` → `internal/fabricengine` is a real transitive path (`reedengine.HubLogsDir` calls `fabricengine.HubScratchDir`).
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
+## Shed Producer-Seam Invariant
+
+`internal/shedengine` production code imports only the standard library, `internal/state`, and `internal/lock`;
+producers adapt onto the package's own `ShedProducer` seam in their own packages.
+
+- Import allowlist: stdlib, `internal/state`, `internal/lock` — not `internal/loomengine`, not any engine adapter package, not `internal/lyxcwd`, and not `internal/logger`.
+  What the exclusion of `internal/lyxcwd` enforces is that `Shed` is *told* its geometry and never derives it — `StatusPath`, `LockPath`, and `StatusLockPath` are all caller-supplied, and the only paths the package constructs are the two lock parents it creates so a told path is usable.
+  Policed on direct imports only, matching what the test checks; this particular allowlist happens to buy a stronger fact too, though — `internal/lyxcwd` is excluded transitively as well, because `internal/lock` imports no internal package at all and `internal/state` imports only `internal/fsx` and `internal/lock`.
+  `internal/logger` is excluded rather than kept for future convenience: nothing in this package logs, the package starts no OS process so the Live-Substrate Spawn Observability invariant does not engage, and keeping `internal/logger` on the allowlist would forfeit the transitive property above for zero present benefit — `internal/logger` itself imports `internal/lyxcwd`.
+- **Enforced by** `internal/shedengine/seam_enforcement_test.go` (`TestProducerSeamInvariant_AllowlistOnly`).
+
 ## Tokenvocab Leaf Invariant
 
 `internal/tokenvocab` production code imports only stdlib, `internal/lyxcwd`, and `internal/stencil`.
