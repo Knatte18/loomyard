@@ -51,7 +51,9 @@ batches:
     commit_sha: 6e49966578f0c4bc2e65342830fe0727e2c8ccf9
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: persistence-and-hard-error-scenarios
-    state: pending
+    state: running
+    implementer_session: 9c7560d9-b431-47a2-b190-9af68408920a
+    start_sha: 6194cabee8fcdd20eb8318fd483044186740b2eb
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: seam-invariant
     state: pending
