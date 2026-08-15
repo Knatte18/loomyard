@@ -182,6 +182,86 @@ func TestFill_BranchInternalMissCaughtIncrementally(t *testing.T) {
 	})
 }
 
+// TestFill_BranchInternalPresentButEmptyErrors covers the gap neither the top-level batch check nor
+// missingkey=error caught before this guard existed: a branch-internal marker present in values as
+// ""/whitespace-only, inside an {{if}} confidently evaluated true, must now error naming it -- both
+// for a bare {{if .X}} condition and the {{if eq .X "literal"}} discriminator form -- instead of
+// rendering silently blank.
+func TestFill_BranchInternalPresentButEmptyErrors(t *testing.T) {
+	t.Run("bare_field_condition", func(t *testing.T) {
+		_, err := stencil.Fill(
+			[]byte(`{{if .Active}}Body: {{.Body}}{{end}}`),
+			map[string]string{"Active": "yes", "Body": ""},
+		)
+		if err == nil {
+			t.Fatal("Fill() got nil error; want an error naming the present-but-empty in-branch marker Body")
+		}
+		if !strings.Contains(err.Error(), "Body") {
+			t.Errorf("Fill() error = %q; want it to name Body", err.Error())
+		}
+	})
+
+	t.Run("eq_discriminator_condition", func(t *testing.T) {
+		_, err := stencil.Fill(
+			[]byte(`{{if eq .Type "Cluster"}}Body: {{.Body}}{{end}}`),
+			map[string]string{"Type": "Cluster", "Body": "   "},
+		)
+		if err == nil {
+			t.Fatal("Fill() got nil error; want an error naming the present-but-whitespace-only in-branch marker Body")
+		}
+		if !strings.Contains(err.Error(), "Body") {
+			t.Errorf("Fill() error = %q; want it to name Body", err.Error())
+		}
+	})
+}
+
+// TestFill_BranchInternalPresentButEmptyNotTakenNoError covers the same present-but-empty
+// in-branch marker when the condition is confidently false: no error, since the branch never runs
+// and the marker is never reached.
+func TestFill_BranchInternalPresentButEmptyNotTakenNoError(t *testing.T) {
+	got, err := stencil.Fill(
+		[]byte(`Head{{if .Active}} Body: {{.Body}}{{end}} Tail`),
+		map[string]string{"Active": "", "Body": ""},
+	)
+	if err != nil {
+		t.Fatalf("Fill() unexpected error: %v", err)
+	}
+	if want := "Head Tail"; string(got) != want {
+		t.Errorf("Fill() = %q; want %q", string(got), want)
+	}
+}
+
+// TestFillOptional_BranchInternalPresentButEmptyOptionalNoError covers a present-but-empty
+// in-branch marker listed as optional: no error even though the branch confidently runs, mirroring
+// the top-level optional exemption.
+func TestFillOptional_BranchInternalPresentButEmptyOptionalNoError(t *testing.T) {
+	got, err := stencil.FillOptional(
+		[]byte(`{{if .Active}}Body: {{.Body}}{{end}}`),
+		map[string]string{"Active": "yes", "Body": ""},
+		[]string{"Body"},
+	)
+	if err != nil {
+		t.Fatalf("FillOptional() unexpected error: %v", err)
+	}
+	if want := "Body: "; string(got) != want {
+		t.Errorf("FillOptional() = %q; want %q", string(got), want)
+	}
+}
+
+// TestFill_BranchInternalPresentButEmptyUnresolvableConditionLeftToExecution covers a condition
+// shape presentButEmptyBranchMarkers does not statically evaluate (a discriminator field absent
+// from values entirely): this guard adds nothing, and the pre-existing execution-time
+// missingkey=error path still fires exactly as it did before this guard existed.
+func TestFill_BranchInternalPresentButEmptyUnresolvableConditionLeftToExecution(t *testing.T) {
+	_, err := stencil.Fill(
+		[]byte(`{{if eq .Type "Cluster"}}Body: {{.Body}}{{end}}`),
+		map[string]string{"Body": ""}, // Type itself absent -- condition unresolvable
+	)
+	if err == nil {
+		t.Fatal("Fill() got nil error; want the existing missing-discriminator error")
+	}
+}
+
 // TestFill_MalformedTemplate covers an unparseable template (an unclosed {{if}}), which must return
 // a non-nil error wrapping the parse failure, never panic.
 func TestFill_MalformedTemplate(t *testing.T) {
