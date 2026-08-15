@@ -114,24 +114,10 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		// on purpose -- an operator's Ctrl-C or a parent deadline is an operational stop, not a
 		// failure, exactly as resumable as an explicit pause request.
 		if st.PauseRequested || ctx.Err() != nil {
-			// Implemented inline here rather than via a persist method, which does not exist
-			// until card 8 refactors this branch into one. Clearing the flag in the same
-			// persist is what stops the next Run re-pausing forever on the flag it is
-			// resuming from; the durable record of "this run is paused" is state, not the
-			// flag.
-			pauseErr := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
-				if !found {
-					return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
-				}
-				cur.CurrentProducer = st.CurrentProducer
-				cur.State = StatePaused
-				cur.Error = ""
-				cur.History = st.History
-				cur.Activity = composeActivity(st.CurrentProducer, st.History, StatePaused, "")
-				cur.PauseRequested = false
-				return cur, nil
-			})
-			if pauseErr != nil {
+			// Clearing the flag in the same persist is what stops the next Run re-pausing
+			// forever on the flag it is resuming from; the durable record of "this run is
+			// paused" is state, not the flag.
+			if pauseErr := s.persist(st.CurrentProducer, StatePaused, "", st.History, true); pauseErr != nil {
 				return Result{}, pauseErr
 			}
 			return Result{
@@ -147,4 +133,44 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		_ = bouncesRemaining
 		return Result{}, errors.New("shedengine: Run's loop body is incomplete")
 	}
+}
+
+// persist is the single write path for the whole loop: one state.UpdateJSON call whose mutate
+// overwrites exactly the Shed-owned fields -- current_producer, state, error, history, and
+// activity (recomposed via composeActivity from the values being written) -- and, when
+// consumePause is true, also writes pause_requested false; otherwise pause_requested is left
+// exactly as re-read. persist never touches product.
+//
+// The merge exists rather than a whole-file rewrite from an in-memory copy because Shed is not the
+// status file's only writer: a pause requested during a long producer call, and an external
+// product update, must both survive. That safety is conditional, not unconditional -- internal/
+// state's lock is advisory and keyed on the caller-supplied path, so the merge is safe against a
+// concurrent external writer that takes the same StatusLockPath, and against no other.
+//
+// The found guard is not defensive noise: state.UpdateJSON treats a missing file as a non-error
+// and writes whatever the mutate returns, so without the guard a status file deleted mid-run would
+// be silently re-created from a zero value, contradicting the rule that Shed never seeds one.
+//
+// The accepted leniency asymmetry: UpdateJSON re-reads through a plain unmarshal with no
+// unknown-field rejection, so strictness is the contract of the read gate only. Malformed JSON
+// still fails loud on this path, but an unknown top-level key written by an external actor after
+// the read gate passed is silently destroyed by the full-struct marshal -- not caught by a later
+// strict read, because the merge strips it and the next read sees a clean file. This is accepted
+// because product is the sanctioned channel for everything an external writer legitimately owns,
+// and a key outside it is a mistake nothing here promises to preserve.
+func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool) error {
+	return state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
+		if !found {
+			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
+		}
+		cur.CurrentProducer = nextCurrentProducer
+		cur.State = nextState
+		cur.Error = nextError
+		cur.History = nextHistory
+		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError)
+		if consumePause {
+			cur.PauseRequested = false
+		}
+		return cur, nil
+	})
 }
