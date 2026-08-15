@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-package-skeleton
+phase: approved-run-loop
 slug: shed
 branch: shed
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-review-r3  '2026-08-15T10:10:34Z'
 planned  '2026-08-15T10:10:42Z'
 implementing  '2026-08-15T10:11:22Z'
 approved-package-skeleton  '2026-08-15T10:16:58Z'
+approved-run-loop  '2026-08-15T10:26:26Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ batches:
     commit_sha: c35ab1659b028077601c200f5d3185f375adecde
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: run-loop
-    state: running
+    state: approved
     implementer_session: 1ab171c9-afa4-44a1-bec6-436942246ed8
     start_sha: 18d839ed1ba3b0c0ee71d10276624be45baf1ac5
+    commit_sha: 51327e2efff83d223dcbedda24b1a045c80ed461
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: pause-and-resume-scenarios
     state: pending
