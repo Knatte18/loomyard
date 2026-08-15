@@ -177,7 +177,8 @@ Batch-local decisions, beyond `## Shared Decisions` in the overview:
   - `internal/shedengine/shed.go`
   - `internal/shedengine/producer.go`
   - `internal/shedengine/run.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/shedengine/testsupport_test.go`
 - **Creates:**
   - `internal/shedengine/run_routing_test.go`
 - **Deletes:** none
