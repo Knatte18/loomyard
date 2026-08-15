@@ -218,7 +218,8 @@ type Status struct {
   "history": [
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "..."},
     {"producer": "Discussion-Write", "outcome": "done", "output": "_lyx/discussion/decision-record.md", "at": "..."}
-  ]
+  ],
+  "product": {"slug": "loom-contracts", "parent": "main"}
 }
 ```
 
@@ -228,7 +229,23 @@ type Status struct {
 
 **`state`/`error` are how a terminal condition survives a process exit** — the missing piece an earlier version of this doc's status-file example left out. `Result`'s `Outcome`+`Reason` exist only in memory for the duration of one `Run` call; without persisting the equivalent on disk, a restarted `lyx run` (or a human reading `lyx loom status`) cannot tell "paused, resumable" from "blocked, needs a human" from "crashed" — all three look identical, an unattended status file sitting still. `state` is one of `"running" | "paused" | "done" | "blocked" | "failed"`, written at every step-6 exit per the routing above; `error` is human-readable detail, `""` when `state` carries no failure (mirrors `Result.Outcome`+`Result.Reason`'s split, now on disk instead of only in memory).
 
-**`activity` is filled mechanically by `Shed` itself, from data it already holds** — `Shed` is the file's only writer, so if `Shed` does not fill this, nothing else can. `now` is `current_producer`'s name; `last` is the most recent `history` entry's `producer`+`outcome`, formatted for a human; `wait` is set only when `state` is `"blocked"` or `"failed"` (the `error` text, or a short reason), else `""`. No per-product hook — every field here is either already a `Shed`-owned value or trivially derived from one.
+**`Shed` is not the status file's only writer, and this doc must not claim it is** — that claim licenses exactly the whole-file clobber the merging persist above exists to prevent. Ownership splits three ways:
+
+- **Shed-owned, rewritten on every persist:** `current_producer`, `state`, `error`, `activity`, `history`.
+- **Shared, write-to-clear:** `pause_requested`. An outside actor sets it **true**; `Shed` only ever writes it **false**, exactly once, in the same persist that records `state: "paused"`.
+- **External-writer-owned, only ever carried through:** `product`.
+
+The seed itself is written by a spawn-time command, not by `Shed`, and `pause_requested` living in-status rather than in a separate flag file is a deliberate divergence `status-schema.md` already pins.
+
+**The external-writer lock contract.** Any actor other than `Shed` that writes this file — a product's pause verb, its spawn-time seeder, anything touching `product` — must go through `internal/state` using the same `StatusLockPath` `Shed` was told, because that lock is advisory and keyed on the caller-supplied path. A writer that ignores it can still lose its write, and can still clobber `Shed`'s. This cannot be enforced from `Shed`'s side, so it is written down here, alongside the two producer-side obligations that already are. The merge-safety claim above is qualified accordingly: safe against a concurrent external writer *that takes the same lock*, never unconditionally.
+
+**`pause_requested` is a request `Shed` consumes, not a latch.** It is cleared in the same persist that records `state: "paused"`, so no window exists in which a stale `true` flag sits on disk; the durable record of "this run is paused" is the `state` field. Without this, the next run would re-read a still-true flag and pause again immediately, forever.
+
+**`activity` is filled mechanically by `Shed` itself, from data it already holds.** `now` is `current_producer`'s name; `last` is `""` when `history` is empty, and otherwise the most recent entry composed as exactly `"<producer> → <outcome>"` — pinned to that exact format rather than "formatted for a human" because a test asserts this field, and an unpinned format cannot be asserted, only approximated; `wait` is scoped to the `"blocked"` and `"failed"` states only (the `error` text, or a short reason), `""` for every other state. No per-product hook — every field here is either already a `Shed`-owned value or trivially derived from one.
+
+**Strictness is the contract of the read gate, not of the persist's internal merge base**, which re-reads leniently. Malformed JSON still fails loud on both paths. The one behaviour leniency permits is an unknown top-level key written by an external actor *after* the read gate passed: it is silently destroyed by the full-struct marshal, not surfaced, and the next strict read then sees a clean file and has nothing to reject. This is acceptable because `product` is the sanctioned channel for what an external writer owns, so a key outside it is a mistake nothing here promises to preserve — the key would not be caught later. A key present *before* the read does hard-error at the gate, exactly as the strict read gate always has.
+
+**`product` carries no compatibility claim for loom's shipped schema.** `status-schema.md` mandates `phase`, `stage`, and `narration` as top-level fields and pins a different `history` shape, none of which a `product` sub-object satisfies; reconciling the two is loom's own later rewiring task.
 
 **Step 4 is an unconditional re-call — `Shed` never shortcuts it by checking whether `OutputPointer.Path` already exists on disk.**
 That shortcut looks tempting (loom.md's crash-recovery language: "resume on output files, not live processes") but it is unsafe as a generic `Shed`-level check: after an `OnStuck` bounce-back, the *previous* attempt's output file for that producer is still sitting on disk, and `Shed` cannot tell a stale file from a fresh one by existence alone.
