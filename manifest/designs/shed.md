@@ -49,7 +49,8 @@ the axis exists purely to say who owns crash-recovery *inside* a producer's own 
 
 See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for which of `loom`'s concrete producers is simple versus bespoke, and which engine drives each.
 
-`Shed`'s resume/crash-recovery/pause guarantee operates at **producer granularity only**, re-driving a crashed producer from its last recorded output pointer and never mid-producer — the same mechanism regardless of Kind.
+`Shed`'s resume/crash-recovery/pause guarantee operates at **producer granularity only**: after any restart, `Shed` re-calls whichever producer `current_producer` names, never mid-producer — the same mechanism regardless of Kind.
+See [The `Shed` loop — exact mechanics](#the-shed-loop--exact-mechanics) below for why this is an unconditional re-call, not a "skip if the output already exists" shortcut.
 
 A producer's worst-case internal shape, not its happy path, decides its typology classification — a producer that is pure Go on the common path but spawns an internal multi-step process (an LLM session, several forks) on an exceptional path is bespoke, because the axis exists to say who owns crash-recovery, and the exceptional path is exactly where that ownership question bites.
 See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) and [finalize.md](finalize.md) for `Finalize`'s own worked example of this — bespoke on the typology axis despite a zero-LLM happy path, and adapter-free on the engine axis at the same time, which is exactly the two-axis independence the next section states.
@@ -57,9 +58,89 @@ See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-n
 A producer's **definition** — internal to how `Shed` actually runs it, invisible to the contract — additionally names an **engine** (which code drives it) and a **config** (how that engine is parameterized for this specific producer).
 Many producers share the same engine: every `*-Review` producer is `engine: perch`, differing only by which rubric/fasit `config` file is handed to it — the same generic, profile-driven mechanism `perch` already implements today ("reused for every phase... only the review profile differs").
 
+### The `Shed` loop — exact mechanics
+
+**`Shed`'s own scaffolding, stated precisely (2026-08-15).** Six steps, nothing else — everything a producer does past its own `Call()` return value is invisible to this loop:
+
+1. Read the status file. Missing → seed at `producers[0]`.
+2. Look up the `ProducerDef` at `current_producer`.
+3. Check `pause_requested`. Set → exit cleanly; nothing more happens until the next `lyx run`.
+4. Call `producer.Call(ctx)` → `(Outcome, OutputPointer, error)`.
+5. Append `{producer, outcome, output, at}` to `history`; persist the status file. This append-then-persist is the entire crash-safety mechanism: a crash before it means step 4 simply runs again next time; a crash after it means step 6 already knows where to go.
+6. Route on the result:
+   - `error` → halt, record it, exit. An engine-level failure, not a producer verdict — never routed anywhere, always a human resolves it.
+   - `Stuck` → look up this producer's `OnStuck`. Named target → `current_producer` becomes that target, back to step 2 (bounce back). No target → mark the status `blocked`, exit (escalate to human).
+   - `Done` → advance `current_producer` to the next entry, back to step 2. Past the last entry → the run is done.
+
+**The exact `ShedProducer` contract:**
+
+```go
+type Outcome int
+const (
+    Done Outcome = iota
+    Stuck
+)
+
+type OutputPointer struct {
+    Path string // "" = no artifact (gate/terminal producer)
+}
+
+type ShedProducer interface {
+    Call(ctx context.Context) (Outcome, OutputPointer, error)
+}
+```
+
+One method, three return values. `Shed` never introspects `Path`'s contents and never validates it against anything — an opaque string it stores for a human to read, per the "no opinion on Output's shape" rule above.
+
+**The exact producer definition — the contract plus what the list needs around it:**
+
+```go
+type ProducerDef struct {
+    Name     string
+    Producer ShedProducer
+    OnStuck  string // "" = escalate to human; else bounce back to this Name
+}
+
+type Shed struct {
+    Producers []ProducerDef
+}
+```
+
+`OnStuck` is what makes "`Plan-Review`'s stuck routes back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
+
+**The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/status.json` is one instance of it, not a `loom`-specific shape):
+
+```json
+{
+  "current_producer": "Plan-Write",
+  "pause_requested": false,
+  "activity": {"now": "...", "last": "...", "wait": "..."},
+  "history": [
+    {"producer": "Preflight", "outcome": "done", "output": "", "at": "..."},
+    {"producer": "Discussion-Write", "outcome": "done", "output": "_lyx/discussion/decision-record.md", "at": "..."}
+  ]
+}
+```
+
+`history`'s `output` field exists for observability (`lyx loom status`, an audit trail) — `Shed` writes it and never reads it back for control flow, per the point below.
+
+**Step 4 is an unconditional re-call — `Shed` never shortcuts it by checking whether `OutputPointer.Path` already exists on disk.**
+That shortcut looks tempting (loom.md's crash-recovery language: "resume on output files, not live processes") but it is unsafe as a generic `Shed`-level check: after an `OnStuck` bounce-back, the *previous* attempt's output file for that producer is still sitting on disk, and `Shed` cannot tell a stale file from a fresh one by existence alone.
+So the "is there already a live session, is there already a fresh complete output, should I respawn" three-case discipline is **not** `Shed`'s — it is delegated whole to each engine adapter's own `Call()` implementation (`SingleLLMProducer` wraps `shuttle`+`reed` and does this internally; `perch`/`Webster` already own their own resume, per [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) above).
+A mechanical Go-function producer needs no such discipline at all — re-running its check is cheap by construction.
+This is the natural conclusion of `Shed` having no opinion on Output's shape: it shouldn't stat a path to make a control-flow decision either.
+
+**What `Shed` does not provide** — each lives in the engine adapter or the product's own CLI wrapper instead:
+
+- Crash-recovery of live-session state (reattach vs. respawn) — inside `SingleLLMProducer`/`perch`/`Webster`'s own `Call()`.
+- Session/tmux/reed bootstrap — the product's CLI entry point (`lyx loom run`) does this *before* invoking `Shed`'s loop.
+- Status-strand rendering (`lyx loom status --watch`) — `reed` hosts it, reading the file `Shed` writes; `Shed` never renders anything.
+- Round loops, N-caps, batch decomposition — `perch`/`burler`/`batcher`'s own internals, opaque behind one `Call()`.
+- Anything about Input, or Output's shape — the producer-authoring convention above, not `Shed`.
+
 ### Engine adapters — a thin, shared seam, not one per producer
 
-`Shed` needs a minimal common interface to drive any producer uniformly — call it, get back an outcome (done / approved / stuck / blocked) plus an output-artifact pointer, without needing to know what happened inside.
+`ShedProducer` (defined above) is the minimal common interface `Shed` uses to drive any producer uniformly, without needing to know what happened inside.
 This is not a new pattern: it mirrors two seams that already exist in this codebase —
 
 - `internal/treadleengine`'s `RoundRunner` seam (`internal/perchengine`'s burler adapter is its reference consumer).
@@ -91,8 +172,8 @@ Same reasoning as the combined `Treadle` + `perch`-rewrite task.
 
 ## Why this doc doesn't rewrite loom.md's full detail
 
-`loom.md` is a mature, ~320-line, detailed design (crash recovery, pause semantics, session bootstrap, module decomposition) — this doc's own core model section is now the authoritative description of `Shed`'s generic mechanism (producers, contracts, engine adapters), and `loom.md`'s own [phase-machine section](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it.
-What this doc does *not* redo is `loom.md`'s remaining detail sections (crash recovery mechanics, pause, session bootstrap, module decomposition) — those stay in `loom.md`, described in `loom`-specific terms, and apply to `Shed`-based products generically without needing restating here.
+`loom.md` is a mature, ~320-line, detailed design (crash recovery, pause semantics, session bootstrap, module decomposition) — this doc's own core model section, including [The `Shed` loop — exact mechanics](#the-shed-loop--exact-mechanics), is now the authoritative description of `Shed`'s generic mechanism (the loop, the status file, the producer contract, engine adapters), and `loom.md`'s own [phase-machine section](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) is the authoritative description of `loom`'s specific producer list built on it.
+What this doc does *not* redo is `loom.md`'s remaining `loom`-specific detail — session bootstrap (tmux, the status strand, the run-launcher), auto-mode's human-gate framing, and module decomposition — those stay in `loom.md`, described in `loom`-specific terms, layered on top of the generic loop mechanics this doc now pins.
 
 ## Related
 
