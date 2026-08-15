@@ -7,10 +7,10 @@ package shedengine
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -127,12 +127,156 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 			}, nil
 		}
 
-		// Steps 4 through 6 are completed by card 9; this placeholder keeps the package
-		// building until that card lands.
-		_ = def
-		_ = bouncesRemaining
-		return Result{}, errors.New("shedengine: Run's loop body is incomplete")
+		// Step 4: call the looked-up definition's producer.
+		outcome, output, callErr := def.Producer.Call(ctx)
+
+		// Steps 5 and 6 are computed entirely in memory first, then committed with exactly one
+		// persist call for this iteration. Written as two writes, a crash between them leaves
+		// current_producer still naming the producer that just finished, so the next Run
+		// re-calls it and appends a duplicate history entry -- defeating the exact
+		// crash-safety property step 5 exists to provide.
+		//
+		// Appended to a copy of the history read at step 1, never mutating the read slice in
+		// place.
+		appendHistory := func() []HistoryEntry {
+			next := make([]HistoryEntry, len(st.History), len(st.History)+1)
+			copy(next, st.History)
+			return append(next, HistoryEntry{
+				Producer: def.Name,
+				Outcome:  outcome,
+				Output:   output.Path,
+				At:       nowRFC3339(),
+			})
+		}
+
+		switch {
+		case callErr != nil && ctx.Err() != nil:
+			// Non-nil error with a cancelled context: the pause exit, exactly as step 3 takes
+			// it. The predicate is ctx.Err() != nil, not an errors.Is check against a
+			// cancellation sentinel -- the context's own state is ground truth about whether
+			// an operator stopped the run and stays correct even if a producer wraps or
+			// discards the sentinel, whereas a producer whose own internal derived context
+			// times out returns a deadline error while the parent context is perfectly
+			// healthy: a genuine producer failure, not an operator stop.
+			//
+			// No history entry is appended: the producer never reached a verdict, so there is
+			// nothing to record, and leaving current_producer put means the next Run simply
+			// re-calls it, the same semantics as a crash before the persist. The accepted
+			// trade: a producer returning a genuine, unrelated error in the same instant an
+			// operator cancels is reported as a pause, which is harmless because the producer
+			// is re-called on resume and the real error surfaces again then.
+			if err := s.persist(st.CurrentProducer, StatePaused, "", st.History, true); err != nil {
+				return Result{}, err
+			}
+			return Result{
+				Outcome:        RunPaused,
+				HaltedProducer: st.CurrentProducer,
+				History:        st.History,
+			}, nil
+
+		case callErr != nil:
+			// Non-nil error with a healthy context: an engine-level failure, never a producer
+			// verdict, so it is never routed anywhere -- a human resolves it. No further
+			// producer is called.
+			nextHistory := appendHistory()
+			if err := s.persist(st.CurrentProducer, StateFailed, callErr.Error(), nextHistory, false); err != nil {
+				return Result{}, err
+			}
+			return Result{}, callErr
+
+		case outcome == Stuck:
+			nextHistory := appendHistory()
+			switch {
+			case def.OnStuck == "":
+				reason := "stuck with no OnStuck target"
+				if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
+					return Result{}, err
+				}
+				return Result{
+					Outcome:        RunBlocked,
+					HaltedProducer: st.CurrentProducer,
+					Reason:         reason,
+					History:        nextHistory,
+				}, nil
+			case bouncesRemaining <= 0:
+				// The boundary is pinned exactly: MaxBounces bounces are permitted, and the
+				// next Stuck that would otherwise route is the one refused, so a budget of
+				// three performs three bounce-backs and blocks on the fourth Stuck.
+				reason := "bounce budget exhausted"
+				if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
+					return Result{}, err
+				}
+				return Result{
+					Outcome:        RunBlocked,
+					HaltedProducer: st.CurrentProducer,
+					Reason:         reason,
+					History:        nextHistory,
+				}, nil
+			default:
+				bouncesRemaining--
+				if err := s.persist(def.OnStuck, StateRunning, "", nextHistory, false); err != nil {
+					return Result{}, err
+				}
+				continue
+			}
+
+		case outcome == Done:
+			nextHistory := appendHistory()
+			if def.Name == s.Producers[len(s.Producers)-1].Name {
+				// current_producer keeps this producer's own name -- never the empty string --
+				// because activity.now is defined as current_producer's name and
+				// HaltedProducer as the producer current_producer named when Run returned, so
+				// an empty value would leave both fields meaningless at the happy-path
+				// terminal a reader of a finished status file most wants to understand.
+				if err := s.persist(def.Name, StateDone, "", nextHistory, false); err != nil {
+					return Result{}, err
+				}
+				return Result{
+					Outcome:        RunDone,
+					HaltedProducer: def.Name,
+					History:        nextHistory,
+				}, nil
+			}
+			nextName := s.Producers[indexAfter(s.Producers, def.Name)].Name
+			if err := s.persist(nextName, StateRunning, "", nextHistory, false); err != nil {
+				return Result{}, err
+			}
+			continue
+
+		default:
+			// An Outcome that is neither Done nor Stuck, returned with a nil error, is an
+			// engine-level failure: Outcome is a string type and therefore open, so the
+			// routing would otherwise have an undefined fourth case, and coercing an unknown
+			// value to Stuck would consume bounce budget for a broken adapter while coercing
+			// it to Done would advance past a producer that may not have done its work.
+			nextHistory := appendHistory()
+			failErr := fmt.Errorf("shedengine: producer %q returned an unrecognised outcome %q", def.Name, outcome)
+			if err := s.persist(st.CurrentProducer, StateFailed, failErr.Error(), nextHistory, false); err != nil {
+				return Result{}, err
+			}
+			return Result{}, failErr
+		}
 	}
+}
+
+// nowRFC3339 returns the current UTC time formatted as RFC3339, the format every history[].at
+// value is written in. No injectable clock field exists on Shed -- adding one would add a field to
+// the struct shape the design pins, for a value tests assert structurally instead of by literal.
+func nowRFC3339() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// indexAfter returns the index of the producer immediately following the one named name in
+// producers. It is only ever called when name is known to be present and not the last entry, both
+// already established by the caller.
+func indexAfter(producers []ProducerDef, name string) int {
+	for i, p := range producers {
+		if p.Name == name {
+			return i + 1
+		}
+	}
+	// Unreachable: callers only invoke this with a name already confirmed present.
+	return 0
 }
 
 // persist is the single write path for the whole loop: one state.UpdateJSON call whose mutate
