@@ -72,8 +72,15 @@ func newTestShed(t *testing.T) (shed *Shed, statusPath, lockPath, statusLockPath
 
 // seedStatus writes want to statusPath/statusLockPath via state.WriteJSON, failing the test on
 // error.
+// Unlike Shed itself, seedStatus stands in for an external seeder, which -- per the
+// external-writer-lock-contract decision -- is already expected to ensure its own lock path is
+// usable before writing; state.WriteJSON creates statusPath's parent but not statusLockPath's, so
+// this helper creates the latter itself rather than pushing that bookkeeping onto every call site.
 func seedStatus(t *testing.T, statusPath, statusLockPath string, want Status) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+		t.Fatalf("seedStatus: create status lock parent dir: %v", err)
+	}
 	if err := state.WriteJSON(statusPath, statusLockPath, want); err != nil {
 		t.Fatalf("seedStatus: state.WriteJSON(...) = %v", err)
 	}
