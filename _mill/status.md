@@ -37,7 +37,9 @@ batches:
     commit_sha: c35ab1659b028077601c200f5d3185f375adecde
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: run-loop
-    state: pending
+    state: running
+    implementer_session: 1ab171c9-afa4-44a1-bec6-436942246ed8
+    start_sha: 18d839ed1ba3b0c0ee71d10276624be45baf1ac5
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: pause-and-resume-scenarios
     state: pending
