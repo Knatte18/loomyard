@@ -58,7 +58,9 @@ batches:
     commit_sha: 93402f019f8b98f278985cc350cb4a8c3c126c9a
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: seam-invariant
-    state: pending
+    state: running
+    implementer_session: c69444eb-29d0-4f7a-aa04-d2f5567f3a7b
+    start_sha: f80b44bba57ba6c40e77d94fb93754aa2fd9859b
     verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: docs-reconciliation
     state: pending
