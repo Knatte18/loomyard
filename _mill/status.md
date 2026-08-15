@@ -6,6 +6,7 @@ slug: shed
 branch: shed
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Shed: outer phase-FSM skeleton'
 task_description: |
   Shed: outer phase-FSM skeleton
@@ -29,15 +30,23 @@ implementing  '2026-08-15T10:11:22Z'
 ```yaml
 batches:
   - name: package-skeleton
-    state: pending
+    state: running
+    implementer_session: a77f45b6-a9f6-4192-aff2-18c27c565d5d
+    start_sha: fc19187ff8f6a39fd5d24d79051d8ba4b0f1d3e4
+    verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: run-loop
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: pause-and-resume-scenarios
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: persistence-and-hard-error-scenarios
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: seam-invariant
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedengine/... [setup failed]"]
   - name: docs-reconciliation
     state: pending
+    verify_baseline_failures: []
 ```
