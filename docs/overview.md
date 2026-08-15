@@ -225,6 +225,7 @@ github.com/Knatte18/loomyard/
 ├── internal/selfreportcli/       the selfreport CLI command
 ├── internal/selfreportengine/    the selfreport domain kernel
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
+├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
 ├── internal/configengine/        shared config resolution
@@ -288,6 +289,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The Discussion producer is ✅ **built**, ahead of the phase machine: a prompt/profile fed to `shuttle.Run`, its prompt shipped as an embedded default in the top-level `stencils` package and read at call time from the hub's stencils directory (`stencils/loom/loom-template-discussion.md`), composed by `internal/loomengine`'s `prompt.go` + `discussion.go`.
   The Planner producer is ✅ **built** too, the same way (`stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go` — both distinct from the still-unbuilt phase machine that will drive them.
   See [manifest/designs/loom.md](../manifest/designs/loom.md).
+- **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
+  No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
+  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) remain Planned.
+  See the `internal/shedengine` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone (`lyx perch run|pause`). The round loop itself (judge, gate, round-spawn, cap, pause, run-dir lock) now lives in the shared `internal/treadleengine` engine; `internal/perchengine` is the thin configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto treadle's `RoundRunner` seam — perch's own behavior/CLI are unchanged from the outside. ✅ Implemented. See the `internal/perchengine` and `internal/treadleengine` package documentation.
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
   Profile-driven: `{overlay, source}` fix-scope, tool-use.
@@ -300,7 +305,7 @@ User-facing modules each get one `lyx <module>` namespace:
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See [manifest/designs/hardener.md](../manifest/designs/hardener.md).
 
-The cross-OS spawn primitive **proc** is the one remaining internal (non-CLI) layer — the base of the stack;
+The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**, are the two remaining internal (non-CLI) layers — proc the base of the stack, shed the generic engine `loom` configures rather than a stack layer of its own;
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
 both folded back into reed — see the `internal/reedengine` package documentation. This `shed` is an abandoned earlier `reed` model/view draft, unrelated to [`Shed`](../manifest/designs/shed.md) the outer phase-FSM.)
 
@@ -321,7 +326,11 @@ internal/shuttle  run ONE LLM agent in a strand via a swappable engine over    [
 burler            one review+fix round: A-review (+cluster) → B-fix           [builds on shuttle] ✅
 perch             run burler rounds on one artifact → APPROVED|STUCK          [builds on burler,  ✅
                   treadleengine]
-loom              phase machine: drive each phase through a perch gate         [builds on perch]
+shed              generic outer phase-FSM: walk one flat producer list,        [stdlib +           ✅
+                  honoring resume/crash-recovery/pause at producer granularity  internal/state,lock
+                                                                                 only -- skeleton]
+loom              phase machine: drive each phase through a perch gate         [builds on shed,
+                                                                                 perch]
 ```
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session requirement), agents run, output files are read, nobody need watch.
