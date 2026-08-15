@@ -121,16 +121,18 @@ type ProducerDef struct {
 }
 
 type Shed struct {
-    Producers  []ProducerDef
-    StatusPath string // absolute path to the status file; Shed is told it, never derives it
-    LockPath   string // absolute path to the run lock (see Run's own locking, below)
-    MaxBounces int    // total Stuck-routed bounces across the whole run; 0 = an internal sane default, never "no bounces allowed"
+    Producers      []ProducerDef
+    StatusPath     string // absolute path to the status file; Shed is told it, never derives it
+    LockPath       string // absolute path to the run lock (see Run's own locking, below)
+    StatusLockPath string // absolute path to internal/state's own lock; must never name the same file as LockPath
+    MaxBounces     int    // total Stuck-routed bounces for this Run call, in-memory only; 0 = the internal default of ten, never "no bounces allowed"
 }
 ```
 
 `OnStuck` is what makes "`Plan-Review`'s stuck routes back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
-`MaxBounces` is the total-bounce budget from above — one field on `Shed` itself, not per-`ProducerDef`, since the risk it guards is total wasted spend across the run, not any single producer's own bounce count.
-`StatusPath`/`LockPath` are exactly the caller-supplied, told-not-derived paths from the geometry question above — `Shed` never constructs either from a `_lyx` convention of its own; the caller (`loom`, eventually `Hardener`) resolves them from its own geometry and hands them in.
+`MaxBounces` is the total-bounce budget from above — one field on `Shed` itself, not per-`ProducerDef`, since the risk it guards is total wasted spend across the run, not any single producer's own bounce count; it is never persisted, so a crash-restart or a human-resumed run starts again with the full budget.
+`StatusPath`/`LockPath`/`StatusLockPath` are exactly the caller-supplied, told-not-derived paths from the geometry question above — `Shed` never constructs any of them from a `_lyx` convention of its own; the caller (`loom`, eventually `Hardener`) resolves them from its own geometry and hands them in.
+**`LockPath` and `StatusLockPath` must never name the same file.** `internal/state` acquires its own lock with the blocking form, so a `Shed` whose two lock paths coincide would hang on its first persist rather than failing — the caller already has both paths on hand (`loomengine.LoomStatusLock` and its sibling), so this is never a hard ask, only a mistake worth rejecting loud.
 
 **The entrypoint:**
 
@@ -154,12 +156,55 @@ func (s *Shed) Run(ctx context.Context) (Result, error)
 
 `RunOutcome` is deliberately its own type, not a reuse of `ShedProducer`'s `Outcome` above — the two describe different things (one producer's call vs. the whole run's exit) and `Done` already names a value on the first; a shared type would force a naming collision or an overloaded meaning for no benefit. String-typed for the same reason `Outcome` is: `RunDone`/`RunBlocked`/`RunPaused`'s values are exactly `state`'s persisted values below, one vocabulary, not two kept in sync by hand.
 
+A caller must branch on `Outcome` before reading `Reason`, which is populated only alongside `RunBlocked`.
+**`Result` is meaningless unless the returned `error` is nil.** `RunOutcome`'s zero value is the empty string, not one of the three legal constants above, and every hard-error path — validation failure, a busy lock, a missing or incoherent status file, a persist failure — returns an unpopulated `Result` alongside its error. A caller checks `error` first and never inspects `Outcome` on a non-nil-error return, the same discipline as branching on `Outcome` before reading `Reason`, one level up.
+
+`History` is the **full persisted history** as it stands when `Run` returns — every entry in the status file, not only the entries this invocation appended. A this-run-only slice would make a resumed run's `Result` silently incomparable to a fresh one's; the full scope is what makes `Result` a faithful view of the file `Shed` just wrote.
+
 Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Result, err error)` exactly — same `(Result, error)` shape one level up, not a coincidence: `perch`'s own adapter into `treadle` is the concrete precedent this follows. `Run` walks the whole six-step loop in one call, from wherever the status file's `current_producer` currently sits, until it hits a stopping condition (`pause_requested`/cancellation, `blocked`, `done`, or an `error`) — never a `Step()`-per-call API the caller loops over, since the loop itself is `Shed`'s entire deliverable; pushing it out to every caller would mean `loom` and `Hardener` each reimplementing the same sequencing/pause-check/routing logic, exactly the duplication `Shed` exists to centralize. A non-nil `error` return covers both step 1's and step 2's hard-error cases above (missing or incoherent status file) and a producer's own `Call()` returning `error`; `Result.Outcome` covers the three clean exits, mirroring `state`'s three non-failure values below.
 
 **Two things `Run` does before step 1, both fail loud, neither touches the status file:**
 
 - **Validates `Producers`** — an empty list, a duplicate `Name`, or an `OnStuck` naming a `Name` not present in the list are all a returned `error`, before any producer is ever called. Caught here rather than lazily (only when a producer actually goes `Stuck` and its `OnStuck` typo surfaces) because that is the worst possible timing — a config mistake compounding an unrelated failure, hours into a real run, instead of failing on the very first invocation. `Shed` stays the plain exported-field struct this doc pins throughout — no `New(...)` constructor, which would create a second, unvalidated way to build one (a bare struct literal) alongside the validated one.
 - **Acquires `LockPath` non-blocking**, mirroring `internal/treadleengine/run.go`'s own `lock.TryAcquireWriteLock` / `ErrBlockBusy` precedent exactly (`run.go:119–128`): already held → a sentinel error (e.g. `ErrShedBusy`), `Run` returns immediately, nothing on disk touched. `internal/state`'s own per-write lock does not substitute for this — it is held only for the duration of one write, not across a whole `Call()`, so two concurrent `lyx loom run` invocations could otherwise both read the same `current_producer` and both spawn it, double-spending an LLM session. Released via `defer`, OS-reclaimed on crash even if `Release` is never reached, so a killed process never bricks a later resume.
+
+**The status file's own Go types** — `Status`, the persisted file itself, and `HistoryEntry`, the element type `Result.History` above is typed on:
+
+```go
+type State string
+const (
+    StateRunning State = "running"
+    StatePaused  State = "paused"
+    StateDone    State = "done"
+    StateBlocked State = "blocked"
+    StateFailed  State = "failed"
+)
+
+type Activity struct {
+    Now  string `json:"now"`
+    Last string `json:"last"`
+    Wait string `json:"wait"`
+}
+
+type HistoryEntry struct {
+    Producer string  `json:"producer"`
+    Outcome  Outcome `json:"outcome"`
+    Output   string  `json:"output"`
+    At       string  `json:"at"`
+}
+
+type Status struct {
+    CurrentProducer string         `json:"current_producer"`
+    State           State          `json:"state"`
+    Error           string         `json:"error"`
+    PauseRequested  bool           `json:"pause_requested"`
+    Activity        Activity       `json:"activity"`
+    History         []HistoryEntry `json:"history"`
+    Product         json.RawMessage `json:"product,omitempty"`
+}
+```
+
+`State`'s three clean-exit values — `StateRunning` excepted — are the **literal same strings** as `RunOutcome`'s three constants above, so mapping between `Result.Outcome` and `state` is identity, never a lookup table; `State` is the superset, adding `running` (a run in progress or interrupted mid-producer) and `failed` (an engine-level error), neither of which `RunOutcome` ever carries, since `Run` returns a non-nil `error` rather than a `Result` in the failure case.
 
 **The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/loom/status.json` is one instance of it, not a `loom`-specific shape):
 
@@ -178,6 +223,8 @@ Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Res
 ```
 
 `history`'s `output` field exists for observability (`lyx loom status`, an audit trail) — `Shed` writes it and never reads it back for control flow, per the point below.
+
+**`history[].at` is pinned as RFC3339 UTC, written from a direct clock call** (`time.Now().UTC()`), with no injectable clock field — that would add a field to the struct shape pinned above for a value tests can assert structurally instead. Tests assert that each `at` parses as RFC3339 with a zero UTC offset and that entries are non-decreasing, never a literal.
 
 **`state`/`error` are how a terminal condition survives a process exit** — the missing piece an earlier version of this doc's status-file example left out. `Result`'s `Outcome`+`Reason` exist only in memory for the duration of one `Run` call; without persisting the equivalent on disk, a restarted `lyx run` (or a human reading `lyx loom status`) cannot tell "paused, resumable" from "blocked, needs a human" from "crashed" — all three look identical, an unattended status file sitting still. `state` is one of `"running" | "paused" | "done" | "blocked" | "failed"`, written at every step-6 exit per the routing above; `error` is human-readable detail, `""` when `state` carries no failure (mirrors `Result.Outcome`+`Result.Reason`'s split, now on disk instead of only in memory).
 
