@@ -62,15 +62,17 @@ Many producers share the same engine: every `*-Review` producer is `engine: perc
 
 `Shed`'s own scaffolding is six steps, nothing else — everything a producer does past its own `Call()` return value is invisible to this loop:
 
-1. Read the status file. Missing → seed at `producers[0]`.
-2. Look up the `ProducerDef` at `current_producer`.
-3. Check `pause_requested`. Set → exit cleanly; nothing more happens until the next `lyx run`.
+1. Read the status file. Missing → **hard error, halt.** `Shed` never seeds one itself — a status file must already exist before `Shed`'s first call, written by whatever spawns the task (see `status-schema.md`'s "seed / handover" section for `loom`'s own instance of this). Seeding is a one-time, product-specific bootstrapping act, not part of `Shed`'s per-invocation loop; if `Shed` seeded on missing, a product whose own precondition producer checks for a coherent fresh seed (`loom`'s already-shipped `Preflight`, `CheckSeedMissing`) would find that check permanently unreachable, since `Shed`'s own seed would always land first.
+2. Look up the `ProducerDef` at `current_producer`. Not found in `Producers` (the list changed since this status file was last written — a producer renamed, removed, or reordered) → **hard error, halt, change nothing on disk.** `Shed` never guesses which entry was meant, and never restarts from `producers[0]` or advances to the nearest match — both are ways of silently fabricating a status a human never confirmed. A human reconciles.
+3. Check `pause_requested`. Set → write `state: "paused"`, exit cleanly; nothing more happens until the next `lyx run`.
 4. Call `producer.Call(ctx)` → `(Outcome, OutputPointer, error)`.
 5. Append `{producer, outcome, output, at}` to `history`; persist the status file. This append-then-persist is the entire crash-safety mechanism: a crash before it means step 4 simply runs again next time; a crash after it means step 6 already knows where to go.
 6. Route on the result:
-   - `error` → halt, record it, exit. An engine-level failure, not a producer verdict — never routed anywhere, always a human resolves it.
-   - `Stuck` → look up this producer's `OnStuck`. Named target → `current_producer` becomes that target, back to step 2 (bounce back). No target → mark the status `blocked`, exit (escalate to human).
-   - `Done` → advance `current_producer` to the next entry, back to step 2. Past the last entry → the run is done.
+   - `error` → write `state: "failed"` and `error: err.Error()`, halt, exit. An engine-level failure, not a producer verdict — never routed anywhere, always a human resolves it.
+   - `Stuck` → look up this producer's `OnStuck` and check the bounce budget (below). Named target *and* budget remaining → `current_producer` becomes that target, back to step 2 (bounce back). No target, **or** budget exhausted → write `state: "blocked"` (and, if exhausted, `error: "bounce budget exhausted"`), exit (escalate to human).
+   - `Done` → advance `current_producer` to the next entry, back to step 2. Past the last entry → write `state: "done"`, exit. Otherwise write `state: "running"` before looping.
+
+**Bounce-budget: a single total cap across the whole run, not per-producer.** `OnStuck` permits a cycle (`Plan-Review` → `Plan-Write` → `Plan-Review` → …), and every hop can be a full LLM session — an unbounded cycle is not a hypothetical, it is the default outcome whenever a bounced-back producer keeps failing the same way. `internal/treadleengine` already carries exactly this discipline for the identical risk shape (a hard round cap, "generalized machinery moved here verbatim from perch's shipped round loop") — `Shed` mirrors it rather than reinventing it. `Shed` decrements one counter on every bounce, regardless of which producers are involved: a per-producer budget would let an A↔B cycle run `2×budget` bounces before either individually trips, which does not actually bound the thing being guarded against (total wasted spend before a human is pulled in). A sane default, overridable per `Shed` instance; exhausted behaves exactly like "no `OnStuck` target" — `blocked`, not a distinct third case.
 
 **The exact `ShedProducer` contract:**
 
@@ -102,17 +104,45 @@ type ProducerDef struct {
 }
 
 type Shed struct {
-    Producers []ProducerDef
+    Producers  []ProducerDef
+    MaxBounces int // total Stuck-routed bounces across the whole run; exhausted behaves as OnStuck == ""
 }
 ```
 
 `OnStuck` is what makes "`Plan-Review`'s stuck routes back to `Plan-Write`" a per-producer config value in the list, not a hardcoded branch in `Shed`'s loop.
+`MaxBounces` is the total-bounce budget from above — one field on `Shed` itself, not per-`ProducerDef`, since the risk it guards is total wasted spend across the run, not any single producer's own bounce count.
+
+**The entrypoint:**
+
+```go
+type RunOutcome int
+const (
+    RunDone RunOutcome = iota
+    RunBlocked
+    RunPaused
+)
+
+type Result struct {
+    Outcome        RunOutcome
+    HaltedProducer string // the producer current_producer named when Run returned
+    Reason         string // set only alongside RunBlocked -- why (no OnStuck target, or budget exhausted)
+    History        []HistoryEntry
+}
+
+func (s *Shed) Run(ctx context.Context) (Result, error)
+```
+
+`RunOutcome` is deliberately its own type, not a reuse of `ShedProducer`'s `Outcome` above — the two describe different things (one producer's call vs. the whole run's exit) and `Done` already names a value on the first; a shared type would force a naming collision or an overloaded meaning for no benefit.
+
+Mirrors `internal/treadleengine.Engine.Run(p Profile, runDir string) (result Result, err error)` exactly — same `(Result, error)` shape one level up, not a coincidence: `perch`'s own adapter into `treadle` is the concrete precedent this follows. `Run` walks the whole six-step loop in one call, from wherever the status file's `current_producer` currently sits, until it hits a stopping condition (`pause_requested`, `blocked`, `done`, or an `error`) — never a `Step()`-per-call API the caller loops over, since the loop itself is `Shed`'s entire deliverable; pushing it out to every caller would mean `loom` and `Hardener` each reimplementing the same sequencing/pause-check/routing logic, exactly the duplication `Shed` exists to centralize. A non-nil `error` return covers both step 1's and step 2's hard-error cases above (missing or incoherent status file) and a producer's own `Call()` returning `error`; `Result.Outcome` covers the three clean exits, mirroring `state`'s three non-failure values below.
 
 **The status file** (`Shed`'s own generic contract — `loom`'s `_lyx/loom/status.json` is one instance of it, not a `loom`-specific shape):
 
 ```json
 {
   "current_producer": "Plan-Write",
+  "state": "running",
+  "error": "",
   "pause_requested": false,
   "activity": {"now": "...", "last": "...", "wait": "..."},
   "history": [
@@ -123,6 +153,10 @@ type Shed struct {
 ```
 
 `history`'s `output` field exists for observability (`lyx loom status`, an audit trail) — `Shed` writes it and never reads it back for control flow, per the point below.
+
+**`state`/`error` are how a terminal condition survives a process exit** — the missing piece an earlier version of this doc's status-file example left out. `Result`'s `Outcome`+`Reason` exist only in memory for the duration of one `Run` call; without persisting the equivalent on disk, a restarted `lyx run` (or a human reading `lyx loom status`) cannot tell "paused, resumable" from "blocked, needs a human" from "crashed" — all three look identical, an unattended status file sitting still. `state` is one of `"running" | "paused" | "done" | "blocked" | "failed"`, written at every step-6 exit per the routing above; `error` is human-readable detail, `""` when `state` carries no failure (mirrors `Result.Outcome`+`Result.Reason`'s split, now on disk instead of only in memory).
+
+**`activity` is filled mechanically by `Shed` itself, from data it already holds** — `Shed` is the file's only writer, so if `Shed` does not fill this, nothing else can. `now` is `current_producer`'s name; `last` is the most recent `history` entry's `producer`+`outcome`, formatted for a human; `wait` is set only when `state` is `"blocked"` or `"failed"` (the `error` text, or a short reason), else `""`. No per-product hook — every field here is either already a `Shed`-owned value or trivially derived from one.
 
 **Step 4 is an unconditional re-call — `Shed` never shortcuts it by checking whether `OutputPointer.Path` already exists on disk.**
 That shortcut looks tempting (loom.md's crash-recovery language: "resume on output files, not live processes") but it is unsafe as a generic `Shed`-level check: after an `OnStuck` bounce-back, the *previous* attempt's output file for that producer is still sitting on disk, and `Shed` cannot tell a stale file from a fresh one by existence alone.
