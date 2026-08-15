@@ -213,8 +213,8 @@ Batch-local decisions, beyond `## Shared Decisions` in the overview:
   Point at the `internal/shedengine` package documentation and at `manifest/designs/shed.md`, and make sure both links resolve from this file's location.
 
   **The execution-stack section.** Add `shed` to the layered stack block above `loom`, and update loom's own annotation there so it reads as building on shed and perch rather than on perch alone.
-  The sentence immediately after that block currently claims the cross-OS spawn primitive is the one remaining internal, non-CLI layer of the stack;
-  adding shed makes that false, so reword it minimally to name both rather than leaving a claim the block itself contradicts.
+  Separately, the sentence at the **end of the Modules section** — immediately before the `## Execution stack` heading, not after the stack block — currently claims the cross-OS spawn primitive is the one remaining internal, non-CLI layer;
+  adding shed makes that false, so reword it minimally to name both rather than leaving a claim the stack block itself contradicts.
 
   Leave the existing parenthetical that distinguishes the abandoned earlier reed model/view draft named `shed` from this `Shed` — it becomes more load-bearing now that a real `internal/shedengine` exists, not less.
   Do not restructure any section, and change nothing else in the file.
