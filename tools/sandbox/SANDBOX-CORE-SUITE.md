@@ -229,7 +229,7 @@ Does `lyx fabric unwire` cleanly remove the junctions, clear the weft `_lyx` con
 
 **Durability note:** Like `_board` itself, the board's stencils tree is seeded on first run and persists across sessions -- it is not reseeded or rewritten by an ordinary `lyx` invocation once every registered stencil is present and untouched. Do not assume a fresh seed on this run.
 
-**Watch:** Does `lyx stencil list` name all fifteen registered stencils, each with a board-copy path and an edit state (`absent`/`untouched`/`edited`)? Does `lyx stencil validate` report a clean tree (no `error`-severity findings) against an unmodified board copy? Is the JSON output for both sane -- a well-formed envelope, no raw tool output leaking through?
+**Watch:** Does `lyx stencil list` name all eighteen registered stencils, each with a board-copy path and an edit state (`absent`/`untouched`/`edited`)? Does `lyx stencil validate` report a clean tree (no `error`-severity findings) against an unmodified board copy? Is the JSON output for both sane -- a well-formed envelope, no raw tool output leaking through?
 This scenario is deliberately read-only: `promote` and `sync` both mutate the operator's tree and are exercised by `internal/stencilcli`'s own integration tests, not by hand here.
 
 **Verdict:** `OK` / `WARN` / `FAIL`

@@ -100,7 +100,10 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	logger.Info("burler: round starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	directive := pattern.Directive(e.layout, pattern.RoleReviewFix)
+	directive, err := pattern.Directive(e.layout, e.stencilsDir, pattern.RoleReviewFix)
+	if err != nil {
+		return Result{}, fmt.Errorf("burler: %w", err)
+	}
 
 	// AnchorPath-anchored so this per-round instruction dir is a directory
 	// sibling of the durable, fabric-synced _lyx tree, not a second

@@ -67,7 +67,10 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg model
 	planDir := PlanDir(layout)
 	overviewPath := PlanOverview(layout)
 
-	directive := pattern.Directive(layout, pattern.RoleImplementer)
+	directive, err := pattern.Directive(layout, stencilsDir, pattern.RoleImplementer)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
+	}
 	prompt, err := composePlanPrompt(stencilsDir, decisionRecordPath, planDir, overviewPath, directive)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)

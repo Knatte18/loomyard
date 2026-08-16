@@ -17,8 +17,9 @@ import (
 	"github.com/Knatte18/loomyard/stencils"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with burler's four stencils, copied byte-for-byte
-// from the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
+// newTestStencilsDir builds a t.TempDir() seeded with burler's four stencils plus the three
+// pattern-directive stencils, copied byte-for-byte from the stencils package's embedded defaults, and
+// returns the directory to pass as stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 
@@ -35,6 +36,21 @@ func newTestStencilsDir(t *testing.T) string {
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(burlerDir, name), content, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
+		}
+	}
+
+	patternDir := filepath.Join(dir, "pattern")
+	if err := os.MkdirAll(patternDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+	}
+	patternFiles := map[string][]byte{
+		"pattern-directive-implementer.md":  stencils.PatternDirectiveImplementer,
+		"pattern-directive-review-fix.md":   stencils.PatternDirectiveReviewFix,
+		"pattern-directive-orchestrator.md": stencils.PatternDirectiveOrchestrator,
+	}
+	for name, content := range patternFiles {
+		if err := os.WriteFile(filepath.Join(patternDir, name), content, 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
 		}
 	}

@@ -15,8 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/stencils"
 )
 
-// newTestStencilsDir builds a t.TempDir() seeded with loom's two stencils, copied byte-for-byte from
-// the stencils package's embedded defaults, and returns the directory to pass as stencilsDir.
+// newTestStencilsDir builds a t.TempDir() seeded with loom's two stencils plus the three
+// pattern-directive stencils, all copied byte-for-byte from the stencils package's embedded
+// defaults, and returns the directory to pass as stencilsDir.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 
@@ -30,6 +31,20 @@ func newTestStencilsDir(t *testing.T) string {
 	}
 	if err := os.WriteFile(filepath.Join(loomDir, "loom-template-plan.md"), stencils.LoomTemplatePlan, 0o644); err != nil {
 		t.Fatalf("WriteFile(loom-template-plan.md) = %v; want nil", err)
+	}
+
+	patternDir := filepath.Join(dir, "pattern")
+	if err := os.MkdirAll(patternDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-implementer.md"), stencils.PatternDirectiveImplementer, 0o644); err != nil {
+		t.Fatalf("WriteFile(pattern-directive-implementer.md) = %v; want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-review-fix.md"), stencils.PatternDirectiveReviewFix, 0o644); err != nil {
+		t.Fatalf("WriteFile(pattern-directive-review-fix.md) = %v; want nil", err)
+	}
+	if err := os.WriteFile(filepath.Join(patternDir, "pattern-directive-orchestrator.md"), stencils.PatternDirectiveOrchestrator, 0o644); err != nil {
+		t.Fatalf("WriteFile(pattern-directive-orchestrator.md) = %v; want nil", err)
 	}
 	return dir
 }
