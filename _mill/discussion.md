@@ -19,26 +19,28 @@ Fifteen stencils already ship as directly-editable `.md` files read at call time
 these three are the last prompt-facing content that does not.
 
 The full design was written ahead of this task at `manifest/designs/pattern-directive-stencils.md` and is currently marked **Status: Design — not built**.
-This discussion adopts that design with two corrections, both recorded under Decisions below: the read-failure posture (the design doc says fail-silent; this task fails loud) and the claim that all four call sites are plumbing-free (two of them are not).
+This discussion adopts that design with three corrections, all recorded under Decisions below: the read-failure posture (the design doc says fail-silent; this task fails loud), the claim that all four call sites are plumbing-free (two of them are not), and the stamp-banner strip the design doc does not mention at all (without it the relocation is not behaviour-preserving).
 
 ## Scope
 
 **In:**
 
-- Three new stencil files under a new `stencils/pattern/` family directory, carrying the three constants' content **verbatim**.
+- Three new stencil files under a new `stencils/pattern/` family directory, each carrying one constant's prose **verbatim as its body**, under the conventional explanatory `<!-- … -->` banner every other stencil opens with.
 - Three new `//go:embed` vars plus three new `entries` rows in `stencils/stencils.go`.
-- `internal/pattern.Directive` gains a `stencilsDir string` parameter and an `error` return, and reads through `stencilstore.Read` instead of returning a constant.
-- The three `const` blocks in `internal/pattern/pattern.go` are deleted.
+- `internal/pattern.Directive` gains a `stencilsDir string` parameter and an `error` return, and reads through `stencilstore.Read` — then strips the leading banner via `stencil.StripLeadingComment` — instead of returning a constant.
+- The three `const` blocks in `internal/pattern/pattern.go` are deleted, along with the file-header and pre-constant comments that describe them.
 - All four call sites updated — two are a one-line change, two need the call hoisted out of a map literal.
-- `internal/pattern`'s leaf-invariant allowlist extended by one entry, in `internal/pattern/leaf_enforcement_test.go` and in `CONSTRAINTS.md`.
+- `internal/pattern`'s leaf-invariant allowlist extended by two entries, at all three places the leaf test states it plus `CONSTRAINTS.md`.
 - Test migration in `internal/pattern`, `internal/websterengine`, and `internal/loomengine`, plus three new tests.
 - Four doc updates: `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`.
 
 **Out:**
 
 - The directive prose itself.
-  It moves byte-for-byte;
+  It moves byte-for-byte **as the stencil body** — the bytes remaining after `stencil.StripLeadingComment` — not as whole-file bytes;
   not one word changes, including the trailing newline each constant carries.
+  Whole-file equality is not available to claim: every stencil file carries a leading banner, and `stencilstore.Reconcile` writes a `lyx-stencil:` stamp line into it on seeding.
+  What must be identical to today's output is what `Directive` returns, which is the stripped body.
 - `pattern.isActive` and its three pinned edge rules (empty file active, directory inactive, non-`IsNotExist` stat error active).
   Untouched.
 - Every producer template's marker set.
@@ -56,15 +58,42 @@ This discussion adopts that design with two corrections, both recorded under Dec
 
 ### Extend the Pattern Leaf Invariant rather than route around it
 
-- Decision: add `github.com/Knatte18/loomyard/internal/stencilstore` to `internal/pattern`'s allowlist, in both `internal/pattern/leaf_enforcement_test.go`'s `allowedImports` map and `CONSTRAINTS.md`'s **Pattern Leaf Invariant** section, in the same commit as the code change.
-  `Directive` then calls `stencilstore.Read` directly.
+- Decision: add **two** entries to `internal/pattern`'s allowlist — `github.com/Knatte18/loomyard/internal/stencilstore` (for `Read`) and `github.com/Knatte18/loomyard/internal/stencil` (for `StripLeadingComment`, see the next decision) — in the same commit as the code change.
+  The allowlist is stated in three places inside `internal/pattern/leaf_enforcement_test.go`, and all three change together: the file-header comment (lines 1-6), the `allowedImports` map (lines 22-25), and the failure message's parenthetical (line 86, currently "stdlib + lyxcwd + lyxdirs").
+  `CONSTRAINTS.md`'s **Pattern Leaf Invariant** section is the fourth site.
 - Rationale: the invariant's stated subject is feature packages — its text reads "never `websterengine`, `burlerengine`, `loomengine`, or any other feature package".
-  `stencilstore` is shared infrastructure, not a feature package, so admitting it does not weaken what the invariant was written to protect.
+  Both additions are shared infrastructure, not feature packages, so admitting them does not weaken what the invariant was written to protect.
   Cycle risk was checked rather than assumed: `stencilstore` production code imports only `internal/stencil` and `internal/logger`;
-  `internal/stencil` imports no internal package, and `internal/logger` imports `internal/lyxcwd`, `internal/lyxdirs`, and `internal/proc`.
+  `internal/stencil` imports **no** internal package at all (a true zero-import leaf, so it cannot participate in a cycle by construction, exactly the argument the invariant already makes for `internal/lyxdirs`);
+  `internal/logger` imports `internal/lyxcwd`, `internal/lyxdirs`, and `internal/proc`.
   Nothing in that closure imports `internal/pattern`, so no cycle is possible.
-- Rejected: keeping `pattern` a pure leaf by exporting `IsActive(l)` plus a role→stencil-name accessor and having each of the four call sites do its own read — duplicates the active-check + read + error-wrap four times for no safety gain.
+- Rejected: keeping `pattern` a pure leaf by exporting `IsActive(l)` plus a role→stencil-name accessor and having each of the four call sites do its own read — duplicates the active-check + read + strip + error-wrap four times for no safety gain.
   Also rejected: a new `internal/patterndirective` adapter package holding `Directive` — a whole package for one function.
+
+### `Directive` strips the leading banner after reading
+
+- Decision: `Directive` calls `stencil.StripLeadingComment` on the bytes `stencilstore.Read` returns, and returns the stripped body.
+  Strip only — no LF normalisation — so its treatment of a stencil is identical to what every other consumer gets.
+- Rationale: this is a correctness requirement, not a refinement, and the pre-written design doc does not mention it.
+  `stencilstore.Reconcile` seeds every registered file through `ApplyStamp` (`internal/stencilstore/reconcile.go:133`), which inserts a `<!-- lyx-stencil: sha256=… -->` line into the file's leading banner — or prepends a fresh one-line banner when the file has none.
+  `stencilstore.Read` is a plain `os.ReadFile` (`reconcile.go:28-35`) and strips nothing.
+  Every existing stencil consumer survives this only because it hands the bytes to `stencil.Fill`/`FillOptional`, whose very first act is `stripLeadingComment` (`internal/stencil/stencil.go:27`).
+  `Directive`'s return is different in kind: it is a *value* in a `values` map, never a template, so it never passes through `Fill` and nothing would strip it.
+  Without the strip, a real hub would inject the stamp banner into all four producer prompts, and `TestDirective_VariantsBeginWithOwnHeading`'s `## ` prefix assertion would fail — the relocation would not be behaviour-preserving.
+  Strip-only rather than strip-plus-normalise keeps `Directive` exactly in step with `Fill`;
+  CRLF is already handled upstream by the `*.md text eol=lf` `.gitattributes` `Reconcile` seeds beside the stencils.
+- Rejected: adding a `stencilstore.ReadBody(baseDir, name)` helper that reads and strips in one call, keeping `pattern`'s allowlist at one entry — it invents shared API for a single consumer, and splitting the strip away from `Fill`'s own copy invites the two to drift.
+  Also rejected: stripping at each of the four call sites (four copies of a rule that belongs in one place);
+  and omitting the banner from the three new files (`ApplyStamp` prepends one regardless, so this does not avoid the problem).
+
+### The three new files carry the conventional banner
+
+- Decision: each new stencil opens with an explanatory `<!-- … -->` banner in the house style of the existing fifteen (see `stencils/webster/webster-prefix-recovery.md:1-5`, `stencils/loom/loom-template-plan.md:1-6`), naming which `Role` it serves, which call sites consume it, and that it is injected as a `pattern_directive` marker value rather than being a template of its own.
+  The directive prose follows the banner as the file body.
+- Rationale: every other stencil has one, and it is the only place a reader of the file learns what consumes it.
+  It also gives `ApplyStamp` an existing banner to insert the stamp line into, rather than prepending a second one.
+  These files contain no `{{.marker}}` of their own — they are injected *into* other templates — and the banner is where that non-obvious fact gets stated.
+- Rejected: shipping them bare, which would leave three of eighteen stencils undocumented in-file for no gain.
 
 ### Fail loud on a read failure, not silent
 
@@ -129,6 +158,9 @@ This discussion adopts that design with two corrections, both recorded under Dec
   Each begins with its own `## ` heading and ends with a trailing newline.
 - The comment block at lines 56-63 explains why the literal pointers are *not* built from `PathspecFile`/`PathspecDir`/`lyxdirs.LyxDirName`: they are compared by fixed-string equality and substring match in this package's tests and in consumer template tests.
   That property survives the move — the string is still a fixed literal, now sourced from a `.md` file — but the comment's wording about "the three directive constants below" must be rewritten or removed along with the constants.
+- The **file-header comment** at lines 1-2 goes stale for the same reason: it reads "implements the PATTERN active check and the three role-specific directive constants `Directive` selects between".
+  It is a separate edit from the lines 56-63 block and is easy to miss;
+  both are in scope.
 - `isActive` (line 125) and the `statFile` seam (line 97) are untouched.
 
 ### The four call sites
@@ -158,7 +190,13 @@ burler and loom likewise use `burler:` / `loom:` prefixes.
 ### Stencil mechanics
 
 - `stencilstore.Read(baseDir, name)` (`internal/stencilstore/reconcile.go:28`) does a plain `os.ReadFile` on every call with no caching, so an on-disk edit takes effect on the next call.
-  It never falls back to the embedded default.
+  It never falls back to the embedded default, **and it does not strip the leading banner** — see the banner-strip decision above, which is the single most important non-obvious fact in this task.
+- The stamp mechanics, for reference: `Reconcile` writes `ApplyStamp(shipped, BodyHash(shipped))` (`reconcile.go:133`);
+  `ApplyStamp` (`stencilstore.go:103`) inserts the `lyx-stencil:` line into an existing leading banner or prepends a new one, and never alters the body;
+  `BodyHash` (`stencilstore.go:41`) hashes the post-`StripLeadingComment`, LF-normalised body, so the stamp never covers itself.
+  This is why the on-disk file's bytes and `Directive`'s return value can never be compared directly.
+- `stencil.StripLeadingComment` (`internal/stencil/stencil.go:100`) is the exported form of the same first-`-->`-wins strip `Fill` applies internally at line 27, and is what `BodyHash` itself calls.
+  Using it in `Directive` means the three code paths that need a stencil body all use one implementation.
 - `stencils/stencils.go` is the only file in the top-level `stencils` package root — `//go:embed` reaches only at-or-below its own directory, so the three new embed vars must live in that file.
 - `stencils/registry_test.go` walks the package directory and asserts a bijection between `*.md` files in family subfolders and `entries` rows.
   A new family subfolder needs no test change;
@@ -166,7 +204,7 @@ burler and loom likewise use `burler:` / `loom:` prefixes.
 - Seeding into a real hub is automatic: `stencilstore.Reconcile` runs once per process at `cmd/lyx`'s root pre-run and writes any registered file that is absent.
   Existing hubs pick the three files up on the next `lyx` invocation.
   No migration step, no manual seeding.
-- The three files must be byte-identical to the constants they replace, trailing newline included.
+- Each file's **body** — what remains after the banner is stripped — must be byte-identical to the constant it replaces, trailing newline included.
   `Reconcile` seeds `.gitattributes` with `*.md text eol=lf` under the stencils dir, so CRLF conversion is not a hazard.
 - `stencils/**/*.md` is inside the Fabric Vocabulary enforcement walk (`internal/lyxcwd/enforcement_test.go`).
   The directive prose contains none of the policed `host`/weft/warp phrases, so this is a non-issue — worth knowing only so it is not a surprise if the walk is ever consulted.
@@ -207,7 +245,8 @@ From `CONSTRAINTS.md`:
 
 - **Pattern Leaf Invariant** — the one this task deliberately amends.
   Enforced by `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`), an allowlist check over non-test `.go` files in the package.
-  Both the invariant text and the `allowedImports` map gain `internal/stencilstore` and nothing else.
+  The invariant text plus all three in-test statements of the allowlist (header comment, `allowedImports` map, failure message) gain `internal/stencilstore` and `internal/stencil`, and nothing else.
+  The `CONSTRAINTS.md` amendment should carry the cycle-freedom reason the way the existing text already does for `internal/lyxdirs`, since `internal/stencil` is a zero-import leaf on the same footing.
 - **Stencil Ownership Invariant** — every producer prompt is read at call time from `<hub>/_board/_lyx/stencils/`, never from embedded bytes;
   `//go:embed` carries seed defaults only and is never a live read path.
   This rules out any fallback-to-embedded-default on read failure, independently reinforcing the fail-loud decision.
@@ -241,17 +280,28 @@ Migrate in place (all in `pattern_test.go`, all currently calling `Directive(l, 
 Each gains the new argument and an error assertion.
 The substring assertions in `TestDirective_VariantsArePairwiseDistinct` (`_lyx/PATTERN.md` present, `_lyx/pattern/` present, `_pattern/` absent) and the `## ` prefix assertion in `TestDirective_VariantsBeginWithOwnHeading` must keep asserting the same things — they are what proves the prose survived the move intact.
 
-Add three new tests, one per distinct property:
+Add four new tests, one per distinct property:
 
 1. **Lazy read.** PATTERN inactive plus a deliberately bogus `stencilsDir` returns `("", nil)`.
    This is what pins the decision that limits fixture churn;
    without it, a future eager-read refactor would silently break `burlerengine`/`websterengine`/`loomengine` fixtures with nothing local failing.
 2. **Missing-stencil error.** PATTERN active plus a `stencilsDir` lacking the file returns a non-nil error whose message names the missing stencil.
    `internal/loomengine/discussion_test.go:128-146` is the existing precedent for this shape, including the "names the missing stencil" assertion.
-3. **Verbatim move.** Each role's returned text equals the corresponding `stencils` embedded default byte-for-byte.
-   This is the guard that the three files are a true relocation and not a retyping.
+3. **Banner is stripped.** PATTERN active against a fixture whose files carry a realistic leading banner **including a `lyx-stencil:` stamp line** returns text that begins at the `## ` heading, with no `<!--` anywhere in it.
+   This is the regression guard for the correctness bug that would otherwise ship: `Read` does not strip, and `Directive`'s value never passes through `Fill`.
+   It is the reason the fixture below must be stamped rather than raw.
+4. **Verbatim move.** Each role's returned text equals `stencil.StripLeadingComment` of the corresponding `stencils` embedded default.
+   State the assertion in those terms, not as whole-file byte equality — the on-disk file carries a banner and a stamp that the return value never does.
 
-Plus the new package-local `newTestStencilsDir(t)` helper, modelled on the three existing ones.
+A caveat mill-plan must not paper over: test 4 is a weak relocation guard on its own.
+The three constants are deleted by this task and referenced nowhere else afterwards, so the assertion effectively compares the stencil file against itself.
+What actually pins the relocation is the migrated `TestDirective_VariantsArePairwiseDistinct` and `TestDirective_VariantsBeginWithOwnHeading` — the `_lyx/PATTERN.md` and `_lyx/pattern/` substrings present, `_pattern/` absent, `## ` prefix, three variants pairwise distinct — plus `loomengine/plan_test.go`'s end-to-end ordering assertion.
+Test 4 earns its place as a cheap tripwire against a future edit to a stencil file drifting from the embedded default, not as proof the move was faithful.
+
+Plus a new package-local `newTestStencilsDir(t)` helper.
+It is modelled on the three existing ones (`t.TempDir()`, seeded from the `stencils` embedded defaults) with one deliberate difference: it writes each file through `stencilstore.ApplyStamp(content, stencilstore.BodyHash(content))` rather than raw `os.WriteFile`, so the fixture matches what `Reconcile` actually puts on disk in a real hub.
+The three existing helpers seed unstamped bytes, which is harmless for them because `Fill` strips either way — but for this package a raw fixture would make test 3 vacuous and let the strip bug pass green.
+That difference is intentional and should be stated in the helper's own comment so a future reader does not "fix" it into consistency with the other three.
 
 ### `stencils`
 
@@ -280,6 +330,7 @@ If mill-plan chooses to seed the three files into `newTestStencilsDir` for symme
 - All three roles render their own distinct, heading-led text when PATTERN is active.
 - Every inactive path returns empty with a nil error and touches no stencil file.
 - A missing or unreadable directive stencil while PATTERN is active surfaces as an error at all four call sites, not as a silently empty prompt section.
+- The stamp banner never reaches a producer prompt — the returned text starts at `## ` and contains no `<!--`.
 - The rendered prose is byte-identical to what shipped before this task.
 - `pattern_directive` still renders in the correct position within a real producer prompt.
 
@@ -294,3 +345,4 @@ If mill-plan chooses to seed the three files into `newTestStencilsDir` for symme
 - **Q:** Which new tests beyond migrating the existing ones? **A:** Three, each pinning a distinct property: lazy-read (inactive + bogus `stencilsDir` → `("", nil)`), missing-stencil error naming the stencil, and byte-for-byte equality with the `stencils` embedded defaults.
 - **Q:** Which docs land in this commit? **A:** All four — `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`. `doc.go:53-54` literally says the pointer is "baked into the directive constant", which goes stale the moment the text moves, so it cannot be deferred.
 - **Q:** Verify command? **A:** `go build ./... && go test ./...`. The invariant guards span four-plus unrelated packages; a scoped list is one omission away from false confidence.
+- **Q:** `stencilstore.Read` returns the stamp banner and `Directive`'s return never passes through `stencil.Fill`, so nothing strips it — how is that handled? **A:** `Directive` calls `stencil.StripLeadingComment` on the bytes it reads, which makes the leaf-invariant amendment two entries (`internal/stencilstore` + `internal/stencil`) rather than one. Verified independently: `Reconcile` stamps via `ApplyStamp` at `reconcile.go:133`, `Read` is a bare `os.ReadFile` at `reconcile.go:28`, and `FillOptional` strips at `internal/stencil/stencil.go:27` — which is exactly why every other consumer is unaffected and this one is not. `internal/stencil` imports no internal package, so the second entry is cycle-free by construction. Rejected a new `stencilstore.ReadBody` helper (shared API for one consumer, and it would fork the strip away from `Fill`'s copy).
