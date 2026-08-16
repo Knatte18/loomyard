@@ -34,7 +34,7 @@ Three engines are in play today, so three adapters:
 - `PerchProducer` — wraps `perchengine.Engine.Run`, maps `APPROVED`/`STUCK`/`PAUSED` onto Shed's vocabulary, reports an empty `OutputPointer` (gate producer).
 - `WebsterProducer` — wraps `websterengine.Run`, maps its `RunResult.Outcome` and its five sentinel/typed errors onto Shed's vocabulary.
 - Three narrow local seam interfaces (one per engine) with compile-time-proof lines, so every adapter is fakeable at tier 1.
-- Context-cancellation handling for all three: entry check, a bridge into each engine's existing pause seam, and exit precedence of `ctx.Err()` over any verdict.
+- Context-cancellation handling: an entry check and exit precedence of `ctx.Err()` over any verdict for **all three**, plus a mid-run pause-seam bridge for **perch only** — Webster and `SingleLLMProducer` are deliberately bridgeless, each bounded by its own timeout (see the three cancellation Decisions).
 - Tier-1 (untagged) tests with fakes for all three seams.
 - Docs in the same commit — the exact edit list is pinned in the "Doc set" Decision below: a `doc.go` for the new package, five named corrections in `manifest/designs/shed.md`, three edits in `docs/overview.md`, and three in `manifest/roadmap.md`.
 
@@ -137,11 +137,14 @@ Three engines are in play today, so three adapters:
   a **non-terminal** block is reused verbatim, so perch resumes its own in-flight rounds, and a **terminal** block advances to `<prefix>-<N+1>`, a fresh directory.
   `runDir` is `filepath.Join(runDirBase, runID)` and `scratchDir` is `filepath.Join(scratchDirBase, runID)` — the exact pairing `perchcli` already uses (`internal/perchcli/pause.go:63,80`).
   The attempt number is discovered from disk on every `Call`, never held in adapter memory, so a process restart resolves the same attempt.
+  **The scan rule:** read `runDirBase`'s directory entries, keep the directories whose names match `<prefix>-<N>` with `N` a positive decimal integer and no leading zeros, and take the highest `N`; no match (or an absent base directory) starts at `N = 1`.
+  **Error disposition:** a `TerminalOutcome` probe error — an unreadable or corrupt `state.json`, as distinct from a missing one, which returns `("", false, nil)` — propagates as the adapter's own error, failing the `Call`. So does a `ReadDir` failure on the base.
 - Rationale: `treadleengine.loadOrInitState` refuses a terminal run dir outright — `if existing.Outcome != "" { return ... "this block already finished (%s)" }` (`internal/treadleengine/state.go:126-128`) — and its own doc comment says "treadle never re-opens a finished block", with the CLI's documented remedy being a fresh `--run-id`.
   A `PerchProducer` told one fixed `runDir` would therefore work exactly once: after the gate returned `APPROVED` or `STUCK`, Shed's unconditional re-call — a crash resume, or the `OnStuck` bounce-back this adapter exists to serve — would get an error and Shed would write `state: "failed"` instead of re-running the gate.
   That is the same stale-terminal-state hazard already solved for `SingleLLMProducer` (archive-then-respawn) and solved inside Webster itself (`Run` archives its own stale outcome and summary, `internal/websterengine/runlevel.go:440-446`), left unsolved for the one adapter whose bounce loop is this task's motivating use case.
   Advancing only past a **terminal** block is what keeps both properties: perch's own crash-resume survives (an interrupted block is re-entered, not abandoned mid-ladder), and a completed block never blocks the next attempt.
   `TerminalOutcome` exists for exactly this caller-side question and is already re-exported by `perchengine` and consumed by `perchcli` (`pause.go:94`).
+  Propagating the probe error rather than treating it as non-terminal is the fail-loud reading: treating a corrupt `state.json` as "not finished" would hand it straight to `loadOrInitState`, which refuses it again with a less specific message.
 - Rejected: minting a fresh run dir on every `Call` — discards perch's in-flight round state on a crash resume, throwing away exactly the expensive internal progress a bespoke producer's own recovery exists to protect.
   Rejected: archiving or deleting the terminal run dir in place and reusing the id — destroys the previous attempt's round history, which is the audit trail a human reads when diagnosing a bounce loop; treadle's own remedy is a new id, not a cleared one.
   Rejected: a caller-supplied `func() (runDir, scratchDir string, err error)` source evaluated per `Call` — pushes the terminal-vs-in-flight policy onto a caller that does not exist yet, shipping an adapter whose correctness depends on an unenforced contract.
@@ -211,6 +214,10 @@ Three engines are in play today, so three adapters:
 - Decision: `OutcomeApproved` → `Done` with an **empty** `OutputPointer`; `OutcomeStuck` → `Stuck` with an empty `OutputPointer` (the `StuckReason` logged, per the `StuckReason` Decision above, never a third verdict); `OutcomePaused` → error (see the pause Decision below).
 - Rationale: `shed.md:29` names a review gate as the canonical **gate producer** — pass/fail only, no output pointer — whose empty pointer makes it re-run on resume as "a cheap idempotent re-check", which is exactly right for a gate.
   The per-round review files stay discoverable through perch's own `state.json` round history (`internal/perchengine/result.go:40-59`), so nothing is lost by not naming one in Shed's `history[].output`.
+  **One caveat on shed.md's "cheap idempotent re-check" phrasing:** it does not hold literally here.
+  Because the run-identity Decision advances to `<prefix>-<N+1>` past a terminal block, a re-call after `APPROVED` runs a fresh burler ladder, not a cheap re-check.
+  That cost is accepted: it is the direct consequence of treadle never re-opening a finished block, and the alternative — reusing the terminal dir — is an error, not a cheaper re-check.
+  What the empty pointer still buys is the property that matters: Shed never stats an artifact to decide control flow for a gate, and a gate's verdict is always re-derived rather than inferred from a file that may be stale.
 - Rejected: reporting the last round's `ReviewPath` as the pointer — more observable, but declares the gate an artifact producer, contradicting shed.md's own classification and making the pointer's meaning inconsistent with `SingleLLMProducer`'s.
   Rejected: making the pointer configurable per instantiation — a knob with no caller.
 
@@ -218,12 +225,18 @@ Three engines are in play today, so three adapters:
 
 - Decision: `RunOptions.Fresh` is fixed `false` and is not configurable on the adapter.
   `RunResult.Outcome` `done` → `Done`; `stuck` → `Stuck` (with `StuckReason` logged, per the `StuckReason` Decision above); `paused` → error (see the pause Decision below).
+  The `Done` pointer is `websterengine.SummaryPath(deps.WebsterDir)` (`internal/websterengine/summary.go:27`); every non-`Done` path carries an **empty** pointer.
   For errors the rule is stated as a **default with one exception**, not an enumeration: `*MasterAskingError` (matched via `errors.Is(err, ErrMasterAsking)`) → `Stuck` with an empty `OutputPointer`; **every other non-nil error** → non-nil error, unwrapped and returned.
   That default covers the named sentinels — `*MasterDiedError`, `*MasterTimeoutError`, `ErrRunBusy`, `ErrFingerprintMismatch`, `ErrNilBatcher` — and equally the unnamed ones `Run` also returns: plan-validation refusal (`runlevel.go:335`), the zero-batches refusal (`:347`), and `MkdirAll`/run-lock failures (`:309-321`).
 - Rationale: same rule as the `SingleLLMProducer` mapping, applied to Webster's error-typed equivalents (`internal/websterengine/runlevel.go:179-235`) — asking is a verdict, died/timeout are infrastructure.
   `Fresh: true` is the destructive fingerprint-mismatch escape: it archives `state.json` and the reports dir and clears the prompts dir (`runlevel.go:140-146`, `clearRenderedPrompts` at `runlevel.go:243`).
   That must stay an explicit human act via `lyx webster run --fresh`, never something Shed triggers automatically on a resume.
   `ErrFingerprintMismatch` means the plan changed under a running Webster — a bounce-back cannot fix it, a human must.
+  **Why `SummaryPath` is the pointer:** `RunResult` carries no path of its own (`runlevel.go:150-166`), but `summary.md` is Webster's human-readable account of the whole run and is guaranteed present on `done` — `ParseSummary` is a hard requirement there, and `RunResult.SummaryTitle` is "always populated for `Outcome == outcomeDone`".
+  `WebsterDir` is already told via `RunDeps`, so the adapter derives no geometry to name it.
+  The pointer is empty on `stuck`/`asking` for the same reason it is empty on shuttle's `asking` path: summary parsing is explicitly best-effort on the non-done outcomes, so the file may not exist and a named path could be a dead link in `history[].output`.
+- Rejected for the pointer: `OutcomePath(deps.WebsterDir)` — `outcome.yaml` is Webster's internal machine handoff, not the artifact a human opens.
+  Rejected: an empty pointer on `done` too — Webster is a producer with a real artifact, unlike a gate, so declaring it pointerless would misclassify it.
 - Rejected: exposing `Fresh` on the adapter — a field whose only safe value is `false`.
   Rejected: mapping `ErrFingerprintMismatch` to `Stuck` — routes a plan/state divergence to an unrelated producer instead of a human.
 
@@ -395,7 +408,7 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 
 **`WebsterProducer`.**
 
-- Mapping table over `RunResult.Outcome`: `done`→`Done`; `stuck`→`Stuck`; `paused` with healthy ctx→error.
+- Mapping table over `RunResult.Outcome`: `done`→(`Done`, `SummaryPath(WebsterDir)` as the pointer); `stuck`→(`Stuck`, empty pointer); `paused` with healthy ctx→error.
 - Error mapping table: `*MasterAskingError`→(`Stuck`, empty pointer, nil error), matched via `errors.Is(err, ErrMasterAsking)` rather than string comparison; `*MasterDiedError`, `*MasterTimeoutError`, `ErrRunBusy`, `ErrFingerprintMismatch`, `ErrNilBatcher`→non-nil error.
 - The default-with-one-exception rule holds for an error matching no sentinel at all: a plain `errors.New` from the fake seam maps to a non-nil error, never to `Stuck`.
 - `RunOptions.Fresh` is `false` on every call the adapter makes — assert it from the fake, since this is a safety property, not a default.
@@ -412,7 +425,7 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - **Q:** How does `SingleLLMProducer` get its prompt — a caller-supplied `Spec` source, adapter-side templating, or a verbatim-stencil hybrid? **A:** Caller-supplied `Spec` source. `loomengine.DiscussionSpec` already returns exactly that shape, so this reuses a shipped pattern rather than introducing one.
 - **Q:** How is `Spec.validate`'s rejection of pre-existing output files handled across Shed's unconditional re-calls? **A:** Archive-then-respawn, reusing webster's timestamp-rename discipline. Returning `Done` on existing outputs is rejected for the same reason `shed.md:253-257` rejects it at Shed level.
 - **Q:** Is live-session reattach in scope? **A:** No — respawn only. No public shuttle reattach API exists, and `shed.md:255` overclaims what the adapter will do, so that line is corrected in the same commit.
-- **Q:** How is context cancellation handled given no engine takes a ctx? **A:** Entry check, bridge `ctx.Err()` into each engine's existing pause seam, exit precedence of the ctx error over any verdict. The goroutine+`select` alternative is rejected for abandoning a live pane mid-write.
+- **Q:** How is context cancellation handled given no engine takes a ctx? **A:** Entry check and exit precedence of the ctx error for all three; a mid-run bridge for perch only (its pause seam is a callback), with Webster and shuttle bridgeless and bounded by `MasterTimeoutMin` and `Spec.Timeout` respectively. The goroutine+`select` alternative is rejected for abandoning a live pane mid-write.
 - **Q:** How do shuttle's four outcomes map? **A:** `done`→`Done`, `asking`→`Stuck`, `died`/`timeout`→error. Asking is a verdict worth bouncing upstream; died/timeout are infrastructure, where `failed` + same-producer re-call is the right recovery.
 - **Q:** What `OutputPointer` does the perch adapter report? **A:** Empty — a review gate is shed.md's canonical gate producer, and the empty pointer's re-run-on-resume behavior is correct for a gate.
 - **Q:** Is `RunOptions.Fresh` configurable on the Webster adapter? **A:** No, fixed `false`. It is the destructive fingerprint-mismatch escape and must stay an explicit human act.
@@ -422,6 +435,7 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - **Q:** `New(...)` constructors or exported-field structs like `shedengine.Shed`? **A:** `New(...)` with unexported fields. `Shed`'s no-constructor rule is about a human-configured validated field set; these wrap already-built live engines.
 - **Q:** Test strategy? **A:** Tier 1, fakes for all three seams, table-driven mapping tests. An integration test over a real `Shed` would re-test Shed's already-proven loop.
 - **Q:** Which docs land in this commit? **A:** See the "Doc set" Decision — package `doc.go`, five named `manifest/designs/shed.md` corrections (`:3`, `:38`, `:255`, `:261`, `:278`), three `docs/overview.md` edits (tree line, module bullet, `:294`), and three `manifest/roadmap.md` edits (Planned item 1 → Done, the Done entry at `:196-199`, and `:16`'s dangling "above").
+- **Q:** (review r4 gap) What `OutputPointer` does `WebsterProducer` report on `Done`? **A:** [auto-pick] `websterengine.SummaryPath(deps.WebsterDir)`; empty on every non-`Done` path. **Why:** `summary.md` is the human-readable artifact and is guaranteed present on `done`, while `outcome.yaml` is an internal machine handoff and summary parsing is best-effort on the other outcomes.
 - **Q:** (review r3 gap) `treadleengine` refuses a terminal run dir, so a `PerchProducer` told one fixed `runDir` breaks on its second `Call` — the bounce-back this adapter exists to serve. How is perch's run identity resolved? **A:** [auto-pick] told a `runDirBase`/`scratchDirBase`/`runIDPrefix`; per `Call`, reuse the current `<prefix>-<N>` while `perchengine.TerminalOutcome` says non-terminal, advance to `<prefix>-<N+1>` once it is terminal. **Why:** it is treadle's own documented remedy (a fresh run-id), and advancing *only* past a terminal block preserves perch's in-flight crash-resume, which minting fresh every call would destroy.
 - **Q:** Type names? **A:** `SingleLLMProducer`, `PerchProducer`, `WebsterProducer` — the first is pinned verbatim in shed.md, the other two follow it without encoding today's classification into the name.
 - **Q:** (review r1 gap) Where does `StuckReason` go, given `Call` returns only `(Outcome, OutputPointer, error)` and the `Stuck` branch requires a nil error? **A:** [auto-pick] `logger.Warn`, with the empty `OutputPointer` preserved. **Why:** `OutputPointer.Path` is an artifact path Shed persists verbatim and a human opens; overloading it with prose breaks its documented meaning, and a non-nil error would make Shed discard the verdict entirely.
