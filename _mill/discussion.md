@@ -82,8 +82,10 @@ This discussion adopts that design with three corrections, all recorded under De
   Every existing stencil consumer survives this only because it hands the bytes to `stencil.Fill`/`FillOptional`, whose very first act is `stripLeadingComment` (`internal/stencil/stencil.go:27`).
   `Directive`'s return is different in kind: it is a *value* in a `values` map, never a template, so it never passes through `Fill` and nothing would strip it.
   Without the strip, a real hub would inject the stamp banner into all four producer prompts, and `TestDirective_VariantsBeginWithOwnHeading`'s `## ` prefix assertion would fail — the relocation would not be behaviour-preserving.
-  Strip-only rather than strip-plus-normalise keeps `Directive` exactly in step with `Fill`;
-  CRLF is already handled upstream by the `*.md text eol=lf` `.gitattributes` `Reconcile` seeds beside the stencils.
+  Strip-only rather than strip-plus-normalise keeps `Directive` exactly in step with `Fill`.
+  This is accepted parity, not a claim that CRLF is eliminated: the `*.md text eol=lf` `.gitattributes` `Reconcile` seeds covers git-materialised files, but an operator who edits the board copy with a CRLF-writing editor produces CRLF prose that `Classify` still reports as untouched, because `BodyHash` normalises and `Read` does not.
+  `Directive` would then return CRLF text — exactly as `Fill` would for any other stencil edited the same way.
+  Normalising here and nowhere else would make `Directive` the odd one out for a hazard the whole stencil system shares.
 - Rejected: adding a `stencilstore.ReadBody(baseDir, name)` helper that reads and strips in one call, keeping `pattern`'s allowlist at one entry — it invents shared API for a single consumer, and splitting the strip away from `Fill`'s own copy invites the two to drift.
   Also rejected: stripping at each of the four call sites (four copies of a rule that belongs in one place);
   and omitting the banner from the three new files (`ApplyStamp` prepends one regardless, so this does not avoid the problem).
@@ -270,7 +272,12 @@ From `CONSTRAINTS.md`:
 - **Pattern Leaf Invariant** — the one this task deliberately amends.
   Enforced by `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`), an allowlist check over non-test `.go` files in the package.
   The invariant text plus all three in-test statements of the allowlist (header comment, `allowedImports` map, failure message) gain `internal/stencilstore` and `internal/stencil`, and nothing else.
-  The `CONSTRAINTS.md` amendment should carry the cycle-freedom reason the way the existing text already does for `internal/lyxdirs`, since `internal/stencil` is a zero-import leaf on the same footing.
+  The two entries carry **different** justifications in the `CONSTRAINTS.md` amendment, and conflating them would state something false:
+  - `internal/stencil` — a zero-import leaf, so it cannot participate in a cycle by construction.
+    This is the same argument the existing text already makes for `internal/lyxdirs`, and it can be worded the same way.
+  - `internal/stencilstore` — **not** a leaf;
+    it imports `internal/stencil` and `internal/logger`.
+    Its justification is that it is shared infrastructure rather than a feature package (which is what the invariant's text actually restricts), plus a verified-acyclic closure: nothing reachable from it imports `internal/pattern`.
 - **Stencil Ownership Invariant** — every producer prompt is read at call time from `<hub>/_board/_lyx/stencils/`, never from embedded bytes;
   `//go:embed` carries seed defaults only and is never a live read path.
   This rules out any fallback-to-embedded-default on read failure, independently reinforcing the fail-loud decision.
@@ -337,7 +344,8 @@ Confirm it actually runs rather than assuming — a missing `entries` row is exa
 Extend `seedHubStencils` with the three files.
 `patternActiveLayout`-based tests then assert real directive content instead of the old constant;
 `testLayout`-based tests keep asserting an empty `pattern_directive`.
-Both `RenderRecoveryPrompt` and `RenderMasterPrompt` need their new error path reachable — a test that makes PATTERN active against a hub whose stencils dir lacks the pattern files, asserting a non-nil error, is worth having at one of the two sites at least, since these are the two call sites with genuinely new control flow.
+Add the missing-stencil error-path test at **both** `RenderRecoveryPrompt` and `RenderMasterPrompt` — PATTERN active against a hub whose stencils dir lacks the pattern files, asserting a non-nil error.
+Both, not one: these are the two call sites with genuinely new control flow, since each needs its `Directive` call hoisted out of a map literal with its own error check, and a hoist that drops the check is precisely the mistake a test at the *other* site would not catch.
 
 ### `internal/loomengine`
 
