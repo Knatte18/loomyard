@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-stencil-files  '2026-08-16T15:32:09Z'
 approved-directive-read-path  '2026-08-16T15:40:31Z'
 approved-docs  '2026-08-16T15:44:03Z'
 holistic-reviewing  '2026-08-16T15:44:26Z'
+holistic-approved  '2026-08-16T15:47:32Z'
 ```
 
 ## Batches
