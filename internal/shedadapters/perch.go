@@ -179,3 +179,70 @@ func highestRunAttempt(base, prefix, hash8 string) (int, error) {
 	}
 	return highest, nil
 }
+
+// Call runs one PerchProducer iteration: entry-check the context, resolve this Call's run
+// identity, build a fresh PerchRunner over a context-cancellation bridge, run the seam once, and
+// map its outcome onto shedengine's contract.
+// Responsiveness to cancellation is round-granular, because perch checks its pause callback
+// between rounds -- the correct granularity for an orderly drain -- and no adapter code reads
+// Shed's status file or accepts a caller-supplied pause callback; the context is the sole pause
+// channel.
+func (p *PerchProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if err := entryErr(ctx, p.name, perchEngineLabel); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+
+	runID, runDir, scratchDir, err := p.resolveRunID()
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name, perchEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): resolve run id: %w", p.name, perchEngineLabel, err)
+	}
+
+	// A fresh bridge is built once per Call, over this call's own ctx, rather than reused across
+	// Calls -- a second Call under a fresh context must never poll the first call's ctx.
+	runner := p.factory(func() bool { return ctx.Err() != nil })
+	if runner == nil {
+		if cerr := cancelErr(ctx, p.name, perchEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): factory returned a nil PerchRunner", p.name, perchEngineLabel)
+	}
+
+	result, err := runner.Run(p.profile, runDir, scratchDir, p.stencilsDir)
+	if err != nil {
+		if cerr := cancelErr(ctx, p.name, perchEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): run id %s: %w", p.name, perchEngineLabel, runID, err)
+	}
+
+	switch result.Outcome {
+	case perchengine.OutcomeApproved:
+		// A genuine success verdict survives cancellation -- the one exception cancelErr never
+		// applies to. The pointer stays empty, a decision rather than an omission: a review gate is
+		// the canonical gate producer, and its verdict must always be re-derived rather than
+		// inferred from a file.
+		return shedengine.Done, shedengine.OutputPointer{}, nil
+
+	case perchengine.OutcomeStuck:
+		if cerr := cancelErr(ctx, p.name, perchEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		logger.Warn("shedadapters: perch run is stuck", "producer", p.name, "engine", perchEngineLabel, "stuckReason", result.StuckReason, "roundsRun", result.RoundsRun, "runDir", runDir)
+		return shedengine.Stuck, shedengine.OutputPointer{}, nil
+
+	case perchengine.OutcomePaused:
+		if cerr := cancelErr(ctx, p.name, perchEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): perch run paused out of band (run id %s)", p.name, perchEngineLabel, runID)
+
+	default:
+		if cerr := cancelErr(ctx, p.name, perchEngineLabel); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): unrecognized perch outcome %q", p.name, perchEngineLabel, result.Outcome)
+	}
+}
