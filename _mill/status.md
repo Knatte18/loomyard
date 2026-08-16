@@ -28,11 +28,17 @@ implementing  '2026-08-16T15:38:22Z'
 ```yaml
 batches:
   - name: package-foundation-and-singlellm
-    state: pending
+    state: running
+    implementer_session: 674747a3-9492-4890-82af-d8770073d066
+    start_sha: 5e5c8ab0e2ee403d777ed0ec60f8b8b5aba0608f
+    verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: perch-producer
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: webster-producer
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: docs
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
 ```
