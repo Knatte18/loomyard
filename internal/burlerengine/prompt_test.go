@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/stencils"
+	"github.com/Knatte18/loomyard/contracts/stencils"
 )
 
 // newTestStencilsDir builds a t.TempDir() seeded with burler's four stencils plus the three

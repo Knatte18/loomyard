@@ -1,7 +1,7 @@
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
 // parsing, framing extraction), its per-card file-parsing behavior (the title heading, the typed
 // per-card model, Depends-on, Commit, and verify:), the none-vs-nil field distinction, and a full
-// round-trip over the docs/reference/plan-format.md worked-example golden fixture
+// round-trip over the contracts/specs/loom-plan-spec.md worked-example golden fixture
 // (testdata/goodplan).
 
 package planparser_test
@@ -609,7 +609,7 @@ func TestParsePlan_CardCommitAndVerify(t *testing.T) {
 	}
 }
 
-// goodPlanDir is the docs/reference/plan-format.md worked example, materialized
+// goodPlanDir is the contracts/specs/loom-plan-spec.md worked example, materialized
 // verbatim as this package's golden happy-path fixture.
 func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")

@@ -5,7 +5,7 @@
 // Package modelspec parses and resolves the model-spec notation every
 // agent-spawning config in the stack uses to say which LLM runs a role
 // (webster's roles, perch/burler reviewers and judges, loom's producers). The
-// pinned contract is docs/reference/model-spec.md; this package is its as-built
+// pinned contract is contracts/specs/llm-model-spec.md; this package is its as-built
 // implementation.
 //
 // Grammar, in one line: <alias>[key=value,...] (registry lookup) or

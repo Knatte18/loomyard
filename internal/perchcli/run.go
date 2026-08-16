@@ -213,7 +213,7 @@ Example profile YAML (llm-verdict gate — the default for text review):
   model: ""                     # e.g. "sonnet" or "sonnet[effort=high]" -- empty defers to judge-model/perch.yaml/built-in
   timeout: 0s
 
-judge-model and model use the model-spec notation (docs/reference/model-spec.md):
+judge-model and model use the model-spec notation (contracts/specs/llm-model-spec.md):
 a registry alias, optionally with an [effort=...] bracket, or the escape form
 "<engine>:<model-id>[...]" for a model not (yet) in the registry. A bare alias
 picks up its default effort from the operator-owned models.yaml; effort is the

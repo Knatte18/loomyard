@@ -40,7 +40,7 @@ This is the currently-landed shape of the fold, not the only one considered: an 
 
 ## PR creation, when configured
 
-If `require_pr_to_base` is set, the PR title/body is dumped **verbatim** from the prose summary artifact webster adds to its final action (see [webster-contract.md](../../docs/reference/webster-contract.md#the-summary-artifact--_lyxwebstersummarymd)) — no dedicated LLM call needed in Finalize itself, since that summary is the only artifact with full oversight of what was actually built, including deviations from the original plan.
+If `require_pr_to_base` is set, the PR title/body is dumped **verbatim** from the prose summary artifact webster adds to its final action (see [webster-spec.md](../../contracts/specs/webster-spec.md#the-summary-artifact--_lyxwebstersummarymd)) — no dedicated LLM call needed in Finalize itself, since that summary is the only artifact with full oversight of what was actually built, including deviations from the original plan.
 
 ## Config
 
@@ -55,6 +55,6 @@ If `require_pr_to_base` is set, the PR title/body is dumped **verbatim** from th
   `shed.md` owns `Shed`'s generic mechanism, while `loom.md` owns `loom`'s own concrete producer list built on top of it, per `shed.md`'s own split of authority.
 - [raddle.md](raddle.md) — the regeneration mechanics (parallel-fork structure, `Overview.md` sequencing, `SyncWeft` commit shape) the section above points at;
   the fold decision itself now lives in this doc's own "Raddle regeneration" section above, not in this bullet.
-- [webster-contract.md](../../docs/reference/webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) — the summary artifact Finalize consumes verbatim for PR bodies;
+- [webster-spec.md](../../contracts/specs/webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) — the summary artifact Finalize consumes verbatim for PR bodies;
   `internal/websterengine`'s package documentation covers the escalation pattern Finalize mirrors.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — the mechanics Finalize wires on top of, incl. `CommitWeft`'s pathspec parameter and `Warp-SHA` correspondence tracking.

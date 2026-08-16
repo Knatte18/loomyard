@@ -4,24 +4,24 @@
 # machine's core.autocrlf setting, so they are pinned to LF here. The same
 # byte-exact requirement applies to golden test fixtures compared verbatim
 # against literal \n-embedded expectations in Go source (planparser below).
-stencils/loom/loom-template-discussion.md text eol=lf
-stencils/loom/loom-template-plan.md text eol=lf
-stencils/burler/burler-template-round-orchestrator.md text eol=lf
-stencils/burler/burler-step-1-explore.md text eol=lf
-stencils/burler/burler-step-2-review.md text eol=lf
-stencils/burler/burler-step-3-fix.md text eol=lf
-stencils/treadle/treadle-template-judge-circling.md text eol=lf
-stencils/treadle/treadle-template-judge-milestone.md text eol=lf
-stencils/treadle/treadle-template-triage.md text eol=lf
-stencils/treadle/treadle-template-targeting.md text eol=lf
-stencils/webster/webster-template-master.md text eol=lf
-stencils/webster/webster-template-integration.md text eol=lf
-stencils/webster/webster-prefix-fork.md text eol=lf
-stencils/webster/webster-prefix-recovery.md text eol=lf
-stencils/webster/webster-body-implementer.md text eol=lf
-stencils/pattern/pattern-directive-implementer.md text eol=lf
-stencils/pattern/pattern-directive-review-fix.md text eol=lf
-stencils/pattern/pattern-directive-orchestrator.md text eol=lf
+contracts/stencils/loom/loom-template-discussion.md text eol=lf
+contracts/stencils/loom/loom-template-plan.md text eol=lf
+contracts/stencils/burler/burler-template-round-orchestrator.md text eol=lf
+contracts/stencils/burler/burler-step-1-explore.md text eol=lf
+contracts/stencils/burler/burler-step-2-review.md text eol=lf
+contracts/stencils/burler/burler-step-3-fix.md text eol=lf
+contracts/stencils/treadle/treadle-template-judge-circling.md text eol=lf
+contracts/stencils/treadle/treadle-template-judge-milestone.md text eol=lf
+contracts/stencils/treadle/treadle-template-triage.md text eol=lf
+contracts/stencils/treadle/treadle-template-targeting.md text eol=lf
+contracts/stencils/webster/webster-template-master.md text eol=lf
+contracts/stencils/webster/webster-template-integration.md text eol=lf
+contracts/stencils/webster/webster-prefix-fork.md text eol=lf
+contracts/stencils/webster/webster-prefix-recovery.md text eol=lf
+contracts/stencils/webster/webster-body-implementer.md text eol=lf
+contracts/stencils/pattern/pattern-directive-implementer.md text eol=lf
+contracts/stencils/pattern/pattern-directive-review-fix.md text eol=lf
+contracts/stencils/pattern/pattern-directive-orchestrator.md text eol=lf
 internal/boardengine/template.yaml text eol=lf
 internal/modelspec/template.yaml text eol=lf
 internal/reedengine/template_posix.yaml text eol=lf

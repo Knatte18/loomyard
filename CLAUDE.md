@@ -64,7 +64,7 @@ See the `mill:markdown` skill for the full rule and examples.
 
 ## Terminology: "Merriam" means webster's Master session
 
-In conversation, "Merriam" is a conversational nickname for webster's long-lived orchestrating session — today named "Master" throughout `internal/websterengine` (`stencils/webster/webster-template-master.md`, `RoleMaster`, etc.), paired with "Webster" after Merriam-Webster.
+In conversation, "Merriam" is a conversational nickname for webster's long-lived orchestrating session — today named "Master" throughout `internal/websterengine` (`contracts/stencils/webster/webster-template-master.md`, `RoleMaster`, etc.), paired with "Webster" after Merriam-Webster.
 It is shorthand for talking about the session, not an instruction to rename anything — don't rename identifiers, files, config keys, or docs to "Merriam" unless a separate, explicit instruction says so.
 
 ## Filesystem links (fslink)

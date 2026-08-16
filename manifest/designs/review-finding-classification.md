@@ -4,7 +4,7 @@
 
 ## Idea
 
-lyx is building its own discussion and plan formats (`docs/reference/discussion-format.md`, `docs/reference/plan-format.md`) and its own review rounds (`internal/burlerengine`, the Review Round Invariant in `CONSTRAINTS.md`).
+lyx is building its own discussion and plan formats (pinned in the producers' own stencils, `contracts/stencils/loom/loom-template-discussion.md` and `contracts/stencils/loom/loom-template-plan.md`) and its own review rounds (`internal/burlerengine`, the Review Round Invariant in `CONSTRAINTS.md`).
 Before those formats harden, they should carry a **finding-class** dimension on review findings, not just a severity marker.
 
 ## Where the idea came from
@@ -42,17 +42,17 @@ But then the right behaviour is to raise it **once, as a design finding about me
 
 ## Concrete proposal
 
-1. **`discussion-format.md`** — define a finding-class vocabulary for discussion review: `design`, `scope`, `decision`, `consistency`.
+1. **Discussion-Review's rubric** (`loom.md`'s [Discussion producer detail](loom.md#discussion-producer-detail--validation-checks-and-review-rubric) section, once a real `perch` profile exists to point at it) — define a finding-class vocabulary for discussion review: `design`, `scope`, `decision`, `consistency`.
    State that only `design` gates the round loop and only `design` is ever escalated to the operator; the rest auto-resolve.
-2. **`plan-format.md`** — same class dimension for plan review, with its own catchment: batching/sequencing/verify-command correctness gates; prose-level nits do not.
+2. **Plan-Review's own future rubric** — same class dimension for plan review, with its own catchment: batching/sequencing/verify-command correctness gates; prose-level nits do not.
 3. **Round-exit condition** — replace a flat round cap with "stop when a round returns zero gating-class findings," keeping the cap as a backstop.
    On the observed task this exits at r6 by rule rather than by operator override, and correctly refuses to exit at r2-r4.
 4. **Per-class counts in whatever envelope lyx's review rounds emit** — so "same class, fourth round running" is visible.
    That is the signal to fix the approach, not patch the symptom again.
 5. **The "what NOT to look for" instruction must be written symmetrically, into both sides, not just the reviewer.**
-   Writing it into only the writer's own format doc (e.g. `discussion-format.md` telling the Discussion agent not to enumerate cross-references) without also writing the matching instruction into the reviewer's prompt/rubric recreates the same non-convergent loop: a reviewer still operating under a default "flag every gap" mandate will flag the writer's now-correct omission as a missing gap.
+   Writing it into only the writer's own stencil (e.g. `loom-template-discussion.md` telling the Discussion agent not to enumerate cross-references) without also writing the matching instruction into the reviewer's prompt/rubric recreates the same non-convergent loop: a reviewer still operating under a default "flag every gap" mandate will flag the writer's now-correct omission as a missing gap.
    Conversely, instructing only the reviewer wastes the writer's own budget on enumeration nobody will use.
-   Both sides must state the same boundary, from their own side: the format doc says "do not enumerate X here, that belongs to <stage>"; the reviewer's rubric says "do not flag missing X here, that belongs to <stage>."
+   Both sides must state the same boundary, from their own side: the writer's stencil says "do not enumerate X here, that belongs to <stage>"; the reviewer's rubric says "do not flag missing X here, that belongs to <stage>."
    For discussion review in a Go repo, that explicitly includes "complete call-site enumeration belongs to the compiler / a mechanical sweep, not this stage, on both sides."
 
 ## `scope` splits into two mechanical halves, neither an LLM lens

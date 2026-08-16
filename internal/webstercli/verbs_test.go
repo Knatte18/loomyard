@@ -32,6 +32,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -45,7 +46,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,

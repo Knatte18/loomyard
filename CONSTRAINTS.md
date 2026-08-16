@@ -166,13 +166,13 @@ Reverse import never allowed.
 
 Every producer prompt is read at call time from `<hub>/_board/_lyx/stencils/`, never from embedded bytes.
 
-- `//go:embed` in the top-level `stencils` package carries seed defaults only and is never a live read path.
+- `//go:embed` in the top-level `contracts/stencils` package carries seed defaults only and is never a live read path.
 - `internal/stencilstore` is the sole owner of seeding, hash-stamping, edit detection, reading, and validation, and takes a fully resolved absolute base directory from its caller.
 - A file whose body hash does not match its stamp is never overwritten.
 - The seed/refresh pass runs once per process at `cmd/lyx`'s root pre-run, never lazily inside `stencilstore.Read`.
 - The seeding commit is a `board.lock`-holding, positive-pathspec commit through `internal/fabricengine`, never `Bolt` and never a stage-all.
-- **Enforced by** `stencils/registry_test.go` for registry completeness, `internal/stencilstore`'s edit-detection tests, and `internal/lyxcwd/enforcement_test.go` for the vocabulary walk.
-  Not reached: `stencils/stencils.go` is production Go outside `internal/` and `cmd/`, so it falls outside the Go half of the Fabric Vocabulary walk, whose `.md` half does now cover `stencils/**/*.md`.
+- **Enforced by** `contracts/stencils/registry_test.go` for registry completeness, `internal/stencilstore`'s edit-detection tests, and `internal/lyxcwd/enforcement_test.go` for the vocabulary walk.
+  Not reached: `contracts/stencils/stencils.go` is production Go outside `internal/` and `cmd/`, so it falls outside the Go half of the Fabric Vocabulary walk, whose `.md` half does now cover `contracts/stencils/**/*.md`.
 
 ## CLI / Cobra Invariant
 
@@ -245,11 +245,11 @@ Keep these lists verbatim: they are the ban list, and renaming them would delete
 - This invariant binds every module, template, and doc that talks about fabric — `internal/lyxcwd` is merely one of the packages it binds, not its owner.
   The enforcement test's placement in `internal/lyxcwd/enforcement_test.go` is a file-layout convenience — it reuses that file's `filepath.WalkDir` helper — not an ownership claim.
 - **What the machine check does and does not reach — stated honestly, not implying full coverage.**
-  Production Go under `internal/` and `cmd/` is machine-guarded, plus an `internal/**/*.md` **and** `stencils/**/*.md` walk and the embedded agent prompt templates.
+  Production Go under `internal/` and `cmd/` is machine-guarded, plus an `internal/**/*.md` **and** `contracts/stencils/**/*.md` walk and the embedded agent prompt templates.
   `*_test.go` files are excluded from all three rules.
   `hostGeometryIdentifiers` is five exact lowercased names, so `HostJunctions`, `hostPath`, `hostBare`, `CopyHostHub`, and `HostFixture` are matched only by the phrase half, and only where they occur inside a policed phrase.
   Test files, documentation outside `internal/`, shell, and `tools/` remain a **review obligation**, not a machine check.
-- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus an `internal/**/*.md` **and** `stencils/**/*.md` walk and the embedded agent prompt templates.
+- **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`), covering identifiers, string literals, and comments in production `.go` files under `internal/` and `cmd/`, plus an `internal/**/*.md` **and** `contracts/stencils/**/*.md` walk and the embedded agent prompt templates.
   The host rule is machine-checked everywhere this test reaches, including the owner dirs;
   the prose-doc split above is a review obligation the machine check does not cover.
 

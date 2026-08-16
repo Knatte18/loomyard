@@ -1,6 +1,7 @@
-# Status schema — loom's spawn/handover status file
+# Loom status spec — loom's spawn/handover status file
 
-> **Status: Contract — pinned.** This doc pins the `_lyx/loom/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-contract.md](webster-contract.md) and [plan-format.md](plan-format.md).
+> **Status: Contract — pinned.** This doc pins the `_lyx/loom/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
+> **Content flagged stale during the 2026-08-16 contracts/ reorg — see the note at the end of this file.**
 > Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (see [shed.md](../../manifest/designs/shed.md)) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
@@ -132,3 +133,9 @@ A realistic **mid-run** instance of the same file, later in the same task's life
   "next_action": null
 }
 ```
+
+## Stale-content note (2026-08-16)
+
+This file's schema (`phase`/`stage`/`next_action`) predates the `Shed` extraction and no longer matches what ships.
+`manifest/designs/shed.md`'s own embedded `Status`/`HistoryEntry` Go types are the current, authoritative shape actually written by `internal/shedengine`: `current_producer`, `state` (`running|paused|done|blocked|failed`), `error`, `pause_requested`, `activity{now,last,wait}`, `history[]` (`{producer,outcome,output,at}`), and an opaque `product` passthrough — not the `phase`/`stage`/`next_action`/`history[].outcome` shape documented above.
+This doc was moved and relinked as part of the `contracts/` reorg without a content rewrite; rewriting its schema section against `shed.md`'s current struct is separate follow-up work, not done here.

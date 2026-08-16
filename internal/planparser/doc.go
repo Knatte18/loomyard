@@ -1,5 +1,5 @@
 // Package planparser is the SOLE parser of the on-disk plan format written under
-// `_lyx/plan/` (see docs/reference/plan-format.md, the pinned spec this package
+// `_lyx/plan/` (see contracts/specs/loom-plan-spec.md, the pinned spec this package
 // implements). No other package may read `_lyx/plan/` directly — every consumer
 // (the batcher, webster's master, and fork prompt rendering) goes through
 // planparser.ParsePlan and the Plan/Card model it returns, so the on-disk grammar has

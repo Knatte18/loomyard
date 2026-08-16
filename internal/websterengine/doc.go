@@ -11,7 +11,7 @@
 // # Plan consumption: one parser, one batcher registry
 //
 // webster consumes the pinned flat card-list plan format (see
-// docs/reference/plan-format.md) through internal/planparser, the SOLE
+// contracts/specs/loom-plan-spec.md) through internal/planparser, the SOLE
 // parser of the on-disk `_lyx/plan/` tree — no code in this package or
 // anywhere else re-derives that grammar; the one remaining plan-level-section
 // consumer here, RenderIntegrationPrompt (the integration-suite fork's own

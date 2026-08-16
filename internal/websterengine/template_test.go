@@ -29,6 +29,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -36,7 +37,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // newTestStencilsDir builds a t.TempDir() seeded with webster's five stencils, copied byte-for-byte

@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -37,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to

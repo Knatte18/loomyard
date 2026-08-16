@@ -1,6 +1,6 @@
-# Model-spec — provider/model/parameter notation
+# LLM model-spec — provider/model/parameter notation
 
-> **Status: Contract — pinned.** The notation every agent-spawning config in the stack uses to say *which* LLM runs a role: webster's roles, perch/burler reviewers and judges, loom's producers. Pinned alongside [plan-format.md](plan-format.md): the plan itself is model-agnostic, so the config side needs a precise notation. The registry loader and spec parser land with the first consumer (`webster`); this doc is the spec they implement against.
+> **Status: Contract — pinned.** The notation every agent-spawning config in the stack uses to say *which* LLM runs a role: webster's roles, perch/burler reviewers and judges, loom's producers. The plan itself is model-agnostic (see `contracts/stencils/loom/loom-template-plan.md`), so the config side needs a precise notation of its own. The registry loader and spec parser land with the first consumer (`webster`); this doc is the spec they implement against.
 
 ## Grammar
 

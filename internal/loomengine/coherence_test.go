@@ -1,5 +1,5 @@
 // coherence_test.go is the TDD driver for checkCoherence: table tests over in-memory Status values
-// covering every rule in status-schema.md's validation checklist plus the fresh-start invariants.
+// covering every rule in loom-status-spec.md's validation checklist plus the fresh-start invariants.
 // It is untagged (Tier 1): no spawn, no git, no filesystem I/O — checkCoherence is pure.
 
 package loomengine

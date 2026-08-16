@@ -1,11 +1,11 @@
-# Plan-format — flat card list
+# Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. Per the [documentation lifecycle](../overview.md#documentation-lifecycle) this is a durable reference doc that is kept — it did not get deleted when webster shipped.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — the fourteen checks below are already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
 
 ## Producer and contract
 
-This format is produced by `Plan-Write`.
-It is validated by `Plan-Validate` — see [Validation checks](#validation-checks-spec-for-the-future-validator) below, this file's own validation-checks section.
+This format is produced by `Plan-Write` (stencil: `contracts/stencils/loom/loom-template-plan.md`).
+It is validated by `Plan-Validate`/`internal/planparser` — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below, this file's own validation-checks section.
 It is reviewed by `Plan-Review`.
 
 - **Output** — the shape below, per [Card fields and order](#card-fields-and-order).
@@ -193,9 +193,9 @@ the eventual DAG scheduler waits on scout-backed symbol fields.
 
 A parked, more aggressive parallel-execution idea also exists — see [../../manifest/designs/webster-parallel-execution.md](../../manifest/designs/webster-parallel-execution.md).
 
-## Validation checks (spec for the future validator)
+## Validation checks (as implemented by `internal/planparser`)
 
-Machine checks this format is designed to support — they land with webster, not with this doc, in this fixed order:
+Machine checks this format is designed to support, in this fixed order:
 
 1. `format-unrecognized` / `plan-unapproved` — `format:` recognized, `approved: true`;
    else refuse to run.
@@ -341,6 +341,7 @@ the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay wo
 
 ## Related
 
-- [webster-contract.md](webster-contract.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
+- [webster-spec.md](webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
+- `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
 - [`internal/scoutengine`](../../internal/scoutengine/doc.go) — the module the symbol fields depend on.

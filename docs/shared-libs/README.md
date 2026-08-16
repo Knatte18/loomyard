@@ -36,4 +36,4 @@ their mechanics are documented there per the [doc-lifecycle convention](../overv
 - `internal/proc` — cross-OS child-process window-hide (`HideWindow`) and detached-spawn (`Detach`) primitives
 - `internal/state` — generic locked typed JSON I/O
 - `internal/modelspec` — model-spec parser + models.yaml registry loader;
-  the pinned contract is `docs/reference/model-spec.md`, the as-built API lives in the package doc
+  the pinned contract is `contracts/specs/llm-model-spec.md`, the as-built API lives in the package doc

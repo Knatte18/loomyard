@@ -26,7 +26,7 @@ Each agent collapses to one job over a file contract:
 
 - Plan producer: "read `discussion.md`, write the `plan/` directory."
   Nothing else.
-  The pinned plan format is [plan-format.md](../../docs/reference/plan-format.md), a flat card list — see that doc for the schema the Plan producer writes against, and `internal/websterengine`'s package documentation for the consumer that implements it.
+  The pinned plan format is [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md), a flat card list — see that doc for the schema `internal/planparser` implements against, `contracts/stencils/loom/loom-template-plan.md` for the compact spec the Plan producer itself reads, and `internal/websterengine`'s package documentation for the consumer that implements it.
 - Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
 
 No agent knows about rounds, gates, N-caps, finalize,
@@ -51,13 +51,13 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | # | Producer | Kind | Type | Input | Output |
 |---|---|---|---|---|---|
 | 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
-| 2 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape: `discussion-format.md` |
-| 3 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → `discussion-format.md`'s validation checks | pass/fail |
-| 4 | `Discussion-Review` | bespoke | LLM/`perch` | `_lyx/discussion/` (both files) → `discussion-format.md` | verdict (APPROVED/stuck) + review file |
+| 2 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
+| 3 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail |
+| 4 | `Discussion-Review` | bespoke | LLM/`perch` | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
 | 5 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
-| 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape: `plan-format.md` |
-| 7 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `plan-format.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
-| 8 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `plan-format.md` | verdict + review file |
+| 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
+| 7 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 8 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
 | 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
 | 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
@@ -78,9 +78,122 @@ Review is never a property attached to the producer it reviews — it is always 
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
 
-Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored `plan-format.md`'s `depends-on-order` check — is now resolved, not open.
-The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks `discussion-format.md`'s validation-checks section defines.
+Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored the plan format's `depends-on-order` check — is now resolved, not open.
+The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks the [Discussion producer detail](#discussion-producer-detail--validation-checks-and-review-rubric) section below defines.
 The second question — whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition — is now resolved too, over all four producers that share some form of thin Output (`Preflight`, `Discussion-Validate`, `Plan-Validate`, `Finalize`): see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the two-case statement, rather than restating either case here.
+
+## Discussion producer detail — validation checks and review rubric
+
+`_lyx/discussion/` is produced by `Discussion-Write` (stencil: `contracts/stencils/loom/loom-template-discussion.md`, which pins `decision-record.md`'s and `support-log.md`'s section shape as the agent's own instructions).
+This section carries the detail that belongs to `Discussion-Validate` and `Discussion-Review` instead — two producers not yet built — rather than to the Discussion-Write stencil itself: a mechanical validator's checklist and a future review profile's rubric are not part of what the *writing* agent needs to read.
+
+### Validation checks (spec for `Discussion-Validate`)
+
+Per-run checks:
+
+- Both files exist under `_lyx/discussion/` (`decision-record.md` and `support-log.md`).
+- `decision-record.md` has all seven required sections present (Goal, Scope, Decisions, Constraints, Auto-mode assumptions, Open risks, Acceptance criteria);
+  "Notes for the plan writer" is optional and its absence is not a violation.
+
+This mechanical producer is **exhaustively defined by the checks listed above** — it has no judgment, and nothing beyond these two checks is "its" to look for.
+
+**The `Plan-never-reads-support-log` boundary is not a per-run check.**
+The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
+It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
+This assertion lands with `Shed`.
+
+### Discussion-Review rubric — what not to flag
+
+This is the text the future `perch` profile for `Discussion-Review` must **point at**, per the Producer Pointer-Rule Invariant — never copy or paraphrase into the profile itself.
+
+`Discussion-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer (which has only checks, never judgment) cannot exhibit.
+Do not flag any of the following as a finding:
+
+- **A missing "Notes for the plan writer" subsection.**
+  It is optional by contract; its absence is never a deficiency.
+- **Missing rejected alternatives in `decision-record.md`.**
+  Rejected alternatives belong in `support-log.md`'s Rejected alternatives section, not in `decision-record.md`;
+  their absence from `decision-record.md` is by design, not an omission.
+- **Incomplete call-site or cross-reference enumeration.**
+  That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
+
+### Worked example
+
+A minimal `decision-record.md` for a fictional task ("add a `--json` flag to `lyx board list`"):
+
+```markdown
+# Discussion: add --json to `lyx board list`
+
+## Goal
+
+Let scripts consume `lyx board list` output as JSON instead of parsing the table.
+
+## Scope
+
+In: a `--json` flag on `lyx board list`, one envelope per row.
+Out: no other `board` subcommand gets the flag in this task.
+
+## Decisions
+
+### json-envelope-reuse
+
+- **Decision:** `--json` marshals each row through the existing `internal/output.Ok`
+  envelope.
+- **Rationale:** one JSON emission path for the whole CLI; a second envelope shape
+  would fork behavior for no gain.
+
+## Constraints
+
+Existing table output must be byte-identical when `--json` is not passed.
+
+## Auto-mode assumptions
+
+None — this task ran with a human present for every question.
+
+## Open risks
+
+None identified.
+
+## Acceptance criteria
+
+- `lyx board list --json` emits one `output.Ok` envelope per row.
+- `lyx board list` (no flag) output is unchanged.
+- Help text documents the new flag.
+
+## Notes for the plan writer
+
+`internal/boardengine/rows.go` already has the row struct; the JSON path can reuse it.
+```
+
+A minimal `support-log.md` for the same task:
+
+```markdown
+# Support log: add --json to `lyx board list`
+
+## Interview
+
+- Operator asked for JSON output on `board list` for scripting.
+- Confirmed scope is `list` only, not every `board` subcommand.
+- Confirmed reuse of `internal/output.Ok` rather than a bespoke envelope.
+
+## Rejected alternatives
+
+- A dedicated `ListJSON` envelope type — rejected: forks emission behavior for no
+  gain over reusing `output.Ok`.
+
+## Review rounds
+
+### Round 1
+
+- **Verdict:** approved.
+- **Findings:** none.
+- **Resolved:** n/a.
+
+## Question ledger
+
+- **Q:** Should `--json` also change exit codes on empty results? **A:** No — exit
+  code behavior is unchanged; only the output format changes.
+```
 
 ## The gate
 
@@ -95,7 +208,7 @@ From loom's view, **Webster is a black box loom calls, exactly like perch**: `lo
 or its escalation mechanics, the same way it doesn't see perch's rounds.
 Webster's own internal design lives in the `internal/websterengine` package documentation, not here.
 
-**Naming note.** `webster` (`internal/websterengine`/`internal/webstercli`, `lyx webster`) is the stack's implementer module; its cross-module contract is [webster-contract.md](../../docs/reference/webster-contract.md).
+**Naming note.** `webster` (`internal/websterengine`/`internal/webstercli`, `lyx webster`) is the stack's implementer module; its cross-module contract is [webster-spec.md](../../contracts/specs/webster-spec.md).
 This doc's producer list above targets `internal/websterengine` (plan-format, in-session forks) as `loom`'s own Webster producer.
 
 Pause stays uniform across loom/perch/Webster (see [pause](#graceful-pause)) because every loop checks the same `pause_requested` flag at its own step boundary, regardless of which module holds the loop.
@@ -127,7 +240,7 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 
 ### State & contracts
 
-- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [status-schema.md](../../docs/reference/status-schema.md)) is the single source of truth** for orchestration state: current phase, current review stage, and a **per-phase outcome** trail (`history`) — per-round verdicts live in perch's block files, not here.
+- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: current phase, current review stage, and a **per-phase outcome** trail (`history`) — per-round verdicts live in perch's block files, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
   Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
@@ -191,8 +304,8 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | `loom` (`lyx loom run`) | new Go module | the phase machine / autonomous driver |
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
-| webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-contract.md](../../docs/reference/webster-contract.md), webster's own cross-module contract |
-| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`stencils/loom/loom-template-discussion.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `stencils/loom/loom-template-plan.md` prompt (carrying a compact plan-format spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`stencils/loom/loom-template-plan.md`, `prompt.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
+| webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-spec.md](../../contracts/specs/webster-spec.md), webster's own cross-module contract |
+| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`contracts/stencils/loom/loom-template-discussion.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `contracts/stencils/loom/loom-template-plan.md` prompt (carrying a compact plan-format spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`contracts/stencils/loom/loom-template-plan.md`, `prompt.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/lyxcwd`, `internal/fabricengine`, `internal/state` |

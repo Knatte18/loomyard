@@ -1,5 +1,5 @@
 // coherence.go implements the pure, in-memory validator that checks a decoded Status against
-// docs/reference/status-schema.md's validation checklist plus the fresh-start invariants Preflight
+// contracts/specs/loom-status-spec.md's validation checklist plus the fresh-start invariants Preflight
 // enforces before a task is fit to run.
 // It performs no I/O and spawns nothing, so it is exhaustively table-tested in Tier 1
 // (coherence_test.go).

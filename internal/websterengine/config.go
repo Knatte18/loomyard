@@ -17,7 +17,7 @@ import (
 )
 
 // Config represents the resolved webster.yaml configuration: the two role model-specs (see
-// docs/reference/model-spec.md's "Roles that use this notation" section) and the numeric knobs the
+// contracts/specs/llm-model-spec.md's "Roles that use this notation" section) and the numeric knobs the
 // Master session's bracket verbs consult.
 type Config struct {
 	// Master is the model-spec for the long-lived Master session that reads

@@ -41,6 +41,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
@@ -49,7 +50,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // smokePwshPath is the PowerShell 7 binary for the orphaned-conhost teardown probe.

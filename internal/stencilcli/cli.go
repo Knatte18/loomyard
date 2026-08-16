@@ -18,12 +18,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // Command returns the cobra command tree for the stencil module.
@@ -234,12 +234,13 @@ func classifyLabel(state stencilstore.State) string {
 	}
 }
 
-// resolveSourceDir computes the worktree-relative stencils/ source tree path the same way
-// cmd/lyx/stencilseed.go does: filepath.Join(l.WorktreePath(), "stencils") when it exists, and the
-// empty string otherwise. The empty string is what keeps the port-back drift warning silent in a
-// consumer repo, whose worktree carries no such tree, rather than firing on every run forever.
+// resolveSourceDir computes the worktree-relative contracts/stencils/ source tree path the same way
+// cmd/lyx/stencilseed.go does: filepath.Join(l.WorktreePath(), "contracts", "stencils") when it exists,
+// and the empty string otherwise. The empty string is what keeps the port-back drift warning
+// silent in a consumer repo, whose worktree carries no such tree, rather than firing on every run
+// forever.
 func resolveSourceDir(l *lyxcwd.Location) string {
-	sourceDir := filepath.Join(l.WorktreePath(), "stencils")
+	sourceDir := filepath.Join(l.WorktreePath(), "contracts", "stencils")
 	if _, err := os.Stat(sourceDir); err != nil {
 		return ""
 	}

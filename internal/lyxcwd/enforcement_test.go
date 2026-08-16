@@ -931,13 +931,13 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 			}
 		})
 
-		// Coverage additionally includes a plain internal/**/*.md and stencils/**/*.md walk --
+		// Coverage additionally includes a plain internal/**/*.md and contracts/stencils/**/*.md walk --
 		// not a //go:embed parse, so a future non-embedded template is policed rather than
-		// silently skipped. stencils/ is a walked root alongside internal/ so a prompt
-		// relocated out of internal/ (see stencils/stencils.go) does not silently leave
+		// silently skipped. contracts/stencils/ is a walked root alongside internal/ so a prompt
+		// relocated out of internal/ (see contracts/stencils/stencils.go) does not silently leave
 		// Fabric Vocabulary coverage.
 		mdVisitCount := 0
-		walkEnforcementRoots(t, repoRoot, []string{"internal", "stencils"}, []string{".md"}, func(relPath string, data []byte) {
+		walkEnforcementRoots(t, repoRoot, []string{"internal", "contracts/stencils"}, []string{".md"}, func(relPath string, data []byte) {
 			mdVisitCount++
 			dir := filepath.ToSlash(filepath.Dir(relPath))
 			text := string(data)

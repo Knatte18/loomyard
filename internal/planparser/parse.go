@@ -1,7 +1,7 @@
 // parse.go implements ParsePlan: it reads a plan directory's 00-overview.md (scalar frontmatter +
 // task framing + Card Index) and, for each card the index lists, that card's own NN-<card-slug>.md
 // file, producing the in-memory Plan the rest of webster drives from.
-// Every distinct parse failure is a "planparser:"-prefixed wrapped error — plan-format.md's
+// Every distinct parse failure is a "planparser:"-prefixed wrapped error — loom-plan-spec.md's
 // fail-loud discipline admits no silent-default reading of a malformed plan document structure.
 // Per-card content defects (a missing field, a malformed Moves: bullet) are recorded leniently into
 // the Card model instead, per the lenient-card-parse decision documented in doc.go.
@@ -21,7 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// overviewFileName is the fixed filename of a plan's overview file, per plan-format.md's on-disk layout.
+// overviewFileName is the fixed filename of a plan's overview file, per loom-plan-spec.md's on-disk layout.
 const overviewFileName = "00-overview.md"
 
 // PlanDirName is the relative-path segment planparser joins onto lyxdirs.LyxDirName to form
@@ -38,7 +38,7 @@ func PlanDirRel() string {
 	return path.Join(lyxdirs.LyxDirName, PlanDirName)
 }
 
-// cardIndexHeading is the exact "## " heading plan-format.md pins for the overview's Card Index section.
+// cardIndexHeading is the exact "## " heading loom-plan-spec.md pins for the overview's Card Index section.
 const cardIndexHeading = "## Card Index"
 
 // overviewFrontmatter mirrors 00-overview.md's frontmatter shape 1:1 with pointer fields to distinguish absent vs zero-value keys.

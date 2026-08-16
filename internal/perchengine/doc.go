@@ -267,7 +267,7 @@
 // the resume of an in-flight block.
 //
 // judge_model (and a profile's judge-model/model keys, see perchcli) is a
-// model-spec string, not a bare model name — docs/reference/model-spec.md's
+// model-spec string, not a bare model name — contracts/specs/llm-model-spec.md's
 // notation: a registry alias with an optional [effort=...] bracket, the
 // escape form for a model not (yet) in the registry, or a bare alias that
 // picks up its default effort from the operator-owned models.yaml. Effort
