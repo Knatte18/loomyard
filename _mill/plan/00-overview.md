@@ -3,7 +3,7 @@
 ```yaml
 task: 'Shed engine adapters: SingleLLMProducer, perch, Webster'
 slug: shed-adapters
-approved: false
+approved: true
 started: '20260816-151326'
 parent: main
 root: ""
