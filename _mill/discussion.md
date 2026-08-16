@@ -27,6 +27,8 @@ This discussion adopts that design with three corrections, all recorded under De
 
 - Three new stencil files under a new `stencils/pattern/` family directory, each carrying one constant's prose **verbatim as its body**, under the conventional explanatory `<!-- … -->` banner every other stencil opens with.
 - Three new `//go:embed` vars plus three new `entries` rows in `stencils/stencils.go`.
+- Three new lines in the **repo-root `.gitattributes`**, one per new file, pinning each to `text eol=lf`.
+  That file enumerates every embed target individually and carries no `stencils/**` glob, so a new stencil that is not listed is silently unpinned.
 - `internal/pattern.Directive` gains a `stencilsDir string` parameter and an `error` return, and reads through `stencilstore.Read` — then strips the leading banner via `stencil.StripLeadingComment` — instead of returning a constant.
 - The three `const` blocks in `internal/pattern/pattern.go` are deleted, along with the file-header and pre-constant comments that describe them.
 - All four call sites updated — two are a one-line change, two need the call hoisted out of a map literal.
@@ -92,7 +94,7 @@ This discussion adopts that design with three corrections, all recorded under De
   The directive prose follows the banner as the file body.
 - Rationale: every other stencil has one, and it is the only place a reader of the file learns what consumes it.
   It also gives `ApplyStamp` an existing banner to insert the stamp line into, rather than prepending a second one.
-  These files contain no `{{.marker}}` of their own — they are injected *into* other templates — and the banner is where that non-obvious fact gets stated.
+  These files contain no `{{.marker}}` of their own — they are injected *into* other templates — and the banner is where that non-obvious fact gets stated, along with the requirement that they stay marker-free for `stencilstore.Validate`'s sake.
 - Rejected: shipping them bare, which would leave three of eighteen stencils undocumented in-file for no gain.
 
 ### Fail loud on a read failure, not silent
@@ -217,7 +219,16 @@ burler and loom likewise use `burler:` / `loom:` prefixes.
   Existing hubs pick the three files up on the next `lyx` invocation.
   No migration step, no manual seeding.
 - Each file's **body** — what remains after the banner is stripped — must be byte-identical to the constant it replaces, trailing newline included.
-  `Reconcile` seeds `.gitattributes` with `*.md text eol=lf` under the stencils dir, so CRLF conversion is not a hazard.
+- Two different `.gitattributes` files protect that byte-exactness, at two different stages, and both matter:
+  - The **repo-root `.gitattributes`** covers the *source* tree, and therefore the `//go:embed` bytes baked into the binary.
+    Its header states the requirement directly: embed targets "must be deterministic across checkouts regardless of a given machine's `core.autocrlf` setting".
+    It lists all fifteen current stencils one line each (lines 7-21) with no glob, so the three new files need three new lines.
+    Nothing machine-checks this omission — `stencils/registry_test.go` pins the registry against the on-disk tree but says nothing about `.gitattributes` — which is exactly why it is called out here.
+  - The `*.md text eol=lf` file `Reconcile` seeds beside the **board copy** covers the seeded working copy under `<hub>/_board/_lyx/stencils/`.
+    It does not cover the source tree, so it is not what makes the embed deterministic.
+- These three are the first registered stencils that never pass through `stencil.Fill`, but `stencilstore.Validate` still parses each one's on-disk content *and* its shipped default with `stencil.TopLevelMarkers` (`internal/stencilstore/validate.go:52,56`).
+  They must therefore stay marker-free: a stray `{{` anywhere in the body or the banner becomes a `lyx stencil validate` error rather than a harmless literal.
+  Zero markers is a valid template — it yields zero findings — so this costs nothing as long as it stays true.
 - `stencils/**/*.md` is inside the Fabric Vocabulary enforcement walk (`internal/lyxcwd/enforcement_test.go`).
   The directive prose contains none of the policed `host`/weft/warp phrases, so this is a non-issue — worth knowing only so it is not a surprise if the walk is ever consulted.
 
@@ -357,4 +368,6 @@ Nothing here fails without it — no burler test activates PATTERN — so this i
 - **Q:** Which new tests beyond migrating the existing ones? **A:** Four, each pinning a distinct property: lazy-read (inactive + bogus `stencilsDir` → `("", nil)`); missing-stencil error naming the stencil; banner-strip (a stamped fixture's directive returns text starting at `## ` with no `<!--`); and equality with `stencil.StripLeadingComment` of the `stencils` embedded default — stripped-body equality, never whole-file byte equality, since the on-disk file carries a banner and stamp the return value never does.
 - **Q:** Which docs land in this commit? **A:** All five — `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`, and `tools/sandbox/SANDBOX-CORE-SUITE.md:232` (its "all fifteen registered stencils" becomes eighteen). `doc.go:53-54` literally says the pointer is "baked into the directive constant", which goes stale the moment the text moves, so it cannot be deferred. The design doc needs three corrections, not one — steps 3 and 4 are both false, and the banner strip is absent from it entirely.
 - **Q:** Verify command? **A:** `go build ./... && go test ./...`. The invariant guards span four-plus unrelated packages; a scoped list is one omission away from false confidence.
+- **Q:** Do the three new files need repo-root `.gitattributes` lines? **A:** Yes, three of them, one per file. That file pins every embed target individually with no `stencils/**` glob, and nothing machine-checks an omission. The `*.md text eol=lf` that `Reconcile` seeds is a different file covering the board copy, not the source tree, so it does not make the embed deterministic.
+- **Q:** These stencils never pass through `stencil.Fill` — does anything else parse them? **A:** Yes, `stencilstore.Validate` parses every registered file and its shipped default with `stencil.TopLevelMarkers`. The three must stay marker-free; zero markers is valid and yields zero findings, but a stray `{{` would become a validate error rather than a rendering no-op.
 - **Q:** `stencilstore.Read` returns the stamp banner and `Directive`'s return never passes through `stencil.Fill`, so nothing strips it — how is that handled? **A:** `Directive` calls `stencil.StripLeadingComment` on the bytes it reads, which makes the leaf-invariant amendment two entries (`internal/stencilstore` + `internal/stencil`) rather than one. Verified independently: `Reconcile` stamps via `ApplyStamp` at `reconcile.go:133`, `Read` is a bare `os.ReadFile` at `reconcile.go:28`, and `FillOptional` strips at `internal/stencil/stencil.go:27` — which is exactly why every other consumer is unaffected and this one is not. `internal/stencil` imports no internal package, so the second entry is cycle-free by construction. Rejected a new `stencilstore.ReadBody` helper (shared API for one consumer, and it would fork the strip away from `Fill`'s copy).
