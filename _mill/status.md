@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-perch-producer
+phase: approved-webster-producer
 slug: shed-adapters
 branch: shed-adapters
 plan: _mill/plan
@@ -23,6 +23,7 @@ planned  '2026-08-16T15:37:58Z'
 implementing  '2026-08-16T15:38:22Z'
 approved-package-foundation-and-singlellm  '2026-08-16T15:43:53Z'
 approved-perch-producer  '2026-08-16T15:49:34Z'
+approved-webster-producer  '2026-08-16T15:53:08Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     commit_sha: 357337e6279e5db7ff3fec9f5e1e1593a7abee80
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: webster-producer
-    state: running
+    state: approved
     implementer_session: 0f89475b-2048-4d93-acd7-09d3c8badf75
     start_sha: 9b7ad49be10add09ef89708023292b8042641309
+    commit_sha: 90b4406ab71e300f32526a7720b4d9f133f73a11
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: docs
     state: pending
