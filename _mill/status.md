@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: shed-adapters
 branch: shed-adapters
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-16T14:00:14Z'
+discussed  '2026-08-16T15:09:07Z'
 ```
