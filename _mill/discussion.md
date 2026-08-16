@@ -31,7 +31,7 @@ This discussion adopts that design with three corrections, all recorded under De
   That file enumerates every embed target individually and carries no `stencils/**` glob, so a new stencil that is not listed is silently unpinned.
 - `internal/pattern.Directive` gains a `stencilsDir string` parameter and an `error` return, and reads through `stencilstore.Read` — then strips the leading banner via `stencil.StripLeadingComment` — instead of returning a constant.
 - The three `const` blocks in `internal/pattern/pattern.go` are deleted, along with the file-header and pre-constant comments that describe them.
-- All four call sites updated — two are a one-line change, two need the call hoisted out of a map literal.
+- All four call sites updated — two are trivial (an existing assignment plus an error-check block), two need the call hoisted out of a map literal.
 - `internal/pattern`'s leaf-invariant allowlist extended by two entries, at all three places the leaf test states it plus `CONSTRAINTS.md`.
 - Test migration in `internal/pattern`, `internal/websterengine`, and `internal/loomengine`, plus four new tests: lazy-read, missing-stencil error, banner-strip, and stripped-body equality with the embedded default.
 - Five doc updates: `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`, and `tools/sandbox/SANDBOX-CORE-SUITE.md`.
@@ -182,7 +182,7 @@ This discussion adopts that design with three corrections, all recorded under De
 
 ### The four call sites
 
-Two are already simple assignments and take a one-line change each:
+Two are already simple assignments and are trivial — the existing assignment gains a second return value plus an `if err != nil` block, so a few lines each, not one:
 
 - `internal/burlerengine/engine.go:103` — `directive := pattern.Directive(e.layout, pattern.RoleReviewFix)` inside `Engine.Run`, which returns `(Result, error)`.
   `e.stencilsDir` is already a struct field (`engine.go:33`, set by `New` at line 41) and is already passed to `composePrompt` at line 123.
