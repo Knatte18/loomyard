@@ -1,10 +1,11 @@
 // doc.go carries the package godoc for pattern: the active check, why it is pure existence, why the
-// three roles are what they are, and why the injected pointer stays a relative path.
+// three roles are what they are, why the injected pointer stays a relative path, and the stencil
+// read path Directive uses to produce that directive text.
 
 // Package pattern answers one question for every code-touching lyx agent —
 // is PATTERN active in this worktree, and what should the agent be told? —
-// and returns the role-appropriate directive text to inject into that
-// agent's prompt.
+// and returns the role-appropriate directive text, read from a stencil
+// file, to inject into that agent's prompt.
 //
 // # The active check is pure existence
 //
@@ -50,12 +51,22 @@
 //
 // Each directive injects a pointer to `_lyx/PATTERN.md`, never the
 // constraints inline, so prompt size stays constant however large PATTERN
-// grows. The pointer is a literal relative string baked into the directive
-// constant, never an interpolated absolute path built from a Location field:
+// grows. The pointer is a literal relative string in the stencil file's own
+// body, never an interpolated absolute path built from a Location field:
 // an absolute path would vary per worktree, which would make the fixed
 // directive strings unable to be compared for equality (or matched by
 // substring) across worktrees the way this package's own tests, and any
 // consumer's tests, need to.
+//
+// # The stencil read path
+//
+// Directive is told a stencilsDir, reads the role's stencil through
+// stencilstore.Read, strips the leading banner with
+// stencil.StripLeadingComment because its return value is injected as a
+// producer template's marker value and so never passes through
+// stencil.Fill, and returns an error rather than an empty string when an
+// active PATTERN's stencil cannot be read. The read is lazy: no read is
+// attempted on a nil layout, an inactive PATTERN, or an unknown role.
 //
 // # PathspecFile and PathspecDir
 //
