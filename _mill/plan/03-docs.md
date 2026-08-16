@@ -24,6 +24,8 @@ Batch-local decision: `manifest/designs/pattern-directive-stencils.md` is correc
 
 - **Context:**
   - `internal/pattern/pattern.go`
+  - `internal/stencilstore/reconcile.go`
+  - `internal/stencil/stencil.go`
 - **Edits:**
   - `internal/pattern/doc.go`
 - **Creates:** none
@@ -48,6 +50,8 @@ Batch-local decision: `manifest/designs/pattern-directive-stencils.md` is correc
   - `internal/websterengine/render.go`
   - `docs/shared-libs/stencil.md`
   - `_mill/discussion.md`
+  - `internal/stencilstore/reconcile.go`
+  - `internal/stencil/stencil.go`
 - **Edits:**
   - `manifest/designs/pattern-directive-stencils.md`
 - **Creates:** none

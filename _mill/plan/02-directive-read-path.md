@@ -65,6 +65,9 @@ Batch-local decisions, beyond the overview's Shared Decisions:
 
 - **Context:**
   - `internal/pattern/pattern.go`
+  - `internal/stencil/stencil.go`
+  - `internal/stencilstore/stencilstore.go`
+  - `internal/stencilstore/reconcile.go`
 - **Edits:**
   - `internal/pattern/leaf_enforcement_test.go`
   - `CONSTRAINTS.md`
@@ -93,6 +96,8 @@ Batch-local decisions, beyond the overview's Shared Decisions:
   - `internal/pattern/pattern.go`
   - `internal/loomengine/prompt_test.go`
   - `internal/stencilstore/stencilstore.go`
+  - `internal/stencilstore/reconcile.go`
+  - `internal/stencil/stencil.go`
   - `stencils/stencils.go`
 - **Edits:**
   - `internal/pattern/pattern_test.go`
@@ -123,6 +128,10 @@ Batch-local decisions, beyond the overview's Shared Decisions:
 - **Context:**
   - `internal/pattern/pattern.go`
   - `internal/loomengine/discussion_test.go`
+  - `internal/stencilstore/stencilstore.go`
+  - `internal/stencilstore/reconcile.go`
+  - `internal/stencil/stencil.go`
+  - `stencils/stencils.go`
 - **Edits:**
   - `internal/pattern/pattern_test.go`
 - **Creates:** none
@@ -205,6 +214,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
 - **Context:**
   - `internal/pattern/pattern.go`
   - `stencils/stencils.go`
+  - `internal/fabricengine/junctionnames.go`
 - **Edits:**
   - `internal/websterengine/render.go`
   - `internal/websterengine/template_test.go`
