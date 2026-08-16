@@ -44,7 +44,9 @@ batches:
     commit_sha: 24a768e2ffd728e0ef019ed636f2ee477eea566c
     verify_baseline_failures: []
   - name: directive-read-path
-    state: pending
+    state: running
+    implementer_session: b2b46593-3c51-4cc4-b2ef-1ee048c56d86
+    start_sha: 1dc0bea33fc5fd060d67cd15ec0c78cb7cb09842
     verify_baseline_failures: []
   - name: docs
     state: pending
