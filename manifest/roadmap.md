@@ -17,10 +17,6 @@ Committed to, in this order, next.
    First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
-1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings become real, directly-editable stencil files instead of Go source, same as every other producer prompt.
-   Independent of `Shed`/`loom` above, no ordering dependency either way.
-   See [designs/pattern-directive-stencils.md](designs/pattern-directive-stencils.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -197,6 +193,9 @@ No build order is implied between these items.
    This is the skeleton only — the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) remain their own Planned item above.
    Landed the Shed Producer-Seam Invariant in `CONSTRAINTS.md`.
    See the `internal/shedengine` package documentation and [designs/shed.md](designs/shed.md), which survives this landing because it also covers the still-Planned adapters the Planned item above links into it for.
+
+1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
+   See the `internal/pattern` package documentation.
 
 ## Maintenance
 

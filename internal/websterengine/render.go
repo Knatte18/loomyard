@@ -170,15 +170,21 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l 
 		digestLine = noPrecedingBatchDigest
 	}
 
+	stencilsDir := fabricengine.StencilsDir(l.HubPath)
+	directive, err := pattern.Directive(l, stencilsDir, pattern.RoleImplementer)
+	if err != nil {
+		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
+	}
+
 	values := map[string]string{
 		"card_pointers":     renderCardPointers(batch.Cards),
 		"report_path":       reportPath,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     l.AnchorPath(),
 		"prev_digest":       digestLine,
-		"pattern_directive": pattern.Directive(l, pattern.RoleImplementer),
+		"pattern_directive": directive,
 	}
-	template, err := composeRecoveryTemplate(fabricengine.StencilsDir(l.HubPath))
+	template, err := composeRecoveryTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
@@ -227,6 +233,12 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 		integrationPrompt = noIntegrationPromptPath
 	}
 
+	stencilsDir := fabricengine.StencilsDir(l.HubPath)
+	directive, err := pattern.Directive(l, stencilsDir, pattern.RoleOrchestrator)
+	if err != nil {
+		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
+	}
+
 	values := map[string]string{
 		"batch_index":             RenderBatchIndex(plan),
 		"progress":                RenderProgress(plan, st),
@@ -235,9 +247,9 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 		"integration_prompt_path": integrationPrompt,
 		"self_fix_cap":            fmt.Sprintf("%d", selfFixCap),
 		"poll_wait_s":             fmt.Sprintf("%d", pollWaitS),
-		"pattern_directive":       pattern.Directive(l, pattern.RoleOrchestrator),
+		"pattern_directive":       directive,
 	}
-	template, err := MasterTemplate(fabricengine.StencilsDir(l.HubPath))
+	template, err := MasterTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read master template: %w", err)
 	}
