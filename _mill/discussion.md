@@ -118,7 +118,7 @@ This discussion adopts that design with three corrections, all recorded under De
   - `l == nil` → `("", nil)`, no read attempted.
   - PATTERN inactive → `("", nil)`, no read attempted.
   - active, unknown or zero `Role` → `("", nil)`, no read attempted.
-  - active, known role, read succeeds → `(string(content), nil)`.
+  - active, known role, read succeeds → `(stencil.StripLeadingComment(string(content)), nil)` — the **stripped body**, never the raw `Read` bytes, per the banner-strip decision below.
   - active, known role, read fails → `("", err)`.
 - Rationale: preserves all five of today's behaviours bit-for-bit, so every existing test's expectation still holds.
   It also confines fixture churn to tests that actually activate PATTERN — an eager read would make every inactive-PATTERN call site depend on a seeded stencils directory, forcing changes across `burlerengine`, `websterengine`, and `loomengine` tests that have nothing to do with this task.
@@ -146,16 +146,17 @@ This discussion adopts that design with three corrections, all recorded under De
 - Decision: five docs change in the same commit as the code.
   - `CONSTRAINTS.md` — Pattern Leaf Invariant allowlist, two entries.
   - `internal/pattern/doc.go` — the module doc.
-  - `manifest/designs/pattern-directive-stencils.md` — status flip, plus corrections to **both** step 3 and step 4, plus the banner-strip step the design doc omits entirely.
+  - `manifest/designs/pattern-directive-stencils.md` — status flip, plus corrections to **both** step 3 and step 4, plus the banner-strip step the design doc omits entirely, plus the "Related" bullet at line 57.
   - `manifest/roadmap.md` — item complete.
   - `tools/sandbox/SANDBOX-CORE-SUITE.md:232` — "all fifteen registered stencils" becomes eighteen.
 - Rationale: `doc.go:53-54` currently states the pointer is "a literal relative string baked into the directive constant" — false the moment the text moves to a stencil file, so it cannot be deferred.
   The repo's task-completion rule requires the module doc, the design-doc status, and the roadmap to move with the code that makes them true.
   `manifest/roadmap.md:20` carries this item, so the roadmap does move here — this is a planned item completing, not a bugfix or polish pass.
-  The design doc needs three corrections, not one: step 3 specifies the fail-silent posture this task overrides;
+  The design doc needs four corrections, not one: step 3 specifies the fail-silent posture this task overrides;
   step 4 claims the change is "plumbing-free" because "websterengine's functions already take it as a parameter", which `render.go:181` and `:240` contradict — both derive `fabricengine.StencilsDir(l.HubPath)` internally instead;
-  and no step mentions the banner strip at all, without which the relocation is not behaviour-preserving.
-  Leaving a shipped design doc asserting three things the code disproves is worse than having no design doc.
+  no step mentions the banner strip at all, without which the relocation is not behaviour-preserving;
+  and the "Related" bullet at line 57 calls `docs/shared-libs/stencil.md` "the `Fill`/`FillOptional` contract these stencil files render through", which this task's own finding disproves — these three are the first stencils that never pass through `Fill`, being injected as a values-map string instead.
+  Leaving a shipped design doc asserting four things the code disproves is worse than having no design doc.
   The sandbox suite's count is a literal number that this task falsifies, in a file whose whole purpose is to be read and executed by a human or agent running the suite.
 - Rejected: deferring the design doc and roadmap to a later pass;
   correcting only step 3 of the design doc;
@@ -366,7 +367,7 @@ Nothing here fails without it — no burler test activates PATTERN — so this i
 - **Q:** Should `Role` become a string type keyed on the stencil name? **A:** No. Keep `type Role int`; only the `switch` body changes, from yielding a constant to yielding a stencil name. Unrelated API churn against a task whose contract is "no behaviour change".
 - **Q:** File names, Go var names, and registry order? **A:** Follow the existing family convention exactly — `stencils/pattern/pattern-directive-{implementer,review-fix,orchestrator}.md`, vars `PatternDirective{Implementer,ReviewFix,Orchestrator}`, appended to `entries` as a trailing `pattern` family block.
 - **Q:** Which new tests beyond migrating the existing ones? **A:** Four, each pinning a distinct property: lazy-read (inactive + bogus `stencilsDir` → `("", nil)`); missing-stencil error naming the stencil; banner-strip (a stamped fixture's directive returns text starting at `## ` with no `<!--`); and equality with `stencil.StripLeadingComment` of the `stencils` embedded default — stripped-body equality, never whole-file byte equality, since the on-disk file carries a banner and stamp the return value never does.
-- **Q:** Which docs land in this commit? **A:** All five — `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`, and `tools/sandbox/SANDBOX-CORE-SUITE.md:232` (its "all fifteen registered stencils" becomes eighteen). `doc.go:53-54` literally says the pointer is "baked into the directive constant", which goes stale the moment the text moves, so it cannot be deferred. The design doc needs three corrections, not one — steps 3 and 4 are both false, and the banner strip is absent from it entirely.
+- **Q:** Which docs land in this commit? **A:** All five — `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`, and `tools/sandbox/SANDBOX-CORE-SUITE.md:232` (its "all fifteen registered stencils" becomes eighteen). `doc.go:53-54` literally says the pointer is "baked into the directive constant", which goes stale the moment the text moves, so it cannot be deferred. The design doc needs four corrections, not one — steps 3 and 4 are both false, the banner strip is absent from it entirely, and its line-57 "Related" bullet claims these files render through `Fill`, which they never do.
 - **Q:** Verify command? **A:** `go build ./... && go test ./...`. The invariant guards span four-plus unrelated packages; a scoped list is one omission away from false confidence.
 - **Q:** Do the three new files need repo-root `.gitattributes` lines? **A:** Yes, three of them, one per file. That file pins every embed target individually with no `stencils/**` glob, and nothing machine-checks an omission. The `*.md text eol=lf` that `Reconcile` seeds is a different file covering the board copy, not the source tree, so it does not make the embed deterministic.
 - **Q:** These stencils never pass through `stencil.Fill` — does anything else parse them? **A:** Yes, `stencilstore.Validate` parses every registered file and its shipped default with `stencil.TopLevelMarkers`. The three must stay marker-free; zero markers is valid and yields zero findings, but a stray `{{` would become a validate error rather than a rendering no-op.
