@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
-plan: null
+plan: _mill/plan
 parent: main
 task: 'PATTERN directives: move from Go constants to stencil files'
 task_description: |
@@ -20,4 +20,5 @@ discussion-fix-r3  '2026-08-16T14:38:16Z'
 discussion-fix-r4  '2026-08-16T14:41:11Z'
 discussion-fix-r5  '2026-08-16T14:45:48Z'
 discussed  '2026-08-16T14:50:28Z'
+planning  '2026-08-16T15:01:11Z'
 ```
