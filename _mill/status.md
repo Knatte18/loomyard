@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: _mill/plan
@@ -29,4 +29,17 @@ plan-review-r3  '2026-08-16T15:21:45Z'
 plan-fix-r3  '2026-08-16T15:22:28Z'
 plan-review-r4  '2026-08-16T15:27:32Z'
 planned  '2026-08-16T15:27:41Z'
+implementing  '2026-08-16T15:28:08Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: stencil-files
+    state: pending
+  - name: directive-read-path
+    state: pending
+  - name: docs
+    state: pending
 ```
