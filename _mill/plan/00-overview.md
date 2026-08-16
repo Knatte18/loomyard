@@ -3,7 +3,7 @@
 ```yaml
 task: 'PATTERN directives: move from Go constants to stencil files'
 slug: pattern-directive-stencils
-approved: false
+approved: true
 started: '20260816-145612'
 parent: main
 root: ""
