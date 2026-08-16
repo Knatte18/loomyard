@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: shed-adapters
 branch: shed-adapters
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-docs  '2026-08-16T15:57:08Z'
 holistic-reviewing  '2026-08-16T15:57:44Z'
 holistic-approved  '2026-08-16T16:01:26Z'
 done  '2026-08-16T16:02:36Z'
+pr-pending  '2026-08-16T16:04:29Z'
 ```
 
 ## Batches
