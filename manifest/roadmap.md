@@ -9,11 +9,7 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **Shed's engine adapters — `SingleLLMProducer`, the `perch` adapter, the `Webster` adapter** — the three reusable `ShedProducer` implementations, each a thin wrapper around an already-shipped engine.
-   Own task, separate from `Shed`'s own skeleton above.
-   See [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer).
-
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer `discussion-format.md` already specs), `Discussion-Review` (wired via the `perch` adapter above).
+1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer `discussion-format.md` already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
    First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
@@ -190,9 +186,12 @@ No build order is implied between these items.
    See the `internal/pattern` package documentation.
 
 1. **Shed: shared outer phase-FSM, no predefined slots** — shipped the skeleton: `internal/shedengine`'s loop, status file, `ShedProducer` interface, and producer-list validation, which `loom` and the eventual `Hardener` are each `Shed` plus their own producer list on top of.
-   This is the skeleton only — the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) remain their own Planned item above.
+   This is the skeleton only — the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) shipped as their own later task, below.
    Landed the Shed Producer-Seam Invariant in `CONSTRAINTS.md`.
-   See the `internal/shedengine` package documentation and [designs/shed.md](designs/shed.md), which survives this landing because it also covers the still-Planned adapters the Planned item above links into it for.
+   See the `internal/shedengine` package documentation and [designs/shed.md](designs/shed.md), whose retention past this landing is justified in its own status banner rather than restated here.
+
+1. **Shed's engine adapters — `SingleLLMProducer`, the `perch` adapter, the `Webster` adapter** — shipped three reusable `ShedProducer` implementations in one new package, `internal/shedadapters`, each a thin wrapper over an already-shipped engine.
+   See [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer).
 
 1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
    See the `internal/pattern` package documentation.
