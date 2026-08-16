@@ -31,9 +31,9 @@ Three engines are in play today, so three adapters:
 
 - A new package `internal/shedadapters` holding all three `ShedProducer` implementations.
 - `SingleLLMProducer` — wraps a caller-supplied `shuttleengine.Spec` source, archives stale output files, runs one shuttle spawn, maps the four shuttle outcomes onto Shed's verdict vocabulary.
-- `PerchProducer` — wraps `perchengine.Engine.Run`, maps `APPROVED`/`STUCK`/`PAUSED` onto Shed's vocabulary, reports an empty `OutputPointer` (gate producer).
-- `WebsterProducer` — wraps `websterengine.Run`, maps its `RunResult.Outcome` and its five sentinel/typed errors onto Shed's vocabulary.
-- Three narrow local seam interfaces (one per engine) with compile-time-proof lines, so every adapter is fakeable at tier 1.
+- `PerchProducer` — resolves its per-`Call` run identity (the run-id Decision), builds its engine through a caller-supplied factory so the ctx bridge is installable, maps `APPROVED`/`STUCK`/`PAUSED` onto Shed's vocabulary, and reports an empty `OutputPointer` (gate producer).
+- `WebsterProducer` — wraps `websterengine.Run` with `Fresh` fixed `false`, maps its `RunResult.Outcome` and its errors (one exception, then a default) onto Shed's vocabulary, and reports `SummaryPath` on `Done`.
+- Two narrow local seam interfaces plus a func-typed Webster seam, each with a compile-time-proof line, so every adapter is fakeable at tier 1.
 - Context-cancellation handling: an entry check and exit precedence of `ctx.Err()` over any verdict for **all three**, plus a mid-run pause-seam bridge for **perch only** — Webster and `SingleLLMProducer` are deliberately bridgeless, each bounded by its own timeout (see the three cancellation Decisions).
 - Tier-1 (untagged) tests with fakes for all three seams.
 - Docs in the same commit — the exact edit list is pinned in the "Doc set" Decision below: a `doc.go` for the new package, five named corrections in `manifest/designs/shed.md`, three edits in `docs/overview.md`, and three in `manifest/roadmap.md`.
@@ -85,6 +85,8 @@ Three engines are in play today, so three adapters:
   Requiring absolute entries keeps the adapter geometry-blind, and costs the caller nothing: `loomengine.DiscussionSpec` and `burlerengine` both already build absolute `OutputFiles`.
   **Why the first entry is the pointer:** both shipped `Spec` builders already order the primary artifact first — `burlerengine` emits `[ReviewPath, FixerReportPath]` (`internal/burlerengine/engine.go:136`) and `loomengine.DiscussionSpec` emits `[decisionRecordPath, supportLogPath]` (`internal/loomengine/discussion.go:43`).
   A first-entry rule needs no new field on `Spec`, no extra constructor argument, and no per-producer configuration; it is documented as a convention a `Spec` source honors by ordering.
+  **An empty `OutputFiles` is not this adapter's error to raise, but it must not be indexed either:** `Spec.validate` already rejects an empty list inside `Runner.Start` (`internal/shuttleengine/spec.go:119-121`), so the seam returns that error and the adapter propagates it.
+  The adapter still guards the `Done` branch rather than indexing `OutputFiles[0]` blindly — an empty list there would panic, and a panic inside a long unattended Shed run is exactly what `shedengine`'s own nil-`Producer` validation exists to avoid.
   **Why an injected clock:** both cited precedents take exactly this seam — `archiveStaleOutcome(websterDir string, now func() time.Time)` (`internal/websterengine/outcome.go:77`) and `ArchiveStaleSummary` (`summary.go:77`) — and `firstFreeArchivePath` is unexported, so the collision helper is re-implemented locally anyway.
   Without the seam, the collision-suffix path can only be tested by hoping two archive calls land inside the same wall-clock second; with it, a fake clock returning a fixed instant makes that test deterministic.
   This is the one place `manifest/designs/shed.md:231`'s "no injectable clock" rule does not apply — that rule governs `Shed`'s own `history[].at`, a field Shed writes and tests assert structurally, not an adapter-side filename whose collision behavior is the thing under test.
@@ -296,9 +298,9 @@ Three engines are in play today, so three adapters:
   **`manifest/designs/shed.md`** — five corrections: `:38`'s "three of the four planned adapters — `perch`, `Webster`, and a bespoke multi-spawn engine — own their own error taxonomies and are not designed yet", now false for two of the three; the `:3` status banner (the adapters are no longer Planned); `:255`'s claim that `SingleLLMProducer` performs the full three-case live-session discipline; `:261`'s identical reattach claim in the "What `Shed` does not provide" list; and `:278`'s description of `SingleLLMProducer` as "parameterized by an Input-format pointer, an Output-format pointer, and one instruction file", which the caller-supplied-`Spec`-source Decision supersedes — reworded to say the parameterization lives in the caller's `Spec` source.
   **`docs/overview.md`** — a tree line beside `internal/shedengine` (line 228), a module bullet beside the `shed` entry (line 292), and the correction of `:294`'s "the three engine adapters ... remain Planned".
   **`manifest/roadmap.md`** — three edits: Planned item 1 (lines 12-14) moves to Done; the existing Done entry for the Shed skeleton (lines 196-199), which currently asserts the three adapters "remain their own Planned item above" and justifies shed.md's survival by that Planned item; and `:16`'s "wired via the `perch` adapter above", whose "above" dangles once Planned item 1 leaves the Planned section — reworded to point at the shipped package instead.
-  Both claims become false in this same commit, so shed.md's Documentation-Lifecycle survival rationale is restated there on its own footing — the doc remains the authoritative narrative of Shed's generic mechanism, independent of any Planned item.
+  The Done entry's two claims — that the adapters remain Planned, and that shed.md survives *because* of that Planned item — both become false in this commit, so shed.md's Documentation-Lifecycle survival rationale is restated there on its own footing: the doc remains the authoritative narrative of Shed's generic mechanism, independent of any Planned item.
 - Rationale: CLAUDE.md requires a task that adds a module or introduces cross-cutting infrastructure to update its docs in the same commit, and the roadmap moves on completing a planned item — which this is.
-  Naming every line explicitly rather than saying "update shed.md" is what stops a partial edit from leaving a claim that is false the moment the package ships; three of the four shed.md corrections are exactly such claims, and the roadmap Done entry is a fourth.
+  Naming every line explicitly rather than saying "update shed.md" is what stops a partial edit from leaving a claim that is false the moment the package ships; four of the five shed.md corrections are exactly such claims, and the roadmap Done entry and `docs/overview.md:294` are two more.
 - Rejected: correcting only `shed.md:255` — `:261` states the same reattach claim in different words, so fixing one and not the other leaves the doc self-contradicting.
   Rejected: leaving the roadmap Done entry alone — it forward-references a Planned item this commit deletes.
   Rejected: deferring the doc set to a follow-up — CLAUDE.md's same-commit rule exists precisely to prevent that.
@@ -370,8 +372,11 @@ From `CONSTRAINTS.md`:
 - **Shed Producer-Seam Invariant** — `internal/shedengine` imports only stdlib, `internal/state`, `internal/lock`.
   This task must not add an import to `shedengine`; `internal/shedengine/seam_enforcement_test.go` (`TestProducerSeamInvariant_AllowlistOnly`) fails the build otherwise.
 - **Cwd Resolution Invariant** — no adapter calls `os.Getwd`, `git rev-parse --show-toplevel`, or resolves a per-module subdirectory. Paths are told.
-- **Lyxdirs Single-Declarer Invariant** — no adapter may write the literals `_lyx` or `.lyx` in path-construction context. The adapters should not construct such paths at all.
-- **Durable-vs-Ephemeral State Invariant** — the archived stale-output files land beside the original output (which is durable `_lyx` content the product chose), not in a new location the adapter invents.
+- **Lyxdirs Single-Declarer Invariant** — no adapter may write the literals `_lyx` or `.lyx` in path-construction context.
+  The only paths any adapter builds are a run-id leaf joined onto a told base (`Join(runDirBase, runID)` / `Join(scratchDirBase, runID)`) and an archive sibling beside a told output file — no token, no geometry.
+- **Durable-vs-Ephemeral State Invariant** — two placements this task must honor.
+  The archived stale-output files land beside the original output (durable `_lyx` content the product chose), not in a location the adapter invents.
+  The perch scratch dir the adapter creates is `Join(scratchDirBase, runID)`, the mirrored `.lyx` sibling of `Join(runDirBase, runID)` — the exact pairing `perchcli` already uses, so the mirrored-subpath rule holds by construction rather than by the adapter reasoning about it.
 - **CLI / Cobra Invariant** — `shedadapters` is a support package, not a cobra module: no `Command()`, no `RunCLI`, no cobra import, no registration in `newRoot()`.
 - **Test Tier Purity Invariant** — untagged test files must not call `gitexec.Run`, `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`, and must not `time.Sleep` ≥ 1s with a constant duration. All tests here are untagged and fake-driven, so this holds by construction.
 - **Live-Substrate Spawn Observability** — the adapters start no OS process themselves (the wrapped engines do, and already log), so this invariant does not engage. Do not add a spawn path.
@@ -393,6 +398,7 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 
 - Outcome mapping table: `done`→(`Done`, `OutputFiles[0]` as the pointer, nil error); `asking`→(`Stuck`, **empty** pointer, nil error); `died`→non-nil error; `timeout`→non-nil error. Assert the error text names the outcome and the told producer name, since that text is what lands in Shed's persisted `error` field.
 - A seam error from `Run` propagates as a non-nil error, distinct from the died/timeout mapping.
+- An empty `OutputFiles` never panics: the fake seam returns `OutcomeDone` with an empty list and the adapter returns an error, not an index panic.
 - Archive-then-respawn against a real `t.TempDir()`, with a **fake clock returning a fixed instant** so the filenames are deterministic: a pre-existing output file is renamed to the expected timestamped sibling and the original path is free when the fake seam is invoked; a second archive under the same fixed instant takes the numeric collision suffix; a missing output file is a no-op, not an error.
 - A nil `now` selects `time.Now` — assert the constructor accepts nil and still archives (filename asserted by shape, not by literal).
 - The `Spec` source returning an error surfaces without the seam ever being called.
