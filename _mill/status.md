@@ -51,6 +51,8 @@ batches:
     commit_sha: 7068ac90b35362b18d638a8038856fc5870330d6
     verify_baseline_failures: []
   - name: docs
-    state: pending
+    state: running
+    implementer_session: 87ae4143-317a-42fd-865e-3c63aa8c81b6
+    start_sha: d1e39828d103f5b91cd7cb4df6fc316258414591
     verify_baseline_failures: []
 ```
