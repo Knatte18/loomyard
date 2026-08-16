@@ -92,6 +92,21 @@ var WebsterPrefixRecovery []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
+// PatternDirectiveImplementer is the shipped-default PATTERN directive for RoleImplementer.
+//
+//go:embed pattern/pattern-directive-implementer.md
+var PatternDirectiveImplementer []byte
+
+// PatternDirectiveReviewFix is the shipped-default PATTERN directive for RoleReviewFix.
+//
+//go:embed pattern/pattern-directive-review-fix.md
+var PatternDirectiveReviewFix []byte
+
+// PatternDirectiveOrchestrator is the shipped-default PATTERN directive for RoleOrchestrator.
+//
+//go:embed pattern/pattern-directive-orchestrator.md
+var PatternDirectiveOrchestrator []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -116,6 +131,9 @@ var entries = []registryEntry{
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
+	{"pattern-directive-implementer", &PatternDirectiveImplementer},
+	{"pattern-directive-review-fix", &PatternDirectiveReviewFix},
+	{"pattern-directive-orchestrator", &PatternDirectiveOrchestrator},
 }
 
 // registry implements stencilstore.Registry over entries.

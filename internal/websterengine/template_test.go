@@ -113,13 +113,16 @@ func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
 	return got
 }
 
-// seedHubStencils writes webster's five stencils under hub's real
+// seedHubWebsterStencils writes webster's five stencils under hub's real
 // fabricengine.StencilsDir(hub) location, byte-for-byte from the stencils
 // package's embedded defaults — the geometry RenderForkPrompt,
 // RenderRecoveryPrompt, and RenderMasterPrompt now derive internally via
 // fabricengine.StencilsDir(l.HubPath) before reading through
 // stencilstore.Read.
-func seedHubStencils(t *testing.T, hub string) {
+// Split out from seedHubStencils so a missing-stencil error-path test can
+// seed webster's five without also seeding the three pattern-directive
+// stencils.
+func seedHubWebsterStencils(t *testing.T, hub string) {
 	t.Helper()
 	websterDir := filepath.Join(fabricengine.StencilsDir(hub), "webster")
 	if err := os.MkdirAll(websterDir, 0o755); err != nil {
@@ -137,6 +140,37 @@ func seedHubStencils(t *testing.T, hub string) {
 			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
 		}
 	}
+}
+
+// seedHubPatternStencils writes the three pattern-directive stencils under hub's real
+// fabricengine.StencilsDir(hub) location, byte-for-byte from the stencils package's embedded
+// defaults — the same on-disk geometry RenderRecoveryPrompt's and RenderMasterPrompt's now-hoisted
+// pattern.Directive call reads through stencilstore.Read.
+// Split out from seedHubStencils for the same reason as seedHubWebsterStencils.
+func seedHubPatternStencils(t *testing.T, hub string) {
+	t.Helper()
+	patternDir := filepath.Join(fabricengine.StencilsDir(hub), "pattern")
+	if err := os.MkdirAll(patternDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+	}
+	files := map[string][]byte{
+		"pattern-directive-implementer.md":  stencils.PatternDirectiveImplementer,
+		"pattern-directive-review-fix.md":   stencils.PatternDirectiveReviewFix,
+		"pattern-directive-orchestrator.md": stencils.PatternDirectiveOrchestrator,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(patternDir, name), content, 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", name, err)
+		}
+	}
+}
+
+// seedHubStencils seeds hub with webster's five stencils and the three pattern-directive stencils —
+// everything both testLayout and patternActiveLayout need, since seeding once here covers both.
+func seedHubStencils(t *testing.T, hub string) {
+	t.Helper()
+	seedHubWebsterStencils(t, hub)
+	seedHubPatternStencils(t, hub)
 }
 
 // testLayout returns a *lyxcwd.Location rooted at a real t.TempDir() hub,
@@ -776,6 +810,50 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 		requireContains(t, text, "_lyx/PATTERN.md")
 		requireContains(t, text, "## Constraints")
 	})
+}
+
+// patternActiveMissingPatternStencilsLayout builds a *lyxcwd.Location like patternActiveLayout —
+// PATTERN active, webster's five stencils seeded via seedHubWebsterStencils — but deliberately omits
+// the three pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
+func patternActiveMissingPatternStencilsLayout(t *testing.T) *lyxcwd.Location {
+	t.Helper()
+	hub := t.TempDir()
+	seedHubWebsterStencils(t, hub)
+	dir := filepath.Join(hub, "worktree", "_lyx")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
+	}
+	return &lyxcwd.Location{HubPath: hub, WorktreeName: "worktree", AnchorRel: "."}
+}
+
+// TestRenderRecoveryPrompt_MissingPatternStencilErrors asserts RenderRecoveryPrompt's hoisted
+// pattern.Directive call propagates a non-nil error when PATTERN is active but the pattern-directive
+// stencils are absent, rather than dropping the error the hoist out of the map literal made
+// checkable in the first place.
+func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
+	card := cardWithSourcePath(1, "alpha", "add the flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+	l := patternActiveMissingPatternStencilsLayout(t)
+
+	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", l, 2); err == nil {
+		t.Fatal("RenderRecoveryPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
+	}
+}
+
+// TestRenderMasterPrompt_MissingPatternStencilErrors asserts RenderMasterPrompt's hoisted
+// pattern.Directive call propagates a non-nil error when PATTERN is active but the pattern-directive
+// stencils are absent, rather than dropping the error the hoist out of the map literal made
+// checkable in the first place.
+func TestRenderMasterPrompt_MissingPatternStencilErrors(t *testing.T) {
+	plan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "seam-extensions"}}}
+	l := patternActiveMissingPatternStencilsLayout(t)
+
+	if _, err := websterengine.RenderMasterPrompt(plan, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, l); err == nil {
+		t.Fatal("RenderMasterPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
+	}
 }
 
 // TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt injects the plan's
