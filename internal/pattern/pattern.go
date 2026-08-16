@@ -1,15 +1,19 @@
-// pattern.go implements the PATTERN active check and the three role-specific directive constants
-// Directive selects between.
+// pattern.go implements the PATTERN active check and Directive's role-keyed stencil read: which
+// stencil name a Role selects, and the stencilstore.Read + StripLeadingComment call that turns it
+// into directive text.
 // See doc.go for the package-level rationale.
 
 package pattern
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // patternFileName is the PATTERN entry-point filename. It is this package's
@@ -53,40 +57,19 @@ const (
 	RoleOrchestrator
 )
 
-// implementerDirective is RoleImplementer's directive text, phrased as an imperative checklist with "_lyx/PATTERN.md" as a literal relative pointer (not interpolated).
+// The literal pointers "_lyx/PATTERN.md" and "_lyx/pattern/" now live in the three stencil files
+// below rather than in Go, but they remain plain fixed literals there too — never interpolated from
+// PathspecFile/PathspecDir or any lyxdirs.LyxDirName concatenation.
+// That is what keeps this package's own tests' and every consumer template test's fixed-string
+// equality and substring comparisons meaningful.
 //
-// The literal pointers in the three directive constants below are deliberately
-// not built from PathspecFile/PathspecDir or any lyxdirs.LyxDirName
-// concatenation: they are compared by fixed-string equality and substring
-// match in this package's own tests and in every consumer template test, so
-// keeping them as plain string literals is what makes those comparisons
-// meaningful.
-const implementerDirective = `## Constraints — do this before you write any code
-
-- **STOP.** Read _lyx/PATTERN.md in full before editing a single file.
-- Read every detail doc under _lyx/pattern/ that PATTERN.md points to and that touches what you are about to change.
-- These constraints are BINDING: a change that violates one is wrong even if the verify command passes.
-- If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
-`
-
-// reviewFixDirective is RoleReviewFix's directive text, covering both of the burler round's phases.
-const reviewFixDirective = `## Constraints — do this before you judge or change anything
-
-- Read _lyx/PATTERN.md in full before forming any judgment.
-- Read every detail doc under _lyx/pattern/ that PATTERN.md points to and that touches what you are about to judge or change.
-- In part A, every violation of a listed constraint is a BLOCKING finding: record it no matter how small it looks, and never wave it through because the code works or the tests pass.
-- In part B, the fix must not introduce a violation of its own: a fix that trades one finding for a constraint breach is not a fix.
-- If a constraint conflicts with anything else in this prompt, the constraint wins — say so in your report instead of silently picking one.
-`
-
-// orchestratorDirective is RoleOrchestrator's directive text, worded for forking rather than editing.
-const orchestratorDirective = `## Constraints — do this before you fork anything
-
-- Read _lyx/PATTERN.md in full before forking a single implementer.
-- Read every detail doc under _lyx/pattern/ that PATTERN.md points to and that touches what the forks you are about to spawn will do.
-- Every fork inherits its context, so reading this once here is what puts the constraints in front of all of them; it must not be skipped on the grounds of not editing code.
-- The constraints are BINDING on the forks it spawns: a batch report trading a constraint for a passing verify is a failed batch, not a success.
-`
+// implementerDirectiveStencil, reviewFixDirectiveStencil, and orchestratorDirectiveStencil name the
+// stencil Directive reads for each Role, one constant per role so each name is written exactly once.
+const (
+	implementerDirectiveStencil  = "pattern-directive-implementer"
+	reviewFixDirectiveStencil    = "pattern-directive-review-fix"
+	orchestratorDirectiveStencil = "pattern-directive-orchestrator"
+)
 
 // statFile is the stat implementation isActive calls. It is a package-level
 // variable — rather than a hardcoded os.Stat call — purely so this
@@ -97,28 +80,41 @@ const orchestratorDirective = `## Constraints — do this before you fork anythi
 var statFile = os.Stat
 
 // Directive reports whether PATTERN is active and returns the role's directive text to inject into
-// the agent's prompt,
-// or empty string if inactive or role is unknown.
-func Directive(l *lyxcwd.Location, role Role) string {
+// the agent's prompt, read from stencilsDir and stripped of its leading banner.
+// It returns ("", nil) with no read attempted at all for a nil l, an inactive PATTERN, or an unknown
+// or zero role.
+// It returns ("", err) when PATTERN is active, role is known, and the stencil read fails.
+func Directive(l *lyxcwd.Location, stencilsDir string, role Role) (string, error) {
 	if l == nil {
-		return ""
+		return "", nil
 	}
 	if !isActive(l) {
-		return ""
+		return "", nil
 	}
+
+	var name string
 	switch role {
 	case RoleImplementer:
-		return implementerDirective
+		name = implementerDirectiveStencil
 	case RoleReviewFix:
-		return reviewFixDirective
+		name = reviewFixDirectiveStencil
 	case RoleOrchestrator:
-		return orchestratorDirective
+		name = orchestratorDirectiveStencil
 	default:
-		// An unknown or zero Role renders no directive; this default case
-		// is what makes that behaviour defined and documented rather than
-		// an unhandled fall-through.
-		return ""
+		// An unknown or zero Role renders no directive and attempts no read;
+		// this default case is what makes that behaviour defined and
+		// documented rather than an unhandled fall-through.
+		return "", nil
 	}
+
+	content, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		// stencilstore.Read's own error already names both the stencil and
+		// the base directory, so this wrap adds only the calling package's
+		// house prefix, not the stencil name a second time.
+		return "", fmt.Errorf("pattern: directive stencil: %w", err)
+	}
+	return stencil.StripLeadingComment(string(content)), nil
 }
 
 // isActive reports whether PATTERN is active: an absent FileHere(l) means inactive; a directory in its place is also inactive; otherwise active.
