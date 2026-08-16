@@ -311,7 +311,9 @@ Three engines are in play today, so three adapters:
 - Decision: each adapter is built by a `New...(...)` constructor and holds unexported fields.
 - Rationale: the adapters are engine-shaped, not config-shaped — they hold live seams a caller has already constructed, and there is no field a human hand-edits.
   Matches both `perchengine.New` and `burlerengine.New`.
-- Rejected: exported-field structs mirroring `shedengine.Shed` — visually symmetric with the thing they plug into, but `Shed`'s explicit reason for that shape (a validated field set a human configures, where a constructor "would create a second, unvalidated way to build one", `internal/shedengine/shed.go:6-9`) does not apply to a wrapper over live seams.
+- Rejected: exported-field structs mirroring `shedengine.Shed` — visually symmetric with the thing they plug into, but `Shed`'s explicit reason for that shape does not apply to a wrapper over live seams.
+  That reason is stated in two places: `internal/shedengine/shed.go:6-9` ("there is no `New` constructor, which would leave a bare struct literal as a second, unvalidated door") and `manifest/designs/shed.md:168` ("would create a second, unvalidated way to build one").
+  Both describe a validated field set a human configures — which the adapters, holding seams a caller has already built, are not.
 
 ### Type names
 
