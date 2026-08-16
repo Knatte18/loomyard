@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: shed-adapters
 branch: shed-adapters
 plan: _mill/plan
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-16T14:00:14Z'
 discussed  '2026-08-16T15:09:07Z'
 planning  '2026-08-16T15:17:43Z'
+plan-fix-r1  '2026-08-16T15:29:08Z'
 ```

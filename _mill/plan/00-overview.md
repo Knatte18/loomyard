@@ -115,8 +115,10 @@ Batch-local decisions live in each batch file._
 ### Decision: the doc set lands in this task
 
 - **Decision:** batch 4 carries the package `doc.go`, five named corrections in `manifest/designs/shed.md`, three edits in `docs/overview.md`, and three in `manifest/roadmap.md`.
+  `manifest/designs/shed.md` is **kept**, and its retention is justified explicitly against the Documentation Lifecycle's two-class taxonomy rather than reworded into a fresh rationale — the file is the shared narrative four still-unbuilt modules and one durable reference doc are written against, not a per-module design draft whose module has now landed.
   No new `CONSTRAINTS.md` invariant is expected; if a batch discovers one, it lands in the same commit.
 - **Rationale:** `CLAUDE.md`'s same-commit rule, plus the fact that four of the five shed.md claims become false the moment this package ships.
+  The explicit retention justification exists because this task deletes the Planned item shed.md's current survival clause rests on, so leaving a reworded clause behind would hand the next reader an unexplained exemption from a lifecycle rule every sibling engine's design doc did follow.
 - **Applies to:** batch 4
 
 ## All Files Touched

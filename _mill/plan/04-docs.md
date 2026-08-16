@@ -52,13 +52,23 @@ Batch-local decision, additional to `## Shared Decisions` in the overview: every
   - `internal/shedadapters/doc.go`
   - `internal/shedadapters/singlellm.go`
   - `CONSTRAINTS.md`
+  - `docs/overview.md`
+  - `docs/reference/status-schema.md`
+  - `manifest/designs/loom.md`
+  - `manifest/designs/hardener.md`
+  - `manifest/designs/finalize.md`
+  - `manifest/designs/raddle.md`
 - **Edits:**
   - `manifest/designs/shed.md`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** apply exactly five corrections, leaving every other line of the file alone.
-  (1) The status banner in the blockquote on line 3: the three engine adapters are no longer Planned — they ship as `internal/shedadapters` — so the banner names the package, and the doc's Documentation-Lifecycle survival rationale is restated on its own footing (this doc remains the authoritative narrative of Shed's own generic mechanism), since the current rationale rests on a Planned item this task deletes.
+  (1) The status banner in the blockquote on line 3: the three engine adapters are no longer Planned — they ship as `internal/shedadapters` — so the banner names the package, and the doc's Documentation-Lifecycle disposition is stated **explicitly and justified**, not silently reworded, since the current rationale rests on a Planned item this task deletes.
+  The justification the banner must make, against the two-class taxonomy in `docs/overview.md`'s own lifecycle section: this file is not a per-module design draft whose module has now landed, the class that gets deleted.
+  It is the shared narrative four still-unbuilt modules are written against — `manifest/designs/loom.md` explicitly assigns it authority over Shed's own generic mechanism while keeping loom's producer list for itself, and `manifest/designs/hardener.md`, `manifest/designs/finalize.md`, and `manifest/designs/raddle.md` each build on that same narrative, as does the durable `docs/reference/status-schema.md`.
+  Several of those references are anchor-bearing links that Markdown Link Integrity enforces, so deleting the file would break live links in docs whose own modules are not built.
+  Say that in the banner, in one or two sentences, so a later reader can re-evaluate the retention when those modules do land rather than inheriting an unexplained exemption.
   (2) Line 38's "This is written down rather than assumed because three of the four planned adapters — `perch`, `Webster`, and a bespoke multi-spawn engine — own their own error taxonomies and are not designed yet", now false for two of the three: reword so the sentence states the obligation's stakes without asserting the adapters are undesigned.
   (3) Line 255's parenthetical "`SingleLLMProducer` wraps `shuttle`+`reed` and does this internally", which claims the full live-session/fresh-output/respawn three-case discipline: correct it to the as-built behaviour — the adapter archives stale outputs and respawns, and does not reattach.
   (4) Line 261's bullet under "What `Shed` does not provide", "Crash-recovery of live-session state (reattach vs. respawn) — inside `SingleLLMProducer`/`perch`/`Webster`'s own `Call()`", which restates the same reattach claim in different words: correct it the same way, so the two lines agree.
@@ -98,7 +108,7 @@ Batch-local decision, additional to `## Shared Decisions` in the overview: every
   (1) Remove Planned item 1 (lines 12-14, the three-adapters item) and add a corresponding entry at the end of the Done section — after the Shed skeleton entry, which is the section's current last item — stating what shipped: three reusable producer implementations in one new package, each a thin wrapper over an already-shipped engine, with the same design-doc link the Planned item carried.
   (2) Reword line 16's "`Discussion-Review` (wired via the `perch` adapter above)" in the loom Discussion-phase producers item, whose "above" dangles once Planned item 1 leaves the Planned section: point it at the shipped package instead.
   (3) Update the Shed skeleton's Done entry (lines 196-199), whose two claims both become false here — that the three adapters "remain their own Planned item above", and that the design doc survives its landing *because* of that Planned item.
-  Restate the survival rationale on its own footing: the doc remains the authoritative narrative of Shed's generic mechanism, independent of any Planned item.
+  Point the survival clause at the retention justification card 11 writes into the design doc's own banner, rather than restating a second, independently-worded rationale here that could drift from it.
   Write every list item literally as `1.` per the file's own Maintenance section, keep every inline link's file part and anchor resolving, and keep the repo's one-sentence-per-line markdown convention.
 - **Commit:** `docs(roadmap): move Shed's engine adapters from Planned to Done`
 
@@ -106,6 +116,9 @@ Batch-local decision, additional to `## Shared Decisions` in the overview: every
 
 `verify: go test ./internal/shedadapters/... ./internal/lyxcwd/...` covers both halves of what this batch touches.
 The `shedadapters` package is re-run because `doc.go` is production Go in it and must still compile.
-`internal/lyxcwd` is the package that hosts the three enforcement tests these doc edits can break: the markdown-link integrity walk over `manifest/` and `docs/`, the fabric-vocabulary walk over production Go under `internal/` plus `internal/**/*.md`, and the geometry-literal walk — the first two of which read exactly the files edited here, and the third of which reads the new `doc.go`.
+`internal/lyxcwd` is the package that hosts the three enforcement tests these doc edits can break: the markdown-link integrity walk, the fabric-vocabulary walk, and the geometry-literal walk.
+Their reach over this batch's files is uneven, and stating it precisely matters more than claiming blanket coverage: the markdown-link walk scans `manifest/` and `docs/`, so it is the only one that reads all three edited `.md` files;
+the fabric-vocabulary walk's markdown half covers `internal/**/*.md` and `stencils/**/*.md` only, so among this batch's files it reads nothing but the new `doc.go` through its production-Go half;
+the geometry-literal walk likewise reaches only `doc.go`.
 That is a scoped two-package run, not the full suite;
 the repo-wide regression sweep is `pipeline.done_gate`'s job at Handoff, not this batch's.
