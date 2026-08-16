@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/stencils"
 )
@@ -357,5 +358,145 @@ func TestDirective_NonNotExistStatErrorIsActive(t *testing.T) {
 	}
 	if got == "" {
 		t.Error("Directive() with a non-IsNotExist stat error = \"\"; want the directive text (active)")
+	}
+}
+
+// TestDirective_LazyRead pins the read as lazy: on every inactive path Directive returns ("", nil)
+// without ever touching stencilsDir, so an eager-read refactor that would break burlerengine's,
+// websterengine's, and loomengine's inactive-PATTERN fixtures fails here first, locally, before it
+// ever reaches those packages' own tests.
+func TestDirective_LazyRead(t *testing.T) {
+	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
+
+	t.Run("PATTERN inactive, stencilsDir does not exist", func(t *testing.T) {
+		root := t.TempDir()
+		l := layoutAt(root, ".")
+		got, err := Directive(l, missingStencilsDir, RoleImplementer)
+		if err != nil {
+			t.Fatalf("Directive(inactive, missing stencilsDir) = _, %v; want nil error", err)
+		}
+		if got != "" {
+			t.Errorf("Directive(inactive, missing stencilsDir) = %q; want \"\"", got)
+		}
+	})
+
+	t.Run("nil layout, stencilsDir does not exist", func(t *testing.T) {
+		got, err := Directive(nil, missingStencilsDir, RoleImplementer)
+		if err != nil {
+			t.Fatalf("Directive(nil, missing stencilsDir) = _, %v; want nil error", err)
+		}
+		if got != "" {
+			t.Errorf("Directive(nil, missing stencilsDir) = %q; want \"\"", got)
+		}
+	})
+}
+
+// TestDirective_MissingStencilErrors pins the fail-loud posture on a read failure: PATTERN active,
+// plus a stencilsDir that exists but carries none of the three pattern stencils, returns a non-nil
+// error naming the missing stencil, for every role. See
+// TestDiscussionSpec_MissingStencilsDirIsHardError in internal/loomengine/discussion_test.go for the
+// same shape's precedent.
+func TestDirective_MissingStencilErrors(t *testing.T) {
+	root := t.TempDir()
+	writePatternFile(t, root, "content")
+	l := layoutAt(root, ".")
+	emptyStencilsDir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		role    Role
+		stencil string
+	}{
+		{"Implementer", RoleImplementer, implementerDirectiveStencil},
+		{"ReviewFix", RoleReviewFix, reviewFixDirectiveStencil},
+		{"Orchestrator", RoleOrchestrator, orchestratorDirectiveStencil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Directive(l, emptyStencilsDir, tt.role)
+			if err == nil {
+				t.Fatalf("Directive(active, %v, empty stencilsDir) = %q, nil; want a non-nil error", tt.role, got)
+			}
+			if !strings.Contains(err.Error(), tt.stencil) {
+				t.Errorf("Directive(active, %v, empty stencilsDir) error = %q; want it to name the missing stencil %q", tt.role, err.Error(), tt.stencil)
+			}
+		})
+	}
+}
+
+// TestDirective_StripsBanner is the regression guard for the correctness bug that would otherwise
+// ship: stencilstore.Read does not strip a leading banner, and Directive's returned value never
+// passes through stencil.Fill (which is the only other place a banner strip could happen), so
+// Directive itself must be the one that strips it. Directive against newTestStencilsDir(t) — whose
+// files carry a realistic leading banner including a `lyx-stencil:` stamp line, because that helper
+// writes them through stencilstore.ApplyStamp — must return text beginning at the `## ` heading and
+// containing no `<!--` anywhere, for every role.
+func TestDirective_StripsBanner(t *testing.T) {
+	root := t.TempDir()
+	writePatternFile(t, root, "content")
+	l := layoutAt(root, ".")
+	stencilsDir := newTestStencilsDir(t)
+
+	tests := []struct {
+		name string
+		role Role
+	}{
+		{"Implementer", RoleImplementer},
+		{"ReviewFix", RoleReviewFix},
+		{"Orchestrator", RoleOrchestrator},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Directive(l, stencilsDir, tt.role)
+			if err != nil {
+				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
+			}
+			if !strings.HasPrefix(got, "## ") {
+				t.Errorf("Directive(active, %v) = %q; want it to begin with its own \"##\" heading, not a leading banner", tt.role, got)
+			}
+			if strings.Contains(got, "<!--") {
+				t.Errorf("Directive(active, %v) = %q; want no leftover \"<!--\" banner content", tt.role, got)
+			}
+		})
+	}
+}
+
+// TestDirective_StrippedBodyMatchesEmbeddedDefault asserts each role's returned text equals
+// stencil.StripLeadingComment(string(<the matching stencils package embedded default>)) — never
+// whole-file byte equality against the on-disk fixture (which carries a banner and a stamp the
+// return value never does) and never equality against the raw embedded default (which still carries
+// its own banner).
+//
+// This is a cheap tripwire against a future edit to a stencil file drifting from the embedded
+// default, not proof the relocation was faithful — with the constants deleted it effectively
+// compares the stencil against itself. What actually pins the relocation is
+// TestDirective_VariantsArePairwiseDistinct, TestDirective_VariantsBeginWithOwnHeading, and loom's
+// own end-to-end PATTERN-active ordering assertion.
+func TestDirective_StrippedBodyMatchesEmbeddedDefault(t *testing.T) {
+	root := t.TempDir()
+	writePatternFile(t, root, "content")
+	l := layoutAt(root, ".")
+	stencilsDir := newTestStencilsDir(t)
+
+	tests := []struct {
+		name            string
+		role            Role
+		embeddedDefault []byte
+	}{
+		{"Implementer", RoleImplementer, stencils.PatternDirectiveImplementer},
+		{"ReviewFix", RoleReviewFix, stencils.PatternDirectiveReviewFix},
+		{"Orchestrator", RoleOrchestrator, stencils.PatternDirectiveOrchestrator},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Directive(l, stencilsDir, tt.role)
+			if err != nil {
+				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
+			}
+			want := stencil.StripLeadingComment(string(tt.embeddedDefault))
+			if got != want {
+				t.Errorf("Directive(active, %v) = %q; want %q (StripLeadingComment of the embedded default)", tt.role, got, want)
+			}
+		})
 	}
 }
