@@ -31,8 +31,8 @@ This discussion adopts that design with three corrections, all recorded under De
 - The three `const` blocks in `internal/pattern/pattern.go` are deleted, along with the file-header and pre-constant comments that describe them.
 - All four call sites updated — two are a one-line change, two need the call hoisted out of a map literal.
 - `internal/pattern`'s leaf-invariant allowlist extended by two entries, at all three places the leaf test states it plus `CONSTRAINTS.md`.
-- Test migration in `internal/pattern`, `internal/websterengine`, and `internal/loomengine`, plus three new tests.
-- Four doc updates: `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`.
+- Test migration in `internal/pattern`, `internal/websterengine`, and `internal/loomengine`, plus four new tests: lazy-read, missing-stencil error, banner-strip, and stripped-body equality with the embedded default.
+- Five doc updates: `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`, and `tools/sandbox/SANDBOX-CORE-SUITE.md`.
 
 **Out:**
 
@@ -139,13 +139,25 @@ This discussion adopts that design with three corrections, all recorded under De
 - Rationale: identical `<family>/<family>-<type>-<role>.md` shape to the fifteen existing stencils, and `entries` order is the `lyx stencil list` print order, so a new family reads naturally appended.
 - Rejected: inserting the `pattern` block first in `entries`.
 
-### All four doc updates land in this commit
+### All five doc updates land in this commit
 
-- Decision: `CONSTRAINTS.md` (Pattern Leaf Invariant allowlist), `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md` (status flip plus the step-3 correction), and `manifest/roadmap.md` (item complete) all change in the same commit as the code.
+- Decision: five docs change in the same commit as the code.
+  - `CONSTRAINTS.md` — Pattern Leaf Invariant allowlist, two entries.
+  - `internal/pattern/doc.go` — the module doc.
+  - `manifest/designs/pattern-directive-stencils.md` — status flip, plus corrections to **both** step 3 and step 4, plus the banner-strip step the design doc omits entirely.
+  - `manifest/roadmap.md` — item complete.
+  - `tools/sandbox/SANDBOX-CORE-SUITE.md:232` — "all fifteen registered stencils" becomes eighteen.
 - Rationale: `doc.go:53-54` currently states the pointer is "a literal relative string baked into the directive constant" — false the moment the text moves to a stencil file, so it cannot be deferred.
   The repo's task-completion rule requires the module doc, the design-doc status, and the roadmap to move with the code that makes them true.
   `manifest/roadmap.md:20` carries this item, so the roadmap does move here — this is a planned item completing, not a bugfix or polish pass.
-- Rejected: deferring the design doc and roadmap to a later pass.
+  The design doc needs three corrections, not one: step 3 specifies the fail-silent posture this task overrides;
+  step 4 claims the change is "plumbing-free" because "websterengine's functions already take it as a parameter", which `render.go:181` and `:240` contradict — both derive `fabricengine.StencilsDir(l.HubPath)` internally instead;
+  and no step mentions the banner strip at all, without which the relocation is not behaviour-preserving.
+  Leaving a shipped design doc asserting three things the code disproves is worse than having no design doc.
+  The sandbox suite's count is a literal number that this task falsifies, in a file whose whole purpose is to be read and executed by a human or agent running the suite.
+- Rejected: deferring the design doc and roadmap to a later pass;
+  correcting only step 3 of the design doc;
+  leaving the sandbox count stale.
 
 ## Technical context
 
@@ -180,7 +192,7 @@ Each needs the call hoisted above the `values` map, its error checked, and the l
 - `internal/websterengine/render.go:238` — inside `RenderMasterPrompt`, which returns `([]byte, error)`.
 
 Neither webster function takes `stencilsDir` as a parameter — the brief's claim that "websterengine's functions already take it as a parameter" is wrong.
-Both derive it internally as `fabricengine.StencilsDir(l.HubPath)` (lines 180 and 239), for the template read that follows the map.
+Both derive it internally as `fabricengine.StencilsDir(l.HubPath)` (lines 181 and 240), for the template read that follows the map.
 The simplest shape is to hoist that derivation to a local above the map and use it for both the `Directive` call and the existing template read, rather than calling `fabricengine.StencilsDir` twice.
 No signature change is needed at either webster site.
 
@@ -215,7 +227,7 @@ Three packages already have the exact helper shape needed, all seeding from the 
 
 - `internal/burlerengine/prompt_test.go:22` — `newTestStencilsDir(t)`, seeds burler's four.
 - `internal/loomengine/prompt_test.go:20` — `newTestStencilsDir(t)`, seeds loom's two.
-- `internal/websterengine/template_test.go:45` — plus `seedHubStencils(t, hub)` at line 128, which seeds webster's five under the real `fabricengine.StencilsDir(hub)` location.
+- `internal/websterengine/template_test.go:45` — plus `seedHubStencils(t, hub)` declared at line 122, which seeds webster's five under the real `fabricengine.StencilsDir(hub)` location.
 
 Which of them must grow the three new files follows from the lazy-read decision:
 
@@ -224,10 +236,10 @@ Which of them must grow the three new files follows from the lazy-read decision:
   without seeding, that test hard-errors under the fail-loud posture.
 - **`internal/websterengine/template_test.go`'s `seedHubStencils` — must.** `patternActiveLayout` (line ~165) plants a real `_lyx/PATTERN.md` under the hub's worktree subdirectory specifically to exercise the active branch.
   `testLayout` (line ~145) never creates the worktree subdirectory, so PATTERN stays inactive there and those tests would pass either way — but both fixtures call the same `seedHubStencils`, so seeding once covers both.
-- **`internal/burlerengine/prompt_test.go`'s `newTestStencilsDir` — not required.** No burler test activates PATTERN;
+- **`internal/burlerengine/prompt_test.go`'s `newTestStencilsDir` — seed it anyway.** No burler test activates PATTERN today, so nothing there fails without it;
   `template_test.go:142`'s `pattern_directive` value is a hardcoded placeholder in a values map, not a `Directive` call.
-  Seeding it anyway is harmless and arguably more robust against a future burler test that does activate PATTERN;
-  mill-plan may add it or not, but must not *rely* on it being absent.
+  The default is nevertheless to add the three files, for symmetry with the loom and webster helpers and so the first burler test that ever does activate PATTERN does not fail for an unrelated reason.
+  It must not be presented as a fix for a failure — there is no failure there — and it must not be presented as required by anything in this task.
 
 `internal/pattern`'s own tests currently import only `lyxcwd` and `lyxdirs` (`pattern_test.go:15-16`) and need a new package-local `newTestStencilsDir(t)` helper importing `stencils`.
 That import is test-only, and `leaf_enforcement_test.go` skips `*_test.go` files, so the leaf guard is unaffected.
@@ -322,8 +334,8 @@ Extend `newTestStencilsDir` with the three files.
 
 ### `internal/burlerengine`
 
-No change required.
-If mill-plan chooses to seed the three files into `newTestStencilsDir` for symmetry, that is acceptable but must not be presented as a fix for a failure — there is no failure there.
+Seed the three files into `newTestStencilsDir` for symmetry with the loom and webster helpers.
+Nothing here fails without it — no burler test activates PATTERN — so this is a consistency change, not a fix, and must not be reported as one.
 
 ### Scenarios that must be covered
 
@@ -336,13 +348,13 @@ If mill-plan chooses to seed the three files into `newTestStencilsDir` for symme
 
 ## Q&A log
 
-- **Q:** How does `internal/pattern` reach `stencilstore.Read` given the Pattern Leaf Invariant? **A:** Extend the invariant's allowlist by one entry (`internal/stencilstore`), in the test and in `CONSTRAINTS.md`, same commit. Verified independently that `stencilstore` imports only `internal/stencil` and `internal/logger`, neither of which reaches `pattern`, so there is no cycle risk. Rejected: four duplicated read+error-wraps at the call sites; a one-function adapter package.
+- **Q:** How does `internal/pattern` reach `stencilstore.Read` given the Pattern Leaf Invariant? **A:** Extend the invariant's allowlist rather than route around it. (Answered as one entry, `internal/stencilstore`; the banner-strip finding later in this log raised it to two by adding `internal/stencil` — two is the live figure, in the test's three statement sites and in `CONSTRAINTS.md`, same commit.) Verified independently that `stencilstore` imports only `internal/stencil` and `internal/logger`, neither of which reaches `pattern`, so there is no cycle risk. Rejected: four duplicated read+error-wraps at the call sites; a one-function adapter package.
 - **Q:** What happens when the stencil read fails but PATTERN is active? **A:** `Directive` returns `(string, error)` and fails loud. Overrides step 3 of the pre-written design doc, which specified `logger.Warn` + `""`. Verified `stencilstore.Read`'s doc comment states the missing-board-is-a-hard-error contract verbatim, and that all four enclosing functions already return an error.
 - **Q:** Are all four call sites really plumbing-free? **A:** No. `burlerengine/engine.go:103` and `loomengine/plan.go:70` are simple assignments and are trivial. `websterengine/render.go:179` and `:238` are inline map-literal values, and a two-return-value call cannot sit inline as a map value in Go, so both need the call hoisted above the map with an error check. Recorded explicitly so it does not surface as a surprise mid-implementation.
 - **Q:** Should the read be lazy or eager? **A:** Lazy — read only when PATTERN is active and the role is known. Preserves all five existing behaviours bit-for-bit and confines fixture churn to the two test packages that actually activate PATTERN.
 - **Q:** Should `Role` become a string type keyed on the stencil name? **A:** No. Keep `type Role int`; only the `switch` body changes, from yielding a constant to yielding a stencil name. Unrelated API churn against a task whose contract is "no behaviour change".
 - **Q:** File names, Go var names, and registry order? **A:** Follow the existing family convention exactly — `stencils/pattern/pattern-directive-{implementer,review-fix,orchestrator}.md`, vars `PatternDirective{Implementer,ReviewFix,Orchestrator}`, appended to `entries` as a trailing `pattern` family block.
-- **Q:** Which new tests beyond migrating the existing ones? **A:** Three, each pinning a distinct property: lazy-read (inactive + bogus `stencilsDir` → `("", nil)`), missing-stencil error naming the stencil, and byte-for-byte equality with the `stencils` embedded defaults.
-- **Q:** Which docs land in this commit? **A:** All four — `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`. `doc.go:53-54` literally says the pointer is "baked into the directive constant", which goes stale the moment the text moves, so it cannot be deferred.
+- **Q:** Which new tests beyond migrating the existing ones? **A:** Four, each pinning a distinct property: lazy-read (inactive + bogus `stencilsDir` → `("", nil)`); missing-stencil error naming the stencil; banner-strip (a stamped fixture's directive returns text starting at `## ` with no `<!--`); and equality with `stencil.StripLeadingComment` of the `stencils` embedded default — stripped-body equality, never whole-file byte equality, since the on-disk file carries a banner and stamp the return value never does.
+- **Q:** Which docs land in this commit? **A:** All five — `CONSTRAINTS.md`, `internal/pattern/doc.go`, `manifest/designs/pattern-directive-stencils.md`, `manifest/roadmap.md`, and `tools/sandbox/SANDBOX-CORE-SUITE.md:232` (its "all fifteen registered stencils" becomes eighteen). `doc.go:53-54` literally says the pointer is "baked into the directive constant", which goes stale the moment the text moves, so it cannot be deferred. The design doc needs three corrections, not one — steps 3 and 4 are both false, and the banner strip is absent from it entirely.
 - **Q:** Verify command? **A:** `go build ./... && go test ./...`. The invariant guards span four-plus unrelated packages; a scoped list is one omission away from false confidence.
 - **Q:** `stencilstore.Read` returns the stamp banner and `Directive`'s return never passes through `stencil.Fill`, so nothing strips it — how is that handled? **A:** `Directive` calls `stencil.StripLeadingComment` on the bytes it reads, which makes the leaf-invariant amendment two entries (`internal/stencilstore` + `internal/stencil`) rather than one. Verified independently: `Reconcile` stamps via `ApplyStamp` at `reconcile.go:133`, `Read` is a bare `os.ReadFile` at `reconcile.go:28`, and `FillOptional` strips at `internal/stencil/stencil.go:27` — which is exactly why every other consumer is unaffected and this one is not. `internal/stencil` imports no internal package, so the second entry is cycle-free by construction. Rejected a new `stencilstore.ReadBody` helper (shared API for one consumer, and it would fork the strip away from `Fill`'s copy).

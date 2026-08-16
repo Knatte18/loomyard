@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r2
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-16T14:07:56Z'
+discussion-fix-r2  '2026-08-16T14:33:22Z'
 ```
