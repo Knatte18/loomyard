@@ -35,7 +35,9 @@ batches:
     commit_sha: 8a816d9f3d342d038d64ed6f83fc91ce62725353
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: perch-producer
-    state: pending
+    state: running
+    implementer_session: be870bd6-8ef0-45c6-9c16-ddaf3b333a66
+    start_sha: 99dae15911c5e500e56a9ef24fe1d7fdc8a4b042
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: webster-producer
     state: pending
