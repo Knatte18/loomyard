@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-stencil-files
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r3  '2026-08-16T15:22:28Z'
 plan-review-r4  '2026-08-16T15:27:32Z'
 planned  '2026-08-16T15:27:41Z'
 implementing  '2026-08-16T15:28:08Z'
+approved-stencil-files  '2026-08-16T15:32:09Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-08-16T15:28:08Z'
 ```yaml
 batches:
   - name: stencil-files
-    state: running
+    state: approved
     implementer_session: c60a03c2-5840-4723-b0c4-dd624fd0ac7a
     start_sha: 95db1b89123cf9873759dbf960241899c8176f52
+    commit_sha: 24a768e2ffd728e0ef019ed636f2ee477eea566c
     verify_baseline_failures: []
   - name: directive-read-path
     state: pending
