@@ -42,7 +42,9 @@ batches:
     commit_sha: 357337e6279e5db7ff3fec9f5e1e1593a7abee80
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: webster-producer
-    state: pending
+    state: running
+    implementer_session: 0f89475b-2048-4d93-acd7-09d3c8badf75
+    start_sha: 9b7ad49be10add09ef89708023292b8042641309
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: docs
     state: pending
