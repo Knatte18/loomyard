@@ -49,6 +49,8 @@ batches:
     commit_sha: 90b4406ab71e300f32526a7720b4d9f133f73a11
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
   - name: docs
-    state: pending
+    state: running
+    implementer_session: a95d1c95-a7e2-492d-9c56-864817cc72e0
+    start_sha: 9a7206e96fec0763c3d880298572851238fa2b3e
     verify_baseline_failures: ["FAIL\t./internal/shedadapters/... [setup failed]"]
 ```
