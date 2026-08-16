@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-directive-read-path
+phase: approved-docs
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: _mill/plan
@@ -32,6 +32,7 @@ planned  '2026-08-16T15:27:41Z'
 implementing  '2026-08-16T15:28:08Z'
 approved-stencil-files  '2026-08-16T15:32:09Z'
 approved-directive-read-path  '2026-08-16T15:40:31Z'
+approved-docs  '2026-08-16T15:44:03Z'
 ```
 
 ## Batches
@@ -51,8 +52,9 @@ batches:
     commit_sha: 7068ac90b35362b18d638a8038856fc5870330d6
     verify_baseline_failures: []
   - name: docs
-    state: running
+    state: approved
     implementer_session: 87ae4143-317a-42fd-865e-3c63aa8c81b6
     start_sha: d1e39828d103f5b91cd7cb4df6fc316258414591
+    commit_sha: 939d7889e2b13f50bbbcd5a0d068dd42ea835b85
     verify_baseline_failures: []
 ```
