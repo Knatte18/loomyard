@@ -37,9 +37,14 @@ implementing  '2026-08-16T15:28:08Z'
 ```yaml
 batches:
   - name: stencil-files
-    state: pending
+    state: running
+    implementer_session: c60a03c2-5840-4723-b0c4-dd624fd0ac7a
+    start_sha: 95db1b89123cf9873759dbf960241899c8176f52
+    verify_baseline_failures: []
   - name: directive-read-path
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
