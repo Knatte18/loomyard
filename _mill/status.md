@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs
+phase: holistic-reviewing
 slug: shed-adapters
 branch: shed-adapters
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-package-foundation-and-singlellm  '2026-08-16T15:43:53Z'
 approved-perch-producer  '2026-08-16T15:49:34Z'
 approved-webster-producer  '2026-08-16T15:53:08Z'
 approved-docs  '2026-08-16T15:57:08Z'
+holistic-reviewing  '2026-08-16T15:57:44Z'
 ```
 
 ## Batches
