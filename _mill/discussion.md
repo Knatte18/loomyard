@@ -72,12 +72,22 @@ Three engines are in play today, so three adapters:
 
 ### Stale output files — archive, then respawn
 
-- Decision: before starting a shuttle run, `SingleLLMProducer` renames every existing `Spec.OutputFiles` entry to a timestamped sibling (`<name>-<UTC-timestamp><ext>`, with a numeric suffix on collision), then starts the run.
+- Decision: `SingleLLMProducer` **requires every `Spec.OutputFiles` entry to be an absolute path** and returns an error naming the offending entry when one is relative.
+  Given that, before starting a shuttle run it renames every existing entry to a timestamped sibling (`<name>-<UTC-timestamp><ext>`, with a numeric suffix on collision), then starts the run.
+  The `OutputPointer` it reports on `Done` is `Spec.OutputFiles[0]`, the first entry.
 - Rationale: `shuttleengine.Spec.validate` hard-rejects a pre-existing `OutputFiles` entry (`internal/shuttleengine/spec.go:136-143`) — the file contract's "done is bare file existence" rule means a stale file would classify a run done on its first turn end.
   Shed re-calls a producer **unconditionally** on every resume and every `OnStuck` bounce-back (`manifest/designs/shed.md:253-257`), so without this the adapter breaks permanently the second time it runs.
   Archiving rather than deleting reuses an existing, deliberately reusable in-repo pattern: `websterengine`'s `archiveStaleOutcome` (`outcome.go:77`) and `ArchiveStaleSummary` (`summary.go:77`), whose own doc comment names it "the same archive-never-refuse timestamp-rename discipline".
   The prior attempt stays inspectable for a human diagnosing a bounce loop.
-- Rejected: deleting instead of archiving — loses the prior attempt's artifact for no gain.
+  **Why absolute entries are a precondition rather than something the adapter resolves:** `Spec.validate` resolves relative entries against the worktree root, but it runs *inside* `Runner.Start` — after the archive step (`internal/shuttleengine/spec.go:115-134`).
+  An adapter that archived relative entries would resolve them against its own process cwd, which the Cwd Resolution Invariant forbids it from even reading.
+  Requiring absolute entries keeps the adapter geometry-blind, and costs the caller nothing: `loomengine.DiscussionSpec` and `burlerengine` both already build absolute `OutputFiles`.
+  **Why the first entry is the pointer:** both shipped `Spec` builders already order the primary artifact first — `burlerengine` emits `[ReviewPath, FixerReportPath]` (`internal/burlerengine/engine.go:136`) and `loomengine.DiscussionSpec` emits `[decisionRecordPath, supportLogPath]` (`internal/loomengine/discussion.go:43`).
+  A first-entry rule needs no new field on `Spec`, no extra constructor argument, and no per-producer configuration; it is documented as a convention a `Spec` source honors by ordering.
+- Rejected: silently resolving a relative entry — needs a worktree root the adapter must not resolve.
+  Rejected: an explicit primary-output constructor argument or index — duplicates a value `Spec` already carries, and lets the two disagree.
+  Rejected: reporting every output file — `OutputPointer` holds exactly one `Path`.
+  Rejected: deleting instead of archiving — loses the prior attempt's artifact for no gain.
   Rejected: returning `Done` when every output already exists — `shed.md:253-257` rejects exactly this shortcut at Shed level, and its reason applies identically here: after a bounce-back the previous attempt's output is still on disk, and existence alone cannot distinguish stale from fresh.
 
 ### Reattach out of scope — `SingleLLMProducer` is respawn-only
@@ -91,17 +101,63 @@ Three engines are in play today, so three adapters:
   That claim would become false the moment this adapter ships, so correcting it is part of the task, not optional cleanup.
 - Rejected: adding a `shuttleengine.Attach(guid) (*Run, error)` and wiring it — real scope growth, and no current caller needs the third case.
 
-### Context cancellation — entry check, pause-seam bridge, exit precedence
+### Context cancellation — entry check, exit precedence, and a bridge only where one is installable
 
-- Decision: every adapter follows the same three-part discipline.
+- Decision: every adapter shares two parts of the discipline unconditionally.
   (1) **Entry:** if `ctx.Err() != nil`, return it immediately without starting anything.
-  (2) **Bridge:** wire `func() bool { return ctx.Err() != nil }` into the engine's existing pause seam where one exists — `perchengine.Options.PauseRequested` (`internal/perchengine/engine.go:43`, checked between rounds) and Webster's scratch-dir pause flag (`internal/websterengine/pause.go`: `RequestPause`/`PauseRequested`/`ClearPause`) — so a cancel mid-run drains to an orderly `PAUSED` rather than being invisible.
-  (3) **Exit:** on return, `ctx.Err() != nil` wins over any verdict the engine produced and is returned as the non-nil error.
+  (2) **Exit:** on return, `ctx.Err() != nil` wins over any verdict the engine produced and is returned as the non-nil error.
+  The third part — a mid-run bridge that lets a cancel reach the running engine — is installed for **perch only**, because perch is the only one of the three whose pause seam is a callback the adapter can supply.
+  The per-engine mechanics and their accepted consequences are the three Decisions immediately below.
 - Rationale: none of the three engines take a `context.Context` — `shuttleengine.Runner.Run(Spec)`, `perchengine.Engine.Run(p, runDir, scratchDir, stencilsDir)`, and `websterengine.Run(deps, opts)` are all synchronous and ctx-free — yet `ShedProducer`'s second unenforceable obligation is that cancellation surfaces as a non-nil error, never as `Stuck` (`internal/shedengine/producer.go:26-32`).
   Shed's routing predicate is the context's own state (`ctx.Err() != nil`), which routes to the clean `state: "paused"` exit rather than `failed`.
-  The bridge is reuse of shipped seams, not new surface.
-- Rejected: entry and exit checks only, with no bridge — a cancel would be invisible until the producer finished on its own, potentially hours.
-  Rejected: running the engine in a goroutine and `select`ing on `ctx.Done()` — abandons a live engine mid-write, leaking tmux panes and racing `state.json`; the one option of the three that risks the real hazard.
+  Entry and exit checks alone satisfy that obligation in every case; the bridge is a responsiveness improvement, available only where an engine already exposes a callback for it.
+- Rejected: running the engine in a goroutine and `select`ing on `ctx.Done()` — abandons a live engine mid-write, leaking tmux panes and racing `state.json`; the one option that risks the real hazard.
+  Rejected: forcing a uniform bridge onto all three by inventing the missing mechanism — for Webster and shuttle that means writing an operator-owned flag file or driving a pane, both rejected in their own Decisions below.
+
+### Perch cancellation bridge — installed via a construction-time seam
+
+- Decision: `PerchProducer`'s seam is an engine **factory**, not a bare runner: a `func(pauseRequested func() bool) PerchRunner` supplied by the caller, where `PerchRunner` is the narrow `Run(Profile, runDir, scratchDir, stencilsDir string) (Result, error)` interface.
+  `Call` invokes the factory once per call with `func() bool { return ctx.Err() != nil }`, then runs the returned engine.
+  The caller's factory closes over the burler, shuttle, config, and layout it already holds and returns `perchengine.New(burler, shuttle, cfg, layout, perchengine.Options{PauseRequested: bridge})`.
+- Rationale: `PauseRequested` is a **construction-time** field of `perchengine.Options`, consumed by `perchengine.New` (`internal/perchengine/engine.go:41-67`).
+  It cannot be installed through a `Run(...)` seam over an already-constructed engine, so a seam that took a built `*perchengine.Engine` would make the bridge unbuildable and the corresponding test unwritable.
+  A factory keeps the told-not-derived discipline intact — the adapter is told how to build its engine and still constructs no geometry, resolves no config, and knows nothing about burler or shuttle — while making the bridge both installable and fakeable at tier 1.
+  Responsiveness is round-granular: `PauseRequested` is checked between rounds, and a round is one burler spawn, which is the correct granularity for an orderly drain.
+- Rejected: `PerchProducer` constructing the engine itself from burler/shuttle/cfg/layout — widens what the adapter is told from one seam to four collaborators, and drags `burlerengine` into `shedadapters`' import set for no gain.
+  Rejected: dropping the perch bridge — perch is the one engine where the bridge costs nothing but a closure, and its round loop can run for a long time.
+
+### Webster cancellation — no bridge, bounded by Master's own timeout
+
+- Decision: `WebsterProducer` installs **no** mid-run bridge. Entry and exit checks only.
+  A cancel during a Webster producer is not observed until Master reaches a terminal outcome or its own `MasterTimeoutMin` wall-clock deadline elapses, at which point the exit check converts it to the ctx error and Shed routes to `paused`.
+  This consequence is stated in the package doc, not left implicit.
+- Rationale: Webster exposes no pause callback. Its pause is an on-disk flag file under the scratch dir, written by `RequestPause` and polled by the batch loop (`internal/websterengine/pause.go`, `beginbatch.go`).
+  Bridging into it would require a ctx-watching goroutine writing that flag — which (a) is the operator's own channel, so writing it from an adapter conflates the two channels the ctx-only pause Decision exists to keep separate, (b) races `Run`'s own `ClearPause` calls, and (c) risks leaving the flag set after a cancelled run, permanently pausing the next invocation.
+  The bound is real rather than open-ended: Webster's run is capped by its own `MasterTimeoutMin` config key, which the product sets.
+- Rejected: the ctx-watching flag writer — the three hazards above, each concrete.
+  Rejected: adding a callback seam to `websterengine` — new engine surface, out of scope.
+
+### `SingleLLMProducer` cancellation — no bridge, bounded by `Spec.Timeout`
+
+- Decision: `SingleLLMProducer` installs **no** mid-run bridge. Entry and exit checks only.
+  A cancel during a shuttle run is not observed until the run reaches a terminal outcome or its `Spec.Timeout` deadline elapses, at which point the exit check converts it to the ctx error.
+  This consequence is stated in the package doc.
+- Rationale: `shuttleengine` has no pause seam of any kind — `Runner.Run(Spec)` (`internal/shuttleengine/run.go:174`) is start-and-wait, and the only mid-run levers are `Run.Interrupt`/`Run.Send`, which stop or redirect a **turn** rather than cancelling a run.
+  The wait is bounded by a deadline the caller sets on every `Spec`: `Spec.Timeout`, defaulting to `cfg.RunTimeoutMin` minutes (`internal/shuttleengine/spec.go:82-91, 152-155`).
+  So the accepted consequence is "up to one producer's configured timeout", not "potentially hours with no bound" — which is what makes entry/exit-only correct here and inadequate in the abstract.
+- Rejected: `Start` + a ctx watcher calling `Interrupt`, then `Wait` — `Interrupt` ends the current turn without ending the run or the session (`run.go:206-216`), so the run continues and later classifies `asking` or `timeout` anyway; it also requires a live, input-ready pane (`requireReadyAgentPane`), which a cancelled run may not have. More moving parts, same bound, new failure modes.
+  Rejected: shortening `Spec.Timeout` on cancellation — the deadline is already fixed inside the running engine; there is nothing to shorten.
+
+### `StuckReason` surfaces through the log, never through the seam
+
+- Decision: when the perch or Webster adapter maps a `STUCK`/`stuck` outcome onto `Stuck`, it emits the engine's `StuckReason` via `logger.Warn` (with the producer identity and the engine name) and returns `(Stuck, OutputPointer{}, nil)`.
+  `StuckReason` never rides `OutputPointer.Path` and never becomes a non-nil error.
+- Rationale: `ShedProducer.Call` returns exactly `(Outcome, OutputPointer, error)` (`internal/shedengine/producer.go:30-32`), and Shed's `Stuck` branch requires a nil error, so the seam has no detail channel — leaving it as "the returned detail" would have been a phrase with no implementation.
+  `OutputPointer.Path` is the wrong carrier: Shed persists it verbatim into `history[].output` as an artifact path a human opens, and the perch Decision above pins it empty precisely because a gate produces no artifact.
+  The log is the honest channel, and the underlying reason stays durably readable in each engine's own `state.json` round history regardless.
+- Rejected: putting `StuckReason` in `OutputPointer.Path` — overloads a path field with prose, breaking Shed's own documented meaning for it.
+  Rejected: returning `Stuck` alongside a non-nil error — Shed treats a non-nil error as an engine-level failure and never reads the outcome, so the verdict would be discarded.
+  Rejected: dropping `StuckReason` entirely — it is the only account of *why* a gate gave up, and a human debugging a bounce loop needs it.
 
 ### `SingleLLMProducer` outcome mapping
 
@@ -114,7 +170,7 @@ Three engines are in play today, so three adapters:
 
 ### Perch adapter — outcome mapping and empty `OutputPointer`
 
-- Decision: `OutcomeApproved` → `Done` with an **empty** `OutputPointer`; `OutcomeStuck` → `Stuck` (the `StuckReason` surfaced in the returned detail, not as a third verdict); `OutcomePaused` → error (see the pause Decision below).
+- Decision: `OutcomeApproved` → `Done` with an **empty** `OutputPointer`; `OutcomeStuck` → `Stuck` with an empty `OutputPointer` (the `StuckReason` logged, per the `StuckReason` Decision above, never a third verdict); `OutcomePaused` → error (see the pause Decision below).
 - Rationale: `shed.md:29` names a review gate as the canonical **gate producer** — pass/fail only, no output pointer — whose empty pointer makes it re-run on resume as "a cheap idempotent re-check", which is exactly right for a gate.
   The per-round review files stay discoverable through perch's own `state.json` round history (`internal/perchengine/result.go:40-59`), so nothing is lost by not naming one in Shed's `history[].output`.
 - Rejected: reporting the last round's `ReviewPath` as the pointer — more observable, but declares the gate an artifact producer, contradicting shed.md's own classification and making the pointer's meaning inconsistent with `SingleLLMProducer`'s.
@@ -123,8 +179,8 @@ Three engines are in play today, so three adapters:
 ### Webster adapter — `Fresh` fixed false, error mapping mirrors the shuttle rule
 
 - Decision: `RunOptions.Fresh` is fixed `false` and is not configurable on the adapter.
-  `RunResult.Outcome` `done` → `Done`; `stuck` → `Stuck` (with `StuckReason` in the detail); `paused` → error (see the pause Decision below).
-  `*MasterAskingError` → `Stuck`; `*MasterDiedError`, `*MasterTimeoutError`, `ErrRunBusy`, and `ErrFingerprintMismatch` → non-nil error.
+  `RunResult.Outcome` `done` → `Done`; `stuck` → `Stuck` (with `StuckReason` logged, per the `StuckReason` Decision above); `paused` → error (see the pause Decision below).
+  `*MasterAskingError` → `Stuck`; `*MasterDiedError`, `*MasterTimeoutError`, `ErrRunBusy`, `ErrFingerprintMismatch`, and `ErrNilBatcher` → non-nil error.
 - Rationale: same rule as the `SingleLLMProducer` mapping, applied to Webster's error-typed equivalents (`internal/websterengine/runlevel.go:179-235`) — asking is a verdict, died/timeout are infrastructure.
   `Fresh: true` is the destructive fingerprint-mismatch escape: it archives `state.json` and the reports dir and clears the prompts dir (`runlevel.go:140-146`, `clearRenderedPrompts` at `runlevel.go:243`).
   That must stay an explicit human act via `lyx webster run --fresh`, never something Shed triggers automatically on a resume.
@@ -153,7 +209,9 @@ Three engines are in play today, so three adapters:
 ### Seam interfaces — narrow local interfaces with compile-time proofs
 
 - Decision: `shedadapters` declares its own narrow seam interface per engine that needs one, each with a `var _ Seam = (*concrete)(nil)` compile-time-proof line.
-  Two are needed (`shuttleengine.Runner`'s `Run(Spec) (Result, error)` and `perchengine.Engine`'s `Run(Profile, string, string, string) (Result, error)`); Webster's `Run` is already a free function, so a func-typed seam suffices there.
+  Two interfaces are needed: `Run(shuttleengine.Spec) (shuttleengine.Result, error)`, satisfied by `*shuttleengine.Runner`, and `Run(perchengine.Profile, string, string, string) (perchengine.Result, error)`, satisfied by `*perchengine.Engine`.
+  `PerchProducer` does not hold the second one directly — it holds the factory `func(pauseRequested func() bool) PerchRunner` the perch-bridge Decision pins, which returns it (a compile-time proof line still pins `*perchengine.Engine` against the interface).
+  Webster's `Run` is already a free function, so a func-typed seam suffices there and no interface is declared.
 - Rationale: follows the two shipped precedents exactly — `burlerengine.Shuttle` with `var _ Shuttle = (*shuttleengine.Runner)(nil)` (`internal/burlerengine/engine.go:20-25`) and `perchengine.Burler` with `var _ Burler = (*burlerengine.Engine)(nil)` (`internal/perchengine/engine.go:26-32`).
   This is what makes every adapter testable at tier 1 with a fake — no tmux, no real engine, no git.
 - Rejected: depending on the concrete types — only the Webster one would be fakeable, leaving the other two adapters untestable without live substrate.
@@ -209,7 +267,8 @@ None of the three takes a `context.Context`.
 
 **Told, never derived.** Every adapter receives already-resolved absolute paths and already-constructed engines from its caller.
 No adapter calls `lyxcwd`, constructs a `_lyx` path, or resolves geometry — the same told-not-derived discipline `shedengine`, `treadleengine`, and `perchengine` already hold.
-Concretely: `PerchProducer` is told its `Profile` and its `runDir`/`scratchDir`/`stencilsDir` (resolved today by `perchcli`); `WebsterProducer` is told its fully populated `RunDeps`; `SingleLLMProducer` is told a `Spec` source that already yields absolute `OutputFiles`.
+Concretely: `PerchProducer` is told an engine factory plus its `Profile` and its `runDir`/`scratchDir`/`stencilsDir` (all resolved today by `perchcli`); `WebsterProducer` is told its fully populated `RunDeps`; `SingleLLMProducer` is told a `Spec` source that yields absolute `OutputFiles`.
+The perch factory does not weaken this: the adapter is told *how to build* its engine and still resolves no path, reads no config, and names no collaborator of its own.
 
 **Precedents to follow, by name:**
 
@@ -221,13 +280,12 @@ Concretely: `PerchProducer` is told its `Profile` and its `runDir`/`scratchDir`/
 **Gotchas discovered during exploration:**
 
 - `Spec.validate` mutates its receiver: it rewrites `OutputFiles` in place with resolved absolute paths and defaults `Timeout`/`Display.Anchor` (`spec.go:115-162`).
-  It runs **inside** `Runner.Start`, after the adapter's archive step, so the adapter must resolve `OutputFiles` itself (relative to the worktree root) before archiving, or require the `Spec` source to yield absolute entries.
-  Requiring absolute entries is simpler and matches what `loomengine.DiscussionSpec` already produces.
-- `perchengine.Options.PauseRequested` is documented as checked **only between rounds**, so the ctx bridge gives round-granularity responsiveness there, not instant cancellation. That is the correct granularity — a round is one burler spawn.
-- Webster's pause flag is a file under its scratch dir, written by `RequestPause` and cleared by `ClearPause`.
-  A ctx bridge that writes this flag must also clear it on the way out, or a cancelled run would leave Webster permanently paused for the next invocation.
-  An alternative worth weighing at plan time: pass no bridge for Webster and rely on entry/exit checks alone, since Master is a long single spawn whose pause is already operator-driven.
+  It runs **inside** `Runner.Start`, i.e. after the adapter's archive step — which is why absolute entries are a precondition the adapter enforces rather than something it resolves (see the stale-output Decision).
+- `perchengine.Options.PauseRequested` is checked **only between rounds**, so the ctx bridge gives round-granularity responsiveness, not instant cancellation. That is the correct granularity — a round is one burler spawn.
+- `perchengine.Engine`'s pause callback is fixed at construction (`New`, `engine.go:41-67`), which is what forces the factory seam rather than a bare runner seam. A plan that reintroduces a bare `*perchengine.Engine` seam silently drops the bridge.
+- Webster's pause flag is a file under its scratch dir, written by `RequestPause` and cleared by `ClearPause`, and `Run` clears it on its own paths. This is the operator's channel, and the Webster Decision above deliberately leaves it untouched.
 - `websterengine.Run` refuses with `ErrNilBatcher` when `RunDeps.Batcher` is nil (`runlevel.go:338-340`); the adapter must not paper over a caller's incomplete `RunDeps`.
+- `shedadapters` may import `internal/logger` freely — the Shed Producer-Seam Invariant's import allowlist binds `internal/shedengine` only. The `StuckReason` Decision depends on this.
 
 ## Constraints
 
@@ -262,14 +320,17 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - Archive-then-respawn against a real `t.TempDir()`: a pre-existing output file is renamed to a timestamped sibling and the original path is free when the fake seam is invoked; a second archive in the same timestamp second still succeeds (collision suffix); a missing output file is a no-op, not an error.
 - The `Spec` source returning an error surfaces without the seam ever being called.
 - ctx: already-cancelled at entry → error, seam never invoked; cancelled during the call (fake seam cancels, then returns `OutcomeDone`) → the ctx error wins over the `Done` verdict.
-- `OutputPointer`: which of a multi-entry `OutputFiles` becomes the pointer must be pinned by a test — the decision (first entry, or a separately named primary) belongs to mill-plan, but it must not be left implicit.
+- `OutputPointer` on `Done` is `OutputFiles[0]` — asserted against a multi-entry `Spec` so the first-entry convention is pinned, not incidental.
+- A relative `OutputFiles` entry is rejected with an error that names the entry, and the seam is never invoked.
+- ctx cancelled mid-call is bounded: assert the exit check converts a `Done` verdict to the ctx error, and that the adapter installs no bridge (the fake seam is handed nothing but the `Spec`).
 
 **`PerchProducer`.**
 
 - Mapping table: `APPROVED`→(`Done`, empty `OutputPointer`); `STUCK`→(`Stuck`, empty pointer); `PAUSED` with healthy ctx→non-nil error naming the out-of-band pause.
 - The empty `OutputPointer` on the `Done` path is asserted explicitly — it is a decision, not an omission, and a future reader must see it pinned.
-- `StuckReason` reaches the caller-visible surface (whatever detail channel the adapter uses) for all three `StuckReason` values.
-- ctx: entry check; the pause bridge is actually installed into `Options.PauseRequested` (assert the fake engine observes a bridge that reports `true` once the ctx is cancelled); exit precedence over a returned verdict.
+- `Stuck` returns an empty `OutputPointer` and a **nil** error for all three `StuckReason` values — the reason goes to the log, not the seam, so the assertion is on the seam's shape, not on log text.
+- ctx: entry check (factory never invoked); the bridge is actually installed — the fake factory captures the `pauseRequested` callback it was handed and the test asserts it reports `false` before cancellation and `true` after; exit precedence over a returned `APPROVED`.
+- The factory is invoked once per `Call`, so a second `Call` with a fresh ctx gets a fresh bridge rather than a stale closure over the first ctx.
 - A seam error propagates unchanged.
 
 **`WebsterProducer`.**
@@ -277,7 +338,8 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - Mapping table over `RunResult.Outcome`: `done`→`Done`; `stuck`→`Stuck`; `paused` with healthy ctx→error.
 - Error mapping table: `*MasterAskingError`→`Stuck`; `*MasterDiedError`, `*MasterTimeoutError`, `ErrRunBusy`, `ErrFingerprintMismatch`, `ErrNilBatcher`→non-nil error. Match via `errors.Is` against the exported sentinels, not string comparison.
 - `RunOptions.Fresh` is `false` on every call the adapter makes — assert it from the fake, since this is a safety property, not a default.
-- ctx: entry check and exit precedence; whichever pause-bridge decision the plan lands on (flag file with cleanup, or entry/exit only), its cleanup behavior is asserted — a cancelled run must not leave Webster's pause flag set.
+- ctx: entry check (the seam is never invoked) and exit precedence over a returned `done`.
+- No bridge is installed: assert the adapter never writes Webster's pause flag — a `t.TempDir()` scratch dir stays free of it across a cancelled call, so the operator's channel is provably untouched.
 
 **Compile-time coverage.** A `var _ shedengine.ShedProducer = (*SingleLLMProducer)(nil)` line per adapter, plus the `var _ Seam = (*concrete)(nil)` proofs, so a drift in either direction is a build failure rather than a test failure.
 
@@ -300,3 +362,7 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - **Q:** Test strategy? **A:** Tier 1, fakes for all three seams, table-driven mapping tests. An integration test over a real `Shed` would re-test Shed's already-proven loop.
 - **Q:** Which docs land in this commit? **A:** Package `doc.go`, `manifest/designs/shed.md` corrections (the `:255` reattach overclaim and the `:3` status banner), a `docs/overview.md` tree line and module bullet, and the `manifest/roadmap.md` move of Planned item 1 to Done.
 - **Q:** Type names? **A:** `SingleLLMProducer`, `PerchProducer`, `WebsterProducer` — the first is pinned verbatim in shed.md, the other two follow it without encoding today's classification into the name.
+- **Q:** (review r1 gap) Where does `StuckReason` go, given `Call` returns only `(Outcome, OutputPointer, error)` and the `Stuck` branch requires a nil error? **A:** [auto-pick] `logger.Warn`, with the empty `OutputPointer` preserved. **Why:** `OutputPointer.Path` is an artifact path Shed persists verbatim and a human opens; overloading it with prose breaks its documented meaning, and a non-nil error would make Shed discard the verdict entirely.
+- **Q:** (review r1 gap) `perchengine.Options.PauseRequested` is fixed at construction and cannot be installed through a `Run(...)` seam over a built engine — how is the perch bridge installed? **A:** [auto-pick] the seam becomes an engine factory, `func(pauseRequested func() bool) PerchRunner`, invoked once per `Call`. **Why:** it is the only shape that makes the bridge both installable and fakeable without the adapter learning about burler, shuttle, or config.
+- **Q:** (review r1 gap) Does the Webster adapter install a ctx bridge, and if so how? **A:** [auto-pick] no bridge; entry/exit checks only, bounded by `MasterTimeoutMin`. **Why:** the only mechanism available is writing the operator's own pause flag from a goroutine, which conflates the two pause channels, races `Run`'s own `ClearPause`, and can leave Webster paused for the next invocation.
+- **Q:** (review r1 gap) `shuttleengine` has no pause seam — what is the accepted mid-run cancellation consequence for `SingleLLMProducer`? **A:** [auto-pick] entry/exit only, bounded by `Spec.Timeout` (defaulting to `cfg.RunTimeoutMin`). **Why:** the bound is a real, product-set deadline rather than an open-ended wait, and the `Start`+`Interrupt` alternative ends a turn rather than a run while adding a live-pane precondition.
