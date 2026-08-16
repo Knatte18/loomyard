@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-docs  '2026-08-16T15:44:03Z'
 holistic-reviewing  '2026-08-16T15:44:26Z'
 holistic-approved  '2026-08-16T15:47:32Z'
 done  '2026-08-16T15:48:37Z'
+pr-pending  '2026-08-16T15:49:19Z'
 ```
 
 ## Batches
