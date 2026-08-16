@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: pattern-directive-stencils
 branch: pattern-directive-stencils
 plan: _mill/plan
@@ -23,4 +23,6 @@ discussed  '2026-08-16T14:50:28Z'
 planning  '2026-08-16T15:01:11Z'
 plan-review-r1  '2026-08-16T15:07:54Z'
 plan-fix-r1  '2026-08-16T15:08:39Z'
+plan-review-r2  '2026-08-16T15:15:17Z'
+plan-fix-r2  '2026-08-16T15:15:44Z'
 ```

@@ -28,6 +28,10 @@ their deletion belongs to batch 2, so the prose exists in two places for exactly
   - `internal/loomengine/plan.go`
   - `internal/websterengine/render.go`
   - `internal/burlerengine/engine.go`
+  - `internal/stencilstore/reconcile.go`
+  - `internal/stencilstore/stencilstore.go`
+  - `internal/stencilstore/validate.go`
+  - `internal/stencil/stencil.go`
 - **Edits:** none
 - **Creates:**
   - `stencils/pattern/pattern-directive-implementer.md`
