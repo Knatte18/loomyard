@@ -93,6 +93,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
   - `internal/pattern/pattern.go`
   - `internal/loomengine/prompt_test.go`
   - `internal/stencilstore/stencilstore.go`
+  - `stencils/stencils.go`
 - **Edits:**
   - `internal/pattern/pattern_test.go`
 - **Creates:** none
@@ -158,6 +159,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
 - **Context:**
   - `internal/pattern/pattern.go`
   - `internal/loomengine/plan_test.go`
+  - `stencils/stencils.go`
 - **Edits:**
   - `internal/loomengine/plan.go`
   - `internal/loomengine/prompt_test.go`
@@ -169,7 +171,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
   The call keeps `pattern.RoleImplementer`.
   Nothing else in `PlanSpec` changes, and `composePlanPrompt` keeps its current signature — it already takes the directive as a plain string.
 
-  In `internal/loomengine/prompt_test.go`, extend `newTestStencilsDir` to also seed a `pattern` subdirectory with the three new files from the `stencils` package's embedded defaults, in the same raw-bytes style the helper already uses for loom's two.
+  In `internal/loomengine/prompt_test.go`, extend `newTestStencilsDir` to also seed a `pattern` subdirectory with the three new files from the `stencils` package's embedded defaults — `stencils.PatternDirectiveImplementer` written as `pattern-directive-implementer.md`, `stencils.PatternDirectiveReviewFix` as `pattern-directive-review-fix.md`, and `stencils.PatternDirectiveOrchestrator` as `pattern-directive-orchestrator.md`, all three declared in `stencils/stencils.go` — in the same raw-bytes style the helper already uses for loom's two.
   This is required, not optional: `internal/loomengine/plan_test.go` writes a real PATTERN file and then calls `PlanSpec` with this helper's directory, so PATTERN is active there and the read fires — without the seeding that test hard-errors under the fail-loud posture.
   Update the helper's doc comment, which currently says it seeds "loom's two stencils".
 
@@ -181,6 +183,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
 
 - **Context:**
   - `internal/pattern/pattern.go`
+  - `stencils/stencils.go`
 - **Edits:**
   - `internal/burlerengine/engine.go`
   - `internal/burlerengine/prompt_test.go`
@@ -192,7 +195,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
   The call keeps `e.layout` and `pattern.RoleReviewFix`, and stays where it is in `Run`'s control flow — before the instruction-directory creation.
   The `directive` local continues to flow into `composePrompt` exactly as it does today.
 
-  In `internal/burlerengine/prompt_test.go`, extend `newTestStencilsDir` to also seed a `pattern` subdirectory with the three new files from the `stencils` package's embedded defaults, in the same raw-bytes style the helper already uses for burler's four, and update its doc comment, which currently says it seeds "burler's four stencils".
+  In `internal/burlerengine/prompt_test.go`, extend `newTestStencilsDir` to also seed a `pattern` subdirectory with the three new files from the `stencils` package's embedded defaults — `stencils.PatternDirectiveImplementer` written as `pattern-directive-implementer.md`, `stencils.PatternDirectiveReviewFix` as `pattern-directive-review-fix.md`, and `stencils.PatternDirectiveOrchestrator` as `pattern-directive-orchestrator.md`, all three declared in `stencils/stencils.go` — in the same raw-bytes style the helper already uses for burler's four, and update its doc comment, which currently says it seeds "burler's four stencils".
   This one is a consistency change, not a fix, and must not be reported as one: no burler test activates PATTERN today, so nothing here fails without it.
   It is done for symmetry with the loom and webster helpers, so that the first burler test that ever does activate PATTERN does not fail for an unrelated reason.
 - **Commit:** `refactor(burler): pass stencilsDir to pattern.Directive and check its error`
@@ -201,6 +204,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
 
 - **Context:**
   - `internal/pattern/pattern.go`
+  - `stencils/stencils.go`
 - **Edits:**
   - `internal/websterengine/render.go`
   - `internal/websterengine/template_test.go`
@@ -216,7 +220,7 @@ Batch-local decisions, beyond the overview's Shared Decisions:
   Apply the identical shape in `RenderMasterPrompt`, with `pattern.RoleOrchestrator` and `MasterTemplate` in place of `pattern.RoleImplementer` and `composeRecoveryTemplate`.
 
   In `internal/websterengine/template_test.go`, split the existing `seedHubStencils` helper so that seeding webster's five stencils and seeding the three pattern stencils are separately callable, and have `seedHubStencils` call both — `patternActiveLayout` and `testLayout` both go through it, so seeding once covers both, and `testLayout`-based tests keep asserting an empty pattern_directive because PATTERN stays inactive under that fixture regardless.
-  Seed the pattern files from the `stencils` package's embedded defaults in the same raw-bytes style the helper already uses.
+  Seed the pattern files from the `stencils` package's embedded defaults — `stencils.PatternDirectiveImplementer` written as `pattern-directive-implementer.md`, `stencils.PatternDirectiveReviewFix` as `pattern-directive-review-fix.md`, and `stencils.PatternDirectiveOrchestrator` as `pattern-directive-orchestrator.md`, all three declared in `stencils/stencils.go` — in the same raw-bytes style the helper already uses.
   Update the helper doc comments that currently say "webster's five stencils".
 
   Add a missing-stencil error-path test at **both** `RenderRecoveryPrompt` and `RenderMasterPrompt`: PATTERN active against a hub whose stencils directory holds webster's five but not the three pattern files, asserting a non-nil error.
