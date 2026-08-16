@@ -4,7 +4,7 @@
 // internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the perch
 // config file;
 // perch never reads config files or knows their on-disk layout itself.
-// judge_model is a model-spec string (docs/reference/model-spec.md);
+// judge_model is a model-spec string (contracts/specs/llm-model-spec.md);
 // ResolveModelSpec is the ONE shared implementation LoadConfigWithRegistry and perchcli's
 // decodeProfile both call, so the two config surfaces (perch.yaml and profile files) can never
 // diverge on grammar, resolution, or the perch-layer params check.

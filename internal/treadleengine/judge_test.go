@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // newTestStencilsDir builds a t.TempDir() seeded with treadle's four stencils, copied byte-for-byte

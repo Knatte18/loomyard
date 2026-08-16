@@ -9,7 +9,7 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer `discussion-format.md` already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
+1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
    First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
@@ -83,7 +83,7 @@ No build order is implied between these items.
 1. **board: curation/triage automation** — the GitHub-issue-intake and periodic-triage workflow originally scoped in `designs/board-weft-storage.md`'s Curation flow section, deferred out of `board: move storage to weft:main`: an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via `promote-note` (which already ships as a plain mechanical CLI primitive — this item is the automation layer on top, not the primitive itself).
    See [designs/curation-triage.md](designs/curation-triage.md).
 
-1. **scout-backed plan symbol fields** — `plan-format.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified `scout`; both `scout` and the loom Planner have since shipped, unblocking but not yet scoping this.
+1. **scout-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified `scout`; both `scout` and the loom Planner have since shipped, unblocking but not yet scoping this.
    Named prerequisite for `webster: parallel card execution`'s parked DAG scheduler.
    See [designs/scout-plan-symbol-fields.md](designs/scout-plan-symbol-fields.md).
 
@@ -155,7 +155,7 @@ No build order is implied between these items.
    See the `internal/websterengine` package documentation.
 
 1. **plan-format: flat card list** — a card carries `What:`, five typed file-op fields, and `Depends-on:`; symbol fields wait for `scout`.
-   See [docs/reference/plan-format.md](../docs/reference/plan-format.md).
+   See [contracts/specs/loom-plan-spec.md](../contracts/specs/loom-plan-spec.md).
 
 1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
 

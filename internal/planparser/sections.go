@@ -8,10 +8,10 @@ package planparser
 
 import "strings"
 
-// planVerifyHeading is the exact "## " heading plan-format.md pins for the overview's optional plan-level verify section.
+// planVerifyHeading is the exact "## " heading loom-plan-spec.md pins for the overview's optional plan-level verify section.
 const planVerifyHeading = "## verify:"
 
-// sharedDecisionsHeading and renameMechanicHeading are the exact "## " headings plan-format.md pins for the optional sections.
+// sharedDecisionsHeading and renameMechanicHeading are the exact "## " headings loom-plan-spec.md pins for the optional sections.
 const (
 	sharedDecisionsHeading = "## Shared Decisions"
 	renameMechanicHeading  = "## Rename mechanic"

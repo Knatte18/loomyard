@@ -13,7 +13,7 @@
 package loomengine
 
 // Status is the canonical Go type for _lyx/loom/status.json: loom's single source of truth for
-// orchestration state pinned by docs/reference/status-schema.md.
+// orchestration state pinned by contracts/specs/loom-status-spec.md.
 // The t=0 "seed" has only handoff fields populated;
 // StartSha and NextAction are *string (nil for JSON null/absent) because they are optional;
 // others are value types.

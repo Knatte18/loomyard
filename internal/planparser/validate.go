@@ -1,5 +1,5 @@
 // validate.go implements Validate, plan-format's complete machine check set
-// (docs/reference/plan-format.md, "Validation checks"), run in this fixed order: format/approval
+// (contracts/specs/loom-plan-spec.md, "Validation checks"), run in this fixed order: format/approval
 // (format-unrecognized, plan-unapproved), Card Index <-> card-file consistency
 // (index-file-mismatch), card path well-formedness and the Moves: grammar/redundancy/mechanic
 // checks (card-path-malformed, move-format, move-redundant, move-source-missing,
@@ -10,7 +10,7 @@
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
 //
-// This file is added across three cards (see docs/reference/plan-format.md's worked spec):
+// This file is added across three cards (see contracts/specs/loom-plan-spec.md's worked spec):
 // format/structure checks land first, then the card-path/Moves grammar checks, then the
 // existence-dependent and depends-on checks — each addition also extends Validate's call sequence
 // in place, in the spec's fixed numbering, so every intermediate commit still compiles and runs a

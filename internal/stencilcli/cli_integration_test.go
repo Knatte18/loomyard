@@ -16,12 +16,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // runCLI drives RunCLIIn against cwd with args, and parses the printed envelope as JSON when the
@@ -302,7 +302,7 @@ func TestStencilCLI_PromoteRoundTripAndDiffAll(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
 	stencilsDir := fabricengine.StencilsDir(h.Path)
-	sourceRoot := filepath.Join(worktree, "stencils")
+	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
 	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sourceRoot, err)
 	}
@@ -387,7 +387,7 @@ func TestStencilCLI_PromoteRoundTripAndDiffAll(t *testing.T) {
 
 // TestStencilCLI_PromoteAndDiffAllRequireSourceTree asserts that both promote and diff --all fail
 // loudly, naming the missing tree, rather than no-op or create one, when the worktree carries no
-// stencils/ source tree at all.
+// contracts/stencils/ source tree at all.
 func TestStencilCLI_PromoteAndDiffAllRequireSourceTree(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
@@ -396,18 +396,18 @@ func TestStencilCLI_PromoteAndDiffAllRequireSourceTree(t *testing.T) {
 		t.Fatalf("stencil sync = %d; want 0. output: %s", code, raw)
 	}
 
-	sourceRoot := filepath.Join(worktree, "stencils")
+	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
 	if _, err := os.Stat(sourceRoot); !os.IsNotExist(err) {
-		t.Fatalf("stencils/ source tree unexpectedly present at %s before the test", sourceRoot)
+		t.Fatalf("contracts/stencils/ source tree unexpectedly present at %s before the test", sourceRoot)
 	}
 
 	name := stencils.Registry().Names()[0]
 
 	if _, code, raw := runCLI(t, worktree, "diff", "--all"); code == 0 {
-		t.Errorf("diff --all with no stencils/ source tree = %d; want non-zero. output: %s", code, raw)
+		t.Errorf("diff --all with no contracts/stencils/ source tree = %d; want non-zero. output: %s", code, raw)
 	}
 	if _, code, raw := runCLI(t, worktree, "promote", name); code == 0 {
-		t.Errorf("promote %s with no stencils/ source tree = %d; want non-zero. output: %s", name, code, raw)
+		t.Errorf("promote %s with no contracts/stencils/ source tree = %d; want non-zero. output: %s", name, code, raw)
 	}
 
 	if _, err := os.Stat(sourceRoot); !os.IsNotExist(err) {
@@ -416,7 +416,7 @@ func TestStencilCLI_PromoteAndDiffAllRequireSourceTree(t *testing.T) {
 }
 
 // TestStencilCLI_PromoteRequiresMatchingSourceFile asserts promote errors, naming the missing file,
-// rather than creating one, when the worktree's stencils/ source tree exists but the target
+// rather than creating one, when the worktree's contracts/stencils/ source tree exists but the target
 // stencil's own family subfile is absent from it.
 func TestStencilCLI_PromoteRequiresMatchingSourceFile(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
@@ -426,7 +426,7 @@ func TestStencilCLI_PromoteRequiresMatchingSourceFile(t *testing.T) {
 		t.Fatalf("stencil sync = %d; want 0. output: %s", code, raw)
 	}
 
-	sourceRoot := filepath.Join(worktree, "stencils")
+	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
 	if err := os.MkdirAll(sourceRoot, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", sourceRoot, err)
 	}
@@ -438,7 +438,7 @@ func TestStencilCLI_PromoteRequiresMatchingSourceFile(t *testing.T) {
 	}
 
 	if _, code, raw := runCLI(t, worktree, "promote", name); code == 0 {
-		t.Errorf("promote %s with a stencils/ tree present but no matching source file = %d; want non-zero. output: %s", name, code, raw)
+		t.Errorf("promote %s with a contracts/stencils/ tree present but no matching source file = %d; want non-zero. output: %s", name, code, raw)
 	}
 
 	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
@@ -451,7 +451,7 @@ func TestStencilCLI_PromoteRequiresMatchingSourceFile(t *testing.T) {
 func TestStencilCLI_DriftWarningNeverBlocksExitCode(t *testing.T) {
 	h := hubforge.NewHub(t, ".")
 	worktree := h.PrimeWorktree()
-	sourceRoot := filepath.Join(worktree, "stencils")
+	sourceRoot := filepath.Join(worktree, "contracts", "stencils")
 
 	name := stencils.Registry().Names()[5]
 	sourcePath := filepath.Join(sourceRoot, filepath.FromSlash(stencilstore.RelPath(name)))

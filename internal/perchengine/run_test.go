@@ -17,11 +17,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // stateFileName mirrors treadleengine's own state.json file name constant.

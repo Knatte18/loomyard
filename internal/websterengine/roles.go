@@ -16,7 +16,7 @@ import (
 // in-session forks always inherit Master's current model.
 type Role string
 
-// The two webster roles, per docs/reference/model-spec.md's "Roles that use this notation" section.
+// The two webster roles, per contracts/specs/llm-model-spec.md's "Roles that use this notation" section.
 const (
 	// RoleMaster is the long-lived Master session that reads the plan once and forks one implementer
 	// per batch in-session.

@@ -1,5 +1,5 @@
 // promote.go declares the promote subcommand: it copies a live board-copy edit back into the
-// current worktree's stencils/<family>/ source tree, stripping the stamp line on the way in because
+// current worktree's contracts/stencils/<family>/ source tree, stripping the stamp line on the way in because
 // the source tree is the seed and carries no stamp of its own.
 // promote writes only into the worktree source tree; it never writes to the board copy, never
 // commits, and never pushes -- porting an edit back and landing it are deliberately separate acts.
@@ -14,12 +14,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // newPromoteCmd builds the promote subcommand. loc resolves the *lyxcwd.Location the parent's
@@ -28,7 +28,7 @@ import (
 func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 	return &cobra.Command{
 		Use:   "promote <name>",
-		Short: "Copy a board-copy edit back into this worktree's stencils/ source tree",
+		Short: "Copy a board-copy edit back into this worktree's contracts/stencils/ source tree",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -51,7 +51,7 @@ func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 			sourceDir := resolveSourceDir(l)
 			if sourceDir == "" {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
-					"stencil: no stencils/ source tree present at %s", filepath.Join(l.WorktreePath(), "stencils"))))
+					"stencil: no contracts/stencils/ source tree present at %s", filepath.Join(l.WorktreePath(), "contracts", "stencils"))))
 				return nil
 			}
 
@@ -66,7 +66,7 @@ func newPromoteCmd(loc func() *lyxcwd.Location) *cobra.Command {
 			targetPath := filepath.Join(sourceDir, filepath.FromSlash(stencilstore.RelPath(name)))
 			if _, err := os.Stat(targetPath); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
-					"stencil: no source file %s for %q in this worktree's stencils/ tree", targetPath, name)))
+					"stencil: no source file %s for %q in this worktree's contracts/stencils/ tree", targetPath, name)))
 				return nil
 			}
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {

@@ -14,11 +14,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // buildChannel is set by tools/deploy -dev via -ldflags "-X main.buildChannel=dev".
@@ -63,7 +63,7 @@ func seedStencils(ctx context.Context) {
 func seedStencilsAt(hub, worktree string) {
 	baseDir := fabricengine.StencilsDir(hub)
 
-	sourceDir := filepath.Join(worktree, "stencils")
+	sourceDir := filepath.Join(worktree, "contracts", "stencils")
 	if _, err := os.Stat(sourceDir); err != nil {
 		// The empty string means "no source tree here", which is what keeps the port-back drift
 		// warning silent in a consumer repo instead of firing on every run forever.

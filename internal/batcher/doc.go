@@ -10,7 +10,7 @@
 // orchestrator-side logic over the parsed Card list).
 //
 // The active batcher is chosen via batcher.yaml's active: config key (see
-// docs/reference/plan-format.md), which Active resolves against the registry at config-load time.
+// contracts/specs/loom-plan-spec.md), which Active resolves against the registry at config-load time.
 // An empty key resolves to DefaultName, the identity batcher.
 //
 // The identity batcher (identity.go) — one card, one batch — is one library entry among future

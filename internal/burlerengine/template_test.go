@@ -17,8 +17,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencil"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // TestTemplate_StatesRoundDiscipline asserts each asset's bytes carry the load-bearing

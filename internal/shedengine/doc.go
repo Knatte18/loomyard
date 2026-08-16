@@ -45,7 +45,7 @@
 //
 // # Divergence from loom's status schema
 //
-// internal/loomengine's status type and docs/reference/status-schema.md pin a different shape
+// internal/loomengine's status type and contracts/specs/loom-status-spec.md pin a different shape
 // (phase/stage/history entries of {phase, outcome, bounced_to, ts}) from this package's
 // (current_producer/state/activity/history entries of {producer, outcome, output, at}), and this
 // package deliberately defines its own rather than reconciling them.

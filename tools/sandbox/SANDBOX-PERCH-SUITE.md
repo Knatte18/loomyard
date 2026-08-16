@@ -27,7 +27,7 @@ Before starting a session:
 3. **Live-tmux and claude requirement.** tmux (or the Windows tmux port) on PATH, PowerShell 7,
    and a logged-in `claude` on PATH.
    If any of these is unavailable in the session, **note that as the session outcome rather than treating it as a perch defect** -- the `**Covers:** perch` tag on S1 and S2 satisfies the sandbox coverage guard (`sandbox_coverage_test.go`) regardless of runtime availability.
-4. **Wired worktree required.** `lyx perch run`/`pause` require a worktree wired by `lyx fabric clone`/`lyx fabric add`, including `_lyx/config/perch.yaml` (materialized alongside the other module configs) -- perch's own config holds only the judge model-spec (`judge_model`, docs/reference/model-spec.md notation) and the default round-cap ladder, all of which the sandbox-build default template already sets sanely. perch wires the real burler substrate (which in turn wires shuttle: reed + claude) on every invocation;
+4. **Wired worktree required.** `lyx perch run`/`pause` require a worktree wired by `lyx fabric clone`/`lyx fabric add`, including `_lyx/config/perch.yaml` (materialized alongside the other module configs) -- perch's own config holds only the judge model-spec (`judge_model`, contracts/specs/llm-model-spec.md notation) and the default round-cap ladder, all of which the sandbox-build default template already sets sanely. perch wires the real burler substrate (which in turn wires shuttle: reed + claude) on every invocation;
    the profile YAML is the only perch-specific input.
 5. **Attached interactive terminal.**
    Launch `sandbox/perch-suite.cmd` from a real, attached console -- never redirected, backgrounded, or detached.

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // TestJudgeCirclingTemplate_StatesLoadBearingRules asserts the template's load-bearing phrases are

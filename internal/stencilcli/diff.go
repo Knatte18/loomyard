@@ -4,7 +4,7 @@
 // The two modes compare different base texts and must never be conflated: `diff <name>` renders the
 // default this file was forked from (recovered by stamp hash from board history) against the
 // currently shipped default, showing upstream changes the operator has not yet taken; `diff --all`
-// renders the worktree's own stencils/ source body against the live board copy's body, catching an
+// renders the worktree's own contracts/stencils/ source body against the live board copy's body, catching an
 // edit made in the board copy that was never ported back. Comparing --all against the shipped
 // default instead would leave the port-back warning firing right through the fix, because promote
 // does not change the embedded default until the next deploy.
@@ -21,13 +21,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/stencils"
 )
 
 // newDiffCmd builds the diff subcommand. loc resolves the *lyxcwd.Location the parent's
@@ -62,7 +62,7 @@ func newDiffCmd(loc func() *lyxcwd.Location) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&all, "all", false, "compare every registry stencil's worktree stencils/ source against its live board copy")
+	cmd.Flags().BoolVar(&all, "all", false, "compare every registry stencil's worktree contracts/stencils/ source against its live board copy")
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "exit non-zero when any compared pair differs, like git diff --exit-code")
 
 	return cmd
@@ -132,14 +132,14 @@ func runDiffOne(cmd *cobra.Command, out io.Writer, l *lyxcwd.Location, name stri
 }
 
 // runDiffAll implements `diff --all`: the port-back guard, comparing every registry stencil's
-// worktree stencils/ source body against its live board copy body, both normalised via
+// worktree contracts/stencils/ source body against its live board copy body, both normalised via
 // stencilstore.NormalizeLF and stencil.StripLeadingComment. A registry entry whose board copy or
 // source file cannot be read is skipped, mirroring stencilstore's own drift-warning behaviour.
 func runDiffAll(cmd *cobra.Command, out io.Writer, l *lyxcwd.Location, exitCode bool) {
 	sourceDir := resolveSourceDir(l)
 	if sourceDir == "" {
 		clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf(
-			"stencil: no stencils/ source tree present at %s", filepath.Join(l.WorktreePath(), "stencils"))))
+			"stencil: no contracts/stencils/ source tree present at %s", filepath.Join(l.WorktreePath(), "contracts", "stencils"))))
 		return
 	}
 

@@ -1,10 +1,10 @@
 # scout-backed plan symbol fields — making the Planner's file-op enumeration deterministic
 
-> **Status: Speculative, not scoped.** [plan-format.md](../../docs/reference/plan-format.md) already named this gap explicitly: the symbol fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) were "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `scout`, which is deprioritized." Both blockers are now gone — `scout` shipped (V1, Go-only) and the loom Planner producer (`internal/loomengine/plan.go` + `stencils/loom/loom-template-plan.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`plan-format.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
+> **Status: Speculative, not scoped.** [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) already named this gap explicitly: the symbol fields (`creates-symbols`/`edits-symbols`/`reads-symbols`) were "deliberately omitted in v0, not just left optional... they depend on a working, planner-side-verified `scout`, which is deprioritized." Both blockers are now gone — `scout` shipped (V1, Go-only) and the loom Planner producer (`internal/loomengine/plan.go` + `contracts/stencils/loom/loom-template-plan.md`) also shipped, with no review logic of its own blocking a prompt-level change. This doc names the idea and lays out the design space; it does not commit to an approach. Per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle), if this is ever picked up the durable parts fold into the owning doc (`loom-plan-spec.md` and/or `internal/loomengine`'s package doc) when it lands; if abandoned, this file is simply deleted.
 
 ## The problem this responds to
 
-Today, `stencils/loom/loom-template-plan.md`'s Step 2 ("Explore the codebase") tells the Planner agent to read the relevant parts of the codebase before writing a card's `Edits:`/`Context:`/`Creates:`/`Deletes:`/`Moves:` fields — in practice this means grep-and-read exploration, paid for in tokens and wall-clock, for every card that touches existing code.
+Today, `contracts/stencils/loom/loom-template-plan.md`'s Step 2 ("Explore the codebase") tells the Planner agent to read the relevant parts of the codebase before writing a card's `Edits:`/`Context:`/`Creates:`/`Deletes:`/`Moves:` fields — in practice this means grep-and-read exploration, paid for in tokens and wall-clock, for every card that touches existing code.
 Two failure modes follow: grepping a symbol's name returns false positives when an unrelated symbol elsewhere in the repo happens to share the name,
 and it structurally cannot prove a call reached only through an interface — the exact case `internal/scoutengine`'s own CLI help text calls out ("including calls reached only through an interface, which no amount of grepping can prove").
 A card whose `Edits:` silently omits a real caller is a plan defect no existing plan-format validator check can catch, because every current check (`all-files-touched-mismatch` included) only verifies internal consistency between the overview and the cards — never consistency between a card's claims and the actual code.
@@ -12,18 +12,18 @@ A card whose `Edits:` silently omits a real caller is a plan defect no existing 
 ## Two integration points — benchmarked, not just theorized
 
 **(a) Prompt-level guidance only — no schema change.**
-Add an instruction to `stencils/loom/loom-template-plan.md`'s Step 2 telling the Planner to run `lyx scout refs <symbol>` (or `refs <file>:<line>:<col>` for an ambiguous name) instead of grepping, for any card that renames, deletes, or edits call sites of an *existing* Go symbol — never for a symbol the plan itself creates, which does not exist yet for scout to find.
+Add an instruction to `contracts/stencils/loom/loom-template-plan.md`'s Step 2 telling the Planner to run `lyx scout refs <symbol>` (or `refs <file>:<line>:<col>` for an ambiguous name) instead of grepping, for any card that renames, deletes, or edits call sites of an *existing* Go symbol — never for a symbol the plan itself creates, which does not exist yet for scout to find.
 Optionally also point a `Deletes:`/`Moves:` card's own `verify:` field at `lyx scout assert-no-callers <old-symbol> --except <new/location.go>` (shipped in `internal/scoutcli`, see below) as a mechanical post-hoc check that no stale reference survived.
-This is the small, buildable slice: it touches only `stencils/loom/loom-template-plan.md`'s prose, nothing in `internal/planparser` or `internal/loomengine/plan.go`.
+This is the small, buildable slice: it touches only `contracts/stencils/loom/loom-template-plan.md`'s prose, nothing in `internal/planparser` or `internal/loomengine/plan.go`.
 
 **(a) is empirically weakened, not just unproven.** [scout-vs-grep.md](../../docs/benchmarks/scout-vs-grep.md) benchmarked exactly this shape of decision — an agent free to choose whether and how to use `lyx scout` versus an agent restricted to grep — across three hard symbol-resolution tasks in this repo.
 The result was no dramatic, universal win, and it got weaker, not stronger, as the tasks got harder: one clean win for scout (Task 2), one wash (Task 1, grep-only was actually faster and cheaper), and one clear loss (Task 3, grep won on all three metrics).
 Combined across all three tasks, scout's wall-clock advantage was ≈0% and it used *more* tool calls in aggregate than grep, not fewer; only the token count still favored scout (-16%).
 Worse than the win/loss tally itself: Task 3 exposed that `refs`' `"resolution":"complete"` trust marker can be present on a response that is majority cross-package noise (gopls resolves interface methods structurally, workspace-wide, not scoped to the interface actually queried) — an agent choosing to trust that marker at face value gets a wrong answer, exactly the re-verification the marker exists to make unnecessary.
 An LLM given the *option* to call scout still has to exercise judgment about when the tool's output can be trusted as-is versus needs cross-checking — the benchmark shows that judgment call itself doesn't reliably pay for itself.
-This does not fully rule out (a) (single run, n=1 per cell, three hand-picked tasks — see that doc's own caveats), but it removes any presumption that giving the Planner tool access would obviously help, and no measurement has been done of (a) specifically wired into `stencils/loom/loom-template-plan.md` rather than a bare subagent.
+This does not fully rule out (a) (single run, n=1 per cell, three hand-picked tasks — see that doc's own caveats), but it removes any presumption that giving the Planner tool access would obviously help, and no measurement has been done of (a) specifically wired into `contracts/stencils/loom/loom-template-plan.md` rather than a bare subagent.
 
-**(b) The originally-envisioned schema fields.** `plan-format.md` names `creates-symbols`/`edits-symbols`/`reads-symbols` as the deferred fields themselves — a card would declare symbols, not just files, and something (`internal/planparser`'s `Validate`, most likely) would cross-check those declarations against `scout` mechanically, turning the "planner missed a caller" failure mode into a hard validation error instead of a silent gap.
+**(b) The originally-envisioned schema fields.** `loom-plan-spec.md` names `creates-symbols`/`edits-symbols`/`reads-symbols` as the deferred fields themselves — a card would declare symbols, not just files, and something (`internal/planparser`'s `Validate`, most likely) would cross-check those declarations against `scout` mechanically, turning the "planner missed a caller" failure mode into a hard validation error instead of a silent gap.
 This is the fuller original vision and the one `internal/websterengine`'s dead DAG scheduler seam is waiting on (see Relationship table below) — but it means real schema, parser, and validator work in `internal/planparser`, not just prompt wording.
 
 **(b) is the recommended direction if this is ever picked up, precisely because of what the benchmark found.** The failure modes in `scout-vs-grep.md` — imprecise workspace-wide interface resolution, a trust marker that overpromises — are LLM-facing problems: they matter only when an agent has to decide whether to believe the tool's output.
@@ -59,9 +59,9 @@ Go-only, same as `scout` V1; a lexer/AST approach cannot generalize by swapping 
 ## Open questions (genuinely unscoped)
 
 - **(a) vs. (b), or both, and in what order.**
-  `scout-vs-grep.md` weakens the case for (a) specifically — see above — but has not measured (a) wired into `stencils/loom/loom-template-plan.md` itself, only bare subagents with/without tool access.
+  `scout-vs-grep.md` weakens the case for (a) specifically — see above — but has not measured (a) wired into `contracts/stencils/loom/loom-template-plan.md` itself, only bare subagents with/without tool access.
 - **Advisory vs. hard-fail.**
-  If symbol-derived checking ever becomes a validator check (whether via prompt convention or schema), does a mismatch halt plan approval outright, or just surface as a warning the human review gate weighs? `plan-format.md`'s existing 14 checks are all hard-fail;
+  If symbol-derived checking ever becomes a validator check (whether via prompt convention or schema), does a mismatch halt plan approval outright, or just surface as a warning the human review gate weighs? `loom-plan-spec.md`'s existing 14 checks are all hard-fail;
   this would be the first check whose ground truth is "what the code actually does" rather than "is the plan internally consistent."
 - **Symbol granularity.**
   A renamed function is a clean case;
@@ -72,10 +72,10 @@ Go-only, same as `scout` V1; a lexer/AST approach cannot generalize by swapping 
 
 ## Related
 
-- [plan-format.md](../../docs/reference/plan-format.md) — names the deferred symbol fields directly;
+- [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md) — names the deferred symbol fields directly;
   the schema option (b) would extend it.
 - [webster-parallel-execution.md](webster-parallel-execution.md) — the item this one is a prerequisite for.
 - [scout-vs-grep.md](../../docs/benchmarks/scout-vs-grep.md) — the benchmark this doc's (a)-vs-(b) recommendation is grounded in.
 - [review-finding-classification.md](review-finding-classification.md) — the discussion-review proposal that raised the free-text/`scout literals` question this doc folds in above.
 - `internal/scoutengine`'s package documentation — the engine both integration options build on.
-- `internal/loomengine`'s package documentation — the Planner producer (`plan.go` + `stencils/loom/loom-template-plan.md`) option (a) would edit.
+- `internal/loomengine`'s package documentation — the Planner producer (`plan.go` + `contracts/stencils/loom/loom-template-plan.md`) option (a) would edit.
