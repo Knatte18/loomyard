@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: shed-adapters
 branch: shed-adapters
 plan: _mill/plan
@@ -20,4 +20,19 @@ planning  '2026-08-16T15:17:43Z'
 plan-fix-r1  '2026-08-16T15:29:08Z'
 plan-review-r2  '2026-08-16T15:37:50Z'
 planned  '2026-08-16T15:37:58Z'
+implementing  '2026-08-16T15:38:22Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: package-foundation-and-singlellm
+    state: pending
+  - name: perch-producer
+    state: pending
+  - name: webster-producer
+    state: pending
+  - name: docs
+    state: pending
 ```
