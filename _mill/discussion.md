@@ -36,7 +36,7 @@ Three engines are in play today, so three adapters:
 - Three narrow local seam interfaces (one per engine) with compile-time-proof lines, so every adapter is fakeable at tier 1.
 - Context-cancellation handling for all three: entry check, a bridge into each engine's existing pause seam, and exit precedence of `ctx.Err()` over any verdict.
 - Tier-1 (untagged) tests with fakes for all three seams.
-- Docs in the same commit — the exact edit list is pinned in the "Doc set" Decision below: a `doc.go` for the new package, four named corrections in `manifest/designs/shed.md`, a tree line and module bullet in `docs/overview.md`, and two `manifest/roadmap.md` edits (the Planned-item move **and** the Done entry that references it).
+- Docs in the same commit — the exact edit list is pinned in the "Doc set" Decision below: a `doc.go` for the new package, five named corrections in `manifest/designs/shed.md`, three edits in `docs/overview.md`, and three in `manifest/roadmap.md`.
 
 **Out:**
 
@@ -130,6 +130,22 @@ Three engines are in play today, so three adapters:
 - Rejected: `PerchProducer` constructing the engine itself from burler/shuttle/cfg/layout — widens what the adapter is told from one seam to four collaborators, and drags `burlerengine` into `shedadapters`' import set for no gain.
   Rejected: dropping the perch bridge — perch is the one engine where the bridge costs nothing but a closure, and its round loop can run for a long time.
 
+### Perch run identity — a run-id that advances only past a terminal block
+
+- Decision: `PerchProducer` is told a `runDirBase`, a `scratchDirBase`, and a `runIDPrefix` (validated with `perchengine.ValidRunID`), never a single fixed `runDir`.
+  Per `Call` it resolves the current attempt: starting from the highest existing `<prefix>-<N>` on disk (N starting at 1), it calls `perchengine.TerminalOutcome(runDir, scratchDir)`;
+  a **non-terminal** block is reused verbatim, so perch resumes its own in-flight rounds, and a **terminal** block advances to `<prefix>-<N+1>`, a fresh directory.
+  `runDir` is `filepath.Join(runDirBase, runID)` and `scratchDir` is `filepath.Join(scratchDirBase, runID)` — the exact pairing `perchcli` already uses (`internal/perchcli/pause.go:63,80`).
+  The attempt number is discovered from disk on every `Call`, never held in adapter memory, so a process restart resolves the same attempt.
+- Rationale: `treadleengine.loadOrInitState` refuses a terminal run dir outright — `if existing.Outcome != "" { return ... "this block already finished (%s)" }` (`internal/treadleengine/state.go:126-128`) — and its own doc comment says "treadle never re-opens a finished block", with the CLI's documented remedy being a fresh `--run-id`.
+  A `PerchProducer` told one fixed `runDir` would therefore work exactly once: after the gate returned `APPROVED` or `STUCK`, Shed's unconditional re-call — a crash resume, or the `OnStuck` bounce-back this adapter exists to serve — would get an error and Shed would write `state: "failed"` instead of re-running the gate.
+  That is the same stale-terminal-state hazard already solved for `SingleLLMProducer` (archive-then-respawn) and solved inside Webster itself (`Run` archives its own stale outcome and summary, `internal/websterengine/runlevel.go:440-446`), left unsolved for the one adapter whose bounce loop is this task's motivating use case.
+  Advancing only past a **terminal** block is what keeps both properties: perch's own crash-resume survives (an interrupted block is re-entered, not abandoned mid-ladder), and a completed block never blocks the next attempt.
+  `TerminalOutcome` exists for exactly this caller-side question and is already re-exported by `perchengine` and consumed by `perchcli` (`pause.go:94`).
+- Rejected: minting a fresh run dir on every `Call` — discards perch's in-flight round state on a crash resume, throwing away exactly the expensive internal progress a bespoke producer's own recovery exists to protect.
+  Rejected: archiving or deleting the terminal run dir in place and reusing the id — destroys the previous attempt's round history, which is the audit trail a human reads when diagnosing a bounce loop; treadle's own remedy is a new id, not a cleared one.
+  Rejected: a caller-supplied `func() (runDir, scratchDir string, err error)` source evaluated per `Call` — pushes the terminal-vs-in-flight policy onto a caller that does not exist yet, shipping an adapter whose correctness depends on an unenforced contract.
+
 ### Webster cancellation — no bridge, bounded by Master's own timeout
 
 - Decision: `WebsterProducer` installs **no** mid-run bridge. Entry and exit checks only.
@@ -170,6 +186,12 @@ Three engines are in play today, so three adapters:
 - Rationale: `ShedProducer.Call` returns exactly `(Outcome, OutputPointer, error)` (`internal/shedengine/producer.go:30-32`), and Shed's `Stuck` branch requires a nil error, so the seam has no detail channel — leaving it as "the returned detail" would have been a phrase with no implementation.
   `OutputPointer.Path` is the wrong carrier: Shed persists it verbatim into `history[].output` as an artifact path a human opens, and the perch Decision above pins it empty precisely because a gate produces no artifact.
   The log is the honest channel, and the underlying reason stays durably readable in each engine's own `state.json` round history regardless.
+- Decision (same channel, the asking paths): the two `asking → Stuck` mappings log their own detail the same way, since the pointer is empty and the error nil there too.
+  `SingleLLMProducer` logs `shuttleengine.Result.LastAssistantMessage` (set only for `OutcomeAsking`, `internal/shuttleengine/run.go:41,47`) together with `SessionID`, `StrandGUID`, and `RunDir`;
+  `WebsterProducer` logs `*MasterAskingError`'s `Message`, `SessionID`, and `RunDir` (`internal/websterengine/runlevel.go:186-194`).
+  Both at `logger.Warn`, both carrying the told producer name.
+- Rationale for the asking paths: the agent's question *is* the account of why the producer could not finish, and the run dir is kept precisely so a human can inspect it.
+  Discarding it would leave an operator with a `Stuck` in `history[]` and nothing to read — the identical gap the `StuckReason` decision closes for the gate outcomes.
 - Rejected: putting `StuckReason` in `OutputPointer.Path` — overloads a path field with prose, breaking Shed's own documented meaning for it.
   Rejected: returning `Stuck` alongside a non-nil error — Shed treats a non-nil error as an engine-level failure and never reads the outcome, so the verdict would be discarded.
   Rejected: dropping `StuckReason` entirely — it is the only account of *why* a gate gave up, and a human debugging a bounce loop needs it.
@@ -251,9 +273,9 @@ Three engines are in play today, so three adapters:
 
 - Decision: this commit carries exactly these doc edits.
   **`internal/shedadapters/doc.go`** — the as-built contract: the three adapters, the mapping tables, the told-name and clock seams, and the two named limitations (no reattach; no mid-run bridge for shuttle or Webster, with their respective bounds).
-  **`manifest/designs/shed.md`** — four corrections: the `:3` status banner (the adapters are no longer Planned); `:255`'s claim that `SingleLLMProducer` performs the full three-case live-session discipline; `:261`'s identical reattach claim in the "What `Shed` does not provide" list; and `:278`'s description of `SingleLLMProducer` as "parameterized by an Input-format pointer, an Output-format pointer, and one instruction file", which the caller-supplied-`Spec`-source Decision supersedes — reworded to say the parameterization lives in the caller's `Spec` source.
-  **`docs/overview.md`** — a tree line beside `internal/shedengine` (line 228) and a module bullet beside the `shed` entry (line 292).
-  **`manifest/roadmap.md`** — two edits: Planned item 1 (lines 12-14) moves to Done, **and** the existing Done entry for the Shed skeleton (lines 196-199), which currently asserts the three adapters "remain their own Planned item above" and justifies shed.md's survival by that Planned item.
+  **`manifest/designs/shed.md`** — five corrections: `:38`'s "three of the four planned adapters — `perch`, `Webster`, and a bespoke multi-spawn engine — own their own error taxonomies and are not designed yet", now false for two of the three; the `:3` status banner (the adapters are no longer Planned); `:255`'s claim that `SingleLLMProducer` performs the full three-case live-session discipline; `:261`'s identical reattach claim in the "What `Shed` does not provide" list; and `:278`'s description of `SingleLLMProducer` as "parameterized by an Input-format pointer, an Output-format pointer, and one instruction file", which the caller-supplied-`Spec`-source Decision supersedes — reworded to say the parameterization lives in the caller's `Spec` source.
+  **`docs/overview.md`** — a tree line beside `internal/shedengine` (line 228), a module bullet beside the `shed` entry (line 292), and the correction of `:294`'s "the three engine adapters ... remain Planned".
+  **`manifest/roadmap.md`** — three edits: Planned item 1 (lines 12-14) moves to Done; the existing Done entry for the Shed skeleton (lines 196-199), which currently asserts the three adapters "remain their own Planned item above" and justifies shed.md's survival by that Planned item; and `:16`'s "wired via the `perch` adapter above", whose "above" dangles once Planned item 1 leaves the Planned section — reworded to point at the shipped package instead.
   Both claims become false in this same commit, so shed.md's Documentation-Lifecycle survival rationale is restated there on its own footing — the doc remains the authoritative narrative of Shed's generic mechanism, independent of any Planned item.
 - Rationale: CLAUDE.md requires a task that adds a module or introduces cross-cutting infrastructure to update its docs in the same commit, and the roadmap moves on completing a planned item — which this is.
   Naming every line explicitly rather than saying "update shed.md" is what stops a partial edit from leaving a claim that is false the moment the package ships; three of the four shed.md corrections are exactly such claims, and the roadmap Done entry is a fourth.
@@ -299,7 +321,7 @@ None of the three takes a `context.Context`.
 **Told, never derived.** Every adapter receives already-resolved absolute paths and already-constructed engines from its caller.
 No adapter calls `lyxcwd`, constructs a `_lyx` path, or resolves geometry — the same told-not-derived discipline `shedengine`, `treadleengine`, and `perchengine` already hold.
 Concretely: every constructor is told a **producer name** (log fields and error text only);
-`PerchProducer` is additionally told an engine factory plus its `Profile` and its `runDir`/`scratchDir`/`stencilsDir` (all resolved today by `perchcli`);
+`PerchProducer` is additionally told an engine factory plus its `Profile`, its `runDirBase`/`scratchDirBase`/`stencilsDir` (all resolved today by `perchcli`), and a `runIDPrefix`;
 `WebsterProducer` is told its fully populated `RunDeps`;
 `SingleLLMProducer` is told a `Spec` source that yields absolute `OutputFiles` and a `now func() time.Time` clock (nil selects `time.Now`).
 The perch factory does not weaken this: the adapter is told *how to build* its engine and still resolves no path, reads no config, and names no collaborator of its own.
@@ -366,6 +388,9 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - `Stuck` returns an empty `OutputPointer` and a **nil** error for all three `StuckReason` values — the reason goes to the log, not the seam, so the assertion is on the seam's shape, not on log text.
 - ctx: entry check (factory never invoked); the bridge is actually installed — the fake factory captures the `pauseRequested` callback it was handed and the test asserts it reports `false` before cancellation and `true` after; exit precedence over a returned `APPROVED`.
 - The factory is invoked once per `Call`, so a second `Call` with a fresh ctx gets a fresh bridge rather than a stale closure over the first ctx.
+- **Run-id advancement, against a real `t.TempDir()`** — the row that pins the second-`Call` fix. Seed a `<prefix>-1` run dir whose `state.json` records a terminal `Outcome`, and assert the second `Call` runs against `<prefix>-2`. Seed one with an empty `Outcome` (in flight) and assert the second `Call` reuses `<prefix>-1`. Assert a first `Call` against an empty base starts at `<prefix>-1`.
+- The resolved `runDir`/`scratchDir` pair handed to the factory's engine is `Join(base, runID)` for each base respectively — asserted, since a mismatched pair would put treadle's state lock in the wrong tree.
+- An invalid `runIDPrefix` is rejected at construction via `perchengine.ValidRunID`, before any directory is touched.
 - A seam error propagates unchanged.
 
 **`WebsterProducer`.**
@@ -396,7 +421,8 @@ The three adapters are pure mapping code over an injected seam, which is exactly
 - **Q:** Concrete engine types or narrow local seam interfaces? **A:** Narrow local interfaces with compile-time proofs, per `burlerengine.Shuttle`/`perchengine.Burler`. Only Webster's free-func `Run` needs no interface.
 - **Q:** `New(...)` constructors or exported-field structs like `shedengine.Shed`? **A:** `New(...)` with unexported fields. `Shed`'s no-constructor rule is about a human-configured validated field set; these wrap already-built live engines.
 - **Q:** Test strategy? **A:** Tier 1, fakes for all three seams, table-driven mapping tests. An integration test over a real `Shed` would re-test Shed's already-proven loop.
-- **Q:** Which docs land in this commit? **A:** See the "Doc set" Decision — package `doc.go`, four named `manifest/designs/shed.md` corrections (`:3`, `:255`, `:261`, `:278`), a `docs/overview.md` tree line and module bullet, and two `manifest/roadmap.md` edits (Planned item 1 → Done, plus the Done entry at `:196-199` that references it).
+- **Q:** Which docs land in this commit? **A:** See the "Doc set" Decision — package `doc.go`, five named `manifest/designs/shed.md` corrections (`:3`, `:38`, `:255`, `:261`, `:278`), three `docs/overview.md` edits (tree line, module bullet, `:294`), and three `manifest/roadmap.md` edits (Planned item 1 → Done, the Done entry at `:196-199`, and `:16`'s dangling "above").
+- **Q:** (review r3 gap) `treadleengine` refuses a terminal run dir, so a `PerchProducer` told one fixed `runDir` breaks on its second `Call` — the bounce-back this adapter exists to serve. How is perch's run identity resolved? **A:** [auto-pick] told a `runDirBase`/`scratchDirBase`/`runIDPrefix`; per `Call`, reuse the current `<prefix>-<N>` while `perchengine.TerminalOutcome` says non-terminal, advance to `<prefix>-<N+1>` once it is terminal. **Why:** it is treadle's own documented remedy (a fresh run-id), and advancing *only* past a terminal block preserves perch's in-flight crash-resume, which minting fresh every call would destroy.
 - **Q:** Type names? **A:** `SingleLLMProducer`, `PerchProducer`, `WebsterProducer` — the first is pinned verbatim in shed.md, the other two follow it without encoding today's classification into the name.
 - **Q:** (review r1 gap) Where does `StuckReason` go, given `Call` returns only `(Outcome, OutputPointer, error)` and the `Stuck` branch requires a nil error? **A:** [auto-pick] `logger.Warn`, with the empty `OutputPointer` preserved. **Why:** `OutputPointer.Path` is an artifact path Shed persists verbatim and a human opens; overloading it with prose breaks its documented meaning, and a non-nil error would make Shed discard the verdict entirely.
 - **Q:** (review r1 gap) `perchengine.Options.PauseRequested` is fixed at construction and cannot be installed through a `Run(...)` seam over a built engine — how is the perch bridge installed? **A:** [auto-pick] the seam becomes an engine factory, `func(pauseRequested func() bool) PerchRunner`, invoked once per `Call`. **Why:** it is the only shape that makes the bridge both installable and fakeable without the adapter learning about burler, shuttle, or config.
