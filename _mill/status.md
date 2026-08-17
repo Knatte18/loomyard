@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-invariant
+phase: holistic-reviewing
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-17T15:28:04Z'
 approved-configengine-loadortemplate  '2026-08-17T15:35:41Z'
 approved-producer-loaders-repointed  '2026-08-17T15:42:24Z'
 approved-docs-and-invariant  '2026-08-17T15:47:22Z'
+holistic-reviewing  '2026-08-17T15:47:58Z'
 ```
 
 ## Batches
