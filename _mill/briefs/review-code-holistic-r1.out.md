@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: shuttleengine + reedengine + tokenvocab told-geometry — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-17
+```
+
+## Findings
+
+### [NIT:consistency] A few shuttle test fixtures pass the same value for anchorPath/worktreeRoot
+**Location:** `internal/shuttlecli/cli_test.go:235`, `internal/shuttleengine/run_inject_test.go:19`, `internal/shuttleengine/run_test.go:236` (`newInterruptTestRun`)
+**Issue:** Card 11's batch-local decision states shuttle test fixtures give `anchorPath`/`worktreeRoot` distinct values "rather than the same temp dir twice," and batch 4's own Batch Tests section specifically claims `run_inject_test.go`'s fixture "must carry distinct anchor and worktree values" — but `newInjectTestRunner`, `newInterruptTestRun`, and the `--effort` flag test all pass one temp dir (or one string) for both `NewRunner` parameters, so a swap at these call sites would pass silently.
+**Fix:** Give these three fixtures distinct anchor/worktree values (or correct the Batch Tests claim to note these three don't need it, since none of them exercise anchor/worktree-differentiated behavior). Impact is low: `run_test.go`'s `newTestRunner`, `wait_test.go`'s `newWaitTestRunner`, and `rundir_test.go` already give the swap-detection property real coverage.
+
+## Verdict
+
+APPROVE
+Plan alignment, cross-batch contracts, told-geometry discipline, CONSTRAINTS.md/doc updates, and import-graph facts all verified correct.
+MILL_REVIEW_END

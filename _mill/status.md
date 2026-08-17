@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: _mill/plan
@@ -29,6 +29,8 @@ approved-reed-geometry-hubgeom  '2026-08-17T15:19:10Z'
 approved-shuttle-told-strings  '2026-08-17T15:26:49Z'
 holistic-reviewing  '2026-08-17T15:27:15Z'
 holistic-fixing  '2026-08-17T15:31:34Z'
+nits-fixed-holistic  '2026-08-17T15:34:31Z'
+holistic-approved  '2026-08-17T15:34:40Z'
 ```
 
 ## Batches
