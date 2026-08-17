@@ -20,21 +20,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
-
-// HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
-// writes its runtime log.
-// It is hub-anchored so one server per hub resolves to one deterministic place, and now lives under
-// the hub-wide <hub>/_board/.lyx scratch tree obtained from fabricengine.HubScratchDir — never
-// derived here (the told-never-derives rule fabricengine.HubScratchDir's own comment states).
-func HubLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(fabricengine.HubScratchDir(l.HubPath), "logs")
-}
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
 // It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
@@ -253,7 +243,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// is the only lever. This happens on every boot, regardless of
 	// debug_log, and runs before the boot loop so a fresh server's log always
 	// lands in a directory that already exists and is already pruned.
-	logsDir := HubLogsDir(e.layout)
+	logsDir := fabricengine.HubLogsDir(e.layout.HubPath)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		logger.Warn("reed: failed to create hub logs dir", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)
