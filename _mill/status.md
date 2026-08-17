@@ -37,7 +37,9 @@ batches:
     commit_sha: 67975ffee9f06dcaecc617a64dda9e31e74d4f0e
     verify_baseline_failures: []
   - name: tokenvocab-plain-fields
-    state: pending
+    state: running
+    implementer_session: ae131aa5-1f3a-4e40-8db5-1f2256bafc52
+    start_sha: 83313c44dafb83641941bf7ecb68b7cd4b031eb5
     verify_baseline_failures: []
   - name: reed-geometry-hubgeom
     state: pending
