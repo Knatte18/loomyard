@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: _mill/plan
@@ -32,6 +32,7 @@ holistic-fixing  '2026-08-17T15:31:34Z'
 nits-fixed-holistic  '2026-08-17T15:34:31Z'
 holistic-approved  '2026-08-17T15:34:40Z'
 done  '2026-08-17T15:35:45Z'
+pr-pending  '2026-08-17T15:37:42Z'
 ```
 
 ## Batches
