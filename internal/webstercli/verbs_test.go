@@ -12,7 +12,7 @@
 // tests build a *websterCLI literal directly (bypassing Command()'s
 // PersistentPreRunE) and drive one verb's cobra.Command through
 // clihelp.Execute, webster's own package-local injection point for these
-// tests; seedPersistentPreRunFixture and its two tests are the deliberate
+// tests; seedPersistentPreRunFixture and its three tests are the deliberate
 // exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
 // WEFT_SKIP_GIT=1 is set on every test that reaches a
 // fabricSync call, so no real weft sibling worktree is needed; the one test
