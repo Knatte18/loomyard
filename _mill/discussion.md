@@ -91,7 +91,7 @@ The originating task's one surviving concrete finding, the `webstercli` → `loo
 
 ## Constraints
 
-Bound by, and in several cases requiring rewording in the tasks that touch them: the Cwd Resolution, Stencil Ownership, Pattern Leaf, Tokenvocab Leaf, Planparser Sole-Parser, Treadle Runner-Seam, Shed Producer-Seam, CLI/Cobra, Fabric Git, and Live-Substrate Spawn Observability invariants in [`CONSTRAINTS.md`](../CONSTRAINTS.md).
+Bound by, and in several cases requiring rewording in the tasks that touch them: the Cwd Resolution, Durable-vs-Ephemeral State, Stencil Ownership, Pattern Leaf, Tokenvocab Leaf, Planparser Sole-Parser, Treadle Runner-Seam, Shed Producer-Seam, CLI/Cobra, Fabric Git, Live-Substrate Spawn Observability, Test Tier Purity, and Dev/Prod Binary Separation invariants in [`CONSTRAINTS.md`](../CONSTRAINTS.md).
 Each is named at the specific task that engages it in the design doc, rather than listed abstractly here.
 
 Two repo-level rules bind this task itself: `manifest/roadmap.md` moves only on adding or completing a planned item (adding, here), and `roadmap.md`'s own Maintenance section caps entry length at a name plus one or two sentences.

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r6
+phase: discussed
 slug: producer-standalone-capability
 branch: producer-standalone-capability
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-17T08:00:18Z'
 discussion-fix-r6  '2026-08-17T09:23:06Z'
+discussion-fix-r7  '2026-08-17T09:27:58Z'
+discussed  '2026-08-17T09:27:58Z'
 ```
