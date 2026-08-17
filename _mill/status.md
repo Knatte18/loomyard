@@ -30,9 +30,14 @@ implementing  '2026-08-17T15:28:04Z'
 ```yaml
 batches:
   - name: configengine-loadortemplate
-    state: pending
+    state: running
+    implementer_session: 9427fa5e-58a1-4b5e-be72-4d98acdb4ea5
+    start_sha: 0e4b46266830f9230bfe804b4f96b27db453855a
+    verify_baseline_failures: []
   - name: producer-loaders-repointed
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-invariant
     state: pending
+    verify_baseline_failures: []
 ```
