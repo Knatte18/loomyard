@@ -27,28 +27,30 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 
 **In:**
 
-- `internal/shuttleengine` — `NewRunner` and `FindRun` take `anchorRoot, worktreeRoot string` / `anchorRoot string` instead of `*lyxcwd.Location`; `runDirRoot` takes `anchorRoot string`. `internal/lyxcwd` leaves the package's production imports.
+- `internal/shuttleengine` — `NewRunner` and `FindRun` take `anchorPath, worktreeRoot string` / `anchorPath string` instead of `*lyxcwd.Location`; `runDirRoot` takes `anchorPath string`. `internal/lyxcwd` leaves the package's production imports.
 - `internal/reedengine` — `New(cfg Config, geom Geometry)`, where `Geometry` is reed's own told-geometry struct (7 fields, enumerated below). `internal/lyxcwd` **and** `internal/fabricengine` both leave the package's production imports.
 - `internal/tokenvocab` — `Ctx.Layout *lyxcwd.Location` becomes two plain fields, `RepoName` and `HubPath`. `internal/lyxcwd` leaves the package's production imports and its leaf-enforcement allowlist.
 - **New package `internal/hubgeom`** — the single hub-mode `*lyxcwd.Location` → told-geometry conversion, exporting `ReedGeometry(*lyxcwd.Location) reedengine.Geometry` today and gaining per-engine siblings in T6/T7.
 - `reedengine.HubLogsDir` **moves** to `fabricengine.HubLogsDir(hubPath string)`.
 - The five hub-mode construction sites: `internal/burlercli/cli.go` (103-104), `internal/perchcli/cli.go` (143-144), `internal/webstercli/cli.go` (179-181), `internal/shuttlecli/cli.go` (92-93), `internal/reedcli/cli.go` (83).
-- The two non-constructor callers of `shuttleengine.FindRun` in `internal/websterengine`: `recoverbatch.go:182` and `runlevel.go:529` — one-token edits (`deps.Layout` becomes `deps.Layout.AnchorPath()`).
-- Tests outside the three packages that construct these symbols: `internal/treadleengine/smoke_judge_test.go:288`, `internal/burlerengine/smoke_cluster_test.go:135`, `internal/burlerengine/smoke_round_test.go:317`, `internal/shuttlecli/smoke_interrupt_test.go:280` (all `reedengine.New(reedCfg, h.Location)`); `internal/fabricengine/hubscratch_test.go:70` and `internal/reedcli/smoke_debuglog_test.go:40,169` (both `reedengine.HubLogsDir`).
+- The two **production** callers of `shuttleengine.FindRun` in `internal/websterengine`: `recoverbatch.go:182` and `runlevel.go:529` — one-token edits (`deps.Layout` becomes `deps.Layout.AnchorPath()`).
+- **Every out-of-package caller of the four changed exported symbols**, enumerated symbol-by-symbol (see the Technical context call-site table). Beyond the five CLI construction sites and the two `websterengine` production files above, that is eleven test files: `internal/shuttlecli/cli_test.go:237`, `internal/shuttlecli/smoke_interrupt_test.go:280,282`, `internal/webstercli/verbs_test.go:227`, `internal/websterengine/recoverbatch_test.go:189`, `internal/treadleengine/smoke_judge_test.go:288,289`, `internal/burlerengine/smoke_cluster_test.go:135,136`, `internal/burlerengine/smoke_round_test.go:317,318`, `internal/fabricengine/hubscratch_test.go:70`, `internal/reedcli/smoke_debuglog_test.go:40,169`, and `cmd/lyx/constructoranchoring_test.go:96,144`.
 - `cmd/lyx/constructoranchoring_test.go` — its `reedengine.HubLogsDir` rows (96 and 144) retarget onto `fabricengine.HubLogsDir`.
 - `CONSTRAINTS.md` — two invariants reworded (see Constraints below).
 - Docs: `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md`, `docs/shared-libs/README.md`.
-- `manifest/designs/producers-standalone.md` — a one-line pointer to `internal/hubgeom` in the **T6** and **T7** entries only. Nothing else in that doc is edited (see the design-doc decision below).
+- `manifest/designs/producers-standalone.md` — three edits only: a one-line pointer to `internal/hubgeom` in the **T6** and **T7** entries, and a correction to **row 64** of the Location-consumption table (which attributes `HubLogsDir` to `reedengine/lifecycle.go`). Nothing else in that doc is edited (see the design-doc decision below).
 
 **Out:**
 
 - **No standalone CLI entry point.** This task changes signatures only; nothing gains a `--target` flag, a `--stencils-dir` flag, or a standalone mode. Those are T7 and T8.
 - **No `internal/preflight`, `internal/buildinfo`, or `internal/standalonestate`.** Those are T5's deliverables; nothing here depends on them.
 - **No config-loader change.** `LoadOrTemplate` is T2. The `LoadConfig` calls at each construction site keep their present `layout.AnchorPath()` argument and their present strict behaviour.
-- **`internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine` are not converted.** T6, T7 and T9 own those. This task touches `websterengine` in exactly two files (`recoverbatch.go`, `runlevel.go`) and only because they call the changed `shuttleengine.FindRun`; those edits neither require nor anticipate T7.
+- **`internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine` are not converted.** T6, T7 and T9 own those. This task touches `websterengine` in exactly two **production** files (`recoverbatch.go`, `runlevel.go`) and only because they call the changed `shuttleengine.FindRun`; those edits neither require nor anticipate T7.
+  One `websterengine` **test** file is also touched — `recoverbatch_test.go:189` calls `shuttleengine.NewRunner` — which is a signature fixup, not a conversion of the package.
+  T7 rewrites `recoverbatch.go`/`runlevel.go` wholesale and must land after this task.
 - **No new named told-geometry invariant** and no new allowlist-enforcement test for `reedengine` or `shuttleengine`. T10 owns naming the cross-cutting rule.
 - **No `manifest/roadmap.md` edit.** T3 is one wave of an already-listed item; `CLAUDE.md` reserves roadmap moves for completing or adding a planned item.
-- **No rewrite of T3's own Files/Verify lines** in `manifest/designs/producers-standalone.md`, and no edit to any entry other than the two T6/T7 pointer lines.
+- **No rewrite of T3's own Files/Verify lines** in `manifest/designs/producers-standalone.md`, and no edit to that file beyond the three named above (T6 pointer, T7 pointer, row 64).
 - **No additive twins.** The old `*lyxcwd.Location` signatures are replaced, never kept beside the new ones as wrappers (`producers-standalone.md`, "no additive twins" decision).
 
 ## Decisions
@@ -61,7 +63,7 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
   |---|---|---|
   | `SocketKey` | `reedengine.ServerName(l.HubPath)` | the tmux `-L` socket name (`lock.go:43`, `Engine.Socket`) |
   | `SessionName` | `reedengine.SessionName(l.WorktreePath())` | the tmux session name (`Engine.SessionName`) |
-  | `AnchorRoot` | `l.AnchorPath()` | `stateDir()` (`reed.json`/`reed.lock`, `lifecycle.go:44`), pane spawn cwd (`lifecycle.go:305`, `lifecycle.go:500`) |
+  | `AnchorPath` | `l.AnchorPath()` | `stateDir()` (`reed.json`/`reed.lock`, `lifecycle.go:44`), pane spawn cwd (`lifecycle.go:305`, `lifecycle.go:500`) |
   | `WorktreeRoot` | `l.WorktreePath()` | `Strand.Worktree` and `resolveStrandName`'s `<WORKTREE>` token (`strand.go:175-176`) |
   | `LogsDir` | `fabricengine.HubLogsDir(l.HubPath)` | the shared server's runtime log dir (`lifecycle.go:256`) |
   | `RepoName` | `l.RepoName` | the header pane's `repo` token, via `tokenvocab` |
@@ -73,7 +75,21 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
   `SessionName` stays told rather than being computed from `WorktreeRoot` because T5 requires standalone entries to name the session from the shared `hash8`, which is unrelated to the target directory's basename.
   A struct rather than a positional parameter list because seven strings positional is exactly the smell "told-geometry structs per engine" exists to avoid.
 - **Rejected.** (a) Carrying `WorktreeRoot` only and deriving `SessionName = filepath.Base(WorktreeRoot)` inside reed — reed re-derives geometry it was supposed to be told, and standalone loses control of the session name.
-  (b) Carrying told `SessionName` only and stamping `Strand.Worktree` from `AnchorRoot` — a behaviour change in a persisted field for no gain.
+  (b) Carrying told `SessionName` only and stamping `Strand.Worktree` from `AnchorPath` — a behaviour change in a persisted field for no gain.
+
+### Naming — `AnchorPath`, not `AnchorRoot`; `WorktreeRoot` keeps `Root`
+
+- **Decision.** The `Location.AnchorPath()`-derived value is spelled **`AnchorPath`** (struct field) and **`anchorPath`** (parameter) everywhere in this task.
+  The `Location.WorktreePath()`-derived value keeps **`WorktreeRoot`** / **`worktreeRoot`**.
+  This overrides the T3 brief's own spelling in `manifest/designs/producers-standalone.md:291-292`, which says `anchorRoot`.
+- **Rationale.** `CONSTRAINTS.md`'s Cwd Resolution Invariant is explicit: "`root` always means the git worktree/repo root; the current working directory is `cwd`. Never name a parameter, field, or local variable `root` for a value that is actually `cwd`, or vice versa."
+  `AnchorPath()` is exactly the value cwd is gated to equal (`cwd must equal AnchorPath() exactly`, same invariant), so naming it `AnchorRoot` is the precise inversion the rule bans.
+  `manifest/designs/fabric-unified-view.md:61-65` repeats the rule and records why it exists — cwd/root confusion was a recurring real defect source in this codebase, including in generated code — and the same decomposition doc's **T4** already spells the identical concept `anchorPath` (line 330-331).
+  Pinning `anchorPath` therefore matches CONSTRAINTS, matches T4, and keeps one spelling across the two wave-1/wave-2 tasks converting the same value.
+  `WorktreeRoot` is left alone because it *is* the git worktree root — the one thing `root` is reserved for.
+- **Rejected.** (a) Following the T3 brief's `anchorRoot` verbatim — `CONSTRAINTS.md` is authoritative over a task brief, and the brief's own sibling task contradicts it.
+  (b) Spelling it `cwd`, per `fabric-unified-view.md:63`'s advice for modules joining onto cwd — reed and shuttle are *told* this path by a caller and never read a process working directory, so `cwd` would misdescribe it; `AnchorPath` names the resolved concept `lyxcwd` already exports.
+- **Consequence.** `hubgeom.ReedGeometry` sets `AnchorPath: l.AnchorPath()`, and the two-string shuttle signature reads `anchorPath, worktreeRoot string`.
 
 ### HubLogsDir moves to fabricengine
 
@@ -118,9 +134,9 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 
 ### shuttleengine takes two plain strings, sourced from the same Geometry
 
-- **Decision.** `NewRunner(reed ReedOps, engine Engine, anchorRoot, worktreeRoot string, cfg Config) *Runner`; `FindRun(cfg Config, anchorRoot, guid string)`; `runDirRoot(cfg Config, anchorRoot string)`.
+- **Decision.** `NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg Config) *Runner`; `FindRun(cfg Config, anchorPath, guid string)`; `runDirRoot(cfg Config, anchorPath string)`.
   No `shuttleengine.Geometry` struct — two values do not warrant one.
-  At each CLI site the two arguments come from the `reedengine.Geometry` already built on the adjacent line: `hubgeom.ReedGeometry(layout)` is called once, `reedengine.New(reedCfg, g)` and `shuttleengine.NewRunner(reedEngine, claudeengine.New(), g.AnchorRoot, g.WorktreeRoot, shuttleCfg)` both read from it.
+  At each CLI site the two arguments come from the `reedengine.Geometry` already built on the adjacent line: `hubgeom.ReedGeometry(layout)` is called once, `reedengine.New(reedCfg, g)` and `shuttleengine.NewRunner(reedEngine, claudeengine.New(), g.AnchorPath, g.WorktreeRoot, shuttleCfg)` both read from it.
 - **Rationale.** The design doc's T3 brief specifies this signature explicitly.
   Sourcing both from the single `Geometry` value keeps the anchor/worktree pairing decided in exactly one place rather than re-derived beside a struct that already holds both.
 - **Rejected.** (a) `layout.AnchorPath(), layout.WorktreePath()` inline at each CLI site — reintroduces the swap hazard next to a struct that already has the answer.
@@ -150,6 +166,8 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 
 - **Decision.** Do not rewrite T3's **Files** or **Verify** lines in `manifest/designs/producers-standalone.md`.
   Do add a **one-line pointer** to `internal/hubgeom` in that doc's **T6** and **T7** entries, naming the package and what it exports, so a future explorer reading only the design doc finds it.
+  Also correct **row 64** of that doc's Location-consumption table (line 64), which attributes `HubLogsDir` to `internal/reedengine/lifecycle.go` — false once the function lives in `fabricengine`.
+  Those three edits are the complete permitted edit set for that file.
   `internal/hubgeom/doc.go` carries the same statement — that it is the hub-mode teller, that engines never import it, and that later waves add their own `*Geometry` functions beside `ReedGeometry` — since a grep for the package name lands there first.
 - **Rationale.** The decomposition doc is the plan of record for T6-T10, and `CLAUDE.md`'s same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`, not a task-decomposition doc — so a wholesale rewrite of T3's entry is out of scope.
   A pointer is a different, smaller thing, and it addresses a concrete risk rather than a bookkeeping one: without it, whoever spawns T6 or T7 from the design doc alone never learns `hubgeom` exists and re-derives the seven-field construction inline — exactly the duplication this task spent a package avoiding.
@@ -175,6 +193,18 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
   All three stay; only their *callers* move outward.
 - `internal/tokenvocab/tokenvocab.go:7-27` — `Ctx{Layout *lyxcwd.Location}` and the two-token registry.
 - `internal/tokenvocab/render.go` — `Render(template []byte, c Ctx)`, unchanged in shape.
+
+**Call-site table — every out-of-package reference to a changed exported symbol.** Produced by a symbol-by-symbol grep over all four (`shuttleengine.NewRunner`, `shuttleengine.FindRun`, `reedengine.New`, `reedengine.HubLogsDir`), not by enumerating construction sites only.
+
+| Symbol | Production call sites | Test call sites |
+|---|---|---|
+| `shuttleengine.NewRunner` | `burlercli/cli.go:104`, `perchcli/cli.go:144`, `webstercli/cli.go:181`, `shuttlecli/cli.go:93` | `shuttlecli/cli_test.go:237`, `shuttlecli/smoke_interrupt_test.go:282`, `webstercli/verbs_test.go:227`, `websterengine/recoverbatch_test.go:189`, `treadleengine/smoke_judge_test.go:289`, `burlerengine/smoke_cluster_test.go:136`, `burlerengine/smoke_round_test.go:318` |
+| `shuttleengine.FindRun` | `websterengine/recoverbatch.go:182`, `websterengine/runlevel.go:529` | in-package `shuttleengine` tests only (`runlevel_test.go:215` is a comment, not a call) |
+| `reedengine.New` | `burlercli/cli.go:103`, `perchcli/cli.go:143`, `webstercli/cli.go:179`, `shuttlecli/cli.go:92`, `reedcli/cli.go:83` | `shuttlecli/smoke_interrupt_test.go:280`, `treadleengine/smoke_judge_test.go:288`, `burlerengine/smoke_cluster_test.go:135`, `burlerengine/smoke_round_test.go:317`, plus in-package `reedengine` tests |
+| `reedengine.HubLogsDir` | none | `fabricengine/hubscratch_test.go:70`, `reedcli/smoke_debuglog_test.go:40,169`, `cmd/lyx/constructoranchoring_test.go:96,144` |
+
+Note the pairing: every file that calls `reedengine.New` out of package calls `shuttleengine.NewRunner` on the very next line, except `reedcli` (reed only) and the four `NewRunner`-only test files.
+That pairing is what makes one `hubgeom.ReedGeometry(layout)` per site feed both constructors.
 
 **Construction sites, present form.** All five follow the same pattern: resolve `layout`, `reedengine.LoadConfig(layout.AnchorPath(), "reed")`, then `reedengine.New(reedCfg, layout)` and (except `reedcli`) `shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)`.
 `burlercli` and `perchcli` additionally pass `layout` to `burlerengine.New` — that argument is **T6's**, left untouched here.
@@ -217,8 +247,11 @@ From `CONSTRAINTS.md`:
   **Reworded in this commit**: that path no longer exists.
   The invariant's allowlist itself does not change.
 - **Live-Substrate Spawn Observability** (line ~401) — binds every touched spawn path in `internal/reedengine/lifecycle.go` and `internal/shuttleengine/run.go`; the `logger` calls must survive intact.
-- **Cwd Resolution Invariant** — `internal/lyxcwd` owns cwd resolution alone.
-  This task moves *consumption* of a resolved `Location` outward to `internal/hubgeom` and the CLI layer; it must not add any `os.Getwd`, git discovery, or path resolution to `hubgeom`, which only reads accessors off a `Location` its caller already resolved.
+- **Cwd Resolution Invariant** — two halves bind here.
+  (a) `internal/lyxcwd` owns cwd resolution alone: this task moves *consumption* of a resolved `Location` outward to `internal/hubgeom` and the CLI layer, and must not add any `os.Getwd`, git discovery, or path resolution to `hubgeom`, which only reads accessors off a `Location` its caller already resolved.
+  (b) The naming half — "`root` always means the git worktree/repo root … never name a parameter, field, or local variable `root` for a value that is actually `cwd`" — governs every new field and parameter this task introduces.
+  Since `cwd must equal AnchorPath() exactly`, the anchor-derived value is named `AnchorPath`/`anchorPath` and never `AnchorRoot`/`anchorRoot`; see the naming decision above.
+  `manifest/designs/fabric-unified-view.md:61-65` records why the rule exists and is worth re-reading before naming anything here.
 - **CLI/Cobra Invariant** — the module `Command()`/`RunCLI` seam is unchanged by this task; no command is added, removed, or renamed, so the help-tree tests should not move.
 - **Durable-vs-Ephemeral State Invariant** — enforced by `cmd/lyx/constructoranchoring_test.go`; the anchoring of every path must be byte-identical before and after. `HubLogsDir`'s value stays `<hub>/_board/.lyx/logs` regardless of which package computes it.
 - **Documentation Lifecycle** / `CLAUDE.md` same-commit docs rule — a task introducing cross-cutting infrastructure updates `docs/overview.md` and `CONSTRAINTS.md` in the same commit.
@@ -273,7 +306,7 @@ plus `go test -tags integration ./internal/reedengine/...` for the tmux paths.
 - **Q:** Where does `reedengine.HubLogsDir` go, given `fabricengine` must leave reed's imports? **A:** Move it to `fabricengine.HubLogsDir(hubPath string)` — `fabricengine` already owns `HubScratchDir`, and the `constructoranchoring_test.go` rows retarget rather than die.
 - **Q:** How is the seven-field hub-mode construction handled across five CLI sites and four smoke tests? **A:** Never duplicated — a single shared teller, reused everywhere. This is a standing operator rule, not a per-task preference.
 - **Q:** Name and reach of that shared package? **A:** `internal/hubgeom`, generically named so T6 and T7 add `BurlerGeometry`/`PerchGeometry`/`WebsterGeometry` to the same package rather than forcing a rename or spawning sibling packages.
-- **Q:** Does shuttle's `anchorRoot, worktreeRoot` pair come from the same `Geometry` value? **A:** Yes — one `hubgeom.ReedGeometry(layout)` call feeds both `reedengine.New` and `shuttleengine.NewRunner` at each site, so the anchor/worktree pairing is decided once.
+- **Q:** Does shuttle's `anchorPath, worktreeRoot` pair come from the same `Geometry` value? **A:** Yes — one `hubgeom.ReedGeometry(layout)` call feeds both `reedengine.New` and `shuttleengine.NewRunner` at each site, so the anchor/worktree pairing is decided once.
 - **Q:** Does `reedengine.New` validate the told `SocketKey`? **A:** No. It stays a total function returning `*Engine` only; the doc comment names `reedengine.ServerName(hubPath)` as the caller's hub-mode obligation. Validation would ripple an error return through nine construction sites for a bug only a caller bypassing `hubgeom` could produce.
 - **Q:** Do `reedengine` and `shuttleengine` get their own allowlist-enforcement tests now? **A:** No — T10 owns naming the cross-cutting told-geometry invariant. Only the two existing invariants are reworded, and only `tokenvocab`'s allowlist is tightened (the T3 Verify line requires that one explicitly).
 - **Q:** Is `manifest/designs/producers-standalone.md` amended, given its T3 Files/Verify lines are incomplete? **A:** Not rewritten — the same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`. The gap is recorded in this discussion file, which is the corrected record for T3.
