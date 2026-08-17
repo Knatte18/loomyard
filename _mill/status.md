@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-shuttle-told-strings
+phase: holistic-reviewing
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-hublogsdir-move  '2026-08-17T15:05:16Z'
 approved-tokenvocab-plain-fields  '2026-08-17T15:08:56Z'
 approved-reed-geometry-hubgeom  '2026-08-17T15:19:10Z'
 approved-shuttle-told-strings  '2026-08-17T15:26:49Z'
+holistic-reviewing  '2026-08-17T15:27:15Z'
 ```
 
 ## Batches
