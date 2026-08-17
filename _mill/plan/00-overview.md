@@ -3,7 +3,7 @@
 ```yaml
 task: "planparser owns the plan-directory path"
 slug: "planparser-plan-dir"
-approved: false
+approved: true
 started: "20260817-144434"
 parent: "standalone-producers"
 root: ""
@@ -67,19 +67,22 @@ Batch-local decisions live in each batch file._
   Ordering the cards this way costs nothing and keeps `git bisect` usable across the batch.
 - **Applies to:** repoint-and-delete-twins
 
-### Decision: the two `cmd/lyx` guard tables and the `cli_test.go` anchor flip are annotated as weakened, not counted as anchoring coverage
+### Decision: every rewritten guard row and fixture flip is annotated as weakened, not counted as anchoring coverage
 
-- **Decision:** `cmd/lyx/constructoranchoring_test.go`'s two plan rows, and `internal/webstercli/cli_test.go`'s `newTestCLI` anchor flip, both carry a comment stating precisely what they prove after this task (join arithmetic, `_lyx`-vs-`.lyx` group placement, nested-anchor path handling) and what they no longer prove (which root a production call site reaches for).
-- **Rationale:** Both are self-consistent under a wrong root — the guard rows pass `AnchorPath()` in and compare against an `anchor`-derived expectation, and `newTestCLI` both computes `planDir` and seeds the plan into it — so a future reader must not over-trust them.
-  Recording the weakening at the rows is cheaper than re-deriving it.
+- **Decision:** Three sites carry a comment stating precisely what they prove after this task (join arithmetic, `_lyx`-vs-`.lyx` group placement, durable-vs-transient placement, nested-anchor path handling) and what they no longer prove (which root a production call site reaches for): `cmd/lyx/constructoranchoring_test.go`'s two plan rows, `cmd/lyx/notransients_test.go`'s two `durableSet` plan rows, and `internal/webstercli/cli_test.go`'s `newTestCLI` anchor flip.
+- **Rationale:** All three are self-consistent under a wrong root, and the weakening is newly introduced by this task in each case.
+  The guard rows previously called `loomengine.PlanDir(l)`, which anchored internally, so the row faithfully reflected whatever production got;
+  after the rewrite the row builds the argument itself from `l.AnchorPath()`, so a production call site passing `WorktreePath()` no longer registers anywhere in either table. `newTestCLI` both computes `planDir` and is the same value the tests seed into, so a slip stays self-consistent at any `AnchorRel`.
+  A future reader must not over-trust any of the three, and recording the weakening at the rows is cheaper than re-deriving it.
 - **Applies to:** repoint-and-delete-twins
 
 ### Decision: `planparser.Validate`'s `worktreeRoot` parameter is left untouched
 
 - **Decision:** Do not rename `Validate(plan *Plan, worktreeRoot string)` and do not change what any caller passes it, even though it sits in the same package as the new anchor-always wording.
-- **Rationale:** Its two production callers pass different roots — `internal/webstercli/validate.go` passes `c.layout.AnchorPath()`, `internal/websterengine/runlevel.go` passes `deps.WorktreeRoot` — so at any `AnchorRel != "."` at most one of them is right.
-  Which one is right is a plan-format semantics question, not a path-ownership question, and answering it changes behaviour.
-  This task changes no behaviour.
+- **Rationale:** The parameter is named for a root its callers do not necessarily supply. `internal/webstercli/validate.go` passes `c.layout.AnchorPath()` directly, and `internal/websterengine/runlevel.go` passes `deps.WorktreeRoot`, which `internal/webstercli/run.go` populates with `c.layout.AnchorPath()` too — so the two production callers agree today, and there is no live divergence to adjudicate.
+  What the name invites is a *future* caller (or a future edit to either of these two) supplying an actual worktree root, at which point the two sites would resolve card paths against different directories at any `AnchorRel != "."` and at most one would be right.
+  Which root a card's worktree-relative path should resolve against is a plan-format semantics question, not a path-ownership question, and settling it changes behaviour.
+  This task changes no behaviour, so renaming the parameter here would assert an answer this task has not earned — and `_mill/discussion.md`'s own claim that the two callers already disagree is itself inaccurate for the same reason (`run.go`'s `WorktreeRoot` assignment), which is why the rationale is stated from the name rather than from a claimed divergence.
 - **Applies to:** all batches
 
 ### Decision: Go comment and markdown conventions

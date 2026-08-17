@@ -301,6 +301,9 @@ touching them here would be scope creep.
 - **Context:**
   - `internal/planparser/parse.go`
   - `internal/loomengine/config.go`
+  - `internal/loomengine/plan_test.go`
+  - `internal/webstercli/verbs_test.go`
+  - `cmd/lyx/constructoranchoring_test.go`
   - `internal/lyxcwd/lyxcwd.go`
 - **Edits:**
   - `cmd/lyx/notransients_test.go`
@@ -308,7 +311,7 @@ touching them here would be scope creep.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Three changes.
+  Four changes.
 
   **The two rows.** In `durableSet`, the first two entries become `{"planparser.PlanDir", planparser.PlanDir(l.AnchorPath())}` and `{"planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath())}`.
   They stay in `durableSet` — the plan directory is durable (`_lyx`, git-tracked), never ephemeral (`.lyx`) — and stay in their current position.
@@ -317,6 +320,9 @@ touching them here would be scope creep.
   **The import.** Add `github.com/Knatte18/loomyard/internal/planparser` to the import block.
   **Keep** the `internal/loomengine` import: `durableSet` still carries `loomengine.DiscussionDir` and `loomengine.LoomStatusFile`, and `transientSet` still carries `loomengine.LoomStatusLock`, none of which this task touches.
   So this file gains an import and loses none.
+
+  **The weakening comment.** Add a one-line comment above the two rewritten rows recording that they share the weakening annotated on `cmd/lyx/constructoranchoring_test.go`'s plan rows: they still pin that no durable plan path resolves as a transient at both `AnchorRel` fixtures, but because the row now builds `l.AnchorPath()` itself instead of calling a constructor that anchored internally, neither row can catch a production call site that passes the wrong root.
+  Name where that proof lives — the subpath-anchored `PlanSpec` case in `internal/loomengine/plan_test.go` and the subpath-anchored `PersistentPreRunE` case in `internal/webstercli/verbs_test.go`.
 
   **The header enumeration.** The file's header comment lists the owning modules it may import at once (`loomengine`, `websterengine`, `perchengine`, `treadleengine`, `scoutengine`, `logger`).
   Add `planparser` to that enumeration, in the same commit as the import.
@@ -472,5 +478,6 @@ What each new or changed test proves:
   both carry a comment saying so, and neither is counted as anchoring coverage.
 - `cmd/lyx/constructoranchoring_test.go`'s four rewritten rows (card 9) — join arithmetic and `_lyx`-vs-`.lyx` group placement at both `AnchorRel` fixtures, now tautological with respect to anchoring and annotated as such.
 - `cmd/lyx/notransients_test.go`'s two rewritten `durableSet` rows (card 10) — that no durable plan path resolves as a transient, at both `AnchorRel` fixtures.
+  Weakened by the same rewrite as the anchoring rows and annotated the same way: the row now builds `l.AnchorPath()` itself rather than calling a constructor that anchored internally, so it too can no longer catch a wrong-root production call site.
 
 Two non-test verifications belong to this batch and are grep obligations rather than assertions, both stated in the cards that own them: `internal/webstercli` must contain zero `loomengine` references after cards 5–7 (production and test), and `internal/loomengine/config.go` must contain zero `planparser.` references after card 11.
