@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-planparser-path-ownership
+phase: approved-repoint-and-delete-twins
 slug: planparser-plan-dir
 branch: planparser-plan-dir
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-17T15:07:46Z'
 planned  '2026-08-17T15:07:58Z'
 implementing  '2026-08-17T15:08:24Z'
 approved-planparser-path-ownership  '2026-08-17T15:11:28Z'
+approved-repoint-and-delete-twins  '2026-08-17T15:23:53Z'
 ```
 
 ## Batches
@@ -38,12 +39,12 @@ batches:
     commit_sha: 067c435aa337018407d4b21ab0c19ecf69d8d7cf
     verify_baseline_failures: []
   - name: repoint-and-delete-twins
-    state: running
+    state: approved
     implementer_session: fda9e568-0566-4907-9f98-8c5a31f205cc
     start_sha: c1006ca02ae824c59763a21494dcbb6c91972ff7
+    commit_sha: 4d046b752459ea14fd0f671c9bcd08c3f77750c0
     verify_baseline_failures: []
 ```
-
 ## Inferred-success log
 
 ```text
