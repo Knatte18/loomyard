@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: done
 slug: producer-standalone-capability
 branch: producer-standalone-capability
 plan: null
@@ -18,4 +18,5 @@ discussing  '2026-08-17T08:00:18Z'
 discussion-fix-r6  '2026-08-17T09:23:06Z'
 discussion-fix-r7  '2026-08-17T09:27:58Z'
 discussed  '2026-08-17T09:27:58Z'
+done  '2026-08-17T10:23:49Z'
 ```
