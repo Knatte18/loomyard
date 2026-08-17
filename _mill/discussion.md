@@ -101,8 +101,9 @@ Two repo-level rules bind this task itself: `manifest/roadmap.md` moves only on 
 This task ships no production code, so there is nothing to unit-test.
 Verification is:
 
-- `go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks` — the [Markdown Link Integrity](../CONSTRAINTS.md#markdown-link-integrity) invariant walks `manifest/`, resolving both the file part and the `#anchor` of every inline link.
-  Both new/changed files are inside that walk.
+- `go test ./internal/lyxcwd/ -run TestEnforcement_MarkdownLinks` — the [Markdown Link Integrity](../CONSTRAINTS.md#markdown-link-integrity) invariant resolves both the file part and the `#anchor` of every inline link.
+  Its scan roots are `manifest/` and `docs/` only, so it covers the two changed `manifest/` files and **not** this file: `_mill/` is outside the walk entirely, exactly as `README.md`, `CLAUDE.md` and `internal/**/*.md` are.
+  This file's own three relative links were hand-verified instead, which is the same review obligation every other unscanned `.md` in the repo carries.
 - `go test ./...` — nothing should move, and a diff that touches only `manifest/` and `_mill/` proves it.
 
 Each of the ten downstream tasks carries its own verification command in the design doc, and every one of them additionally rests on `go test ./...` from the worktree root.

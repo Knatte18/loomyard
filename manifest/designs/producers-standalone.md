@@ -349,6 +349,12 @@ Convert them to told strings on the same rule as T5.
 `render.go` additionally derives `fabricengine.StencilsDir(l.HubPath)` at three sites, and `runlevel.go` at one — those become a told `stencilsDir`, which is what removes `internal/fabricengine` from `websterengine`'s reason to know about hubs.
 This is deprioritised relative to burler/perch for the standalone goal, but it is required before Webster can be a `ShedProducer` driven by an orchestrator that is not `loom`.
 
+**This task does not give `webstercli` a standalone entry point, and nothing else in the ten does either.**
+There is deliberately no Webster equivalent of T6.
+After T7 lands, `websterengine` is drivable entirely from told paths — which is what an adapter needs — but `lyx webster run` still resolves geometry in its own `PersistentPreRunE` exactly as it does today.
+A standalone Webster CLI is a follow-up task outside this decomposition;
+see "What is deliberately not in scope" below.
+
 **Files.** `internal/websterengine/state.go`, `render.go`, `runlevel.go`, `beginbatch.go`, `recordbatch.go`, `recoverbatch.go`, `doc.go` and their tests; `internal/webstercli/cli.go`, `internal/webstercli/sync.go` and their tests.
 
 **Watch.** `internal/websterengine` is the one package whose raw-git-mutation ban is machine-checked (`cmd/lyx/rawgitmutation_test.go`), and the [Fabric Git Invariant](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft) binds every git call it makes.
@@ -421,7 +427,8 @@ Update `docs/overview.md` if the execution stack description changes, and move t
 
 **Files.** `CONSTRAINTS.md`, `docs/overview.md`, `manifest/roadmap.md`, this file (deleted per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) once the work ships), and the `doc.go` of each converted package.
 
-**Depends on.** T1 through T7 (T9 optional).
+**Depends on.** T1 through T8 (T9 optional).
+T8 in particular: the three-tier invariant this task lands in `CONSTRAINTS.md` is only true once the orchestrator-agnostic preflight actually exists, so writing the rule before T8 ships would pin a model the code does not yet implement.
 **Verify.** `go test ./...`;
 `internal/lyxcwd/docslink_test.go` for markdown link integrity across the reworded docs.
 
@@ -439,6 +446,10 @@ Update `docs/overview.md` if the execution stack description changes, and move t
 - **Wiring `internal/shedadapters` into production.**
   Nothing in `cmd/` or any `*cli` package imports it yet.
   That is `loom`'s own producer-list work — see the Planned `loom` items in [../roadmap.md](../roadmap.md).
+- **A standalone `lyx webster run`.**
+  The goal statement at the top of this doc says "eventually for Webster", and T7 is what makes `websterengine` drivable from told paths — but no task here gives `webstercli` the branch-around-`Resolve` that T6 gives `burlercli`/`perchcli`.
+  That is deliberate: Webster's value in this line of work is as a `ShedProducer` under an orchestrator, and an orchestrator is exactly the caller that legitimately requires tier 3.
+  A standalone Webster CLI is a follow-up task if it turns out to be wanted, and reading T7 as delivering it would be wrong.
 - **`lyx burler run <path>` as a positional-argument shape.**
   The motivating sentence in the discovery task says `lyx burler run <path>`, but `burler run` is already profile-driven (`--profile`), and a profile's `target.paths` is where a directory belongs.
   T6 should not invent a second way to say the same thing.
