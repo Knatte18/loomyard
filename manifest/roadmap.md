@@ -9,10 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
-   First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-
 1. **producers standalone: told-geometry foundations** — `planparser` takes over the plan-directory path from `loomengine`, `configengine` gains a template fallback so the three producer config loaders stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
    Three tasks, all parallel-safe against each other.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
@@ -34,6 +30,10 @@ Committed to, in this order, next.
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
+
+1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
+   First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
