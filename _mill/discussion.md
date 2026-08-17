@@ -24,7 +24,7 @@ The design's one-sentence rule — *"an orchestrator resolves geometry and requi
 **In:**
 
 - Add `planparser.PlanDir(anchorPath string) string` and `planparser.PlanOverview(anchorPath string) string` to `internal/planparser/parse.go`.
-- Delete `loomengine.PlanDir` and `loomengine.PlanOverview` from `internal/loomengine/config.go` (lines ~29-42).
+- Delete `loomengine.PlanDir` and `loomengine.PlanOverview` from `internal/loomengine/config.go`: the two function bodies at lines 32-34 and 40-42, together with their doc comments at 29-31 and 36-39.
 - Repoint every caller: `internal/loomengine/plan.go:67-68`, `internal/webstercli/cli.go:194`, `internal/webstercli/cli_test.go:172`, `internal/webstercli/verbs_test.go:221,259`, `internal/loomengine/plan_test.go:85-86`, `cmd/lyx/constructoranchoring_test.go:71-72,120-121`, `cmd/lyx/notransients_test.go:50-51`.
 - Remove the `internal/loomengine` import from `internal/webstercli/cli.go`, `cli_test.go` and `verbs_test.go`.
 - Port `internal/loomengine/planpath_test.go`'s cases into a new `internal/planparser/planpath_test.go` and delete the loomengine file.
@@ -260,7 +260,10 @@ Project rules that bind the commit:
 - Markdown uses semantic line breaks — one sentence per line, no fixed-column hard-wrap — in every `.md` file this task edits (`CONSTRAINTS.md`, `docs/overview.md`).
 - Go comments follow `golang:golang-comments`;
   the two new exported functions need doc comments starting with the function name, and each must state the anchor-always contract explicitly.
-- This is a task worktree — commit and push on `planparser-plan-dir`, never to `main`.
+- This is a task worktree — commit and push on the `planparser-plan-dir` branch only.
+  Its merge target is its recorded parent, `standalone-producers` (see this file's frontmatter and `_mill/status.md`), not `main`;
+  `mill-merge` lands it there.
+  Direct pushes to `main` are barred from a task worktree regardless.
 
 ## Testing
 
