@@ -31,7 +31,11 @@ implementing  '2026-08-17T15:08:24Z'
 ```yaml
 batches:
   - name: planparser-path-ownership
-    state: pending
+    state: running
+    implementer_session: c85a01f6-1213-44c0-9704-ac9c5896fa32
+    start_sha: a5778243c05293d6d236e6f53b57eba05af46b8b
+    verify_baseline_failures: []
   - name: repoint-and-delete-twins
     state: pending
+    verify_baseline_failures: []
 ```
