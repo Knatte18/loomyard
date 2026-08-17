@@ -432,6 +432,18 @@ A plain git repo therefore resolves to **standalone**, which is the intended ans
 This is a deliberate behaviour change for one existing case, and it is stated rather than smuggled: a plain git repo run through `lyx burler run` today gets hub mode with fictional geometry, and after T6 it gets standalone.
 A wired lyx worktree is unaffected — `Ready` is true there, so hub mode is selected exactly as today.
 The check costs one `os.Stat`.
+
+**The same trigger must gate the root pre-run's stencil seeding, which is a second fictional-hub write site nobody had assigned.**
+`cmd/lyx/main.go:97` sets `cobra.EnableTraverseRunHooks`, so root's `seedStencils` (`main.go:87`) runs before every module pre-run — and it triggers on bare `lyxcwd.Resolve` success (`stencilseed.go:51-56`), then calls `seedStencilsAt(l.HubPath, …)`.
+In the downloaded-repo case that means `stencilstore.Reconcile` writes `<repo-parent>/_board/_lyx/stencils/**` and `CommitSeededStencils` tries to commit it: precisely the fictional-hub write the trigger analysis above exists to prevent, happening one layer above the CLI that analysis was written for.
+This is a live defect today, independent of standalone — it is simply invisible because nobody points `lyx` at a non-lyx git repo on purpose yet.
+T6 gates `seedStencils` on the identical tier-1-AND-tier-2 check, which is also why T6 touches `cmd/lyx/stencilseed.go` for more than the `buildinfo` swap.
+
+**A wired-but-broken hub is refused, never silently degraded to standalone.**
+"Everything else is standalone" would otherwise decide the `(resolved, hub-damaged)` row by omission — a worktree whose junctions broke would quietly relocate its config reads and `.lyx` state to `<state>`, masking the breakage instead of reporting it.
+The discriminator is `fabricengine.BoardDir(filepath.Dir(worktreeRoot))`: a plain git repo has no `_board` beside it, a damaged hub does.
+So tier 2 failing **with** a `_board` present is a hard error naming `lyx fabric reconcile`, while tier 2 failing **without** one is an ordinary standalone target.
+Standalone must never become the place broken hubs go to hide.
 Add `--stencils-dir <path>` to replace `fabricengine.StencilsDir(layout.HubPath)`, bootstrapping it on first use via `stencilstore.Reconcile(dir, stencils.Registry(), mode, "")` with none of `cmd/lyx/stencilseed.go`'s Fabric-bound commit half.
 With T2 landed, the three config loaders already degrade, so no config file is required.
 After this task `lyx burler run --profile p.yaml --stencils-dir <dir>` works in a directory that is not a git repository.
@@ -472,10 +484,15 @@ With the split, every one of them relocates automatically — the rows marked *d
 The standalone stencils default is `<state>/_lyx/stencils`, not a third top-level `<state>/stencils`, so it mirrors the hub exactly: stencils are `_lyx`-resident at `<hub>/_board/_lyx/stencils` (`fabricengine.StencilsDir`), and standalone's `<state>` plays the hub's role, sitting beside `<state>/_lyx/config/` under the same `_lyx` root.
 
 **`--stencils-dir` is optional in both modes, and its default is what differs.**
-Standalone defaults it to `<state>/_lyx/stencils` and bootstraps that directory on first use;
+Standalone defaults it to `<state>/_lyx/stencils`;
 a resolved worktree defaults it to `fabricengine.StencilsDir(l.HubPath)` exactly as today.
 An explicit `--stencils-dir` is honoured in both — refusing it in-hub would forbid the one thing it is most useful for, pointing a real worktree at an experimental stencil set, and buys nothing.
 Omitting it is never an error, which is what keeps the standalone command a two-flag invocation rather than a three-flag one.
+
+**Bootstrap applies to the standalone default only, never to a told directory.**
+`<state>/_lyx/stencils` is `Reconcile`-seeded on first use because nothing else would ever create it;
+an explicitly-passed `--stencils-dir` is read, never written, in either mode.
+That is what makes the read-only characterisation in the `--target-dir` rationale below literally true rather than approximately true, and it means an operator who points the flag at a curated stencil set never has it silently reconciled out from under them.
 
 **`hash8` is `SHA-256` over the normalized absolute target path, truncated to the first eight hex characters.**
 Normalization is not optional and is not a new invention: the input goes through `filepath.EvalSymlinks` then `filepath.Clean`, falling back to `Clean` alone when `EvalSymlinks` fails, and compared case-insensitively on Windows — exactly the semantics `internal/lyxcwd/anchor.go`'s `normalizePath`/`samePath` already implement for the same class of problem.
@@ -521,7 +538,12 @@ Say so in the invariant's own text as part of this task's `CONSTRAINTS.md` edit.
 **Files.** `internal/burlercli/cli.go`, `internal/burlercli/run.go` and tests; `internal/perchcli/cli.go`, `internal/perchcli/run.go` and tests; a new stdlib-only `internal/buildinfo` package plus its `doc.go`; `cmd/lyx/stencilseed.go` (reads `buildinfo.StencilMode()` instead of its own `buildChannel`); `tools/deploy/main.go` (line 62, the ldflags path); `cmd/lyx/*_test.go` for the help-tree and `Short`/`Long` obligations under the [CLI / Cobra Invariant](../../CONSTRAINTS.md#cli--cobra-invariant); `CONSTRAINTS.md`.
 
 **Invariant rewords land in this task's own commit, not deferred to T10.**
-This task is what introduces the told stencils directory and the standalone state locations, so the [Stencil Ownership Invariant](../../CONSTRAINTS.md#stencil-ownership-invariant) reword (name a told absolute directory rather than `<hub>/_board/_lyx/stencils/` specifically) and the Durable-vs-Ephemeral clarification above both belong here.
+This task is what introduces the told stencils directory and the standalone state locations, so both [Stencil Ownership Invariant](../../CONSTRAINTS.md#stencil-ownership-invariant) bullets it falsifies, plus the Durable-vs-Ephemeral clarification above, belong here:
+
+- the **read-location** bullet, which pins reads to `<hub>/_board/_lyx/stencils/` — reworded to name a told absolute directory, with the hub path as what hub mode resolves to;
+- the **seed-pass** bullet, which says the seed/refresh pass "runs once per process at `cmd/lyx`'s root pre-run" — reworded to "once per process: at `cmd/lyx`'s root pre-run in hub mode, or at the producer CLI's own pre-run in standalone mode".
+  The load-bearing half of that bullet, *never lazily inside `stencilstore.Read`*, is preserved exactly;
+  what changes is only which pre-run does it.
 Deferring them to T10 would leave the shipped code contradicting a live invariant across two waves, against `CLAUDE.md`'s same-commit docs rule that T1, T3 and T4 all honour.
 T10 keeps only the new three-tier invariant and the cross-doc consolidation.
 
