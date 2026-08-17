@@ -3,7 +3,7 @@
 ```yaml
 task: "shuttleengine + reedengine + tokenvocab told-geometry"
 slug: "shuttle-reed-told-geometry"
-approved: false
+approved: true
 started: "20260817-144614"
 parent: "standalone-producers"
 root: ""
