@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-repoint-and-delete-twins
+phase: holistic-reviewing
 slug: planparser-plan-dir
 branch: planparser-plan-dir
 plan: _mill/plan
@@ -26,6 +26,7 @@ planned  '2026-08-17T15:07:58Z'
 implementing  '2026-08-17T15:08:24Z'
 approved-planparser-path-ownership  '2026-08-17T15:11:28Z'
 approved-repoint-and-delete-twins  '2026-08-17T15:23:53Z'
+holistic-reviewing  '2026-08-17T15:24:21Z'
 ```
 
 ## Batches
