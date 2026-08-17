@@ -97,7 +97,8 @@ type MasterStarter interface {
 
 // RunDeps carries every seam Run needs for testing.
 // Starter spawns Master; Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
-// PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir, WorktreeRoot are lyxcwd- resolved paths;
+// PlanDir is planparser's told-anchor path, supplied by the caller from layout.AnchorPath(), while
+// WebsterDir, ReportsDir, PromptsDir, ScratchDir, WorktreeRoot are lyxcwd-resolved paths;
 // Config, Roles, and Batcher carry the loaded configuration, pre-flight-resolved role->model-spec
 // map, and CLI-pre-resolved active batchifier.
 type RunDeps struct {
