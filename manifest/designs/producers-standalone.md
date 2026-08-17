@@ -418,7 +418,20 @@ Nothing in this refactor should touch those paths, but the guard will catch it i
 `slug: standalone-cli-entry`
 
 **Brief.** The task the whole design exists for.
-Make `burlercli` and `perchcli`'s `PersistentPreRunE` branch: when `lyxcwd.Resolve(cwd)` fails, do not abort — build the engine stack from told values instead.
+Make `burlercli` and `perchcli`'s `PersistentPreRunE` branch between hub mode and standalone mode instead of aborting.
+
+**The trigger is tier 1 AND tier 2, never "`Resolve` errored".**
+This is the one place the three-tier model has to be applied rather than merely described.
+"`Resolve` failed" is not a usable trigger, because `Resolve` succeeds in any ordinary git repository run from its root — and a downloaded repo, named in this doc's own goal statement, is exactly that.
+Triggering on `Resolve` alone would leave such a target in hub mode with `HubPath` set to its parent directory and `RepoName` to that directory's basename: the precise fictional-hub hazard this design rejects the synthetic `Location` for, complete with a mis-named tmux socket and a `.lyx` tree written into the repo being reviewed.
+
+So: **hub mode requires tier 1 and tier 2 both** — `lyxcwd.Resolve` succeeds *and* Fabric is actually wired here (`fabricengine.Ready`-class, reached through the `internal/preflight` package T8 lifts, never by importing `fabricengine` into a CLI directly).
+Everything else is standalone.
+A plain git repo therefore resolves to **standalone**, which is the intended answer: there is no hub to coordinate with, so there is nothing for hub mode to be right about.
+
+This is a deliberate behaviour change for one existing case, and it is stated rather than smuggled: a plain git repo run through `lyx burler run` today gets hub mode with fictional geometry, and after T6 it gets standalone.
+A wired lyx worktree is unaffected — `Ready` is true there, so hub mode is selected exactly as today.
+The check costs one `os.Stat`.
 Add `--stencils-dir <path>` to replace `fabricengine.StencilsDir(layout.HubPath)`, bootstrapping it on first use via `stencilstore.Reconcile(dir, stencils.Registry(), mode, "")` with none of `cmd/lyx/stencilseed.go`'s Fabric-bound commit half.
 With T2 landed, the three config loaders already degrade, so no config file is required.
 After this task `lyx burler run --profile p.yaml --stencils-dir <dir>` works in a directory that is not a git repository.
@@ -453,11 +466,13 @@ With the split, every one of them relocates automatically — the rows marked *d
 | shuttle run dir (`runDirRoot`) | `Join(AnchorPath(), ".lyx", "shuttle")` | *derived* — `<state>/.lyx/shuttle` |
 | burler scratch | `Join(AnchorPath(), ".lyx", "burler")` | *derived* — `<state>/.lyx/burler` |
 | perch `RunsDir` / `ScratchDir` | `AnchorPath()`-anchored `_lyx`/`.lyx` pair | *derived* — under `<state>` |
-| stencils dir | `fabricengine.StencilsDir(l.HubPath)` | `--stencils-dir <path>`, optional; defaults to `<state>/stencils`, bootstrapped on first use |
+| stencils dir | `fabricengine.StencilsDir(l.HubPath)` | `--stencils-dir <path>`, optional; defaults to `<state>/_lyx/stencils`, bootstrapped on first use |
 | stencil `Reconcile` mode | `buildChannel == "dev"` selector at `cmd/lyx/stencilseed.go:73-76` | the same selector, reached through a new `internal/buildinfo` — see below |
 
+The standalone stencils default is `<state>/_lyx/stencils`, not a third top-level `<state>/stencils`, so it mirrors the hub exactly: stencils are `_lyx`-resident at `<hub>/_board/_lyx/stencils` (`fabricengine.StencilsDir`), and standalone's `<state>` plays the hub's role, sitting beside `<state>/_lyx/config/` under the same `_lyx` root.
+
 **`--stencils-dir` is optional in both modes, and its default is what differs.**
-Standalone defaults it to `<state>/stencils` and bootstraps that directory on first use;
+Standalone defaults it to `<state>/_lyx/stencils` and bootstraps that directory on first use;
 a resolved worktree defaults it to `fabricengine.StencilsDir(l.HubPath)` exactly as today.
 An explicit `--stencils-dir` is honoured in both — refusing it in-hub would forbid the one thing it is most useful for, pointing a real worktree at an experimental stencil set, and buys nothing.
 Omitting it is never an error, which is what keeps the standalone command a two-flag invocation rather than a three-flag one.
@@ -481,7 +496,14 @@ It matters because reed's config carries genuinely machine-specific keys — `tm
 With T2 landed the directory is optional (an absent file resolves the embedded template), so the common case needs no config at all;
 when an operator does need one, `<state>` is deterministic from the target path and the command prints it, so the path is findable rather than guessed.
 
-`<state>` is `$XDG_STATE_HOME/lyx/<hash8>/`, falling back to `~/.local/state/lyx/<hash8>/`, where `hash8` is the first eight hex characters of the target directory's absolute-path hash — the same content-hash namespacing `shedadapters`' perch run-ids already use.
+`<state>` is per-OS, because this repo ships Windows (`internal/fslink`'s junctions, `shell.ForGOOS`'s `pwsh`, `cmd/lyx/crosscompile_test.go`) and the hashing rule below is itself Windows-aware, so a POSIX-only state path would contradict the same paragraph:
+
+| GOOS | `<state>` |
+|---|---|
+| `windows` | `%LOCALAPPDATA%\lyx\<hash8>\` |
+| everything else | `$XDG_STATE_HOME/lyx/<hash8>/`, falling back to `~/.local/state/lyx/<hash8>/` |
+
+`hash8` namespaces state by target directory, the same way `shedadapters`' perch run-ids namespace by profile content.
 
 **The socket is deterministic, not per-invocation, and that is what makes resume work.**
 `reedengine.ReedState` persists both `Socket` and `Session` (`internal/reedengine/state.go:32-36`) and reed's entire Up/Resume model reads them back.
@@ -506,18 +528,23 @@ T10 keeps only the new three-tier invariant and the cross-doc consolidation.
 **`--target-dir` is a resolution base, not a review target.**
 It supplies `worktreeRoot` — the directory relative profile paths resolve against — and nothing more.
 It never names what to review: that is the profile's `target.paths`, and the out-of-scope note about `lyx burler run <path>` below is precisely the rule that keeps these from becoming two ways to say the same thing.
-In a real worktree the value is `layout.WorktreePath()` and the flag is unnecessary;
-standalone defaults it to cwd.
+**In hub mode `--target-dir` is refused, not honoured** — deliberately the opposite ruling from `--stencils-dir`, and for a reason rather than by inconsistency.
+`--stencils-dir` names a directory that is only ever *read*, so pointing a real worktree at an experimental stencil set is harmless and useful.
+`--target-dir` is the base that `Profile.validate` resolves `ReviewPath` and `FixerReportPath` against — it decides where the round *writes* — so honouring it in hub mode would place artifacts outside the anchored subtree that Fabric's positive-only commit pathspec covers, silently stranding them.
+In hub mode the value is structurally `layout.WorktreePath()`;
+standalone defaults it to cwd and honours the flag.
 
 **Watch.** Both new flags — `--stencils-dir` and `--target-dir` — need `Short`/`Long` text, and help accuracy is a review obligation whenever observable behaviour changes.
 The `--stencils-dir` bootstrap and the `<state>` directory both write files, so the command must say where it wrote them.
 
-**Depends on.** T2, T3, T4, T5.
+**Depends on.** T2, T3, T4, T5, and **T8** — the hub-mode trigger is a tier-2 check, which T8 is what makes reachable from a CLI package without importing `internal/fabricengine` into one.
+That dependency is also the answer to T8 looking like the one task delivering nothing toward standalone burler: it delivers the trigger.
 **Parallel-safe with.** T9.
 **Verify.** The one behaviour this whole design exists for must be pinned by an automated test, not only by a manual run — nothing else in the ten tasks covers it, and T2 already sets the precedent by requiring a new test per config loader.
 Two tiers, both required:
 
 - **Untagged unit test**, one per CLI: factor the "build the engine stack from told values" wiring out of `PersistentPreRunE` into a function taking the resolved-or-not state as a parameter, and assert it produces a fully-built stack with the pinned standalone values above.
+  Cover the mode-selection truth table explicitly, since the plain-git-repo row is the one the r5 review caught: `(resolved, wired)` selects hub mode, and `(resolved, not wired)` — the downloaded repo — selects standalone exactly as `(unresolved, …)` does.
   This must be tier 1, which is only possible via the extraction — a test that drives the real pre-run reaches `lyxcwd.Resolve`, which spawns git through `gitexec.Run` and would breach the [Test Tier Purity Invariant](../../CONSTRAINTS.md#test-tier-purity-invariant).
 - **`//go:build integration` test**, one per CLI: drive `RunCLIIn(<temp dir outside any git repo>, …)` and assert the pre-run reaches the run verb's own flag validation rather than a resolution error.
   This is what pins the actual wiring rather than the extracted helper.
