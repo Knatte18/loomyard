@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: planparser-plan-dir
 branch: planparser-plan-dir
 plan: _mill/plan
@@ -30,6 +30,7 @@ holistic-reviewing  '2026-08-17T15:24:21Z'
 holistic-fixing  '2026-08-17T15:27:04Z'
 nits-fixed-holistic  '2026-08-17T15:29:13Z'
 holistic-approved  '2026-08-17T15:29:21Z'
+done  '2026-08-17T15:30:31Z'
 ```
 
 ## Batches
