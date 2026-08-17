@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: planparser-plan-dir
 branch: planparser-plan-dir
 plan: _mill/plan
@@ -28,6 +28,8 @@ approved-planparser-path-ownership  '2026-08-17T15:11:28Z'
 approved-repoint-and-delete-twins  '2026-08-17T15:23:53Z'
 holistic-reviewing  '2026-08-17T15:24:21Z'
 holistic-fixing  '2026-08-17T15:27:04Z'
+nits-fixed-holistic  '2026-08-17T15:29:13Z'
+holistic-approved  '2026-08-17T15:29:21Z'
 ```
 
 ## Batches
