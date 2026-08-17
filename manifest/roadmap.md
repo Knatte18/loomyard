@@ -9,15 +9,15 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **producers standalone: told-geometry foundations** — `planparser` takes over the plan-directory path from `loomengine`, `configengine` gains a template fallback so the three producer config loaders stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
+1. **producers standalone: told-geometry foundations** — `planparser` takes over the plan-directory path from `loomengine`, `configengine` gains a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
    Three tasks, all parallel-safe against each other.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` so `Hardener` and future `Shed` products stop having to re-implement it.
+1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
    Two tasks, parallel-safe.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **producers standalone: producer engines** — `burlerengine`+`perchengine` (one task, they do not compile apart) and `websterengine`+`webstercli` convert to told geometry.
+1. **producers standalone: producer engines** — `burlerengine`+`perchengine` (one task, they do not compile apart) convert to told geometry, and `websterengine`+`webstercli` convert to told geometry *and* gain Webster's own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`) in the same task, not deferred to a follow-up.
    Two tasks, parallel-safe.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
