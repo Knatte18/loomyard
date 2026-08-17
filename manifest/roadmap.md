@@ -13,6 +13,23 @@ Committed to, in this order, next.
    First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
+1. **producers standalone: told-geometry foundations** — `planparser` takes over the plan-directory path from `loomengine`, `configengine` gains a template fallback so the three producer config loaders stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
+   Three tasks, all parallel-safe against each other.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
+
+1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` so `Hardener` and future `Shed` products stop having to re-implement it.
+   Two tasks, parallel-safe.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
+
+1. **producers standalone: producer engines** — `burlerengine`+`perchengine` (one task, they do not compile apart) and `websterengine`+`webstercli` convert to told geometry.
+   Two tasks, parallel-safe.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
+
+1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository.
+   The task this whole line of work exists for;
+   an optional `scoutengine` uniformity pass runs beside it, and a final consolidation task lands the three-tier invariant in `CONSTRAINTS.md`.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
