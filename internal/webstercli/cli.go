@@ -180,7 +180,7 @@ Verbs:
 			reedGeom := hubgeom.ReedGeometry(layout)
 			reedEngine := reedengine.New(reedCfg, reedGeom)
 			claudeEngine := claudeengine.New()
-			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, layout, shuttleCfg)
+			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 			c.runner = runner
 			c.starter = runner

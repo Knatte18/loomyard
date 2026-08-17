@@ -19,6 +19,9 @@
 // engine implementation (the provider-seam import rule, enforced by seam_enforcement_test.go in a
 // later batch) — concrete engines import shuttleengine, not the reverse.
 //
+// shuttle is told its anchor path and worktree root as plain strings, at Runner construction, and
+// derives neither — internal/lyxcwd is consequently absent from the package's production imports.
+//
 // The only channel in and out of a shuttle run is files: the prompt is handed to the provider as
 // the launch argument (never typed into a live pane),
 // and the agent writes its structured result to a file the caller reads.

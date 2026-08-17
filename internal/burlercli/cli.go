@@ -103,7 +103,7 @@ Example:
 
 			reedGeom := hubgeom.ReedGeometry(layout)
 			reedEngine := reedengine.New(reedCfg, reedGeom)
-			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
+			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			c.engine = burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(layout.HubPath))
 			return nil
 		},

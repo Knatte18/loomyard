@@ -92,7 +92,7 @@ provider specifics.`,
 
 			reedGeom := hubgeom.ReedGeometry(layout)
 			reedEngine := reedengine.New(reedCfg, reedGeom)
-			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
+			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			return nil
 		},
 	}

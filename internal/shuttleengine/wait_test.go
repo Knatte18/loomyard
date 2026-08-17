@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -68,9 +67,12 @@ var _ clock = (*scriptedClock)(nil)
 // through Start.
 func newWaitTestRunner(t *testing.T, reed ReedOps, engine Engine, cfg Config) *Runner {
 	t.Helper()
-	root := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
-	return NewRunner(reed, engine, layout, cfg)
+	worktreeRoot := t.TempDir()
+	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
+	return NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
 }
 
 // TestPollInterval_FloorsNonPositive pins the busy-spin guard: a configured poll_interval_ms of 0
@@ -500,8 +502,8 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 					t.Fatalf("AuditForksCalls = %v; want exactly one call", engine.AuditForksCalls)
 				}
 				call := engine.AuditForksCalls[0]
-				if call.SessionID != "session-1" || call.Workdir != runner.layout.AnchorPath() {
-					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", runner.layout.AnchorPath())
+				if call.SessionID != "session-1" || call.Workdir != runner.anchorPath {
+					t.Errorf("AuditForks called with (%q, %q); want (%q, %q)", call.SessionID, call.Workdir, "session-1", runner.anchorPath)
 				}
 				if result.ForkAudit == nil || !reflect.DeepEqual(*result.ForkAudit, cannedAudit) {
 					t.Errorf("Result.ForkAudit = %+v; want it to carry the fake's canned audit %+v", result.ForkAudit, cannedAudit)

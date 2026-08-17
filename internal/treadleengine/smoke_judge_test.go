@@ -288,7 +288,7 @@ The chair is red and the table is blue; they must match.
 	}
 	reedGeom := hubgeom.ReedGeometry(h.Location)
 	reedEngine := reedengine.New(reedCfg, reedGeom)
-	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	// HandoffPath is REQUIRED input: the same judge call must write its
 	// maintained handoff alongside the verdict (the handoff-on-disk shared

@@ -281,7 +281,7 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	reedGeom := hubgeom.ReedGeometry(layout)
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	engine := claudeengine.New()
-	runner := shuttleengine.NewRunner(reedEngine, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reedEngine, engine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 	outputPath := filepath.Join(h.PrimeWorktree(), "smoke-interrupt-output.txt")
 

@@ -15,25 +15,30 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // Runner is the provider-invariant run loop: it drives one Engine implementation over the file
 // contract through the ReedOps seam, so a caller (review, loom) constructs exactly one Runner per
-// (reed, engine, layout, cfg) combination and calls Start/Run for every agent spawn.
+// (reed, engine, anchorPath, worktreeRoot, cfg) combination and calls Start/Run for every agent
+// spawn.
+// Runner is told its anchor path and worktree root as plain strings and derives neither;
+// populating both with usable absolute paths is the caller's obligation.
 type Runner struct {
-	reed   ReedOps
-	engine Engine
-	layout *lyxcwd.Location
-	cfg    Config
+	reed         ReedOps
+	engine       Engine
+	anchorPath   string
+	worktreeRoot string
+	cfg          Config
 }
 
-// NewRunner returns a Runner ready to start runs against reed and engine, scoped to layout's
-// worktree and cfg's tuning knobs.
-func NewRunner(reed ReedOps, engine Engine, layout *lyxcwd.Location, cfg Config) *Runner {
-	return &Runner{reed: reed, engine: engine, layout: layout, cfg: cfg}
+// NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
+// worktreeRoot and cfg's tuning knobs.
+// NewRunner is told anchorPath and worktreeRoot as plain strings and derives neither;
+// populating both with usable absolute paths is the caller's obligation.
+func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg Config) *Runner {
+	return &Runner{reed: reed, engine: engine, anchorPath: anchorPath, worktreeRoot: worktreeRoot, cfg: cfg}
 }
 
 // Result is a completed run's terminal report: how it was classified, the identities a caller needs
@@ -86,13 +91,13 @@ const (
 // On a run.json persistence failure after AddStrand, both the directory and strand are cleaned up
 // to avoid leaking an untracked agent pane.
 func (r *Runner) Start(spec Spec) (*Run, error) {
-	if err := spec.validate(r.layout.WorktreePath(), r.cfg); err != nil {
+	if err := spec.validate(r.worktreeRoot, r.cfg); err != nil {
 		return nil, err
 	}
 
 	r.sweepOrphansOpportunistic()
 
-	root := runDirRoot(r.cfg, r.layout)
+	root := runDirRoot(r.cfg, r.anchorPath)
 	runID, runDir, err := createRunDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("shuttle: start run: %w", err)
@@ -183,7 +188,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 // tracked in reed state. A LoadState error skips the sweep entirely, to avoid
 // sweeping kept diagnosis dirs over an unrelated I/O problem. Failures never block Start.
 func (r *Runner) sweepOrphansOpportunistic() {
-	st, err := reedengine.LoadState(filepath.Join(r.layout.AnchorPath(), lyxdirs.DotLyxDirName))
+	st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName))
 	if err != nil {
 		log.Printf("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds): %v", err)
 		return
@@ -198,7 +203,7 @@ func (r *Runner) sweepOrphansOpportunistic() {
 
 	startupTimeout := time.Duration(r.cfg.StartupTimeoutS) * time.Second
 	minAge := 2 * startupTimeout
-	if _, err := sweepOrphans(runDirRoot(r.cfg, r.layout), guids, minAge, time.Now()); err != nil {
+	if _, err := sweepOrphans(runDirRoot(r.cfg, r.anchorPath), guids, minAge, time.Now()); err != nil {
 		log.Printf("shuttle: orphan sweep failed (non-fatal, new run proceeds): %v", err)
 	}
 }
@@ -245,7 +250,7 @@ func validateSendText(text string) error {
 // Run handle.
 // This is how the CLI's interrupt verb reaches a run started by a separate process.
 func (r *Runner) Interrupt(guid string) error {
-	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
@@ -261,7 +266,7 @@ func (r *Runner) Send(guid, text string) error {
 	if err := validateSendText(text); err != nil {
 		return err
 	}
-	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireReadyAgentPane(r.reed, r.engine, guid); err != nil {
@@ -279,7 +284,7 @@ func (r *Runner) Inject(guid string, inputs []PaneInput) error {
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
 	}
-	if _, _, err := FindRun(r.cfg, r.layout, guid); err != nil {
+	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
 	if err := requireLiveStrand(r.reed, guid); err != nil {

@@ -186,7 +186,7 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	// hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
 	seedHubStencils(t, layout.HubPath)
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},

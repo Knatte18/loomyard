@@ -179,7 +179,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w", batchName, err)
 	}
 
-	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout, run.StrandGUID())
+	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout.AnchorPath(), run.StrandGUID())
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
 	}
