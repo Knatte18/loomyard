@@ -67,16 +67,6 @@ See the `mill:markdown` skill for the full rule and examples.
 In conversation, "Merriam" is a conversational nickname for webster's long-lived orchestrating session — today named "Master" throughout `internal/websterengine` (`contracts/stencils/webster/webster-template-master.md`, `RoleMaster`, etc.), paired with "Webster" after Merriam-Webster.
 It is shorthand for talking about the session, not an instruction to rename anything — don't rename identifiers, files, config keys, or docs to "Merriam" unless a separate, explicit instruction says so.
 
-## Branch `standalone-producers` — integration branch, not an implementation task
-
-This branch carries no code changes of its own.
-It exists as the merge target for the ten-task decomposition in `manifest/designs/producers-standalone.md` (T1–T10, five waves), which converts `burlerengine`/`perchengine`/`websterengine` and their shared producer packages from requiring a `*lyxcwd.Location` to being told plain paths — so `lyx burler run`, `lyx perch run`, and `lyx webster run` work outside a lyx worktree, with no hub, no Fabric, no `_lyx/config/` seeding.
-`manifest/roadmap.md`'s four "producers standalone" Planned entries are this same scope, one roadmap line per wave.
-Task branches for T1–T10 are spawned with `parent: standalone-producers` in their own `_mill/status.md`, so `mill-merge` lands each one back onto this branch, never directly onto `main`.
-This branch itself merges to `main` only once every task lands (T9, `scoutengine` told-geometry, is optional and may be skipped).
-As of this note, T1 (`planparser-plan-dir`), T2 (`config-template-fallback`), and T3 (`shuttle-reed-told-geometry`) are spawned and in progress;
-T4–T10 are not yet spawned.
-
 ## Filesystem links (fslink)
 
 All cross-OS links go through `internal/fslink`.
