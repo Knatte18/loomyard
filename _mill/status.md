@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hublogsdir-move
+phase: approved-tokenvocab-plain-fields
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-review-r1  '2026-08-17T14:58:57Z'
 planned  '2026-08-17T14:59:14Z'
 implementing  '2026-08-17T14:59:48Z'
 approved-hublogsdir-move  '2026-08-17T15:05:16Z'
+approved-tokenvocab-plain-fields  '2026-08-17T15:08:56Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ batches:
     commit_sha: 67975ffee9f06dcaecc617a64dda9e31e74d4f0e
     verify_baseline_failures: []
   - name: tokenvocab-plain-fields
-    state: running
+    state: approved
     implementer_session: ae131aa5-1f3a-4e40-8db5-1f2256bafc52
     start_sha: 83313c44dafb83641941bf7ecb68b7cd4b031eb5
+    commit_sha: bcaf644007238ebc2ea4bd146eeada5d35985054
     verify_baseline_failures: []
   - name: reed-geometry-hubgeom
     state: pending
