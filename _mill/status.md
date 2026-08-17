@@ -44,7 +44,9 @@ batches:
     commit_sha: bcaf644007238ebc2ea4bd146eeada5d35985054
     verify_baseline_failures: []
   - name: reed-geometry-hubgeom
-    state: pending
+    state: running
+    implementer_session: 4a15a59c-f2e9-4fc4-b2cc-f5163c5043f3
+    start_sha: 51f3798eededf6d1043c2b3059c66996ea42201d
     verify_baseline_failures: ["FAIL\t./internal/hubgeom/... [setup failed]"]
   - name: shuttle-told-strings
     state: pending
