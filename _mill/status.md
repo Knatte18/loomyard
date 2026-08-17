@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: planparser-plan-dir
 branch: planparser-plan-dir
 plan: _mill/plan
@@ -23,4 +23,15 @@ plan-review-r1  '2026-08-17T14:58:53Z'
 plan-fix-r1  '2026-08-17T14:58:53Z'
 plan-fix-r2  '2026-08-17T15:07:46Z'
 planned  '2026-08-17T15:07:58Z'
+implementing  '2026-08-17T15:08:24Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: planparser-path-ownership
+    state: pending
+  - name: repoint-and-delete-twins
+    state: pending
 ```
