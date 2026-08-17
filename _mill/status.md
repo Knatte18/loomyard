@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-configengine-loadortemplate  '2026-08-17T15:35:41Z'
 approved-producer-loaders-repointed  '2026-08-17T15:42:24Z'
 approved-docs-and-invariant  '2026-08-17T15:47:22Z'
 holistic-reviewing  '2026-08-17T15:47:58Z'
+holistic-fixing  '2026-08-17T15:53:25Z'
 ```
 
 ## Batches
