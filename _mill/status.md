@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussion-fix-r5  '2026-08-17T15:02:01Z'
 discussed  '2026-08-17T15:02:01Z'
 planning  '2026-08-17T15:08:10Z'
 plan-fix-r1  '2026-08-17T15:14:32Z'
+planned  '2026-08-17T15:14:46Z'
 ```
