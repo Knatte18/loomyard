@@ -182,7 +182,7 @@ In **all four files** `strings` is imported for the rewrap and nothing else, so 
 - `internal/reedengine/config_test.go` — `TestLoadConfig_NotInitialized` (line 112) inverted; `TestLoadConfig_ModuleArgIsThreadedThrough` (line 92) negative half reworked.
 - `internal/perchengine/config_test.go` — `TestLoadConfig_NotInitialized` (line 184) inverted; `TestLoadConfig_ModuleArgIsThreadedThrough` (line 164) negative half reworked.
 - `internal/websterengine/config_test.go` — `TestLoadConfig_NotInitialized` (line 150) inverted. This package has **no** `ModuleArgIsThreadedThrough` test, so only one change here.
-- `internal/configengine/config_test.go` — new `LoadOrTemplate` tests added; the existing `TestLoad_*` and `TestFindBaseDir_*` tests are untouched, including `TestLoad_NotInitialized` (line 251) and `TestLoad_AbsentFile` (line 104), which now pin that `Load` did *not* change.
+- `internal/configengine/config_test.go` — new `LoadOrTemplate` tests added; the existing `TestLoad_*` and `TestFindBaseDir_*` tests are untouched, including `TestLoad_NotInitialized` (line 251) and `TestLoad_AbsentFile` (line 104), which now pin that `Load` did *not* change. One comment edit besides the additions: `TestLyxDirNameConstant`'s doc comment at lines 383-385 (see "Doc surface" above).
 
 **That is the complete test-file list — five files.** No `cmd/lyx` test is added or edited by this task.
 
@@ -199,7 +199,7 @@ It would exclude `internal/configengine` itself (declaration site) and skip `_te
 Blind spot the invariant text should state, matching how the existing guards state theirs: a substring scan cannot see a call reached through an alias or a function value.
 Record this shape in the invariant so T10 inherits a specification rather than re-deriving one.
 
-**Doc surface.** `docs/shared-libs/configengine.md` carries five distinct claims that become partly false and must be **updated, not merely appended to**. The complete list, each cited once so the two enumerations in this file cannot drift:
+**Doc surface.** `docs/shared-libs/configengine.md` carries the claims below, which become partly false and must be **updated, not merely appended to**. Each is cited once here, so the enumerations elsewhere in this file cannot drift from it:
 
 | Lines | Claim that goes stale |
 |---|---|
@@ -211,7 +211,7 @@ Record this shape in the invariant so T10 inherits a specification rather than r
 | 136 | Calls `Load` a "five-step flow" while the same file's Resolution model above it lists six steps |
 | 138-149 | `Load`'s per-error-case list, which needs a `LoadOrTemplate` sibling section rather than edits in place |
 
-That is seven rows, and the table is the single authority for these line ranges — the Q&A log defers to it rather than restating them.
+The table is the single authority for these line ranges — every other section, including the Q&A log, defers to it rather than restating a count or a range.
 
 **Three further claims in the same file are already false today, independent of this task, and are fixed in the same pass** — they sit inside or beside the ranges above, so leaving them while editing around them would be the more deliberate act:
 
@@ -221,7 +221,12 @@ That is seven rows, and the table is the single authority for these line ranges 
 | 124 | Quotes `FindBaseDir`'s error as `not initialized: _lyx/ directory not found in <dir>`; `config.go:31` emits no `in <dir>` suffix. |
 | 127-131 | The rewrap note's example remedy is `run "lyx init"`; every caller emits `run "lyx fabric reconcile"`. |
 
-Fixing these is the cheap half of the doc pass and stops the file from carrying an invariant contradiction forward. Any staleness *outside* this file is out of scope.
+Fixing these is the cheap half of the doc pass and stops the file from carrying an invariant contradiction forward.
+
+**The same falsehood appears once more, in Go, in a file this task already edits — fix it in-pass.** `internal/configengine/config_test.go:383-385`'s comment on `TestLyxDirNameConstant` reads "moved here from lyxcwd's own unit test now that configengine is the single declarer of the `_lyx` token", while the assertion three lines below it reads `lyxdirs.LyxDirName`. It contradicts itself and the Lyxdirs Single-Declarer Invariant in the same breath. Reword the comment to name `internal/lyxdirs` as the declarer;
+the test body and name are correct as they stand and do not change. This gets a stated disposition rather than being swept under the out-of-file clause, precisely because it is neither outside this file's package nor outside this task's edits.
+
+Any staleness *outside* `docs/shared-libs/configengine.md` and the six Go files this task edits is out of scope.
 
 There is **no** `manifest/designs/configengine.md`; the package's design surface is this shared-libs doc plus `internal/configengine/config.go`'s own file-header comment, which is itself in scope (see Scope/In).
 
@@ -303,5 +308,5 @@ Name these for what they now assert, not for the removed refusal — e.g. `TestL
 - **Q:** What happens to the four `TestLoadConfig_NotInitialized` tests? **A:** Inverted and renamed to assert a template-derived config rather than an error.
 - **Q:** What happens to the dead `not initialized` rewrap blocks? **A:** Deleted in all four callers, along with the `strings` import each carries solely for them.
 - **Q:** Does a config file that exists but is broken — missing keys, empty, comments-only — fall back? **A:** No. It still errors. Only an absent `_lyx/` or an absent file degrades.
-- **Q:** Which docs must land in this commit? **A:** `docs/shared-libs/configengine.md` (a `LoadOrTemplate` section, plus corrections to the five stale claims enumerated in the Technical context's "Doc surface" table — that table is the single authority for the line ranges) and `CONSTRAINTS.md` (the new invariant). Neither is in T2's original Files list; the doc update is nonetheless mandatory, since leaving those claims stale would violate the Documentation Lifecycle rule outright rather than merely under-apply it. `manifest/roadmap.md` stays untouched, because its entry bundles T1+T2+T3.
+- **Q:** Which docs must land in this commit? **A:** `docs/shared-libs/configengine.md` (a `LoadOrTemplate` section, plus corrections to every stale claim enumerated in the Technical context's "Doc surface" tables — those tables are the single authority for the line ranges and the count) and `CONSTRAINTS.md` (the new invariant). Neither is in T2's original Files list; the doc update is nonetheless mandatory, since leaving those claims stale would violate the Documentation Lifecycle rule outright rather than merely under-apply it. `manifest/roadmap.md` stays untouched, because its entry bundles T1+T2+T3.
 - **Q:** Does this task's final file set stay inside T2's decomposed brief? **A:** Yes, once the guard is deferred. Six production/test files from the Files list, plus the four engines' `config_test.go` (required by T2's own Verify line, which the Files list is terse about), plus two docs. Nothing under `cmd/lyx/`, so the design's file-contention analysis across T1-T10 stays accurate.
