@@ -37,7 +37,9 @@ batches:
     commit_sha: 345f58c41f96e9e8684a151463e7390b7e9629c1
     verify_baseline_failures: []
   - name: producer-loaders-repointed
-    state: pending
+    state: running
+    implementer_session: 0115a36a-1b85-4d34-8a4b-b16a11779bf4
+    start_sha: b42844ee581440de788df9a86a12adc130201f07
     verify_baseline_failures: []
   - name: docs-and-invariant
     state: pending
