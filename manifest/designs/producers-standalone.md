@@ -161,8 +161,16 @@ That is rejected.
 Two near-identical signatures sitting side by side is a real cost paid immediately against a cleanup that is only promised, and the duplication reliably outlives the migration.
 
 Parallelism is bought by scheduling instead.
-The genuine constraint is not the import graph — it is *file* contention, and it concentrates in exactly two files, `internal/burlercli/cli.go` and `internal/perchcli/cli.go`, which every constructor change converges on.
+The genuine constraint is not the import graph — it is *file* contention, and it concentrates in three files: `internal/burlercli/cli.go` and `internal/perchcli/cli.go`, which every constructor change converges on, plus `cmd/lyx/constructoranchoring_test.go`, which pins the anchoring of nearly every constructor this work touches and is therefore edited by T1, T3, T4, T5, T7 and T9 alike.
 Grouping tasks into waves whose file sets are disjoint gets 3-wide, then 2-wide, then 2-wide, then 2-wide, with no duplicated API at any point.
+
+**Disposition of `cmd/lyx/constructoranchoring_test.go`: edited in place, per task, never split or retired.**
+It is a flat table of one-line `assertPath` assertions and a named enforcer of the [Durable-vs-Ephemeral State Invariant](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant);
+fragmenting its rows into per-package tests would trade a single readable overview of every anchored path for nothing this work needs.
+Each task therefore rewrites only its own package's rows into whatever shape its new constructor takes, and every task listed above carries `./cmd/lyx/...` in its Verify line.
+One same-wave adjacency is real and is called out rather than papered over: in wave 3, T5's `perchengine.RunsDir`/`ScratchDir` rows (79, 89, 128, 138) sit directly beneath T7's `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows (77-78, 87-88, 126-127, 136-137), so whichever merges second rebases.
+That is a one-line mechanical resolution, not a design conflict, and it does not make T5 and T7 serial.
+Wave 1's pair is farther apart — T1 edits rows 71-72/120-121 and T4 edits rows 96/144 — so no adjacency arises there.
 
 Twins remain available as a named escape hatch if a specific pair turns out to be unschedulable in practice.
 They are not the default and should not be reached for without saying why in the task that does it.
@@ -299,14 +307,14 @@ dropping them would leave the header rendering empty tokens with nothing in the 
 
 `tokenvocab.Ctx.Layout` becomes the same two plain fields (`RepoName`, `HubPath`), which drops `internal/lyxcwd` from `tokenvocab`'s import set entirely.
 
-**Files.** `internal/shuttleengine/run.go`, `internal/shuttleengine/rundir.go`; `internal/reedengine/lock.go`, `internal/reedengine/lifecycle.go`, `internal/reedengine/header.go` (line 16); `internal/tokenvocab/tokenvocab.go`, `internal/tokenvocab/doc.go`; construction sites `internal/burlercli/cli.go` (103-104), `internal/perchcli/cli.go` (143-144), `internal/webstercli/cli.go` (179-181), `internal/shuttlecli/cli.go` (92-93), `internal/reedcli/cli.go` (83); non-constructor callers of the changed exported symbols, `internal/websterengine/recoverbatch.go` (182) and `internal/websterengine/runlevel.go` (529), both calling `shuttleengine.FindRun`; the tests in each package; `CONSTRAINTS.md` ([Tokenvocab Leaf Invariant](../../CONSTRAINTS.md#tokenvocab-leaf-invariant) loses `internal/lyxcwd` from its allowlist).
+**Files.** `internal/shuttleengine/run.go`, `internal/shuttleengine/rundir.go`; `internal/reedengine/lock.go`, `internal/reedengine/lifecycle.go`, `internal/reedengine/header.go` (line 16); `internal/tokenvocab/tokenvocab.go`, `internal/tokenvocab/doc.go`; construction sites `internal/burlercli/cli.go` (103-104), `internal/perchcli/cli.go` (143-144), `internal/webstercli/cli.go` (179-181), `internal/shuttlecli/cli.go` (92-93), `internal/reedcli/cli.go` (83); non-constructor callers of the changed exported symbols, `internal/websterengine/recoverbatch.go` (182) and `internal/websterengine/runlevel.go` (529), both calling `shuttleengine.FindRun`; the tests in each package; `cmd/lyx/constructoranchoring_test.go` (its `reedengine.HubLogsDir` rows, 96 and 144); `CONSTRAINTS.md` ([Tokenvocab Leaf Invariant](../../CONSTRAINTS.md#tokenvocab-leaf-invariant) loses `internal/lyxcwd` from its allowlist, and the [Treadle Runner-Seam Invariant](../../CONSTRAINTS.md#treadle-runner-seam-invariant) loses its `reedengine` → `fabricengine` transitive-path note).
 
 **Watch.** `reedengine` spawns real OS processes, so the [Live-Substrate Spawn Observability](../../CONSTRAINTS.md#live-substrate-spawn-observability) invariant binds every touched spawn path — the `logger.Info`/`Warn` calls in `lifecycle.go` must survive the refactor intact.
 
 **Depends on.** Nothing.
 **Parallel-safe with.** T1, T2.
 Its two `websterengine` edits are in `recoverbatch.go`/`runlevel.go`, which no wave-1 task touches, and which are distinct files from T3's `render.go` in wave 2 — but T7 must land after this task, since it rewrites the same two files wholesale.
-**Verify.** `go test ./internal/shuttleengine/... ./internal/reedengine/... ./internal/tokenvocab/... ./internal/websterengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/webstercli/... ./internal/shuttlecli/... ./internal/reedcli/...`, plus `go test -tags integration ./internal/reedengine/...` for the tmux paths, plus confirm `internal/lyxcwd` is gone from `internal/tokenvocab`'s production imports.
+**Verify.** `go test ./internal/shuttleengine/... ./internal/reedengine/... ./internal/tokenvocab/... ./internal/websterengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/webstercli/... ./internal/shuttlecli/... ./internal/reedcli/... ./cmd/lyx/...`, plus `go test -tags integration ./internal/reedengine/...` for the tmux paths, plus confirm `internal/lyxcwd` is gone from `internal/tokenvocab`'s production imports and `internal/fabricengine` from `internal/reedengine`'s.
 
 ---
 
@@ -324,11 +332,11 @@ the already-exported `File(baseDir string)` is what it wraps.
 `isActive` takes the same string.
 This drops `internal/lyxcwd` from `pattern`'s imports, shrinking the [Pattern Leaf Invariant](../../CONSTRAINTS.md#pattern-leaf-invariant) allowlist to stdlib plus `lyxdirs`, `stencilstore` and `stencil`.
 
-**Files.** `internal/pattern/pattern.go`, `internal/pattern/doc.go`, `internal/pattern/pattern_test.go`, `internal/pattern/leaf_enforcement_test.go`; call sites `internal/burlerengine/engine.go` (103), `internal/websterengine/render.go` (174, 237), `internal/loomengine/plan.go` (70); `CONSTRAINTS.md`.
+**Files.** `internal/pattern/pattern.go`, `internal/pattern/doc.go`, `internal/pattern/pattern_test.go`, `internal/pattern/leaf_enforcement_test.go`; call sites `internal/burlerengine/engine.go` (103), `internal/websterengine/render.go` (174, 237), `internal/loomengine/plan.go` (70); `cmd/lyx/constructoranchoring_test.go` (its `pattern.FileHere` rows, 80 and 129, which the deletion of `FileHere` retires or rewrites onto `pattern.File`); `CONSTRAINTS.md`.
 
 **Depends on.** Nothing structurally, but scheduled after wave 1 because it edits `burlerengine/engine.go`, `websterengine/render.go` and `loomengine/plan.go`, which T5, T7 and T1 respectively also touch.
 **Parallel-safe with.** T8.
-**Verify.** `go test ./internal/pattern/... ./internal/burlerengine/... ./internal/websterengine/... ./internal/loomengine/...`, plus confirm `internal/lyxcwd` is gone from `internal/pattern`'s production imports and that the leaf-enforcement allowlist was tightened rather than left permissive.
+**Verify.** `go test ./internal/pattern/... ./internal/burlerengine/... ./internal/websterengine/... ./internal/loomengine/... ./cmd/lyx/...`, plus confirm `internal/lyxcwd` is gone from `internal/pattern`'s production imports and that the leaf-enforcement allowlist was tightened rather than left permissive.
 
 ---
 
@@ -369,11 +377,11 @@ a preflight that merely *reads* does not belong in that blast radius, and puttin
 The CLI construction sites pass `layout.WorktreePath()`/`layout.AnchorPath()` unchanged for now — T6 is what makes them optional, and T6's pinned-values table is where each of these parameters gets its standalone answer.
 This task changes nothing about where those directories resolve in a real worktree.
 
-**Files.** `internal/burlerengine/engine.go`, `internal/burlerengine/doc.go` and tests; `internal/perchengine/engine.go`, `internal/perchengine/identity.go`, `internal/perchengine/doc.go` and tests; `internal/burlercli/cli.go` (105), `internal/perchcli/cli.go` (145 and the `runDirBase`/`scratchDirBase` assignments), `internal/perchcli/run.go` (294, 301).
+**Files.** `internal/burlerengine/engine.go`, `internal/burlerengine/doc.go` and tests; `internal/perchengine/engine.go`, `internal/perchengine/identity.go`, `internal/perchengine/doc.go` and tests; `internal/burlercli/cli.go` (105), `internal/perchcli/cli.go` (145 and the `runDirBase`/`scratchDirBase` assignments), `internal/perchcli/run.go` (294, 301); `cmd/lyx/constructoranchoring_test.go` (its `perchengine.RunsDir`/`ScratchDir` rows, 79/89/128/138 — directly beneath T7's rows, see the wave-3 adjacency note above).
 
 **Depends on.** T3 (`pattern.Directive`'s new signature is called from `burlerengine/engine.go:103`), T4 (`shuttleengine.NewRunner`'s new signature is called from the same CLI blocks).
 **Parallel-safe with.** T7.
-**Verify.** `go test ./internal/burlerengine/... ./internal/perchengine/... ./internal/burlercli/... ./internal/perchcli/...`, plus `go test -tags integration ./internal/perchcli/...`.
+**Verify.** `go test ./internal/burlerengine/... ./internal/perchengine/... ./internal/burlercli/... ./internal/perchcli/... ./cmd/lyx/...`, plus `go test -tags integration ./internal/perchcli/...`.
 
 ---
 
@@ -391,7 +399,7 @@ After T7 lands, `websterengine` is drivable entirely from told paths — which i
 A standalone Webster CLI is a follow-up task outside this decomposition;
 see "What is deliberately not in scope" below.
 
-**Files.** `internal/websterengine/state.go`, `render.go`, `runlevel.go`, `beginbatch.go`, `recordbatch.go`, `recoverbatch.go`, `doc.go` and their tests; `internal/webstercli/cli.go`, `internal/webstercli/sync.go` and their tests.
+**Files.** `internal/websterengine/state.go`, `render.go`, `runlevel.go`, `beginbatch.go`, `recordbatch.go`, `recoverbatch.go`, `doc.go` and their tests; `internal/webstercli/cli.go`, `internal/webstercli/sync.go` and their tests; `cmd/lyx/constructoranchoring_test.go` (its `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows, 77-78/87-88/126-127/136-137 — directly above T5's rows, see the wave-3 adjacency note above).
 
 **Watch.** `internal/websterengine` is the one package whose raw-git-mutation ban is machine-checked (`cmd/lyx/rawgitmutation_test.go`), and the [Fabric Git Invariant](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft) binds every git call it makes.
 Nothing in this refactor should touch those paths, but the guard will catch it if it does.
@@ -445,8 +453,24 @@ With the split, every one of them relocates automatically — the rows marked *d
 | shuttle run dir (`runDirRoot`) | `Join(AnchorPath(), ".lyx", "shuttle")` | *derived* — `<state>/.lyx/shuttle` |
 | burler scratch | `Join(AnchorPath(), ".lyx", "burler")` | *derived* — `<state>/.lyx/burler` |
 | perch `RunsDir` / `ScratchDir` | `AnchorPath()`-anchored `_lyx`/`.lyx` pair | *derived* — under `<state>` |
-| stencils dir | `fabricengine.StencilsDir(l.HubPath)` | `--stencils-dir <path>`, told |
-| stencil `Reconcile` mode | `buildChannel == "dev"` selector at `cmd/lyx/stencilseed.go:73-76` | the same selector, reused verbatim — never a hardcoded `ModeProduction` |
+| stencils dir | `fabricengine.StencilsDir(l.HubPath)` | `--stencils-dir <path>`, optional; defaults to `<state>/stencils`, bootstrapped on first use |
+| stencil `Reconcile` mode | `buildChannel == "dev"` selector at `cmd/lyx/stencilseed.go:73-76` | the same selector, reached through a new `internal/buildinfo` — see below |
+
+**`--stencils-dir` is optional in both modes, and its default is what differs.**
+Standalone defaults it to `<state>/stencils` and bootstraps that directory on first use;
+a resolved worktree defaults it to `fabricengine.StencilsDir(l.HubPath)` exactly as today.
+An explicit `--stencils-dir` is honoured in both — refusing it in-hub would forbid the one thing it is most useful for, pointing a real worktree at an experimental stencil set, and buys nothing.
+Omitting it is never an error, which is what keeps the standalone command a two-flag invocation rather than a three-flag one.
+
+**`hash8` is `SHA-256` over the normalized absolute target path, truncated to the first eight hex characters.**
+Normalization is not optional and is not a new invention: the input goes through `filepath.EvalSymlinks` then `filepath.Clean`, falling back to `Clean` alone when `EvalSymlinks` fails, and compared case-insensitively on Windows — exactly the semantics `internal/lyxcwd/anchor.go`'s `normalizePath`/`samePath` already implement for the same class of problem.
+Without it, two spellings of the same directory (a symlinked path, a differing-case path on Windows or macOS) hash differently and produce a different `<state>`, socket and session, which would silently destroy the "one tmux server per target directory, resumable" property this section makes load-bearing.
+
+**The build channel must move out of `package main` for any of this to compile.**
+`buildChannel` is today an unexported `package main` variable (`cmd/lyx/stencilseed.go:29`) stamped by `tools/deploy/main.go:62` as `-X main.buildChannel=dev`, so `internal/burlercli` and `internal/perchcli` cannot read it at all.
+T6 introduces a stdlib-only `internal/buildinfo` holding the exported `Channel` variable plus a `StencilMode()` accessor, repoints the ldflags path to `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`, and has both `cmd/lyx/stencilseed.go` and the two CLIs read it from there.
+The stamping mechanism and the [Dev/Prod Binary Separation](../../CONSTRAINTS.md#devprod-binary-separation) invariant are unchanged — only the symbol's home moves.
+A stdlib-only leaf package is what keeps it importable from `cmd/lyx` and from any `*cli` package without cycle risk.
 
 The two reed header tokens are pinned rather than blanked because `Engine.HeaderText` renders them at every boot and an unpinned value shows the operator an empty or fictional header.
 `repo` naming the target's basename and `hub` naming `<state>` are both literally true in standalone: the thing being worked on, and where its state lives.
@@ -472,7 +496,7 @@ That is a property of the `worktreeRoot`/`anchorRoot` split, not a rule an imple
 It also settles the [Durable-vs-Ephemeral State Invariant](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant) question cleanly: the invariant places every never-tracked file under `.lyx` at the mirrored subpath of the `_lyx` content it relates to, and standalone's `_lyx`/`.lyx` pair are ordinary siblings under `<state>`, so the rule is satisfied rather than bent or dodged.
 Say so in the invariant's own text as part of this task's `CONSTRAINTS.md` edit.
 
-**Files.** `internal/burlercli/cli.go`, `internal/burlercli/run.go` and tests; `internal/perchcli/cli.go`, `internal/perchcli/run.go` and tests; `cmd/lyx/*_test.go` for the help-tree and `Short`/`Long` obligations under the [CLI / Cobra Invariant](../../CONSTRAINTS.md#cli--cobra-invariant); `CONSTRAINTS.md`.
+**Files.** `internal/burlercli/cli.go`, `internal/burlercli/run.go` and tests; `internal/perchcli/cli.go`, `internal/perchcli/run.go` and tests; a new stdlib-only `internal/buildinfo` package plus its `doc.go`; `cmd/lyx/stencilseed.go` (reads `buildinfo.StencilMode()` instead of its own `buildChannel`); `tools/deploy/main.go` (line 62, the ldflags path); `cmd/lyx/*_test.go` for the help-tree and `Short`/`Long` obligations under the [CLI / Cobra Invariant](../../CONSTRAINTS.md#cli--cobra-invariant); `CONSTRAINTS.md`.
 
 **Invariant rewords land in this task's own commit, not deferred to T10.**
 This task is what introduces the told stencils directory and the standalone state locations, so the [Stencil Ownership Invariant](../../CONSTRAINTS.md#stencil-ownership-invariant) reword (name a told absolute directory rather than `<hub>/_board/_lyx/stencils/` specifically) and the Durable-vs-Ephemeral clarification above both belong here.
@@ -513,11 +537,11 @@ Replace with a told `anchorRoot string`, and delete `scoutcli`'s `resolveLocatio
 `lookupContext`'s registry fallback to `BuiltinRegistry()` stays exactly as it is;
 it is already the correct shape.
 
-**Files.** `internal/scoutengine/daemonstate.go`, `ensureserver.go`, `refs.go` and tests; `internal/scoutcli/cli.go` and tests.
+**Files.** `internal/scoutengine/daemonstate.go`, `ensureserver.go`, `refs.go` and tests; `internal/scoutcli/cli.go` and tests; `cmd/lyx/constructoranchoring_test.go` (its `scoutengine.DaemonStateFile`/`DaemonLock` rows, 91-92/140-141).
 
 **Depends on.** Nothing.
 **Parallel-safe with.** every other task — no other task touches `scoutengine` or `scoutcli`.
-**Verify.** `go test ./internal/scoutengine/... ./internal/scoutcli/...` and `go test -tags scout ./internal/scoutengine/...`;
+**Verify.** `go test ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/...` and `go test -tags scout ./internal/scoutengine/...`;
 plus confirm `lyx scout` still resolves symbols in a directory outside any hub, which is the behaviour this task must not regress.
 
 ---
