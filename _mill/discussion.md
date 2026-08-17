@@ -34,10 +34,10 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 - `reedengine.HubLogsDir` **moves** to `fabricengine.HubLogsDir(hubPath string)`.
 - The five hub-mode construction sites: `internal/burlercli/cli.go` (103-104), `internal/perchcli/cli.go` (143-144), `internal/webstercli/cli.go` (179-181), `internal/shuttlecli/cli.go` (92-93), `internal/reedcli/cli.go` (83).
 - The two **production** callers of `shuttleengine.FindRun` in `internal/websterengine`: `recoverbatch.go:182` and `runlevel.go:529` — one-token edits (`deps.Layout` becomes `deps.Layout.AnchorPath()`).
-- **Every out-of-package caller of the four changed exported symbols**, enumerated symbol-by-symbol (see the Technical context call-site table). Beyond the five CLI construction sites and the two `websterengine` production files above, that is eleven test files: `internal/shuttlecli/cli_test.go:237`, `internal/shuttlecli/smoke_interrupt_test.go:280,282`, `internal/webstercli/verbs_test.go:227`, `internal/websterengine/recoverbatch_test.go:189`, `internal/treadleengine/smoke_judge_test.go:288,289`, `internal/burlerengine/smoke_cluster_test.go:135,136`, `internal/burlerengine/smoke_round_test.go:317,318`, `internal/fabricengine/hubscratch_test.go:70`, `internal/reedcli/smoke_debuglog_test.go:40,169`, and `cmd/lyx/constructoranchoring_test.go:96,144`.
+- **Every out-of-package caller of the four changed exported symbols**, enumerated symbol-by-symbol (see the Technical context call-site table). Beyond the five CLI construction sites and the two `websterengine` production files above, that is ten test files: `internal/shuttlecli/cli_test.go:237`, `internal/shuttlecli/smoke_interrupt_test.go:280,282`, `internal/webstercli/verbs_test.go:227`, `internal/websterengine/recoverbatch_test.go:189`, `internal/treadleengine/smoke_judge_test.go:288,289`, `internal/burlerengine/smoke_cluster_test.go:135,136`, `internal/burlerengine/smoke_round_test.go:317,318`, `internal/fabricengine/hubscratch_test.go:70`, `internal/reedcli/smoke_debuglog_test.go:40,169`, and `cmd/lyx/constructoranchoring_test.go:96,144`.
 - `cmd/lyx/constructoranchoring_test.go` — its `reedengine.HubLogsDir` rows (96 and 144) retarget onto `fabricengine.HubLogsDir`.
 - `CONSTRAINTS.md` — two invariants reworded (see Constraints below).
-- Docs: `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md`, `docs/shared-libs/README.md`.
+- Docs: `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, and `docs/overview.md` — **package-tree entry only** (the tree at ~line 231-239), not the shared-infrastructure sentence at line 314 and not `docs/shared-libs/README.md`. See the `hubgeom` classification decision below.
 - `manifest/designs/producers-standalone.md` — three edits only: a one-line pointer to `internal/hubgeom` in the **T6** and **T7** entries, and a correction to **row 64** of the Location-consumption table (which attributes `HubLogsDir` to `reedengine/lifecycle.go`). Nothing else in that doc is edited (see the design-doc decision below).
 
 **Out:**
@@ -121,16 +121,30 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
   (c) A single `hubgeom.All(*lyxcwd.Location)` returning every engine's geometry at once — forces `hubgeom` to import every engine and every CLI to pull the whole set.
   (d) Putting the helper on `internal/hubforge` for tests and inlining it in the CLIs — splits one derivation into two homes.
 
-### SocketKey is trusted, not validated
+### Geometry is trusted verbatim — all seven fields, validated by nobody
 
-- **Decision.** `reedengine.New` keeps its `(*Engine)`-only return; it stores `Geometry` verbatim and validates nothing.
-  `Engine.Socket()` returns `geom.SocketKey`, `Engine.SessionName()` returns `geom.SessionName`.
-  The obligation to pass a socket-safe key is stated in `New`'s doc comment, naming `reedengine.ServerName(hubPath)` as the hub-mode answer.
+- **Decision.** `reedengine.New` keeps its `(*Engine)`-only return; it stores the whole `Geometry` verbatim and validates **no field**.
+  `Engine.Socket()` returns `geom.SocketKey`, `Engine.SessionName()` returns `geom.SessionName`, `stateDir()` joins onto `geom.AnchorPath`, `lifecycle.go` uses `geom.LogsDir` as-is, `strand.go` stamps `geom.WorktreeRoot`, and the header reads `geom.RepoName`/`geom.HubPath`.
+  Populating every field with a usable absolute path (or socket-safe key) is the **caller's** obligation, stated as such in `New`'s doc comment and in the `Geometry` type's own doc comment, naming `hubgeom.ReedGeometry` as the hub-mode answer and `reedengine.ServerName(hubPath)` as the `SocketKey` derivation.
   `ServerName`, `SessionName` and `socketName` stay exactly as they are in `server.go` — `ServerName` is the sanitizing derivation `hubgeom` calls.
-- **Rationale.** Matches the existing total-function style of `ServerName`/`SessionName`, which never fail.
-  Adding validation would give `New` an error return that ripples through all nine construction sites and every `newTestEngine`-style fixture, for a class of bug that only a caller bypassing `hubgeom` and `ServerName` could produce.
-- **Rejected.** (a) `New` returning `(*Engine, error)` after checking non-empty + socket-safe charset.
-  (b) `New` silently sanitizing the key — hides mistakes instead of surfacing them.
+- **Rationale.** Stated for the whole struct rather than for `SocketKey` alone so T7 and T8 inherit an explicit rule instead of inferring one from a single field.
+  The other fields carry the same shape of exposure and deserve the same explicit answer: an empty `LogsDir` reaches `os.MkdirAll("")` at `lifecycle.go:257`, and an empty `AnchorPath` silently makes `stateDir()` a relative path.
+  Trusting all seven matches the existing total-function style of `ServerName`/`SessionName`, which never fail, and matches the told-geometry decision's own premise — the engine is *told* its geometry and has no basis for second-guessing a caller that knows more than it does.
+  Validation would give `New` an error return rippling through all nine construction sites and every `newTestEngine`-style fixture, for a class of bug only a caller bypassing `hubgeom` could produce.
+- **Rejected.** (a) `New` returning `(*Engine, error)` after checking each field non-empty (and `SocketKey` socket-safe).
+  (b) `New` silently sanitizing or defaulting fields — hides mistakes instead of surfacing them.
+  (c) Validating `SocketKey` only — an arbitrary line, and the one the reviewer correctly flagged as leaving six fields' contract implicit.
+
+### hubgeom is a hub-mode adapter, not shared infrastructure
+
+- **Decision.** Document `internal/hubgeom` in `docs/overview.md`'s package tree (~line 231-239) and in its own `doc.go`.
+  Do **not** add it to `docs/shared-libs/README.md`, and do **not** add it to the shared-infrastructure sentence at `docs/overview.md:314`.
+- **Rationale.** `docs/shared-libs/README.md` states the admission line it holds: "a shared lib does one mechanical thing — run a git command, take a lock, resolve a config, read a state file. It carries *no* domain logic," and every listed entry is a low-level leaf.
+  `hubgeom` fails that on both counts: it encodes *which* geometry reed needs and how each field is derived — domain knowledge about reed — and it sits **above** `reedengine` and `fabricengine`, importing both, where every shared lib sits below its consumers.
+  Filing it as shared infrastructure would blur the one line that document exists to hold.
+  Its actual role is the hub-mode adapter that tells engines their geometry, which is the same layer `internal/shedadapters` occupies.
+- **Rejected.** (a) Listing it in `docs/shared-libs/README.md` because five modules use it — consumer count is not the admission criterion; the mechanical/no-domain-logic line is.
+  (b) Omitting it from `docs/overview.md` entirely — a new package must appear in the package tree, and a T6/T7 explorer needs to find it.
 
 ### shuttleengine takes two plain strings, sourced from the same Geometry
 
@@ -307,9 +321,10 @@ plus `go test -tags integration ./internal/reedengine/...` for the tmux paths.
 - **Q:** How is the seven-field hub-mode construction handled across five CLI sites and four smoke tests? **A:** Never duplicated — a single shared teller, reused everywhere. This is a standing operator rule, not a per-task preference.
 - **Q:** Name and reach of that shared package? **A:** `internal/hubgeom`, generically named so T6 and T7 add `BurlerGeometry`/`PerchGeometry`/`WebsterGeometry` to the same package rather than forcing a rename or spawning sibling packages.
 - **Q:** Does shuttle's `anchorPath, worktreeRoot` pair come from the same `Geometry` value? **A:** Yes — one `hubgeom.ReedGeometry(layout)` call feeds both `reedengine.New` and `shuttleengine.NewRunner` at each site, so the anchor/worktree pairing is decided once.
-- **Q:** Does `reedengine.New` validate the told `SocketKey`? **A:** No. It stays a total function returning `*Engine` only; the doc comment names `reedengine.ServerName(hubPath)` as the caller's hub-mode obligation. Validation would ripple an error return through nine construction sites for a bug only a caller bypassing `hubgeom` could produce.
+- **Q:** Does `reedengine.New` validate the told `Geometry`? **A:** No — not `SocketKey`, not any of the other six fields. It stays a total function returning `*Engine` only; the doc comments name `hubgeom.ReedGeometry` and `reedengine.ServerName(hubPath)` as the caller's hub-mode obligations. Validation would ripple an error return through nine construction sites for a bug only a caller bypassing `hubgeom` could produce.
+- **Q:** (review r2) Is `hubgeom` documented as shared infrastructure? **A:** No. `docs/shared-libs/README.md`'s admission line is "one mechanical thing … no domain logic", and every entry sits below its consumers; `hubgeom` encodes reed-specific derivation and imports `reedengine`/`fabricengine`. It gets a package-tree entry in `docs/overview.md` and its own `doc.go`, nothing more.
 - **Q:** Do `reedengine` and `shuttleengine` get their own allowlist-enforcement tests now? **A:** No — T10 owns naming the cross-cutting told-geometry invariant. Only the two existing invariants are reworded, and only `tokenvocab`'s allowlist is tightened (the T3 Verify line requires that one explicitly).
 - **Q:** Is `manifest/designs/producers-standalone.md` amended, given its T3 Files/Verify lines are incomplete? **A:** Not rewritten — the same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`. The gap is recorded in this discussion file, which is the corrected record for T3.
 - **Q:** (orchestrator review) Nothing in the design doc routes a future T6/T7 explorer to `hubgeom`, so they could re-derive the seven-field construction inline. **A:** Add a one-line pointer to `hubgeom` in the design doc's T6 and T7 entries, plus the same statement in `internal/hubgeom/doc.go`. Narrow exception to "don't edit the design doc"; it fixes a concrete duplication risk rather than a bookkeeping gap.
 - **Q:** (orchestrator review) `hubgeom` is wave-1 architecture that binds T6 and T7 before either has been discussed. **A:** Accepted deliberately, with the limit recorded in the decision: `hubgeom` has one exported function and nine call sites, so T6's or T7's own discussion can rename or reshape it freely. T3 claims only that *its* nine sites share one teller.
-- **Q:** Which docs land in this commit? **A:** `CONSTRAINTS.md` (two invariants), `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md` (the package tree at ~line 231-239 and the shared-infrastructure list at line 314), `docs/shared-libs/README.md`, and the two T6/T7 pointer lines in `manifest/designs/producers-standalone.md`. No `manifest/roadmap.md` edit.
+- **Q:** Which docs land in this commit? **A:** `CONSTRAINTS.md` (two invariants), `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md` (the package tree at ~line 231-239 only — not the shared-infrastructure list at line 314), and the three permitted edits to `manifest/designs/producers-standalone.md` (T6 pointer, T7 pointer, row 64). No `docs/shared-libs/README.md` entry and no `manifest/roadmap.md` edit.

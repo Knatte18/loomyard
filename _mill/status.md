@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-17T12:53:07Z'
 discussion-fix-r1  '2026-08-17T14:37:13Z'
+discussion-fix-r2  '2026-08-17T14:42:13Z'
+discussed  '2026-08-17T14:42:13Z'
 ```
