@@ -116,7 +116,7 @@ round runners adapt onto treadle's `RoundRunner` vocabulary in their own package
   What the exclusion enforces is that treadle is *told* its geometry and never derives it — `Engine.Run` takes a caller-supplied absolute `runDir`, a block's `Profile` carries a caller-supplied `GateDir`, and every path this package builds is joined onto one of those.
   `internal/stencilstore` takes a fully resolved absolute stencils directory from its caller and derives no geometry of its own, so treadle is still *told* its stencils directory exactly as it is told `runDir` and `Profile.GateDir` — the exclusion of `internal/lyxcwd` still means what it meant.
   The seed/refresh pass that keeps that directory populated runs once at `cmd/lyx`'s root pre-run rather than lazily inside `stencilstore.Read` — what that buys is that treadle is told its stencils directory and derives none of its own,
-  not a transitive exclusion of `internal/fabricengine` from treadle's stack: `internal/treadleengine` → `internal/shuttleengine` → `internal/reedengine` → `internal/fabricengine` is a real transitive path (`reedengine.HubLogsDir` calls `fabricengine.HubScratchDir`).
+  not a transitive exclusion of `internal/fabricengine` from treadle's stack: `internal/treadleengine` → `internal/shuttleengine` → `internal/reedengine` → `internal/fabricengine` is no longer even a real transitive path — `HubLogsDir` moved to `internal/fabricengine`, and `reedengine.Engine` is now told its logs directory as `Geometry.LogsDir` rather than deriving it by calling in.
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
 ## Shed Producer-Seam Invariant
