@@ -72,6 +72,7 @@ touching them here would be scope creep.
   - `internal/planparser/parse.go`
   - `internal/lyxcwd/lyxcwd.go`
   - `internal/lyxdirs/dirs.go`
+  - `internal/modelspec/load.go`
 - **Edits:**
   - `internal/loomengine/plan_test.go`
 - **Creates:** none
@@ -223,6 +224,7 @@ touching them here would be scope creep.
   - `internal/webstercli/validate.go`
   - `internal/hubforge/hub.go`
   - `internal/hubforge/seed.go`
+  - `internal/batcher/template.go`
   - `internal/planparser/parse.go`
   - `internal/lyxcwd/lyxcwd.go`
 - **Edits:**
