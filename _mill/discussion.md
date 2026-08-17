@@ -22,8 +22,10 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 
 **In:**
 
-- Add `configengine.LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error)` — identical to `Load` except that its two refusal branches resolve the caller-supplied `template` instead of erroring.
+- Add `configengine.LoadOrTemplate(baseDir, module string, template []byte) ([]byte, error)` — identical to `Load` except that its two refusal branches resolve the caller-supplied `template` instead of erroring, and only on proven absence.
+- Add an exported `configengine.ErrNotInitialized` sentinel, wrapped by `FindBaseDir` on its `os.IsNotExist` branch, so absence is distinguishable from a stat failure without matching error prose.
 - Refactor `configengine.Load` and `LoadOrTemplate` onto one shared unexported body so the two can never drift.
+- Rewrite `internal/configengine/config.go`'s own file-header comment, which today opens "implements strict YAML configuration loading" and names three wrappers (`board.LoadConfig`, `worktree.LoadConfig`, `fabric.LoadConfig`) that no longer describe the caller set.
 - Repoint exactly four loaders onto `LoadOrTemplate`: `shuttleengine.LoadConfig`, `reedengine.LoadConfig`, `perchengine.LoadConfigWithRegistry`, `websterengine.LoadConfig`.
 - Delete the now-dead `not initialized` rewrap block in each of those four callers, and the `strings` import each one carries solely for it.
 - Rewrite the four packages' file-header and `LoadConfig` doc comments, which currently promise an error on an absent `_lyx/`.
@@ -33,7 +35,8 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 
 **Out:**
 
-- **`configengine.Load` itself is unchanged.** Its four remaining hub-scoped callers — `fabricengine`, `boardengine`, `loomengine`, `batcher` — keep the strict behaviour, where an absent config means a broken hub rather than a standalone invocation. Every existing `Load` test stays as-is.
+- **`configengine.Load`'s observable behaviour is unchanged.** Its four remaining hub-scoped callers — `fabricengine`, `boardengine`, `loomengine`, `batcher` — keep the strict behaviour, where an absent config means a broken hub rather than a standalone invocation. Every existing `Load` test stays as-is and passing, which is what proves it. The one internal change is that `FindBaseDir`'s absent-`_lyx/` error now wraps `ErrNotInitialized`; its message text is unchanged, so the four strict callers' `strings.Contains` rewraps keep working untouched.
+- **The four strict callers are not migrated onto `errors.Is`.** They keep their `strings.Contains(err.Error(), "not initialized")` rewraps. The new sentinel makes that migration possible, and the invariant text notes it as available, but doing it here would touch four packages this task has no other reason to open.
 - **`burlerengine.LoadConfig` is not touched.** It already bypasses `configengine.Load` entirely (strict top-level decode, because `MissingKeys` would misfire on its open-ended lenses/fans key set), so it already degrades and needs no change.
 - **`modelspec.LoadRegistry` is not touched.** It never calls `FindBaseDir` and already falls back to `builtins()` on an absent file, which is the behavioural precedent this task follows.
 - **No CLI file changes.** Every call site (`internal/burlercli/cli.go:78,96`, `internal/shuttlecli/cli.go:78,85`, `internal/webstercli/cli.go:137,144,151`, `internal/reedcli/cli.go:76`, `internal/perchcli/cli.go:99,106,125`) keeps passing `layout.AnchorPath()` and its literal module name. This task removes the config gate only — those CLIs still require `lyxcwd.Resolve` to succeed, and that gate is T5/T6/T7's work, not this task's. **A reviewer should not expect any CLI to become runnable outside a git repository as a result of this task.**
@@ -46,16 +49,28 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 
 ### shared-body-refactor
 
-- Decision: extract a shared unexported `load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byte, error)` in `internal/configengine/config.go`. `Load` calls it with `false`, `LoadOrTemplate` with `true`. The flag is consulted at exactly the two refusal branches (the `FindBaseDir` failure and the `os.IsNotExist` config-file read failure);
+- Decision: extract a shared unexported `load(baseDir, module string, template []byte, fallbackOnAbsent bool) ([]byte, error)` in `internal/configengine/config.go`. `Load` calls it with `false`, `LoadOrTemplate` with `true`. The flag is consulted at exactly the two refusal branches, and **at each one only on proven absence** — see `fallback-only-on-proven-absence` below;
   every other step — `MissingKeys`, `envsource.Build`, `yamlengine.Resolve` — is shared verbatim.
 - Rationale: one body means the strict and degrading paths cannot diverge on env resolution, key validation, or error wording. The two exported functions stay as the documented API surface.
 - Rejected: **duplicating the body** — two ~40-line functions that must be hand-synced forever. **Wrapping `Load`** — `LoadOrTemplate` would have to re-detect *which* failure `Load` hit in order to decide whether to fall back, which means either matching on error strings or re-stat'ing the filesystem; both are fragile and the former couples the fallback decision to error prose.
 
+### fallback-only-on-proven-absence
+
+- Decision: `LoadOrTemplate` falls back **only when the thing is provably absent**, never on any other failure of the same step. Absence is distinguished by a typed sentinel, not by error prose:
+  - Add an exported `configengine.ErrNotInitialized` sentinel. `FindBaseDir` wraps it with `%w` on its `os.IsNotExist` branch (`internal/configengine/config.go:30-31`) and continues to return its own unwrapped `stat %s: %w` error on any other stat failure.
+  - The degrading path falls back only when `errors.Is(err, ErrNotInitialized)` holds, and propagates anything else unchanged.
+  - The config-file branch already has a clean discriminator — `os.IsNotExist(err)` at `config.go:59` — and keeps it. A read failure that is not `IsNotExist` (permission, IO) propagates.
+- Rationale: `FindBaseDir` returns `stat _lyx: %w` for a permission or IO error with no sentinel, so falling back on "the `FindBaseDir` failure" as a whole would turn a genuinely broken `_lyx` into a silent set of defaults — the exact failure this task must not introduce, since a producer would then run with template values against a hub it could not read.
+  The sentinel is worth its small widening of the change for a second reason: it retires the `strings.Contains(err.Error(), "not initialized")` seam, which `docs/shared-libs/configengine.md:127-131` already documents as a substring match callers depend on. The four degrading callers delete their copy of it in this task anyway;
+  the four strict callers keep theirs, and this task does **not** migrate them — that is a follow-up, and the invariant text notes it as available rather than done.
+- Rejected: **inline `os.Stat` + `os.IsNotExist` inside the shared body** — narrower, touching no exported surface, but it duplicates the stat `FindBaseDir` already performs and leaves the string-match seam standing. **Falling back on any `FindBaseDir` error** — silently converts an unreadable `_lyx` into defaults.
+
 ### fallback-resolves-through-envsource
 
 - Decision: the fallback path resolves the template through `envsource.Build(baseDir)` followed by `yamlengine.Resolve(template, env)` — the same two calls the on-disk path uses. It does **not** return the raw template bytes.
-- Rationale: env overrides must keep working in standalone mode, because they are the only remaining way a config-less user pins machine-specific values — `LYX_REED_TMUX`, `LYX_REED_SHELL`, `LYX_SHUTTLE_CLAUDE`, `LYX_SHUTTLE_RUN_DIR`, `LYX_REED_DEBUG`, `LYX_REED_MOUSE`.
-  This path cannot fail on a missing environment: `envsource.Build` tolerates both an absent `.env` and an absent `baseDir` (`readDotEnv` returns an empty map on `os.IsNotExist`), and all four templates use *only* the optional `${env:NAME:-default}` form, never the required `${env:NAME}` form that `yamlengine.expandScalar` errors on.
+- Rationale: env overrides must keep working in standalone mode, because they are the only remaining way a config-less user pins machine-specific values. **Two of the four templates carry env markers at all** — `internal/shuttleengine/template.yaml` (`LYX_SHUTTLE_RUN_DIR`, `LYX_SHUTTLE_CLAUDE`) and `internal/reedengine/template_{posix,windows}.yaml` (`LYX_REED_TMUX`, `LYX_REED_SHELL`, `LYX_REED_DEBUG`, `LYX_REED_MOUSE`);
+  `internal/perchengine/template.yaml` and `internal/websterengine/template.yaml` carry none, so for those two the resolve step is a no-op that must still run for uniformity rather than for effect.
+  This path cannot fail on a missing environment: `envsource.Build` tolerates both an absent `.env` and an absent `baseDir` (`readDotEnv` returns an empty map on `os.IsNotExist`), and the two templates that *do* use markers use only the optional `${env:NAME:-default}` form, never the required `${env:NAME}` form that `yamlengine.expandScalar` errors on.
 - Rejected: returning the template unresolved — it would leave literal `${env:...}` markers in the config structs, breaking every consumer.
 
 ### no-missingkeys-on-the-fallback-path
@@ -70,12 +85,15 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 - Rationale: the on-disk path's error prose ("config file `<path>`: …") is a lie on the fallback path and would send an operator looking for a file that was never there.
 - Rejected: reusing the on-disk error wording unchanged.
 
-### debug-level-observability
+### info-level-observability
 
-- Decision: `logger.Debug` at the fallback point inside `internal/configengine`, naming the module and which of the two conditions fired (absent `_lyx/` versus absent file). This adds `internal/logger` to `internal/configengine`'s import set.
-- Rationale: "why did this run use defaults?" needs an answer available under `-v`, while staying silent by default. No invariant blocks the import — `internal/configengine` is not leaf-capped, unlike `internal/modelspec`, whose stdlib-plus-`configengine`-plus-yaml cap (Modelspec Leaf Invariant) is exactly why `LoadRegistry`'s own fallback is silent.
-  `internal/logger` already depends on `internal/lyxcwd`, which is import-capped at stdlib plus `internal/gitexec`, so no cycle is introduced.
-- Rejected: **silent** — matches `modelspec` precisely and costs no import, but leaves the degraded-config case undiagnosable. **`logger.Info`** — visible without `-v`, which is wrong here: standalone operation is intended to be the *normal* case for these four modules, so an Info line would print on essentially every producer run.
+- Decision: `logger.Info` at the fallback point inside `internal/configengine`, naming the module and which of the two conditions fired (absent `_lyx/` versus absent config file). This adds `internal/logger` to `internal/configengine`'s import set.
+- Rationale: stated against the levels' real semantics, which are not what a reading of "Debug is the quiet one" would suggest:
+  - `logger.SetVerbosity` (`internal/logger/logger.go:379-385`) maps `count <= 0` to Warn, `count == 1` to Info, `count >= 2` to Debug. So **Info is silent on stderr at the default threshold** and appears at `-v`; Debug needs `-vv`.
+  - `durableHandler`'s `Enabled` is unconditional at Info and above (`internal/logger/logger.go:281-285`), never gated by `levelVar`. So **an Info record always reaches the durable trace-file sink**, at any verbosity, while **a Debug record never reaches it at all**.
+  Info therefore gives exactly the wanted shape: nothing on a normal run's stderr, and a durable record of which config a run actually used. "Why did this run use defaults?" is a question asked *after* the run, from the trace file — which is precisely where Debug would not be.
+  No invariant blocks the import: `internal/configengine` is not leaf-capped, unlike `internal/modelspec`, whose stdlib-plus-`configengine`-plus-yaml cap (Modelspec Leaf Invariant) is exactly why `LoadRegistry`'s own fallback is silent. `internal/logger` depends on `internal/lyxcwd`, itself capped at stdlib plus `internal/gitexec`, so no cycle is introduced.
+- Rejected: **`logger.Debug`** — reaches stderr only at `-vv` and never reaches the durable sink, so the one place the answer would be looked for is the one place it would not be. An earlier draft of this decision chose Debug on the false premises that it surfaces at `-v` and that Info prints by default; both are contradicted by the source cited above. **Silent** — matches `modelspec` precisely and costs no import, but leaves the degraded-config case with no record anywhere.
 
 ### module-threading-tests-become-positive-assertions
 
@@ -93,17 +111,23 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
   Review-obligation enforcement is well-precedented for exactly this kind of policy statement: the Producer Pointer-Rule and Batcher Registry+Config invariants are both enforced that way.
 - Rejected: **the guard in this task** — mechanically well-precedented (`cmd/lyx/ghguard_test.go`, `checkedcall_test.go`, `gitrepoboundary_test.go`, `boardguard_test.go`, and at least nine `allowedSpawners` entries of this exact shape), and the split genuinely is machine-checkable with a silent failure mode, which is why the guard is *scheduled* rather than dropped. But wave-1 consistency and the intact contention analysis outweigh landing it three waves early. **No invariant at all** — violates CLAUDE.md's same-commit recording rule and leaves the two-policy split undocumented for the very tasks that depend on it.
 
-### membership-rule-is-what-the-config-governs
+### membership-rule-is-a-standalone-entry-point
 
-- Decision: the invariant's membership rule is stated as *what the config governs*, not *which package declares it*. A config whose keys are operator-tunable producer knobs (model specs, timeouts, tool paths, poll intervals) degrades; a config that describes hub state, whose absence means the hub itself is broken, stays strict.
-- Rationale: this is the distinction the design doc already uses to justify `websterengine`'s placement in the degrading group over an earlier draft that had put it with the hub-scoped callers, and the same distinction that already keeps `burlerengine` off the strict list. Stating it by package name instead would make the invariant a list with no rule, useless for classifying the next caller.
-- Rejected: enumerating packages with no stated rule.
+- Decision: the invariant's membership rule is **whether the module has, or is slated to have, a standalone entry point** — a way to be invoked outside a lyx hub. A module with one degrades, because a config-less invocation is a supported mode. A module that only ever runs inside a hub stays strict, because there an absent config means the hub is broken.
+  Current classification: degrading `{shuttleengine, reedengine, perchengine, websterengine}` — standalone entries arrive in T5-T8;
+  strict `{fabricengine, boardengine, loomengine, batcher}` — no standalone entry, `loomengine` explicitly deferred to Someday.
+- Rationale: this is the rule the design doc actually applied. It moved `websterengine` out of the hub-scoped group specifically because "it does not belong there once Webster has a standalone entry (T7)" — the entry point, not the key shapes, is what decided it.
+  A "what the config governs" phrasing cannot survive contact with the source: `internal/loomengine/config.go:90`'s `Config` is two role model-specs plus two timeout ints (`discussion`, `discussion_timeout_min`, `plan`, `plan_timeout_min`), and `internal/loomengine/template.yaml` is four lines of exactly that — structurally indistinguishable from `webster.yaml`, which the same phrasing would place in the degrading set while T2 pins loom strict. `internal/batcher`'s single `active: ""` key with a registry default is the same problem in weaker form.
+- **Watch item for T7/T10, stated rather than assumed:** `batcher` sits on the strict side because it has no standalone entry of its own, but its config is read on webster's batching path. If T7's standalone Webster turns out to reach `batcher.Active`, `batcher` moves to the degrading side and this invariant's pinned sets change with it. That is T7's finding to make, not this task's to pre-empt — recorded here so it is a decision then rather than a surprise.
+- Rejected: **"what the config governs"** — falsified by `loomengine` above. **Moving `loomengine` to the degrading set** to rescue that phrasing — contradicts T2's brief, which names `loomengine` among the four strict callers where "an absent config means a broken hub". **Enumerating the two sets with no general predicate** — leaves T10, and every later caller, with a list and no way to classify against it.
 
 ## Technical context
 
 **`internal/configengine/config.go`** is small and self-contained: `FindBaseDir`, `ConfigDir`, `ConfigFile`, `Load`.
-Current imports are `fmt`, `os`, `path/filepath`, `internal/envsource`, `internal/lyxdirs`, `internal/yamlengine`.
+Current imports are `fmt`, `os`, `path/filepath`, `internal/envsource`, `internal/lyxdirs`, `internal/yamlengine`;
+this task adds `errors` (for the sentinel) and `internal/logger`.
 `Load`'s body is a linear six-step flow — `FindBaseDir`, `os.ReadFile`, `MissingKeys`, `envsource.Build`, `yamlengine.Resolve`, return — with the two branches this task changes at lines 52-55 and 58-61.
+`FindBaseDir`'s own two error branches are at lines 30-31 (`os.IsNotExist`, which gains the `ErrNotInitialized` wrap) and 32-34 (any other stat failure, unchanged and never a fallback trigger).
 The package also has `set.go` (`Set`) and `edit.go` (`Edit`, `DefaultEditor`), both of which call `FindBaseDir` and are **out of scope** — they are write paths, where an absent `_lyx/` genuinely is an error.
 
 **The four callers all share one shape.** Each is `configengine.Load(baseDir, module, []byte(ConfigTemplate()))`, followed by an `if err != nil` block containing a `strings.Contains(err.Error(), "not initialized")` test that rewraps to `not initialized here; run "lyx fabric reconcile"`, then a yaml unmarshal:
@@ -196,6 +220,8 @@ Behavioural constraint discovered during exploration:
 - Config file present but empty or comments-only → still errors, for the same reason.
 - Fallback path honours env overrides: set an env var referenced by the template's `${env:NAME:-default}` marker, assert the override lands in the returned bytes with no `_lyx/` anywhere on disk.
 - Fallback path with an absent `.env` and an absent `baseDir` → no error.
+- **Absence-only discrimination — the negative test the `fallback-only-on-proven-absence` decision exists for.** A `_lyx/` that exists but cannot be stat'd must error rather than fall back. Construct it by chmod'ing the parent directory to `0o000` on a POSIX-only test guarded by `runtime.GOOS`, skipping on Windows and when running as root (where the mode is not enforced); assert the returned error is *not* `errors.Is(err, ErrNotInitialized)` and that no template-derived bytes come back. If a portable construction proves impossible, the fallback trigger must still be unit-tested directly at the sentinel level: assert `FindBaseDir` on an absent dir satisfies `errors.Is(err, ErrNotInitialized)` and that a hand-constructed non-sentinel error does not.
+- `ErrNotInitialized` is wrapped, not returned bare: assert `errors.Is` holds *and* that the message still contains `"not initialized"`, since the four strict callers' `strings.Contains` rewraps depend on that text.
 - `Load` regression: the existing `TestLoad_NotInitialized` and `TestLoad_AbsentFile` must keep passing unmodified, which is what proves the shared-body refactor preserved strict behaviour.
 
 **Per-engine loader tests — one new or inverted test per loader, four total.** This is the check T2 names explicitly ("a new test per loader asserting a `baseDir` with no `_lyx/` returns the template-derived config rather than an error"). Each replaces that package's `TestLoadConfig_NotInitialized`:
@@ -227,7 +253,10 @@ Name these for what they now assert, not for the removed refusal — e.g. `TestL
 - **Q:** How should the three `TestLoadConfig_ModuleArgIsThreadedThrough` negative halves be preserved once the absent-file refusal they rely on is gone? **A:** Convert to a positive discrimination test — seed the other module with a non-default value, assert the unseeded default name yields the template default. Deleting the half was rejected: a hardcoded module name would then pass silently.
 - **Q:** Does this need a new `CONSTRAINTS.md` invariant, and should it be machine-enforced? **A:** The invariant, yes — the guard, no, deferred to T10. This reverses an earlier call in this discussion, on evidence from the orchestrator review (`_mill/orch-review.md`): T1, this wave's sibling, rejected machine-enforcing its own reworded invariant on the same grounds; `producers-standalone.md` places its new-invariant work at T10; and adding a new guard file here would silently invalidate the design's ten-task file-contention analysis. The invariant text records the guard's exact shape so T10 inherits a specification.
 - **Q:** Is deferring the guard consistent with CLAUDE.md? **A:** Yes. The rule is "record any new cross-cutting invariant there, same commit" — recording, not enforcing. Review-obligation enforcement is the same level the Producer Pointer-Rule and Batcher Registry+Config invariants carry.
-- **Q:** How should the invariant state which set a new caller joins? **A:** By what the config governs — operator-tunable producer knobs degrade, hub state stays strict — not by an unexplained package list. This is the same distinction that places `websterengine` in the degrading group and already keeps `burlerengine` off the strict list.
+- **Q:** How should the invariant state which set a new caller joins? **A:** By whether the module has, or is slated to have, a standalone entry point. An earlier answer here said "by what the config governs — operator-tunable knobs degrade, hub state stays strict"; round 1 of discussion review falsified it against source, since `internal/loomengine`'s config is two model-specs plus two timeouts, structurally identical to `webster.yaml` yet pinned strict by T2. The standalone-entry rule is what the design doc actually applied when it moved Webster into the degrading group "once Webster has a standalone entry (T7)". `batcher`'s placement is recorded as a T7/T10 watch item rather than assumed permanent.
+- **Q:** Does `LoadOrTemplate` fall back on any `FindBaseDir` failure, or only on absence? **A:** Only on proven absence, via a new exported `ErrNotInitialized` sentinel that `FindBaseDir` wraps on its `os.IsNotExist` branch;
+  a permission or IO stat failure propagates. Falling back on the whole error would turn an unreadable `_lyx/` into a silent set of defaults. The config-file branch keeps its existing `os.IsNotExist` discriminator.
+- **Q:** Which log level for the fallback, given `internal/logger`'s actual semantics? **A:** `logger.Info`. An earlier answer chose `logger.Debug` on two premises round 1 of review disproved: `SetVerbosity` maps `-v` to Info and only `-vv` to Debug, and `durableHandler` is unconditional at Info-and-above, so Debug never reaches the durable trace file while Info always does and still stays off stderr at the default Warn threshold.
 - **Q:** What happens to the four `TestLoadConfig_NotInitialized` tests? **A:** Inverted and renamed to assert a template-derived config rather than an error.
 - **Q:** What happens to the dead `not initialized` rewrap blocks? **A:** Deleted in all four callers, along with the `strings` import each carries solely for them.
 - **Q:** Does a config file that exists but is broken — missing keys, empty, comments-only — fall back? **A:** No. It still errors. Only an absent `_lyx/` or an absent file degrades.
