@@ -327,8 +327,9 @@ This is the half of the three-tier model that makes "orchestrators require full 
 a new `internal/*` package for the lifted checks plus its `doc.go` and tests;
 `CONSTRAINTS.md` if the three-tier rule lands as a named invariant (see T10).
 
-**Open for the implementer.** Whether the lifted package is new (`internal/preflight`) or the checks move onto `internal/fabricengine` as a composite verb.
-New package is the recommendation — `fabricengine` is already the repo's largest package and owns destruction, write containment and mutation recording, and a preflight that merely *reads* does not belong in that blast radius.
+**Placement is decided, not open:** a new `internal/preflight` package, never a composite verb on `internal/fabricengine`.
+`fabricengine` is already the repo's largest package and owns destruction, write containment and mutation recording;
+a preflight that merely *reads* does not belong in that blast radius, and putting it there would drag every consumer of a read-only check into the dependency set of the repo's most dangerous package.
 
 **Depends on.** Nothing.
 **Parallel-safe with.** T3.
@@ -401,21 +402,44 @@ After this task `lyx burler run --profile p.yaml --stencils-dir <dir>` works in 
 T4 and T5 turn each of these into a parameter;
 this task is where each one gets its standalone answer, so that no value is silently defaulted from a fictional hub:
 
+**The load-bearing move is splitting `worktreeRoot` from `anchorRoot`.**
+In a real worktree they are usually the same directory, which is why it is tempting to point both at the target — but they answer different questions, and standalone is exactly where that difference becomes visible:
+
+- `worktreeRoot` is the base every *caller-named* relative path resolves against.
+  `burlerengine`'s `Profile.validate` resolves `Target.Paths`, `Fasit.Paths`, `ReviewPath`, `FixerReportPath` and both prior-report lists against it (`internal/burlerengine/profile.go:59-66`), and perch's `GateDir` is the gate command's working directory.
+  This must be the target directory.
+- `anchorRoot` is the base every *lyx-internal* `_lyx`/`.lyx` path is joined onto.
+  This must be `<state>`.
+
+Pointing both at the target is what would push a hidden `.lyx` tree into the reviewed folder, because `reedengine.stateDir()` (`lifecycle.go:43-44`, holding `reed.json`/`reed.lock`), `shuttleengine.runDirRoot`'s default (`rundir.go:49-56`), `burlerengine`'s `.lyx/burler`, and perch's `RunsDir`/`ScratchDir` are all `anchorRoot`-derived.
+With the split, every one of them relocates automatically — the rows marked *derived* below are consequences of the two roots, not separate decisions to make or forget.
+
 | Told value | Hub-resident source today | Standalone value |
 |---|---|---|
-| `worktreeRoot`, `anchorRoot` | `l.WorktreePath()`, `l.AnchorPath()` | the absolute target directory, from `--target-dir` (mirroring `scoutcli`), defaulting to cwd |
-| reed `socketKey` | `socketName(l.HubPath)` | minted per invocation, never derived from a directory |
-| reed `sessionName` | `SessionName(l.WorktreePath())` = `filepath.Base(worktreeRoot)` | `<basename of target>-<hash8 of its absolute path>` |
-| reed logs dir (`HubLogsDir`) | `fabricengine.HubScratchDir(l.HubPath)/logs` | `<state>/reed/logs` |
-| burler scratch | `Join(l.AnchorPath(), ".lyx", "burler")` | `<state>/burler` |
-| perch `RunsDir` / `ScratchDir` | `AnchorPath()`-anchored `_lyx`/`.lyx` pair | `<state>/perch/runs` and `<state>/perch/scratch` |
+| `worktreeRoot` | `l.WorktreePath()` | the absolute target directory (`--target-dir`, defaulting to cwd) |
+| `anchorRoot` | `l.AnchorPath()` | `<state>` |
+| reed `socketKey` | `socketName(l.HubPath)` | `lyx-<hash8>`, deterministic from the target's absolute path |
+| reed `sessionName` | `SessionName(l.WorktreePath())` = `filepath.Base(worktreeRoot)` | `<basename of target>-<hash8>` |
+| reed logs dir (`HubLogsDir`) | `fabricengine.HubScratchDir(l.HubPath)/logs` | `<state>/logs` |
+| reed state dir (`stateDir`) | `Join(AnchorPath(), ".lyx")` | *derived* — `<state>/.lyx` |
+| shuttle run dir (`runDirRoot`) | `Join(AnchorPath(), ".lyx", "shuttle")` | *derived* — `<state>/.lyx/shuttle` |
+| burler scratch | `Join(AnchorPath(), ".lyx", "burler")` | *derived* — `<state>/.lyx/burler` |
+| perch `RunsDir` / `ScratchDir` | `AnchorPath()`-anchored `_lyx`/`.lyx` pair | *derived* — under `<state>` |
 | stencils dir | `fabricengine.StencilsDir(l.HubPath)` | `--stencils-dir <path>`, told |
 
-`<state>` is `$XDG_STATE_HOME/lyx/<hash8>/` with `~/.local/state/lyx/<hash8>/` as the fallback, where `hash8` is the first eight hex characters of the target directory's absolute path — the same content-hash namespacing scheme `shedadapters`' perch run-ids already use, so two standalone runs against different folders never collide and a re-run against the same folder resumes its own state.
+`<state>` is `$XDG_STATE_HOME/lyx/<hash8>/`, falling back to `~/.local/state/lyx/<hash8>/`, where `hash8` is the first eight hex characters of the target directory's absolute-path hash — the same content-hash namespacing `shedadapters`' perch run-ids already use.
+
+**The socket is deterministic, not per-invocation, and that is what makes resume work.**
+`reedengine.ReedState` persists both `Socket` and `Session` (`internal/reedengine/state.go:32-36`) and reed's entire Up/Resume model reads them back.
+A per-invocation socket would make that persisted state unresumable and reduce the deterministic session name to decoration.
+Deriving `socketKey` from the same `hash8` as the session name and the state directory makes all three agree: one tmux server per target directory, resumable across invocations, and no collision between two standalone runs in sibling folders.
+Standalone therefore reuses reed's existing server lifecycle unchanged, with `<state>` playing the role the hub plays today — the server persists deliberately, and `lyx reed down` is the existing teardown verb;
+T6 adds no new lifecycle concept and must not silently kill a server it did not start.
 
 **The target directory receives only what the caller explicitly named** — the profile's `review-path` and `fixer-report-path`, and nothing else.
 Standalone never writes hidden state into a folder it was asked to review, which is what makes `lyx burler run` safe to point at an arbitrary directory.
-This also settles the [Durable-vs-Ephemeral State Invariant](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant) question cleanly: the invariant places every never-tracked file under `.lyx` at the mirrored subpath of the `_lyx` content it relates to, and standalone has no `_lyx` for anything to mirror, so the rule does not engage rather than being bent.
+That is a property of the `worktreeRoot`/`anchorRoot` split, not a rule an implementer has to remember at each write site.
+It also settles the [Durable-vs-Ephemeral State Invariant](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant) question cleanly: the invariant places every never-tracked file under `.lyx` at the mirrored subpath of the `_lyx` content it relates to, and standalone's `_lyx`/`.lyx` pair are ordinary siblings under `<state>`, so the rule is satisfied rather than bent or dodged.
 Say so in the invariant's own text as part of this task's `CONSTRAINTS.md` edit.
 
 **Files.** `internal/burlercli/cli.go`, `internal/burlercli/run.go` and tests; `internal/perchcli/cli.go`, `internal/perchcli/run.go` and tests; `cmd/lyx/*_test.go` for the help-tree and `Short`/`Long` obligations under the [CLI / Cobra Invariant](../../CONSTRAINTS.md#cli--cobra-invariant); `CONSTRAINTS.md`.
@@ -425,7 +449,13 @@ This task is what introduces the told stencils directory and the standalone stat
 Deferring them to T10 would leave the shipped code contradicting a live invariant across two waves, against `CLAUDE.md`'s same-commit docs rule that T1, T3 and T4 all honour.
 T10 keeps only the new three-tier invariant and the cross-doc consolidation.
 
-**Watch.** Every new flag needs its `Short`/`Long` updated, and help accuracy is a review obligation whenever observable behaviour changes.
+**`--target-dir` is a resolution base, not a review target.**
+It supplies `worktreeRoot` — the directory relative profile paths resolve against — and nothing more.
+It never names what to review: that is the profile's `target.paths`, and the out-of-scope note about `lyx burler run <path>` below is precisely the rule that keeps these from becoming two ways to say the same thing.
+In a real worktree the value is `layout.WorktreePath()` and the flag is unnecessary;
+standalone defaults it to cwd.
+
+**Watch.** Both new flags — `--stencils-dir` and `--target-dir` — need `Short`/`Long` text, and help accuracy is a review obligation whenever observable behaviour changes.
 The `--stencils-dir` bootstrap and the `<state>` directory both write files, so the command must say where it wrote them.
 
 **Depends on.** T2, T3, T4, T5.

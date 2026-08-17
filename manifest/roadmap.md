@@ -19,13 +19,16 @@ Committed to, in this order, next.
 
 1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` so `Hardener` and future `Shed` products stop having to re-implement it.
    Two tasks, parallel-safe.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
 
 1. **producers standalone: producer engines** — `burlerengine`+`perchengine` (one task, they do not compile apart) and `websterengine`+`webstercli` convert to told geometry.
    Two tasks, parallel-safe.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository.
+1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository.
    The task this whole line of work exists for;
    an optional `scoutengine` uniformity pass runs beside it, and a final consolidation task lands the three-tier invariant in `CONSTRAINTS.md`.
+   See [designs/producers-standalone.md](designs/producers-standalone.md).
 
 ## Someday
 
