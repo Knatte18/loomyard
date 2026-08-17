@@ -43,3 +43,9 @@ batches:
     start_sha: c1006ca02ae824c59763a21494dcbb6c91972ff7
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-08-17T15:23:32Z'  repoint-and-delete-twins  round 1
+```
