@@ -123,6 +123,20 @@ The design's one-sentence rule — *"an orchestrator resolves geometry and requi
 - **Rejected:** Deleting the bullet and relying on the Cwd Resolution Invariant's generic per-module-subpath rule.
   Also rejected: the minimal edit *"via a told anchor path"*, which fixes the falsehood but drops the ownership claim.
 
+### `planparser.Validate`'s `worktreeRoot` parameter is left alone — deliberately
+
+- **Decision:** Do not rename `Validate(plan *Plan, worktreeRoot string)` (`internal/planparser/validate.go:56`), and do not change what any caller passes it.
+  Out of scope, with the reason recorded here rather than by omission.
+- **Rationale:** Renaming it to `anchorPath` would assert an answer to a question this task has not settled.
+  Its two production callers pass different roots — `internal/webstercli/validate.go:73` passes `c.layout.AnchorPath()`, `internal/websterengine/runlevel.go:330` passes `deps.WorktreeRoot` — so at any `AnchorRel != "."` they resolve card paths against different directories and at most one of them is right.
+  Which one is right is a plan-format semantics question (what does a card's worktree-relative path resolve against?), not a path-ownership question, and answering it changes behaviour.
+  This task changes no behaviour at all.
+  Renaming the parameter to match one caller would quietly bless that caller and make the other look like a plain bug when the disagreement has not been adjudicated.
+- **Rejected:** Renaming to `anchorPath` in this commit — asserts an unadjudicated answer and misaligns the other caller.
+  Also rejected: silently leaving it with no note, which is what the r3 review correctly flagged, since the new sole-declarer bullet ("the caller supplies the anchor path") otherwise sits beside a same-package symbol whose parameter says `worktreeRoot`.
+- **Follow-up, not this task:** the caller disagreement is worth filing separately.
+  It is a genuine latent defect at nested anchors, it predates this task, and it is not made worse by anything here.
+
 ### the reworded invariant stays a review obligation
 
 - **Decision:** No machine check is added.
@@ -204,8 +218,12 @@ The `internal/webstercli` **package** already depends on `planparser` — `await
 `cli.go` itself does not (imports at lines 22-31), so `cli.go` gains the `planparser` import and loses `loomengine`;
 the package's dependency set strictly shrinks by one edge, which is the task's headline outcome.
 
-`internal/webstercli/validate.go:73` already calls `planparser.Validate(plan, c.layout.AnchorPath())` — a told-anchor `planparser` call in production today.
-The new functions match that established shape exactly, including the anchor-always argument.
+`internal/webstercli/validate.go:73` already calls `planparser.Validate(plan, c.layout.AnchorPath())` — a told-path `planparser` call in production today, so the "caller resolves geometry, planparser is told a string" shape is established rather than introduced here.
+
+**One caveat, stated rather than glossed:** that call is *not* clean precedent for the anchor-always rule specifically.
+`planparser.Validate` is declared `func Validate(plan *Plan, worktreeRoot string)` (`internal/planparser/validate.go:56`), and its two production callers disagree about what to pass — `webstercli/validate.go:73` passes `AnchorPath()`, `websterengine/runlevel.go:330` passes `deps.WorktreeRoot`.
+One of those is wrong whenever `AnchorRel != "."`.
+It is precedent for the told-string *shape*, not for which root is correct.
 
 ### Every call site, enumerated
 
@@ -249,12 +267,16 @@ A comment must record precisely this weakening at the rows, so the next reader d
 
 **Import churn differs between the two files.** `constructoranchoring_test.go` already imports `planparser` (line 40) and needs no import change.
 `cmd/lyx/notransients_test.go` does **not** — its import block (lines 16-29) has `loomengine`, `logger`, `lyxcwd`, `lyxdirs`, `perchengine`, `scoutengine`, `treadleengine`, `websterengine` and no `planparser` — so it gains the `planparser` import.
-Whether it *loses* `loomengine` depends on its remaining rows (`DiscussionDir`, `LoomStatusFile`, `LoomStatusLock` all stay), so it keeps the import;
-verify rather than assume.
+It **keeps** `loomengine` — decided, not deferred: `durableSet` still carries `loomengine.DiscussionDir` and `loomengine.LoomStatusFile`, and `transientSet` still carries `loomengine.LoomStatusLock`, none of which this task touches.
+So `notransients_test.go` gains an import and loses none;
+`webstercli` is the only package whose `loomengine` dependency actually disappears.
 
 Both files' header comments enumerate the owning modules the file may import at once — `constructoranchoring_test.go:5-6` names `planparser` already, `notransients_test.go:6-8` does not.
 Add it to `notransients_test.go`'s enumeration in the same commit as the import.
-`constructoranchoring_test.go`'s header also describes the anchoring groups and names the `_lyx`-durable group without naming `loomengine.PlanDir` by symbol, so check whether it needs a touch-up when the rows move.
+
+**`constructoranchoring_test.go`'s header does need a touch-up** — decided, not deferred.
+Its opening line reads "pins every constructor batch 5 relocated out of `internal/lyxcwd` into its owning module", which stops being exact once two of its rows name `planparser` functions that batch 5 never relocated and that take a string rather than a `*lyxcwd.Location`.
+Adjust that framing sentence in the same commit as the rows.
 
 ### Where anchoring is actually proven after this task
 
@@ -336,8 +358,10 @@ A nested-directory input (the ported fixture used `filepath.Join("sub", "dir")`)
 - `cli_test.go` and `verbs_test.go` drop the `loomengine` import and use `planparser.PlanDir(layout.AnchorPath())`.
 - **Fixtures flip off `AnchorRel: "."`.** `cli_test.go:168` and `verbs_test.go:220` build layouts with `AnchorRel: "."`, where `AnchorPath()` and `WorktreePath()` are the same string, so no test can currently distinguish them.
   A non-`"."` anchor makes the two roots distinguishable at every site that consumes `c.planDir` (the plan seeding at `cli_test.go:201,252` and `verbs_test.go:221`, and the fingerprint helper at `verbs_test.go:275`).
-  Whether `cli_test.go:134,152`'s layouts also need flipping depends on what those cases assert — check before changing them;
-  the target is the plan-dir-consuming fixtures, not a blanket rewrite.
+  **`cli_test.go:134` and `:152` are not flipped** — decided, not deferred.
+  Those two layouts back `TestFabricSync_SkipGitBypassNeedsNoFabricWorktree` and `TestFabricSync_NonBypassValidatesPairPaths`, which call `fabricSync(layout, …)` directly and never touch `planDir`.
+  Re-anchoring them would change what those fabric tests exercise for no plan-path gain.
+  The target is `newTestCLI` (`:168`) and `verbs_test.go`'s plan-dir-consuming fixture (`:220`), not a blanket rewrite.
   These fixtures create real directories on disk, so re-anchoring must keep the seeded plan files and the CLI's `planDir` pointing at the same place — a fixture that silently seeds one directory and reads another would pass vacuously.
 - **New subpath-anchored pre-run case, covering `cli.go:194` itself.**
   Parameterize `seedPersistentPreRunFixture` (`verbs_test.go:695`) with the anchor it passes to `hubforge.NewHub` — `"."` for the two existing callers, `"backend"` for the new one — and drive a verb whose behaviour depends on `c.planDir`.
@@ -379,4 +403,6 @@ The subpath-anchored `loomengine.PlanSpec` case is the second TDD candidate — 
 - **Q:** (r1 NIT) What is the disposition of `manifest/designs/fabric-unified-view.md`'s two `PlanDir` mentions? **A:** Left alone deliberately, as a historical as-built record of what that task delivered; the anchoring it describes is unchanged by this task.
 - **Q:** (r1 NIT) What about the stale comments at `cli.go:57-58` and `verbs_test.go:12-13`? **A:** Both in scope, plus `notransients_test.go:6-8`.
 - **Q:** (r2 NIT) What bounds the stale-comment set at three? **A:** Nothing did — it was assembled by reading. Now enumerated by grep over both `lyxcwd-resolved` spellings, which returns 5 lines in 3 files; `websterengine/runlevel.go:100` joins scope, `beginbatch.go:64,66` are dispositioned out (webster dirs only, still true until T7).
+- **Q:** (r3 NIT) Does `planparser.Validate`'s `worktreeRoot` parameter get renamed to match the new anchor-always wording? **A:** No — out of scope with a recorded reason. Its two callers pass different roots (`webstercli/validate.go:73` → `AnchorPath()`, `websterengine/runlevel.go:330` → `WorktreeRoot`), so renaming would assert an unadjudicated answer to a plan-format semantics question and change behaviour, which this task does not do. Filed as a follow-up instead. The discussion's earlier claim that `validate.go:73` is precedent for anchor-always was overstated and is corrected: it is precedent for the told-string shape only.
+- **Q:** (r3 NIT) The three "verify at implementation" items — are they answerable now? **A:** Yes, all three, and they are now decisions: `cli_test.go:134,152` are not flipped (fabricSync tests, never touch `planDir`); `notransients_test.go` keeps `loomengine` (three untouched rows) and only gains `planparser`; `constructoranchoring_test.go`'s "relocated out of `internal/lyxcwd`" framing sentence does need adjusting.
 - **Q:** (r2 NIT) Does the `cli_test.go` anchor flip prove anchoring? **A:** No — `newTestCLI` computes `planDir` and seeds into it, so it is self-consistent under a wrong root, exactly like the `cmd/lyx` rows. Now recorded as such; only the `PlanSpec` case and the pre-run case carry the anchoring proof.
