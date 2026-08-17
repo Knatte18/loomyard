@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -22,4 +22,17 @@ discussed  '2026-08-17T15:02:01Z'
 planning  '2026-08-17T15:08:10Z'
 plan-fix-r1  '2026-08-17T15:14:32Z'
 planned  '2026-08-17T15:14:46Z'
+implementing  '2026-08-17T15:28:04Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: configengine-loadortemplate
+    state: pending
+  - name: producer-loaders-repointed
+    state: pending
+  - name: docs-and-invariant
+    state: pending
 ```
