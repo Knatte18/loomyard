@@ -11,6 +11,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -89,7 +90,8 @@ provider specifics.`,
 				return nil
 			}
 
-			reedEngine := reedengine.New(reedCfg, layout)
+			reedGeom := hubgeom.ReedGeometry(layout)
+			reedEngine := reedengine.New(reedCfg, reedGeom)
 			c.runner = shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
 			return nil
 		},

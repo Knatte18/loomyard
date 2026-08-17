@@ -53,6 +53,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -277,7 +278,8 @@ func TestSmokeInterruptSendContinues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reedengine.LoadConfig: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, layout)
+	reedGeom := hubgeom.ReedGeometry(layout)
+	reedEngine := reedengine.New(reedCfg, reedGeom)
 	engine := claudeengine.New()
 	runner := shuttleengine.NewRunner(reedEngine, engine, layout, shuttleCfg)
 

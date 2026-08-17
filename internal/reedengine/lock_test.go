@@ -1,7 +1,9 @@
 // lock_test.go verifies withOpLock's per-worktree lock path, that two calls serialize (the second
 // blocks until the first releases), that a released lock can be re-acquired with no stale-lock
 // residue, and Engine's Socket()/SessionName() accessor strings.
-// newTestEngine is the shared fixture every reedengine test in this package builds on.
+// newTestEngine is the shared fixture every reedengine test in this package builds on; it builds a
+// Geometry struct literal directly rather than calling hubgeom.ReedGeometry, since hubgeom imports
+// reedengine and an in-package test importing it would close an import cycle.
 
 package reedengine
 
@@ -10,8 +12,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newTestEngine builds an Engine rooted at a fresh t.TempDir(), suitable
@@ -19,37 +19,61 @@ import (
 // shell out to tmux: cfg.Tmux/cfg.Shell point at paths that do not exist,
 // so a stray real invocation fails fast with "file not found" instead of
 // hanging or silently succeeding against some unrelated running server.
+// The Geometry fields are distinct values derived from one t.TempDir() — a
+// synthetic hub, a worktree root under it, and an anchor path under that —
+// so a field mix-up inside the engine surfaces instead of passing silently.
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
-	root := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
+	hub := t.TempDir()
+	worktreeRoot := filepath.Join(hub, "worktree")
+	anchorPath := filepath.Join(worktreeRoot, "anchor")
+	geom := Geometry{
+		SocketKey:    ServerName(hub),
+		SessionName:  SessionName(worktreeRoot),
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+		LogsDir:      filepath.Join(hub, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hub,
+	}
 	cfg := Config{
-		Tmux:               filepath.Join(root, "does-not-exist-tmux.exe"),
-		Shell:              filepath.Join(root, "does-not-exist-shell.exe"),
+		Tmux:               filepath.Join(hub, "does-not-exist-tmux.exe"),
+		Shell:              filepath.Join(hub, "does-not-exist-shell.exe"),
 		Width:              100,
 		Height:             21,
 		CollapsedStripRows: 2,
 		MinFullRows:        3,
 		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",
 	}
-	return New(cfg, layout)
+	return New(cfg, geom)
 }
 
 func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
-	// AnchorRel is a real subpath here so stateDir's AnchorPath anchoring (as
-	// opposed to WorktreePath) is actually observable.
-	root := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: filepath.Join("sub", "dir")}
+	// The anchor path is a real subpath of the worktree root here so
+	// stateDir's AnchorPath anchoring (as opposed to WorktreeRoot) is
+	// actually observable.
+	hub := t.TempDir()
+	worktreeRoot := filepath.Join(hub, "worktree")
+	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+	geom := Geometry{
+		SocketKey:    ServerName(hub),
+		SessionName:  SessionName(worktreeRoot),
+		AnchorPath:   anchorPath,
+		WorktreeRoot: worktreeRoot,
+		LogsDir:      filepath.Join(hub, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hub,
+	}
 	cfg := Config{
-		Tmux:               filepath.Join(root, "does-not-exist-tmux.exe"),
-		Shell:              filepath.Join(root, "does-not-exist-shell.exe"),
+		Tmux:               filepath.Join(hub, "does-not-exist-tmux.exe"),
+		Shell:              filepath.Join(hub, "does-not-exist-shell.exe"),
 		Width:              100,
 		Height:             21,
 		CollapsedStripRows: 2,
 		MinFullRows:        3,
 		StrandName:         "<ROLE>:<ROUND>:<SHORT_GUID>",
 	}
-	e := New(cfg, layout)
+	e := New(cfg, geom)
 
 	var sawPath string
 	err := e.withOpLock(func() error {
@@ -63,12 +87,12 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		t.Fatalf("withOpLock: %v", err)
 	}
 
-	dotLyx := filepath.Join(e.layout.AnchorPath(), ".lyx")
+	dotLyx := filepath.Join(e.geom.AnchorPath, ".lyx")
 	if filepath.Dir(sawPath) != dotLyx {
 		t.Errorf("lock path = %q, want under %q (per-worktree, not shared across worktrees)", sawPath, dotLyx)
 	}
-	if filepath.Dir(sawPath) == filepath.Join(e.layout.WorktreePath(), ".lyx") {
-		t.Errorf("lock path = %q, want it to differ from the WorktreePath-based path for a subpath-anchored fixture", sawPath)
+	if filepath.Dir(sawPath) == filepath.Join(e.geom.WorktreeRoot, ".lyx") {
+		t.Errorf("lock path = %q, want it to differ from the WorktreeRoot-based path for a subpath-anchored fixture", sawPath)
 	}
 }
 
@@ -143,14 +167,25 @@ func TestWithOpLock_ReacquireAfterReleaseSucceeds(t *testing.T) {
 }
 
 func TestEngine_SocketAndSessionName(t *testing.T) {
-	e := newTestEngine(t)
+	hub := t.TempDir()
+	worktreeRoot := filepath.Join(hub, "worktree")
+	geom := Geometry{
+		SocketKey:    ServerName(hub),
+		SessionName:  SessionName(worktreeRoot),
+		AnchorPath:   worktreeRoot,
+		WorktreeRoot: worktreeRoot,
+		LogsDir:      filepath.Join(hub, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hub,
+	}
+	e := New(Config{}, geom)
 
-	wantSocket := ServerName(e.layout.HubPath)
+	wantSocket := ServerName(hub)
 	if got := e.Socket(); got != wantSocket {
 		t.Errorf("Socket() = %q, want %q", got, wantSocket)
 	}
 
-	wantSession := filepath.Base(e.layout.WorktreePath())
+	wantSession := filepath.Base(worktreeRoot)
 	if got := e.SessionName(); got != wantSession {
 		t.Errorf("SessionName() = %q, want %q", got, wantSession)
 	}

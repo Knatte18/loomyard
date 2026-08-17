@@ -44,6 +44,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -285,7 +286,8 @@ The chair is red and the table is blue; they must match.
 	if err != nil {
 		t.Fatalf("load shuttle config: %v", err)
 	}
-	reedEngine := reedengine.New(reedCfg, h.Location)
+	reedGeom := hubgeom.ReedGeometry(h.Location)
+	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), h.Location, shuttleCfg)
 
 	// HandoffPath is REQUIRED input: the same judge call must write its

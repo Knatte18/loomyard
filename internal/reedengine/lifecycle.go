@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -31,7 +30,7 @@ import (
 // distinct from HubLogsDir's hub anchor above, which stays one deterministic place per hub rather
 // than per worktree.
 func (e *Engine) stateDir() string {
-	return filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName)
+	return filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName)
 }
 
 // UpResult reports the outcome of Up.
@@ -243,7 +242,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// is the only lever. This happens on every boot, regardless of
 	// debug_log, and runs before the boot loop so a fresh server's log always
 	// lands in a directory that already exists and is already pruned.
-	logsDir := fabricengine.HubLogsDir(e.layout.HubPath)
+	logsDir := e.geom.LogsDir
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		logger.Warn("reed: failed to create hub logs dir", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)
@@ -292,7 +291,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		argv = append(argv,
 			"-L", e.Socket(),
 			"new-session", "-d", "-s", session,
-			"-c", e.layout.AnchorPath(),
+			"-c", e.geom.AnchorPath,
 			"-x", strconv.Itoa(e.cfg.Width),
 			"-y", strconv.Itoa(e.cfg.Height),
 			e.cfg.Shell,
@@ -487,7 +486,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// pane instead). Every subsequent strand split (spawn.go) always
 	// targets a non-header pane and inserts below it, so this is the only
 	// split in the whole engine that needs -b.
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.AnchorPath(), "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.AnchorPath, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)

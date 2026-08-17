@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
@@ -400,12 +399,23 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	// A real *lyxcwd.Location rooted at a scratch tmpDir, mirroring
-	// newTestEngine's (lock_test.go) Cwd/WorktreeRoot/Hub shape but built
-	// against the real, LoadConfig-resolved cfg rather than the
-	// does-not-exist stub paths newTestEngine deliberately uses.
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(tmpDir), WorktreeName: filepath.Base(tmpDir)}
-	e := New(cfg, layout)
+	// A Geometry literal rooted at a scratch tmpDir, mirroring newTestEngine's
+	// (lock_test.go) hub/worktree-root shape but built against the real,
+	// LoadConfig-resolved cfg rather than the does-not-exist stub paths
+	// newTestEngine deliberately uses. Built directly rather than via
+	// hubgeom.ReedGeometry: hubgeom imports reedengine, so an in-package test
+	// importing it would close an import cycle.
+	hub := filepath.Dir(tmpDir)
+	geom := Geometry{
+		SocketKey:    ServerName(hub),
+		SessionName:  SessionName(tmpDir),
+		AnchorPath:   tmpDir,
+		WorktreeRoot: tmpDir,
+		LogsDir:      filepath.Join(hub, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hub,
+	}
+	e := New(cfg, geom)
 
 	t.Cleanup(func() {
 		// Best-effort: the fix under test is expected to have already torn
@@ -503,8 +513,17 @@ func TestDeadHeaderPaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
 		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
 	}
 
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(tmpDir), WorktreeName: filepath.Base(tmpDir)}
-	e := New(cfg, layout)
+	hub := filepath.Dir(tmpDir)
+	geom := Geometry{
+		SocketKey:    ServerName(hub),
+		SessionName:  SessionName(tmpDir),
+		AnchorPath:   tmpDir,
+		WorktreeRoot: tmpDir,
+		LogsDir:      filepath.Join(hub, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hub,
+	}
+	e := New(cfg, geom)
 
 	t.Cleanup(func() {
 		_, _ = e.Down()

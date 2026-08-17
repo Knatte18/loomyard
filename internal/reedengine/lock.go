@@ -1,5 +1,5 @@
 // lock.go defines the Engine type — the domain kernel's public handle, holding a resolved Config,
-// the worktree's lyxcwd.Location, and the TmuxCmd bound to this hub's socket — plus the single
+// the Geometry it was told, and the TmuxCmd bound to this hub's socket — plus the single
 // reed-operation lock every public engine op acquires exactly once at its outer boundary.
 // Every other file in this package (reconcile.go, apply.go, spawn.go, strand.go, lifecycle.go)
 // hangs its exported/*Locked methods off *Engine.
@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // reedLockFileName is the reed operation lock's file name inside a Layout's
@@ -25,33 +24,35 @@ import (
 // LoadState/SaveState, while it is already holding reed.lock.
 const reedLockFileName = "reed.lock"
 
-// Engine is the domain kernel's public handle: a resolved Config, the worktree's Layout, and the
+// Engine is the domain kernel's public handle: a resolved Config, the Geometry it was told, and the
 // TmuxCmd bound to this hub's socket.
 // The zero Engine is not valid;
 // build one via New.
 type Engine struct {
-	cfg    Config
-	layout *lyxcwd.Location
-	tmux   TmuxCmd
+	cfg  Config
+	geom Geometry
+	tmux TmuxCmd
 }
 
-// New builds an Engine for the given Config and Layout.
-func New(cfg Config, layout *lyxcwd.Location) *Engine {
+// New builds an Engine for the given Config and Geometry.
+// The caller owns populating every Geometry field; New validates none of them.
+// hubgeom.ReedGeometry is the hub-mode answer.
+func New(cfg Config, geom Geometry) *Engine {
 	return &Engine{
-		cfg:    cfg,
-		layout: layout,
-		tmux:   NewTmuxCmd(cfg.Tmux, socketName(layout.HubPath)),
+		cfg:  cfg,
+		geom: geom,
+		tmux: NewTmuxCmd(cfg.Tmux, geom.SocketKey),
 	}
 }
 
 // Socket returns this engine's tmux -L socket name.
 func (e *Engine) Socket() string {
-	return socketName(e.layout.HubPath)
+	return e.geom.SocketKey
 }
 
 // SessionName returns this engine's tmux session name.
 func (e *Engine) SessionName() string {
-	return SessionName(e.layout.WorktreePath())
+	return e.geom.SessionName
 }
 
 // TmuxPath returns the resolved tmux binary path this engine uses.
