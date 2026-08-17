@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-hublogsdir-move
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: _mill/plan
@@ -23,6 +23,7 @@ planning  '2026-08-17T14:51:35Z'
 plan-review-r1  '2026-08-17T14:58:57Z'
 planned  '2026-08-17T14:59:14Z'
 implementing  '2026-08-17T14:59:48Z'
+approved-hublogsdir-move  '2026-08-17T15:05:16Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-17T14:59:48Z'
 ```yaml
 batches:
   - name: hublogsdir-move
-    state: running
+    state: approved
     implementer_session: 350689d7-d82d-4fff-8b26-dac267a54e9a
     start_sha: 32c5afcb8c979cda23ccd6f0d80dbba2f01d9785
+    commit_sha: 67975ffee9f06dcaecc617a64dda9e31e74d4f0e
     verify_baseline_failures: []
   - name: tokenvocab-plain-fields
     state: pending
