@@ -50,7 +50,7 @@ An orchestrator requires tier 3 and threads the extracted plain values down thro
 A standalone CLI invocation of a single producer never enters tier 1 in the first place.
 
 Tiers 1 and 2 are currently welded inside `internal/loomengine`, so `Hardener` and any future `Shed` product would have to re-implement them.
-Lifting them into a shared, orchestrator-agnostic preflight is what makes this model real rather than aspirational, and it is task **T8** below.
+Lifting them into a shared, orchestrator-agnostic preflight is what makes this model real rather than aspirational, and it is task **T5** below.
 
 ## What actually blocks standalone today
 
@@ -161,16 +161,16 @@ That is rejected.
 Two near-identical signatures sitting side by side is a real cost paid immediately against a cleanup that is only promised, and the duplication reliably outlives the migration.
 
 Parallelism is bought by scheduling instead.
-The genuine constraint is not the import graph — it is *file* contention, and it concentrates in three files: `internal/burlercli/cli.go` and `internal/perchcli/cli.go`, which every constructor change converges on, plus `cmd/lyx/constructoranchoring_test.go`, which pins the anchoring of nearly every constructor this work touches and is therefore edited by T1, T3, T4, T5, T7 and T9 alike.
+The genuine constraint is not the import graph — it is *file* contention, and it concentrates in three files: `internal/burlercli/cli.go` and `internal/perchcli/cli.go`, which every constructor change converges on, plus `cmd/lyx/constructoranchoring_test.go`, which pins the anchoring of nearly every constructor this work touches and is therefore edited by T1, T3, T4, T6, T7 and T9 alike.
 Grouping tasks into waves whose file sets are disjoint gets 3-wide, then 2-wide, then 2-wide, then 2-wide, with no duplicated API at any point.
 
 **Disposition of `cmd/lyx/constructoranchoring_test.go`: edited in place, per task, never split or retired.**
 It is a flat table of one-line `assertPath` assertions and a named enforcer of the [Durable-vs-Ephemeral State Invariant](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant);
 fragmenting its rows into per-package tests would trade a single readable overview of every anchored path for nothing this work needs.
 Each task therefore rewrites only its own package's rows into whatever shape its new constructor takes, and every task listed above carries `./cmd/lyx/...` in its Verify line.
-One same-wave adjacency is real and is called out rather than papered over: in wave 3, T5's `perchengine.RunsDir`/`ScratchDir` rows (79, 89, 128, 138) sit directly beneath T7's `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows (77-78, 87-88, 126-127, 136-137), so whichever merges second rebases.
-That is a one-line mechanical resolution, not a design conflict, and it does not make T5 and T7 serial.
-Wave 1's pair is farther apart — T1 edits rows 71-72/120-121 and T4 edits rows 96/144 — so no adjacency arises there.
+One same-wave adjacency is real and is called out rather than papered over: in wave 3, T6's `perchengine.RunsDir`/`ScratchDir` rows (79, 89, 128, 138) sit directly beneath T7's `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows (77-78, 87-88, 126-127, 136-137), so whichever merges second rebases.
+That is a one-line mechanical resolution, not a design conflict, and it does not make T6 and T7 serial.
+Wave 1's pair is farther apart — T1 edits rows 71-72/120-121 and T3 edits rows 96/144 — so no adjacency arises there.
 
 Twins remain available as a named escape hatch if a specific pair turns out to be unschedulable in practice.
 They are not the default and should not be reached for without saying why in the task that does it.
@@ -219,14 +219,14 @@ One finding survives intact and is preserved as **T1**: `internal/webstercli/cli
 Ten tasks in five waves.
 Every entry is written extraction-ready — lifting one into the wiki is copy-paste, and should happen only when that task is about to be spawned, since these reliably shift during implementation.
 
-Task IDs are stable identities, not a running order — waves interleave them, so read the index rather than the numbers:
+Task IDs run in wave order, so every `Depends on` edge points backwards and the numbers can be read as a sequence:
 
 | Wave | Tasks | Parallel |
 |---|---|---|
-| 1 | T1, T2, T4 | 3-wide |
-| 2 | T3, T8 | 2-wide |
-| 3 | T5, T7 | 2-wide |
-| 4 | T6, T9 (optional) | 2-wide |
+| 1 | T1, T2, T3 | 3-wide |
+| 2 | T4, T5 | 2-wide |
+| 3 | T6, T7 | 2-wide |
+| 4 | T8, T9 (optional) | 2-wide |
 | 5 | T10 | — |
 
 **Enumeration method for every `Files` list below: every caller of every changed exported symbol, not merely every construction site.**
@@ -256,8 +256,8 @@ That is already false — `planparser` does not import `lyxcwd` — and after th
 Reword in the same commit.
 
 **Depends on.** Nothing.
-**Parallel-safe with.** T2, T4.
-Shares `internal/webstercli/cli.go` with T4, at line 194 against T4's lines 179-181 — separate hunks, but sequence them if a merge conflict appears.
+**Parallel-safe with.** T2, T3.
+Shares `internal/webstercli/cli.go` with T3, at line 194 against T3's lines 179-181 — separate hunks, but sequence them if a merge conflict appears.
 **Verify.** `go test ./internal/planparser/... ./internal/loomengine/... ./internal/webstercli/... ./cmd/lyx/...`, plus confirm `internal/loomengine` no longer appears in `internal/webstercli`'s production import set.
 
 ---
@@ -274,13 +274,13 @@ This brings all five producer-path loaders to a single behaviour, matching `mode
 **Files.** `internal/configengine/config.go`, `internal/configengine/config_test.go`; `internal/shuttleengine/config.go` (line 38), `internal/reedengine/config.go` (line 42), `internal/perchengine/config.go` (line 58).
 
 **Depends on.** Nothing.
-**Parallel-safe with.** T1, T4.
-Touches `shuttleengine/config.go`, `reedengine/config.go` and `perchengine/config.go` — all distinct from the files T4 and T5 touch in those same packages.
+**Parallel-safe with.** T1, T3.
+Touches `shuttleengine/config.go`, `reedengine/config.go` and `perchengine/config.go` — all distinct from the files T3 and T6 touch in those same packages.
 **Verify.** `go test ./internal/configengine/... ./internal/shuttleengine/... ./internal/reedengine/... ./internal/perchengine/...`, plus a new test per loader asserting a `baseDir` with no `_lyx/` returns the template-derived config rather than an error.
 
 ---
 
-**T4 — `shuttleengine` + `reedengine` + `tokenvocab` told-geometry**
+**T3 — `shuttleengine` + `reedengine` + `tokenvocab` told-geometry**
 `slug: shuttle-reed-told-geometry`
 
 **Brief.** Convert the three lowest-level producer packages off `*lyxcwd.Location` in one task, because their construction sites are the same five CLI files and splitting them would only manufacture conflicts.
@@ -313,7 +313,7 @@ dropping them would leave the header rendering empty tokens with nothing in the 
 
 **Depends on.** Nothing.
 **Parallel-safe with.** T1, T2.
-Its two `websterengine` edits are in `recoverbatch.go`/`runlevel.go`, which no wave-1 task touches, and which are distinct files from T3's `render.go` in wave 2 — but T7 must land after this task, since it rewrites the same two files wholesale.
+Its two `websterengine` edits are in `recoverbatch.go`/`runlevel.go`, which no wave-1 task touches, and which are distinct files from T4's `render.go` in wave 2 — but T7 must land after this task, since it rewrites the same two files wholesale.
 **Verify.** `go test ./internal/shuttleengine/... ./internal/reedengine/... ./internal/tokenvocab/... ./internal/websterengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/webstercli/... ./internal/shuttlecli/... ./internal/reedcli/... ./cmd/lyx/...`, plus `go test -tags integration ./internal/reedengine/...` for the tmux paths, plus confirm `internal/lyxcwd` is gone from `internal/tokenvocab`'s production imports and `internal/fabricengine` from `internal/reedengine`'s.
 
 ---
@@ -322,7 +322,7 @@ Its two `websterengine` edits are in `recoverbatch.go`/`runlevel.go`, which no w
 
 ---
 
-**T3 — `pattern` told-geometry**
+**T4 — `pattern` told-geometry**
 `slug: pattern-told-geometry`
 
 **Brief.** `pattern.Directive(l *lyxcwd.Location, stencilsDir string, role Role)` uses `l` for exactly one thing: `isActive(l)` → `FileHere(l)` → `File(Join(l.WorktreePath(), l.AnchorRel))`, which is `File(l.AnchorPath())`.
@@ -334,13 +334,14 @@ This drops `internal/lyxcwd` from `pattern`'s imports, shrinking the [Pattern Le
 
 **Files.** `internal/pattern/pattern.go`, `internal/pattern/doc.go`, `internal/pattern/pattern_test.go`, `internal/pattern/leaf_enforcement_test.go`; call sites `internal/burlerengine/engine.go` (103), `internal/websterengine/render.go` (174, 237), `internal/loomengine/plan.go` (70); `cmd/lyx/constructoranchoring_test.go` (its `pattern.FileHere` rows, 80 and 129, which the deletion of `FileHere` retires or rewrites onto `pattern.File`); `CONSTRAINTS.md`.
 
-**Depends on.** Nothing structurally, but scheduled after wave 1 because it edits `burlerengine/engine.go`, `websterengine/render.go` and `loomengine/plan.go`, which T5, T7 and T1 respectively also touch.
-**Parallel-safe with.** T8.
+**Depends on.** Nothing.
+**Parallel-safe with.** T5.
+Scheduled into wave 2 rather than wave 1 for file contention alone, not for any dependency: it edits `burlerengine/engine.go`, `websterengine/render.go` and `loomengine/plan.go`, which T6, T7 and T1 respectively also touch.
 **Verify.** `go test ./internal/pattern/... ./internal/burlerengine/... ./internal/websterengine/... ./internal/loomengine/... ./cmd/lyx/...`, plus confirm `internal/lyxcwd` is gone from `internal/pattern`'s production imports and that the leaf-enforcement allowlist was tightened rather than left permissive.
 
 ---
 
-**T8 — lift the orchestrator preflight out of `loomengine`**
+**T5 — lift the orchestrator preflight out of `loomengine`**
 `slug: orchestrator-preflight`
 
 **Brief.** `loomengine.Preflight` is the only implementation of tiers 1 and 2 — geometry resolution plus `fabricengine.PrimeName`/`Clean`/`Ready`/`Healthy` — and its check 4 is `loom`-specific (`_lyx/loom/status.json`).
@@ -357,7 +358,7 @@ a new `internal/*` package for the lifted checks plus its `doc.go` and tests;
 a preflight that merely *reads* does not belong in that blast radius, and putting it there would drag every consumer of a read-only check into the dependency set of the repo's most dangerous package.
 
 **Depends on.** Nothing.
-**Parallel-safe with.** T3.
+**Parallel-safe with.** T4.
 **Verify.** `go test ./internal/loomengine/... ./internal/fabricengine/...` plus the new package's own tests;
 `loomengine.Preflight`'s existing behaviour must be unchanged — same `Report`, same failure classification, same report-not-error contract for every case its current tests pin.
 
@@ -367,19 +368,19 @@ a preflight that merely *reads* does not belong in that blast radius, and puttin
 
 ---
 
-**T5 — `burlerengine` + `perchengine` told-geometry**
+**T6 — `burlerengine` + `perchengine` told-geometry**
 `slug: burler-perch-told-geometry`
 
 **Brief.** These two are one task, not two: `perchengine` imports `burlerengine` directly, and `perchcli` imports both, so a `burlerengine.New` signature change without a matching `perchengine`/`perchcli` change does not compile.
 `burlerengine.New(shuttle, layout, cfg, stencilsDir)` becomes `New(shuttle, worktreeRoot, anchorRoot string, cfg, stencilsDir)` — `worktreeRoot` for `Profile.validate`, `anchorRoot` for the `.lyx/burler` directory.
 `perchengine.New(burler, shuttle, cfg, layout, opts)` takes `gateDir` (today `layout.WorktreePath()`) as a told string;
 `RunsDir(l)`/`ScratchDir(l)` take `anchorRoot`.
-The CLI construction sites pass `layout.WorktreePath()`/`layout.AnchorPath()` unchanged for now — T6 is what makes them optional, and T6's pinned-values table is where each of these parameters gets its standalone answer.
+The CLI construction sites pass `layout.WorktreePath()`/`layout.AnchorPath()` unchanged for now — T8 is what makes them optional, and T8's pinned-values table is where each of these parameters gets its standalone answer.
 This task changes nothing about where those directories resolve in a real worktree.
 
 **Files.** `internal/burlerengine/engine.go`, `internal/burlerengine/doc.go` and tests; `internal/perchengine/engine.go`, `internal/perchengine/identity.go`, `internal/perchengine/doc.go` and tests; `internal/burlercli/cli.go` (105), `internal/perchcli/cli.go` (145 and the `runDirBase`/`scratchDirBase` assignments), `internal/perchcli/run.go` (294, 301); `cmd/lyx/constructoranchoring_test.go` (its `perchengine.RunsDir`/`ScratchDir` rows, 79/89/128/138 — directly beneath T7's rows, see the wave-3 adjacency note above).
 
-**Depends on.** T3 (`pattern.Directive`'s new signature is called from `burlerengine/engine.go:103`), T4 (`shuttleengine.NewRunner`'s new signature is called from the same CLI blocks).
+**Depends on.** T3 (`shuttleengine.NewRunner`'s new signature is called from the same CLI blocks), T4 (`pattern.Directive`'s new signature is called from `burlerengine/engine.go:103`).
 **Parallel-safe with.** T7.
 **Verify.** `go test ./internal/burlerengine/... ./internal/perchengine/... ./internal/burlercli/... ./internal/perchcli/... ./cmd/lyx/...`, plus `go test -tags integration ./internal/perchcli/...`.
 
@@ -389,23 +390,23 @@ This task changes nothing about where those directories resolve in a real worktr
 `slug: webster-told-geometry`
 
 **Brief.** Webster carries the largest `*lyxcwd.Location` surface — `state.go` ×4, `render.go` ×3, `runlevel.go` ×2, and `Layout` fields threaded through `RunDeps`, `beginbatch.go`, `recordbatch.go` and `recoverbatch.go`.
-Convert them to told strings on the same rule as T5.
+Convert them to told strings on the same rule as T6.
 `render.go` additionally derives `fabricengine.StencilsDir(l.HubPath)` at three sites, and `runlevel.go` at one — those become a told `stencilsDir`, which is what removes `internal/fabricengine` from `websterengine`'s reason to know about hubs.
 This is deprioritised relative to burler/perch for the standalone goal, but it is required before Webster can be a `ShedProducer` driven by an orchestrator that is not `loom`.
 
 **This task does not give `webstercli` a standalone entry point, and nothing else in the ten does either.**
-There is deliberately no Webster equivalent of T6.
+There is deliberately no Webster equivalent of T8.
 After T7 lands, `websterengine` is drivable entirely from told paths — which is what an adapter needs — but `lyx webster run` still resolves geometry in its own `PersistentPreRunE` exactly as it does today.
 A standalone Webster CLI is a follow-up task outside this decomposition;
 see "What is deliberately not in scope" below.
 
-**Files.** `internal/websterengine/state.go`, `render.go`, `runlevel.go`, `beginbatch.go`, `recordbatch.go`, `recoverbatch.go`, `doc.go` and their tests; `internal/webstercli/cli.go`, `internal/webstercli/sync.go` and their tests; `cmd/lyx/constructoranchoring_test.go` (its `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows, 77-78/87-88/126-127/136-137 — directly above T5's rows, see the wave-3 adjacency note above).
+**Files.** `internal/websterengine/state.go`, `render.go`, `runlevel.go`, `beginbatch.go`, `recordbatch.go`, `recoverbatch.go`, `doc.go` and their tests; `internal/webstercli/cli.go`, `internal/webstercli/sync.go` and their tests; `cmd/lyx/constructoranchoring_test.go` (its `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows, 77-78/87-88/126-127/136-137 — directly above T6's rows, see the wave-3 adjacency note above).
 
 **Watch.** `internal/websterengine` is the one package whose raw-git-mutation ban is machine-checked (`cmd/lyx/rawgitmutation_test.go`), and the [Fabric Git Invariant](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft) binds every git call it makes.
 Nothing in this refactor should touch those paths, but the guard will catch it if it does.
 
 **Depends on.** T3, T4.
-**Parallel-safe with.** T5.
+**Parallel-safe with.** T6.
 **Verify.** `go test ./internal/websterengine/... ./internal/webstercli/... ./cmd/lyx/...`.
 
 ---
@@ -414,7 +415,7 @@ Nothing in this refactor should touch those paths, but the guard will catch it i
 
 ---
 
-**T6 — the standalone CLI path**
+**T8 — the standalone CLI path**
 `slug: standalone-cli-entry`
 
 **Brief.** The task the whole design exists for.
@@ -425,11 +426,11 @@ This is the one place the three-tier model has to be applied rather than merely 
 "`Resolve` failed" is not a usable trigger, because `Resolve` succeeds in any ordinary git repository run from its root — and a downloaded repo, named in this doc's own goal statement, is exactly that.
 Triggering on `Resolve` alone would leave such a target in hub mode with `HubPath` set to its parent directory and `RepoName` to that directory's basename: the precise fictional-hub hazard this design rejects the synthetic `Location` for, complete with a mis-named tmux socket and a `.lyx` tree written into the repo being reviewed.
 
-So: **hub mode requires tier 1 and tier 2 both** — `lyxcwd.Resolve` succeeds *and* Fabric is actually wired here (`fabricengine.Ready`-class, reached through the `internal/preflight` package T8 lifts, never by importing `fabricengine` into a CLI directly).
+So: **hub mode requires tier 1 and tier 2 both** — `lyxcwd.Resolve` succeeds *and* Fabric is actually wired here (`fabricengine.Ready`-class, reached through the `internal/preflight` package T5 lifts, never by importing `fabricengine` into a CLI directly).
 Everything else is standalone.
 A plain git repo therefore resolves to **standalone**, which is the intended answer: there is no hub to coordinate with, so there is nothing for hub mode to be right about.
 
-This is a deliberate behaviour change for one existing case, and it is stated rather than smuggled: a plain git repo run through `lyx burler run` today gets hub mode with fictional geometry, and after T6 it gets standalone.
+This is a deliberate behaviour change for one existing case, and it is stated rather than smuggled: a plain git repo run through `lyx burler run` today gets hub mode with fictional geometry, and after T8 it gets standalone.
 A wired lyx worktree is unaffected — `Ready` is true there, so hub mode is selected exactly as today.
 The check costs one `os.Stat`.
 
@@ -437,7 +438,7 @@ The check costs one `os.Stat`.
 `cmd/lyx/main.go:97` sets `cobra.EnableTraverseRunHooks`, so root's `seedStencils` (`main.go:87`) runs before every module pre-run — and it triggers on bare `lyxcwd.Resolve` success (`stencilseed.go:51-56`), then calls `seedStencilsAt(l.HubPath, …)`.
 In the downloaded-repo case that means `stencilstore.Reconcile` writes `<repo-parent>/_board/_lyx/stencils/**` and `CommitSeededStencils` tries to commit it: precisely the fictional-hub write the trigger analysis above exists to prevent, happening one layer above the CLI that analysis was written for.
 This is a live defect today, independent of standalone — it is simply invisible because nobody points `lyx` at a non-lyx git repo on purpose yet.
-T6 gates `seedStencils` on the identical tier-1-AND-tier-2 check, which is also why T6 touches `cmd/lyx/stencilseed.go` for more than the `buildinfo` swap.
+T8 gates `seedStencils` on the identical tier-1-AND-tier-2 check, which is also why T8 touches `cmd/lyx/stencilseed.go` for more than the `buildinfo` swap.
 
 **A wired-but-broken hub is refused, never silently degraded to standalone.**
 "Everything else is standalone" would otherwise decide the `(resolved, hub-damaged)` row by omission — a worktree whose junctions broke would quietly relocate its config reads and `.lyx` state to `<state>`, masking the breakage instead of reporting it.
@@ -449,7 +450,7 @@ With T2 landed, the three config loaders already degrade, so no config file is r
 After this task `lyx burler run --profile p.yaml --stencils-dir <dir>` works in a directory that is not a git repository.
 
 **Every told value is pinned here, not left to the implementer.**
-T4 and T5 turn each of these into a parameter;
+T3 and T6 turn each of these into a parameter;
 this task is where each one gets its standalone answer, so that no value is silently defaulted from a fictional hub:
 
 **The load-bearing move is splitting `worktreeRoot` from `anchorRoot`.**
@@ -500,7 +501,7 @@ Without it, two spellings of the same directory (a symlinked path, a differing-c
 
 **The build channel must move out of `package main` for any of this to compile.**
 `buildChannel` is today an unexported `package main` variable (`cmd/lyx/stencilseed.go:29`) stamped by `tools/deploy/main.go:62` as `-X main.buildChannel=dev`, so `internal/burlercli` and `internal/perchcli` cannot read it at all.
-T6 introduces a stdlib-only `internal/buildinfo` holding the exported `Channel` variable plus a `StencilMode()` accessor, repoints the ldflags path to `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`, and has both `cmd/lyx/stencilseed.go` and the two CLIs read it from there.
+T8 introduces a stdlib-only `internal/buildinfo` holding the exported `Channel` variable plus a `StencilMode()` accessor, repoints the ldflags path to `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`, and has both `cmd/lyx/stencilseed.go` and the two CLIs read it from there.
 The stamping mechanism and the [Dev/Prod Binary Separation](../../CONSTRAINTS.md#devprod-binary-separation) invariant are unchanged — only the symbol's home moves.
 A stdlib-only leaf package is what keeps it importable from `cmd/lyx` and from any `*cli` package without cycle risk.
 
@@ -527,7 +528,7 @@ when an operator does need one, `<state>` is deterministic from the target path 
 A per-invocation socket would make that persisted state unresumable and reduce the deterministic session name to decoration.
 Deriving `socketKey` from the same `hash8` as the session name and the state directory makes all three agree: one tmux server per target directory, resumable across invocations, and no collision between two standalone runs in sibling folders.
 Standalone therefore reuses reed's existing server lifecycle unchanged, with `<state>` playing the role the hub plays today — the server persists deliberately, and `lyx reed down` is the existing teardown verb;
-T6 adds no new lifecycle concept and must not silently kill a server it did not start.
+T8 adds no new lifecycle concept and must not silently kill a server it did not start.
 
 **The target directory receives only what the caller explicitly named** — the profile's `review-path` and `fixer-report-path`, and nothing else.
 Standalone never writes hidden state into a folder it was asked to review, which is what makes `lyx burler run` safe to point at an arbitrary directory.
@@ -544,7 +545,7 @@ This task is what introduces the told stencils directory and the standalone stat
 - the **seed-pass** bullet, which says the seed/refresh pass "runs once per process at `cmd/lyx`'s root pre-run" — reworded to "once per process: at `cmd/lyx`'s root pre-run in hub mode, or at the producer CLI's own pre-run in standalone mode".
   The load-bearing half of that bullet, *never lazily inside `stencilstore.Read`*, is preserved exactly;
   what changes is only which pre-run does it.
-Deferring them to T10 would leave the shipped code contradicting a live invariant across two waves, against `CLAUDE.md`'s same-commit docs rule that T1, T3 and T4 all honour.
+Deferring them to T10 would leave the shipped code contradicting a live invariant across two waves, against `CLAUDE.md`'s same-commit docs rule that T1, T4 and T3 all honour.
 T10 keeps only the new three-tier invariant and the cross-doc consolidation.
 
 **`--target-dir` is a resolution base, not a review target.**
@@ -559,8 +560,9 @@ standalone defaults it to cwd and honours the flag.
 **Watch.** Both new flags — `--stencils-dir` and `--target-dir` — need `Short`/`Long` text, and help accuracy is a review obligation whenever observable behaviour changes.
 The `--stencils-dir` bootstrap and the `<state>` directory both write files, so the command must say where it wrote them.
 
-**Depends on.** T2, T3, T4, T5, and **T8** — the hub-mode trigger is a tier-2 check, which T8 is what makes reachable from a CLI package without importing `internal/fabricengine` into one.
-That dependency is also the answer to T8 looking like the one task delivering nothing toward standalone burler: it delivers the trigger.
+**Depends on.** T2, T3, T4, T5, T6 — every wave before this one except T1, which is independent of the standalone path.
+**T5** is the non-obvious edge: the hub-mode trigger is a tier-2 check, and T5 is what makes such a check reachable from a CLI package without importing `internal/fabricengine` into one.
+That edge is also the answer to T5 otherwise looking like the one task delivering nothing toward standalone burler — it delivers the trigger.
 **Parallel-safe with.** T9.
 **Verify.** The one behaviour this whole design exists for must be pinned by an automated test, not only by a manual run — nothing else in the ten tasks covers it, and T2 already sets the precedent by requiring a new test per config loader.
 Two tiers, both required:
@@ -605,14 +607,14 @@ plus confirm `lyx scout` still resolves symbols in a directory outside any hub, 
 **Brief.** Land the cross-cutting rule this work establishes, once every package obeys it.
 Add a named invariant to `CONSTRAINTS.md` stating the three tiers and the producer/orchestrator split, with its enforcement basis named honestly (an import-allowlist test per producer package where one exists, review obligation where none does).
 Reword the [Cwd Resolution Invariant](../../CONSTRAINTS.md#cwd-resolution-invariant) to state what `Resolve` actually validates, since the current text leaves room for the misreading this whole document had to correct.
-The Stencil Ownership and Durable-vs-Ephemeral rewords are **not** here — they land in T6's own commit alongside the code that makes them true, per T6's brief.
+The Stencil Ownership and Durable-vs-Ephemeral rewords are **not** here — they land in T8's own commit alongside the code that makes them true, per T8's brief.
 Record scout's remaining deviation if T9 was skipped.
 Update `docs/overview.md` if the execution stack description changes, and move the roadmap entries to Done.
 
 **Files.** `CONSTRAINTS.md`, `docs/overview.md`, `manifest/roadmap.md`, this file (deleted per the [documentation lifecycle](../../docs/overview.md#documentation-lifecycle) once the work ships), and the `doc.go` of each converted package.
 
-**Depends on.** T1 through T8 (T9 optional).
-T8 in particular: the three-tier invariant this task lands in `CONSTRAINTS.md` is only true once the orchestrator-agnostic preflight actually exists, so writing the rule before T8 ships would pin a model the code does not yet implement.
+**Depends on.** T1 through T8 (T9 optional) — every task that changes code this one documents.
+T5 in particular: the three-tier invariant this task lands in `CONSTRAINTS.md` is only true once the orchestrator-agnostic preflight actually exists, so writing the rule before T5 ships would pin a model the code does not yet implement.
 **Verify.** `go test ./...`;
 `internal/lyxcwd/docslink_test.go` for markdown link integrity across the reworded docs.
 
@@ -631,20 +633,20 @@ T8 in particular: the three-tier invariant this task lands in `CONSTRAINTS.md` i
   Nothing in `cmd/` or any `*cli` package imports it yet.
   That is `loom`'s own producer-list work — see the Planned `loom` items in [../roadmap.md](../roadmap.md).
 - **A standalone `lyx webster run`.**
-  The goal statement at the top of this doc says "eventually for Webster", and T7 is what makes `websterengine` drivable from told paths — but no task here gives `webstercli` the branch-around-`Resolve` that T6 gives `burlercli`/`perchcli`.
+  The goal statement at the top of this doc says "eventually for Webster", and T7 is what makes `websterengine` drivable from told paths — but no task here gives `webstercli` the branch-around-`Resolve` that T8 gives `burlercli`/`perchcli`.
   That is deliberate: Webster's value in this line of work is as a `ShedProducer` under an orchestrator, and an orchestrator is exactly the caller that legitimately requires tier 3.
   A standalone Webster CLI is a follow-up task if it turns out to be wanted, and reading T7 as delivering it would be wrong.
 - **`lyx burler run <path>` as a positional-argument shape.**
   The motivating sentence in the discovery task says `lyx burler run <path>`, but `burler run` is already profile-driven (`--profile`), and a profile's `target.paths` is where a directory belongs.
-  T6 should not invent a second way to say the same thing.
+  T8 should not invent a second way to say the same thing.
 
 ## Related
 
 - [shed.md](shed.md) — the `ShedProducer` model this work serves, and [its engine-adapter seam](shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer), which already applies told-geometry one layer above the engines this doc converts.
 - [loom.md](loom.md) — `loom`'s producer list, the first consumer that needs tier-3 preflight to be real.
-- [hardener.md](hardener.md) — the second orchestrator, and the reason T8 lifts the preflight rather than leaving it inside `loomengine`.
+- [hardener.md](hardener.md) — the second orchestrator, and the reason T5 lifts the preflight rather than leaving it inside `loomengine`.
 - [../../CONSTRAINTS.md](../../CONSTRAINTS.md) — the [Cwd Resolution](../../CONSTRAINTS.md#cwd-resolution-invariant), [Durable-vs-Ephemeral State](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant), [Stencil Ownership](../../CONSTRAINTS.md#stencil-ownership-invariant), [Pattern Leaf](../../CONSTRAINTS.md#pattern-leaf-invariant), [Tokenvocab Leaf](../../CONSTRAINTS.md#tokenvocab-leaf-invariant), [Planparser Sole-Parser](../../CONSTRAINTS.md#planparser-sole-parser-invariant), [Treadle Runner-Seam](../../CONSTRAINTS.md#treadle-runner-seam-invariant), [Shed Producer-Seam](../../CONSTRAINTS.md#shed-producer-seam-invariant), [CLI / Cobra](../../CONSTRAINTS.md#cli--cobra-invariant), [Test Tier Purity](../../CONSTRAINTS.md#test-tier-purity-invariant) and [Dev/Prod Binary Separation](../../CONSTRAINTS.md#devprod-binary-separation) invariants this work touches or is bound by.
-  The first four are reworded by tasks in this decomposition (T1, T3, T4, T6, T10);
+  The first four are reworded by tasks in this decomposition (T1, T4, T3, T8, T10);
   the rest bind it without changing.
 - `internal/shedadapters/doc.go` — the "told, never derived" language this doc generalises downward.
 - `internal/scoutcli/cli.go` — the working precedent for standalone degradation, and the one place a fictional `Location` is minted today.
