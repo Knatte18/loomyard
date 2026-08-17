@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-configengine-loadortemplate
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -23,6 +23,7 @@ planning  '2026-08-17T15:08:10Z'
 plan-fix-r1  '2026-08-17T15:14:32Z'
 planned  '2026-08-17T15:14:46Z'
 implementing  '2026-08-17T15:28:04Z'
+approved-configengine-loadortemplate  '2026-08-17T15:35:41Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-17T15:28:04Z'
 ```yaml
 batches:
   - name: configengine-loadortemplate
-    state: running
+    state: approved
     implementer_session: 9427fa5e-58a1-4b5e-be72-4d98acdb4ea5
     start_sha: 0e4b46266830f9230bfe804b4f96b27db453855a
+    commit_sha: 345f58c41f96e9e8684a151463e7390b7e9629c1
     verify_baseline_failures: []
   - name: producer-loaders-repointed
     state: pending
