@@ -38,6 +38,22 @@ func PlanDirRel() string {
 	return path.Join(lyxdirs.LyxDirName, PlanDirName)
 }
 
+// PlanDir returns the absolute path to the plan directory for the worktree anchored at anchorPath.
+// The caller supplies the absolute directory lyx is anchored at, which in a lyx worktree is
+// lyxcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this
+// path and never resolves cwd itself.
+func PlanDir(anchorPath string) string {
+	return filepath.Join(anchorPath, lyxdirs.LyxDirName, PlanDirName)
+}
+
+// PlanOverview returns the absolute path to the plan's overview file for the worktree anchored at
+// anchorPath. The caller supplies the absolute directory lyx is anchored at, which in a lyx worktree
+// is lyxcwd.Location.AnchorPath() and never WorktreePath() — planparser is the sole declarer of this
+// path and never resolves cwd itself.
+func PlanOverview(anchorPath string) string {
+	return filepath.Join(PlanDir(anchorPath), overviewFileName)
+}
+
 // cardIndexHeading is the exact "## " heading loom-plan-spec.md pins for the overview's Card Index section.
 const cardIndexHeading = "## Card Index"
 
