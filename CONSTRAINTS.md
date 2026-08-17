@@ -132,7 +132,7 @@ producers adapt onto the package's own `ShedProducer` seam in their own packages
 
 ## Tokenvocab Leaf Invariant
 
-`internal/tokenvocab` production code imports only stdlib, `internal/lyxcwd`, and `internal/stencil`.
+`internal/tokenvocab` production code imports only stdlib and `internal/stencil`.
 
 - Reverse import (`tokenvocab` → `reed`/`loom`/any feature package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
