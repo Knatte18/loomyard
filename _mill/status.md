@@ -38,6 +38,8 @@ batches:
     commit_sha: 067c435aa337018407d4b21ab0c19ecf69d8d7cf
     verify_baseline_failures: []
   - name: repoint-and-delete-twins
-    state: pending
+    state: running
+    implementer_session: fda9e568-0566-4907-9f98-8c5a31f205cc
+    start_sha: c1006ca02ae824c59763a21494dcbb6c91972ff7
     verify_baseline_failures: []
 ```
