@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,21 +24,6 @@ import (
 // lyxdirs.LyxDirName to form the discussion phase's output directory.
 // loomengine is this segment's sole declarer.
 const discussionDirName = "discussion"
-
-// PlanDir returns the path to the Plan phase's output directory for this worktree.
-// It is AnchorPath-anchored, matching DiscussionDir's rationale.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func PlanDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, planparser.PlanDirName)
-}
-
-// PlanOverview returns the path to the plan's overview file: the Plan phase's done-sentinel and the
-// Planner producer's sole Spec.OutputFiles entry.
-// It shares PlanDir's AnchorPath anchoring.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func PlanOverview(l *lyxcwd.Location) string {
-	return filepath.Join(PlanDir(l), "00-overview.md")
-}
 
 // DiscussionDir returns the path to the Discussion phase's output directory for this worktree (the
 // decision-record.md/support-log.md pair).
