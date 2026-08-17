@@ -717,15 +717,16 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	}
 }
 
-// seedPersistentPreRunFixture returns a fresh real hub with shuttle/reed/webster/batcher config
-// seeded (batcher.yaml's raw content is caller-supplied, so a test can override its active: key) --
-// unlike every other test in this file, this one drives Command()'s real PersistentPreRunE (never
-// bypassing it with a hand-built *websterCLI literal), since load-time batcher selection is wired
-// there (PersistentPreRunE, now via batcher.Active). Callers pass h.PrimeWorktree() to RunCLIIn
+// seedPersistentPreRunFixture returns a fresh real hub, built at anchor ("." or "backend"), with
+// shuttle/reed/webster/batcher config seeded (batcher.yaml's raw content is caller-supplied, so a
+// test can override its active: key) -- unlike every other test in this file, this one drives
+// Command()'s real PersistentPreRunE (never bypassing it with a hand-built *websterCLI literal),
+// since load-time batcher selection is wired there (PersistentPreRunE, now via batcher.Active).
+// Callers pass h.PrimeWorktree() (unanchored) or h.Location.AnchorPath() (anchored) to RunCLIIn
 // explicitly rather than relying on a chdir'd process cwd.
-func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) *hubforge.Hub {
+func seedPersistentPreRunFixture(t *testing.T, anchor, batcherConfig string) *hubforge.Hub {
 	t.Helper()
-	h := hubforge.NewHub(t, ".")
+	h := hubforge.NewHub(t, anchor)
 	hubforge.SeedConfig(t, h, map[string]string{
 		"shuttle": shuttleengine.ConfigTemplate(),
 		"reed":    reedengine.ConfigTemplate(),
@@ -746,7 +747,7 @@ func seedPersistentPreRunFixture(t *testing.T, batcherConfig string) *hubforge.H
 // panics under t.Parallel() exactly as t.Chdir did.
 func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 	batcherConfig := strings.Replace(batcher.ConfigTemplate(), `active: ""`, `active: "bogus"`, 1)
-	h := seedPersistentPreRunFixture(t, batcherConfig)
+	h := seedPersistentPreRunFixture(t, ".", batcherConfig)
 
 	var out strings.Builder
 	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
@@ -773,7 +774,7 @@ func TestPersistentPreRunE_UnknownBatcherFailsFast(t *testing.T) {
 // t.Parallel() to, and this file's other tests already call t.Setenv("WEFT_SKIP_GIT", …), which
 // panics under t.Parallel() exactly as t.Chdir did.
 func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
-	h := seedPersistentPreRunFixture(t, batcher.ConfigTemplate())
+	h := seedPersistentPreRunFixture(t, ".", batcher.ConfigTemplate())
 
 	var out strings.Builder
 	exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})
@@ -783,5 +784,36 @@ func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"initialized":false`) {
 		t.Errorf("output missing initialized:false; got %q", out.String())
+	}
+}
+
+// TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers cli.go's production
+// plan-path call -- c.planDir = planparser.PlanDir(layout.AnchorPath()) in PersistentPreRunE -- at a
+// nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lyx's anchoring-table guard rows
+// carry that proof: both build their expectations from layout.AnchorPath() themselves, so a
+// production call site that regressed to layout.WorktreePath() would stay self-consistent and pass
+// at either of those. This test drives the real PersistentPreRunE through RunCLIIn and asserts on
+// planparser's own error text, which only a wrong-root c.planDir can produce.
+// This file stays serial: no t.Parallel() is added here, matching every other test in this file.
+func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
+	h := seedPersistentPreRunFixture(t, "backend", batcher.ConfigTemplate())
+
+	seedValidPlanDir(t, planparser.PlanDir(h.Location.AnchorPath()))
+
+	// lyxcwd.Resolve gates cwd against the anchored directory exactly, so at a "backend" hub the
+	// anchor directory -- not h.PrimeWorktree(), the unanchored worktree root -- is what RunCLIIn
+	// must be given.
+	var out strings.Builder
+	exitCode := RunCLIIn(h.Location.AnchorPath(), &out, []string{"validate"})
+
+	if exitCode != 0 {
+		t.Fatalf("validate at a subpath-anchored hub = %d; want 0, output: %s", exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, `"valid":true`) {
+		t.Errorf("output missing valid:true; got %q", got)
+	}
+	if strings.Contains(got, "plan overview not found") {
+		t.Errorf("output contains \"plan overview not found\"; got %q -- a WorktreePath()-based resolution at cli.go's c.planDir assignment would look under the un-anchored worktree root and produce exactly that error", got)
 	}
 }
