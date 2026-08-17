@@ -38,6 +38,7 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 - `cmd/lyx/constructoranchoring_test.go` — its `reedengine.HubLogsDir` rows (96 and 144) retarget onto `fabricengine.HubLogsDir`.
 - `CONSTRAINTS.md` — two invariants reworded (see Constraints below).
 - Docs: `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md`, `docs/shared-libs/README.md`.
+- `manifest/designs/producers-standalone.md` — a one-line pointer to `internal/hubgeom` in the **T6** and **T7** entries only. Nothing else in that doc is edited (see the design-doc decision below).
 
 **Out:**
 
@@ -47,6 +48,7 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 - **`internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine` are not converted.** T6, T7 and T9 own those. This task touches `websterengine` in exactly two files (`recoverbatch.go`, `runlevel.go`) and only because they call the changed `shuttleengine.FindRun`; those edits neither require nor anticipate T7.
 - **No new named told-geometry invariant** and no new allowlist-enforcement test for `reedengine` or `shuttleengine`. T10 owns naming the cross-cutting rule.
 - **No `manifest/roadmap.md` edit.** T3 is one wave of an already-listed item; `CLAUDE.md` reserves roadmap moves for completing or adding a planned item.
+- **No rewrite of T3's own Files/Verify lines** in `manifest/designs/producers-standalone.md`, and no edit to any entry other than the two T6/T7 pointer lines.
 - **No additive twins.** The old `*lyxcwd.Location` signatures are replaced, never kept beside the new ones as wrappers (`producers-standalone.md`, "no additive twins" decision).
 
 ## Decisions
@@ -92,6 +94,12 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
   Without a shared teller, nine sites each repeat a seven-field literal mixing `AnchorPath()`, `WorktreePath()` and `HubPath` — and a swapped anchor/worktree compiles cleanly and fails silently, which is the single failure mode this whole refactor introduces.
   A generic name (`hubgeom`, not `reedgeom`) is chosen so T6 (`burlerengine`/`perchengine`) and T7 (`websterengine`) add `BurlerGeometry`/`PerchGeometry`/`WebsterGeometry` to the same package instead of forcing a rename or spawning three sibling packages.
   Standalone CLIs (T7/T8) simply do not call it — they have no `Location` — which is the point: `hubgeom` is the hub-mode teller, not a dependency of the engines.
+- **Governance note — this task names a package two later waves will extend.** `internal/hubgeom` appears nowhere in `manifest/designs/producers-standalone.md`; it is new architecture introduced by a wave-1 task whose dependency line reads "Depends on. Nothing."
+  T6 and T7 have not been discussed yet and have had no chance to weigh in on the name or shape.
+  That is accepted deliberately, with one explicit limit: **`hubgeom` binds nothing for T6/T7.**
+  Its contract today is exactly one exported function, `ReedGeometry`.
+  If T6's or T7's own discussion concludes a different home, name or shape fits better, renaming a package with one function and nine call sites is cheap, and this task claims no veto over that.
+  What T3 does claim is that *this* task's nine sites get one teller rather than nine copies.
 - **Rejected.** (a) Inlining the literal at all nine sites — faithful to the design doc's Files list, but nine copies of the same six derivations and no anti-swap guard.
   (b) `internal/reedgeom` with per-engine sibling packages later — tighter naming, four packages by T7, same conversion pattern written four times.
   (c) A single `hubgeom.All(*lyxcwd.Location)` returning every engine's geometry at once — forces `hubgeom` to import every engine and every CLI to pull the whole set.
@@ -138,11 +146,15 @@ The engines get no `HubPath`-derivation, no `RepoName` derivation, and no concep
 - **Rejected.** (a) Adding enforcement tests for `reedengine`/`shuttleengine` now — locks the win in immediately but pre-empts T10's naming.
   (b) Rewording invariants without tightening the `tokenvocab` allowlist — leaves the invariant text and its enforcer disagreeing.
 
-### Design doc is not amended in this commit
+### Design doc is not rewritten, but T6/T7 get a breadcrumb
 
-- **Decision.** Widen T3's Verify command in practice, but do not edit `manifest/designs/producers-standalone.md`.
-- **Rationale.** The doc is the plan of record for T6-T10, and `CLAUDE.md`'s same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`, not the decomposition doc.
-- **Known cost, flagged deliberately.** T3's **Files** and **Verify** lines in that doc are incomplete as written: they omit `WorktreeRoot`, `internal/hubgeom`, and the six test files in `treadleengine`/`burlerengine`/`fabricengine`/`reedcli`/`shuttlecli` listed under Scope above.
+- **Decision.** Do not rewrite T3's **Files** or **Verify** lines in `manifest/designs/producers-standalone.md`.
+  Do add a **one-line pointer** to `internal/hubgeom` in that doc's **T6** and **T7** entries, naming the package and what it exports, so a future explorer reading only the design doc finds it.
+  `internal/hubgeom/doc.go` carries the same statement — that it is the hub-mode teller, that engines never import it, and that later waves add their own `*Geometry` functions beside `ReedGeometry` — since a grep for the package name lands there first.
+- **Rationale.** The decomposition doc is the plan of record for T6-T10, and `CLAUDE.md`'s same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`, not a task-decomposition doc — so a wholesale rewrite of T3's entry is out of scope.
+  A pointer is a different, smaller thing, and it addresses a concrete risk rather than a bookkeeping one: without it, whoever spawns T6 or T7 from the design doc alone never learns `hubgeom` exists and re-derives the seven-field construction inline — exactly the duplication this task spent a package avoiding.
+  Two lines is the cheapest possible fix for that.
+- **Known cost, flagged deliberately.** T3's Files and Verify lines in that doc stay incomplete as written: they omit `WorktreeRoot`, `internal/hubgeom`, and the six test files in `treadleengine`/`burlerengine`/`fabricengine`/`reedcli`/`shuttlecli` listed under Scope above.
   Anyone reading the doc to plan T6 or T7 should treat this discussion file as the corrected record for T3.
 
 ## Technical context
@@ -264,5 +276,7 @@ plus `go test -tags integration ./internal/reedengine/...` for the tmux paths.
 - **Q:** Does shuttle's `anchorRoot, worktreeRoot` pair come from the same `Geometry` value? **A:** Yes — one `hubgeom.ReedGeometry(layout)` call feeds both `reedengine.New` and `shuttleengine.NewRunner` at each site, so the anchor/worktree pairing is decided once.
 - **Q:** Does `reedengine.New` validate the told `SocketKey`? **A:** No. It stays a total function returning `*Engine` only; the doc comment names `reedengine.ServerName(hubPath)` as the caller's hub-mode obligation. Validation would ripple an error return through nine construction sites for a bug only a caller bypassing `hubgeom` could produce.
 - **Q:** Do `reedengine` and `shuttleengine` get their own allowlist-enforcement tests now? **A:** No — T10 owns naming the cross-cutting told-geometry invariant. Only the two existing invariants are reworded, and only `tokenvocab`'s allowlist is tightened (the T3 Verify line requires that one explicitly).
-- **Q:** Is `manifest/designs/producers-standalone.md` amended, given its T3 Files/Verify lines are incomplete? **A:** No — the same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`. The gap is recorded in this discussion file instead, which is the corrected record for T3.
-- **Q:** Which docs land in this commit? **A:** `CONSTRAINTS.md` (two invariants), `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md` (the package tree at ~line 231-239 and the shared-infrastructure list at line 314), and `docs/shared-libs/README.md`. No `manifest/roadmap.md` edit.
+- **Q:** Is `manifest/designs/producers-standalone.md` amended, given its T3 Files/Verify lines are incomplete? **A:** Not rewritten — the same-commit docs rule targets module docs, `docs/overview.md` and `CONSTRAINTS.md`. The gap is recorded in this discussion file, which is the corrected record for T3.
+- **Q:** (orchestrator review) Nothing in the design doc routes a future T6/T7 explorer to `hubgeom`, so they could re-derive the seven-field construction inline. **A:** Add a one-line pointer to `hubgeom` in the design doc's T6 and T7 entries, plus the same statement in `internal/hubgeom/doc.go`. Narrow exception to "don't edit the design doc"; it fixes a concrete duplication risk rather than a bookkeeping gap.
+- **Q:** (orchestrator review) `hubgeom` is wave-1 architecture that binds T6 and T7 before either has been discussed. **A:** Accepted deliberately, with the limit recorded in the decision: `hubgeom` has one exported function and nine call sites, so T6's or T7's own discussion can rename or reshape it freely. T3 claims only that *its* nine sites share one teller.
+- **Q:** Which docs land in this commit? **A:** `CONSTRAINTS.md` (two invariants), `internal/tokenvocab/doc.go`, `internal/reedengine/doc.go`, `internal/shuttleengine/doc.go`, a new `internal/hubgeom/doc.go`, `docs/overview.md` (the package tree at ~line 231-239 and the shared-infrastructure list at line 314), `docs/shared-libs/README.md`, and the two T6/T7 pointer lines in `manifest/designs/producers-standalone.md`. No `manifest/roadmap.md` edit.
