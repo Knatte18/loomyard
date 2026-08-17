@@ -51,6 +51,8 @@ batches:
     commit_sha: 297d582be2b8187de8c82866d409a5c3077506f7
     verify_baseline_failures: ["FAIL\t./internal/hubgeom/... [setup failed]"]
   - name: shuttle-told-strings
-    state: pending
+    state: running
+    implementer_session: deed3cbe-a3f9-48b3-8363-c124b192be50
+    start_sha: fde207594c6d0103b857f66da1930215fb457abb
     verify_baseline_failures: []
 ```
