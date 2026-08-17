@@ -414,6 +414,8 @@ plus a test asserting `seedStencils` no-ops (writes nothing, commits nothing) wh
 `RunsDir(l)`/`ScratchDir(l)` take `anchorRoot`.
 The CLI construction sites pass `layout.WorktreePath()`/`layout.AnchorPath()` unchanged for now — T8 is what makes them optional, and T8's pinned-values table is where each of these parameters gets its standalone answer.
 This task changes nothing about where those directories resolve in a real worktree.
+`internal/hubgeom` holds the hub-mode `Location`-to-geometry conversion and exports `ReedGeometry` today;
+this task adds its own `BurlerGeometry`/`PerchGeometry` there rather than re-deriving the construction inline at each CLI site.
 
 **Files.** `internal/burlerengine/engine.go`, `internal/burlerengine/doc.go` and tests; `internal/perchengine/engine.go`, `internal/perchengine/identity.go`, `internal/perchengine/doc.go` and tests; `internal/burlercli/cli.go` (105), `internal/perchcli/cli.go` (145 and the `runDirBase`/`scratchDirBase` assignments), `internal/perchcli/run.go` (294, 301); `cmd/lyx/constructoranchoring_test.go` (its `perchengine.RunsDir`/`ScratchDir` rows, 79/89/128/138 — directly beneath T7's rows, see the wave-3 adjacency note above).
 
@@ -442,6 +444,8 @@ Unlike `--stencils-dir`, an absent plan directory in standalone has no bootstrap
 
 **Webster's own written artifacts — batch state, per-card reports, run scratch — follow the same `worktreeRoot`/`anchorRoot` split T8 defines.**
 Each card's `Target.Paths` resolve against `worktreeRoot` (the edited directory, `--target-dir`), while `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` resolve against `anchorRoot` (`<state>`) — so a standalone Webster run never writes hidden state into the directory it is editing, the same property T8's split gives burler and perch.
+`internal/hubgeom` holds the hub-mode `Location`-to-geometry conversion and exports `ReedGeometry` today;
+this task adds its own `WebsterGeometry` there rather than re-deriving the construction inline at the `webstercli` call site.
 
 **Files.** `internal/websterengine/state.go`, `render.go`, `runlevel.go`, `beginbatch.go`, `recordbatch.go`, `recoverbatch.go`, `doc.go` and their tests; `internal/webstercli/cli.go`, `internal/webstercli/run.go` (new, mirroring `burlercli`/`perchcli`'s standalone-wiring split), `internal/webstercli/sync.go` and their tests; `cmd/lyx/constructoranchoring_test.go` (its `websterengine.Dir`/`ReportsDir`/`PromptsDir`/`ScratchDir` rows, 77-78/87-88/126-127/136-137 — directly above T6's rows, see the wave-3 adjacency note above); `cmd/lyx/*_test.go` for the help-tree and `Short`/`Long` obligations under the [CLI / Cobra Invariant](../../CONSTRAINTS.md#cli--cobra-invariant), since `--stencils-dir`/`--target-dir`/`--plan-dir` are new observable behaviour; `CONSTRAINTS.md` — the [Stencil Ownership](../../CONSTRAINTS.md#stencil-ownership-invariant) and [Durable-vs-Ephemeral State](../../CONSTRAINTS.md#durable-vs-ephemeral-state-invariant) rewords T8 lands for burler/perch should already generalise to Webster's identical shape; confirm the wording does not name burler/perch specifically, and adjust in this task's own commit if it does.
 
