@@ -8,6 +8,7 @@
 package configengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,14 +22,22 @@ import (
 // configuration files.
 const configDirName = "config"
 
+// ErrNotInitialized marks a provably-absent _lyx/ directory: FindBaseDir wraps it into the error it
+// returns when os.Stat confirms the directory does not exist.
+// Callers wanting to distinguish absence from a stat failure should use errors.Is(err,
+// ErrNotInitialized) rather than matching error text.
+var ErrNotInitialized = errors.New("not initialized")
+
 // FindBaseDir checks if <cwd>/_lyx exists, performing a strict check without walking up to parent
 // directories.
 // Returns cwd on success or an error on failure.
+// An absent _lyx/ yields an error satisfying errors.Is(err, ErrNotInitialized);
+// a stat failure (permission, IO) does not.
 func FindBaseDir(cwd string) (string, error) {
 	lyxDir := filepath.Join(cwd, lyxdirs.LyxDirName)
 	_, err := os.Stat(lyxDir)
 	if os.IsNotExist(err) {
-		return "", fmt.Errorf("not initialized: %s/ directory not found", lyxdirs.LyxDirName)
+		return "", fmt.Errorf("%w: %s/ directory not found", ErrNotInitialized, lyxdirs.LyxDirName)
 	} else if err != nil {
 		return "", fmt.Errorf("stat %s: %w", lyxdirs.LyxDirName, err)
 	}
