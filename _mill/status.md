@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-producer-loaders-repointed
+phase: approved-docs-and-invariant
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -25,6 +25,7 @@ planned  '2026-08-17T15:14:46Z'
 implementing  '2026-08-17T15:28:04Z'
 approved-configengine-loadortemplate  '2026-08-17T15:35:41Z'
 approved-producer-loaders-repointed  '2026-08-17T15:42:24Z'
+approved-docs-and-invariant  '2026-08-17T15:47:22Z'
 ```
 
 ## Batches
@@ -44,8 +45,9 @@ batches:
     commit_sha: 4278390eac5759ebbee2703d1c44f3bf1d895f44
     verify_baseline_failures: []
   - name: docs-and-invariant
-    state: running
+    state: approved
     implementer_session: 7477a117-9533-478b-8c59-b974c9b9a398
     start_sha: 1394720cdacc47c3a56ede45d6131a6dffdb4e11
+    commit_sha: 1b46264fb008d3e1a9e7a095ddf7a0fd458e7a80
     verify_baseline_failures: []
 ```
