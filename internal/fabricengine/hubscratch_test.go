@@ -54,6 +54,19 @@ func TestHubScratchDir_IgnoresAnchorRel(t *testing.T) {
 	}
 }
 
+// TestHubLogsDir_IsHubScratchDirLogsSubdir asserts that fabricengine.HubLogsDir(hub) equals
+// filepath.Join(fabricengine.HubScratchDir(hub), "logs") for a synthetic hub path — the derivation
+// HubLogsDir's own doc comment states.
+func TestHubLogsDir_IsHubScratchDirLogsSubdir(t *testing.T) {
+	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-HUB")
+
+	got := fabricengine.HubLogsDir(hub)
+	want := filepath.Join(fabricengine.HubScratchDir(hub), "logs")
+	if got != want {
+		t.Errorf("HubLogsDir(%q) = %q; want %q", hub, got, want)
+	}
+}
+
 // TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx asserts the second half of the
 // hub-scratch-move batch's coverage: reedengine's own idempotent os.MkdirAll(HubLogsDir(...))
 // boot-path call still succeeds, twice in a row, when fabricengine.HubScratchDir(hubPath) already
