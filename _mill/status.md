@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-configengine-loadortemplate
+phase: approved-producer-loaders-repointed
 slug: config-template-fallback
 branch: config-template-fallback
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-08-17T15:14:32Z'
 planned  '2026-08-17T15:14:46Z'
 implementing  '2026-08-17T15:28:04Z'
 approved-configengine-loadortemplate  '2026-08-17T15:35:41Z'
+approved-producer-loaders-repointed  '2026-08-17T15:42:24Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ batches:
     commit_sha: 345f58c41f96e9e8684a151463e7390b7e9629c1
     verify_baseline_failures: []
   - name: producer-loaders-repointed
-    state: running
+    state: approved
     implementer_session: 0115a36a-1b85-4d34-8a4b-b16a11779bf4
     start_sha: b42844ee581440de788df9a86a12adc130201f07
+    commit_sha: 4278390eac5759ebbee2703d1c44f3bf1d895f44
     verify_baseline_failures: []
   - name: docs-and-invariant
     state: pending
