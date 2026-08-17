@@ -8,11 +8,13 @@
 // struct alone cannot satisfy these interfaces, since a
 // genuine *shuttleengine.Run's StrandGUID is only ever minted by a real
 // Runner.Start), and run's own Master spawn is a local fake MasterStarter
-// (mirroring websterengine's own runlevel_test.go runFakeStarter). Tests
-// build a *websterCLI literal directly (bypassing Command()'s
+// (mirroring websterengine's own runlevel_test.go runFakeStarter). Most
+// tests build a *websterCLI literal directly (bypassing Command()'s
 // PersistentPreRunE) and drive one verb's cobra.Command through
 // clihelp.Execute, webster's own package-local injection point for these
-// tests. WEFT_SKIP_GIT=1 is set on every test that reaches a
+// tests; seedPersistentPreRunFixture and its two tests are the deliberate
+// exception, driving Command()'s real PersistentPreRunE through RunCLIIn.
+// WEFT_SKIP_GIT=1 is set on every test that reaches a
 // fabricSync call, so no real weft sibling worktree is needed; the one test
 // that must PROVE fabricSync was never reached (ErrRunBusy) instead leaves
 // WEFT_SKIP_GIT unset and asserts the envelope carries no fabric-sync or
@@ -39,9 +41,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -96,6 +98,25 @@ func commitFile(t *testing.T, dir, name, content, message string) string {
 	mustGit(t, dir, "add", name)
 	mustGit(t, dir, "commit", "-m", message)
 	return strings.TrimSpace(mustGit(t, dir, "rev-parse", "HEAD"))
+}
+
+// seedAnchoredGitLink makes anchorPath (a plain, .git-less subdirectory of worktree) openable as a
+// git checkout by go-git's PlainOpenWithOptions, which requires a literal ".git" entry at the exact
+// path it is given rather than discovering one in a parent directory. It writes a ".git" gitlink
+// file at anchorPath pointing straight at worktree's own ".git" directory, so reads through it (e.g.
+// gitrepo.Repo.CurrentSHA) see the SAME live refs worktree's own commits update -- unlike
+// `git worktree add`, which would pin anchorPath to a detached SHA at creation time and go stale the
+// moment a later commit lands in worktree.
+func seedAnchoredGitLink(t *testing.T, anchorPath, worktree string) {
+	t.Helper()
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path %s: %v", anchorPath, err)
+	}
+	gitdir := filepath.Join(worktree, ".git")
+	content := fmt.Sprintf("gitdir: %s\n", gitdir)
+	if err := os.WriteFile(filepath.Join(anchorPath, ".git"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write anchored .git link at %s: %v", anchorPath, err)
+	}
 }
 
 // verbsFakeReed is a hermetic shuttleengine.ReedOps double.
@@ -217,9 +238,14 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	worktree := newScratchRepo(t)
 	commitFile(t, worktree, "base.txt", "base", "base commit")
 
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "."}
-	seedValidPlanDir(t, loomengine.PlanDir(layout))
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
+	seedValidPlanDir(t, planparser.PlanDir(layout.AnchorPath()))
 	seedHubStencils(t, layout.HubPath)
+	// begin-batch/record-batch/recover-batch read HEAD at layout.AnchorPath() (RunDeps.WorktreeRoot,
+	// unchanged by this batch), which requires a literal .git at that path -- link the anchored
+	// directory back onto worktree's real .git so it shares the same live ref/commit history rather
+	// than needing its own separate repository.
+	seedAnchoredGitLink(t, layout.AnchorPath(), worktree)
 
 	reed := &verbsFakeReed{}
 	engine := &verbsFakeEngine{}
@@ -256,7 +282,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		},
 		roles:             roles,
 		batcher:           activeBatcher,
-		planDir:           loomengine.PlanDir(layout),
+		planDir:           planparser.PlanDir(layout.AnchorPath()),
 		websterDir:        websterengine.Dir(layout),
 		websterScratchDir: websterengine.ScratchDir(layout),
 		reportsDir:        websterengine.ReportsDir(layout),
