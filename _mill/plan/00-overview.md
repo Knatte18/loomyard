@@ -3,7 +3,7 @@
 ```yaml
 task: "config degrades to embedded template"
 slug: "config-template-fallback"
-approved: false
+approved: true
 started: "20260817-150405"
 parent: "standalone-producers"
 root: ""

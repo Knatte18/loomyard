@@ -118,6 +118,8 @@ What both paths share is the on-disk validation flow itself and the env-marker r
   - Config file present but empty, and separately present but comments-only, still returns an error.
   - The fallback path honours an env override: set a variable referenced by an `${env:NAME:-default}` marker in the template via `t.Setenv`, and assert the override lands in the returned bytes with no `_lyx/` anywhere on disk.
   - The fallback path with an absent `.env` and an absent `baseDir` returns no error.
+  - The fallback path's own error wrap is exercised: with no `_lyx/` on disk, pass a synthetic template containing a required `${env:NAME}` marker whose variable is unset, and assert the returned error is non-nil and its message contains `config template:` and the module name, and that it does not contain `config file`.
+    This pins the `%s config template: %w` wrap keyed on `module` and pins that a fallback-path error never names a config-file path that does not exist.
   - `ErrNotInitialized` is wrapped rather than returned bare: assert `errors.Is(err, configengine.ErrNotInitialized)` holds for `FindBaseDir` on an absent `_lyx/`, and separately that the rendered message still contains `not initialized`, since four strict callers outside this task depend on that text.
   - A hand-constructed non-sentinel error does not satisfy `errors.Is(err, configengine.ErrNotInitialized)`.
   - Absence-only discrimination: an `_lyx/` that exists but cannot be stat'd makes `LoadOrTemplate` return an error rather than falling back.
@@ -138,6 +140,6 @@ What both paths share is the on-disk validation flow itself and the env-marker r
 Scoping to the single package is correct here: the shared-body refactor's blast radius inside the package is total, and no other package's behaviour changes in this batch.
 
 The batch's own regression gate is the pre-existing `TestLoad_NotInitialized` and `TestLoad_AbsentFile`, which stay unmodified and must keep passing — they pin that `Load` did not change.
-The new `LoadOrTemplate` tests cover both fallback triggers, the strict-when-present boundary in three forms (missing key, empty, comments-only), env resolution on the fallback path, and the absence-only discrimination the `fallback-only-on-proven-absence` decision exists for.
+The new `LoadOrTemplate` tests cover both fallback triggers, the strict-when-present boundary in three forms (missing key, empty, comments-only), env resolution on the fallback path, the fallback tail's own `<module> config template:` error wrap, and the absence-only discrimination the `fallback-only-on-proven-absence` decision exists for.
 `set.go`'s `Set` and `edit.go`'s `Edit` are write paths and stay strict;
 their existing tests passing unchanged confirms this batch left them alone.
