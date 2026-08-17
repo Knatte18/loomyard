@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: config degrades to embedded template — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-17
+```
+
+## Findings
+
+### [NIT:consistency] Stale pattern-attribution in reedengine test header
+**Location:** `internal/reedengine/config_test.go:1-3`
+**Issue:** The file header claims "environment overrides + the template-fallback path behave the way fabricengine's config tests establish the pattern," but `internal/fabricengine/config_test.go:1-4` still documents the strict "not-initialized error path" — fabricengine was deliberately not touched by this task (per `no-strings-contains-migration`) and has no template-fallback pattern to establish. Card 5 only instructed swapping "not-initialized error path" for "template-fallback path," leaving a now-inaccurate attribution.
+**Fix:** Point the attribution at a package that actually has the fallback pattern (e.g. shuttleengine, which is card 4 and precedes card 5), or drop the "establish the pattern" clause for the fallback half.
+
+## Verdict
+
+APPROVE
+Implementation matches the plan precisely across all three batches; only a cosmetic stale-comment nit found.
+MILL_REVIEW_END
