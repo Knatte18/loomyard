@@ -147,6 +147,8 @@ Standalone takes `--stencils-dir <path>`.
 Nothing about it is hub-shaped: `stencilstore.Read` is `os.ReadFile`, and the directory is simply told.
 For bootstrap, the standalone path calls `stencilstore.Reconcile(dir, stencils.Registry(), mode, "")` on first use, which writes the shipped registry into the told directory;
 only the *commit* half of `cmd/lyx/stencilseed.go` is Fabric-bound, and standalone skips it.
+`mode` reuses the existing `buildChannel == "dev"` selector from `cmd/lyx/stencilseed.go:73-76` verbatim rather than hardcoding `ModeProduction`, so a dev binary keeps its dev seeding semantics standalone exactly as it does in a hub.
+The fourth argument stays `""` — that is the "no source tree here" value which keeps the port-back drift warning silent, and standalone genuinely has no `contracts/stencils` source tree beside it.
 
 The [Stencil Ownership Invariant](../../CONSTRAINTS.md#stencil-ownership-invariant) currently pins the read location to `<hub>/_board/_lyx/stencils/` specifically.
 Its actual load-bearing content is "read from a file at call time, never from embedded bytes", which a told directory satisfies exactly.
@@ -278,9 +280,24 @@ Note that construction sites are not the whole blast radius: `shuttleengine.Find
 Those two are one-token edits (`deps.Layout` becomes `deps.Layout.AnchorPath()`), and they do not require or anticipate T7.
 `shuttleengine.NewRunner(reed, engine, layout, cfg)` becomes `NewRunner(reed, engine, anchorRoot, worktreeRoot string, cfg)`;
 `runDirRoot` and `FindRun` take `anchorRoot` instead of `layout`.
-`reedengine.New(cfg, layout)` becomes `New(cfg, socketKey, sessionName, anchorRoot string)` — `socketKey` replacing the `socketName(layout.HubPath)` derivation is the single most important line in this task, since it is where a faked `HubPath` would otherwise silently mis-name the tmux socket;
-`HubLogsDir` takes the hub path as a told string.
-`tokenvocab.Ctx.Layout` becomes two plain fields (`RepoName`, `HubPath`), which drops `internal/lyxcwd` from `tokenvocab`'s import set entirely.
+`reedengine.New(cfg, layout)` becomes `New(cfg, Geometry)`, where `Geometry` is reed's own told-geometry struct — a positional parameter list would reach five strings here, which is exactly the smell this decision's name ("told-geometry structs per engine") exists to avoid.
+`Geometry` carries every value reed today derives from a `Location`, and enumerating them is what makes each one's standalone answer a decision rather than an omission:
+
+| Field | Derived today from | Consumer |
+|---|---|---|
+| `SocketKey` | `socketName(l.HubPath)` | the tmux socket name |
+| `SessionName` | `SessionName(l.WorktreePath())` | the tmux session name |
+| `AnchorRoot` | `l.AnchorPath()` | `stateDir()` (`reed.json`/`reed.lock`), pane spawn cwd |
+| `LogsDir` | `fabricengine.HubScratchDir(l.HubPath)/logs` | the shared server's runtime log |
+| `RepoName`, `HubPath` | `l.RepoName`, `l.HubPath` | the header pane's `repo`/`hub` tokens, via `tokenvocab` |
+
+`SocketKey` is the single most important field, since it is where a faked `HubPath` would otherwise silently mis-name the tmux socket.
+`LogsDir` being told rather than derived matters structurally beyond this task: `fabricengine.HubScratchDir` is `reedengine`'s **only** `internal/fabricengine` reference (`lifecycle.go:36`), so telling reed its logs directory removes `internal/fabricengine` from `reedengine`'s import set outright — and with it the `treadleengine` → `shuttleengine` → `reedengine` → `fabricengine` transitive path the [Treadle Runner-Seam Invariant](../../CONSTRAINTS.md#treadle-runner-seam-invariant) currently has to acknowledge as real.
+Update that invariant's text in the same commit.
+`RepoName`/`HubPath` are carried because `Engine.HeaderText` renders the header pane at every boot from `tokenvocab.Ctx` (`header.go:16`), whose only two tokens are exactly those fields (`tokenvocab.go:25-26`);
+dropping them would leave the header rendering empty tokens with nothing in the design saying so.
+
+`tokenvocab.Ctx.Layout` becomes the same two plain fields (`RepoName`, `HubPath`), which drops `internal/lyxcwd` from `tokenvocab`'s import set entirely.
 
 **Files.** `internal/shuttleengine/run.go`, `internal/shuttleengine/rundir.go`; `internal/reedengine/lock.go`, `internal/reedengine/lifecycle.go`, `internal/reedengine/header.go` (line 16); `internal/tokenvocab/tokenvocab.go`, `internal/tokenvocab/doc.go`; construction sites `internal/burlercli/cli.go` (103-104), `internal/perchcli/cli.go` (143-144), `internal/webstercli/cli.go` (179-181), `internal/shuttlecli/cli.go` (92-93), `internal/reedcli/cli.go` (83); non-constructor callers of the changed exported symbols, `internal/websterengine/recoverbatch.go` (182) and `internal/websterengine/runlevel.go` (529), both calling `shuttleengine.FindRun`; the tests in each package; `CONSTRAINTS.md` ([Tokenvocab Leaf Invariant](../../CONSTRAINTS.md#tokenvocab-leaf-invariant) loses `internal/lyxcwd` from its allowlist).
 
@@ -418,14 +435,27 @@ With the split, every one of them relocates automatically — the rows marked *d
 |---|---|---|
 | `worktreeRoot` | `l.WorktreePath()` | the absolute target directory (`--target-dir`, defaulting to cwd) |
 | `anchorRoot` | `l.AnchorPath()` | `<state>` |
-| reed `socketKey` | `socketName(l.HubPath)` | `lyx-<hash8>`, deterministic from the target's absolute path |
-| reed `sessionName` | `SessionName(l.WorktreePath())` = `filepath.Base(worktreeRoot)` | `<basename of target>-<hash8>` |
-| reed logs dir (`HubLogsDir`) | `fabricengine.HubScratchDir(l.HubPath)/logs` | `<state>/logs` |
+| config `baseDir` (all three loaders) | `l.AnchorPath()` | *derived* — `<state>`, so operator config lives at `<state>/_lyx/config/` |
+| reed `Geometry.SocketKey` | `socketName(l.HubPath)` | `lyx-<hash8>`, deterministic from the target's absolute path |
+| reed `Geometry.SessionName` | `SessionName(l.WorktreePath())` = `filepath.Base(worktreeRoot)` | `<basename of target>-<hash8>` |
+| reed `Geometry.LogsDir` | `fabricengine.HubScratchDir(l.HubPath)/logs` = `<hub>/_board/.lyx/logs` | `<state>/logs`, told directly — **not** a told hub path, which would yield `<state>/_board/.lyx/logs` |
+| reed `Geometry.RepoName` | `l.RepoName` | the target directory's basename |
+| reed `Geometry.HubPath` | `l.HubPath` | `<state>` |
 | reed state dir (`stateDir`) | `Join(AnchorPath(), ".lyx")` | *derived* — `<state>/.lyx` |
 | shuttle run dir (`runDirRoot`) | `Join(AnchorPath(), ".lyx", "shuttle")` | *derived* — `<state>/.lyx/shuttle` |
 | burler scratch | `Join(AnchorPath(), ".lyx", "burler")` | *derived* — `<state>/.lyx/burler` |
 | perch `RunsDir` / `ScratchDir` | `AnchorPath()`-anchored `_lyx`/`.lyx` pair | *derived* — under `<state>` |
 | stencils dir | `fabricengine.StencilsDir(l.HubPath)` | `--stencils-dir <path>`, told |
+| stencil `Reconcile` mode | `buildChannel == "dev"` selector at `cmd/lyx/stencilseed.go:73-76` | the same selector, reused verbatim — never a hardcoded `ModeProduction` |
+
+The two reed header tokens are pinned rather than blanked because `Engine.HeaderText` renders them at every boot and an unpinned value shows the operator an empty or fictional header.
+`repo` naming the target's basename and `hub` naming `<state>` are both literally true in standalone: the thing being worked on, and where its state lives.
+
+**Operator config is supported in standalone, at `<state>/_lyx/config/`.**
+This falls out of `anchorRoot = <state>`, since all three loaders already take that same base.
+It matters because reed's config carries genuinely machine-specific keys — `tmux` and `shell` (`internal/reedengine/config.go:19-20`) — which a template default cannot get right on every machine.
+With T2 landed the directory is optional (an absent file resolves the embedded template), so the common case needs no config at all;
+when an operator does need one, `<state>` is deterministic from the target path and the command prints it, so the path is findable rather than guessed.
 
 `<state>` is `$XDG_STATE_HOME/lyx/<hash8>/`, falling back to `~/.local/state/lyx/<hash8>/`, where `hash8` is the first eight hex characters of the target directory's absolute-path hash — the same content-hash namespacing `shedadapters`' perch run-ids already use.
 
