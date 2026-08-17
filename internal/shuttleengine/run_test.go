@@ -232,8 +232,9 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 // runner.reed and runner.engine through run.state.StrandGUID.
 func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
 	t.Helper()
-	root := t.TempDir()
-	runner := NewRunner(reed, engine, root, root, Config{})
+	anchorPath := t.TempDir()
+	worktreeRoot := t.TempDir()
+	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, Config{})
 	return &Run{
 		runner: runner,
 		state:  RunState{StrandGUID: "strand-1"},

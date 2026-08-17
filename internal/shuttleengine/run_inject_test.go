@@ -14,11 +14,12 @@ import (
 // Run handle to draw StrandGUID from and must resolve it from run.json.
 func newInjectTestRunner(t *testing.T, reed ReedOps, engine Engine, guid string) *Runner {
 	t.Helper()
-	root := t.TempDir()
+	anchorPath := t.TempDir()
+	worktreeRoot := t.TempDir()
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
-	runner := NewRunner(reed, engine, root, root, cfg)
+	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
 	if guid != "" {
-		seedRun(t, runDirRoot(cfg, root), "run-1", guid)
+		seedRun(t, runDirRoot(cfg, anchorPath), "run-1", guid)
 	}
 	return runner
 }

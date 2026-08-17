@@ -231,8 +231,9 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &specCapturingEngine{}
+			anchorPath := t.TempDir()
 			worktreeRoot := t.TempDir()
-			runner := shuttleengine.NewRunner(noopReed{}, engine, worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+			runner := shuttleengine.NewRunner(noopReed{}, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}
 			cmd := c.runCmd()
