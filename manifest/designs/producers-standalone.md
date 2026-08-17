@@ -61,7 +61,7 @@ Every row below was verified against the current tree, not inherited from the di
 | Package | Sites | What it reads from the `Location` |
 |---|---|---|
 | `internal/shuttleengine` | `run.go` (`NewRunner`, `Runner.layout`), `rundir.go` (`runDirRoot`, `FindRun`) | `AnchorPath()`, `WorktreePath()` |
-| `internal/reedengine` | `lock.go` (`New`, `Engine.layout`, `socketName`, `SessionName`), `lifecycle.go` (`HubLogsDir`, pane spawn cwd) | `HubPath` (tmux socket name), `WorktreePath()` (session name), `AnchorPath()` (pane cwd) |
+| `internal/reedengine` | `lock.go` (`New`, `Engine.layout`, `socketName`, `SessionName`), `lifecycle.go` (pane spawn cwd; the hub-logs derivation now lives in `fabricengine.HubLogsDir(hubPath string)`) | `HubPath` (tmux socket name), `WorktreePath()` (session name), `AnchorPath()` (pane cwd) |
 | `internal/tokenvocab` | `tokenvocab.go` (`Ctx.Layout`) | `RepoName`, `HubPath` — two fields of a 327-line package; built only at `reedengine/header.go:16` |
 | `internal/pattern` | `pattern.go` (`Directive`, `FileHere`, `isActive`) | `WorktreePath()` + `AnchorRel`, i.e. exactly `AnchorPath()` |
 | `internal/burlerengine` | `engine.go` (`New`, `Engine.layout`, `Run`) | `WorktreePath()` (profile validation), `AnchorPath()` (`.lyx/burler`) |
