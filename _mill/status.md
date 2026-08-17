@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: config-template-fallback
 branch: config-template-fallback
-plan: null
+plan: _mill/plan
 parent: standalone-producers
 task: config degrades to embedded template
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-08-17T14:40:19Z'
 discussion-fix-r4  '2026-08-17T14:55:28Z'
 discussion-fix-r5  '2026-08-17T15:02:01Z'
 discussed  '2026-08-17T15:02:01Z'
+planning  '2026-08-17T15:08:10Z'
 ```
