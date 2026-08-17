@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: planned
 slug: shuttle-reed-told-geometry
 branch: shuttle-reed-told-geometry
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussion-fix-r2  '2026-08-17T14:42:13Z'
 discussed  '2026-08-17T14:42:13Z'
 planning  '2026-08-17T14:51:35Z'
 plan-review-r1  '2026-08-17T14:58:57Z'
+planned  '2026-08-17T14:59:14Z'
 ```
