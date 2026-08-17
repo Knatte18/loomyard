@@ -28,7 +28,7 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 - Delete the now-dead `not initialized` rewrap block in each of those four callers, and the `strings` import each one carries solely for it.
 - Rewrite the four packages' file-header and `LoadConfig` doc comments, which currently promise an error on an absent `_lyx/`.
 - Invert the four `TestLoadConfig_NotInitialized` tests to assert a template-derived config instead of an error, and rework the `TestLoadConfig_ModuleArgIsThreadedThrough` negative half in the three packages that have one.
-- Add a **Config Strictness Invariant** to `CONSTRAINTS.md`, pinned by a new set-equality grep guard in `cmd/lyx`.
+- Add a **Config Strictness Invariant** to `CONSTRAINTS.md`, enforced by review obligation, naming the future guard as a candidate.
 - Add a `LoadOrTemplate` section to `docs/shared-libs/configengine.md`.
 
 **Out:**
@@ -40,6 +40,7 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 - **The strict-when-present half stays strict.** A config file that exists but is missing template keys still errors, including an empty or comments-only file. Only an *absent* `_lyx/` or an *absent* file degrades.
 - **`manifest/roadmap.md` does not move.** Its "producers standalone: told-geometry foundations" entry (line 12) bundles T1 + T2 + T3; completing T2 alone does not complete that entry.
 - **No new `configreg` entry, no `SeedOnly` flag change.** All four modules already appear in `internal/configreg`'s `Modules()` list with closed key sets, and reconcile's behaviour toward them is unaffected.
+- **No machine-enforced guard for the new invariant, and therefore no `cmd/lyx` files at all.** The Config Strictness Invariant lands here as text with review-obligation enforcement; the grep guard that would pin its two caller sets is deferred to T10. No new file under `cmd/lyx/`, no edit to `cmd/lyx/tierpurity_test.go`, and no `cmd/lyx/...` leg in this task's verify command. See the `config-strictness-invariant-text-now-guard-at-t10` decision below.
 
 ## Decisions
 
@@ -82,12 +83,15 @@ Wave 1 is three parallel tasks (T1, T2, T3) and this is the only one of them tha
 - Rationale: the original intent is "the `module` argument genuinely selects the file path, it is not a hardcoded literal", and that intent survives the fallback intact — a hardcoded module name would now return the *seeded* value where the template default is expected, so the test still fails on the regression it was written to catch. The mechanism it used (absent file → error) is precisely what this task removes.
 - Rejected: **deleting the negative half** — a hardcoded module name would then pass silently by falling back to the template. **Asserting against `configengine.Load` directly inside the engine's own test** — keeps a refusal assertion but exercises the wrong function, leaving the engine's own plumbing uncovered.
 
-### config-strictness-invariant-with-grep-guard
+### config-strictness-invariant-text-now-guard-at-t10
 
-- Decision: add a **Config Strictness Invariant** to `CONSTRAINTS.md` recording both caller sets and the rule that decides membership, enforced by a new set-equality grep guard under `cmd/lyx/`.
-- Rationale: after this task `configengine` has two loading policies and nothing records which one a new caller should adopt. The whole point of the change is that all five producer-path loaders converge on one behaviour, and T7/T10 depend on that convergence holding — a strict caller silently added to a producer path would defeat them, and a degrading caller added to a hub path would turn a broken hub into a silently-defaulted one.
-  The repo has strong precedent for exactly this guard shape: `cmd/lyx/ghguard_test.go`, `cmd/lyx/checkedcall_test.go`, `cmd/lyx/gitrepoboundary_test.go`, `cmd/lyx/boardguard_test.go`.
-- Rejected: **review-obligation-only enforcement** — matches how the Producer Pointer-Rule and Batcher Registry+Config invariants are enforced, and is cheaper, but this split is machine-checkable and the failure mode is silent. **No invariant at all** — violates CLAUDE.md's "Record any new cross-cutting invariant there, same commit".
+- Decision: add a **Config Strictness Invariant** to `CONSTRAINTS.md` recording both caller sets and the rule that decides membership, **enforced by review obligation**. Its `Enforced by` line names a set-equality grep guard as a candidate and points at T10 as its home. This task builds no guard and touches no file under `cmd/lyx/`.
+- Rationale: after this task `configengine` has two loading policies and nothing records which one a new caller should adopt, so the text is required — CLAUDE.md mandates recording a new cross-cutting invariant in the same commit. Enforcement is a separate question, and three things settle it against building the guard here:
+  1. **T1, this wave's sibling task, made the opposite call on the same grounds.** `planparser-plan-dir` explicitly considered and rejected machine-enforcing its own reworded invariant, reasoning that building one is scope the design did not ask for. Two tasks in one wave independently reaching opposite defaults on "should a reworded/new invariant get a guard" is worse than either answer applied consistently.
+  2. **`producers-standalone.md` places its new-invariant work at T10**, the consolidation task, which introduces the three-tier geometry/fabric/orchestrator-state rule. A guard themed with cross-cutting caller-set discipline belongs alongside it, not bolted onto a six-file loader change in wave 1.
+  3. **It closes a real contention gap.** The design's file-contention analysis enumerates every file shared across all ten tasks, and it never anticipated a task adding a *new* guard file — so a `cmd/lyx` guard here would silently invalidate that analysis. Deferring keeps the analysis true and keeps this task's file set inside its decomposed brief.
+  Review-obligation enforcement is well-precedented for exactly this kind of policy statement: the Producer Pointer-Rule and Batcher Registry+Config invariants are both enforced that way.
+- Rejected: **the guard in this task** — mechanically well-precedented (`cmd/lyx/ghguard_test.go`, `checkedcall_test.go`, `gitrepoboundary_test.go`, `boardguard_test.go`, and at least nine `allowedSpawners` entries of this exact shape), and the split genuinely is machine-checkable with a silent failure mode, which is why the guard is *scheduled* rather than dropped. But wave-1 consistency and the intact contention analysis outweigh landing it three waves early. **No invariant at all** — violates CLAUDE.md's same-commit recording rule and leaves the two-policy split undocumented for the very tasks that depend on it.
 
 ### membership-rule-is-what-the-config-governs
 
@@ -139,19 +143,20 @@ In **all four files** `strings` is imported for the rewrap and nothing else, so 
 - `internal/websterengine/config_test.go` — `TestLoadConfig_NotInitialized` (line 150) inverted. This package has **no** `ModuleArgIsThreadedThrough` test, so only one change here.
 - `internal/configengine/config_test.go` — new `LoadOrTemplate` tests added; the existing `TestLoad_*` and `TestFindBaseDir_*` tests are untouched, including `TestLoad_NotInitialized` (line 251) and `TestLoad_AbsentFile` (line 104), which now pin that `Load` did *not* change.
 
+**That is the complete test-file list — five files.** No `cmd/lyx` test is added or edited by this task.
+
 **Tests that do NOT change, verified during exploration:**
 
 - `internal/webstercli/cli_test.go:275` `TestStatusCmd_NotInitialized` — about an absent `state.json`, not config.
 - `internal/reedcli/cli_integration_test.go:44` — asserts the error is *not* a config-resolution error; the fallback makes this strictly more true.
 - `internal/batcher/config_test.go:129`, `internal/fabricengine/config_test.go:125` — strict-group callers, deliberately unaffected.
 
-**The new `cmd/lyx` guard must allowlist itself for tier purity.** If it resolves its scan root via `exec.Command("go", "env", "GOMOD")` — the pattern `ghguard_test.go`, `checkedcall_test.go`, `boardguard_test.go` and `gitrepoboundary_test.go` all use — it trips the Test Tier Purity Invariant's ban on `exec.Command` in untagged test files.
-It must therefore add its own module-relative path to `allowedSpawners` in `cmd/lyx/tierpurity_test.go` (the map at line 24), with a one-line justification matching the style of the existing entries.
-**This makes `cmd/lyx/tierpurity_test.go` a required file edit, easily missed.**
+**No guard is built here** (see the `config-strictness-invariant-text-now-guard-at-t10` decision), so `cmd/lyx/` is untouched and `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map needs no new entry.
 
-**Guard mechanism.** Set-equality over grep results, following `gitrepoboundary_test.go`'s pinned-set shape: walk non-test `*.go` under the module root, collect every package directory containing a `configengine.Load(` call and every one containing a `configengine.LoadOrTemplate(` call, and compare each against its pinned set — strict `{fabricengine, boardengine, loomengine, batcher}`, degrading `{shuttleengine, reedengine, perchengine, websterengine}`.
-Exclude `internal/configengine` itself (declaration site) and skip `_test.go` files.
-Known blind spot to state in the invariant text, matching how the existing guards state theirs: a substring scan cannot see a call reached through an alias or a function value.
+**Guard shape to describe in the invariant's `Enforced by` line, for T10 to build.** Set-equality over grep results, following `cmd/lyx/gitrepoboundary_test.go`'s pinned-set shape: walk non-test `*.go` under the module root, collect every package directory containing a `configengine.Load(` call and every one containing a `configengine.LoadOrTemplate(` call, and compare each against its pinned set — strict `{fabricengine, boardengine, loomengine, batcher}`, degrading `{shuttleengine, reedengine, perchengine, websterengine}`.
+It would exclude `internal/configengine` itself (declaration site) and skip `_test.go` files, and — resolving its scan root via `exec.Command("go", "env", "GOMOD")` like its four siblings do — it would have to allowlist itself in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map (declared at line 28, under a doc comment starting at line 24) to satisfy the Test Tier Purity Invariant.
+Blind spot the invariant text should state, matching how the existing guards state theirs: a substring scan cannot see a call reached through an alias or a function value.
+Record this shape in the invariant so T10 inherits a specification rather than re-deriving one.
 
 **Doc surface.** `docs/shared-libs/configengine.md` documents `Load`'s six-step flow (lines 30-41), its error cases (lines 138-149), and — at lines 21-22 and 127-131 — states outright that `configengine` errors when `_lyx/` is absent and that typed wrappers rewrap on the `"not initialized"` substring.
 All of those claims become partly false and must be updated, not merely appended to.
@@ -164,10 +169,10 @@ From `CONSTRAINTS.md`:
 - **Cwd Resolution Invariant** — `LoadOrTemplate` takes a `baseDir string` exactly as `Load` does, and must never accept or construct a `*lyxcwd.Location`. Geometry is structural, never config-overridable, so the fallback must not invent a path from config. `internal/configengine` remains the single declarer of the `_lyx/config` path shape via `ConfigDir`/`ConfigFile`.
 - **Lyxdirs Single-Declarer Invariant** — any new path construction uses `lyxdirs.LyxDirName`, never a `"_lyx"` literal. Enforced by `internal/lyxcwd/enforcement_test.go`'s `TestEnforcement_GeometryLiterals`, which matches string literals in path-construction context.
 - **Modelspec Leaf Invariant** — `internal/modelspec` production imports are capped at stdlib, `internal/configengine`, and `gopkg.in/yaml.v3`. This task must not push anything new into `modelspec`, and is the reason `modelspec`'s own fallback cannot log.
-- **Test Tier Purity Invariant** — every new test is untagged Tier 1: no `git init`, no `exec.Command`, no `hubforge.NewHub`, no `gitkit.Copy*`, no `time.Sleep` ≥ 1s. All four fallback tests are pure `t.TempDir()` and satisfy this naturally. The new `cmd/lyx` guard does *not*, and must allowlist itself in `cmd/lyx/tierpurity_test.go` as described above.
+- **Test Tier Purity Invariant** — every new test is untagged Tier 1: no `git init`, no `exec.Command`, no `hubforge.NewHub`, no `gitkit.Copy*`, no `time.Sleep` ≥ 1s. Every test this task adds is pure `t.TempDir()` and satisfies this naturally, so no `allowedSpawners` entry is needed anywhere.
 - **Hermetic Git Test Environment Invariant** — not triggered: no new test spawns git, so no new `TestMain` is required.
 - **Documentation Lifecycle** — see [docs/overview.md#documentation-lifecycle](../docs/overview.md#documentation-lifecycle).
-- **New: Config Strictness Invariant** — added by this task, per the `config-strictness-invariant-with-grep-guard` decision above.
+- **New: Config Strictness Invariant** — added by this task as text with review-obligation enforcement, per the `config-strictness-invariant-text-now-guard-at-t10` decision above.
 
 From `CLAUDE.md`:
 
@@ -204,11 +209,11 @@ Name these for what they now assert, not for the removed refusal — e.g. `TestL
 
 **Module-threading tests in `shuttleengine`, `reedengine`, `perchengine` — three reworks.** Each seeds the non-default module name with one key set to a non-default value, then makes two assertions: the seeded name returns the seeded value, and the unseeded default name returns the template default. Both halves are needed — the first alone does not catch a hardcoded module name, and the second alone does not prove the file is read.
 
-**`cmd/lyx` guard.** A table-free walk-and-compare test. Its own failure output must name the offending package and which set it was expected to be in, following the existing guards' message style. Verify it actually fails by temporarily flipping one caller during development.
+**No guard test.** Deferred to T10 per the `config-strictness-invariant-text-now-guard-at-t10` decision, so no test outside the five files listed above.
 
 **Verification commands.**
 
-- Task-specific: `go test ./internal/configengine/... ./internal/shuttleengine/... ./internal/reedengine/... ./internal/perchengine/... ./internal/websterengine/... ./cmd/lyx/...` — the `cmd/lyx/...` leg is not in T2's original list and is required here because of the new guard and the `tierpurity_test.go` edit.
+- Task-specific: `go test ./internal/configengine/... ./internal/shuttleengine/... ./internal/reedengine/... ./internal/perchengine/... ./internal/websterengine/...` — exactly T2's own Verify line, unextended.
 - Baseline: `go test ./...` from the worktree root.
 - Structural: confirm `internal/configengine` production code contains exactly two exported load entry points and one shared body;
   confirm `strings` is gone from all four callers' import sets;
@@ -220,9 +225,11 @@ Name these for what they now assert, not for the removed refusal — e.g. `TestL
 - **Q:** Should the fallback resolve the template through `envsource.Build`/`yamlengine.Resolve`, or return it raw? **A:** Resolve it. Env overrides are the only way a config-less user pins machine tool paths, and no template uses the required `${env:NAME}` form, so the path cannot fail on a missing variable.
 - **Q:** Should the fallback be observable or silent? **A:** `logger.Debug` inside `configengine`, accepting a new `internal/logger` import. Silent was rejected as undiagnosable; `logger.Info` as too loud, since standalone is meant to be the normal case for these four.
 - **Q:** How should the three `TestLoadConfig_ModuleArgIsThreadedThrough` negative halves be preserved once the absent-file refusal they rely on is gone? **A:** Convert to a positive discrimination test — seed the other module with a non-default value, assert the unseeded default name yields the template default. Deleting the half was rejected: a hardcoded module name would then pass silently.
-- **Q:** Does this need a new `CONSTRAINTS.md` invariant, and should it be machine-enforced? **A:** Yes to both — a Config Strictness Invariant with a set-equality grep guard in `cmd/lyx`, following the `ghguard_test.go` / `gitrepoboundary_test.go` precedent. Review-obligation-only enforcement was rejected because the failure mode is silent and the split is machine-checkable.
+- **Q:** Does this need a new `CONSTRAINTS.md` invariant, and should it be machine-enforced? **A:** The invariant, yes — the guard, no, deferred to T10. This reverses an earlier call in this discussion, on evidence from the orchestrator review (`_mill/orch-review.md`): T1, this wave's sibling, rejected machine-enforcing its own reworded invariant on the same grounds; `producers-standalone.md` places its new-invariant work at T10; and adding a new guard file here would silently invalidate the design's ten-task file-contention analysis. The invariant text records the guard's exact shape so T10 inherits a specification.
+- **Q:** Is deferring the guard consistent with CLAUDE.md? **A:** Yes. The rule is "record any new cross-cutting invariant there, same commit" — recording, not enforcing. Review-obligation enforcement is the same level the Producer Pointer-Rule and Batcher Registry+Config invariants carry.
 - **Q:** How should the invariant state which set a new caller joins? **A:** By what the config governs — operator-tunable producer knobs degrade, hub state stays strict — not by an unexplained package list. This is the same distinction that places `websterengine` in the degrading group and already keeps `burlerengine` off the strict list.
 - **Q:** What happens to the four `TestLoadConfig_NotInitialized` tests? **A:** Inverted and renamed to assert a template-derived config rather than an error.
 - **Q:** What happens to the dead `not initialized` rewrap blocks? **A:** Deleted in all four callers, along with the `strings` import each carries solely for them.
 - **Q:** Does a config file that exists but is broken — missing keys, empty, comments-only — fall back? **A:** No. It still errors. Only an absent `_lyx/` or an absent file degrades.
-- **Q:** Which docs must land in this commit? **A:** `docs/shared-libs/configengine.md` (a `LoadOrTemplate` section, plus corrections to its existing claims at lines 21-22 and 127-131) and `CONSTRAINTS.md` (the new invariant). Neither is in T2's original Files list. `manifest/roadmap.md` stays untouched, because its entry bundles T1+T2+T3.
+- **Q:** Which docs must land in this commit? **A:** `docs/shared-libs/configengine.md` (a `LoadOrTemplate` section, plus corrections to its existing claims at lines 21-22 and 124-131) and `CONSTRAINTS.md` (the new invariant). Neither is in T2's original Files list; the doc update is nonetheless mandatory, since leaving those claims stale would violate the Documentation Lifecycle rule outright rather than merely under-apply it. `manifest/roadmap.md` stays untouched, because its entry bundles T1+T2+T3.
+- **Q:** Does this task's final file set stay inside T2's decomposed brief? **A:** Yes, once the guard is deferred. Six production/test files from the Files list, plus the four engines' `config_test.go` (required by T2's own Verify line, which the Files list is terse about), plus two docs. Nothing under `cmd/lyx/`, so the design's file-contention analysis across T1-T10 stays accurate.
