@@ -1,5 +1,5 @@
 // config_test.go verifies reed.yaml's template parses, defaults resolve through LoadConfig, and
-// environment overrides + the template-fallback path behave the way fabricengine's config tests
+// environment overrides + the template-fallback path behave the way shuttleengine's config tests
 // establish the pattern.
 
 package reedengine_test
