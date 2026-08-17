@@ -32,7 +32,7 @@ The design's one-sentence rule — *"an orchestrator resolves geometry and requi
 - Reword the [Planparser Sole-Parser Invariant](../CONSTRAINTS.md#planparser-sole-parser-invariant)'s false `lyxcwd` bullet in the same commit.
 - Add a path-ownership paragraph to `internal/planparser/doc.go`.
 - Extend `docs/overview.md`'s planparser entry (lines 285-286) to name path ownership alongside grammar ownership.
-- Update three stale comments the code change falsifies: `internal/webstercli/cli.go:57-58` (calls `planDir` one of "the lyxcwd-resolved `_lyx` dirs"), `internal/webstercli/verbs_test.go:12-13` (asserts tests always bypass `PersistentPreRunE`, already false and the source of this task's own earlier mistaken premise), and `cmd/lyx/notransients_test.go:6-8`'s module enumeration.
+- Update the stale comments the code change falsifies — see the **stale-comment enumeration** below for the method and its full result: `internal/webstercli/cli.go:57-58`, `internal/websterengine/runlevel.go:100`, `internal/webstercli/verbs_test.go:12-13`, and `cmd/lyx/notransients_test.go:6-8`'s module enumeration.
 
 **Out:**
 
@@ -81,7 +81,9 @@ The design's one-sentence rule — *"an orchestrator resolves geometry and requi
   After the move the parameter is an untyped string, and passing `l.WorktreePath()` compiles, runs, and silently relocates the plan directory to the worktree root whenever `AnchorRel != "."`.
   Every existing `webstercli` test fixture uses `AnchorRel: "."`, where `AnchorPath()` and `WorktreePath()` are the same string — so that mistake is invisible to the suite as it stands.
   The guard has to move to the call sites, deliberately, in this task.
-  Coverage lands at three levels: the two consuming call sites (`loomengine.PlanSpec`, `webstercli`'s plan-dir-consuming fixtures) **and** `webstercli`'s `PersistentPreRunE` itself, which — contrary to an earlier reading of this task — *is* already driven by tests (see the technical context below).
+  Only two of the added cases prove anchoring: the subpath-anchored `loomengine.PlanSpec` case and the subpath-anchored `webstercli` `PersistentPreRunE` case, which covers `cli.go:194` itself — contrary to an earlier reading of this task, that pre-run *is* already driven by tests (see the technical context below).
+  The `cli_test.go` fixture flip and the `cmd/lyx` rows are both self-consistent under a wrong root and prove nested-anchor path handling only;
+  they are kept for that, not counted as anchoring coverage.
 - **Rejected:** Relying on `cmd/lyx/constructoranchoring_test.go` alone.
   After the rewrite its rows read `planparser.PlanDir(l.AnchorPath())` compared against an `anchor`-derived expectation — tautological with respect to anchoring.
   Also rejected: a grep-style `cmd/lyx` guard asserting no production call passes anything but `AnchorPath()` — new guard infrastructure outside this task's scope, and string-matching guards rot.
@@ -144,11 +146,24 @@ Rewriting it would falsify the record of what `fabric-unified-view` actually del
 The anchoring it describes is unchanged by this task in any case: the plan directory is still `AnchorPath`-anchored and still in the `_lyx`-durable group;
 only the declaring package moves.
 
-**Three stale comments are updated, not left.**
-`internal/webstercli/cli.go:57-58` describes `planDir` as one of "the lyxcwd-resolved `_lyx` dirs" — after this change it is told, not resolved.
-`internal/webstercli/verbs_test.go:12-13` states tests "build a `*websterCLI` literal directly (bypassing `Command()`'s `PersistentPreRunE`)", which `seedPersistentPreRunFixture` and its two tests already falsify;
-that comment is the traceable source of this task's own first-draft claim that `cli.go:194` was untestable, which is exactly the cost of leaving a stale comment standing.
-`cmd/lyx/notransients_test.go:6-8`'s "may import every owning module at once" enumeration gains `planparser`.
+**Stale comments are updated, not left — and the set is enumerated, not assembled by reading.**
+
+*Method:* `grep -rn "lyxcwd-resolved\|lyxcwd- resolved" --include="*.go" internal/ cmd/` (both spellings, since `runlevel.go` wraps the hyphenated word across a line break).
+Re-run it at implementation time rather than trusting this list — the tree moves.
+
+*Full result, 5 lines in 3 files, with disposition:*
+
+| Site | Names the plan dir? | Disposition |
+|---|---|---|
+| `internal/webstercli/cli.go:57-58` | yes (`planDir`) | **in scope** — `planDir` becomes told, not resolved; the same block's `.lyx` sentence stays true |
+| `internal/websterengine/runlevel.go:100` | yes (`PlanDir`) | **in scope** — `RunDeps.PlanDir` is fed verbatim from `c.planDir` (`internal/webstercli/run.go:66`), so the same falsehood lands one layer down |
+| `internal/websterengine/beginbatch.go:64,66` | no (webster dirs only) | **out of scope** — `WebsterDir`/`ReportsDir`/`PromptsDir`/`ScratchDir` are genuinely still `lyxcwd`-resolved after this task; T7 is what falsifies these |
+
+Two further comments are falsified by this task's *test* changes rather than by the grep:
+
+- `internal/webstercli/verbs_test.go:12-13` states tests "build a `*websterCLI` literal directly (bypassing `Command()`'s `PersistentPreRunE`)", which `seedPersistentPreRunFixture` and its two tests already falsify.
+  That comment is the traceable source of this task's own first-draft claim that `cli.go:194` was untestable — exactly the cost of leaving a stale comment standing.
+- `cmd/lyx/notransients_test.go:6-8`'s "may import every owning module at once" enumeration gains `planparser`.
 
 ## Technical context
 
@@ -245,6 +260,9 @@ Add it to `notransients_test.go`'s enumeration in the same commit as the import.
 
 - `internal/loomengine/plan_test.go` — a new subpath-anchored `PlanSpec` case, asserting the composed plan dir and `Spec.OutputFiles[0]` land under `AnchorPath()` and not under `WorktreePath()`.
 - `internal/webstercli/cli_test.go` / `verbs_test.go` — fixtures flipped off `AnchorRel: "."` so the two roots are distinguishable strings at every site that consumes `c.planDir`.
+  **This flip does not, by itself, prove anchoring.** `newTestCLI` (`cli_test.go:169-177`) both computes `planDir` and seeds the plan into `c.planDir` (`:201`, `:252`), so a `WorktreePath()` slip stays self-consistent and passes at any `AnchorRel` — the same weakening annotated for the `cmd/lyx` rows above.
+  What it does prove is that the paths behave correctly at a nested anchor, which is worth having and is cheap;
+  what it does not prove is which root production reaches for.
 - `internal/webstercli/verbs_test.go` — **a new subpath-anchored `PersistentPreRunE` case that covers `cli.go:194` itself.**
   Most of `verbs_test.go` does build a `*websterCLI` literal directly, but `seedPersistentPreRunFixture` (`verbs_test.go:695-705`) is the deliberate exception: it builds a real `hubforge.NewHub(t, ".")` hub and drives `Command()`'s real pre-run through `RunCLIIn(h.PrimeWorktree(), …)`, consumed today by `TestPersistentPreRunE_UnknownBatcherFailsFast` (`:721`) and `TestPersistentPreRunE_DefaultBatcherResolves` (`:749`).
   `hubforge.NewHub`'s second parameter is the anchor itself (`internal/hubforge/hub.go:215`, documented as `"." or "backend"`), and `Hub.Location` exposes both roots — so a `"backend"`-anchored pre-run case is available with no refactor at all.
@@ -353,10 +371,12 @@ The subpath-anchored `loomengine.PlanSpec` case is the second TDD candidate — 
 - **Q:** Does the reworded invariant get a machine check? **A:** No — stays a review obligation, as its `Enforced by` line already says.
 - **Q:** Does `planparser/doc.go` gain a path-ownership paragraph? **A:** Yes, one short paragraph.
 - **Q:** What does `PlanDir("")` or a relative anchor path do? **A:** Nothing special — pure `filepath.Join`, documented as "caller supplies an absolute anchor path". **And the operator's emphasis:** the anchor path is not an incidental parameter — it is *always* present and *always* must be accounted for; a call site that reaches for `WorktreePath()` or cwd instead is a defect, which is why anchor-always is a named decision with its own test coverage rather than a doc-comment aside.
-- **Q:** How hard do we close the anchor-always gap? **A:** Subpath-anchored fixtures at both production call sites (`webstercli` tests off `AnchorRel: "."`, plus a subpath-anchored `loomengine.PlanSpec` case), and state plainly that `cli.go:194`'s own line stays uncovered until T7.
+- **Q:** How hard do we close the anchor-always gap? **A:** *(Superseded by discussion review r1 — the original answer deferred `cli.go:194` to T7 on the false premise that its pre-run was untestable.)* Subpath-anchored coverage at three levels: a `loomengine.PlanSpec` case, the `webstercli` fixture flip, and a new `"backend"`-anchored `PersistentPreRunE` case that covers `cli.go:194` itself. No T7 dependency. Of the three, only the `PlanSpec` case and the pre-run case actually prove anchoring; the fixture flip proves nested-anchor path handling.
 - **Q:** Do the `cmd/lyx` rows keep their expectations, given they become tautological? **A:** Yes, with a comment saying what they now do and do not prove.
 - **Q:** (Discussion review r1, BLOCKING) The claim that `webstercli`'s `PersistentPreRunE` is untestable is false — `verbs_test.go`'s `seedPersistentPreRunFixture` drives the real pre-run through `RunCLIIn`, and `hubforge.NewHub` takes the anchor as a parameter. Re-decide the coverage question. **A:** Confirmed against source and re-decided: add a `"backend"`-anchored pre-run case driving `validate`, which covers `cli.go:194` itself with no refactor and no T7 dependency. The earlier deferral was made on a wrong fact, sourced from a stale comment at `verbs_test.go:12-13` — that comment is now an in-scope fix.
 - **Q:** (r1 NIT) Do the named verify commands actually compile `verbs_test.go`? **A:** No — it is `//go:build integration`. `go test -tags integration ./internal/webstercli/...` is now named as required, with the two edits it alone covers spelled out.
 - **Q:** (r1 NIT) Do both `cmd/lyx` guard files already import `planparser`? **A:** No — `constructoranchoring_test.go` does, `notransients_test.go` does not. The latter's import and its header module enumeration are now in scope.
 - **Q:** (r1 NIT) What is the disposition of `manifest/designs/fabric-unified-view.md`'s two `PlanDir` mentions? **A:** Left alone deliberately, as a historical as-built record of what that task delivered; the anchoring it describes is unchanged by this task.
 - **Q:** (r1 NIT) What about the stale comments at `cli.go:57-58` and `verbs_test.go:12-13`? **A:** Both in scope, plus `notransients_test.go:6-8`.
+- **Q:** (r2 NIT) What bounds the stale-comment set at three? **A:** Nothing did — it was assembled by reading. Now enumerated by grep over both `lyxcwd-resolved` spellings, which returns 5 lines in 3 files; `websterengine/runlevel.go:100` joins scope, `beginbatch.go:64,66` are dispositioned out (webster dirs only, still true until T7).
+- **Q:** (r2 NIT) Does the `cli_test.go` anchor flip prove anchoring? **A:** No — `newTestCLI` computes `planDir` and seeds into it, so it is self-consistent under a wrong root, exactly like the `cmd/lyx` rows. Now recorded as such; only the `PlanSpec` case and the pre-run case carry the anchoring proof.

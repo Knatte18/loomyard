@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r2
 slug: planparser-plan-dir
 branch: planparser-plan-dir
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-17T12:52:44Z'
+discussion-fix-r2  '2026-08-17T14:35:04Z'
 ```
