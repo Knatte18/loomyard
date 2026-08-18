@@ -470,6 +470,21 @@ Plus `go test ./internal/websterengine/... ./internal/webstercli/... ./cmd/lyx/.
 **T8 — the standalone CLI path**
 `slug: standalone-cli-entry`
 
+**Correction, landed in T8's own commit.**
+This brief is stale on two points; the text below is preserved as written and is superseded by this note where the two disagree.
+
+First, the shipped mode trigger is `preflight.ResolveMode`, not the `fabricengine.Ready`-class check with a `fabricengine.BoardDir(filepath.Dir(worktreeRoot))` discriminator this brief describes below.
+`Ready` probes the paired sibling of the current worktree rather than the hub, so it is false at `<hub>/_board`, false in an unpaired sibling, and false in a worktree whose pair was removed — three real, healthy hub situations that run producer verbs today, and keying mode selection on it would relocate a live hub's state into the per-OS state directory.
+The hub probe is `HubPresent`-shaped instead: a `lyxcwd.Resolve` plus one `os.Stat` of `<hub>/_board/_lyx`.
+`ResolveMode` wraps that probe in a three-way resolver so a `Resolve` failure that is not `ErrNotAGitRepo` refuses rather than degrading — and so that an ordinary subdirectory of a *plain* repo, which raises the same `ErrCwdOutsideAnchor` sentinel, still resolves to standalone.
+This correction supersedes the brief's own **"A wired-but-broken hub is refused, never silently degraded to standalone."** paragraph below, whose requirement is met by a different mechanism: a damaged hub stays in hub mode and fails loudly at the point of use.
+
+Second, the brief's **"Invariant rewords land in this task's own commit, not deferred to T10."** instruction below is already satisfied.
+T7, commit `3255efa6`, landed both the Stencil Ownership read-location and seed-pass rewords and the Durable-vs-Ephemeral standalone bullet, in generalised, producer-agnostic wording that names no module.
+T8 therefore verified them and made no edit; re-wording correct text to name burler and perch would make a general invariant less general.
+
+T8's scope was also widened to repoint `internal/webstercli` onto `ResolveMode` in the same commit, because the trigger decision above rests on all three standalone-capable CLIs selecting modes by one rule.
+
 **Brief.** The task the whole design exists for.
 Make `burlercli` and `perchcli`'s `PersistentPreRunE` branch between hub mode and standalone mode instead of aborting.
 

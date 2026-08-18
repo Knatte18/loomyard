@@ -1,12 +1,14 @@
 // cli.go builds the cobra command tree for the perch module and the RunCLI seam that wires it into
 // the standard io.Writer-based call contract.
-// The parent "perch" command carries a PersistentPreRunE that resolves cwd -> layout -> perch
-// geometry -> shuttle config -> reed config -> models registry -> perch config -> burler config ->
-// reed engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine exactly once per
-// invocation, storing the resolved ingredients on perchCLI rather than a constructed
-// *perchengine.Engine: the pause seam (perchengine.Options.
-// PauseRequested) closes over a per-run runDir that is only known once the run verb has resolved
-// --profile and --run-id, so the run verb calls perchengine.New itself, per invocation.
+// The parent "perch" command carries a PersistentPreRunE that resolves cwd, runs one
+// preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone
+// mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients
+// on perchCLI rather than a constructed *perchengine.Engine: the pause seam
+// (perchengine.Options.PauseRequested) closes over a per-run runDir that is only known once the run
+// verb has resolved --profile and --run-id, so the run verb calls perchengine.New itself, per
+// invocation.
+// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever
+// called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
 // perchcli is the module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
 
 package perchcli
@@ -17,14 +19,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/perchengine"
-	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/spf13/cobra"
 )
 
@@ -34,18 +34,89 @@ type perchCLI struct {
 	runner       *shuttleengine.Runner
 	perchCfg     perchengine.Config
 	// modelReg is the models.yaml registry, loaded exactly once per
-	// invocation in PersistentPreRunE and reused for both perchCfg's
-	// judge_model resolution and decodeProfile's judge-model/model
-	// resolution — no second models.yaml read anywhere in the same run.
+	// invocation in wire and reused for both perchCfg's judge_model
+	// resolution and decodeProfile's judge-model/model resolution — no
+	// second models.yaml read anywhere in the same run.
 	modelReg modelspec.Registry
-	layout   *lyxcwd.Location
-	// perchGeom is the told perch geometry PersistentPreRunE resolves via
-	// hubgeom.PerchGeometry, alongside layout: layout survives for the three
-	// fabric call sites in run.go, which genuinely need the Location and are
-	// genuinely hub-mode-only.
+	// perchGeom is the told perch geometry wire resolves via
+	// hubgeom.PerchGeometry (hub mode) or standalonegeom.PerchGeometry
+	// (standalone mode). Its old comment named layout as the reason the
+	// three fabric call sites in run.go survived; those now read
+	// stencilsDir, anchorRel, and openFabric instead.
 	perchGeom      perchengine.Geometry
 	runDirBase     string
 	scratchDirBase string
+
+	// stencilsDir is the one told stencils directory both consumers read:
+	// the nested burlerEngine (built in wire) and the value run.go passes to
+	// perchengine.Engine.Run. It also doubles as the third reporting field,
+	// alongside mode/stateDir below, so perch carries the same envelope
+	// values burler does without a fourth field.
+	stencilsDir string
+	// anchorRel is loc.AnchorRel in hub mode and "" in standalone -- the one
+	// thing the deleted layout field held that no other told replacement
+	// supplies.
+	anchorRel string
+	// openFabric is the lazy fabric opener: a closure in hub mode, nil in
+	// standalone (which has no fabric repo by construction). It must not be
+	// called during the pre-run itself -- fabricengine.Open stat-checks the
+	// paired sibling and would fail in healthy-but-unwired locations.
+	openFabric func() (*fabricengine.Fabric, error)
+
+	// stencilsDirFlag and targetDirFlag hold the raw, as-parsed values of the two standalone-entry
+	// persistent flags (--stencils-dir, --target-dir). An empty value means the flag was not passed;
+	// each mode's own default is computed by the wiring function (wiring.go) rather than a
+	// zero-value fallback landing here.
+	stencilsDirFlag string
+	targetDirFlag   string
+
+	// mode and stateDir are CLI-level facts about how the stack was wired, read off this receiver by
+	// run.go's success envelope. They are not results of a review round, which is why they are not
+	// threaded through burlerengine.Result.
+	mode     string
+	stateDir string
+}
+
+// resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
+// decision and the whole engine stack construction to c.wire (wiring.go), storing the resolved
+// ingredients on c.
+// A non-nil ResolveMode error is the refuse case, and it is handled right here rather than inside
+// wire: the refusal deliberately stays in resolvePersistentPreRun because it is a resolution
+// verdict, not a wiring choice, so it is surfaced verbatim and aborts the pre-run before c.wire is
+// ever called -- wire's own two-row truth table never sees a third value.
+// Extracted from Command()'s PersistentPreRunE assignment so a test can invoke it directly against a
+// *perchCLI it holds a reference to and inspect the populated fields afterward.
+// Skips resolution entirely when the group command itself is invoked (bare listing or
+// unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
+// be present -- preserved exactly as today because TestRunCLI_GroupGuard_OutsideGitRepo pins it.
+func (c *perchCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
+	if cmd.Name() == "perch" {
+		return nil
+	}
+
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	cwd, err := lyxcwd.CwdFrom(ctx)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	loc, mode, err := preflight.ResolveMode(cwd)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	if err := c.wire(loc, mode, cwd, c.stencilsDirFlag, c.targetDirFlag); err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+	return nil
 }
 
 // Command returns the cobra command tree for the perch module.
@@ -63,116 +134,31 @@ against, the convergence gate, and the round-cap ladder are all supplied as a
 profile YAML file — perch itself carries zero domain logic about the
 artifact under review.
 
+Modes:
+  perch runs in hub mode inside a lyx hub worktree, and in standalone mode
+  anywhere else -- a plain git checkout with no lyx hub beside it. Two
+  persistent flags cross that boundary: --stencils-dir is optional and
+  read-only in BOTH modes (hub default: the hub's own stencils dir;
+  standalone default: the derived state directory's own _lyx/stencils);
+  --target-dir is standalone-only, defaults to the current directory, and is
+  refused in hub mode, where the worktree itself is structurally the target.
+
 Example:
-  lyx perch run --profile profile.yaml`,
+  lyx perch run --profile profile.yaml
+
+Example (standalone, outside any lyx hub):
+  lyx perch run --profile profile.yaml --target-dir /path/to/repo`,
 		// RunE is set so that bare "lyx perch" lists subcommands and "lyx
 		// perch bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
-		RunE: clihelp.GroupRunE,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: when the perch group command itself is invoked (bare
-			// listing or unknown-subcommand error path via GroupRunE), skip
-			// cwd/layout/config/engine resolution so that neither path
-			// requires a git repository to be present.
-			if cmd.Name() == "perch" {
-				return nil
-			}
-
-			ctx := cmd.Context()
-			out := cmd.OutOrStdout()
-
-			cwd, err := lyxcwd.CwdFrom(ctx)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			layout, err := lyxcwd.Resolve(cwd)
-			if err != nil {
-				// lyxcwd.Resolve's error is already self-describing (it
-				// IS the "not a git repository" sentinel); pass it through
-				// bare rather than doubling that same text on top of it.
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			// Every config is anchored at layout.AnchorPath(), matching
-			// burlercli/shuttlecli's own resolution: the worktree the
-			// operator is actually standing in, never WorktreeRoot or any
-			// fabric sibling.
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			// Loaded ONCE here, at the same layout.AnchorPath() anchor every config
-			// load above uses, and reused for both perchCfg's judge_model
-			// resolution (via LoadConfigWithRegistry) and decodeProfile's
-			// profile-field resolution in runCmd — models.yaml is read
-			// exactly once per invocation.
-			modelReg, err := modelspec.LoadRegistry(layout.AnchorPath())
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			perchCfg, err := perchengine.LoadConfigWithRegistry(layout.AnchorPath(), "perch", modelReg)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			// burlerengine.LoadConfig's only error today is a read/decode
-			// failure — an absent burler.yaml is not an error, it decodes to
-			// the zero Config (clustering then fails later, at fan
-			// resolution, with a message naming `lyx config reconcile`).
-			burlerCfg, err := burlerengine.LoadConfig(layout.AnchorPath())
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			reedGeom := hubgeom.ReedGeometry(layout)
-			reedEngine := reedengine.New(reedCfg, reedGeom)
-			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-			c.burlerEngine = burlerengine.New(runner, hubgeom.BurlerGeometry(layout), burlerCfg, fabricengine.StencilsDir(layout.HubPath))
-			c.runner = runner
-			c.perchCfg = perchCfg
-			c.modelReg = modelReg
-			c.layout = layout
-			c.perchGeom = hubgeom.PerchGeometry(layout)
-			// Anchored at perchGeom.AnchorPath, like the config loads above and
-			// like Layout.LyxDir itself: the initialized _lyx (the fabric
-			// junction, mirrored at <fabric>/<RelPath>/_lyx) lives at the
-			// directory lyx init ran in, which is Cwd — not necessarily the git
-			// worktree root. Anchoring at WorktreeRoot would, in a
-			// nested-initialized repo, write run dirs into an un-junctioned
-			// _lyx the fabric commit's RelPath-scoped pathspec never includes,
-			// silently stranding every artifact outside fabric.
-			c.runDirBase = perchengine.RunsDir(c.perchGeom.AnchorPath)
-			// Anchored at the same perchGeom.AnchorPath as runDirBase — the
-			// never-tracked half of the pair: run.lock, state.json.lock, and
-			// the pause flag live here instead of inside _lyx, so a block's
-			// two directories can never disagree about which anchor they
-			// belong to.
-			c.scratchDirBase = perchengine.ScratchDir(c.perchGeom.AnchorPath)
-			return nil
-		},
+		RunE:              clihelp.GroupRunE,
+		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
+
+	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
+		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
+	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
+		"standalone-only: the directory perch reviews against; defaults to the current directory; refused in hub mode, where the worktree is already the target")
 
 	parent.AddCommand(c.runCmd())
 	parent.AddCommand(c.pauseCmd())

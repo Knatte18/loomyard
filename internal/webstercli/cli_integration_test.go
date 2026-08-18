@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 )
 
@@ -36,6 +38,7 @@ func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	stateDir, _, err := standalonestate.Derive(target)
 	if err != nil {
@@ -68,6 +71,7 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	before, err := os.ReadDir(target)
 	if err != nil {
@@ -92,5 +96,68 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 			names[i] = e.Name()
 		}
 		t.Errorf("target directory %q gained entries from a standalone invocation: %v; want it byte-for-byte unchanged -- no hidden state tree, no lock file, no rendered prompt", target, names)
+	}
+}
+
+// TestRunCLIIn_WronglyEnteredHub_Refuses is deviation four on the plan's hub byte-identity list:
+// internal/webstercli/cli.go discarded ResolveMode's error class before this task, so entering a
+// wired hub worktree from an ordinary subdirectory started a silent standalone session there. This
+// invocation now refuses instead. It is a deliberate correction of shipped behaviour, which is why
+// it is pinned rather than merely allowed.
+//
+// It builds a real wired hub via hubforge.NewHub, creates an ordinary subdirectory inside the prime
+// worktree, and drives RunCLIIn from that subdirectory. "status" is chosen because it drives the
+// full pre-run without requiring a seeded plan directory, matching the reasoning
+// TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged already records for the same choice.
+//
+// It redirects XDG_STATE_HOME and LOCALAPPDATA to t.TempDir() values before the call and asserts
+// both remain empty afterwards: this invocation must refuse before wireStandalone ever calls
+// standalonestate.Derive, and without the redirect the emptiness assertion would be made against the
+// operator's real state directory. The redirect means this test must not be marked t.Parallel() --
+// t.Setenv panics under a parallel test.
+func TestRunCLIIn_WronglyEnteredHub_Refuses(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	sub := filepath.Join(h.PrimeWorktree(), "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", sub, err)
+	}
+
+	xdgStateHome := t.TempDir()
+	localAppData := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", xdgStateHome)
+	t.Setenv("LOCALAPPDATA", localAppData)
+
+	var out strings.Builder
+	exitCode := RunCLIIn(sub, &out, []string{"status"})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLIIn(%q, [status]) = %d; want non-zero", sub, exitCode)
+	}
+	got := out.String()
+	if !strings.Contains(got, lyxcwd.AnchorFileName) {
+		t.Errorf("RunCLIIn(%q, [status]) output missing the gated cwd-anchor error naming %s; got: %q", sub, lyxcwd.AnchorFileName, got)
+	}
+	if strings.Contains(got, "\"stateDir\"") || strings.Contains(got, "\"mode\"") {
+		t.Errorf("RunCLIIn(%q, [status]) output looks like a standalone session's own output, not a refusal; got: %q", sub, got)
+	}
+
+	assertEmptyDir(t, xdgStateHome)
+	assertEmptyDir(t, localAppData)
+}
+
+// assertEmptyDir fails the test if dir contains any entry, proving no standalone state tree was
+// created under it.
+func assertEmptyDir(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q) = %v", dir, err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("%q gained entries: %v; want it to stay empty -- wireStandalone must never be reached on a refusal", dir, names)
 	}
 }

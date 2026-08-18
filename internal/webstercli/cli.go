@@ -1,9 +1,11 @@
 // cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it
 // into the standard io.Writer-based call contract.
 // The parent "webster" command carries a PersistentPreRunE that resolves cwd, runs one
-// preflight.HubPresent probe, and delegates to c.wire (wiring.go), which selects hub or standalone
+// preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone
 // mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients
 // on websterCLI exactly once per invocation.
+// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever
+// called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
 // The module holds no *lyxcwd.Location: every path it touches -- every _lyx/plan and _lyx/webster
 // path included -- arrives as a websterengine.Geometry, told by hubgeom.WebsterGeometry(loc) in hub
 // mode or internal/standalonegeom.WebsterGeometry(target, stateDir) in standalone, never re-derived
@@ -100,9 +102,13 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 	return run, nil
 }
 
-// resolvePersistentPreRun resolves cwd, probes preflight.HubPresent(cwd), and delegates the mode
+// resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
 // decision and the whole engine stack construction to c.wire (wiring.go), storing the resolved
 // ingredients on c.
+// A non-nil ResolveMode error is the refuse case, and it is handled right here rather than inside
+// wire: the refusal deliberately stays in resolvePersistentPreRun because it is a resolution
+// verdict, not a wiring choice, so it is surfaced verbatim and aborts the pre-run before c.wire is
+// ever called -- wire's own two-row truth table never sees a third value.
 // Extracted from Command()'s PersistentPreRunE assignment so a test can invoke it directly against a
 // *websterCLI it holds a reference to and inspect the populated fields afterward -- most notably that
 // c.openFabric is built here as a closure but never itself called.
@@ -124,9 +130,14 @@ func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) 
 		return nil
 	}
 
-	loc, hubPresent := preflight.HubPresent(cwd)
+	loc, mode, err := preflight.ResolveMode(cwd)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
 
-	if err := c.wire(loc, hubPresent, cwd, c.stencilsDirFlag, c.planDirFlag, c.targetDirFlag); err != nil {
+	if err := c.wire(loc, mode, cwd, c.stencilsDirFlag, c.planDirFlag, c.targetDirFlag); err != nil {
 		output.Err(out, err.Error())
 		clihelp.Abort(ctx, 1)
 		return nil
