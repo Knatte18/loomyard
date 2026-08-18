@@ -2,7 +2,8 @@
 // hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents
 // reads),
 // and the PreToolUse guardrails that keep a run's work visible in its own pane — denying the
-// in-process Agent tool (or, in a fork-mode run, allowing only unnamed fork calls through it),
+// in-process Agent tool (or, in a fork-mode run, letting fork subagents through it while still
+// denying every other subagent type),
 // refusing `lyx webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock
 // guard), denying AskUserQuestion in autonomous runs (where there is no operator present to answer
 // it), and recording — never denying — a live AskUserQuestion call in interactive runs so the run
@@ -21,7 +22,7 @@ import (
 // steerAgentDeny redirects the model back into this pane; shuttle's design is that every agent runs in a separate visible tmux pane, not Claude Code's in-process Agent tool.
 const steerAgentDeny = "do the work in this session; nested agents are not available here — all work must stay visible in this pane"
 
-// steerAgentNonForkDeny is the PreToolUse(Agent) deny reason for fork-mode runs, allowing only unnamed fork calls.
+// steerAgentNonForkDeny is the PreToolUse(Agent) deny reason for fork-mode runs, where fork subagents are allowed and every other subagent type is refused.
 const steerAgentNonForkDeny = "only fork subagents may be spawned here; other agents are unavailable — do the work in this session or in your forks"
 
 // steerAskUserQuestionDeny denies AskUserQuestion in autonomous runs, where no operator is present to answer.
@@ -73,7 +74,7 @@ func denyJSON(steer string) string {
 
 // buildSettings marshals settings.json: a Stop hook appending turn-end events to eventsPathPosix, and PreToolUse guardrails per cfg and interactive.
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
-// Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents adds conditional deny for unnamed-fork validation and a webster-verb guard.
+// Agent-tool and AskUserQuestion denies are controlled by cfg; forkSubagents narrows the Agent deny to non-fork subagent types and adds a webster-verb guard.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, forkSubagents bool) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	stopCmd := fmt.Sprintf("cat >> %s && printf '\\n' >> %s", quotedEventsPath, quotedEventsPath)
@@ -88,7 +89,11 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 
 	if cfg.ClaudeDenyAgentTool {
 		if forkSubagents {
-			// Grep for unnamed fork calls; a match exits 0 allowing the call, no match echoes the deny JSON.
+			// Grep the payload for a fork subagent_type; a match exits 0 allowing the call, no
+			// match echoes the deny JSON. Whether the fork carried a name is deliberately NOT
+			// part of this test — a named fork is a defect signal the AUDIT records as
+			// ForkAudit.NamedSpawns for the caller's policy to interpret, never something this
+			// hook refuses mid-run.
 			agentCmd := fmt.Sprintf(`grep -q '"subagent_type":"fork"' || echo '%s'`, denyJSON(steerAgentNonForkDeny))
 			doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 				Matcher: "Agent",
