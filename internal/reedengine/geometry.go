@@ -18,7 +18,9 @@ type Geometry struct {
 	// SessionName is the tmux session name; it is what Engine.SessionName returns.
 	SessionName string
 	// AnchorPath is the base stateDir joins onto for reed.json/reed.lock, and the cwd every pane is
-	// spawned with.
+	// spawned with — passed explicitly as tmux's -c at all three spawn sites (new-session, the
+	// header split, and each strand split), never left for tmux to infer from the invoking client's
+	// own cwd.
 	AnchorPath string
 	// WorktreeRoot is what Strand.Worktree is stamped with, and what resolveStrandName substitutes
 	// for the <WORKTREE> token.

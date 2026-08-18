@@ -112,7 +112,17 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 	paneID := adoptID
 	if paneID == "" {
-		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
+		// -c pins the new pane's cwd to the told anchor, exactly as
+		// new-session and the header split (lifecycle.go) already do. Without
+		// it tmux resolves the cwd from the invoking CLIENT — verified live
+		// (tmux 3.6): a split issued from outside tmux lands in the calling
+		// process's cwd, neither the target pane's cwd nor the session's. That
+		// happens to be the anchor whenever lyx runs under lyxcwd.Resolve's
+		// exact-equality cwd gate, and stops being the anchor the moment a
+		// caller injects a cwd through the RunCLIIn seam instead — at which
+		// point every strand command would run against the wrong tree while
+		// reed reported success.
+		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-c", e.geom.AnchorPath, "-P", "-F", "#{pane_id}")
 		if err != nil {
 			return fmt.Errorf("split window: %w", err)
 		}

@@ -152,8 +152,15 @@ func listPaneLines(t *testing.T, tmuxPath, socket, session string) []string {
 // socketAndSession reads the socket and session names from the current status.
 func socketAndSession(t *testing.T) (socket, session string) {
 	t.Helper()
+	return socketAndSessionIn(t, "")
+}
+
+// socketAndSessionIn is socketAndSession driven through the RunCLIIn seam; see addStrandIn for what
+// the cwd argument means.
+func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
+	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"status"}); code != 0 {
+	if code := RunCLIIn(cwd, &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	var result map[string]any
@@ -260,9 +267,18 @@ func smokeInvokeLine(bin string, args ...string) string {
 // addStrand runs `add` with the given extra flags and returns the new guid.
 func addStrand(t *testing.T, cmdStr string, extra ...string) string {
 	t.Helper()
+	return addStrandIn(t, "", cmdStr, extra...)
+}
+
+// addStrandIn is addStrand driven through the RunCLIIn seam: cwd is seeded into the execution
+// context rather than into the process, so a test can drive reed for a worktree it is not standing
+// in.
+// An empty cwd means "read the process cwd", exactly as RunCLIIn itself documents.
+func addStrandIn(t *testing.T, cwd, cmdStr string, extra ...string) string {
+	t.Helper()
 	var out bytes.Buffer
 	args := append([]string{"add", "--cmd", cmdStr}, extra...)
-	if code := RunCLI(&out, args); code != 0 {
+	if code := RunCLIIn(cwd, &out, args); code != 0 {
 		t.Fatalf("add %v = %d; want 0, output: %s", extra, code, out.String())
 	}
 	var result map[string]any
@@ -855,8 +871,15 @@ func paneRootPID(t *testing.T, tmuxPath, socket, session, paneID string) int {
 // paneIDForStrand runs status and returns the tracked strand's live pane id.
 func paneIDForStrand(t *testing.T, guid string) string {
 	t.Helper()
+	return paneIDForStrandIn(t, "", guid)
+}
+
+// paneIDForStrandIn is paneIDForStrand driven through the RunCLIIn seam; see addStrandIn for what
+// the cwd argument means.
+func paneIDForStrandIn(t *testing.T, cwd, guid string) string {
+	t.Helper()
 	var out bytes.Buffer
-	if code := RunCLI(&out, []string{"status"}); code != 0 {
+	if code := RunCLIIn(cwd, &out, []string{"status"}); code != 0 {
 		t.Fatalf("status = %d; want 0, output: %s", code, out.String())
 	}
 	strand, ok := statusStrand(t, out.Bytes(), guid)
@@ -868,6 +891,16 @@ func paneIDForStrand(t *testing.T, guid string) string {
 		t.Fatalf("strand %s has no pane: %s", guid, out.String())
 	}
 	return paneID
+}
+
+// paneCurrentPath asks tmux for a pane's own current working directory.
+func paneCurrentPath(t *testing.T, tmuxPath, socket, paneID string) string {
+	t.Helper()
+	out, err := exec.Command(tmuxPath, "-L", socket, "display-message", "-p", "-t", paneID, "#{pane_current_path}").Output()
+	if err != nil {
+		t.Fatalf("display-message #{pane_current_path} for %s: %v", paneID, err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // harnessOnlyPaneID returns the sole pane id of a freshly-booted harness session.
