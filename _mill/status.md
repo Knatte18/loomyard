@@ -63,6 +63,8 @@ batches:
     commit_sha: 423f595de7894bf9042103fce23f4c96511545c1
     verify_baseline_failures: []
   - name: docs-and-invariants
-    state: pending
+    state: running
+    implementer_session: 2865451f-72d1-4d94-828a-b7ac81b053bd
+    start_sha: 426c05bbf60587409b03affc6b33aa07946a5fc1
     verify_baseline_failures: []
 ```
