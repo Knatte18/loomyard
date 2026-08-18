@@ -144,6 +144,25 @@
 //     (removalEmptiedSession, strand.go) only when the session is
 //     confirmed gone, rather than the fix mispredicting a corpse
 //     universally, as an earlier version of this assumption did.
+//   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
+//     tmux does not REJECT a session name containing '.' or ':' — it
+//     rewrites each to '_', creates the session under the rewritten name,
+//     and exits 0 (verified live, tmux 3.6; no other character is
+//     touched). Because every session target this package issues is the
+//     exact-match "=<name>" form above, the created session is then
+//     unreachable by the very name that created it: the boot loop polls a
+//     target that can never match, and the rewritten session is left
+//     squatting on the SHARED per-hub server where no reed verb can
+//     address or tear it down. The told identity is therefore validated at
+//     withOpLock — the one chokepoint every public op passes — and a name
+//     tmux would rewrite is REFUSED rather than sanitized: substituting
+//     here would map sibling worktrees "svc.v2" and "svc_v2" onto one
+//     session and have each adopt the other's panes.
+//     contract_integration_test.go's
+//     TestSessionNameRewriteIsSilentAndExactTargetsMissIt pins the wire
+//     behavior; the socket key is the mirror-image case (its readable half
+//     carries no identity, so ServerName substitutes separators out at the
+//     derivation instead of refusing).
 //   - The -l leading-dash send-keys bug (spawn.go): send-keys -l parses a
 //     '-'-prefixed literal argument as flags and silently drops it (a "--"
 //     separator does not stop this parsing), so sendKeysLiteralArg prefixes
