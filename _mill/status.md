@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-perch told-geometry
+phase: holistic-reviewing
 slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-08-18T09:19:21Z'
 approved-geometry types and hubgeom tellers  '2026-08-18T09:24:35Z'
 approved-burler told-geometry  '2026-08-18T09:29:31Z'
 approved-perch told-geometry  '2026-08-18T09:36:49Z'
+holistic-reviewing  '2026-08-18T09:37:17Z'
 ```
 
 ## Batches
