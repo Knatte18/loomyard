@@ -37,6 +37,8 @@ batches:
     commit_sha: 9737932d322d3f057eec90362ef02a002f4516fc
     verify_baseline_failures: []
   - name: hub-mode-evidence
-    state: pending
+    state: running
+    implementer_session: 3fabd757-092c-49dd-81c5-9dd1fb1e2e0c
+    start_sha: 08343c5f0c91c4280405c19c98d0c4dabc006ecb
     verify_baseline_failures: []
 ```
