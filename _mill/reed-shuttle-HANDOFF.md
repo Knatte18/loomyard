@@ -87,10 +87,10 @@ Wave-1 is three commits, not one: `2b21ee57` (T1), `5b096ebd` (T2), `b98ee2ba` (
 
 Six rounds, 37 findings total (10+6+2+5+8+6), every one fixed and independently verified by the orchestrator from a cold state — sabotage-proofed regression tests, live re-drives on fixtures never reused across rounds, doc spot-checks, clean teardowns. Two BLOCKING findings across the campaign (R1-F1: inert pane-child reaping; R5-F3: duplicate-pane-cell destruction), both closed and re-verified multiple times since. Full round-by-round detail above; round reports at `_mill/reed-review-r{1..6}.md` / `-r{1..6}-fixer-report.md`, all committed.
 
-**Operator has not yet been asked to confirm the final "declare reed done" decision or to start the shuttle campaign — that is the next action, not yet taken.**
+**Operator confirmed reed done (2026-08-18): "Er vi ikke ferdige nå?" in response to the convergence report — REED CAMPAIGN OFFICIALLY CLOSED.**
 
 ## Next action
-1. Report R6's closure and the campaign's convergence to the operator; get explicit confirmation to declare reed done (this HANDOFF section states the orchestrator's and both rounds' independent judgment, but the standing rule all along has been: the operator decides convergence, not the orchestrator unilaterally).
-2. Once confirmed: start the separate shuttle campaign (`internal/shuttleengine` + `internal/shuttlecli`) — its own prompt file (`_mill/shuttle-review-prompt.md`, does not exist yet), its own round numbering starting at R1, and ask the operator for shuttle's round rotation (model/effort per round) since reed's rotation was operator-specified per-campaign, not a template to reuse blindly.
-3. Carry forward for shuttle: the mandatory `--model haiku` (or cheapest available) rule for every real `claude` process a round agent spawns while live-driving shuttle (`lyx shuttle run` invocations) — this is an operator-mandated cost rule stated at the top of this file, unconditional on the round.
+1. ~~Report R6's closure and get explicit confirmation~~ — DONE, operator confirmed.
+2. Start the separate shuttle campaign (`internal/shuttleengine` + `internal/shuttlecli`) — its own prompt file (`_mill/shuttle-review-prompt.md`, does not exist yet), its own round numbering starting at R1. **Ask the operator for shuttle's round rotation (model/effort per round)** before seeding R1 — reed's rotation was operator-specified per-campaign, not a template to reuse blindly.
+3. Carry forward for shuttle: the mandatory `--model haiku` (or cheapest available) rule for every real `claude` process a round agent spawns while live-driving shuttle (`lyx shuttle run` invocations) — operator-mandated cost rule stated at the top of this file, unconditional on the round.
 4. Continue maintaining this HANDOFF file as shuttle's campaign state once it starts — same discipline as reed's six rounds.
