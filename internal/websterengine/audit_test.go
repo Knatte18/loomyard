@@ -76,6 +76,35 @@ func TestRefScannerMatches(t *testing.T) {
 	}
 }
 
+// Compile-time assertions that both suppliers satisfy RefMatcher: a later signature drift on either
+// side fails at compile time rather than at the first standalone run.
+var (
+	_ RefMatcher = NeverMatches{}
+	_ RefMatcher = (*fabricengine.RefScanner)(nil)
+)
+
+// TestNeverMatches_AlwaysFalse pins NeverMatches's whole contract: it never matches, not even for a
+// command spelling a real *fabricengine.RefScanner would match.
+func TestNeverMatches_AlwaysFalse(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+	}{
+		{"a real RefScanner would match this fabric command", "lyx fabric sync"},
+		{"empty string", ""},
+		{"ordinary non-fabric command", "git status"},
+	}
+
+	var m NeverMatches
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := m.Matches(tt.cmd); got != false {
+				t.Errorf("NeverMatches{}.Matches(%q) = %v; want false", tt.cmd, got)
+			}
+		})
+	}
+}
+
 // cleanForkReport returns a ForkReport that violates none of CheckFork's
 // rules — tests mutate a copy to trigger exactly one violation at a time.
 func cleanForkReport(path string) shuttleengine.ForkReport {
