@@ -3,8 +3,9 @@
 Clean-room round-4 review of `internal/reedengine` + `internal/reedcli` + `internal/hubgeom`, per `_mill/reed-review-prompt.md`.
 Findings below were formed before any prior-round material was opened (one accidental exposure is disclosed in "Clean-room hygiene" at the end).
 
-**Result: 2 MEDIUM, 1 LOW, 1 NIT — all CONFIRMED, none BLOCKING.**
-Both MEDIUMs are live-reproduced defects reachable from ordinary operator actions, neither of them a wave-1 regression.
+**Result: 2 MEDIUM, 2 LOW, 1 NIT — all CONFIRMED, none BLOCKING.**
+Both MEDIUMs are live-reproduced defects reachable from ordinary operator actions, and none of the five is a wave-1 regression.
+R4-F5 surfaced during Job 2's own verification of R4-F4's fix and could not have arrived during Job 1; its provenance is stated plainly in its own section, per the sequencing rule's round-2 precedent.
 Convergence recommendation is at the bottom.
 
 ## What was tested
@@ -127,19 +128,39 @@ The same state is reachable from a second direction: `ensureHeaderPaneLocked` sp
 
 **Suggested fix.** Make the header split resilient rather than special-casing the state that produced it: if the `-b` split against the topmost target fails, issue `select-layout -t <session>: even-vertical` (already in `requiredSubcommands`, so no capability-contract change), re-enumerate, recompute the topmost target, and retry the split exactly once. P5 verifies this recovers the wedged shape and still lands the new pane at `pane_top=0`; the op's normal `reconcileApplyPersistLocked` tail then restores reed's real layout and reaps the untracked band. If the retry also fails, surface the original error unchanged.
 
+### R4-F5 — `add` adopts one of several untracked panes and silently swallows the strand's command — LOW, CONFIRMED
+
+`internal/reedengine/spawn.go:22-74` (`planPaneTarget`'s adopt branch).
+
+**Provenance, stated plainly:** this did not arrive during Job 1. It surfaced during Job 2, while live-verifying R4-F4's fix on the very state that fix makes reachable — the same class of exception round 2 recorded, and recorded here rather than buried in the fixer report.
+
+`planPaneTarget` adopts the first alive non-header pane whenever no strand holds a binding. The branch exists for one case: the pane `new-session` leaves behind on a fresh boot. But it fires whenever `st.Strands` holds no binding at all, which after total state loss is true with *several* untracked panes present — and then it is a guess about which of them is an idle shell.
+
+**Failure scenario.** Continuing L10 with R4-F4's fix in place: `up` recovers, then `lyx reed add --cmd 'sleep 6666'` adopts the previous header pane, which is still running `lyx reed header --blocking`. `send-keys -l` into a busy pane exits 0 and types the text onto its screen, where it never executes. Verified live: `capture-pane` shows `sleep 6666` sitting on the blocked header pane's screen, `lyx reed status` reports `"live":true`, and `pgrep -a -x sleep` shows no such process anywhere on the box. Reed reports a running strand that is not running.
+
+**Severity.** LOW. It is pre-existing designed behaviour rather than anything R4-F4 introduced (the same adoption rule already reaches an operator-split foreign pane), and it needs total state loss to bite — but its symptom is the worst kind, a false `live:true`.
+
+**Suggested fix.** Narrow adoption to the sole-alive-non-header-pane case it was written for. With more than one candidate there is no signal distinguishing idle from busy, and splitting a fresh pane is unconditionally correct: the new pane's shell is idle by construction, and the leftover untracked panes are reaped by the reconcile tail as soon as a strand is bound.
+
+## Correction to the prompt's teardown probe (worth carrying forward)
+
+The round-4 prompt prescribes `pgrep -x tmux` or `ps -eo comm | grep -x tmux` in preference to `ps aux | grep tmux`.
+Measured on this host: a running tmux server's `comm` is **`tmux: server`**, not `tmux`, so **both prescribed probes report zero while a server is very much alive** — a false negative in the opposite direction from the `ps aux` false positive they were chosen to avoid. I hit it mid-round and re-verified every teardown claim.
+The probes that actually decide it: `ps -eo comm | grep -x 'tmux: server'`, `pgrep -a -f 'tmux .*-L lyx-'` (still argv-self-match-prone, so read the matches), or authoritatively `tmux -L <socket> ls` reporting `no server running`.
+All teardown claims in this report use those.
+
 ## Scope assessment (plan-promised vs shipped)
 
 Reed's scope post-wave-1 is right, and the told-geometry refactor dropped no observable behaviour.
 `Geometry`'s seven fields were each exercised live this round: `SocketKey` (L1/L5 — one shared server per hub), `SessionName` (L6 — exact targeting, no prefix bleed), `AnchorPath` (L1/L4 — state dir and all three spawn sites' pane cwd, read back off `pane_current_path`), `WorktreeRoot` (strand `Worktree` stamp), `LogsDir` (L1 — created on a genuinely fresh hub's first boot, closing the `HubLogsDir` ownership move), `RepoName`/`HubPath` (L11 — the live header pane's rendered tokens).
 `hubgeom.ReedGeometry` remains the only production populator, builds all seven from one already-resolved `*lyxcwd.Location`, and holds the Cwd Resolution Invariant: it resolves nothing itself. Nothing deferred-that-should-be-v1; nothing shipped beyond scope.
 
-Attribution: none of R4-F1..F4 traces to a wave-1 commit. All four are pre-existing (`ServerName`, `validateToldTmuxIdentity`'s ancestry, and `ensureHeaderPaneLocked` all predate `b98ee2ba`'s seam swap).
+Attribution: none of R4-F1..F5 traces to a wave-1 commit. All five are pre-existing (`ServerName`, `validateToldTmuxIdentity`'s ancestry, `ensureHeaderPaneLocked`, and `planPaneTarget` all predate `b98ee2ba`'s seam swap).
 
 ## Convergence recommendation
 
-**One more round is not needed for these findings, but this round did not come out clean.**
-Round 3 found 1 MEDIUM + 1 NIT; round 4 found 2 MEDIUM + 1 LOW + 1 NIT, and R4-F4 is a *new bug class* rather than another instance of an already-fixed one — the first such in two rounds. That is evidence the return on a further round is not yet zero.
-My recommendation is stated fully in the fixer report after the fixes land, so it can account for what fixing them actually surfaced.
+Stated in full in `_mill/reed-review-r4-fixer-report.md`, after the fixes landed, so it accounts for what fixing them actually surfaced (R4-F5 in particular).
+The short form: round 3 found 1 MEDIUM + 1 NIT; round 4 found 2 MEDIUM + 2 LOW + 1 NIT, and R4-F4/R4-F5 are a *new bug class* rather than further instances of an already-fixed one — the first such in two rounds.
 
 ## Clean-room hygiene — one accidental exposure, disclosed
 
