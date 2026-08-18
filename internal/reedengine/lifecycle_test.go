@@ -8,6 +8,8 @@
 package reedengine
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,5 +294,93 @@ func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
 	}
 	if st.HeaderPaneID != "" {
 		t.Errorf("HeaderPaneID = %q, want unchanged (never bound to the pre-existing strand pane on a rejected rebuild)", st.HeaderPaneID)
+	}
+}
+
+// TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit is the regression guard for the
+// R4 review's R4-F4: an untracked one-row header band at the physical top of the window made every
+// header rebuild impossible, wedging up and resume permanently with "no space for new pane" while
+// status kept reporting the session healthy.
+//
+// Reproduced live before the fix: with a session up and the default one-row header band laid out,
+// removing .lyx/reed.json — a never-tracked machine-local tree, exactly what `git clean -xdf` in the
+// worktree deletes — left `lyx reed up` and `lyx reed resume` failing identically on every
+// subsequent invocation, with `lyx reed down` the only (unnamed) escape.
+//
+// The scripted substrate below is the shape that produced it: a one-row pane at pane_top 0 that
+// tmux refuses to split, and a tall pane below it. The assertions are that the even-vertical re-tile
+// is actually issued and that the retried split's pane becomes the header — a fix that only improved
+// the error message fails both.
+func TestEnsureHeaderPaneLocked_RecoversWhenTheTopPaneIsTooSmallToSplit(t *testing.T) {
+	e := newTestEngine(t)
+
+	const oneRowTopPaneID = "%1"
+	const tallPaneID = "%0"
+	const rebuiltHeaderPaneID = "%7"
+	// pane_id pane_dead pane_top pane_width pane_height pane_pid
+	wedged := oneRowTopPaneID + " 0 0 100 1 4321\n" + tallPaneID + " 0 2 100 48 4322\n"
+	retiled := oneRowTopPaneID + " 0 0 100 25 4321\n" + tallPaneID + " 0 26 100 24 4322\n"
+
+	reTiled := false
+	splitAttempts := 0
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			if reTiled {
+				return retiled, nil
+			}
+			return wedged, nil
+		case "select-layout":
+			if len(args) < 2 || args[len(args)-1] != "even-vertical" {
+				return "", fmt.Errorf("unexpected select-layout args %v; want the built-in even-vertical layout", args)
+			}
+			reTiled = true
+			return "", nil
+		case "split-window":
+			splitAttempts++
+			if !reTiled {
+				// tmux's real refusal against a one-row pane: exit 1, no pane.
+				return "", errors.New("exit status 1: no space for new pane")
+			}
+			return rebuiltHeaderPaneID + "\n", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
+	if err := e.ensureHeaderPaneLocked(st); err != nil {
+		t.Fatalf("ensureHeaderPaneLocked() = %v; want nil (the header rebuild must recover from a one-row top pane, not wedge the worktree)", err)
+	}
+	if !reTiled {
+		t.Errorf("ensureHeaderPaneLocked never issued the even-vertical re-tile; without it the retried split has no room either")
+	}
+	if splitAttempts != 2 {
+		t.Errorf("split-window attempts = %d; want exactly 2 (one refused, one retried behind the re-tile)", splitAttempts)
+	}
+	if st.HeaderPaneID != rebuiltHeaderPaneID {
+		t.Errorf("HeaderPaneID = %q; want %q (the pane the retried split created)", st.HeaderPaneID, rebuiltHeaderPaneID)
+	}
+}
+
+// TestTopmostPaneID asserts the header split target is chosen by pane_top rather than by list-panes
+// order, which tmux does not guarantee is top-to-bottom.
+func TestTopmostPaneID(t *testing.T) {
+	tests := []struct {
+		name string
+		live []LivePane
+		want string
+	}{
+		{"sole pane", []LivePane{{ID: "%0", Top: 0}}, "%0"},
+		{"already first", []LivePane{{ID: "%1", Top: 0}, {ID: "%0", Top: 2}}, "%1"},
+		{"not first in list order", []LivePane{{ID: "%0", Top: 26}, {ID: "%1", Top: 0}}, "%1"},
+		{"three panes, middle listed first", []LivePane{{ID: "%2", Top: 10}, {ID: "%0", Top: 30}, {ID: "%1", Top: 0}}, "%1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := topmostPaneID(tt.live); got != tt.want {
+				t.Errorf("topmostPaneID(%v) = %q; want %q", tt.live, got, tt.want)
+			}
+		})
 	}
 }

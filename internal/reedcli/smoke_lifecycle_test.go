@@ -454,6 +454,73 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	}
 }
 
+// TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp is the end-to-end regression guard for
+// the R4 review's R4-F4, driven at the CLI seam a real operator uses.
+//
+// Reproduced live before the fix: with the session up, a strand added and the default one-row header
+// band laid out, deleting .lyx/reed.json — a never-tracked machine-local tree the
+// Durable-vs-Ephemeral State Invariant makes disposable, and exactly what `git clean -xdf` in the
+// worktree removes — permanently wedged the worktree. `lyx reed up` and `lyx reed resume` both
+// failed, on every subsequent invocation, with
+// `split header pane: exit status 1: no space for new pane`, because the physically topmost pane was
+// now an UNTRACKED one-row header band that tmux cannot split, while `lyx reed status` kept
+// reporting the session healthy and nothing named the one escape (`down`, then `up`).
+//
+// The load-bearing assertions are that the recovering `up` exits 0 AND that the rebuilt header pane
+// really is at pane_top 0 — a fix that recovered by splitting somewhere else would let the next
+// select-layout assign the header's one-row cell to a strand positionally.
+func TestSmokeUpSurvivesAScrubbedStateFileWhileTheSessionIsUp(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
+
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+	// A strand, so applyLayoutLocked actually applies reed's layout and the
+	// header band is squeezed down to its configured one row — the whole
+	// precondition for the wedge.
+	addStrand(t, "pwsh -NoExit -Command Write-Host ready", "--name", "before-scrub")
+	socket, session := socketAndSession(t)
+
+	stateDir := filepath.Join(h.PrimeWorktree(), ".lyx")
+	statePath := filepath.Join(stateDir, "reed.json")
+	if err := os.Remove(statePath); err != nil {
+		t.Fatalf("remove %s: %v", statePath, err)
+	}
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up after the state file was scrubbed = %d; want 0 — a lost reed.json must not wedge the worktree, output: %s", code, out.String())
+	}
+
+	st, err := reedengine.LoadState(stateDir)
+	if err != nil || st == nil || st.HeaderPaneID == "" {
+		t.Fatalf("LoadState after the recovering up = (%+v, %v); want a freshly persisted HeaderPaneID", st, err)
+	}
+	headerTop := ""
+	for _, line := range listPaneLines(t, tmuxPath, socket, session) {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[0] == st.HeaderPaneID {
+			headerTop = fields[2]
+		}
+	}
+	if headerTop != "0" {
+		t.Errorf("rebuilt header pane %s has pane_top %q; want %q — the header must land physically topmost or select-layout misassigns its cell", st.HeaderPaneID, headerTop, "0")
+	}
+
+	// The session must be genuinely usable again, not merely non-erroring.
+	addStrand(t, "pwsh -NoExit -Command Write-Host recovered", "--name", "after-scrub")
+}
+
 // TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite is the end-to-end regression guard for the R2
 // review's BLOCKING finding and the R4 review's R4-F1, driven at the CLI seam a real operator uses.
 //
@@ -517,8 +584,18 @@ func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
 			if code == 0 {
 				t.Fatalf("up in worktree %q = 0; want a non-zero refusal, output: %s", tt.worktreeName, out.String())
 			}
-			if !strings.Contains(out.String(), tt.worktreeName) {
-				t.Errorf("up refusal = %s; want it to name the offending worktree/session %q so the operator can act on it", out.String(), tt.worktreeName)
+			// Decode the envelope rather than substring-matching the raw JSON:
+			// the backslash row's own offending byte is JSON-escaped on the
+			// wire, so a raw match would fail on a refusal that is in fact
+			// perfectly worded.
+			var envelope struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode up refusal envelope %s: %v", out.String(), err)
+			}
+			if !strings.Contains(envelope.Error, tt.worktreeName) {
+				t.Errorf("up refusal = %q; want it to name the offending worktree/session %q so the operator can act on it", envelope.Error, tt.worktreeName)
 			}
 
 			// The stray. Read the socket's whole session list rather than probing

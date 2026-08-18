@@ -412,6 +412,10 @@ func stripTraceID(env []string) []string {
 // ensureHeaderPaneLocked ensures the header pane exists and is alive.
 // (Re)creates it when missing, dead, or gone. The header is separate from
 // strands and must land physically topmost so layout heights stay correct.
+// The (re)creation itself is splitHeaderPaneAtTopLocked's job, including the
+// even-vertical retry that keeps a stale or lost HeaderPaneID from wedging the
+// worktree — see that function for why a split against the top pane can fail
+// at all.
 func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	session := e.SessionName()
 	live, err := e.tmux.listPanes(session)
@@ -458,49 +462,13 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		}
 	}
 
-	// The topmost pane, so the -b split lands the new header physically
-	// topmost (see the doc comment). When the sole pane is the corpse this
-	// resolves to the corpse itself, by design.
-	target := live[0].ID
-	targetTop := live[0].Top
-	for _, p := range live[1:] {
-		if p.Top < targetTop {
-			target = p.ID
-			targetTop = p.Top
-		}
-	}
-
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve lyx binary path: %w", err)
 	}
 
-	// -b places the NEW pane above target rather than below it (tmux's
-	// default split direction is vertical, new pane below): render.Rules
-	// always emits the header cell FIRST, assuming a fixed top band, and
-	// psmux/tmux apply layout cells POSITIONALLY to the window's actual
-	// top-to-bottom pane order — so the header pane must physically stay
-	// topmost, or the very first select-layout would invert the header and
-	// the first strand's heights (verified live: without -b, a stacked-adds
-	// smoke scenario failed a later split with "no space for new pane"
-	// because the 1-row header cell landed on the STRAND's physically-top
-	// pane instead). Every subsequent strand split (spawn.go) always
-	// targets a non-header pane and inserts below it, so this is the only
-	// split in the whole engine that needs -b.
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.AnchorPath, "-P", "-F", "#{pane_id}")
+	paneID, err := e.splitHeaderPaneAtTopLocked(session, live)
 	if err != nil {
-		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
-		return fmt.Errorf("split header pane: %w", err)
-	}
-	paneID := strings.TrimSpace(out)
-	// Same genuinely-new-pane guard launchStrandLocked runs: psmux's silent
-	// too-small-to-split failure prints an EXISTING pane's id with exit 0,
-	// and recording that id as the header would bind the header to a strand's
-	// pane — the next layout string would then carry a duplicate pane number,
-	// destroying the session's panes wholesale (see
-	// validateSplitCreatedNewPane).
-	if err := validateSplitCreatedNewPane(paneID, live, target); err != nil {
-		logger.Warn("reed: header split created no new pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)
 	}
 
@@ -542,6 +510,100 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		return fmt.Errorf("persist header pane id: %w", err)
 	}
 	return nil
+}
+
+// topmostPaneID returns the id of the pane sitting physically highest in the window — the smallest
+// pane_top — which is the only place a header pane may be split in.
+// live must be non-empty.
+func topmostPaneID(live []LivePane) string {
+	topmost := live[0]
+	for _, p := range live[1:] {
+		if p.Top < topmost.Top {
+			topmost = p
+		}
+	}
+	return topmost.ID
+}
+
+// splitHeaderPaneAtTopLocked splits a new pane in above the physically topmost pane of session and
+// returns its id, retrying once behind an even-vertical re-tile when the first attempt has no room.
+//
+// The retry is what keeps a lost or stale ReedState.HeaderPaneID from wedging a worktree
+// permanently (R4 review finding R4-F4). The header band is one row by default
+// (HeaderConfig.HeightRows), and tmux cannot split a one-row pane at all — so the moment
+// HeaderPaneID stops naming the pane at the top, the topmost split target IS an untracked one-row
+// band and every later up/resume fails with "no space for new pane", forever, while status keeps
+// reporting the session healthy and the only escape ("lyx reed down", then up) is named nowhere.
+// Two ordinary routes reach that state: scrubbing .lyx/reed.json, a never-tracked machine-local
+// tree the Durable-vs-Ephemeral State Invariant makes disposable (a plain `git clean -xdf` in the
+// worktree does it), and a process death in the window between the split above and the SaveState
+// that records its id.
+//
+// select-layout even-vertical evens every pane's height using tmux's own built-in layout — no reed
+// layout string is computed or applied here, so anyPlacedStrand's empty-layout hazard (apply.go) is
+// not in play — after which the same split has room and STILL lands the new pane at pane_top 0
+// (verified live, tmux 3.6). The op's normal reconcileApplyPersistLocked tail then restores reed's
+// real geometry and reaps the untracked band; an op that fails before reaching that tail leaves the
+// window evenly tiled, a cosmetic state the next successful op corrects.
+// Both subcommands are already in requiredSubcommands, so the multiplexer capability contract is
+// unchanged.
+//
+// On a failed retry the FIRST error is returned, not the retry's: it describes the state the
+// operator actually has, and the re-tile is an internal repair attempt rather than something they
+// asked for.
+func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane) (string, error) {
+	paneID, firstErr := e.splitPaneAboveLocked(topmostPaneID(live), live)
+	if firstErr == nil {
+		return paneID, nil
+	}
+	logger.Warn("reed: failed to split header pane, retrying behind an even-vertical re-tile", "socket", e.Socket(), "session", session, "err", firstErr)
+
+	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), "even-vertical"); err != nil {
+		logger.Warn("reed: even-vertical re-tile failed, header split not retried", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	retiled, err := e.tmux.listPanes(session)
+	if err != nil || len(retiled) == 0 {
+		logger.Warn("reed: could not re-enumerate panes after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	paneID, err = e.splitPaneAboveLocked(topmostPaneID(retiled), retiled)
+	if err != nil {
+		logger.Warn("reed: header split still had no room after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	logger.Info("reed: header split recovered by an even-vertical re-tile", "socket", e.Socket(), "session", session, "pane", paneID)
+	return paneID, nil
+}
+
+// splitPaneAboveLocked splits a new pane in directly above target and returns its id, refusing an
+// id that was already present in preSplitLive.
+//
+// -b places the NEW pane above target rather than below it (tmux's default split direction is
+// vertical, new pane below): render.Rules always emits the header cell FIRST, assuming a fixed top
+// band, and psmux/tmux apply layout cells POSITIONALLY to the window's actual top-to-bottom pane
+// order — so the header pane must physically stay topmost, or the very first select-layout would
+// invert the header and the first strand's heights (verified live: without -b, a stacked-adds smoke
+// scenario failed a later split with "no space for new pane" because the 1-row header cell landed
+// on the STRAND's physically-top pane instead). Every strand split (spawn.go) always targets a
+// non-header pane and inserts below it, so the header is the only split in the whole engine that
+// needs -b.
+//
+// The genuinely-new-pane guard is the same one launchStrandLocked runs: psmux's silent
+// too-small-to-split failure prints an EXISTING pane's id with exit 0, and recording that id as the
+// header would bind the header to a strand's pane — the next layout string would then carry a
+// duplicate pane number, destroying the session's panes wholesale (see
+// validateSplitCreatedNewPane).
+func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane) (string, error) {
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.AnchorPath, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return "", err
+	}
+	paneID := strings.TrimSpace(out)
+	if err := validateSplitCreatedNewPane(paneID, preSplitLive, target); err != nil {
+		return "", err
+	}
+	return paneID, nil
 }
 
 // Up ensures the server and session exist.
