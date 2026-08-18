@@ -858,6 +858,88 @@ func TestRenderMasterPrompt_MissingPatternStencilErrors(t *testing.T) {
 	}
 }
 
+// TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot pins the told-root split for
+// RenderForkPrompt: a hub-shaped fixture where anchorRoot and promptWorktreeRoot coincide cannot
+// distinguish "fills {{.worktree_root}} from promptWorktreeRoot" from "fills it from anchorRoot",
+// since the two values are byte-identical there.
+// The second case forces them apart: only promptWorktreeRoot must appear, and the (never-passed)
+// anchorRoot value must not leak in anyway.
+func TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
+	card := cardWithSourcePath(1, "alpha", "add the flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+
+	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
+		anchorRoot, stencilsDir := testLayout(t)
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, stencilsDir, 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), anchorRoot)
+	})
+
+	t.Run("anchor root and prompt worktree root differ", func(t *testing.T) {
+		_, stencilsDir := testLayout(t)
+		const anchorRoot = "/hub/master-builder"
+		const promptWorktreeRoot = "/standalone/state/worktree"
+
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-alpha.yaml", promptWorktreeRoot, stencilsDir, 2)
+		if err != nil {
+			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
+		}
+		text := string(got)
+		requireContains(t, text, promptWorktreeRoot)
+		requireNotContains(t, text, anchorRoot)
+	})
+}
+
+// TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot is
+// TestRenderForkPrompt_WorktreeRootIsThePromptWorktreeRoot's RenderRecoveryPrompt mirror: same
+// hub-fixture blind spot, same two-case pin, over a renderer that also takes anchorRoot (for
+// pattern.Directive's own probe) — proving {{.worktree_root}} still comes from promptWorktreeRoot,
+// never anchorRoot, even though anchorRoot is a real parameter here.
+func TestRenderRecoveryPrompt_WorktreeRootIsThePromptWorktreeRoot(t *testing.T) {
+	card := cardWithSourcePath(1, "alpha", "add the flag")
+	batch := batcher.Batch{Cards: []planparser.Card{card}}
+
+	t.Run("anchor root equals prompt worktree root", func(t *testing.T) {
+		anchorRoot, stencilsDir := testLayout(t)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, anchorRoot, stencilsDir, 2)
+		if err != nil {
+			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
+		}
+		requireContains(t, string(got), anchorRoot)
+	})
+
+	t.Run("anchor root and prompt worktree root differ", func(t *testing.T) {
+		anchorRoot, stencilsDir := testLayout(t)
+		const promptWorktreeRoot = "/standalone/state/worktree"
+
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, promptWorktreeRoot, stencilsDir, 2)
+		if err != nil {
+			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
+		}
+		text := string(got)
+		requireContains(t, text, promptWorktreeRoot)
+		requireNotContains(t, text, anchorRoot)
+	})
+}
+
+// TestRenderMasterPrompt_NeverFillsWorktreeRoot asserts RenderMasterPrompt's rendered output carries
+// no worktree_root value at all: unlike RenderForkPrompt and RenderRecoveryPrompt, this renderer
+// fills no {{.worktree_root}} key, and webster-template-master must never gain the token.
+func TestRenderMasterPrompt_NeverFillsWorktreeRoot(t *testing.T) {
+	anchorRoot, stencilsDir := testLayout(t)
+	plan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "seam-extensions"}}}
+
+	got, err := websterengine.RenderMasterPrompt(plan, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir)
+	if err != nil {
+		t.Fatalf("RenderMasterPrompt() = _, %v; want nil error", err)
+	}
+	text := string(got)
+	requireNotContains(t, text, "worktree_root")
+	requireNotContains(t, text, anchorRoot)
+}
+
 // TestRenderIntegrationPrompt_InjectsVerifyText asserts RenderIntegrationPrompt injects the plan's
 // own plan-level "## verify:" text (plan.Verify) into the rendered integration-suite fork prompt
 // verbatim,

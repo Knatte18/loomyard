@@ -1004,3 +1004,97 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 		t.Error("pause flag cleared on a paused outcome; want it left intact as the operator's own record")
 	}
 }
+
+// TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure pins the nil-bisector bypass: a
+// hub-shaped fixture always supplies a non-nil OpenBisector, so this is the one case a hub-only
+// fixture cannot exercise at all.
+// Two batches, each contributing its own CardSHA, accumulate at least two card SHAs — the minimum
+// that matters, since zero or one SHA both take bisect's own early-return shapes and would pass even
+// under a broken implementation that pushed the nil check down into bisect/BisectAndEscalate instead
+// of bypassing them at the call site; two or more is what would reach the branch call that
+// nil-pointer panics on a nil bisector if the bypass were ever removed.
+// Asserts the call does not panic, state.json and summary.md both carry the failure under
+// "unknown"/"unknown" for the offending SHA and card, and RunResult.Warnings carries the
+// standalone-mode explanation.
+func TestRun_NilOpenBisectorRecordsUnlocalizedIntegrationFailure(t *testing.T) {
+	fx := newRunFixture(t, 2)
+	appendIntegrationVerify(t, fx.PlanDir, "true")
+	fx.Deps.OpenBisector = nil
+
+	sha1 := commitFile(t, fx.Worktree, "card1.txt", "one", "card1")
+	sha2 := commitFile(t, fx.Worktree, "card2.txt", "two", "card2")
+
+	seedMatchingState(t, fx, &websterengine.State{
+		Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "batch1", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha1}},
+			2: {Slug: "batch2", Kind: "fork", Terminal: true, Status: "done", CardSHAs: []string{sha2}},
+		},
+	})
+
+	handle := &runFakeHandle{
+		strandGUID: "master-strand-nilbisector",
+		result: shuttleengine.Result{
+			Outcome:   shuttleengine.OutcomeDone,
+			SessionID: "master-session-nilbisector",
+			RunDir:    "/run/dir/nilbisector",
+			ForkAudit: &shuttleengine.ForkAudit{
+				Forks: []shuttleengine.ForkReport{
+					{TranscriptPath: "/transcripts/fork1.jsonl", ReportReturned: true},
+					{TranscriptPath: "/transcripts/fork2.jsonl", ReportReturned: true},
+				},
+			},
+		},
+		onWait: func() {
+			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
+			if err := os.WriteFile(reportPath, []byte("status: FAILED\nhead_sha: "+sha2+"\ndeviations: []\n"), 0o644); err != nil {
+				t.Fatalf("write integration report: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration suite failed\"\nbatches_done: 2\n"), 0o644); err != nil {
+				t.Fatalf("write outcome.yaml: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nBoth batches landed; integration failed.\n"), 0o644); err != nil {
+				t.Fatalf("write summary.md: %v", err)
+			}
+		},
+	}
+	fx.Starter.handle = handle
+	seedShuttleRunState(t, fx.ShuttleRunRoot, "master-strand-nilbisector", "master-session-nilbisector")
+
+	result, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil (a FAILED integration report under a nil OpenBisector is escalated as unlocalized, not a Run() error)", err)
+	}
+
+	st, loadErr := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
+	if loadErr != nil {
+		t.Fatalf("LoadState() error = %v", loadErr)
+	}
+	escalated, ok := st.Batches[-1]
+	if !ok || escalated == nil {
+		t.Fatalf("state.json carries no integration escalation record; want one at the reserved key")
+	}
+	if escalated.Slug != "unknown" {
+		t.Errorf("escalated record Slug = %q; want %q (no fabric repo to localize with)", escalated.Slug, "unknown")
+	}
+	if escalated.Digest == nil || escalated.Digest.HeadSHA != "unknown" {
+		t.Errorf("escalated record digest = %+v; want head_sha %q", escalated.Digest, "unknown")
+	}
+
+	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
+	if err != nil {
+		t.Fatalf("read summary.md: %v", err)
+	}
+	if !strings.Contains(string(summaryData), "unknown") {
+		t.Errorf("summary.md does not name the unlocalized \"unknown\" card; got:\n%s", summaryData)
+	}
+
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "no fabric repo to bisect against") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("RunResult.Warnings = %v; want one explaining the unlocalized failure (no fabric repo to bisect against)", result.Warnings)
+	}
+}
