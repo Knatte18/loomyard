@@ -90,33 +90,46 @@ func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 
 func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 	tests := []struct {
-		name        string
-		strandCount int
-		want        string
+		name          string
+		strandCount   int
+		stateReadable bool
+		want          string
 	}{
 		{
 			// Zero strands persisted (or no reed.json at all): nothing for
 			// resume to rebuild, so today's bare "up" pointer is unchanged.
-			name:        "ZeroStrands_BareUpPointer",
-			strandCount: 0,
-			want:        `no reed session; run "lyx reed up"`,
+			name:          "ZeroStrands_BareUpPointer",
+			strandCount:   0,
+			stateReadable: true,
+			want:          `no reed session; run "lyx reed up"`,
 		},
 		{
-			name:        "OneStrand_ResumePointer",
-			strandCount: 1,
-			want:        `no reed session (1 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`,
+			name:          "OneStrand_ResumePointer",
+			strandCount:   1,
+			stateReadable: true,
+			want:          `no reed session (1 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`,
 		},
 		{
-			name:        "ThreeStrands_ResumePointer",
-			strandCount: 3,
-			want:        `no reed session (3 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`,
+			name:          "ThreeStrands_ResumePointer",
+			strandCount:   3,
+			stateReadable: true,
+			want:          `no reed session (3 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a bare substrate`,
+		},
+		{
+			// R5 review finding R5-F8: an unreadable reed.json yields a strand count of zero, and
+			// reporting that as "nothing is persisted" sends the operator to an `up` that then
+			// fails with the corrupt-file error. Say reed could not read it instead.
+			name:          "UnreadableState_SaysSoInsteadOfClaimingZeroStrands",
+			strandCount:   0,
+			stateReadable: false,
+			want:          `no reed session, and reed's persisted state could not be read; run "lyx reed down" to clear it, or "lyx reed up" for the full diagnosis`,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := noSessionMessage(tt.strandCount); got != tt.want {
-				t.Errorf("noSessionMessage(%d) = %q, want %q", tt.strandCount, got, tt.want)
+			if got := noSessionMessage(tt.strandCount, tt.stateReadable); got != tt.want {
+				t.Errorf("noSessionMessage(%d, %v) = %q, want %q", tt.strandCount, tt.stateReadable, got, tt.want)
 			}
 		})
 	}

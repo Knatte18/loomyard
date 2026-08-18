@@ -1033,7 +1033,18 @@ func waitProcessExit(pid int, timeout time.Duration) error {
 
 // noSessionMessage builds operator-facing text for an absent session,
 // pointing at resume (if strands exist) or up (if empty).
-func noSessionMessage(strandCount int) string {
+//
+// stateReadable distinguishes "reed read the state and it holds no strands" from "reed could not
+// read the state at all", which strandCount alone cannot express: an unreadable file yields a count
+// of zero and would otherwise be reported as an empty worktree, sending the operator to `up` — which
+// then fails with the corrupt-file error (see unreadableStateError). Claiming nothing is persisted
+// when reed simply cannot tell is the one wrong thing this message can say (R5 review finding
+// R5-F8), so an unreadable file gets its own branch and points at the same two remedies the load
+// error names, rather than inventing a third.
+func noSessionMessage(strandCount int, stateReadable bool) string {
+	if !stateReadable {
+		return `no reed session, and reed's persisted state could not be read; run "lyx reed down" to clear it, or "lyx reed up" for the full diagnosis`
+	}
 	if strandCount <= 0 {
 		return `no reed session; run "lyx reed up"`
 	}
@@ -1056,10 +1067,13 @@ func (e *Engine) requireSessionLocked() error {
 	// never part of Strands, so this count is already correct by
 	// construction.
 	strandCount := 0
-	if st, err := LoadState(e.stateDir()); err == nil && st != nil {
+	st, loadErr := LoadState(e.stateDir())
+	if st != nil {
 		strandCount = len(st.Strands)
 	}
-	return errors.New(noSessionMessage(strandCount))
+	// An ABSENT file is readable-and-empty, not unreadable: a brand-new worktree has no reed.json
+	// and must still get the plain "run lyx reed up" text.
+	return errors.New(noSessionMessage(strandCount, loadErr == nil))
 }
 
 // Status reports this session's tracked strands and their live/dead state by cross-referencing the
