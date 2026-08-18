@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-preflight-lift  '2026-08-18T07:00:55Z'
 approved-cli-gate-and-ldflags  '2026-08-18T07:07:34Z'
 approved-docs-and-invariants  '2026-08-18T07:10:20Z'
 holistic-reviewing  '2026-08-18T07:10:51Z'
+holistic-fixing  '2026-08-18T07:15:49Z'
 ```
 
 ## Batches
