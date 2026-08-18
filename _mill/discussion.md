@@ -74,7 +74,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   *Duplicate types in both packages with a conversion function in `loomengine`* — every check-ID constant would need a translation table, and the two `CheckID` string sets would drift silently the first time one side added a value.
   *`preflight` returns a bare `[]Failure` and `loomengine` keeps `Report`* — pushes the `OK == (len(Failures) == 0)` invariant and the `addFailure` bookkeeping into every consumer, which is exactly the duplication the lift exists to remove; `Hardener` would re-implement `Report` verbatim.
 
-### preflight-exposes-three-entry-points
+### preflight-exposes-four-entry-points
 
 - **Decision.** `internal/preflight` exports exactly four functions:
   - `Check(cwd string) (Report, *lyxcwd.Location, error)` — resolves geometry itself, runs tiers 1 and 2, and hands the resolved `Location` back so the caller never re-resolves.
@@ -118,6 +118,10 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   `Wired` is that check in the sense the design doc means it — the tier-2 *wiring* predicate, named in T8's own brief as "`fabricengine.Ready`-class, reached through the `internal/preflight` package T5 lifts" — not the full four-function tier-2 report.
   Both predicates living in `internal/preflight` is what satisfies the real constraint, which is that no `*cli` package imports `internal/fabricengine` to make the check.
   The brief's one sentence about the root gate assumed a single predicate served both purposes; it does not, and this discussion splits them rather than regressing the seed to make one name cover both.
+- **This deviation gets a durable home, same as the `StencilMode()` one.**
+  `_mill/discussion.md` is worktree-local and vanishes on merge, and this task's Scope forbids editing the design doc.
+  So `internal/preflight/doc.go` must state, in the code that ships: that `Wired` and `HubPresent` both exist, what each one asks, which of the two the stencil seed gates on, and why `Ready` alone is wrong for the seed.
+  Without that, the next reader of T5's brief sees "the identical tier-1-AND-tier-2 check", finds two predicates, and "fixes" the seed back onto `Wired` — reintroducing exactly the `_board` regression round 2 caught.
 - **Rejected.**
   *One predicate for both purposes.* Either choice is wrong for one of the two callers: `Ready` regresses the seed in `_board` and unpaired worktrees, and a hub-presence probe is too weak for T7/T8's mode selection, since a hub-level `_board/_lyx` can exist while *this* worktree is not wired — which is exactly the `(resolved, not wired)` plain-worktree row T8's brief calls out as selecting standalone.
   *Gate on `preflight.Check(cwd).OK`* — the `Clean`/`Healthy` problems above, on top of the `Ready` narrowing.
@@ -171,6 +175,11 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 
   `Derive` returns an error in exactly three cases, and no others: `target` is not absolute; `LOCALAPPDATA` is unset on Windows; `XDG_STATE_HOME` is unset *and* `os.UserHomeDir` fails elsewhere.
   `EvalSymlinks` failing is explicitly *not* an error — it is the documented `Clean`-only fallback for a target that does not exist on disk yet.
+
+  **`hash8` collisions are accepted, not handled.**
+  Eight hex characters is 32 bits, so two distinct targets can in principle derive the same `stateDir`, socket and session — the same failure the normalisation rules exist to prevent, arriving by a different route.
+  `Derive` does not detect this and has no collision return: the truncation width is inherited from the design doc's `hash8` definition, not chosen here, and re-litigating it is out of scope for T5.
+  The disposition is stated rather than left implicit so a later reader knows it was considered: a colliding pair shares one tmux server and one state directory, which is a wrong-but-not-corrupting outcome, and the fix if it ever matters is to widen `hash8` in this one package — every consumer takes the value from `Derive` rather than re-deriving it, so the widening is a one-line change with no call-site churn.
   Internally it is a thin wrapper over an unexported `derive(goos, localAppData, xdgStateHome, home, target string) (string, string, error)`, re-exported through `export_test.go`.
 
   **At the seam boundary, the empty string means "unset".**
@@ -186,7 +195,13 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   Calling it would make `internal/standalonestate` a cwd resolver, which the Cwd Resolution Invariant reserves to `internal/lyxcwd` alone, and would make the supposedly pure `derive(goos, env…, target)` seam depend on the host cwd of whatever test process ran it — silently host-dependent rather than injected.
   Rejecting a relative target keeps the package a pure function of its arguments and puts the one legitimate cwd consultation at the CLI boundary that owns it.
 - **Rationale on the injectable seam.** `runtime.GOOS` is a compile-time constant, so without a seam the Windows row of the `<state>` table is untestable on Linux and the POSIX row is untestable on Windows — meaning CI would only ever exercise one of the two branches this task ships.
-  Passing `goos` and the three environment values as parameters makes both rows testable everywhere, and `export_test.go` keeps the seam out of the public API.
+  Passing `goos` and the three environment values as parameters makes both rows' **branch selection and case-fold behaviour** testable everywhere, and `export_test.go` keeps the seam out of the public API.
+
+  **What the seam does *not* make host-independent: the path separator.**
+  `filepath.Join` and `filepath.Clean` take their separator from the compile-time host, not from the injected `goos`, so on Linux the `goos == "windows"` row yields `/localappdata/lyx/<hash8>`, not `%LOCALAPPDATA%\lyx\<hash8>`.
+  This is a property of `path/filepath`, not something the seam can or should fight.
+  The Windows-row assertion is therefore built with the same `filepath.Join(localAppData, "lyx", hash8)` the implementation uses — never a literal backslash string, which would pass only on Windows and fail everywhere else.
+  What the test pins is that the Windows branch consults `localAppData` (and the POSIX branch does not), plus the case fold; the separator is left to `filepath`.
   This is the same `export_test.go` idiom `internal/loomengine/export_test.go` already uses for `CheckResolvedForTest`.
 - **Rejected.**
   *`Derive` also doing `os.MkdirAll`* — a pure derivation is testable with no filesystem and no cleanup, and the consumer that actually writes there (T7/T8) is better placed to decide when the directory should exist.
@@ -299,7 +314,18 @@ From the design doc, binding this task:
 - Placement in `internal/preflight` is decided, not open — never a composite verb on `internal/fabricengine`.
 - `internal/buildinfo` and `internal/standalonestate` are stdlib-only leaves.
 - `loomengine.Preflight`'s observable behaviour must be unchanged.
-- T5 is parallel-safe with T4 and must not touch files T4 touches; it owns `cmd/lyx/stencilseed.go` and `tools/deploy/main.go` for this wave.
+- T5 is parallel-safe with T4. It owns `cmd/lyx/stencilseed.go` and `tools/deploy/main.go` for this wave, neither of which appears in T4's Files list.
+
+**Two files this task touches that the design doc's T5 file list does not name, both stated here so neither is a surprise at merge:**
+
+- **`CONSTRAINTS.md` is contended with T4** — it appears in T4's own Files list (`producers-standalone.md:337`), so both wave-2 tasks edit it.
+  The edits are disjoint *regions*: T4 rewords the existing `## Pattern Leaf Invariant` section to tighten its allowlist, T5 appends two brand-new sections (`## Buildinfo Leaf Invariant`, `## Standalonestate Leaf Invariant`).
+  Neither reads or rewrites the other's region, so whichever lands second resolves a mechanical append-vs-append rebase, never a design conflict.
+  Do not attempt to coordinate ordering — just rebase.
+- **`internal/stencilstore/stencilstore.go`** gains `ModeFor(dev bool) Mode` and is a third T5-owned file.
+  It is absent from T5's file list in the design doc because that list predates the `StencilMode()` resolution above.
+  It is **uncontended**: T4 touches `internal/pattern`'s *import* of `stencilstore`, never this file.
+- The one genuine adjacency remains `internal/loomengine` — T4 edits `plan.go`, T5 edits `preflight.go`/`report.go`. Different files; T4's own discussion already flagged it as a mechanical rebase point.
 
 ## Testing
 
@@ -343,7 +369,7 @@ The same applies to the three new `doc.go` files' own outgoing links.
 ## Q&A log
 
 - **Q:** Where do `CheckID`/`Failure`/`Report` live after the lift? **A:** [auto-pick] `internal/preflight` owns them; `loomengine` type-aliases and const-aliases. **Why:** aliases keep `loomengine.Report` and `preflight.Report` the identical type, so the 13 existing integration tests compile unedited and remain a real regression net.
-- **Q:** What entry points does `internal/preflight` export? **A:** [auto-pick] `Check(cwd)`, `CheckResolved(l)`, and `Wired(cwd)`. **Why:** `Check` returning the resolved `*lyxcwd.Location` avoids a second `git rev-parse` per preflight; `CheckResolved` preserves the synthetic-`Location` test seam; `Wired` is the CLI-side predicate.
+- **Q:** What entry points does `internal/preflight` export? **A:** [auto-pick] `Check(cwd)`, `CheckResolved(l)`, and `Wired(cwd)`. **Why:** `Check` returning the resolved `*lyxcwd.Location` avoids a second `git rev-parse` per preflight; `CheckResolved` preserves the synthetic-`Location` test seam; `Wired` is the CLI-side predicate. *(Superseded by the round-2 gap below: a fourth entry point, `HubPresent(cwd)`, was added when `Wired` proved wrong for the seed gate. The three reasons above still hold unchanged.)*
 - **Q:** How does `loomengine` learn "check 3 blocks the seed read" and "geometry short-circuited"? **A:** [auto-pick] derive both from the returned `Report` via a new exported `Report.Has(CheckID)`. **Why:** `Has(CheckFabricReady) || Has(CheckJunction)` is exactly today's `check3BlocksSeed` condition, so the derivation is equivalence-preserving and no orchestrator-specific field rides along on the shared type.
 - **Q:** What exactly is the `seedStencils` gate — full tier 2, or something narrower? **A:** [auto-pick] narrower than full tier 2. **Why:** adding `Clean` would spawn `git status` before every `lyx` command *and* would stop seeding stencils in a dirty hub, a behaviour change nobody asked for; `Healthy` has the same problem and `PrimeName` spawns `git worktree list` for nothing. *(The "which narrow predicate" half of this answer — originally `fabricengine.Ready` — was superseded by the round-2 gap below, which found `Ready` regresses three real-hub cases. The gate is `HubPresent`.)*
 - **Q:** Does `buildinfo` expose `StencilMode()` as the brief says? **A:** [auto-pick] no — `Channel` + `IsDev()`, with a new `stencilstore.ModeFor(dev bool)` holding the mapping. **Why:** `stencilstore.Mode` is non-stdlib, so returning it would break the stdlib-only leaf the same paragraph of the brief requires, and the leaf property is the load-bearing half.
