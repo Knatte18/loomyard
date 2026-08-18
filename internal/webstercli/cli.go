@@ -1,11 +1,18 @@
 // cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it
 // into the standard io.Writer-based call contract.
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
-// config -> reed config -> webster config -> model registry -> resolved roles -> reed engine ->
-// claude engine -> shuttleengine.Runner exactly once per invocation, storing the resolved
-// ingredients on websterCLI, per the discussion's cli-shape decision: every _lyx/plan
-// and _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the directory lyx
-// init ran in, never WorktreeRoot or a fabric sibling.
+// The parent "webster" command carries a PersistentPreRunE that resolves cwd, runs one
+// preflight.ResolveMode probe, and delegates to c.wire (wiring.go), which selects hub or standalone
+// mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients
+// on websterCLI exactly once per invocation.
+// A non-nil ResolveMode error means refuse: it aborts the pre-run right there, before c.wire is ever
+// called, rather than selecting a mode -- refusal is a resolution verdict, not a wiring choice.
+// The module holds no *lyxcwd.Location: every path it touches -- every _lyx/plan and _lyx/webster
+// path included -- arrives as a websterengine.Geometry, told by hubgeom.WebsterGeometry(loc) in hub
+// mode or internal/standalonegeom.WebsterGeometry(target, stateDir) in standalone, never re-derived
+// from a stored Location.
+// Fabric is reached only through the lazy c.openFabric closure, which is nil in standalone mode --
+// standalone has no fabric repo by construction, and the closure is never called during wiring in
+// either mode.
 //
 // websterCLI stores THREE adapted
 // views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of
@@ -21,14 +28,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
-	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -47,22 +52,40 @@ type websterCLI struct {
 	engine shuttleengine.Engine
 	reed   shuttleengine.ReedOps
 
-	layout     *lyxcwd.Location
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]modelspec.Resolved
 
+	// anchorRel is the hub-mode Location's own anchor-relative path (loc.AnchorRel), empty in
+	// standalone. It is the one thing the deleted layout field held that no other told replacement
+	// supplies, and fabricSync's own told scope (card 37) needs it for fabricengine.ScopedPathspec.
+	anchorRel string
+
+	// geom is the told websterengine.Geometry every verb's Deps construction, and every path this
+	// module touches, reads from -- hubgeom.WebsterGeometry(loc) in hub mode,
+	// standalonegeom.WebsterGeometry(target, stateDir) in standalone.
+	geom websterengine.Geometry
+	// refMatcher is the injected fabric-reference class matcher record-batch's and run's own audit
+	// consult — a real *fabricengine.RefScanner in hub mode, built eagerly because NewRefScanner only
+	// compiles a regexp and cannot fail.
+	refMatcher websterengine.RefMatcher
+	// openFabric is the lazy fabric-handle opener RunDeps.OpenBisector is built from. It must NOT be
+	// opened during PersistentPreRunE: fabricengine.Open stat-checks the paired sibling and would fail
+	// the pre-run in the three healthy-but-unwired locations that run validate and status today,
+	// which never reach the integration bisect.
+	openFabric func() (*fabricengine.Fabric, error)
+
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
 
-	// planDir is planparser's own told-anchor path, built from layout.AnchorPath() in
-	// PersistentPreRunE; websterDir and reportsDir remain the lyxcwd-resolved _lyx dirs;
-	// promptsDir and websterScratchDir remain the lyxcwd-resolved .lyx dirs.
-	planDir           string
-	websterDir        string
-	reportsDir        string
-	promptsDir        string
-	websterScratchDir string
+	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw, as-parsed values of the three
+	// standalone-entry persistent flags (--stencils-dir, --plan-dir, --target-dir), each bound by
+	// Command() and read by the wiring function (wiring.go) inside resolvePersistentPreRun. An empty
+	// value means the flag was not passed; the wiring function computes each mode's own default
+	// rather than a zero-value fallback landing here.
+	stencilsDirFlag string
+	planDirFlag     string
+	targetDirFlag   string
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
@@ -79,10 +102,53 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 	return run, nil
 }
 
+// resolvePersistentPreRun resolves cwd, calls preflight.ResolveMode(cwd), and delegates the mode
+// decision and the whole engine stack construction to c.wire (wiring.go), storing the resolved
+// ingredients on c.
+// A non-nil ResolveMode error is the refuse case, and it is handled right here rather than inside
+// wire: the refusal deliberately stays in resolvePersistentPreRun because it is a resolution
+// verdict, not a wiring choice, so it is surfaced verbatim and aborts the pre-run before c.wire is
+// ever called -- wire's own two-row truth table never sees a third value.
+// Extracted from Command()'s PersistentPreRunE assignment so a test can invoke it directly against a
+// *websterCLI it holds a reference to and inspect the populated fields afterward -- most notably that
+// c.openFabric is built here as a closure but never itself called.
+// Skips resolution entirely when the group command itself is invoked (bare listing or
+// unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
+// be present.
+func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
+	if cmd.Name() == "webster" {
+		return nil
+	}
+
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	cwd, err := lyxcwd.CwdFrom(ctx)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	loc, mode, err := preflight.ResolveMode(cwd)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	if err := c.wire(loc, mode, cwd, c.stencilsDirFlag, c.planDirFlag, c.targetDirFlag); err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+	return nil
+}
+
 // Command returns the cobra command tree for the webster module.
 //
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd and configs into c,
-// skipping resolution when the group command itself is invoked.
+// The parent "webster" command carries a PersistentPreRunE (c.resolvePersistentPreRun) that resolves
+// cwd and configs into c, skipping resolution when the group command itself is invoked.
 func Command() *cobra.Command {
 	c := &websterCLI{}
 
@@ -105,103 +171,33 @@ Verbs:
   lyx webster begin-batch 3                  Master's bracket call immediately before forking batch 3
   lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
   lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
-  lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand`,
+  lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
+
+Modes:
+  webster runs in hub mode inside a lyx hub worktree, and in standalone
+  mode anywhere else -- a plain git checkout with no lyx hub beside it.
+  Three persistent flags cross that boundary: --stencils-dir and
+  --plan-dir are optional and read-only in BOTH modes (hub default: the
+  hub's own stencils/plan directories; standalone default: the derived
+  state directory's own _lyx/stencils and _lyx/plan); --target-dir is
+  standalone-only, defaults to the current directory, and is refused in
+  hub mode, where the worktree itself is structurally the target.
+
+Example (standalone, outside any lyx hub):
+  lyx webster run --target-dir /path/to/repo`,
 		// RunE is set so that bare "lyx webster" lists subcommands and "lyx
 		// webster bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
-		RunE: clihelp.GroupRunE,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: when the webster group command itself is invoked (bare
-			// listing or unknown-subcommand error path via GroupRunE), skip
-			// cwd/layout/config/engine resolution so that neither path
-			// requires a git repository to be present.
-			if cmd.Name() == "webster" {
-				return nil
-			}
-
-			ctx := cmd.Context()
-			out := cmd.OutOrStdout()
-
-			cwd, err := lyxcwd.CwdFrom(ctx)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			layout, err := lyxcwd.Resolve(cwd)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			websterCfg, err := websterengine.LoadConfig(layout.AnchorPath(), "webster")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			activeBatcher, err := batcher.Active(layout.AnchorPath())
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			registry, err := modelspec.LoadRegistry(layout.AnchorPath())
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			roles, err := websterengine.ResolveRoles(websterCfg, registry)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			reedGeom := hubgeom.ReedGeometry(layout)
-			reedEngine := reedengine.New(reedCfg, reedGeom)
-			claudeEngine := claudeengine.New()
-			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-
-			c.runner = runner
-			c.starter = runner
-			c.injector = runner
-			c.masterStarter = runnerMasterStarter{runner: runner}
-			c.engine = claudeEngine
-			c.reed = reedEngine
-			c.layout = layout
-			c.shuttleCfg = shuttleCfg
-			c.cfg = websterCfg
-			c.roles = roles
-			c.batcher = activeBatcher
-			c.planDir = planparser.PlanDir(layout.AnchorPath())
-			c.websterDir = websterengine.Dir(layout)
-			c.reportsDir = websterengine.ReportsDir(layout)
-			c.websterScratchDir = websterengine.ScratchDir(layout)
-			c.promptsDir = websterengine.PromptsDir(layout)
-			return nil
-		},
+		RunE:              clihelp.GroupRunE,
+		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
+
+	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
+		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
+	parent.PersistentFlags().StringVar(&c.planDirFlag, "plan-dir", "",
+		"override the plan directory parsed at call time (read-only in both modes; hub default: the anchor's _lyx/plan; standalone default: the derived state directory's _lyx/plan)")
+	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
+		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory; refused in hub mode, where the worktree is already the target")
 
 	parent.AddCommand(c.validateCmd())
 	parent.AddCommand(c.runCmd())

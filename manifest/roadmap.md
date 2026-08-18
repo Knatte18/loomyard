@@ -9,27 +9,40 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
-   Two tasks, parallel-safe.
+1. **producers standalone: invariants and docs** — land the cross-cutting told-geometry rule in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reword the Cwd Resolution Invariant to state what `Resolve` actually validates, and close out the design doc per the documentation lifecycle.
+   The final consolidation task for this line of work.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **producers standalone: producer engines** — `burlerengine`+`perchengine` (one task, they do not compile apart) convert to told geometry, and `websterengine`+`webstercli` convert to told geometry *and* gain Webster's own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`) in the same task, not deferred to a follow-up.
-   Two tasks, parallel-safe.
-   See [designs/producers-standalone.md](designs/producers-standalone.md).
+1. **loom: phase-machine scaffolding** — mechanical rows only, every `LLM`/`LLM+perch` row stays a stub.
+   - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
+   - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
+   - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
+   - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
+   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold — `raddle` has no finished design yet (see Someday), so Finalize v1 ships without it and gains the fold as a later, separate task. **The one genuine gap of the four**: no merge-back or PR-creation code exists anywhere in the repo today (`internal/gitrepo`, `internal/githubclient` — checked, zero hits) — this is new logic, not a wrap.
+   - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
+   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review` — each returns `Done` without doing real work.
+   - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
-1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository.
-   The task this whole line of work exists for;
-   an optional `scoutengine` uniformity pass runs beside it, and a final consolidation task lands the three-tier invariant in `CONSTRAINTS.md`.
-   See [designs/producers-standalone.md](designs/producers-standalone.md).
+1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine from the item above actually reachable.
+   - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
+   - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
+   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
+
+1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
+   - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
+   - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
+   - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
+   - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
+   - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
+   - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
+   - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
-
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
-   First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
@@ -115,6 +128,15 @@ No build order is implied between these items.
 
 1. **producers standalone: told-geometry foundations** — `planparser` took over the plan-directory path from `loomengine`, `configengine` gained a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
    See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+
+1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
+   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+
+1. **producers standalone: producer engines** — `burlerengine`+`perchengine` and `websterengine`+`webstercli` convert to told geometry; Webster also gains its own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`).
+   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+
+1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository; the optional `scoutengine` uniformity pass landed alongside it.
+   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the final consolidation task is still open.
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
    See the `internal/gitkit` and `internal/hubforge` package documentation.

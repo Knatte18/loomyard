@@ -7,9 +7,9 @@
 // RenderIntegrationPrompt (called for the plan's single dedicated integration-suite fork, when
 // ShouldRunIntegration reports true), plus the two batch-list/progress renderers those prompts
 // embed (RenderBatchIndex, RenderProgress).
-// Every asset ships as an embedded default in the top-level stencils package and is read from the
-// hub's stencils directory (fabricengine.StencilsDir) at call time via stencilstore.Read, per the
-// runtime-read-not-embed Shared Decision — this file carries no //go:embed directive of its own.
+// Every asset ships as an embedded default in the top-level stencils package and is read from a
+// told stencils directory at call time via stencilstore.Read, per the runtime-read-not-embed Shared
+// Decision — this file carries no //go:embed directive of its own.
 //
 // Per the fork-context-hygiene Shared Decision, RenderForkPrompt's output feeds two callers with
 // opposite context situations — beginbatch.go's in-session fork (which already inherits Master's
@@ -37,8 +37,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -132,11 +130,12 @@ func renderCardPointers(cards []planparser.Card) string {
 	return strings.Join(bullets, "\n")
 }
 
-// RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork.
+// RenderForkPrompt fills ForkTemplate for one execution batch's in-session fork, read from
+// stencilsDir.
 // Cards' SourcePath pointers are rendered verbatim;
-// {{.worktree_root}} is filled from l.AnchorPath().
+// {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot.
 // prevDigest is already rendered as a one-line summary by the caller.
-func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyxcwd.Location, selfFixCap int) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -146,10 +145,10 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyx
 		"card_pointers": renderCardPointers(batch.Cards),
 		"report_path":   reportPath,
 		"self_fix_cap":  fmt.Sprintf("%d", selfFixCap),
-		"worktree_root": l.AnchorPath(),
+		"worktree_root": promptWorktreeRoot,
 		"prev_digest":   digestLine,
 	}
-	template, err := composeForkTemplate(fabricengine.StencilsDir(l.HubPath))
+	template, err := composeForkTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
@@ -160,18 +159,20 @@ func RenderForkPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyx
 	return prompt, nil
 }
 
-// RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery strand.
+// RenderRecoveryPrompt fills RecoveryTemplate for one batch's cold-start recovery strand, read from
+// stencilsDir.
 // Unlike RenderForkPrompt, the recovery strand inherits nothing, so its prompt orients from
 // plan/overview.md and CONSTRAINTS.md before the shared implementer-job body runs.
+// {{.worktree_root}} is filled from the caller-supplied promptWorktreeRoot;
+// anchorRoot feeds pattern.Directive's own probe.
 // pattern_directive is injected if PATTERN is active.
-func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l *lyxcwd.Location, selfFixCap int) ([]byte, error) {
+func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath, anchorRoot, promptWorktreeRoot, stencilsDir string, selfFixCap int) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
 	}
 
-	stencilsDir := fabricengine.StencilsDir(l.HubPath)
-	directive, err := pattern.Directive(l, stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
 	}
@@ -180,7 +181,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l 
 		"card_pointers":     renderCardPointers(batch.Cards),
 		"report_path":       reportPath,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
-		"worktree_root":     l.AnchorPath(),
+		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
 		"pattern_directive": directive,
 	}
@@ -224,17 +225,17 @@ func RenderIntegrationPrompt(plan *planparser.Plan, reportPath, worktreeRoot, st
 const noIntegrationPromptPath = "none (this plan has no \"## verify:\" section)"
 
 // RenderMasterPrompt fills webster-template-master for one `lyx webster run` invocation, read from
-// the hub's stencils directory (fabricengine.StencilsDir(l.HubPath)).
+// the caller-supplied stencilsDir.
+// It fills no {{.worktree_root}} key at all — anchorRoot feeds only pattern.Directive's own probe.
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
-func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, l *lyxcwd.Location) ([]byte, error) {
+func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPath, integrationPromptPath string, selfFixCap, pollWaitS int, anchorRoot, stencilsDir string) ([]byte, error) {
 	integrationPrompt := strings.TrimSpace(integrationPromptPath)
 	if integrationPrompt == "" {
 		integrationPrompt = noIntegrationPromptPath
 	}
 
-	stencilsDir := fabricengine.StencilsDir(l.HubPath)
-	directive, err := pattern.Directive(l, stencilsDir, pattern.RoleOrchestrator)
+	directive, err := pattern.Directive(anchorRoot, stencilsDir, pattern.RoleOrchestrator)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
 	}

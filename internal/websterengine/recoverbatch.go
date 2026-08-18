@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -47,21 +46,18 @@ type Clock interface {
 }
 
 // RecoverDeps carries seams RecoverBatch needs: Starter, Plan, Batches, State, Roles, Config,
-// Engine, Reed, ShuttleCfg, Layout, WorktreeRoot, WebsterDir, ReportsDir.
+// Engine, Reed, ShuttleCfg, and Geom, the told Geometry every path is read from.
 type RecoverDeps struct {
-	Starter      Starter
-	Plan         *planparser.Plan
-	Batches      []batcher.Batch
-	State        *State
-	Roles        map[Role]modelspec.Resolved
-	Config       Config
-	Engine       shuttleengine.Engine
-	Reed         shuttleengine.ReedOps
-	ShuttleCfg   shuttleengine.Config
-	Layout       *lyxcwd.Location
-	WorktreeRoot string
-	WebsterDir   string
-	ReportsDir   string
+	Starter    Starter
+	Plan       *planparser.Plan
+	Batches    []batcher.Batch
+	State      *State
+	Roles      map[Role]modelspec.Resolved
+	Config     Config
+	Engine     shuttleengine.Engine
+	Reed       shuttleengine.ReedOps
+	ShuttleCfg shuttleengine.Config
+	Geom       Geometry
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true
@@ -128,16 +124,16 @@ func refuseRecoveringDoneReport(reportsDir string, number int, slug string, prio
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
 
-	if err := refuseRecoveringDoneReport(deps.ReportsDir, number, slug, prior); err != nil {
+	if err := refuseRecoveringDoneReport(deps.Geom.ReportsDir, number, slug, prior); err != nil {
 		return nil, err
 	}
 
 	// Ensure reports dir exists so the recovery strand's report write succeeds.
-	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
-		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
+	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
 	}
 
-	if _, err := archiveStaleReport(deps.ReportsDir, number, slug, clk.Now); err != nil {
+	if _, err := archiveStaleReport(deps.Geom.ReportsDir, number, slug, clk.Now); err != nil {
 		return nil, err
 	}
 
@@ -148,12 +144,12 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	batchName := fmt.Sprintf("%02d-%s", number, slug)
-	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, ReportFileName(number, slug)))
+	reportPath, err := filepath.Abs(filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug)))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)
+	prompt, err := RenderRecoveryPrompt(batch, prevDigest, reportPath, deps.Geom.AnchorRoot, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}
@@ -179,12 +175,12 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		return nil, fmt.Errorf("webster: start recovery strand for batch %s: %w", batchName, err)
 	}
 
-	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout.AnchorPath(), run.StrandGUID())
+	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
 	}
 
-	head, err := headSHA(deps.WorktreeRoot)
+	head, err := headSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +272,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 		return nil, fmt.Errorf("webster: parse recorded spawnedAt %q for batch %d: %w", bs.SpawnedAt, number, err)
 	}
 
-	reportPath := filepath.Join(deps.ReportsDir, ReportFileName(number, slug))
+	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
 
 	gather := func() (Digest, bool, error) {
@@ -327,7 +323,7 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 
 	// Cross-check report's head_sha against worktree's actual HEAD like RecordBatch does.
 	if digest.HeadSHA != "" {
-		actualHead, err := headSHA(deps.WorktreeRoot)
+		actualHead, err := headSHA(deps.Geom.WorktreeRoot)
 		if err != nil {
 			return nil, err
 		}

@@ -37,3 +37,6 @@ their mechanics are documented there per the [doc-lifecycle convention](../overv
 - `internal/state` — generic locked typed JSON I/O
 - `internal/modelspec` — model-spec parser + models.yaml registry loader;
   the pinned contract is `contracts/specs/llm-model-spec.md`, the as-built API lives in the package doc
+- `internal/buildinfo` — the ldflags-stamped build channel (`Channel`, `IsDev`), a zero-import leaf so any CLI can read it with no cycle risk;
+  the mapping to a stencil mode lives in `stencilstore.ModeFor`
+- `internal/standalonestate` — pure derivation from an absolute target path to a `hash8` and its per-OS state directory, creating nothing on disk

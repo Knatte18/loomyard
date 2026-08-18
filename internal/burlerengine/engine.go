@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -24,22 +23,23 @@ type Shuttle interface {
 
 var _ Shuttle = (*shuttleengine.Runner)(nil)
 
-// Engine drives burler rounds through a Shuttle, resolving Profile paths against layout's worktree
-// root and Profile.ClusterFan against cfg's lens/fan library.
+// Engine drives burler rounds through a Shuttle, resolving Profile paths against geom.WorktreeRoot
+// and Profile.ClusterFan against cfg's lens/fan library.
 type Engine struct {
 	shuttle     Shuttle
-	layout      *lyxcwd.Location
+	geom        Geometry
 	cfg         Config
 	stencilsDir string
 }
 
 // New returns an Engine ready to run rounds against shuttle, resolving relative Profile paths
-// against layout.WorktreePath() and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
+// against geom.WorktreeRoot and any Profile.ClusterFan against cfg (the burler.yaml lens/fan
 // library, loaded via LoadConfig).
+// geom is the told geometry the caller supplies (hubgeom.BurlerGeometry in hub mode).
 // stencilsDir is the absolute stencils directory (see fabricengine.StencilsDir) composePrompt reads
 // burler's four round prompts from at call time via stencilstore.Read.
-func New(shuttle Shuttle, layout *lyxcwd.Location, cfg Config, stencilsDir string) *Engine {
-	return &Engine{shuttle: shuttle, layout: layout, cfg: cfg, stencilsDir: stencilsDir}
+func New(shuttle Shuttle, geom Geometry, cfg Config, stencilsDir string) *Engine {
+	return &Engine{shuttle: shuttle, geom: geom, cfg: cfg, stencilsDir: stencilsDir}
 }
 
 // Result is one round's outcome: how the shuttle run classified (Outcome), the parsed verdict and
@@ -94,13 +94,13 @@ type Result struct {
 // — deliberately fail-loud — a verdict parse failure on a done run, since a defaulted verdict could
 // silently terminate a caller's round loop on a malformed round.
 func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
-	if err := p.validate(e.layout.WorktreePath(), e.cfg); err != nil {
+	if err := p.validate(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return Result{}, err
 	}
 
 	logger.Info("burler: round starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	directive, err := pattern.Directive(e.layout, e.stencilsDir, pattern.RoleReviewFix)
+	directive, err := pattern.Directive(e.geom.AnchorPath, e.stencilsDir, pattern.RoleReviewFix)
 	if err != nil {
 		return Result{}, fmt.Errorf("burler: %w", err)
 	}
@@ -108,7 +108,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 	// AnchorPath-anchored so this per-round instruction dir is a directory
 	// sibling of the durable, fabric-synced _lyx tree, not a second
 	// WorktreePath-rooted .lyx.
-	burlerDir := filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName, "burler")
+	burlerDir := filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName, "burler")
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
 		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "round", opts.Round, "error", err)
 		return Result{}, fmt.Errorf("burler: materialize instruction files: %w", err)

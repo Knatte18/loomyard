@@ -18,8 +18,6 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -36,24 +34,25 @@ var ErrNoBeginRecord = errors.New("webster: record-batch called with no begin-ba
 // State is the already-loaded run state RecordBatch reads and mutates;
 // Config is the loaded webster.yaml;
 // Engine supplies the incremental fork audit (AuditForksIncremental);
-// Layout resolves the pane's actual process cwd the audit reads against and the fabric-reference
-// scanner CheckFork/CheckParent consult;
-// WorktreeRoot is the repo checkout the dirty-worktree warning and the head-SHA cross-check
-// read;
+// Geom is the told Geometry the audit and the dirty-worktree/head-SHA checks read: the audit workdir
+// is Geom.WorktreeRoot (not Geom.AnchorRoot) — the audit resolves transcript-relative recorded write
+// paths against this directory, so it must be the directory the fork actually ran in, which is the
+// worktree root in every mode (the two coincide in hub mode, so nothing changes there);
+// RefMatcher is the injected fabric-reference class matcher (a real *fabricengine.RefScanner in hub
+// mode, NeverMatches in standalone) CheckParent/CheckFork consult, never nil in either mode;
 // OutcomePath and SummaryPath are the run's two Master contract files CheckParent's write-policy
 // exempts;
 // Sleeper is the clock seam SettleRetry's bounded wait uses.
 type RecordDeps struct {
-	Batches      []batcher.Batch
-	State        *State
-	Config       Config
-	Engine       shuttleengine.Engine
-	Layout       *lyxcwd.Location
-	WorktreeRoot string
-	ReportsDir   string
-	OutcomePath  string
-	SummaryPath  string
-	Sleeper      Sleeper
+	Batches     []batcher.Batch
+	State       *State
+	Config      Config
+	Engine      shuttleengine.Engine
+	Geom        Geometry
+	RefMatcher  RefMatcher
+	OutcomePath string
+	SummaryPath string
+	Sleeper     Sleeper
 }
 
 // RecordResult is what one successful RecordBatch call hands back to its caller
@@ -99,7 +98,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// not the current Master session, so a resumed Master can consume a
 	// report whose transcript lives under the crashed session's directory.
 	fetch := func() (shuttleengine.ForkAudit, error) {
-		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Layout.AnchorPath(), seenSet)
+		return deps.Engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
 	}
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
@@ -123,14 +122,12 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		warnings = append(warnings, warning)
 	}
 
-	fabricRef := fabricengine.NewRefScanner(deps.Layout)
-
 	var violations []error
-	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), fabricRef) {
+	for _, v := range CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
 		violations = append(violations, v)
 	}
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Layout.AnchorPath(), fabricRef) {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
 			violations = append(violations, v)
 		}
 		warnings = append(warnings, ForkWarnings(f)...)
@@ -149,7 +146,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 
 	polledID := fmt.Sprintf("%02d-%s", number, slug)
 
-	reportPath := filepath.Join(deps.ReportsDir, ReportFileName(number, slug))
+	reportPath := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(reportPath); statErr != nil {
 		if os.IsNotExist(statErr) {
 			return &RecordResult{NoReport: true, Warnings: warnings}, nil
@@ -162,14 +159,14 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 
-	if isDirty, err := dirty(deps.WorktreeRoot); err != nil {
+	if isDirty, err := dirty(deps.Geom.WorktreeRoot); err != nil {
 		return nil, err
 	} else if isDirty {
 		warnings = append(warnings, fmt.Sprintf("worktree is dirty after batch %s's own commits (uncommitted or untracked changes remain)", polledID))
 	}
 
 	// Cross-check report's head_sha against the worktree's actual HEAD.
-	actualHead, err := headSHA(deps.WorktreeRoot)
+	actualHead, err := headSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}

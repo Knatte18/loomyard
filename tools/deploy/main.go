@@ -57,9 +57,10 @@ func run(dev bool, destArg string) error {
 
 	args := []string{"build", "-o", dest}
 	if dev {
-		// Stamp buildChannel=dev so a dev-installed binary seeds but does not refresh an
-		// untouched stencil (see the dev-builds-seed-but-do-not-refresh Shared Decision).
-		args = append(args, "-ldflags", "-X main.buildChannel=dev")
+		// Stamp internal/buildinfo.Channel=dev so a dev-installed binary seeds but does not
+		// refresh an untouched stencil (see the dev-builds-seed-but-do-not-refresh Shared
+		// Decision).
+		args = append(args, "-ldflags", "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")
 	}
 	args = append(args, "./cmd/lyx")
 	build := exec.Command("go", args...)

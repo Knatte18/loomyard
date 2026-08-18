@@ -1,4 +1,4 @@
-// geometry.go declares Geometry, the seven-field struct reed is told its coordinates through.
+// geometry.go declares Geometry, the eight-field struct reed is told its coordinates through.
 // It declares the type only — New and every method stay in their existing files (lock.go,
 // lifecycle.go, strand.go, header.go); this file adds no constructor, no validator, and no default.
 
@@ -30,15 +30,13 @@ type Geometry struct {
 	// is enforced rather than assumed — validateToldTmuxIdentity (server.go) refuses such a name at
 	// every op boundary, before any tmux round trip.
 	SessionName string
-	// AnchorPath is the base stateDir joins onto for reed.json/reed.lock, and the cwd every pane is
-	// spawned with — passed explicitly as tmux's -c at all three spawn sites (new-session, the
-	// header split, and each strand split), never left for tmux to infer from the invoking client's
-	// own cwd.
-	// It must be absolute: an empty or relative value does not fail, it silently resolves both the
-	// state directory and every pane's cwd against whatever working directory the caller happens to
-	// have. validateToldAnchorPath (server.go) is the backstop for a teller that builds this field
-	// some other way, alongside the SocketKey one.
+	// AnchorPath is the base stateDir joins onto for reed.json/reed.lock.
 	AnchorPath string
+	// PaneCwd is the cwd every tmux pane is spawned with. It equals AnchorPath in hub mode and the
+	// standalone target directory in standalone mode. There is deliberately no zero-value fallback:
+	// an empty PaneCwd must never silently mean AnchorPath, or a caller that forgets the field spawns
+	// panes in the wrong directory with nothing to catch it.
+	PaneCwd string
 	// WorktreeRoot is what Strand.Worktree is stamped with, and what resolveStrandName substitutes
 	// for the <WORKTREE> token.
 	WorktreeRoot string

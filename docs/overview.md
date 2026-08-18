@@ -229,8 +229,11 @@ github.com/Knatte18/loomyard/
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, perch, Webster) over shuttle/perch/websterengine
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
+├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
+├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
+├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, a stdlib-only leaf
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations
 ├── internal/gitrepo/             typed Repo over one local git checkout: go-git for local reads, gitexec for remote-auth/mutation
@@ -313,7 +316,7 @@ The cross-OS spawn primitive **proc**, and the generic outer phase-FSM **shed**,
 see the [Execution stack](#execution-stack-orchestration-layers) section below for how proc / reed / shuttle fit together. (Earlier drafts split reed into separate `shed`/`glance` modules;
 both folded back into reed — see the `internal/reedengine` package documentation. This `shed` is an abandoned earlier `reed` model/view draft, unrelated to [`Shed`](../manifest/designs/shed.md) the outer phase-FSM.)
 
-The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
+The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
 
 ## Execution stack (orchestration layers)
 

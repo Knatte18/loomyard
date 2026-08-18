@@ -75,11 +75,15 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 // TestRunCLI_Run_MissingProfile verifies that "lyx burler run" without --profile fails with run's
 // own manual flag-shape error (not cobra's MarkFlagRequired) before ever touching
 // PersistentPreRunE's engine wiring.
-// This case runs against an uninitialized (non-git) directory, so PersistentPreRunE's own abort
-// error is also present in the captured output alongside the flag-specific error line — the same
-// documented double-failure shape as shuttlecli's TestRunCLI_Run_FlagValidation.
+// This case runs against an uninitialized (non-git) directory, which resolves to standalone mode:
+// the pre-run therefore succeeds and only the verb's own flag error is emitted. XDG_STATE_HOME and
+// LOCALAPPDATA are redirected to the test's own temp tree before RunCLI so the standalone wiring's
+// Derive call and stencil seed land there instead of the operator's real state directory. This test
+// is already not t.Parallel(), which t.Setenv requires; it stays that way.
 func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"run"})
@@ -279,10 +283,11 @@ prior-fixer-reports: ["prior-fixer.md"]
 
 // TestResultEnvelope_ForkCountNilGuard asserts resultEnvelope's forkCount guards a nil ForkAudit
 // (the non-cluster or non-done case) to 0 rather than panicking,
-// and reports the real fork count plus the raw ClusterWarnings slice when ForkAudit is set.
+// reports the real fork count plus the raw ClusterWarnings slice when ForkAudit is set,
+// and lands the told mode/stateDir/stencilsDir parameters under their own keys.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 	t.Run("nil ForkAudit", func(t *testing.T) {
-		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone})
+		env := resultEnvelope(burlerengine.Result{Outcome: shuttleengine.OutcomeDone}, "hub", "", "/hub/stencils")
 		if got := env["forkCount"]; got != 0 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 0`, got)
 		}
@@ -291,6 +296,15 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 		// typed-nil-in-interface is never == nil), so assert on length.
 		if got := env["clusterWarnings"].([]string); len(got) != 0 {
 			t.Errorf(`resultEnvelope() clusterWarnings = %v; want empty`, got)
+		}
+		if got := env["mode"]; got != "hub" {
+			t.Errorf(`resultEnvelope() mode = %v; want "hub"`, got)
+		}
+		if got := env["stateDir"]; got != "" {
+			t.Errorf(`resultEnvelope() stateDir = %v; want ""`, got)
+		}
+		if got := env["stencilsDir"]; got != "/hub/stencils" {
+			t.Errorf(`resultEnvelope() stencilsDir = %v; want "/hub/stencils"`, got)
 		}
 	})
 
@@ -302,13 +316,22 @@ func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
 			},
 			ClusterWarnings: []string{`fork "b" never returned a final report`},
 		}
-		env := resultEnvelope(result)
+		env := resultEnvelope(result, "standalone", "/state/dir", "/state/dir/_lyx/stencils")
 		if got := env["forkCount"]; got != 2 {
 			t.Errorf(`resultEnvelope() forkCount = %v; want 2`, got)
 		}
 		gotWarnings, ok := env["clusterWarnings"].([]string)
 		if !ok || len(gotWarnings) != 1 {
 			t.Errorf(`resultEnvelope() clusterWarnings = %v; want one warning`, env["clusterWarnings"])
+		}
+		if got := env["mode"]; got != "standalone" {
+			t.Errorf(`resultEnvelope() mode = %v; want "standalone"`, got)
+		}
+		if got := env["stateDir"]; got != "/state/dir" {
+			t.Errorf(`resultEnvelope() stateDir = %v; want "/state/dir"`, got)
+		}
+		if got := env["stencilsDir"]; got != "/state/dir/_lyx/stencils" {
+			t.Errorf(`resultEnvelope() stencilsDir = %v; want "/state/dir/_lyx/stencils"`, got)
 		}
 	})
 }

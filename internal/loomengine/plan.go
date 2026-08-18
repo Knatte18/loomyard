@@ -68,7 +68,7 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg model
 	planDir := planparser.PlanDir(layout.AnchorPath())
 	overviewPath := planparser.PlanOverview(layout.AnchorPath())
 
-	directive, err := pattern.Directive(layout, stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(layout.AnchorPath(), stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("loom: PlanSpec: %w", err)
 	}

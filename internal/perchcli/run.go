@@ -291,14 +291,17 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// PersistentPreRunE: its pause seam closes over this call's
 			// concrete scratchDir, which is only known once --profile/--run-id
 			// have been resolved above.
-			engine := perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.layout, perchengine.Options{
+			engine := perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.perchGeom, perchengine.Options{
 				PauseRequested: func() bool {
 					_, err := os.Stat(perchengine.PauseFlagPath(scratchDir))
 					return err == nil
 				},
 			})
 
-			result, runErr := engine.Run(profile, runDir, scratchDir, fabricengine.StencilsDir(c.layout.HubPath))
+			// The same single stencilsDir the nested burlerengine.New received in wiring.go -- the
+			// two must never resolve it independently, which is what makes --stencils-dir reach
+			// perch's own rounds AND its nested burler rounds rather than half-working.
+			result, runErr := engine.Run(profile, runDir, scratchDir, c.stencilsDir)
 
 			// A busy fail-fast means ANOTHER invocation owns this block and
 			// is mid-round right now; this invocation changed nothing on
@@ -331,17 +334,19 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// No exclusion layer is involved at all: the pathspec below
 			// names _lyx only, so those never-tracked artifacts are simply
 			// outside the tree fabric ever looks at.
-			files := fabricengine.ScopedPathspec(c.layout.AnchorRel, []string{lyxdirs.LyxDirName})
+			files := fabricengine.ScopedPathspec(c.anchorRel, []string{lyxdirs.LyxDirName})
 			// SkipGit is checked here, before fabricengine.Open's stat-based
 			// path validation, mirroring Commit's own top-level
 			// short-circuit: the CI/test bypass must never require a real
 			// fabric repo to exist on disk, but Open (unlike Commit
 			// itself) validates both paths unconditionally.
+			// c.openFabric is additionally nil-checked: a nil opener means standalone, which has no
+			// fabric repo by construction, so the entire sync is skipped and committed stays false.
 			var committed bool
 			var syncErr error
-			if !opts.SkipGit {
+			if !opts.SkipGit && c.openFabric != nil {
 				var fab *fabricengine.Fabric
-				fab, syncErr = fabricengine.Open(c.layout)
+				fab, syncErr = c.openFabric()
 				if syncErr == nil {
 					var res fabricengine.CommitResult
 					res, syncErr = fab.Commit(
@@ -377,6 +382,9 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 				"runDir":          runDir,
 				"scratchDir":      scratchDir,
 				"fabricCommitted": committed,
+				"mode":            c.mode,
+				"stateDir":        c.stateDir,
+				"stencilsDir":     c.stencilsDir,
 			}))
 			return nil
 		},

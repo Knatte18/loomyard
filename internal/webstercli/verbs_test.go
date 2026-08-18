@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -48,6 +49,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/spf13/cobra"
 )
 
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
@@ -272,24 +274,65 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		injector:   runner,
 		engine:     engine,
 		reed:       reed,
-		layout:     layout,
+		anchorRel:  layout.AnchorRel,
 		shuttleCfg: shuttleCfg,
+		geom:       hubgeom.WebsterGeometry(layout),
+		refMatcher: fabricengine.NewRefScanner(layout),
+		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 		cfg: websterengine.Config{
 			SelfFixCap:         2,
 			MasterTimeoutMin:   480,
 			RecoveryTimeoutMin: 60,
 			PollWaitS:          1,
 		},
-		roles:             roles,
-		batcher:           activeBatcher,
-		planDir:           planparser.PlanDir(layout.AnchorPath()),
-		websterDir:        websterengine.Dir(layout),
-		websterScratchDir: websterengine.ScratchDir(layout),
-		reportsDir:        websterengine.ReportsDir(layout),
-		promptsDir:        websterengine.PromptsDir(layout),
+		roles:   roles,
+		batcher: activeBatcher,
 	}
 
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}
+}
+
+// TestPersistentPreRun_OpenFabricWiredButUninvoked proves the laziness argument cli.go's own
+// resolvePersistentPreRun doc comment makes: the fabric-handle opener is built as a closure and
+// stored on c, but is never itself called during pre-run wiring.
+// The fixture carries a hub-level board directory (so preflight.HubPresent selects hub mode) but no
+// weft sibling worktree at all -- fabricengine.Open stat-checks that sibling, so an eager call here
+// would stat-fail and surface as a non-nil error from the "status" verb below (one of the three
+// healthy-but-unwired locations the doc comment names). Reaching exit 0 is therefore itself the
+// behavioural half of the proof; c.openFabric != nil is the structural half.
+func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
+	container := t.TempDir()
+	worktree := filepath.Join(container, "warp")
+	if err := os.MkdirAll(worktree, 0o755); err != nil {
+		t.Fatalf("mkdir worktree: %v", err)
+	}
+	mustGit(t, worktree, "init")
+	mustGit(t, worktree, "config", "user.name", "Test User")
+	mustGit(t, worktree, "config", "user.email", "test@example.com")
+	commitFile(t, worktree, "base.txt", "base", "base commit")
+	// A hub-level board directory -- with no weft sibling anywhere near it -- is what selects hub
+	// mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats
+	// <hub>/_board/_lyx.
+	if err := os.MkdirAll(filepath.Join(fabricengine.BoardDir(container), "_lyx"), 0o755); err != nil {
+		t.Fatalf("mkdir hub board dir: %v", err)
+	}
+
+	c := &websterCLI{}
+	parent := &cobra.Command{
+		Use:               "webster",
+		PersistentPreRunE: c.resolvePersistentPreRun,
+	}
+	parent.AddCommand(c.statusCmd())
+
+	var out strings.Builder
+	exitCode := clihelp.ExecuteIn(parent, worktree, &out, []string{"status"})
+
+	if exitCode != 0 {
+		t.Fatalf("status = %d; want 0 (an eager fabricengine.Open would stat-fail on the weft-less fixture worktree), output: %s", exitCode, out.String())
+	}
+	if c.openFabric == nil {
+		t.Fatal("c.openFabric = nil after PersistentPreRunE; want a wired opener closure")
+	}
 }
 
 // testPlanFingerprint recomputes the plan-identity hash websterengine's own
@@ -333,7 +376,7 @@ func testPlanFingerprint(t *testing.T, planDir string) string {
 // begin-batch/record-batch/recover-batch.
 func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websterengine.State {
 	t.Helper()
-	fp := testPlanFingerprint(t, fx.CLI.planDir)
+	fp := testPlanFingerprint(t, fx.CLI.geom.PlanDir)
 	st := &websterengine.State{
 		RunGUID:         "guid-1",
 		PlanFingerprint: fp,
@@ -342,7 +385,7 @@ func (fx *verbsFixture) initState(t *testing.T, assertedModel string) *websteren
 		AssertedModel:   assertedModel,
 		Batches:         map[int]*websterengine.BatchState{},
 	}
-	if err := websterengine.SaveState(fx.CLI.websterDir, fx.CLI.websterScratchDir, st); err != nil {
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 	return st
@@ -393,7 +436,7 @@ func TestBeginBatchCmd_HappyPath(t *testing.T) {
 		}
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after begin-batch = %v, %v; want a state, nil", loaded, err)
 	}
@@ -412,7 +455,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 	t.Setenv("WEFT_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t, "master-model")
-	if err := websterengine.RequestPause(fx.CLI.websterScratchDir); err != nil {
+	if err := websterengine.RequestPause(fx.CLI.geom.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -426,7 +469,7 @@ func TestBeginBatchCmd_PausedEnvelope(t *testing.T) {
 		t.Errorf("output missing paused:true; got %q", out.String())
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after paused begin-batch = %v, %v; want a state, nil", loaded, err)
 	}
@@ -453,11 +496,11 @@ func TestPauseCmd_ResolvesSameFileAsBeginBatchGate(t *testing.T) {
 		t.Errorf("pause() output missing paused:true; got %q", pauseOut.String())
 	}
 
-	if !websterengine.PauseRequested(fx.CLI.websterScratchDir) {
-		t.Error("PauseRequested(fx.CLI.websterScratchDir) = false after pause(); want true")
+	if !websterengine.PauseRequested(fx.CLI.geom.ScratchDir) {
+		t.Error("PauseRequested(fx.CLI.geom.ScratchDir) = false after pause(); want true")
 	}
-	if websterengine.PauseRequested(fx.CLI.websterDir) {
-		t.Error("PauseRequested(fx.CLI.websterDir) = true; want the pause flag only under the scratch dir, never the durable dir")
+	if websterengine.PauseRequested(fx.CLI.geom.WebsterDir) {
+		t.Error("PauseRequested(fx.CLI.geom.WebsterDir) = true; want the pause flag only under the scratch dir, never the durable dir")
 	}
 
 	var beginOut strings.Builder
@@ -491,7 +534,7 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	})
 
 	t.Run("ReportPresent", func(t *testing.T) {
-		writeBatchReport(t, fx.CLI.reportsDir, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+		writeBatchReport(t, fx.CLI.geom.ReportsDir, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
 		var out strings.Builder
 		exitCode := clihelp.Execute(fx.CLI.awaitBatchCmd(), &out, []string{"1"})
 		if exitCode != 0 {
@@ -506,7 +549,7 @@ func TestAwaitBatchCmd_ReportPresenceEnvelope(t *testing.T) {
 	})
 
 	// Statelessness: neither call may have created a state.json.
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -551,14 +594,14 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			startSHA := commitFile(t, fx.Worktree, "internal/only/impl.go", "package only\n", "01.1: add impl")
 			st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 			st.CurrentBatch = 1
-			if err := websterengine.SaveState(fx.CLI.websterDir, fx.CLI.websterScratchDir, st); err != nil {
+			if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
 				t.Fatalf("SaveState() error = %v", err)
 			}
 			fx.Engine.auditForks = shuttleengine.ForkAudit{
 				Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}},
 			}
 			if tt.writeReport {
-				writeBatchReport(t, fx.CLI.reportsDir, startSHA)
+				writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
 			}
 			// Else: deliberately never call writeBatchReport, since the
 			// no-report scenario proves the report-not-landed-yet ladder.
@@ -584,7 +627,7 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 				}
 			}
 
-			loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
+			loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 			if err != nil || loaded == nil {
 				t.Fatalf("LoadState() after record-batch = %v, %v; want a state, nil", loaded, err)
 			}
@@ -629,7 +672,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Fatalf("Engine.prepareCalls after first call = %d; want exactly 1 (the spawn)", fx.Engine.prepareCalls)
 	}
 
-	loaded, err := websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after spawn = %v, %v; want a state, nil", loaded, err)
 	}
@@ -642,7 +685,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	// report lands on disk, self-reporting the worktree's real HEAD (the
 	// recovery path cross-checks head_sha against the worktree exactly like
 	// record-batch does).
-	writeBatchReport(t, fx.CLI.reportsDir, strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD")))
+	writeBatchReport(t, fx.CLI.geom.ReportsDir, strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD")))
 
 	// Second call: ATTACH (Kind == recovery, non-terminal, StrandGUID set)
 	// -- recoverSpawn/archiveStaleReport never runs again, so the report
@@ -662,7 +705,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 		t.Errorf("Engine.prepareCalls after attach call = %d; want still exactly 1 (no re-spawn)", fx.Engine.prepareCalls)
 	}
 
-	loaded, err = websterengine.LoadState(fx.CLI.websterDir, fx.CLI.websterScratchDir)
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
 	if err != nil || loaded == nil {
 		t.Fatalf("LoadState() after terminal attach = %v, %v; want a state, nil", loaded, err)
 	}
@@ -683,10 +726,10 @@ func TestRunCmd_ErrRunBusySkipsWeftBackstop(t *testing.T) {
 	starter := &verbsFakeMasterStarter{}
 	fx.CLI.masterStarter = starter
 
-	if err := os.MkdirAll(fx.CLI.websterScratchDir, 0o755); err != nil {
+	if err := os.MkdirAll(fx.CLI.geom.ScratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir webster scratch dir: %v", err)
 	}
-	held, err := lock.AcquireWriteLock(filepath.Join(fx.CLI.websterScratchDir, "run.lock"))
+	held, err := lock.AcquireWriteLock(filepath.Join(fx.CLI.geom.ScratchDir, "run.lock"))
 	if err != nil {
 		t.Fatalf("acquire run.lock: %v", err)
 	}
@@ -787,9 +830,9 @@ func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
 	}
 }
 
-// TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers cli.go's production
-// plan-path call -- c.planDir = planparser.PlanDir(layout.AnchorPath()) in PersistentPreRunE -- at a
-// nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lyx's anchoring-table guard rows
+// TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers wiring.go's production
+// plan-dir resolution -- geom := hubgeom.WebsterGeometry(loc) inside wireHub, whose geom.PlanDir feeds
+// c.geom.PlanDir -- at a nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lyx's anchoring-table guard rows
 // carry that proof: both build their expectations from layout.AnchorPath() themselves, so a
 // production call site that regressed to layout.WorktreePath() would stay self-consistent and pass
 // at either of those. This test drives the real PersistentPreRunE through RunCLIIn and asserts on

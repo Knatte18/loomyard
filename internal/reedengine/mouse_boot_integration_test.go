@@ -49,6 +49,7 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 		SocketKey:    ServerName(hubDir),
 		SessionName:  SessionName(worktreeDir),
 		AnchorPath:   worktreeDir,
+		PaneCwd:      worktreeDir,
 		WorktreeRoot: worktreeDir,
 		LogsDir:      filepath.Join(hubDir, "logs"),
 		RepoName:     "test-repo",

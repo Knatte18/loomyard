@@ -31,7 +31,7 @@ Example:
 				return nil
 			}
 
-			if err := websterengine.RequestPause(c.websterScratchDir); err != nil {
+			if err := websterengine.RequestPause(c.geom.ScratchDir); err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
