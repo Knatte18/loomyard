@@ -611,7 +611,7 @@ func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane) (st
 // duplicate pane number, destroying the session's panes wholesale (see
 // validateSplitCreatedNewPane).
 func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane) (string, error) {
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.AnchorPath, "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		return "", err
 	}
