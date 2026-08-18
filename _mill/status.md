@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-invariants
+phase: holistic-reviewing
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-standalonestate-leaf  '2026-08-18T06:51:54Z'
 approved-preflight-lift  '2026-08-18T07:00:55Z'
 approved-cli-gate-and-ldflags  '2026-08-18T07:07:34Z'
 approved-docs-and-invariants  '2026-08-18T07:10:20Z'
+holistic-reviewing  '2026-08-18T07:10:51Z'
 ```
 
 ## Batches
