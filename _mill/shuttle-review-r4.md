@@ -309,3 +309,41 @@ No BLOCKING. Nothing deferred — no NOT-FIXED-THIS-ROUND finding.
 - **The `--anchor hidden` shuttle run has no pane and therefore cannot ever satisfy its file contract.** Reachable
   from the CLI, but it is a caller error rather than a shuttle defect, and R4-F2's fix deliberately preserves
   today's behaviour for it rather than quietly changing it.
+
+## Scope assessment — plan-promised vs shipped
+
+Nothing this round found shuttle short of what `internal/shuttleengine/doc.go` and `docs/overview.md` promise.
+The subpath-anchored fixture is the first in the campaign to put real distance between `AnchorPath` and
+`WorktreeRoot`, and every one of the four consumers the `validateToldPaths` comment enumerates resolved against the
+base its own documentation names.
+All three findings are cases where a shipped check is more confident than its evidence supports —
+a count that cannot see position (R4-F1), and a liveness bool that cannot see a missing binding (R4-F2/R4-F3) —
+not cases of missing scope.
+
+## Convergence assessment
+
+**R2-F11 is closed, and closing it needed exactly the live step the brief insisted on.**
+Two rounds could only call it PLAUSIBLE from reading. Driving it produced three facts neither round had:
+the failure is a race the input-box echo usually wins (so it is rarer than round 2 assumed), its consequence is
+worse than round 2 assumed (a hard `ok:false` on a double delivery, not merely a duplicate turn), and the position
+signal that fixes it is measurably stable over 1195 real frames (so the fix rests on measurement rather than on a
+plausible argument about terminals).
+
+**reed×shuttle joint composition — converged as far as this axis is worth pushing.**
+Round 3 named three untested successors and predicted a fourth round would find less than its own two findings.
+That held: two of the three came back CLEAN (subpath geometry, the concurrency race), the third found one defect of
+exactly the shape round 3's own finding had — shuttle reading a reed bookkeeping fact as an agent fact — which is
+now closed on both of its remaining branches. The composition surface has been exercised across ten distinct
+scenarios over two rounds, and the residue is concentrated in a single, now-fixed conceptual seam rather than
+spread across the module.
+
+**shuttle-alone correctness — converged, four rounds agree.** Nothing outside the two focus items surfaced at the
+normal bar while driving, and the normal flow (`done`, `asking`, `interrupt`, `send`, `--keep-pane`, the orphan
+sweep) behaved exactly as documented on every fixture, including the subpath-anchored one.
+
+## Merge readiness
+
+**Merge-ready.** See the fixer report (`_mill/shuttle-review-r4-fixer-report.md`) for per-fix verification;
+the merge bar is correctness in the normal single-instance flow, and every fix here narrows a branch that only
+fires when the substrate has already gone sideways (a scrolled-off needle, a cleared pane binding), leaving the
+normal path byte-for-byte unchanged.
