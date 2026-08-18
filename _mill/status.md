@@ -66,7 +66,9 @@ batches:
     commit_sha: 571fadb967491be938f667011f6355961c951226
     verify_baseline_failures: []
   - name: perchcli-standalone-entry
-    state: pending
+    state: running
+    implementer_session: b4538c06-60d2-43cc-a49f-13067ab1c6f4
+    start_sha: 3cb6c79a3166312cf66ae46571da91e6577ebd1e
     verify_baseline_failures: []
   - name: docs-and-cross-cutting-verification
     state: pending
