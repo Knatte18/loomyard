@@ -101,7 +101,13 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
   `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
   **Review obligation** (no machine guard for the told-geometry property):
-  `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`, `internal/hubgeom`, `internal/standalonegeom`.
+  `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
+
+  **The two geometry adapters are a named carve-out, in neither list.**
+  `internal/hubgeom` and `internal/standalonegeom` are *tellers*, not told packages: they exist to construct the geometry the engines are handed.
+  The non-import predicate does not bind them and cannot — `internal/hubgeom` imports `internal/lyxcwd` in production (`hubgeom.go:9`, `webstergeom.go:8`), which is precisely its job as the hub-mode adapter, and `internal/standalonegeom` builds from told strings for the same reason in the other mode.
+  What binds both is point 3's direction rule instead: they depend on the engines and no engine imports either back.
+  That direction is a **review obligation** too — no test asserts it — but it is a different obligation from the non-import one, and conflating them would make the invariant self-contradictory on its own first example.
 
 - **Rationale:** verified against the tree during exploration, and two packages are *not* what the design doc's phrasing implies.
   `internal/shuttleengine/seam_enforcement_test.go` (`TestProviderSeamImportRule`) polices the **provider** seam — Claude specifics confined to `claudeengine` — and contains no `lyxcwd` reference of any kind.
@@ -133,16 +139,28 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 
 - **Decision:**
   1. In `## Cwd Resolution Invariant` (line ~63): add the accuracy sentence (`Resolve` proves cwd is the root of a git worktree and nothing more) and a pointer to `CONSTRAINTS.md`'s new Told-Geometry Invariant for the tier map.
-  2. In the shared-infrastructure sentence at the end of `## Modules`: add `internal/preflight`, `internal/hubgeom`, and `internal/standalonegeom` to the parenthesised list, each with the same one-clause gloss style the existing entries use.
+  2. In `## Modules`, **after** the shared-infrastructure sentence at `docs/overview.md:318`, add a **separate** sentence mapping `internal/preflight`, `internal/hubgeom`, and `internal/standalonegeom` as the precondition-and-geometry layer that sits *above* the engines, with a pointer to the new Told-Geometry Invariant.
+     Do **not** add any of the three to the shared-infrastructure parenthetical.
+     That sentence describes "a thin layer of shared infrastructure" the user-facing modules sit **on**, and all three sit the other way round: `internal/preflight` imports `internal/fabricengine` (`predicates.go:13`, `preflight.go:12`), `internal/hubgeom` imports `burlerengine`/`fabricengine`/`perchengine`/`reedengine`/`websterengine`/`planparser`, and `internal/standalonegeom` imports the same four engines.
+     Listing them as things the modules sit on would state a false layering, and `internal/standalonegeom` is no exception to that — it is an engine-importing adapter exactly as `hubgeom` is.
   3. In `## Execution stack (orchestration layers)`: add a paragraph stating that every layer from `reed` up is told its geometry, that `hubgeom`/`standalonegeom` are the two constructors that tell it, and that a producer verb therefore runs in a non-repository directory.
+- **`docs/shared-libs/README.md` is explicitly out of scope.**
+  Its own package list (lines 28–42) is missing the same three packages, and the temptation is to treat that as the same gap — it is not.
+  That file documents *shared libraries*: things the modules sit on.
+  All three of these sit above the engines, so adding them there would repeat the false-layering error in a second file rather than fix a real omission.
+  Should a later task decide `internal/preflight` belongs in the shared-lib map after all, that is a judgement about the file's scope, and it belongs in that task rather than smuggled in here.
 - **Rationale:** the execution-stack description *did* change — the stack now has two entry modes, and the doc describes only one.
-  The shared-infrastructure list is a map, and three packages that exist are missing from it.
-- **Rejected:** touching only the Cwd Resolution section — leaves the module map wrong.
+  The `## Modules` section is a map, and three packages that exist appear nowhere on it — the fix is a correctly-placed sentence, not an entry in the nearest existing list.
+- **Rejected:** touching only the Cwd Resolution section — leaves the module map incomplete.
+  Adding the three to the shared-infrastructure parenthetical — states a layering the import graph contradicts.
   No change at all — the brief's "if the execution stack description changed" condition is met.
 
 ### `doc.go` audit — additive, not a rewrite
 
-- **Decision:** the audit's subject set is the packages converted by the producers-standalone waves — the same fifteen the brief's Files list names — not every package the membership predicate above reaches;
+- **Decision:** the audit's subject set is exactly these fifteen packages, enumerated here rather than by count or by reference to the wiki brief —
+  `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/tokenvocab`, `internal/pattern`, `internal/preflight`, `internal/buildinfo`, `internal/standalonestate`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/webstercli`, `internal/scoutengine`, `internal/scoutcli`.
+  This set is the producers-standalone waves' converted packages, and it is deliberately **not** the same as the enforcement-basis lists above: it includes `internal/preflight`, `internal/webstercli`, and `internal/scoutcli` (tier-2/tier-3 packages that resolve rather than are told, and therefore appear in neither enforcement list), and it excludes the two geometry adapters, which are covered by their own already-explicit doc comments.
+  It is not every package the membership predicate above reaches;
   `internal/batcher`, `internal/stencilstore`, and `internal/shedadapters` are bound by the invariant but are out of this audit's scope, since none of them was converted by this line of work and each already documents the property in its own words.
   For each converted package, confirm its `doc.go` carries one sentence naming which tier it sits in and whether it is told or resolves.
   Add the sentence where absent;
@@ -169,7 +187,7 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 
 - **Decision:** delete `manifest/designs/producers-standalone.md`, and in the same commit reword all five referencing lines in `manifest/roadmap.md`:
   the Planned item (line 12–14) moves to the head of `## Done` with its `See` line repointed at `CONSTRAINTS.md`'s Told-Geometry Invariant;
-  the four existing Done entries (lines ~107, ~110, ~113, ~116) each drop the `See [designs/producers-standalone.md](...) — the doc survives this task because …` clause, repointed at the new invariant and the relevant package documentation.
+  the four existing Done entries (their `See [designs/producers-standalone.md](...)` lines are 108, 111, 114, and 117 today) each drop the `See [designs/producers-standalone.md](...) — the doc survives this task because …` clause, repointed at the new invariant and the relevant package documentation.
 - **Rationale:** mandatory, not optional — `internal/lyxcwd/docslink_test.go` resolves every inline markdown link's file part under `manifest/` and `docs/`, so five dangling links fail the build.
   The "the doc survives this task because …" clauses are now false statements regardless.
 - **Rejected:** keeping the design doc — the Documentation Lifecycle deletes a module-design doc when its module lands, and every wave has landed.
@@ -248,7 +266,7 @@ The three own-loader modules (`burlerengine`, `modelspec`, `scoutengine`) call n
   Its `.md` walk covers `{internal, contracts/stencils}` only (`enforcement_test.go:940`), so `CONSTRAINTS.md`, `docs/overview.md`, and `manifest/roadmap.md` are all outside it.
   What the guard does cover here is the `doc.go` audit, via its `{internal, cmd}` `.go` walk (`enforcement_test.go:907`).
   Fabric vocabulary in the three `.md` files is therefore a **review obligation**: say Fabric/warp/weft only where the two sides genuinely must be told apart (tier 2's description), per the Fabric Vocabulary Invariant, and expect no machine check to catch a slip.
-- `internal/lyxcwd/docslink_test.go`'s `docsLinkAllowlist` (`docslink_test.go:394-397`) — a **self-expiring** allowlist of two known-broken links, keyed by `(file, target)`;
+- `internal/lyxcwd/docslink_test.go`'s `docsLinkAllowlist` (`docslink_test.go:396-399`) — a **self-expiring** allowlist of two known-broken links, keyed by `(file, target)`;
   an entry whose key matches no break in a scan is reported as deletable, which is a test *failure*, not a pass.
   One entry is `{docs/overview.md, ../CONSTRAINTS.md#package-naming}` — a file this task edits.
   Leave that link exactly as it is: incidentally repairing or removing it while editing `docs/overview.md` strands its allowlist entry and fails the build unless the entry is deleted in the same commit.
