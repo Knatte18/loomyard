@@ -34,6 +34,10 @@ type Geometry struct {
 	// spawned with — passed explicitly as tmux's -c at all three spawn sites (new-session, the
 	// header split, and each strand split), never left for tmux to infer from the invoking client's
 	// own cwd.
+	// It must be absolute: an empty or relative value does not fail, it silently resolves both the
+	// state directory and every pane's cwd against whatever working directory the caller happens to
+	// have. validateToldAnchorPath (server.go) is the backstop for a teller that builds this field
+	// some other way, alongside the SocketKey one.
 	AnchorPath string
 	// WorktreeRoot is what Strand.Worktree is stamped with, and what resolveStrandName substitutes
 	// for the <WORKTREE> token.

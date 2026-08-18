@@ -174,6 +174,33 @@ func validateToldTmuxIdentity(geom Geometry) error {
 	return nil
 }
 
+// validateToldAnchorPath reports an error when the told AnchorPath is one this engine cannot spend,
+// completing validateToldTmuxIdentity's backstop over the third Geometry field whose failure is
+// silent rather than loud.
+//
+// AnchorPath is the base stateDir joins onto and the -c every pane is spawned with, so an empty or
+// relative value does not fail — it succeeds against the WRONG tree. stateDir would resolve
+// reed.json/reed.lock under the lyx process's own working directory instead of the worktree, and
+// tmux answers an empty -c by falling back to the invoking client's cwd, which is exactly the
+// failure launchStrandLocked's explicit -c exists to prevent: every strand command running somewhere
+// other than the anchor while reed reports success (R4 review finding R4-F3).
+//
+// Like the socket-key branch of validateToldTmuxIdentity, this is a contract backstop rather than a
+// path the hub-mode teller can reach — hubgeom.ReedGeometry always passes the absolute
+// Location.AnchorPath() — and it binds the standalone tellers that will populate a Geometry
+// themselves.
+func validateToldAnchorPath(geom Geometry) error {
+	if geom.AnchorPath == "" {
+		return fmt.Errorf("told geometry has an empty anchor path (worktree %q)", geom.WorktreeRoot)
+	}
+	if !filepath.IsAbs(geom.AnchorPath) {
+		return fmt.Errorf(
+			"told anchor path %q is relative: reed joins its state directory onto it and passes it as tmux's -c, so a relative value silently resolves against whatever working directory the caller happens to have (worktree %q)",
+			geom.AnchorPath, geom.WorktreeRoot)
+	}
+	return nil
+}
+
 // cleanAbsHubPath resolves hubPath to its cleaned absolute form for stable hashing.
 func cleanAbsHubPath(hubPath string) string {
 	abs, err := filepath.Abs(hubPath)

@@ -187,6 +187,65 @@ func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
 	}
 }
 
+// TestValidateToldAnchorPath is the regression guard for the R4 review's R4-F3: the told-geometry
+// pre-flight backstopped SocketKey and SessionName but not AnchorPath, the third field whose bad
+// value fails SILENTLY rather than loudly — stateDir joins onto it and every pane's tmux -c is it,
+// so an empty or relative value resolves both against the caller's own working directory and the op
+// then SUCCEEDS against the wrong tree.
+// Like the SocketKey rows above, the hub-mode teller cannot reach these cases (ReedGeometry always
+// passes the absolute Location.AnchorPath()), which is exactly why they need their own coverage.
+func TestValidateToldAnchorPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		anchorPath string
+		wantErr    bool
+	}{
+		{"absolute hub-mode anchor", filepath.Join(string(filepath.Separator), "hub", "wt", "sub"), false},
+		{"absolute worktree root", filepath.Join(string(filepath.Separator), "hub", "wt"), false},
+		{"empty", "", true},
+		{"bare relative", filepath.Join("wt", "sub"), true},
+		{"dot-relative", "." + string(filepath.Separator) + "wt", true},
+		{"parent-relative", ".." + string(filepath.Separator) + "wt", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			geom := Geometry{
+				SocketKey:    "lyx-somehub-deadbeef",
+				SessionName:  "some-worktree",
+				AnchorPath:   tt.anchorPath,
+				WorktreeRoot: filepath.Join("hub", "some-worktree"),
+			}
+			err := validateToldAnchorPath(geom)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateToldAnchorPath(AnchorPath=%q) error = %v; want error: %v", tt.anchorPath, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal lands at
+// the same op boundary the identity refusal does — before the .lyx directory is created, which is
+// the very act that would otherwise litter the caller's own working directory with reed state.
+func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T) {
+	e := newTestEngine(t)
+	e.geom.AnchorPath = ""
+
+	ran := false
+	err := e.withOpLock(func() error {
+		ran = true
+		return nil
+	})
+	if err == nil {
+		t.Fatalf("withOpLock with an empty told anchor path = nil; want a refusal")
+	}
+	if ran {
+		t.Errorf("withOpLock ran the operation body despite an unusable told anchor path")
+	}
+	if got := filepath.Join(e.stateDir(), reedLockFileName); fileExists(got) {
+		t.Errorf("withOpLock created the lock file %q despite refusing the told geometry", got)
+	}
+}
+
 // TestWithOpLock_RefusesARewrittenSessionNameBeforeTouchingTmux asserts the refusal lands at the op
 // boundary, ahead of every tmux round trip and every directory creation — the property that keeps a
 // bad identity from creating substrate reed cannot address.

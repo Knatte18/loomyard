@@ -70,9 +70,16 @@ func (e *Engine) TmuxPath() string {
 // (geometry.go), so this is the first point at which an unusable identity can be refused without
 // changing that contract. Refusing before the lock — and therefore before any tmux round trip,
 // any directory creation, and any state read — is what keeps a bad identity from creating substrate
-// that no later reed verb can address (see validateToldTmuxIdentity in server.go).
+// that no later reed verb can address, or state under a directory that is not the worktree (see
+// validateToldTmuxIdentity and validateToldAnchorPath in server.go).
+// The anchor check runs second on purpose: an unusable tmux identity is the more actionable
+// diagnosis of the two, and the lock path below is what the anchor check protects, so it only has
+// to precede that.
 func (e *Engine) withOpLock(fn func() error) error {
 	if err := validateToldTmuxIdentity(e.geom); err != nil {
+		return err
+	}
+	if err := validateToldAnchorPath(e.geom); err != nil {
 		return err
 	}
 
