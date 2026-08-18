@@ -35,9 +35,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -258,10 +258,10 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 
 	reed := &runFakeReed{}
 	starter := &runFakeStarter{}
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
+	hubPath := filepath.Dir(worktree)
 	// webster's prompts are read from disk at call time now, so the fixture's
 	// hub must carry them before Run reaches RenderMasterPrompt.
-	seedHubStencils(t, layout.HubPath)
+	seedHubStencils(t, hubPath)
 	shuttleRunRoot := t.TempDir()
 	shuttleCfg := shuttleengine.Config{RunDir: shuttleRunRoot, RunTimeoutMin: 60, StartupTimeoutS: 30}
 
@@ -279,12 +279,12 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 		t.Fatalf("batcher.Select(\"\") error = %v", err)
 	}
 
+	bisectRepo := gitrepo.New(worktree)
 	deps := websterengine.RunDeps{
 		Starter:    starter,
 		Reed:       reed,
 		Engine:     &runFakeEngine{},
 		ShuttleCfg: shuttleCfg,
-		Layout:     layout,
 		Roles:      roles,
 		Batcher:    activeBatcher,
 		Config: websterengine.Config{
@@ -292,13 +292,18 @@ func newRunFixture(t *testing.T, numCards int) *runFixture {
 			MasterTimeoutMin: 480,
 			PollWaitS:        480,
 		},
-		PlanDir:      planDir,
-		WebsterDir:   t.TempDir(),
-		ScratchDir:   t.TempDir(),
-		ReportsDir:   t.TempDir(),
-		PromptsDir:   t.TempDir(),
-		WorktreeRoot: worktree,
-		Bisector:     gitrepo.New(worktree),
+		Geom: websterengine.Geometry{
+			AnchorRoot:   worktree,
+			WorktreeRoot: worktree,
+			WebsterDir:   t.TempDir(),
+			ScratchDir:   t.TempDir(),
+			ReportsDir:   t.TempDir(),
+			PromptsDir:   t.TempDir(),
+			StencilsDir:  fabricengine.StencilsDir(hubPath),
+			PlanDir:      planDir,
+		},
+		RefMatcher:   websterengine.NeverMatches{},
+		OpenBisector: func() (websterengine.FabricBisector, error) { return bisectRepo, nil },
 	}
 
 	return &runFixture{Deps: deps, Reed: reed, Starter: starter, Worktree: worktree, PlanDir: planDir, ShuttleRunRoot: shuttleRunRoot}
@@ -314,7 +319,7 @@ func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 	if st.Batches == nil {
 		st.Batches = map[int]*websterengine.BatchState{}
 	}
-	if err := websterengine.SaveState(fx.Deps.WebsterDir, fx.Deps.ScratchDir, st); err != nil {
+	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
 		t.Fatalf("seed matching state: %v", err)
 	}
 }
@@ -325,10 +330,10 @@ func seedMatchingState(t *testing.T, fx *runFixture, st *websterengine.State) {
 func TestRun_ErrRunBusy(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
-	if err := os.MkdirAll(fx.Deps.ScratchDir, 0o755); err != nil {
+	if err := os.MkdirAll(fx.Deps.Geom.ScratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir webster scratch dir: %v", err)
 	}
-	held, err := lock.AcquireWriteLock(filepath.Join(fx.Deps.ScratchDir, "run.lock"))
+	held, err := lock.AcquireWriteLock(filepath.Join(fx.Deps.Geom.ScratchDir, "run.lock"))
 	if err != nil {
 		t.Fatalf("acquire run.lock: %v", err)
 	}
@@ -379,10 +384,10 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
 	st := &websterengine.State{PlanFingerprint: "stale-fingerprint", Batches: map[int]*websterengine.BatchState{}}
-	if err := websterengine.SaveState(fx.Deps.WebsterDir, fx.Deps.ScratchDir, st); err != nil {
+	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
 		t.Fatalf("seed stale state: %v", err)
 	}
-	if err := websterengine.RequestPause(fx.Deps.ScratchDir); err != nil {
+	if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v", err)
 	}
 
@@ -390,7 +395,7 @@ func TestRun_FingerprintMismatchWithoutFreshLeavesPauseIntact(t *testing.T) {
 	if !errors.Is(err, websterengine.ErrFingerprintMismatch) {
 		t.Fatalf("Run() error = %v; want errors.Is(err, ErrFingerprintMismatch)", err)
 	}
-	if !websterengine.PauseRequested(fx.Deps.ScratchDir) {
+	if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 		t.Error("pause flag cleared on a refused run; want it left intact")
 	}
 	if fx.Starter.callCount() != 0 {
@@ -405,22 +410,22 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
 	staleState := &websterengine.State{PlanFingerprint: "stale", Batches: map[int]*websterengine.BatchState{}}
-	if err := websterengine.SaveState(fx.Deps.WebsterDir, fx.Deps.ScratchDir, staleState); err != nil {
+	if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, staleState); err != nil {
 		t.Fatalf("seed stale state: %v", err)
 	}
 
-	if err := os.MkdirAll(fx.Deps.ReportsDir, 0o755); err != nil {
+	if err := os.MkdirAll(fx.Deps.Geom.ReportsDir, 0o755); err != nil {
 		t.Fatalf("mkdir reports dir: %v", err)
 	}
-	reportPath := filepath.Join(fx.Deps.ReportsDir, "01-batch1.yaml")
+	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, "01-batch1.yaml")
 	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
 		t.Fatalf("seed stale report: %v", err)
 	}
 
-	if err := os.MkdirAll(fx.Deps.PromptsDir, 0o755); err != nil {
+	if err := os.MkdirAll(fx.Deps.Geom.PromptsDir, 0o755); err != nil {
 		t.Fatalf("mkdir prompts dir: %v", err)
 	}
-	promptPath := filepath.Join(fx.Deps.PromptsDir, "01-batch1.md")
+	promptPath := filepath.Join(fx.Deps.Geom.PromptsDir, "01-batch1.md")
 	if err := os.WriteFile(promptPath, []byte("stale prompt\n"), 0o644); err != nil {
 		t.Fatalf("seed stale prompt: %v", err)
 	}
@@ -436,8 +441,8 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	// than deleted; the live path is then reinitialized fresh by the same
 	// --fresh sequence, so a state.json legitimately exists there again by
 	// the time Run returns — it must no longer carry the stale fingerprint.
-	stateFile := filepath.Join(fx.Deps.WebsterDir, "state.json")
-	archived, globErr := filepath.Glob(filepath.Join(fx.Deps.WebsterDir, "state-*.json"))
+	stateFile := filepath.Join(fx.Deps.Geom.WebsterDir, "state.json")
+	archived, globErr := filepath.Glob(filepath.Join(fx.Deps.Geom.WebsterDir, "state-*.json"))
 	if globErr != nil || len(archived) != 1 {
 		t.Fatalf("archived state glob = %v, %v; want exactly 1", archived, globErr)
 	}
@@ -459,14 +464,14 @@ func TestRun_FreshArchivesStateReportsAndClearsPrompts(t *testing.T) {
 	if _, statErr := os.Stat(reportPath); !os.IsNotExist(statErr) {
 		t.Errorf("stale report still present at its original path; want the reports dir archived away wholesale")
 	}
-	archivedReportsDirs, globErr := filepath.Glob(fx.Deps.ReportsDir + "-*")
+	archivedReportsDirs, globErr := filepath.Glob(fx.Deps.Geom.ReportsDir + "-*")
 	if globErr != nil || len(archivedReportsDirs) != 1 {
 		t.Fatalf("archived reports dir glob = %v, %v; want exactly 1", archivedReportsDirs, globErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(archivedReportsDirs[0], "01-batch1.yaml")); statErr != nil {
 		t.Errorf("archived reports dir missing the stale report: %v", statErr)
 	}
-	if info, statErr := os.Stat(fx.Deps.ReportsDir); statErr != nil || !info.IsDir() {
+	if info, statErr := os.Stat(fx.Deps.Geom.ReportsDir); statErr != nil || !info.IsDir() {
 		t.Errorf("ReportsDir not recreated after --fresh archiving: %v", statErr)
 	}
 
@@ -522,11 +527,11 @@ func TestRun_EntryTimeReclaimStopsLiveMasterAndRecoveryStrandsButNotAbsent(t *te
 func TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn(t *testing.T) {
 	fx := newRunFixture(t, 1)
 
-	if err := os.MkdirAll(fx.Deps.WebsterDir, 0o755); err != nil {
+	if err := os.MkdirAll(fx.Deps.Geom.WebsterDir, 0o755); err != nil {
 		t.Fatalf("mkdir webster dir: %v", err)
 	}
-	outcomePath := filepath.Join(fx.Deps.WebsterDir, "outcome.yaml")
-	summaryPath := filepath.Join(fx.Deps.WebsterDir, "summary.md")
+	outcomePath := filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml")
+	summaryPath := filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md")
 	if err := os.WriteFile(outcomePath, []byte("outcome: stuck\nstuck_reason: \"prior run\"\nbatches_done: 0\n"), 0o644); err != nil {
 		t.Fatalf("seed stale outcome: %v", err)
 	}
@@ -547,10 +552,10 @@ func TestRun_StaleOutcomeAndSummaryArchivedBeforeSpawn(t *testing.T) {
 	if _, statErr := os.Stat(summaryPath); !os.IsNotExist(statErr) {
 		t.Errorf("stale summary.md still present at its original path; want it archived away")
 	}
-	if archived, globErr := filepath.Glob(filepath.Join(fx.Deps.WebsterDir, "outcome-*.yaml")); globErr != nil || len(archived) != 1 {
+	if archived, globErr := filepath.Glob(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome-*.yaml")); globErr != nil || len(archived) != 1 {
 		t.Errorf("archived outcome glob = %v, %v; want exactly 1", archived, globErr)
 	}
-	if archived, globErr := filepath.Glob(filepath.Join(fx.Deps.WebsterDir, "summary-*.md")); globErr != nil || len(archived) != 1 {
+	if archived, globErr := filepath.Glob(filepath.Join(fx.Deps.Geom.WebsterDir, "summary-*.md")); globErr != nil || len(archived) != 1 {
 		t.Errorf("archived summary glob = %v, %v; want exactly 1", archived, globErr)
 	}
 }
@@ -571,7 +576,7 @@ func TestRun_AssertedModelInitializedToMasterRoleModel(t *testing.T) {
 		t.Fatalf("Run() error = nil; want the scripted wait error")
 	}
 
-	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
+	st, loadErr := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if loadErr != nil {
 		t.Fatalf("LoadState() error = %v", loadErr)
 	}
@@ -602,7 +607,7 @@ func TestRun_MasterStrandPersistedBeforeFindRun(t *testing.T) {
 		t.Fatal("Run() = nil error; want the FindRun resolve failure")
 	}
 
-	st, loadErr := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
+	st, loadErr := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if loadErr != nil || st == nil {
 		t.Fatalf("LoadState() = %v, %v; want the pre-resolve state persisted", st, loadErr)
 	}
@@ -637,10 +642,10 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 			},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Shipped batch1\n\nAll good.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped batch1\n\nAll good.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -661,7 +666,7 @@ func TestRun_DoneOutcomeWithValidSummaryAndCleanAuditPopulatesResult(t *testing.
 	if result.SummaryTitle != "Shipped batch1" {
 		t.Errorf("RunResult.SummaryTitle = %q; want %q", result.SummaryTitle, "Shipped batch1")
 	}
-	if websterengine.PauseRequested(fx.Deps.ScratchDir) {
+	if websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 		t.Error("pause flag present after a done outcome; want it cleared")
 	}
 }
@@ -684,10 +689,10 @@ func TestRun_ResumedDoneRunCountsOnlyCurrentSessionForkBatches(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: forks},
 			},
 			onWait: func() {
-				if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
 					t.Fatalf("write outcome.yaml: %v", err)
 				}
-				if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Resumed and finished\n\nBoth batches done.\n"), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Resumed and finished\n\nBoth batches done.\n"), 0o644); err != nil {
 					t.Fatalf("write summary.md: %v", err)
 				}
 			},
@@ -751,7 +756,7 @@ func TestRun_DoneWithMissingSummaryIsHardError(t *testing.T) {
 			ForkAudit: &shuttleengine.ForkAudit{},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
 			// summary.md deliberately never written.
@@ -799,10 +804,10 @@ func TestRun_DoneWithUnrecordedBatchIsHardError(t *testing.T) {
 			},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 2\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Claimed done\n\nPremature.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Claimed done\n\nPremature.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -849,10 +854,10 @@ func TestRun_DoneWithParentWriteViolationIsHardError(t *testing.T) {
 			},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Shipped batch1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped batch1\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -974,13 +979,13 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 			// pre-spawn ClearPause already ran before Master started, so
 			// this is a genuinely new request Master's own paused final
 			// action is responding to.
-			if err := websterengine.RequestPause(fx.Deps.ScratchDir); err != nil {
+			if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
 				t.Fatalf("RequestPause() error = %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: paused\nstuck_reason: null\nbatches_done: 0\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: paused\nstuck_reason: null\nbatches_done: 0\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Paused mid-run\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Paused mid-run\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -995,7 +1000,7 @@ func TestRun_PausedOutcomeLeavesPauseFlagIntact(t *testing.T) {
 	if result.Outcome != "paused" {
 		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "paused")
 	}
-	if !websterengine.PauseRequested(fx.Deps.ScratchDir) {
+	if !websterengine.PauseRequested(fx.Deps.Geom.ScratchDir) {
 		t.Error("pause flag cleared on a paused outcome; want it left intact as the operator's own record")
 	}
 }
