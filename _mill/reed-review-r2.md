@@ -81,7 +81,8 @@ Every scenario below ran the DEPLOYED `.dev-bin/lyx` (re-deployed from source at
 
 ## Findings
 
-Five findings: 1 BLOCKING, 1 MEDIUM, 1 LOW, 2 NIT.
+Six findings: 1 BLOCKING, 2 MEDIUM, 1 LOW, 2 NIT.
+Five (R2-F1–R2-F5) came from the Job-1 clean-room pass; R2-F6 surfaced during Job 2's concurrent verification sweep and is labelled as such at its own entry.
 Round 1's ten findings (F1–F10) were re-verified where behavioural (see L4, L5, L8, L9 above, and the `producers-standalone.md` table re-read for F5) — **no regression of any of them**.
 
 ---
@@ -173,6 +174,37 @@ The same identifier also survives in `internal/burlercli`, `internal/shuttlecli`
 
 ---
 
+---
+
+### R2-F6 — MEDIUM — CONFIRMED — the capability probe runs on tmux's GLOBAL DEFAULT socket, so `lyx reed up` starts a server outside reed's own hub and fails opaquely when concurrent invocations race on it
+
+**Provenance, stated plainly.** This finding was NOT produced by the Job-1 clean-room pass. It surfaced during Job 2's post-fix verification, in the 3× concurrent smoke sweep the prompt calls for as a diagnostic amplifier. Recording it here rather than burying it in the fixer report keeps the review file the campaign's complete record; the deviation from strict A-before-B is stated rather than hidden, and the code it concerns (`probe.go`) was untouched by wave-1 and by every fix in this round.
+
+**Where.** `internal/reedengine/probe.go:99-105` (`probeCapabilityLocked`).
+
+**Failure scenario.**
+`probeCapabilityLocked` deliberately bypasses `TmuxCmd`'s `-L` prefix — its own doc comment says so — and shells out as `exec.Command(e.cfg.Tmux, args...)`. Without `-L`, tmux uses the operator's GLOBAL DEFAULT socket. Verified live:
+
+- `tmux -V` creates no socket (it is answered client-side).
+- `tmux list-commands` CREATES `/tmp/tmux-<uid>/default`, is answered by a server tmux starts for the purpose, and that server exits immediately afterwards.
+
+So every `lyx reed up`/`resume` — the two verbs that reach `ensureServerAndSessionLocked` — starts a tmux server on the operator's own default socket as a side effect of probing a binary. That is a live-substrate spawn outside reed's "exactly one named tmux server per hub" model, on a socket reed neither owns nor tears down.
+
+The observable consequence is a `lyx reed up` that fails for a reason having nothing to do with the hub it is booting. Under the 3× concurrent smoke sweep this reproduced **twice in nine suite runs** (~22%), always the same way, in two different tests:
+
+```
+smoke_teardown_test.go:67:  cycle 0 up = 1; want 0, output: {"error":"run list-commands: exit status 1","ok":false}
+smoke_lifecycle_test.go:105: up = 1; want 0, output: {"error":"run list-commands: exit status 1","ok":false}
+```
+
+**And the message is empty of diagnosis, which is a second defect in the same three lines.** `probeCapabilityLocked` uses `exec.Command(...).Output()` and returns the bare error, discarding `(*exec.ExitError).Stderr` — so the operator gets `run list-commands: exit status 1` and nothing tmux actually said. Every other tmux invocation in this package goes through `TmuxCmd`, whose `wrapTmuxError` attaches tmux's own stderr to the error precisely so failures are diagnosable. The probe is the one call site that opted out of that.
+
+Hammering `tmux list-commands` on the default socket in isolation (200 invocations, 8-way concurrent, 25 rounds) produced 0 failures, so the trigger is the loaded concurrent-suite environment rather than the bare command — which is exactly why the amplifier exists and why the isolated repro is reported as not reproducing rather than glossed over.
+
+**Suggested fix.** Route the probe through `e.tmux` like every other tmux call in the package. Verified live that this is safe and strictly better: `tmux -L <key> -V` stays socket-free; `tmux -L <key> list-commands` is answered by reed's own hub server when it is already up (spawning nothing) and otherwise by a transient server on reed's OWN socket that exits immediately, leaving the operator's default socket untouched. It also routes the failure through `wrapTmuxError`, so the next occurrence carries tmux's own diagnosis.
+
+**Merge-bar note.** The stated merge bar de-blocks concurrency-only findings, and in the normal single-instance flow the probe works. It is recorded and fixed anyway because the default-socket spawn is a correctness/scope defect independent of concurrency: `lyx reed up` must not start a tmux server the operator did not ask for, outside the hub reed owns.
+
 ## Observations — NOT findings (no fix, recorded for honesty)
 
 - **Stale tmux socket FILES accumulate in `/tmp/tmux-<uid>/`.** After a clean `lyx reed down`, the socket file remains. This is tmux's own behaviour, not reed's: the two `probe-crucible`/`probe2-crucible` sockets this review created and tore down with a plain `tmux kill-server` are still present too. Functionally harmless (tmux replaces a stale socket on the next connect), so no fix — but `TestSmokeDownLeavesNoTmuxOnSocket` checks for stray PROCESSES, not stray socket files, and that is the correct scope.
@@ -193,4 +225,4 @@ Nothing is shipped beyond scope; nothing plan-promised is deferred that should b
 ## Merge-readiness verdict
 
 **Not merge-ready as reviewed** — R2-F1 is a BLOCKING defect in the normal single-instance flow (hard failure plus permanent stray state on a shared server, plus a `down` that falsely reports success).
-Merge-ready once R2-F1–R2-F5 are fixed, all gates stay green, and the live scenarios are re-driven against a re-deployed binary; see `_mill/reed-review-r2-fixer-report.md`.
+Merge-ready once R2-F1–R2-F6 are fixed, all gates stay green, and the live scenarios are re-driven against a re-deployed binary; see `_mill/reed-review-r2-fixer-report.md`.
