@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-burler told-geometry  '2026-08-18T09:29:31Z'
 approved-perch told-geometry  '2026-08-18T09:36:49Z'
 holistic-reviewing  '2026-08-18T09:37:17Z'
 holistic-approved  '2026-08-18T09:39:47Z'
+done  '2026-08-18T09:40:49Z'
 ```
 
 ## Batches
