@@ -6,6 +6,7 @@ slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: burlerengine + perchengine told-geometry
 task_description: |
   burlerengine + perchengine told-geometry
@@ -31,9 +32,14 @@ implementing  '2026-08-18T09:19:21Z'
 ```yaml
 batches:
   - name: geometry types and hubgeom tellers
-    state: pending
+    state: running
+    implementer_session: c16941e8-061b-4303-bfa9-2c254a4e35e4
+    start_sha: 827da6f85e57b971e181ee5b2eefd34fea1f8814
+    verify_baseline_failures: []
   - name: burler told-geometry
     state: pending
+    verify_baseline_failures: []
   - name: perch told-geometry
     state: pending
+    verify_baseline_failures: []
 ```
