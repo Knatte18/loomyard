@@ -30,7 +30,11 @@ implementing  '2026-08-18T13:24:11Z'
 ```yaml
 batches:
   - name: told-anchor-root-conversion
-    state: pending
+    state: running
+    implementer_session: 81249a12-0fba-48b8-bf7d-4181e40cf132
+    start_sha: d2507c861a2b2ef7801159bab5b0fa341e1e8edd
+    verify_baseline_failures: []
   - name: hub-mode-evidence
     state: pending
+    verify_baseline_failures: []
 ```
