@@ -33,7 +33,9 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 - `internal/reedengine`: one additive `Geometry.PaneCwd` field, consumed at the two tmux spawn sites (`lifecycle.go:294,489`), hub-neutral by construction — see the `standalone-pane-cwd-is-told-separately-from-anchorpath` Decision.
 - `internal/webstercli`: hub/standalone mode selection in `PersistentPreRunE`, an extracted tier-1-pure wiring function, the three new persistent flags `--stencils-dir`, `--target-dir`, `--plan-dir`, removal of the `websterCLI.layout` field, and `validate.go:73`'s switch to a told worktree root.
 - `internal/batcher`: `Active` moves from `configengine.Load` to `configengine.LoadOrTemplate`.
-- `cmd/lyx/constructoranchoring_test.go`: webster's four rows rewritten to the told shape.
+- `cmd/lyx/constructoranchoring_test.go` and `cmd/lyx/notransients_test.go`: webster's accessor rows rewritten to the told shape — see the enumeration method below, which is what produces the full list.
+- `internal/preflight`: doc-only rewrite of `doc.go`'s "Why there are two predicates" section and both function doc comments;
+  no code change.
 - `CONSTRAINTS.md`: Stencil Ownership reword, Durable-vs-Ephemeral clarification, Config Strictness pinned-set update, CLI/Cobra help obligations for the three new flags.
 - `internal/websterengine/doc.go` and `internal/webstercli/cli.go`'s package doc updated in the same commit (CLAUDE.md's same-commit docs rule).
 
@@ -180,9 +182,16 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 - **Rejected:** hand-deriving the board path from a worktree root, per T8's literal wording — `preflight.Wired` returns `(nil, false)` on both failure branches (`predicates.go:30-40`), so no `Location` is available there;
   and webster's hub `worktreeRoot` is `AnchorPath()`, so `filepath.Dir` of it is not `HubPath` under a nested `AnchorRel` anyway.
 - **Rejected:** `Wired` for mode plus `HubPresent` as a tie-breaker (the r1 shape) — it produces the three false refusals above.
+- **This contradicts `internal/preflight`'s shipped prose, which this task therefore rewrites in the same commit.**
+  `preflight/doc.go:34-47` currently states that `Wired` "is the hub-mode trigger a standalone-capable CLI's pre-run consults", that `HubPresent` "is the stencil seed gate", and — most directly — that "that resolved-but-not-wired case is exactly the one a standalone-capable CLI must answer with standalone mode".
+  `predicates.go:17-24` and `:41-52` say the same in their function comments.
+  Be plain about what is happening here: this is not a doc that merely lags the code, it is **T5's author stating the opposite intent**, and this task overrides it.
+  The override is justified by T5's own listed facts rather than by preference — the three healthy-but-unwired locations `predicates.go:22-24` enumerates are the counterexample to the sentence four lines below them, and sending them to standalone would silently relocate a real hub's state to `<state>`.
+  `internal/preflight/doc.go`'s "Why there are two predicates" section and both function doc comments are rewritten in this task's commit to state the corrected trigger and to keep `HubPresent`'s seed-gate role, per CLAUDE.md's same-commit docs rule.
+  No `preflight` *code* changes — both predicates keep their current behaviour and signatures.
 - **Flag for T8 and T10:** T8's brief pins the "tier 1 AND tier 2" trigger for `burlercli`/`perchcli`, and T10 lands the three-tier invariant in `CONSTRAINTS.md`.
   Both should reconcile with this finding: burler and perch have the same three healthy-but-unwired locations, so the same deviation likely applies to them.
-  This task changes only webster and records the reasoning;
+  This task changes only webster and the shared `preflight` docs, and records the reasoning;
   it does not edit T8's brief.
 
 ### the-two-roots
@@ -292,8 +301,15 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 - **Decision:** the `layout *lyxcwd.Location` field on `websterCLI` (`cli.go:52`) is **deleted**, not left nil-in-standalone.
   Its replacements:
   - `c.geom websterengine.Geometry` — the told values every verb reads.
-  - `c.fabric` — the hub-mode-only fabric handle (`*fabricengine.Fabric` or the `FabricBisector`/`RefMatcher` pair built from it), `nil` in standalone, which is also what `fabricSync` branches on.
+  - `c.fabric *fabricengine.Fabric` — opened **once** in the wiring function in hub mode (replacing `fabricSync`'s per-call `fabricengine.Open`), `nil` in standalone.
+    It is the single source for all three fabric-bound needs: the commit handle, the `FabricBisector`, and the `RefMatcher`.
+  - `c.anchorRel string` — hub mode's `layout.AnchorRel`, empty in standalone.
   - `validate.go:73`'s `planparser.Validate(plan, c.layout.AnchorPath())` becomes `planparser.Validate(plan, c.geom.WorktreeRoot)`.
+
+  **`fabricSync` (`internal/webstercli/sync.go`) changes signature** to `fabricSync(f *fabricengine.Fabric, anchorRel, label string) (bool, error)`.
+  It needs two things from the deleted field and neither survives on its own: `layout.AnchorRel` for `fabricengine.ScopedPathspec` (`sync.go:22`) and the whole `*lyxcwd.Location` for `fabricengine.Open` (`sync.go:26`).
+  `fabricengine.Fabric` exposes no `AnchorRel`, so the pathspec scope must be told separately — hence the second parameter rather than deriving it from the handle.
+  A `nil` `f` means standalone and returns `(false, nil)` without touching git, which is what the four call sites branch on.
 - **Rationale:** a surviving `layout` field would be `nil` in standalone and every existing dereference is an unguarded nil-panic waiting for the first standalone verb — `validate` most immediately.
   Deleting the field makes the compiler enumerate every remaining consumer instead of leaving them to be found at runtime.
   `planparser.Validate`'s second parameter is **named `worktreeRoot`** (`internal/planparser/validate.go:56`) and resolves each card's move source/target files, so `WorktreeRoot` is the correct told value on its own terms — hub mode passes `l.AnchorPath()` for it exactly as today, so no hub behaviour changes.
@@ -303,11 +319,16 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 
 - **Decision:** when `runIntegrationStage` has a failing suite and a `nil` Bisector (standalone), it **still records the failure** — it simply cannot localize it.
   Concretely it takes `BisectAndEscalate`'s existing no-SHA path: `RecordIntegrationFailure(st, "unknown", "unknown")` followed by `AppendIntegrationFailure(websterDir, "unknown", "unknown")`, so `state.json` and `summary.md` carry the failure exactly as they would for an empty-SHA bisect.
-  The standalone-mode explanation rides the **run's `Warnings` list** — the same channel the dirty-worktree and fork-audit notices already use — and therefore reaches the operator through the verb's JSON envelope, not through a bare log line.
+  The standalone-mode explanation reaches the operator through a **`Warnings []string` field added to `websterengine.RunResult`**, surfaced as a new `warnings` key on `run`'s output envelope.
+  Both are new: `RunResult` (`runlevel.go:151-167`) has no `Warnings` field today, `runIntegrationStage` (`:763`) returns only `error`, and `run.go:101-107`'s envelope emits no `warnings` key.
+  `runIntegrationStage` gains a warnings return alongside its error, and `Run` accumulates into `RunResult.Warnings`.
+  The shape copies `RecordResult.Warnings` (`recordbatch.go:64-70`) verbatim — same field type, same "non-fatal, never a failure" contract — so `run` gains the channel `record-batch` and `recover-batch` already have rather than inventing a second one.
 - **Rationale:** `BisectAndEscalate` already falls back to `"unknown"` for both SHA and card when `shas` is empty (`integration.go:190-200`), so standalone needs no new state shape, no new summary format, and no new sentinel — it reuses a path the schema already understands.
   Recording the failure matters more than localizing it: a standalone run whose integration suite failed must not report a clean outcome, and "failed, offending card unknown" is honest where a silent skip is not.
   Routing the explanation through `Warnings` rather than a logger keeps it inside the `internal/output` envelope, per the CLI / Cobra Invariant's no-bare-plain-text rule.
+  Adding the field is also the honest fix for a gap that predates this task: `run`'s integration stage has had nothing to say non-fatal things through at all.
 - **Rejected:** skipping `RecordIntegrationFailure`/`AppendIntegrationFailure` entirely in standalone — that loses the failure from `state.json`, so a resumed run would re-drive as if the suite had passed.
+- **Rejected:** routing the explanation through `logger` instead of the envelope — the CLI / Cobra Invariant forbids bare plain-text error paths, and an operator reading `run`'s JSON would see a failing suite with no stated reason for the missing localization.
 - **Rejected:** a distinct `"standalone"` sentinel in place of `"unknown"` — it would fork the summary/state vocabulary for no gain;
   the `Warnings` entry already says why localization is absent.
 
@@ -327,6 +348,9 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
     The load-bearing half — *never lazily inside `stencilstore.Read`* — is preserved verbatim.
   - **Durable-vs-Ephemeral State Invariant**: add that standalone's `_lyx`/`.lyx` pair are ordinary siblings under `<state>`, satisfying the mirrored-subpath rule rather than deviating from it.
   - **Config Strictness Invariant**: the `batcher` pinned-set move above.
+  - **Fabric Git Invariant (warp + weft)**, the enforcement bullet at `CONSTRAINTS.md:310`: it states the agent half "is machine-checked for webster runs by `fabricengine.RefScanner`".
+    With a never-matching standalone `RefMatcher` that becomes true of **hub-mode** webster runs only, so the bullet gains a one-clause qualifier saying so.
+    Standalone has no weft worktree and no fabric verb for a fork to drive, so there is nothing for the check to catch there — but the invariant must say that rather than leave a reader believing the guard is universal.
   - **CLI / Cobra Invariant**: no text change, but the three new flags carry the `Short`/`Long` and help-accuracy obligations it imposes.
 - **Rationale:** T7 is the first task to ship a told stencils directory and a `<state>` tree, so from this commit onward the shipped code contradicts the current wording.
   CLAUDE.md's same-commit docs rule and the design's own reasoning ("deferring them would leave the shipped code contradicting a live invariant across two waves") both apply here, and apply to T7 first because T7 lands first.
@@ -393,6 +417,22 @@ No other stencil references it, and `RenderMasterPrompt` never fills it.
   normalizes symlinks and Windows case before hashing.
 - `buildinfo.IsDev() bool` — exact `"dev"` match on the ldflags-stamped `Channel`.
 
+**Enumeration method — derive the affected-file list, never hand-write it.**
+Before starting, run a mechanical grep for each changed exported symbol repo-wide and record the disposition of **every** hit, the same way `websterengine`'s seven `*lyxcwd.Location` fixture files were inventoried above.
+The design doc states this obligation for its own `Files` lists ("every caller of every changed exported symbol, not merely every construction site") and warns that the constructor-only reading is wrong at least once.
+The symbols to sweep: the four accessors `websterengine.Dir` / `ReportsDir` / `ScratchDir` / `PromptsDir`, the three renderers, `websterengine.CheckFork` / `CheckParent`, `fabricSync`, and `reedengine.Geometry`.
+
+The four accessors alone return hits in **five** files outside `internal/websterengine`, three of which a hand list missed on the first pass:
+
+| File | Hits | Disposition |
+|---|---|---|
+| `internal/webstercli/cli.go` | `198-201` | production wiring — rewritten |
+| `cmd/lyx/constructoranchoring_test.go` | `86-87`, `96-97`, `143-144`, `153-154`, and the `174-175` map | rows rewritten in place |
+| `cmd/lyx/notransients_test.go` | `63-64`, `73-74`, `156` | the Durable-vs-Ephemeral enforcement test — rows rewritten |
+| `internal/webstercli/verbs_test.go` | `286-289` | fixture converted;
+  its subpath-anchored `PersistentPreRunE` case must keep passing |
+| `internal/webstercli/cli_test.go` | `180-183` | fixture converted |
+
 **Guards this task runs into:**
 
 - `cmd/lyx/rawgitmutation_test.go` machine-checks that `internal/websterengine` non-test sources contain neither `gitrepo.New(` nor `gitexec.Run(` outside its allowlist.
@@ -429,7 +469,7 @@ From `CONSTRAINTS.md`:
 - **Fabric Git Invariant (warp + weft)** and its `rawgitmutation_test.go` guard — untouched;
   no new raw git handle in `websterengine`.
 - **Dev/Prod Binary Separation** — the standalone stencil seed reuses `buildinfo.IsDev()`, never a hardcoded mode.
-- **Documentation Lifecycle** — `internal/websterengine/doc.go`, `internal/webstercli/cli.go`'s package doc, `internal/hubgeom/doc.go` (which currently promises `WebsterGeometry`), `internal/reedengine/geometry.go`'s field docs (the new `PaneCwd` needs its own comment explaining why it is not `AnchorPath`), and the new `internal/standalonegeom/doc.go` all land in this commit, plus `CONSTRAINTS.md`.
+- **Documentation Lifecycle** — `internal/websterengine/doc.go`, `internal/webstercli/cli.go`'s package doc, `internal/hubgeom/doc.go` (which currently promises `WebsterGeometry`), `internal/reedengine/geometry.go` — **both** its file-header sentence at `:1`, which reads "declares Geometry, the seven-field struct" and becomes eight, and the new `PaneCwd` field's own comment explaining why it is not `AnchorPath` — `internal/preflight/doc.go` and its two function comments, and the new `internal/standalonegeom/doc.go` all land in this commit, plus `CONSTRAINTS.md`.
   `manifest/roadmap.md` is **not** moved by this task — wave 3 completes only when T6 also lands, and the roadmap move belongs to whichever task closes the wave, or to T10.
 
 From `CLAUDE.md`:
@@ -448,7 +488,8 @@ the migration must keep them green with only mechanical construction changes.
   Keep both the unanchored and subpath-anchored cases — they still pin the `_lyx`/`.lyx` split.
 - New: `CheckFork`/`CheckParent` against a fake `RefMatcher`, proving the audit's fabric-reference violation fires on a matcher hit and stays silent on a never-matching one.
   This is a genuine TDD candidate — write the interface's test before deleting the `*fabricengine.RefScanner` parameter.
-- New: `runIntegrationStage` with a `nil` Bisector must not panic, must append the standalone-mode explanation to `Warnings`, and must still leave `state.json` and `summary.md` carrying the failure with `"unknown"`/`"unknown"` localization.
+- New: `runIntegrationStage` with a `nil` Bisector must not panic, must surface the standalone-mode explanation in the new `RunResult.Warnings`, and must still leave `state.json` and `summary.md` carrying the failure with `"unknown"`/`"unknown"` localization.
+  Assert the `warnings` key reaches `run`'s JSON envelope too — the field is new on both `RunResult` and the envelope, so a test that stops at the struct proves nothing an operator can see.
   TDD candidate — the nil-fallback deletion is what makes nil reachable.
 - New: the fork audit resolves a **relative** transcript write path against `AuditWorkdir`, not `AnchorRoot`.
   Drive `CheckFork`/`CheckParent` with `AuditWorkdir != AnchorRoot` and a relative recorded path, and assert the violation is judged against the workdir-joined path.
@@ -485,7 +526,7 @@ The existing reed suite must stay green unchanged — that is the actual regress
 
 **`internal/batcher`** — a test that `Active` returns the template-selected batchifier when `_lyx/` is absent, mirroring the per-loader tests T2 added.
 
-**`cmd/lyx`** — `constructoranchoring_test.go` rows rewritten;
+**`cmd/lyx`** — `constructoranchoring_test.go` and `notransients_test.go` rows rewritten per the enumeration table above;
 `helptree_test.go`, `drift_test.go`, `longlist_test.go` cover the new flags' `Short`/`Long` obligations.
 
 **Verify commands:**
@@ -532,5 +573,13 @@ The existing reed suite must stay green unchanged — that is the actual regress
 - **Q:** [review r2 gap] What happens to the `websterCLI.layout` field and `validate.go:73` in standalone? **A:** [recommended] Delete the field;
   `validate` passes `Geom.WorktreeRoot`. **Why:** a surviving nil field is an unguarded panic on the first standalone `validate`, and `planparser.Validate`'s parameter is literally named `worktreeRoot` (`validate.go:56`) — deleting the field makes the compiler enumerate every consumer instead of leaving them to runtime.
 - **Q:** [review r2 gap] Which channel carries the standalone degraded escalation, and does the failure still reach `state.json`/`summary.md`? **A:** [recommended] Reuse `BisectAndEscalate`'s existing empty-SHA path — record with `"unknown"`/`"unknown"` — and carry the explanation on the run's `Warnings` list. **Why:** no new state shape or sentinel is needed, the JSON envelope keeps the CLI/Cobra no-bare-text rule, and skipping the record entirely would let a resumed run re-drive as if the suite had passed.
+- **Q:** [review r3 gap] `RunResult` has no `Warnings` field and `run`'s envelope has no `warnings` key — what channel does the standalone escalation actually ride? **A:** [recommended] Add both, copying `RecordResult.Warnings`' existing shape and contract. **Why:** the r2 decision named a channel that does not exist;
+  `run`'s integration stage has in fact never had a way to say anything non-fatal, so adding the field is the honest fix rather than a workaround.
+- **Q:** [review r3 gap] Deleting `websterCLI.layout` strands `fabricSync`, which needs both `AnchorRel` and the `Location` — what replaces it? **A:** [recommended] `fabricSync(f *fabricengine.Fabric, anchorRel, label string)`, with the handle opened once in the wiring function and `anchorRel` told separately. **Why:** `fabricengine.Fabric` exposes no `AnchorRel`, so the pathspec scope cannot be derived from the handle;
+  a `nil` handle then doubles as the standalone branch the four call sites already need.
+- **Q:** [review r3 gap] The `HubPresent`-only trigger contradicts `preflight`'s shipped prose, which says resolved-but-not-wired must answer standalone — who wins? **A:** [recommended] Keep the decision and rewrite `preflight`'s docs in the same commit. **Why:** this is an override of T5's stated intent, not a lagging doc, and it should be recorded as one;
+  it is justified by T5's own enumerated facts — the three healthy-but-unwired locations are the counterexample to the sentence four lines below them, and routing them to standalone would relocate a real hub's state to `<state>`.
+- **Q:** [review r3 gap] Is the affected-file list complete? **A:** [recommended] No — replace the hand list with a mechanical grep per changed exported symbol and record every hit's disposition. **Why:** the four accessors alone had hits in three files nobody had named (`notransients_test.go`, `cli_test.go`, and `constructoranchoring_test.go`'s `174-175` map);
+  the design doc already states this enumeration obligation and warns the constructor-only reading is wrong at least once.
 - **Q:** What happens to `cmd/lyx/constructoranchoring_test.go`? **A:** [auto-pick] webster's four rows rewritten in place in both test functions;
   accept the expected textual conflict with T6's adjacent rows. **Why:** the design's explicit disposition for the file, and the non-tautological anchoring proof lives in `verbs_test.go` regardless.
