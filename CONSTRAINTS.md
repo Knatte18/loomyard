@@ -137,6 +137,23 @@ producers adapt onto the package's own `ShedProducer` seam in their own packages
 - Reverse import (`tokenvocab` → `reed`/`loom`/any feature package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
 
+## Buildinfo Leaf Invariant
+
+`internal/buildinfo` production code imports nothing at all — not even the standard library — so `cmd/lyx` and every standalone CLI package can read the build channel with no cycle risk.
+
+- The package exposes `Channel` and `IsDev()` only, and deliberately does not return a `stencilstore.Mode`, because `internal/stencilstore` imports `internal/logger` and `internal/stencil` and returning its type would destroy the leaf property.
+- The mapping site is `stencilstore.ModeFor`.
+- The ldflags stamp path `github.com/Knatte18/loomyard/internal/buildinfo.Channel` is guarded against silent drift by a test in `tools/deploy/main_test.go`, because Go's linker does not error on an unmatched `-X`.
+- **Enforced by** `internal/buildinfo/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
+
+## Standalonestate Leaf Invariant
+
+`internal/standalonestate` production code imports only the standard library, with no permitted non-stdlib import.
+
+- The package never resolves a working directory — no `filepath.Abs`, no `os.Getwd` — and rejects a relative target with an error, keeping cwd resolution wholly with `internal/lyxcwd` per the Cwd Resolution Invariant.
+- `Derive` creates nothing on disk.
+- **Enforced by** `internal/standalonestate/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`); the no-`filepath.Abs` half is a review obligation rather than a machine check.
+
 ## Scout Engine-Seam Invariant
 
 `internal/scoutengine` never imports `internal/output`, `cobra`, or any `internal/*cli` package.
