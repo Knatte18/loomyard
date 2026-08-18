@@ -497,8 +497,8 @@ An instruction file — a producer's own prompt or skill — must never duplicat
 
 - **The membership rule**, stated as a predicate a future caller can apply rather than a bare list: a module belongs on the degrading side when it has, or is slated to have, a **standalone entry point** — a way to be invoked outside a lyx hub — because a config-less invocation is then a supported mode.
   A module that only ever runs inside a hub stays strict, because there an absent config means the hub is broken.
-- **The two pinned sets** as they stand today: degrading is `{shuttleengine, reedengine, perchengine, websterengine}`;
-  strict is `{fabricengine, boardengine, loomengine, batcher}`.
+- **The two pinned sets** as they stand today: degrading is `{shuttleengine, reedengine, perchengine, websterengine, batcher}`;
+  strict is `{fabricengine, boardengine, loomengine}`.
 - **A third class, explicitly outside this invariant's guard subject: own-loader modules.**
   These never call either entry point — they resolve the path with `configengine.ConfigFile` and read the file themselves with their own absent-file fallback.
   `internal/burlerengine` (`burler.yaml`, absent file returns a zero `Config`, bypassing `Load` because `MissingKeys` would misfire on its open-ended lenses/fans key set), `internal/modelspec` (`models.yaml`, absent file returns `builtins()`;
@@ -507,8 +507,9 @@ An instruction file — a producer's own prompt or skill — must never duplicat
 - **Absence is typed, not textual.** `FindBaseDir` wraps the exported `configengine.ErrNotInitialized` sentinel on its absent-`_lyx/` branch and deliberately does not wrap it on a stat failure, so a degrading caller falls back only on `errors.Is(err, ErrNotInitialized)`.
   The four strict callers still use the older `strings.Contains(err.Error(), "not initialized")` rewrap;
   the sentinel makes migrating them possible, but the migration is available rather than done.
-- **A watch item for T7/T10:** `batcher` sits on the strict side because it has no standalone entry of its own, but its config is read on webster's batching path.
-  If a standalone Webster reaches `batcher.Active`, `batcher` moves to the degrading side and these pinned sets change with it.
+- **A watch item that has fired:** `batcher` used to sit on the strict side because it had no standalone entry of its own, even though its config is read on webster's batching path.
+  The websterengine + webstercli told-geometry, and Webster standalone entry task gave webster a standalone entry point, so a standalone Webster now reaches `batcher.Active` on every verb outside a hub, where `_lyx/` does not exist;
+  that task moved `batcher` to the degrading side and the pinned sets above already reflect the move.
 - **Known guard blind spot:** a substring scan cannot see a call reached through an alias or a function value.
 - **Enforced by** review obligation today, with a set-equality grep guard named as a candidate and T10 named as its home.
   The guard's shape, recorded here so T10 inherits a specification rather than re-deriving one: following `cmd/lyx/gitrepoboundary_test.go`'s pinned-set style, walk non-test `*.go` files under the module root, collect every package directory containing a `configengine.Load(` call and every one containing a `configengine.LoadOrTemplate(` call, compare each collected set against its pinned set, exclude `internal/configengine` itself as the declaration site, and skip `_test.go` files.
