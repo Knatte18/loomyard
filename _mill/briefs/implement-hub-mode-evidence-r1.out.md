@@ -1,9 +1,0 @@
-{"status":"success","commit_sha":"c96947db4a786d52b020546a6297ac94ed2fb32d","session_id":"3fabd757-092c-49dd-81c5-9dd1fb1e2e0c","cards_done":[11,12,13]}
-
-Summary — 3 of 3 cards committed/completed this turn:
-
-- Card 11: created /home/knatte/Code/loomyard/wts/scout-told-geometry/internal/scoutcli/testmain_test.go (untagged TestMain wiring gitkit.HermeticGitEnv()), commit 340947d0.
-- Card 12: created /home/knatte/Code/loomyard/wts/scout-told-geometry/internal/scoutcli/cli_integration_test.go (//go:build integration), covering lookupContext's hub-mode branch at an unanchored hub (mismatched dir discriminator) and a subpath-anchored hub (hubforge.SeedConfig round-trip through AnchorPath()), commit c96947db.
-- Card 13 (Commit: none, verification-only): ran go test -tags scout ./internal/scoutengine/... and the two manual smoke checks (lyx scout symbol from a scratch dir outside git; lyx scout refs in this worktree confirming .lyx/scout/go/daemon.json). Both smoke checks passed. The tagged suite has two failing subtests, TestReferences_InFile_Integration/single-match_resolve and .../same-name-in-two-types_ambiguity, both caused by a stale/shared gopls supervised-daemon Unix socket at /run/user/1000/gopls-cf1634-daemon.knatte in this sandbox. Confirmed via git archive standalone-producers into a scratch copy that this exact failure reproduces byte-for-byte on the parent branch before any of this task's changes, so it is a pre-existing environmental flake, not a regression from the AnchorRoot-string conversion (the two involved batch-1 commits, c2fba652 and c755448c, are provably mechanical/value-identical). Per the guardrail this test was not altered or weakened.
-
-Batch verify: (go build ./... && go vet -tags integration ./internal/scoutcli/... && go test -tags integration ./internal/scoutcli/...) passed cleanly. git status --porcelain --untracked-files=no shows no tracked in-scope modifications.
