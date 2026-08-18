@@ -46,6 +46,8 @@ batches:
     commit_sha: 209ec5790a9df5cfb3c71873f867a88d6ff30859
     verify_baseline_failures: []
   - name: perch told-geometry
-    state: pending
+    state: running
+    implementer_session: 7a121f48-253d-497a-8ca9-17121b693092
+    start_sha: 0bfb53e800fb11df60da6cf93ace03888a39838f
     verify_baseline_failures: []
 ```
