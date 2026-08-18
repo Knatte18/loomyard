@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-cross-cutting-verification
+phase: holistic-reviewing
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-webstercli-repoint  '2026-08-18T14:47:05Z'
 approved-burlercli-standalone-entry  '2026-08-18T14:54:41Z'
 approved-perchcli-standalone-entry  '2026-08-18T15:02:49Z'
 approved-docs-and-cross-cutting-verification  '2026-08-18T15:05:04Z'
+holistic-reviewing  '2026-08-18T15:05:50Z'
 ```
 
 ## Batches
