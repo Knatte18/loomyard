@@ -259,3 +259,96 @@ func TestValidateSplitCreatedNewPane(t *testing.T) {
 		})
 	}
 }
+
+// TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims pins R5-F3's repair at the CALL SITE
+// rather than at the helper.
+//
+// clearConflictingPaneBindings has its own unit coverage (reconcile_test.go) and the render path has
+// an independent second layer (removeDuplicatePaneCells), so deleting the call to it from
+// loadOrInitStateLocked left the whole hermetic and smoke suites green while the reconcile-side layer
+// was gone — the wiring gap the orchestrator's independent verification of round 5 found.
+//
+// Status is the observable that isolates this layer: it reads the loaded table and cross-references
+// it against live panes, and never touches the render path. With the repair wired, a strand whose
+// PaneID names a pane another owner already claims is cleared and reported not-live; without it, that
+// pane IS alive, so status reports live:true against someone else's pane — exactly the false-healthy
+// symptom the R5 review reproduced live ("status reported the strand live:true against the header
+// pane running `lyx reed header --blocking`").
+//
+// The recorded generation deliberately MATCHES the one the probe answers, so the pane-generation
+// guard adopts rather than clears and the only thing that can clear a binding here is the repair
+// under test.
+func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
+	const headerPane = "%1"
+	const firstStrandPane = "%2"
+	const liveAnswer = "$0|4321|1787000000"
+	liveGeneration := PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"}
+
+	tests := []struct {
+		name string
+		// strandPaneIDs are the persisted PaneIDs, in table order, for strands named "first" and
+		// "second".
+		strandPaneIDs []string
+		wantLive      []bool
+	}{
+		{
+			name:          "a strand bound to the header's own pane is not reported live on it",
+			strandPaneIDs: []string{headerPane},
+			wantLive:      []bool{false},
+		},
+		{
+			name:          "of two strands claiming one pane, only the first owner is reported live",
+			strandPaneIDs: []string{firstStrandPane, firstStrandPane},
+			wantLive:      []bool{true, false},
+		},
+		{
+			name:          "a table with no conflict is left alone",
+			strandPaneIDs: []string{firstStrandPane},
+			wantLive:      []bool{true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+				switch args[0] {
+				case "display-message":
+					return liveAnswer, nil
+				case "list-sessions":
+					return "worktree\n", nil
+				case "list-panes":
+					// Both panes present and alive, so a binding that survives the repair reads as
+					// live and one that does not reads as not-live.
+					return headerPane + " 0 0 100 3 4322\n" + firstStrandPane + " 0 3 100 20 4323\n", nil
+				default:
+					return "", nil
+				}
+			}
+
+			st := &ReedState{HeaderPaneID: headerPane, PaneGeneration: liveGeneration}
+			names := []string{"first", "second"}
+			for i, paneID := range tt.strandPaneIDs {
+				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID})
+			}
+			if err := SaveState(e.stateDir(), st); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+
+			result, err := e.Status()
+			if err != nil {
+				t.Fatalf("Status: %v", err)
+			}
+			if len(result.Strands) != len(tt.wantLive) {
+				t.Fatalf("Status reported %d strands; want %d", len(result.Strands), len(tt.wantLive))
+			}
+			for i, want := range tt.wantLive {
+				got := result.Strands[i]
+				if got.Live != want {
+					t.Errorf("Status strand %q live = %v on pane %q; want %v — a pane has exactly one owner, and a binding naming a pane another owner claims must be cleared at load",
+						got.GUID, got.Live, got.PaneID, want)
+				}
+			}
+		})
+	}
+}
