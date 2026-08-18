@@ -67,7 +67,9 @@ batches:
     commit_sha: 985703615c3da6328b0cd82e744ddcd0c991c567
     verify_baseline_failures: []
   - name: hubgeom.WebsterGeometry and the standalonegeom sibling
-    state: pending
+    state: running
+    implementer_session: 3f0ed0f1-9088-4159-b241-2f157a784e8f
+    start_sha: 4f2d3ffa1d3ab15770a37799baea244f64ca1fd7
     verify_baseline_failures: ["FAIL\t./internal/standalonegeom/... [setup failed]"]
   - name: websterengine told Deps and engine-owned fabric seams
     state: pending
