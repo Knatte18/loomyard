@@ -81,6 +81,11 @@ const rewrittenSessionNameChars = ".:"
 // text — one is substituted with '_', this one is doubled — and apart from
 // firstVisEncodedSessionNameByte because '\' is a printable, valid-UTF-8 byte that check must keep
 // passing.
+// validateToldTmuxIdentity deliberately runs this check LAST, after the vis-encode one: its message
+// prints the offending names unescaped, so an operator sees the directory name they must actually
+// rename rather than a %q rendering that doubles the very backslash at issue — and printing them
+// unescaped is only safe once the vis-encode check has already ruled out control characters, DEL,
+// and invalid UTF-8.
 // Together with those two, this constant completes the ban: an exhaustive round-trip sweep of every
 // printable ASCII byte (0x20-0x7E) through new-session and an exact-match has-session on tmux 3.6
 // found exactly three rewritten characters — '.', ':' and '\' — with the control/DEL/invalid-UTF-8
@@ -93,9 +98,9 @@ const socketKeySeparators = `/\`
 
 // firstVisEncodedSessionNameByte returns a printable description of the first byte or rune in name
 // that tmux would silently vis-encode into a multi-character escape, and whether one exists.
-// This is the THIRD of tmux's session-name rewrite classes (the first is the '.'/':' substitution
-// and the second the backslash doubling, both above): after substituting those two characters, tmux
-// passes the name through a
+// This is one of the two rewrites tmux's vis(3) pass performs, the other being the backslash
+// doubling above (doubledSessionNameChars); the '.'/':' substitution runs before both.
+// After substituting those two characters, tmux passes the name through a
 // vis(3)-style encoder, which rewrites every ASCII control character (below 0x20), DEL (0x7F), and
 // every byte that is not part of a valid UTF-8 sequence into an escape SEQUENCE — verified live on
 // tmux 3.6: TAB becomes the two literal characters `\t`, ESC becomes `\033`, DEL becomes `\177`,
@@ -155,15 +160,16 @@ func validateToldTmuxIdentity(geom Geometry) error {
 			"tmux will not create session %q verbatim: it contains %q, which tmux silently rewrites to \"_\" — rename the worktree directory %q so its name carries no %q",
 			geom.SessionName, string(geom.SessionName[i]), geom.WorktreeRoot, rewrittenSessionNameChars)
 	}
-	if i := strings.IndexAny(geom.SessionName, doubledSessionNameChars); i >= 0 {
-		return fmt.Errorf(
-			"tmux will not create session %q verbatim: it contains %q, which tmux silently doubles to %q — rename the worktree directory %q so its name carries no %q",
-			geom.SessionName, string(geom.SessionName[i]), `\\`, geom.WorktreeRoot, doubledSessionNameChars)
-	}
 	if desc, found := firstVisEncodedSessionNameByte(geom.SessionName); found {
 		return fmt.Errorf(
 			"tmux will not create session %q verbatim: it contains %s, which tmux silently rewrites into a multi-character escape — rename the worktree directory %q so its name carries no control characters or invalid UTF-8",
 			geom.SessionName, desc, geom.WorktreeRoot)
+	}
+	// Unescaped %s, not %q, and last in the sequence — see doubledSessionNameChars.
+	if strings.ContainsAny(geom.SessionName, doubledSessionNameChars) {
+		return fmt.Errorf(
+			`tmux will not create session "%s" verbatim: it contains a backslash, which tmux silently doubles to "\\" — rename the worktree directory "%s" so its name carries no backslash`,
+			geom.SessionName, geom.WorktreeRoot)
 	}
 	return nil
 }
