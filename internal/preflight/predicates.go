@@ -16,8 +16,9 @@ import (
 
 // Wired reports whether fabric is wired for this worktree: lyxcwd.Resolve(cwd) succeeds and
 // fabricengine.Ready(l) reports true.
-// This is the hub-mode trigger a standalone-capable CLI consults to choose hub mode over
-// standalone mode.
+// This is the per-worktree fabric-readiness question a composing orchestrator asks; it is
+// explicitly not the mode trigger a standalone-capable CLI's pre-run consults to choose hub mode
+// over standalone mode — see HubPresent for that.
 //
 // Wired probes the paired sibling of the current worktree, not the hub, so it is false at
 // <hub>/_board, false in an unpaired sibling, and false in a worktree whose pair was removed —
@@ -41,12 +42,14 @@ func Wired(cwd string) (*lyxcwd.Location, bool) {
 
 // HubPresent reports whether the hub this write targets actually exists: lyxcwd.Resolve(cwd)
 // succeeds and a single os.Stat of the hub's board-level lyx directory succeeds.
-// This is the stencil seed gate.
+// This is both the stencil seed gate and the mode-selection trigger a standalone-capable CLI's
+// pre-run consults: hub mode when a hub exists for this location, standalone mode when one does
+// not.
 //
 // HubPresent asks a hub-level question, not a per-worktree one, so a hub-level directory can exist
-// while this particular worktree is not Wired — that resolved-but-not-wired case is exactly the
-// one a standalone-capable CLI must still answer with standalone mode, which is why HubPresent is
-// not merely a weaker Wired.
+// while this particular worktree is not Wired — that resolved-but-not-wired case still answers hub
+// mode under HubPresent, which is why HubPresent is not merely a weaker Wired: see doc.go for why
+// this is the correct trigger and Wired is not.
 //
 // It returns (nil, false) on any error rather than surfacing one, for the same never-block-a-command
 // reason Wired documents, and it never spawns a process beyond the one lyxcwd.Resolve already

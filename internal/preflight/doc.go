@@ -31,18 +31,28 @@
 //
 // # Why there are two predicates
 //
-// Wired asks "is fabric wired for this worktree" and is the hub-mode trigger a standalone-capable
-// CLI's pre-run consults to choose hub mode over standalone mode.
-// HubPresent asks "does the hub-level directory this write targets exist" and is what cmd/lyx's
-// stencil seed gates on.
+// HubPresent asks "does the hub-level directory this write targets exist", and it is both what
+// cmd/lyx's stencil seed gates on and the mode-selection trigger a standalone-capable CLI's
+// pre-run consults: hub mode when a hub exists for this location, standalone mode when one does
+// not.
+// Wired asks a different, narrower question — "is fabric wired for this particular worktree" —
+// and stays in this package as the per-worktree fabric-readiness question a composing
+// orchestrator asks; it is explicitly not the mode trigger.
 //
-// Gating the stencil seed on Wired instead would be wrong: fabricengine.Ready probes the paired
-// sibling of the current worktree, not the hub, so it is false at <hub>/_board, false in an
-// unpaired sibling, and false in a worktree whose pair was removed — three real, healthy hub
-// situations that the stencil seed correctly seeds into today.
+// This is a considered override of an earlier design for this package, not a doc catching up to
+// code: fabricengine.Ready, which Wired calls, probes the paired weft sibling of the current
+// worktree rather than the hub, so Wired is false at <hub>/_board, false in an unpaired sibling,
+// and false in a worktree whose pair was removed — three real, healthy hub situations that run
+// producer verbs today. Keying mode selection on Wired would route all three to standalone mode,
+// which would silently relocate a live hub's state to the per-OS standalone state directory —
+// strictly worse than the misclassification it would be trying to avoid. Keying on HubPresent
+// instead means a genuinely damaged hub still gets hub mode and fails loudly at the point of use,
+// while a plain downloaded git repository still lands in standalone because it has no board-level
+// lyx directory beside it — which was the hazard the two-predicate split was built for.
+//
+// Gating the stencil seed on Wired instead would be wrong for the same reason: fabricengine.Ready
+// probes the paired sibling of the current worktree, not the hub, so it is false at <hub>/_board,
+// false in an unpaired sibling, and false in a worktree whose pair was removed — three real,
+// healthy hub situations that the stencil seed correctly seeds into today.
 // Narrowing the seed gate to Wired would regress every one of those three, not fix anything.
-//
-// HubPresent is not merely a weaker Wired, either: a hub-level directory can exist while this
-// particular worktree is not wired, and that resolved-but-not-wired case is exactly the one a
-// standalone-capable CLI must answer with standalone mode — the case Wired alone cannot express.
 package preflight
