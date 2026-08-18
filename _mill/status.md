@@ -59,7 +59,9 @@ batches:
     commit_sha: b7723bf33b49c23393479d5bb066065174cb617c
     verify_baseline_failures: []
   - name: burlercli-standalone-entry
-    state: pending
+    state: running
+    implementer_session: e7396caa-246a-47cd-a04c-51fff49aa691
+    start_sha: d1bcd3395ef0fcde4c5b9c9d6f3d0a4285089839
     verify_baseline_failures: []
   - name: perchcli-standalone-entry
     state: pending
