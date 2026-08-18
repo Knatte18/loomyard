@@ -25,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -133,8 +132,9 @@ func TestFabricSync_SkipGitBypassNeedsNoFabricWorktree(t *testing.T) {
 
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
+	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-	committed, err := fabricSync(layout, "bypass probe")
+	committed, err := fabricSync(open, layout.AnchorRel, "bypass probe")
 	if err != nil {
 		t.Fatalf("fabricSync() error = %v; want nil, the bypass must never touch the filesystem or git", err)
 	}
@@ -151,8 +151,9 @@ func TestFabricSync_NonBypassValidatesPairPaths(t *testing.T) {
 
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
+	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-	committed, err := fabricSync(layout, "missing-pair probe")
+	committed, err := fabricSync(open, layout.AnchorRel, "missing-pair probe")
 	if committed {
 		t.Error("fabricSync() committed = true; want false, no repo exists to commit to")
 	}
@@ -175,16 +176,11 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "backend"}
 	c := &websterCLI{
-		layout:            layout,
-		cfg:               websterengine.Config{},
-		geom:              hubgeom.WebsterGeometry(layout),
-		refMatcher:        fabricengine.NewRefScanner(layout),
-		openFabric:        func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
-		planDir:           planparser.PlanDir(layout.AnchorPath()),
-		websterDir:        websterengine.Dir(layout.AnchorPath()),
-		websterScratchDir: websterengine.ScratchDir(layout.AnchorPath()),
-		reportsDir:        websterengine.ReportsDir(layout.AnchorPath()),
-		promptsDir:        websterengine.PromptsDir(layout.AnchorPath()),
+		cfg:        websterengine.Config{},
+		geom:       hubgeom.WebsterGeometry(layout),
+		anchorRel:  layout.AnchorRel,
+		refMatcher: fabricengine.NewRefScanner(layout),
+		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 	}
 	return c, hub
 }
@@ -209,7 +205,7 @@ func seedValidPlanDir(t *testing.T, dir string) {
 
 func TestValidateCmd_ValidPlan(t *testing.T) {
 	c, _ := newTestCLI(t)
-	seedValidPlanDir(t, c.planDir)
+	seedValidPlanDir(t, c.geom.PlanDir)
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
@@ -260,7 +256,7 @@ func seedMissingFieldPlanDir(t *testing.T, dir string) {
 
 func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 	c, _ := newTestCLI(t)
-	seedMissingFieldPlanDir(t, c.planDir)
+	seedMissingFieldPlanDir(t, c.geom.PlanDir)
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
@@ -308,7 +304,7 @@ func TestStatusCmd_WithBatches(t *testing.T) {
 			2: {Slug: "second", Kind: "recovery", Status: "", Terminal: false},
 		},
 	}
-	if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 

@@ -123,11 +123,6 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 	c.refMatcher = fabricengine.NewRefScanner(loc)
 	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) }
 	c.batcher = activeBatcher
-	c.planDir = geom.PlanDir
-	c.websterDir = geom.WebsterDir
-	c.reportsDir = geom.ReportsDir
-	c.websterScratchDir = geom.ScratchDir
-	c.promptsDir = geom.PromptsDir
 	return nil
 }
 
@@ -209,11 +204,6 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDir
 	c.refMatcher = websterengine.NeverMatches{}
 	c.openFabric = nil
 	c.batcher = activeBatcher
-	c.planDir = geom.PlanDir
-	c.websterDir = geom.WebsterDir
-	c.reportsDir = geom.ReportsDir
-	c.websterScratchDir = geom.ScratchDir
-	c.promptsDir = geom.PromptsDir
 	return nil
 }
 

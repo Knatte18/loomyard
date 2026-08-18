@@ -45,7 +45,6 @@ type websterCLI struct {
 	engine shuttleengine.Engine
 	reed   shuttleengine.ReedOps
 
-	layout     *lyxcwd.Location
 	shuttleCfg shuttleengine.Config
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]modelspec.Resolved
@@ -55,8 +54,9 @@ type websterCLI struct {
 	// supplies, and fabricSync's own told scope (card 37) needs it for fabricengine.ScopedPathspec.
 	anchorRel string
 
-	// geom is the told websterengine.Geometry every verb's Deps construction reads its paths from —
-	// hubgeom.WebsterGeometry(layout) in hub mode.
+	// geom is the told websterengine.Geometry every verb's Deps construction, and every path this
+	// module touches, reads from -- hubgeom.WebsterGeometry(loc) in hub mode,
+	// standalonegeom.WebsterGeometry(target, stateDir) in standalone.
 	geom websterengine.Geometry
 	// refMatcher is the injected fabric-reference class matcher record-batch's and run's own audit
 	// consult — a real *fabricengine.RefScanner in hub mode, built eagerly because NewRefScanner only
@@ -70,15 +70,6 @@ type websterCLI struct {
 
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
-
-	// planDir is planparser's own told-anchor path, built from layout.AnchorPath() in
-	// PersistentPreRunE; websterDir and reportsDir remain the lyxcwd-resolved _lyx dirs;
-	// promptsDir and websterScratchDir remain the lyxcwd-resolved .lyx dirs.
-	planDir           string
-	websterDir        string
-	reportsDir        string
-	promptsDir        string
-	websterScratchDir string
 
 	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw, as-parsed values of the three
 	// standalone-entry persistent flags (--stencils-dir, --plan-dir, --target-dir), each bound by

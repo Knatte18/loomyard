@@ -67,14 +67,14 @@ Example:
 				return nil
 			}
 
-			plan, err := planparser.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.geom.PlanDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 			batches := c.batcher.Batch(plan.Cards)
 
-			mutateLock, err := websterengine.AcquireStateMutation(c.websterScratchDir)
+			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -86,7 +86,7 @@ Example:
 				}
 			}()
 
-			st, err := websterengine.LoadState(c.websterDir, c.websterScratchDir)
+			st, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -103,8 +103,8 @@ Example:
 				Engine:      c.engine,
 				Geom:        c.geom,
 				RefMatcher:  c.refMatcher,
-				OutcomePath: websterengine.OutcomePath(c.websterDir),
-				SummaryPath: websterengine.SummaryPath(c.websterDir),
+				OutcomePath: websterengine.OutcomePath(c.geom.WebsterDir),
+				SummaryPath: websterengine.SummaryPath(c.geom.WebsterDir),
 				Sleeper:     realSleeper{},
 			}
 
@@ -118,7 +118,7 @@ Example:
 
 			batchName := fmt.Sprintf("%02d-%s", batchNumber, st.Batches[batchNumber].Slug)
 
-			if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
+			if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -131,12 +131,12 @@ Example:
 			if result.Digest != nil {
 				label = result.Digest.Status
 			}
-			if _, syncErr := fabricSync(c.layout, fmt.Sprintf("record-batch %s %s", batchName, label)); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s %s", batchName, label)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s recorded but the fabric sync failed: %v", batchName, syncErr)))
 				return nil
 			}
 
-			warnings := ownerlessRunWarnings(c.websterScratchDir, result.Warnings)
+			warnings := ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings)
 
 			if result.NoReport {
 				clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
