@@ -1,6 +1,7 @@
 // constructoranchoring_test.go pins every constructor batch 5 relocated out of internal/lyxcwd into
-// its owning module to the anchoring table the overview's Shared Decisions record: there is no
-// single base.
+// its owning module, and every told-anchor path function an owning module declares outright (taking
+// a plain anchor string rather than a *lyxcwd.Location), to the anchoring table the overview's Shared
+// Decisions record: there is no single base.
 // It lives in cmd/lyx because this is the only package that may import every owning module at once
 // (loomengine, websterengine, perchengine, scoutengine, pattern, logger, fabricengine,
 // planparser).
@@ -68,8 +69,15 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	lyxBase := filepath.Join(anchor, lyxdirs.LyxDirName)
 
 	// _lyx-durable group: AnchorPath-anchored.
-	assertPath(t, "loomengine.PlanDir", loomengine.PlanDir(l), filepath.Join(lyxBase, planparser.PlanDirName))
-	assertPath(t, "loomengine.PlanOverview", loomengine.PlanOverview(l), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
+	//
+	// The two planparser rows below still pin the join arithmetic and the _lyx-vs-.lyx group
+	// placement, but because they pass l.AnchorPath() in and compare against an anchor-derived
+	// expectation, they are tautological with respect to anchoring and can no longer catch a
+	// production call site that passes the wrong root. That proof now lives in the subpath-anchored
+	// PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE
+	// case in internal/webstercli/verbs_test.go.
+	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
+	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
@@ -117,8 +125,15 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 
 	// _lyx-durable group: moves down by AnchorRel, exactly like the .lyx
 	// group below -- both groups now share one anchoring rule.
-	assertPath(t, "loomengine.PlanDir", loomengine.PlanDir(l), filepath.Join(lyxBase, planparser.PlanDirName))
-	assertPath(t, "loomengine.PlanOverview", loomengine.PlanOverview(l), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
+	//
+	// The two planparser rows below still pin the join arithmetic and the _lyx-vs-.lyx group
+	// placement, but because they pass l.AnchorPath() in and compare against an anchor-derived
+	// expectation, they are tautological with respect to anchoring and can no longer catch a
+	// production call site that passes the wrong root. That proof now lives in the subpath-anchored
+	// PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE
+	// case in internal/webstercli/verbs_test.go.
+	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
+	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))

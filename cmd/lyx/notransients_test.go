@@ -5,7 +5,7 @@
 // subpath of the _lyx-rooted content it relates to.
 // It lives in cmd/lyx because this is the only package that may import every owning module at
 // once (loomengine, websterengine, perchengine, treadleengine, scoutengine,
-// logger), the same reason constructoranchoring_test.go lives here.
+// logger, planparser), the same reason constructoranchoring_test.go lives here.
 // It stays untagged: every constructor exercised here is pure filepath.Join arithmetic over a
 // hand-built *lyxcwd.Location, so no process is spawned and no fixture tree is copied, per the
 // Test Tier Purity Invariant.
@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/perchengine"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -45,10 +46,18 @@ type namedPath struct {
 }
 
 // durableSet returns every _lyx-rooted path a module exposes for l.
+//
+// The two planparser rows below share the weakening annotated on
+// cmd/lyx/constructoranchoring_test.go's plan rows: they still pin that no durable plan path resolves
+// as a transient at both AnchorRel fixtures, but because each row builds l.AnchorPath() itself
+// instead of calling a constructor that anchored internally, neither row can catch a production call
+// site that passes the wrong root. That proof lives in the subpath-anchored PlanSpec case in
+// internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE case in
+// internal/webstercli/verbs_test.go.
 func durableSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
-		{"loomengine.PlanDir", loomengine.PlanDir(l)},
-		{"loomengine.PlanOverview", loomengine.PlanOverview(l)},
+		{"planparser.PlanDir", planparser.PlanDir(l.AnchorPath())},
+		{"planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath())},
 		{"loomengine.DiscussionDir", loomengine.DiscussionDir(l)},
 		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
 		{"websterengine.Dir", websterengine.Dir(l)},

@@ -22,10 +22,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -55,8 +55,9 @@ type websterCLI struct {
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
 
-	// planDir, websterDir, and reportsDir are the lyxcwd-resolved _lyx dirs;
-	// promptsDir and websterScratchDir are the lyxcwd-resolved .lyx dirs.
+	// planDir is planparser's own told-anchor path, built from layout.AnchorPath() in
+	// PersistentPreRunE; websterDir and reportsDir remain the lyxcwd-resolved _lyx dirs;
+	// promptsDir and websterScratchDir remain the lyxcwd-resolved .lyx dirs.
 	planDir           string
 	websterDir        string
 	reportsDir        string
@@ -193,7 +194,7 @@ Verbs:
 			c.cfg = websterCfg
 			c.roles = roles
 			c.batcher = activeBatcher
-			c.planDir = loomengine.PlanDir(layout)
+			c.planDir = planparser.PlanDir(layout.AnchorPath())
 			c.websterDir = websterengine.Dir(layout)
 			c.reportsDir = websterengine.ReportsDir(layout)
 			c.websterScratchDir = websterengine.ScratchDir(layout)
