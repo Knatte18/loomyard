@@ -181,6 +181,32 @@ Restore with `lyx reed up` (which writes a fresh `reed.json`) and `lyx reed down
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S6 -- Re-sending the same text into a pane that has scrolled
+
+**Covers:** shuttle
+
+**Goal:** "Send one instruction twice into a busy agent pane, with the first copy scrolled to the very top of the viewport, and confirm the second send is delivered exactly once and reported as delivered."
+
+**Watch:** Start a run with `--keep-pane` and a trivial prompt (e.g. `lyx shuttle run --prompt "write READY into ready.txt" --output-file ready.txt --keep-pane --model haiku`), which leaves one live, idle agent pane to drive.
+Note the `guid` from `lyx reed status`.
+
+Send an instruction whose ANSWER is long enough to fill the pane, e.g. `lyx shuttle send <guid> "reply with the numbers 1 to 38 one per line and nothing else"`.
+Wait for the reply to finish, then look at the pane (`tmux -L <socket> capture-pane -p -t <paneId>`): the line echoing your instruction must have been pushed to within a line or two of the TOP of the viewport, still visible.
+That is the setup -- if it scrolled off entirely, send it once more and re-check.
+
+Now send the SAME instruction again, timing it while the earlier copy is still visible at the top.
+Two things must hold:
+
+1. The command answers `{"ok":true,"action":"send",...}` within about a second. An `"ok":false` "the send was NOT delivered" here is a FAIL -- and the giveaway is that it takes ~11 s to say it.
+2. The pane must show the instruction accepted exactly ONCE more, not twice. A second, duplicate copy of your instruction (and a second answer to it) is the same FAIL seen from the other side: the delivery check gave up and re-typed a message the agent had already received.
+
+Both halves failed before this was fixed, because the earlier copy scrolling off as the new one arrived left the occurrence COUNT unchanged, which is indistinguishable from nothing arriving unless position is taken into account.
+Tear down with `lyx reed remove <guid>` and `lyx reed down`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:

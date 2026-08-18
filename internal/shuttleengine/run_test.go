@@ -785,3 +785,120 @@ func TestRun_Interrupt_ReadyProbeRetriesTransientBoot(t *testing.T) {
 		t.Errorf("SendKey calls = %+v, want exactly one Escape after the probe passes", reed.SendKeyCalls)
 	}
 }
+
+// liveRecordedPaneFrame reads one of the pane captures recorded during round 4's live reproduction of
+// R2-F11 against a real Claude TUI (220x48 pane, `tmux capture-pane -p`).
+// The two frames are kept verbatim rather than hand-written, so this regression test is pinned to what
+// the provider TUI actually rendered rather than to a reviewer's model of it.
+func liveRecordedPaneFrame(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("read recorded pane frame %q: %v", name, err)
+	}
+	return string(data)
+}
+
+// recordedScrollSendText is the exact text sent in that live reproduction.
+// Its first 48 normalized characters — the needle sendVerified derives — are shared with the copy
+// already on screen in the baseline frame, which is what makes the baseline count 1 rather than 0.
+const recordedScrollSendText = "reply with the numbers 1 to 38 one per line and nothing else, and take care to print each number on its very own separate line, with no extra commentary, no preamble, no summary and no trailing remarks whatsoever, just the plain numbers in order"
+
+// TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay is R4-F1's regression guard,
+// closing R2-F11 on the branch R2-F6's re-baselining could not reach.
+//
+// Both frames below are real captures taken 800 ms apart during the live reproduction. In the
+// baseline frame one copy of the text sits at line 1 — the top of a full viewport. In the delivered
+// frame the newly delivered copy is rendered at line 38 and that earlier copy has scrolled off in the
+// SAME redraw, so the count is 1 in both: neither above the baseline nor below it.
+//
+// Pre-fix, every one of the 20 polls failed on that unchanged count, the whole ComposeSend
+// choreography was replayed into a pane that had already received it, and Send finally answered
+// ok:false "the send was NOT delivered" — for a message the agent received TWICE. The delivered
+// copy's position is the evidence a count cannot carry: it sits 9 lines from the bottom where every
+// copy the baseline counted sat 46 lines from it, and a pane only ever appends at its bottom.
+func TestRun_Send_BaselineOccurrenceEvictedAsDeliveredOneArrives_NoReplay(t *testing.T) {
+	stubInputSleep(t)
+	baselineFrame := liveRecordedPaneFrame(t, "pane-scroll-baseline.txt")
+	reed := &fakeReed{
+		StatusQueue: liveStrandStatus(true),
+		CaptureQueue: []string{
+			// Ready-TUI probe and the pre-send baseline both see the earlier copy at the viewport top.
+			baselineFrame,
+			baselineFrame,
+			// Every verification poll then sees the delivered copy at the bottom and the earlier copy
+			// gone — the last queue entry sticks, so this is what all 20 polls would see.
+			liveRecordedPaneFrame(t, "pane-scroll-delivered.txt"),
+		},
+	}
+	run := newInterruptTestRun(t, reed, readyAgentEngine())
+
+	if err := run.Send(recordedScrollSendText); err != nil {
+		t.Fatalf("Send() error: %v; want the delivered copy's position to verify delivery when the count cannot", err)
+	}
+	if len(reed.SendTextCalls) != 1 {
+		t.Errorf("SendText calls = %d; want exactly 1 — a replay here re-types an instruction the agent already received", len(reed.SendTextCalls))
+	}
+}
+
+// TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure pins the other side of R4-F1's fix:
+// the position check must not turn scrolling ALONE into evidence of delivery.
+//
+// Here the send is swallowed and the pane merely scrolls, which moves the pre-existing copy UP —
+// further from the bottom, never closer. The swallowed-send failure path, which is the live-proven
+// guarantee Send exists to provide, must therefore still fire, replays included.
+func TestRun_Send_ViewportScrollsWithoutDelivery_StillReportsFailure(t *testing.T) {
+	stubInputSleep(t)
+	reed := &fakeReed{
+		StatusQueue: liveStrandStatus(true),
+		CaptureQueue: []string{
+			// Probe and baseline: the copy sits near the BOTTOM (one content line below it).
+			"● working\n❯ do it again\nstill working",
+			"● working\n❯ do it again\nstill working",
+			// Every poll after the swallowed send: output has pushed that same copy up the viewport,
+			// so it is now further from the bottom. Count unchanged, position higher, no delivery.
+			"❯ do it again\nline\nline\nline\nline\nstill working",
+		},
+	}
+	run := newInterruptTestRun(t, reed, readyAgentEngine())
+
+	err := run.Send("do it again")
+	if err == nil {
+		t.Fatal("Send() = nil error; want the swallowed send still reported as undelivered when the pane merely scrolled")
+	}
+	if !strings.Contains(err.Error(), "never appeared") {
+		t.Errorf("Send() error = %q; want the delivery-failure message", err)
+	}
+	if len(reed.SendTextCalls) != 1+sendReplays {
+		t.Errorf("SendText calls = %d; want %d (initial attempt + all replays exhausted)", len(reed.SendTextCalls), 1+sendReplays)
+	}
+}
+
+func TestScanPaneForNeedle(t *testing.T) {
+	tests := []struct {
+		name           string
+		capture        string
+		needle         string
+		wantCount      int
+		wantLinesBelow int
+	}{
+		{"absent", "❯ nothing here\n", "doit", 0, -1},
+		{"single occurrence at the last content line", "one\ntwo\n❯ do it", "doit", 1, 0},
+		{"two occurrences, position taken from the last", "❯ do it\nfiller\n❯ do it\nfiller", "doit", 2, 1},
+		{"trailing blank lines are not content", "❯ do it\n\n\n", "doit", 1, 0},
+		{
+			// Matching runs over the whole normalized capture, so a needle split across a wrap
+			// boundary still counts, and its position is the line the match ENDS on.
+			name: "needle straddling a wrap boundary", capture: "❯ do i\nt now\nafter", needle: "doit", wantCount: 1, wantLinesBelow: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := scanPaneForNeedle(tt.capture, tt.needle)
+			if got.count != tt.wantCount || got.linesBelow != tt.wantLinesBelow {
+				t.Errorf("scanPaneForNeedle(%q, %q) = {count:%d linesBelow:%d}; want {count:%d linesBelow:%d}",
+					tt.capture, tt.needle, got.count, got.linesBelow, tt.wantCount, tt.wantLinesBelow)
+			}
+		})
+	}
+}

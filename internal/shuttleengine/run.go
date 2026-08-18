@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -461,27 +462,133 @@ func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	return nil
 }
 
-// sendVerified plays engine.ComposeSend(text) and verifies delivery by polling for the sent text to
-// appear MORE times in the pane than it did before the send.
+// sendVerifyPositionMarginLines is how much closer to the bottom of the capture an occurrence must
+// sit than every occurrence the baseline counted before it is read as newly delivered rather than as
+// one of them.
+// It exists only to absorb jitter in the height of a provider TUI's bottom box;
+// the deliveries measured live moved the last occurrence 37 or more lines closer to the bottom, so a
+// margin this small costs nothing real while keeping a one-line redraw wobble from ever deciding the
+// question.
+const sendVerifyPositionMarginLines = 2
+
+// paneNeedleScan is one capture's answer about a needle: how many times it occurs, and how far the
+// LAST occurrence sits from the bottom of the capture's content.
+// The zero value is not a valid scan — an absent needle is (count 0, linesBelow -1), which
+// scanPaneForNeedle returns and which deliveredBelowBaseline treats as "no position to compare".
+type paneNeedleScan struct {
+	// count is the number of occurrences, identical to the count a plain
+	// strings.Count over the normalized capture produces.
+	count int
+	// linesBelow is how many content lines follow the line the last occurrence ENDS on, counting
+	// from the last non-blank line of the capture; -1 when count is 0.
+	// It is measured from the BOTTOM rather than the top so a pane resized between two captures does
+	// not shift the metric: tmux keeps a pane's content anchored at its bottom.
+	linesBelow int
+}
+
+// scanPaneForNeedle counts needle in capture and locates its last occurrence.
 //
-// The baseline is RE-LOWERED whenever the count drops below it, because CapturePane returns the
-// pane's visible VIEWPORT, not its scrollback: an occurrence counted at baseline time can scroll off
-// while the agent works. Sending the same text twice in one session (an operator re-issuing a nudge,
-// loom's repeated one-line pointers) then set baseline 1, and if the earlier copy scrolled away
-// before the poll saw the new one, the count read 1 — not > 1 — so verification failed and the try
-// loop REPLAYED the whole choreography, typing the instruction into the pane a second time. A false
-// negative here is not a harmless retry, it is a duplicate agent turn.
-// A count that has fallen below the baseline is evidence of scrolling, never of non-delivery, so it
-// re-baselines rather than counting against the send.
+// The count is computed over exactly the string strings.Count would see — the whole capture,
+// lowercased with whitespace stripped — so a needle straddling a line-wrap boundary still matches and
+// nothing about what COUNTS as a match changes here.
+// The position is recovered by carrying a line index alongside every byte of that normalized string,
+// which is why this cannot simply be strings.Count plus a per-line search: a per-line search would
+// silently stop matching wrapped text.
+func scanPaneForNeedle(capture, needle string) paneNeedleScan {
+	lines := strings.Split(capture, "\n")
+
+	var normalized []byte
+	lineOfByte := make([]int, 0, len(capture))
+	for lineIndex, line := range lines {
+		for _, r := range line {
+			if unicode.IsSpace(r) {
+				continue
+			}
+			before := len(normalized)
+			normalized = utf8.AppendRune(normalized, unicode.ToLower(r))
+			for i := before; i < len(normalized); i++ {
+				lineOfByte = append(lineOfByte, lineIndex)
+			}
+		}
+	}
+
+	// Trailing blank lines are excluded from the content height so linesBelow measures distance from
+	// the last line that actually holds output, not from the bottom of an empty pane.
+	contentLines := len(lines)
+	for contentLines > 0 && strings.TrimSpace(lines[contentLines-1]) == "" {
+		contentLines--
+	}
+
+	scan := paneNeedleScan{linesBelow: -1}
+	if needle == "" {
+		return scan
+	}
+	for searchFrom := 0; searchFrom < len(normalized); {
+		offset := strings.Index(string(normalized[searchFrom:]), needle)
+		if offset < 0 {
+			break
+		}
+		end := searchFrom + offset + len(needle)
+		scan.count++
+		scan.linesBelow = contentLines - 1 - lineOfByte[end-1]
+		searchFrom = end
+	}
+	return scan
+}
+
+// deliveredBelowBaseline reports whether current holds an occurrence that CANNOT be one of the
+// occurrences baseline counted, because it sits closer to the bottom of the capture than baseline's
+// lowest one did.
+//
+// The reasoning it rests on is that a pane only ever appends at its bottom, so an occurrence already
+// on screen can move UP as content arrives beneath it, or scroll off, but never down.
+// Measured against 1195 recorded frames of a live Claude TUI (round 4's R2-F11 reproduction), the
+// last occurrence's distance from the bottom never once decreased while the count stayed equal,
+// except in the three frames where a new copy had genuinely just been delivered.
+func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
+	if current.count == 0 || baseline.count == 0 {
+		return false
+	}
+	return current.linesBelow+sendVerifyPositionMarginLines <= baseline.linesBelow
+}
+
+// sendVerified plays engine.ComposeSend(text) and verifies delivery by polling the pane for evidence
+// that a copy of the sent text which was NOT there before now is.
+//
+// Two independent pieces of evidence answer that, because CapturePane returns the pane's visible
+// VIEWPORT with no scrollback (reed's capture-pane carries no -S), so neither alone is sound:
+//
+//   - The COUNT rising above the baseline. This is the original, live-proven signal, unchanged, and
+//     it is what still detects a provider TUI that swallowed the input: when nothing is delivered
+//     nothing new appears, so the count does not move and the send is reported as NOT delivered.
+//     The baseline is RE-LOWERED whenever the count drops below it, because an occurrence counted at
+//     baseline time can scroll off while the agent works — a count that has fallen is evidence of
+//     scrolling, never of non-delivery.
+//   - The POSITION of the last occurrence moving closer to the bottom than every occurrence the
+//     baseline counted (deliveredBelowBaseline). This exists because a count alone cannot separate
+//     "one copy left as one arrived" from "nothing arrived": both leave the count unchanged, which
+//     is neither > nor < the baseline, so every poll failed, the whole choreography was REPLAYED
+//     into a pane that had already received it, and Send then reported ok:false "the send was NOT
+//     delivered" for a message the agent had in fact received twice. Reproduced live end to end in
+//     round 4 (R4-F1, closing R2-F11): with the viewport full and the earlier copy at its top, the
+//     delivered copy's arrival evicted that earlier copy in the same redraw.
+//
+// The position check only ever ADDS an acceptance, in exactly the branch that could not decide
+// before. It cannot turn a success into a failure, and it cannot accept a send that was never
+// delivered, because a copy that is not there cannot sit below anything.
+//
+// Residual, stated rather than papered over: if the pane churns hard enough that the delivered copy
+// is itself evicted between two polls, no viewport-only check can see it at all. That window is far
+// narrower than the one closed here and cannot be closed without scrollback.
 func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 	needle := normalizePaneText(text)
 	if runes := []rune(needle); len(runes) > 48 {
 		needle = string(runes[:48])
 	}
 
-	baseline := 0
+	baseline := paneNeedleScan{linesBelow: -1}
 	if capture, err := reed.CapturePane(guid); err == nil {
-		baseline = strings.Count(normalizePaneText(capture), needle)
+		baseline = scanPaneForNeedle(capture, needle)
 	}
 
 	for try := 0; try <= sendReplays; try++ {
@@ -491,13 +598,15 @@ func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
 			capture, err := reed.CapturePane(guid)
 			if err == nil {
-				switch count := strings.Count(normalizePaneText(capture), needle); {
-				case count > baseline:
+				switch current := scanPaneForNeedle(capture, needle); {
+				case current.count > baseline.count:
 					return nil
-				case count < baseline:
+				case deliveredBelowBaseline(current, baseline):
+					return nil
+				case current.count < baseline.count:
 					// The viewport scrolled past an occurrence the baseline counted. Track the
 					// pane's reality rather than holding a threshold it can no longer reach.
-					baseline = count
+					baseline = current
 				}
 			}
 			inputSleep(sendVerifyInterval)
