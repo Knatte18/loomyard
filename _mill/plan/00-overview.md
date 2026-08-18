@@ -3,7 +3,7 @@
 ```yaml
 task: "pattern told-geometry"
 slug: "pattern-told-geometry"
-approved: false
+approved: true
 started: "20260818-060111"
 parent: "standalone-producers"
 root: ""

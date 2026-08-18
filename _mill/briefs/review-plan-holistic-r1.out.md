@@ -1,0 +1,38 @@
+MILL_REVIEW_BEGIN
+# Review: pattern told-geometry — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnetxhigh
+reviewer_self_id: Claude Opus 5 (claude-opus-5) — differs from the dictated reviewer_model above
+reviewed_file: plan/
+date: 2026-08-18
+```
+
+## Findings
+
+### [NIT:consistency] Stale lyxcwd vocabulary survives in renamed test
+**Location:** Batch 1 / Card 1
+**Issue:** The card rewords the header of `TestDirective_RelPathNestedSubdirectory` out of lyxcwd vocabulary but pins "both of its assertions stay exactly as written", leaving `pattern_test.go:319` ("via a nested RelPath"), `:331` ("`<WorktreeRoot>/<RelPath>/_lyx/PATTERN.md`") and the inline comment at `:310-311` ("the RelPath-aware resolution") naming geometry the package no longer has; the card's own `grep -rn lyxcwd` gate matches neither spelling.
+**Fix:** Extend the reword instruction to cover those two `t.Errorf` messages and the inline comment, keeping the assertion *logic* unchanged.
+
+### [NIT:consistency] Card 2 comment forward-references card 3's test
+**Location:** Batch 1 / Card 2 (vs Card 3)
+**Issue:** Card 2 requires the `constructoranchoring_test.go` tautology comment to gain `TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath` in its pointer list, but card 3 is what creates that test — card 2's commit ships a comment naming a symbol that does not yet exist.
+**Fix:** Move the pointer-list amendment into card 3's Requirements, or order card 3 before card 2 (its assertions hold on both sides of the signature change).
+
+### [NIT:consistency] Four verified-detail slips in Requirements prose
+**Location:** Batch 1 / Cards 1, 2, 3
+**Issue:** Card 1 says "five-line header comment" (`pattern_test.go:299-304` is six); card 2 says "four-line tautology comment" (`constructoranchoring_test.go:73-78`/`129-134` is six) and "the six constructor rows sitting between them" (`:81-87`/`:137-143` is seven); card 3 says `TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath`'s "own comment records that being pure, filesystem-free arithmetic is the point" — `plan_test.go:281-283` records only why a non-`"."` `AnchorRel` is used.
+**Fix:** Correct the three counts and drop or restate the card-3 attribution; the surrounding instructions are otherwise unambiguous.
+
+### [NIT:scope] Card 4 leaves engine_test.go's enumerating header stale
+**Location:** Batch 1 / Card 4
+**Issue:** `internal/burlerengine/engine_test.go:1-10` enumerates every subject the file tables (spec construction, cluster audit, outcomes, review parse, instruction materialization); card 4 adds a PATTERN-directive detector as a new subject without amending that header, while cards 1 and 5 do maintain their files' headers.
+**Fix:** Add the header-comment amendment to card 4's Requirements.
+
+## Verdict
+
+APPROVE
+Sound, well-grounded plan; four cosmetic/doc-drift nits, no blockers.
+MILL_REVIEW_END

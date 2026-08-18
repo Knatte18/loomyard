@@ -54,8 +54,10 @@ There is no external interface for a next batch to consume — this is the only 
   Its doc comment states why the return-value assertion alone would be insufficient: an inactive PATTERN returns the same pair, so only the absence of the stat distinguishes the guard from a cwd-dependent lookalike.
   In `TestDirective_LazyRead`, keep both sub-tests: convert the "nil layout, stencilsDir does not exist" sub-test to pass `""` as the anchor path and rename it to name an empty anchor path rather than a nil layout, and convert its sibling "PATTERN inactive, stencilsDir does not exist" sub-test by fixture plumbing alone.
   Do not delete either sub-test as subsumed by `TestDirective_EmptyAnchorPath` — the value is that this table keeps enumerating every inactive path in one place.
-  Rename `TestDirective_RelPathNestedSubdirectory` to `TestDirective_NestedAnchorSubdirectory` and reword its five-line header comment out of the `lyxcwd` vocabulary it uses today ("a Layout whose RelPath", "`<WorktreeRoot>/<RelPath>`") into the told-geometry vocabulary of an anchor path given as a nested subdirectory.
-  Its body passes `filepath.Join(root, "sub", "dir")` as the anchor path, and both of its assertions stay exactly as written — the root-planted `PATTERN.md` must still not satisfy it, and the nested-planted one must.
+  Rename `TestDirective_RelPathNestedSubdirectory` to `TestDirective_NestedAnchorSubdirectory` and reword its six-line header comment out of the `lyxcwd` vocabulary it uses today ("a Layout whose RelPath", "`<WorktreeRoot>/<RelPath>`") into the told-geometry vocabulary of an anchor path given as a nested subdirectory.
+  Its body passes `filepath.Join(root, "sub", "dir")` as the anchor path, and both of its assertions keep their logic exactly as written — the root-planted `PATTERN.md` must still not satisfy it, and the nested-planted one must.
+  The reword also covers the three remaining `RelPath` spellings inside the body, which the card's own `grep -rn lyxcwd` gate does not match: the inline comment above the first assertion that today calls the resolution "RelPath-aware", the first `t.Errorf` message's "via a nested RelPath", and the second `t.Error` message's "`<WorktreeRoot>/<RelPath>/_lyx/PATTERN.md`".
+  Reword each to name the told anchor path; change no condition, no fixture and no control flow.
   In `internal/pattern/patternpath_test.go`: delete `TestLocation_PatternAccessors`, `TestFileHere_EqualsFileOfAnchorPath`, the `newTestLocation` helper, and the `github.com/Knatte18/loomyard/internal/lyxcwd` import.
   Leave `TestFile_Free`, `TestPathspec_ExactStrings` and `TestPathspec_ForwardSlashedOnEveryPlatform` byte-identical.
   Amend the file-header comment so its "the `File/FileHere` constructors" phrasing names only `File`.
@@ -87,9 +89,9 @@ There is no external interface for a next batch to consume — this is the only 
   Do not re-create a nil-`Location` guard at any of the four sites.
   Do not reorder, hoist or otherwise move any of the four calls relative to their surrounding statements.
   In `cmd/lyx/constructoranchoring_test.go`, rewrite the single `pattern.FileHere` row in `TestConstructorAnchoring_Unanchored` and the single `pattern.FileHere` row in `TestConstructorAnchoring_SubpathAnchored` to call `pattern.File(l.AnchorPath())`, updating each row's first argument (the constructor name string `assertPath` reports on) to `pattern.File` and leaving each row's `want` expression byte-identical.
-  Amend — do not duplicate — the four-line tautology comment that precedes the `planparser` rows in each of those two tests.
-  Each amended comment must name the covered rows explicitly, as the two `planparser` rows plus the `pattern.File` row, and must not restate a contiguous count such as "the three rows below": those rows are not contiguous, and the six constructor rows sitting between them still take `l` rather than `l.AnchorPath()` and are therefore not tautological.
-  Each amended comment's pointer list gains card 3's new `TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath` alongside the two cases it already names.
+  Amend — do not duplicate — the six-line tautology comment that precedes the `planparser` rows in each of those two tests.
+  Each amended comment must name the covered rows explicitly, as the two `planparser` rows plus the `pattern.File` row, and must not restate a contiguous count such as "the three rows below": those rows are not contiguous, and the seven constructor rows sitting between them still take `l` rather than `l.AnchorPath()` and are therefore not tautological.
+  Leave each comment's existing pointer list — the two cases it already names — as it stands in this card; card 3 adds its own new test to that list, in the same commit that creates it.
   Leave every other row, the `anchoringFixture` helper, the `assertPath` helper, the `.lyx`-group prefix-exclusion guard and the file-header comment untouched.
 - **Commit:** `refactor(pattern): pass l.AnchorPath() at every pattern.Directive call site`
 
@@ -101,6 +103,7 @@ There is no external interface for a next batch to consume — this is the only 
   - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/loomengine/plan_test.go`
+  - `cmd/lyx/constructoranchoring_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -113,7 +116,10 @@ There is no external interface for a next batch to consume — this is the only 
   Assert on the `"## Constraints"` heading, which is the same marker `TestPlanSpec_PatternDirectiveOptional` already uses as its directive-presence signal in both directions.
   Pair it with the negative direction, as a sub-test of the same test, on its own fresh `t.TempDir()` hub: write the `PATTERN.md` file under `filepath.Join(layout.WorktreePath(), lyxdirs.LyxDirName)` instead and assert the `Prompt` does not contain that heading.
   Without the negative half a `PlanSpec` that read both roots would pass.
-  Do not modify `TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath` — its root is the relative, never-created `filepath.Join("home", "user", "repo")`, and its own comment records that being pure, filesystem-free arithmetic is the point; writing a fixture into it would create directories inside the source tree.
+  In `cmd/lyx/constructoranchoring_test.go`, add this new test's name to the pointer list in each of the two tautology comments card 2 amended, alongside the two cases each already names — in this card, the same commit that creates the test it points at.
+  Change nothing else in that file: card 2 owns the two rewritten `pattern.File` rows and the rest of each comment's wording.
+  Do not modify `TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath` — its root is the relative, never-created `filepath.Join("home", "user", "repo")`, so any fixture written under it would land inside the source tree rather than a temp directory.
+  Its own comment explains only why it uses a non-`"."` `AnchorRel`, not why its root is uncreated; do not restate that comment as if it recorded the filesystem-free property.
   Do not extend or parameterise `TestPlanSpec_PatternDirectiveOptional` to host this proof — its subject is directive optionality and the directive's position relative to `## Step 1`, and folding an anchoring assertion into it would give one test two unrelated reasons to fail.
   Do not add a new stencils helper: `newTestStencilsDir` already seeds all three `pattern-directive-*` stencils from the embedded defaults.
 - **Commit:** `test(loomengine): pin PlanSpec's PATTERN directive to AnchorPath, not WorktreePath`
@@ -143,6 +149,8 @@ There is no external interface for a next batch to consume — this is the only 
   Do not hardcode a `round-` prefixed path.
   The active sub-test asserts the read instruction-1 content contains the literal relative pointer `_lyx/PATTERN.md`, which every role variant carries; the inactive sub-test asserts it does not.
   The pair is what makes the assertion meaningful — a presence-only assertion cannot distinguish a working read from a template that hardcodes the text.
+  Amend the file-header comment, which today enumerates every subject the file tables — spec construction, the cluster audit policy wiring, every outcome, the review-file parse path, and the per-round instruction-file materialization step — so the PATTERN-directive detector is named among them.
+  The header is an enumeration, so adding a subject without listing it there leaves it stale.
   Do not modify the `//go:build smoke` tests: they spawn live agents, are opt-in, and are not this detector.
 - **Commit:** `test(burlerengine): pin the PATTERN directive reaching the round's instruction 1`
 
