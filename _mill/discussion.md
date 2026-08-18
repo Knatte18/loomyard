@@ -267,7 +267,11 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 - **Decision:** add `internal/standalonegeom`, the told-mode sibling of `internal/hubgeom`.
   It exports the standalone `reedengine.Geometry` builder — pinned exactly as the design's T8 table specifies — and the standalone `websterengine.Geometry` builder beside it.
 
-  Reed's standalone values, from `standalonestate.Derive(target) -> (stateDir, hash8)`:
+  **Both builders are told `(target, stateDir, hash8 string)` and never call `standalonestate.Derive` themselves.**
+  `Derive` is called exactly once, at the CLI argument boundary in `webstercli`'s pre-run, and its two outputs are passed down.
+  This mirrors `hubgeom`, which is told a resolved `*lyxcwd.Location` and resolves nothing itself, and it is what makes `standalonegeom` a pure path-math package with no environment dependency.
+
+  Reed's standalone values, given a told `stateDir` (`<state>`) and `hash8`:
 
   | Field | Standalone value |
   |---|---|
@@ -287,6 +291,22 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
   T8 reuse is the secondary reason and is what settles *where* it lives rather than *whether* it exists: T8 needs the identical builder for `burlercli`/`perchcli` a wave later, so inlining it in `webstercli` would guarantee either a duplicate or a later lift, and the design's own "no additive twins" decision says duplication reliably outlives the migration.
   A named package also gives the pinned table a single home a test can assert against.
 - **Rejected:** inlining in `webstercli` and letting T8 lift it — the lift is the duplication risk, and it costs T8 a refactor it would otherwise not need.
+- **Rejected:** having the builders call `standalonestate.Derive(target)` internally — `Derive` reads live `XDG_STATE_HOME`/`HOME`/`LOCALAPPDATA` (`standalonestate.go:31-44`), so every test touching a builder would resolve `<state>` to the operator's **real** home directory.
+  Told parameters keep the builders hermetic by construction rather than by each test remembering to redirect.
+
+### standalone-state-hermeticity-in-tests
+
+- **Decision:** no test may write into a real `<state>`.
+  Two mechanisms, applied by tier:
+  - **Tier 1** (the `standalonegeom` path-math tests and the extracted wiring function's truth-table test): `<state>` and `hash8` are **told literals**.
+    Nothing calls `Derive`, so nothing reads the environment and nothing touches disk.
+    This is the whole reason the builders take told parameters.
+  - **Any test that must exercise `Derive` itself or the real CLI pre-run** — notably the `//go:build integration` `RunCLIIn` test and anything reaching the standalone `stencilstore.Reconcile` seed: redirect the environment to a temp dir first, with `t.Setenv("XDG_STATE_HOME", t.TempDir())` on non-Windows and `t.Setenv("LOCALAPPDATA", t.TempDir())` on Windows, matching the per-OS table `Derive` reads.
+    `internal/standalonestate`'s own tests already exercise the injectable `derive(goos, localAppData, xdgStateHome, home, target)` seam;
+    consumers get the exported `Derive` and so need the env redirect.
+- **Rationale:** the standalone default stencils directory is `Reconcile`-seeded on first use and `<state>` holds `reed.json`, `reed.lock` and the whole `_lyx`/`.lyx` pair, so an unredirected test writes real files into `~/.local/state/lyx/<hash8>/**` — outside any `t.TempDir()`, surviving the run, and differing per machine.
+  `t.Setenv` also fails a parallel test by construction, which is the right forcing function: these cases must not be `t.Parallel()`.
+- **Rejected:** letting the integration test write to the real `<state>` and cleaning up afterwards — a failed or interrupted run leaves the operator's home directory dirty, and `hash8` makes the leftover path non-obvious.
 
 ### standalone-pane-cwd-is-told-separately-from-anchorpath
 
@@ -339,7 +359,13 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 ### standalone-integration-failure-is-recorded-with-unknown-localization
 
 - **Decision:** when `runIntegrationStage` has a failing suite and a `nil` Bisector (standalone), it **still records the failure** — it simply cannot localize it.
-  Concretely it takes `BisectAndEscalate`'s existing no-SHA path: `RecordIntegrationFailure(st, "unknown", "unknown")` followed by `AppendIntegrationFailure(websterDir, "unknown", "unknown")`, so `state.json` and `summary.md` carry the failure exactly as they would for an empty-SHA bisect.
+  Concretely it **bypasses `BisectAndEscalate` and `bisect` entirely** and calls `RecordIntegrationFailure(st, "unknown", "unknown")` followed by `AppendIntegrationFailure(websterDir, "unknown", "unknown")` directly, so `state.json` and `summary.md` carry the failure in the shape they already use for an unlocalized one.
+
+  **It does not "reuse the empty-SHA path" — that premise is false and would panic.**
+  `bisect`'s `len(shas) == 0` early return is unreachable here: standalone accumulates card SHAs exactly as hub mode does, so `accumulatedCardSHAs` is normally non-empty.
+  At one SHA `bisect` returns index `0` and `BisectAndEscalate` records that **real** SHA rather than `"unknown"` (`integration.go:98-105`);
+  at two or more it calls `repo.CurrentBranch()` (`:106`), which nil-pointer panics on a nil bisector.
+  The bypass must therefore be at the `BisectAndEscalate` call site, not inside it.
   The standalone-mode explanation reaches the operator through a **`Warnings []string` field added to `websterengine.RunResult`**, surfaced as a new `warnings` key on `run`'s output envelope.
   Both are new: `RunResult` (`runlevel.go:151-167`) has no `Warnings` field today, `runIntegrationStage` (`:763`) returns only `error`, and `run.go:101-107`'s envelope emits no `warnings` key.
   `runIntegrationStage` gains a warnings return alongside its error, and `Run` accumulates into `RunResult.Warnings`.
@@ -352,11 +378,13 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 - **Rejected:** routing the explanation through `logger` instead of the envelope — the CLI / Cobra Invariant forbids bare plain-text error paths, and an operator reading `run`'s JSON would see a failing suite with no stated reason for the missing localization.
 - **Rejected:** a distinct `"standalone"` sentinel in place of `"unknown"` — it would fork the summary/state vocabulary for no gain;
   the `Warnings` entry already says why localization is absent.
+- **Rejected:** guarding inside `bisect`/`BisectAndEscalate` on a nil `repo` — it would put a standalone-mode concept inside the bisect algorithm, and the one-SHA branch would still record a real SHA under a "cannot localize" claim.
 
 ### batcher-moves-to-the-degrading-side
 
 - **Decision:** `batcher.Active` switches from `configengine.Load` to `configengine.LoadOrTemplate` (`internal/batcher/config.go:35`), and `CONSTRAINTS.md`'s Config Strictness Invariant pinned sets move `batcher` from strict to degrading in the same commit.
   The `strings.Contains(err.Error(), "not initialized")` rewrap becomes unreachable for the absent-`_lyx` case and is removed or narrowed accordingly.
+  Two stale statements land in the same commit: `internal/batcher/config.go:26-33`'s `Active` doc comment, which documents the strict absent-`_lyx` error verbatim, and `CONSTRAINTS.md`'s "watch item for T7/T10" paragraph.
 - **Rationale:** the Config Strictness Invariant already records this as "a watch item for T7/T10": `batcher` is strict only because it had no standalone entry, and a standalone webster reaches `batcher.Active` on every verb.
   Leaving it strict makes standalone webster hard-fail on a config the invariant's own membership rule says should degrade.
 - **Rejected:** having `webstercli` catch the strict error and substitute a default batchifier — that puts config-degradation policy in a CLI and contradicts the invariant's membership rule.
@@ -368,7 +396,7 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
   - **Stencil Ownership Invariant**, seed-pass bullet: "once per process: at `cmd/lyx`'s root pre-run in hub mode, or at the producer CLI's own pre-run in standalone mode."
     The load-bearing half — *never lazily inside `stencilstore.Read`* — is preserved verbatim.
   - **Durable-vs-Ephemeral State Invariant**: add that standalone's `_lyx`/`.lyx` pair are ordinary siblings under `<state>`, satisfying the mirrored-subpath rule rather than deviating from it.
-  - **Config Strictness Invariant**: the `batcher` pinned-set move above.
+  - **Config Strictness Invariant**: the `batcher` pinned-set move above, **and** the "watch item for T7/T10" paragraph that still asserts `batcher` is strict for lack of a standalone entry — T7 is the trigger that paragraph names, so it is resolved here rather than left describing a condition that has already fired.
   - **Fabric Git Invariant (warp + weft)**, the enforcement bullet at `CONSTRAINTS.md:310`: it states the agent half "is machine-checked for webster runs by `fabricengine.RefScanner`".
     With a never-matching standalone `RefMatcher` that becomes true of **hub-mode** webster runs only, so the bullet gains a one-clause qualifier saying so.
     Standalone has no weft worktree and no fabric verb for a fork to drive, so there is nothing for the check to catch there — but the invariant must say that rather than leave a reader believing the guard is universal.
@@ -497,7 +525,10 @@ From `CONSTRAINTS.md`:
 - **Fabric Git Invariant (warp + weft)** and its `rawgitmutation_test.go` guard — untouched;
   no new raw git handle in `websterengine`.
 - **Dev/Prod Binary Separation** — the standalone stencil seed reuses `buildinfo.IsDev()`, never a hardcoded mode.
-- **Documentation Lifecycle** — `internal/websterengine/doc.go`, `internal/webstercli/cli.go`'s package doc, `internal/hubgeom/doc.go` (which currently promises `WebsterGeometry`), `internal/reedengine/geometry.go` — **both** its file-header sentence at `:1`, which reads "declares Geometry, the seven-field struct" and becomes eight, and the new `PaneCwd` field's own comment explaining why it is not `AnchorPath` — `internal/preflight/doc.go` and its two function comments, and the new `internal/standalonegeom/doc.go` all land in this commit, plus `CONSTRAINTS.md`.
+- **Documentation Lifecycle** — `internal/websterengine/doc.go`, `internal/webstercli/cli.go`'s package doc, `internal/hubgeom/doc.go` (which currently promises `WebsterGeometry`), `internal/reedengine/geometry.go` — **four** sites there, not one: the file-header sentence at `:1` ("the seven-field struct", becoming eight);
+`:12-13`, which names `hubgeom.ReedGeometry` as *the* hub-mode answer and `ServerName(hubPath)` as SocketKey's derivation, both now joined by `standalonegeom`'s `lyx-<hash8>`;
+`AnchorPath`'s own comment at `:20-22` ("and the cwd every pane is spawned with"), which becomes false the moment the spawn sites read `PaneCwd`;
+and the new `PaneCwd` field's own comment explaining why it is not `AnchorPath` — plus `internal/reedengine/doc.go:23`'s matching hubgeom-as-sole-teller claim, `internal/preflight/doc.go` and its two function comments, `internal/batcher/config.go:26-33`'s `Active` doc comment (which documents the strict absent-`_lyx` error verbatim), and the new `internal/standalonegeom/doc.go` — all in this commit, plus `CONSTRAINTS.md`.
   `manifest/roadmap.md` is **not** moved by this task — wave 3 completes only when T6 also lands, and the roadmap move belongs to whichever task closes the wave, or to T10.
 
 From `CLAUDE.md`:
@@ -520,7 +551,10 @@ the migration must keep them green with only mechanical construction changes.
   `*fabricengine.RefScanner` satisfies the new `RefMatcher` interface, and `NewRefScanner` still takes a `*lyxcwd.Location` — that is `fabricengine`'s own API, untouched by this task — so the only change these cases need is the `Deps`-construction conversion every other fixture gets.
   Keeping them preserves the real-scanner coverage the Fabric Git Invariant cites as its machine check;
   the new fake-`RefMatcher` cases are added alongside, not in place of them.
-- New: `runIntegrationStage` with a `nil` Bisector must not panic, must surface the standalone-mode explanation in the new `RunResult.Warnings`, and must still leave `state.json` and `summary.md` carrying the failure with `"unknown"`/`"unknown"` localization.
+- New: `runIntegrationStage` with a `nil` `OpenBisector` must not panic, must surface the standalone-mode explanation in the new `RunResult.Warnings`, and must still leave `state.json` and `summary.md` carrying the failure with `"unknown"`/`"unknown"` localization.
+  **Drive it with at least two accumulated card SHAs.**
+  A 0-SHA fixture takes `bisect`'s early return and a 1-SHA fixture takes its sole-candidate return, so both pass under the broken implementation;
+  only ≥2 SHAs reaches `repo.CurrentBranch()` (`integration.go:106`), which is where a nil bisector actually panics.
   Assert the `warnings` key reaches `run`'s JSON envelope too — the field is new on both `RunResult` and the envelope, so a test that stops at the struct proves nothing an operator can see.
   TDD candidate — the nil-fallback deletion is what makes nil reachable.
 - New: the fork audit resolves a **relative** transcript write path against `WorktreeRoot`, not `AnchorRoot`.
@@ -533,12 +567,17 @@ the migration must keep them green with only mechanical construction changes.
 
 **`internal/hubgeom`** — a table test that `WebsterGeometry(l)` returns exactly the values the four accessors plus `planparser.PlanDir` and `fabricengine.StencilsDir` produce for the same `l`, at both `AnchorRel == "."` and a nested `AnchorRel`.
 
-**`internal/standalonegeom`** — pure path-math table tests pinning every row of both tables in the two-roots and `standalonegeom` decisions above, for a fixed target and a stubbed `<state>`/`hash8`.
+**`internal/standalonegeom`** — pure path-math table tests pinning every row of both tables in the two-roots and `standalonegeom` decisions above, for a fixed target and **told literal** `<state>`/`hash8` values (never `Derive`, never the environment — see the `standalone-state-hermeticity-in-tests` Decision).
 `LogsDir` must be asserted as `<state>/logs` explicitly, since the wrong answer (`<state>/_board/.lyx/logs`) is one `HubLogsDir` call away.
 `PaneCwd` must be asserted as the target and `AnchorPath` as `<state>` **in the same test**, since the whole point of the field is that the two differ here.
 
 **`internal/reedengine`** — assert `hubgeom.ReedGeometry(l).PaneCwd == l.AnchorPath()` at both `AnchorRel == "."` and a nested `AnchorRel`, and that the two spawn sites pass `PaneCwd` rather than `AnchorPath`, so the hub-neutrality claim is pinned rather than asserted in prose.
-The existing reed suite must stay green unchanged — that is the actual regression proof for burler, perch and treadle, which this task does not otherwise touch.
+
+**The reed suite does not stay green unchanged — seven `Geometry` literals need a `PaneCwd` row**, and three of them drive real tmux, so an unset field would spawn with `-c ""`:
+`contract_integration_test.go:409,517` and `mouse_boot_integration_test.go:48` (real `new-session`/`split-window`), plus `lock_test.go:30,58,172` and `header_test.go:14`.
+They build `Geometry` literals directly rather than through `hubgeom`, which they cannot import without a cycle, so no hub-mode default reaches them.
+These are in-scope edits for this task, not incidental breakage to discover during implementation.
+**No zero-value fallback** — an empty `PaneCwd` must not silently mean `AnchorPath`, or a real caller that forgets the field spawns in the wrong directory with nothing to catch it, which is the exact failure this whole split exists to prevent.
 
 **`internal/webstercli`** — the two tiers T7's Verify line requires:
 
@@ -552,6 +591,8 @@ The existing reed suite must stay green unchanged — that is the actual regress
   Plus the two seams that must never be `nil`-or-eager: `refMatcher` is non-`nil` in **both** modes, and `openFabric`/`OpenBisector` are `nil` in standalone and are **not** invoked during wiring in hub mode — assert the wiring function opens no fabric handle, which is what keeps the three healthy-but-unwired locations working.
   The function must perform no cwd resolution and no spawn, so this stays tier 1 — which is only possible because the mode decision lives inside it.
 - **`//go:build integration` test** driving `RunCLIIn(<temp dir outside any git repo>, …)` and asserting the pre-run reaches the run verb's own flag validation rather than a resolution error.
+  It must redirect `<state>` to a temp dir first (`t.Setenv("XDG_STATE_HOME", …)` / `LOCALAPPDATA` on Windows) — this test reaches the real `standalonestate.Derive` and the standalone stencil seed, so without the redirect it writes into the operator's home directory.
+  `t.Setenv` forbids `t.Parallel()` here, which is correct.
   `internal/perchcli/cli_integration_test.go` is the shape to follow;
   `internal/webstercli` already has a hermetic `TestMain` and an existing `sync_integration_test.go`.
 - `verbs_test.go`'s subpath-anchored `PersistentPreRunE` case must keep passing unchanged — it is the non-tautological anchoring proof for webster.
@@ -622,5 +663,12 @@ The existing reed suite must stay green unchanged — that is the actual regress
 - **Q:** [review r4 gap] Does the audit workdir need its own `Geometry` field? **A:** [recommended] No — it equals `WorktreeRoot` in both pinned modes, so pin `WorktreeRoot` and drop the ninth field. **Why:** a field provably equal to an existing one everywhere adds no information and invites the two to drift.
 - **Q:** [review r4 gap] `websterengine.Geometry.WorktreeRoot` is `AnchorPath()` while `reedengine.Geometry.WorktreeRoot` is `WorktreePath()` — is that a mistake? **A:** [recommended] No, but it must be documented in the `Geometry` doc comment, and the two-roots table gains rows for `shuttleengine.NewRunner`'s told arguments. **Why:** the collision is deliberate continuity — renaming webster's field would make every diff look like a behaviour change — but undocumented it invites someone to "fix" one to match the other.
 - **Q:** [review r4 gap] What happens to `audit_test.go`'s real-`RefScanner` cases? **A:** [recommended] They stay, unchanged in substance. **Why:** `*fabricengine.RefScanner` satisfies the new interface and `NewRefScanner`'s own signature is untouched by this task, so keeping them preserves the real-scanner coverage the Fabric Git Invariant cites as its machine check.
+- **Q:** [review r5 gap] `standalonestate.Derive` reads live `XDG_STATE_HOME`/`HOME`/`LOCALAPPDATA`, so tests would write into the operator's real home directory — how is `<state>` kept hermetic? **A:** [recommended] Pin the `standalonegeom` builders as told `(target, stateDir, hash8)` with `Derive` called only at the CLI boundary, and redirect the env with `t.Setenv` in the tiers that must reach `Derive` itself. **Why:** told parameters make the builders hermetic by construction rather than by each test remembering to redirect;
+  the integration test and the stencil seed still touch the real `Derive`, so they need the redirect explicitly.
+- **Q:** [review r5 gap] Does the standalone escalation really reuse `BisectAndEscalate`'s empty-SHA path? **A:** [recommended] No — bypass `BisectAndEscalate`/`bisect` at the call site and record directly;
+  pin the non-panic test at ≥2 SHAs. **Why:** the premise was false: standalone accumulates card SHAs normally, one SHA records a *real* SHA under a "cannot localize" claim, and two or more reach `repo.CurrentBranch()` and nil-panic.
+- **Q:** [review r5 gap] Does the reed suite really stay green unchanged? **A:** [recommended] No — seven `Geometry` literals need a `PaneCwd` row, three of which drive real tmux;
+  and no zero-value fallback. **Why:** those literals cannot import `hubgeom` (cycle), so no hub default reaches them and they would spawn with `-c ""`;
+  a fallback would let a forgotten field silently mean `AnchorPath`, which is the failure the split exists to prevent.
 - **Q:** What happens to `cmd/lyx/constructoranchoring_test.go`? **A:** [auto-pick] webster's four rows rewritten in place in both test functions;
   accept the expected textual conflict with T6's adjacent rows. **Why:** the design's explicit disposition for the file, and the non-tautological anchoring proof lives in `verbs_test.go` regardless.
