@@ -135,6 +135,8 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
   - `internal/planparser/validate.go`
 - **Edits:**
   - `internal/websterengine/runlevel.go`
+  - `internal/shedadapters/webster.go`
+  - `internal/shedadapters/webster_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -150,6 +152,8 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
   In `runExitAuditCrossCheck`, delete the `fabricengine.NewRefScanner(deps.Layout)` construction, use `deps.RefMatcher`, and pass `deps.Geom.WorktreeRoot` as the workdir to `CheckParent` and `CheckFork` — the same audit-workdir reasoning card 25 records applies verbatim here.
   Remove the `internal/fabricengine` and `internal/lyxcwd` imports from this file.
   Rewrite the `RunDeps` doc comment and the `OpenBisector` field comment: the opener is caller-supplied rather than defaulted, it stays lazy so a run that never reaches a failing integration suite never opens a fabric handle, tests inject a fake by supplying an opener that returns it, and a nil opener means "no fabric in this mode" rather than "construct the production default".
+  `internal/shedadapters/webster.go`'s `WebsterProducer.Call` reads `p.deps.WebsterDir` to build its `shedengine.OutputPointer`;
+  convert that one read to `p.deps.Geom.WebsterDir`, and convert every `websterengine.RunDeps{WebsterDir: dir}` (and the one `WebsterDir: websterDir, ScratchDir: scratchDir` literal) in `internal/shedadapters/webster_test.go` to the matching `Geom: Geometry{WebsterDir: dir}` (or `{WebsterDir: websterDir, ScratchDir: scratchDir}`) shape — this task's own `go build ./...` union, not just the batch's own `verify:` package set, so a stale flat-field read here breaks the whole-repo build.
 - **Commit:** `refactor(websterengine): give RunDeps a told Geometry, a RefMatcher and a bisector opener`
 
 ### Card 28: Record an unlocalized integration failure when there is no bisector

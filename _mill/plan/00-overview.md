@@ -155,6 +155,8 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/reedengine/lifecycle_test.go`
 - `internal/reedengine/lock_test.go`
 - `internal/reedengine/mouse_boot_integration_test.go`
+- `internal/shedadapters/webster.go`
+- `internal/shedadapters/webster_test.go`
 - `internal/standalonegeom/doc.go`
 - `internal/standalonegeom/reedgeom.go`
 - `internal/standalonegeom/standalonegeom_test.go`
