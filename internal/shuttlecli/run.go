@@ -57,8 +57,12 @@ func (c *shuttleCLI) runCmd() *cobra.Command {
 		Long: `run starts one shuttle agent, blocks until it reaches a classified
 outcome (done/asking/died/timeout), and prints that outcome as a single JSON
 envelope. A run's output files ARE its return value: "done" means every
---output-file entry now exists, "asking" means the agent ended its turn with
-a question instead. An --output-file entry may be absolute or relative — a
+--output-file entry now exists, "asking" means the agent ended its turn
+WITHOUT writing them — usually because it is asking or is blocked, but the
+message is never inspected, so lastAssistantMessage carries whatever it last
+said rather than a guaranteed question.
+
+An --output-file entry may be absolute or relative — a
 relative path resolves against the WORKTREE ROOT, not the shell's cwd — and
 must not already exist when the run starts: a stale file would satisfy the
 contract immediately, so the run is rejected instead.
