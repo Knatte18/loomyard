@@ -28,7 +28,9 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 - A new named invariant in `CONSTRAINTS.md` — the **Told-Geometry Invariant** — stating the three resolution tiers, the producer/orchestrator split, and the one-way geometry-adapter direction, with its enforcement basis named honestly per package.
 - A reword of the existing **Cwd Resolution Invariant** in `CONSTRAINTS.md`, adding what `lyxcwd.Resolve` actually validates.
   Substance unchanged: no rule relaxed, no gate loosened.
-- `docs/overview.md`: an accuracy sentence plus a pointer in its own Cwd Resolution Invariant section, the three missing packages added to the shared-infrastructure list, and a standalone-mode paragraph in the Execution stack section.
+- `docs/overview.md`: an accuracy sentence plus a pointer in its own Cwd Resolution Invariant section;
+  a **separate new sentence after** the shared-infrastructure sentence in `## Modules` mapping `internal/preflight`/`internal/hubgeom`/`internal/standalonegeom` as the layer above the engines — never an entry inside that parenthetical, which would state a false layering;
+  and a standalone-mode paragraph in the Execution stack section.
 - A `doc.go` audit across the converted packages: add one told-geometry sentence naming the package's tier where absent; leave existing told-geometry prose alone.
 - `internal/buildinfo/doc.go`: reword its prose reference to the about-to-be-deleted design doc.
 - `manifest/roadmap.md`: move the Planned `producers standalone: invariants and docs` item to the head of Done, and reword the four existing producers-standalone Done entries so none links to the deleted design doc.
@@ -68,7 +70,8 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
   1. **The three tiers**, as a compact table: tier 1 geometry (`lyxcwd.Resolve` — cwd is the root of a git worktree, `AnchorRel` is whatever the marker says or `"."`), tier 2 fabric (`preflight.Check`/`fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName` — fabric is wired here, junctions intact, warp and weft in sync, tree clean), tier 3 orchestrator state (`loomengine.Preflight` — tiers 1 and 2 plus this orchestrator's own status seed).
   2. **The split:** a producer requires none of the three.
      An orchestrator requires tier 3 and threads the extracted plain values down through its whole producer list.
-     A standalone CLI invocation of a single producer never enters tier 1 at all.
+     A standalone CLI invocation of a single producer **requires** none of the three: its pre-run *attempts* tier 1 through `preflight.ResolveMode`, which calls `lyxcwd.Resolve` unconditionally (`internal/preflight/predicates.go:111-112`), and degrades to standalone mode on either outcome — a failed resolve, or a successful one with no board-level lyx directory beside it (`predicates.go:113-119`).
+     Word the rule as "requires none of the three", never "never enters tier 1": the latter is false in source and contradicts point 4, which makes `ResolveMode` the mandatory trigger.
   3. **The adapter direction:** where an engine takes a `Geometry` **struct**, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors.
      Both depend on the engines; no engine imports either back.
      An engine that gains a `Geometry` struct adds a sibling constructor in each rather than deriving geometry inline at a call site or spawning a per-engine geometry package.
@@ -85,9 +88,12 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 - **Decision:** the invariant's **Enforced by** line enumerates the machine-checked set exactly, and names the review-obligation set exactly rather than gesturing at it.
 
   **The membership predicate the two sets are derived from**, stated in the invariant so a future task can re-derive them rather than guess:
-  a package is *bound* by the Told-Geometry Invariant when it takes the absolute paths it operates on from its caller and imports `internal/lyxcwd` in production not at all.
-  It is *machine-enforced* when that non-import is asserted by a test in its own package that policies its production import set (an allowlist that omits `internal/lyxcwd`, or a banned list that names it);
+  a package is *bound* by the Told-Geometry Invariant when it takes the absolute paths it operates on from its caller and has no **direct** production import of `internal/lyxcwd`.
+  It is *machine-enforced* when that direct non-import is asserted by a test in its own package that polices its production import set (an allowlist that omits `internal/lyxcwd`, or a banned list that names it);
   otherwise it is a *review obligation*.
+  **Direct, never transitive** — this matches how the Treadle Runner-Seam and Shed Producer-Seam Invariants already word their own allowlists, and it has to: two of the six machine-enforced packages reach `internal/lyxcwd` transitively and are still correctly bound.
+  `internal/treadleengine` reaches it through `internal/logger` and `internal/shuttleengine` (`CONSTRAINTS.md`'s Treadle invariant states this outright), and `internal/pattern` reaches it through `internal/stencilstore` → `internal/logger` (`pattern.go:15`, `stencilstore/reconcile.go:13`).
+  Phrasing the predicate or the "genuinely excludes `internal/lyxcwd`" claim without the direct/transitive qualifier would make both entries wrong.
   The predicate is what binds;
   the two lists below are the packages converted by the producers-standalone waves, and are **not exhaustive** of every package the predicate reaches.
   `internal/batcher` (`config.go:31-33`), `internal/stencilstore` (`doc.go:3-7`), and `internal/shedadapters` (`doc.go:27`, "Told, never derived") each satisfy the predicate today, arrived there by other routes, and are named in the invariant as such — bound, unconverted-by-this-line-of-work, and review obligation.
@@ -164,7 +170,7 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
   `internal/batcher`, `internal/stencilstore`, and `internal/shedadapters` are bound by the invariant but are out of this audit's scope, since none of them was converted by this line of work and each already documents the property in its own words.
   For each converted package, confirm its `doc.go` carries one sentence naming which tier it sits in and whether it is told or resolves.
   Add the sentence where absent;
-  where told-geometry prose already exists (`shuttleengine`, `reedengine`, `pattern`, `perchengine`, `websterengine`, `hubgeom`, `standalonegeom`, `planparser`, `scoutengine`), leave it alone.
+  where told-geometry prose already exists (`shuttleengine`, `reedengine`, `pattern`, `perchengine`, `websterengine`, `planparser`, `scoutengine`), leave it alone.
   `internal/configengine`, `internal/webstercli`, and `internal/scoutcli` have no `doc.go` at all — do not create one; their told-geometry status is covered by the invariant, and creating a package doc file is a larger editorial act than this task's brief carries.
 - **Rationale:** these doc comments are the durable home for the rationale the deleted design doc held.
   A blanket rewrite for uniform wording would churn nine files' worth of already-correct prose for no reader gain and would make the diff unreviewable.
@@ -175,6 +181,11 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 
 - **Decision:** implement it, as `cmd/lyx/configstrictness_test.go`, per the specification already written in `CONSTRAINTS.md`'s Config Strictness Invariant.
   Add its `allowedSpawners` entry in `cmd/lyx/tierpurity_test.go`, and flip that invariant's **Enforced by** line from review obligation to the new test while keeping the known-blind-spot bullets.
+
+  **Disposition of the inherited-specification paragraph** (`CONSTRAINTS.md:520-523`): the **Enforced by** bullet at line 520 is rewritten to name `cmd/lyx/configstrictness_test.go` and its test function, and the guard-shape paragraph at line 521 is **deleted**, not compressed and not kept.
+  Once the guard exists, that paragraph is a specification for work already done, addressed to a task that has completed — exactly the historical narrative the file's own header (lines 3–6) bans, and its "T10 named as its home" clause becomes a dangling reference to a finished task.
+  The one sentence worth surviving it is the known-blind-spot line ("a substring scan cannot see a call reached through an alias or a function value"), which stays as its own bullet because it is a live caveat about the shipped guard, not a record of how the guard came to be.
+  The guard's shape lives in the test file's own doc comment from then on, matching how `cmd/lyx/gitrepoboundary_test.go` and the other pinned-set guards document themselves.
 - **Rationale:** `CONSTRAINTS.md` states outright that the guard has "a set-equality grep guard named as a candidate and **T10 named as its home**", and then records the guard's full shape "so T10 inherits a specification rather than re-deriving one".
   This task *is* T10.
   Deferring would still require editing that invariant to move the guard's home, so the cheaper edit is to build it.
@@ -331,15 +342,15 @@ a guard written to match whatever the tree currently says would assert nothing.
 
 **Manual review obligations**, not machine-checkable:
 
-- Every claim in the new invariant's enforcement paragraph is true of the tree at commit time — specifically, that the six named tests really do exclude `internal/lyxcwd` and that the ten review-obligation packages really have no such guard.
+- Every claim in the new invariant's enforcement paragraph is true of the tree at commit time — specifically, that the six named tests really do exclude `internal/lyxcwd` as a direct import and that the eight review-obligation packages really have no such guard.
 - No `doc.go` sentence added by the audit contradicts prose already in that file.
 
 ## Q&A log
 
 - **Q:** What should the new invariant be named, and where in `CONSTRAINTS.md` does it go? **A:** [auto-pick] `## Told-Geometry Invariant`, immediately after the Cwd Resolution Invariant. **Why:** it is that invariant's generalization — Cwd Resolution says who may resolve, Told-Geometry says who must be told instead — and the file already uses adjacency plus **See also** cross-links to pair related rules.
-- **Q:** How should the enforcement basis be stated, given the brief's "import-allowlist test per producer package where one exists"? **A:** [auto-pick] Enumerate both sets exactly — six machine-enforced packages named with their test functions, ten review-obligation packages named individually. **Why:** exploration found `shuttleengine`'s and `scoutengine`'s seam tests do not police `internal/lyxcwd` at all (provider seam and a banned list respectively), so the unenumerated phrasing would have carried a false implication into an authoritative file.
+- **Q:** How should the enforcement basis be stated, given the brief's "import-allowlist test per producer package where one exists"? **A:** [auto-pick] Enumerate both sets exactly — six machine-enforced packages named with their test functions, eight review-obligation packages named individually, and the two geometry adapters carved out separately as tellers. **Why:** exploration found `shuttleengine`'s and `scoutengine`'s seam tests do not police `internal/lyxcwd` at all (provider seam and a banned list respectively), so the unenumerated phrasing would have carried a false implication into an authoritative file.
 - **Q:** How far should the Cwd Resolution Invariant reword go? **A:** [auto-pick] Add one bullet stating the four facts about what `Resolve` validates, plus the consequence sentence; change no rule. **Why:** the design doc explicitly scopes out changing the invariant's substance, and the misreading is about what `Resolve` does *not* prove — which only an explicit negative fixes.
-- **Q:** Does `docs/overview.md` change, and how much? **A:** [auto-pick] Three targeted edits — accuracy sentence plus pointer in its Cwd section, three missing packages added to the shared-infrastructure list, a standalone-mode paragraph in the Execution stack. **Why:** the stack genuinely has two entry modes now and the doc describes one; `internal/preflight`, `internal/hubgeom`, and `internal/standalonegeom` exist and are absent from the module map.
+- **Q:** Does `docs/overview.md` change, and how much? **A:** [auto-pick] Three targeted edits — accuracy sentence plus pointer in its Cwd section, a separate new sentence after the shared-infrastructure sentence (not an entry in it) mapping the three missing packages as the layer above the engines, a standalone-mode paragraph in the Execution stack. **Why:** the stack genuinely has two entry modes now and the doc describes one; `internal/preflight`, `internal/hubgeom`, and `internal/standalonegeom` exist and are absent from the module map, but all three import engines, so listing them as infrastructure the modules sit *on* would invert the real layering.
 - **Q:** How much `doc.go` work? **A:** [auto-pick] Additive audit — add a tier-naming sentence where absent, leave existing told-geometry prose untouched, create no new `doc.go` for the three packages that lack one. **Why:** nine of the converted packages already carry correct prose;
   rewriting for uniformity would churn the diff for no reader gain.
 - **Q:** The design doc must be deleted — what about the five `manifest/roadmap.md` links to it? **A:** [auto-pick] Move the Planned item to the head of Done and reword all four existing Done entries in the same commit, repointing at the new invariant. **Why:** mandatory rather than a preference — `internal/lyxcwd/docslink_test.go` fails the build on a dangling link, and the "the doc survives this task because …" clauses become false statements.
