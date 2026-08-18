@@ -85,6 +85,7 @@ only the parameter type changes.
 - **Edits:**
   - `cmd/lyx/constructoranchoring_test.go`
   - `cmd/lyx/notransients_test.go`
+  - `internal/reedengine/lifecycle_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -95,6 +96,10 @@ only the parameter type changes.
   Convert all five identically.
   A textual merge conflict with the sibling task's adjacent `perchengine` rows in `constructoranchoring_test.go` is expected and is resolved by whichever task rebases second;
   do not restructure the file to avoid it.
+  Batch 5's `verify:` also runs the untagged `./cmd/lyx/...` suite, which includes the Hermetic Git Test Environment and Test Tier Purity enforcement scans;
+  these substring-scan a prose comment in `internal/reedengine/lifecycle_test.go` (from batch 1, already merged onto this branch) that happens to spell out the literal token `exec.Command` while describing the new-session spawn site, and false-flag it as a spawning code use.
+  Reword that one comment sentence so it no longer contains the literal token verbatim (e.g. break it as `exec.` + `Command`, or rephrase around it) without changing its meaning;
+  this is the minimal, in-place fix for a same-task false positive batch 5's own `verify:` is the first to surface, not a design change to batch 1's work.
 - **Commit:** `test(cmd/lyx): pass the told anchor root in the webster enforcement rows`
 
 ## Batch Tests
