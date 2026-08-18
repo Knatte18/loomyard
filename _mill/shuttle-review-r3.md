@@ -339,3 +339,43 @@ it; that is reed's call, not this round's.
   the run a live-agent sweep destroys.
 
   Flagging the disagreement explicitly so the orchestrator can adjudicate rather than discover it.
+
+## Scope assessment — plan-promised vs shipped
+
+Nothing in this round's testing found shuttle short of what its module doc and `docs/overview.md` promise.
+The run/interrupt/send verb set, the file contract, the engine seam, the told-geometry validation (R1-F3) and
+the identity-preserving mechanism-failure exit (R1-F2) are all present and behave as documented under live
+stress. The two findings are both cases where shipped behaviour was more confident than the evidence
+justified, not cases of missing scope.
+
+## Convergence assessment
+
+The brief asks for these two axes separately, and they land differently.
+
+**reed×shuttle joint composition — NOT yet converged, but the picture is now bounded.** This was the first
+round to systematically test it, and the first pass over seven scenarios turned up two real defects, both
+MEDIUM, both live-reproduced, both previously unseen by two rounds of shuttle-alone review. That is a
+meaningful yield for a first pass and it means the axis was genuinely under-tested, exactly as the brief
+suspected. What is encouraging is the SHAPE of what was found: both findings are the same mistake made twice —
+shuttle treating "reed's bookkeeping is gone" as "the agent is gone" — and every other composition surface
+tested came back clean, several of them two layers deep (scenario 4's `FindRun` guard firing before reed's
+refusal was even consulted). Out-of-process `interrupt`/`send` were honest under every reed failure mode
+thrown at them, including reed's foreign-session refusal, its corrupt-state error, and its untracked-strand
+case, and they were honest because they already drew the distinction `Wait` was missing.
+
+I would expect a fourth round on this axis to find less than this one did, but I would not yet call it
+converged: the scenarios that remain untested (a subpath-anchored worktree under joint stress; a
+`PaneGeneration` mismatch that reed CLEARS rather than refuses, with a live run attached; concurrent
+`Interrupt` and `Wait` against a reed mid-refusal) are exactly the kind that produced these two.
+
+**shuttle-alone correctness — converged, consistent with rounds 1-2.** Reading the current code adversarially
+outside the reed boundary produced no new finding worth recording; the happy, `asking`, and `timeout` paths all
+behaved exactly as documented live, and the four smoke tests pass. Three rounds now agree on this half.
+
+## Merge readiness
+
+**Merge-ready.** The merge bar is correctness in the normal single-instance flow, and that flow is green:
+happy path, `asking`, `timeout`, `interrupt`, `send`, and all four smoke tests, hermetic gates at `-count=5`,
+zero new stray processes. Both findings were fixed, sabotage-proved, and re-verified live against the deployed
+fixed build; neither fix changes the normal flow at all — each narrows a branch that only fires when reed's
+bookkeeping has already gone away.
