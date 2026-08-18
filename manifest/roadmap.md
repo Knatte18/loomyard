@@ -13,36 +13,20 @@ Committed to, in this order, next.
    The final consolidation task for this line of work.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **loom: phase-machine scaffolding** — mechanical rows only, every `LLM`/`LLM+perch` row stays a stub.
-   - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
-   - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections.
-   - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`.
-   - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`).
-   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold — `raddle` has no finished design yet (see Someday), so Finalize v1 ships without it and gains the fold as a later, separate task.
-   - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
-   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review` — each returns `Done` without doing real work.
-   - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-
-1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine from the item above actually reachable.
-   - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
-   - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
-   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
-
-1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
-   - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
-   - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
-   - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
-   - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
-   - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
-   - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
-   - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
+1. **loom: phase-machine scaffolding** — wire the whole flat producer list for real, mechanical rows only: the `Shed` instance plus `lyx loom status`, `Discussion-Validate`, `Plan-Sweep`, `Plan-Validate`, and `Finalize` built as real mechanical producers, `Webster` wired in as the already-shipped module it is.
+   Every `LLM`/`LLM+perch` row (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stays a stub in the wired list — see the Someday **loom: remove/park all LLM-prompt work** item for why and for exactly what stays out.
+   Deliberate build order, operator-chosen: all scaffolding up first, so the full sequence — resume, crash-recovery, pause — runs and is provable end to end before a single LLM prompt is wired in for real.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
-No build order is implied between these items.
+No build order is implied between these items, with one named exception: **loom: remove/park all LLM-prompt work**, below, is next once the Planned `loom: phase-machine scaffolding` item ships — deliberately last within `loom`'s own initiative, not unscheduled the way the rest of this section is.
+
+1. **loom: remove/park all LLM-prompt work** — every piece of `loom`'s producer list that is LLM-prompt content, not Go scaffolding, stays entirely out of scope until this one task, last in the whole initiative: `Discussion-Review`'s rubric (today only half-written — [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) has the "what not to flag" half, no "what to check" half yet), `Plan-Review`'s rubric (does not exist at all — `loom-plan-spec.md` is a structural format spec, not review judgment criteria), `Webster-Review`'s rubric (does not exist at all — the plan's card contract is likewise structural, not judgment criteria), and rewriting `Discussion-Write`'s and `Plan-Write`'s already-built prompts into `SingleLLMProducer` instances.
+   **Explicitly not included** — stays in scope now, unaffected by this parking: `perch`'s own round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s own A/B round machinery, and `webster`'s own already-shipped black-box engine (`internal/websterengine`/`internal/webstercli`) — none of that is prompt content, it is already-built Go infrastructure this task later plugs real profiles into, not something it authors.
+   Motivation: three review gates in three different, undocumented states of readiness, scattered across the design doc with no single place naming what's missing, is worse than one deliberately-parked task naming all of it at once.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
