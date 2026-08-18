@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-websterengine Geometry and RefMatcher
+phase: approved-webster path accessors take a told anchor root
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-reed pane cwd  '2026-08-18T10:01:16Z'
 approved-batcher moves to the degrading side  '2026-08-18T10:05:02Z'
 approved-preflight doc correction  '2026-08-18T10:07:07Z'
 approved-websterengine Geometry and RefMatcher  '2026-08-18T10:09:36Z'
+approved-webster path accessors take a told anchor root  '2026-08-18T10:18:06Z'
 ```
 
 ## Batches
@@ -60,9 +61,10 @@ batches:
     commit_sha: 63ae1baf0ef0e81ee766df04bd0481a00d8fda0d
     verify_baseline_failures: []
   - name: webster path accessors take a told anchor root
-    state: running
+    state: approved
     implementer_session: 7a5bbd4a-96e7-46f9-bc08-6fa4f9eba6c4
     start_sha: b28a60a901bea2995107c2ccc7e1229f179b4716
+    commit_sha: 985703615c3da6328b0cd82e744ddcd0c991c567
     verify_baseline_failures: []
   - name: hubgeom.WebsterGeometry and the standalonegeom sibling
     state: pending
