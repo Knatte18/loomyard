@@ -24,11 +24,11 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 **In:**
 
 - `internal/burlerengine`: a package-owned `Geometry` type, `New` taking it instead of `*lyxcwd.Location`, `Engine.Run` reading the told roots. `internal/lyxcwd` leaves the package's production imports entirely.
-- `internal/perchengine`: a package-owned `Geometry` type, `New` taking it instead of `*lyxcwd.Location`; `RunsDir`/`ScratchDir` taking a told `anchorRoot string`. `internal/lyxcwd` leaves the package's production imports entirely.
+- `internal/perchengine`: a package-owned `Geometry` type, `New` taking it instead of `*lyxcwd.Location`; `RunsDir`/`ScratchDir` taking a told `anchorPath string`. `internal/lyxcwd` leaves the package's production imports entirely.
 - `internal/hubgeom`: adds `BurlerGeometry(l)` and `PerchGeometry(l)` beside the existing `ReedGeometry`, plus their tests.
 - `internal/burlercli/cli.go` and `internal/perchcli/cli.go` / `run.go`: construction sites repointed through `hubgeom`.
 - Tests in all five packages, plus the `perchengine.RunsDir`/`ScratchDir` rows in `cmd/lyx/constructoranchoring_test.go` and `cmd/lyx/notransients_test.go`.
-- `doc.go` updates in `burlerengine`, `perchengine`, and `hubgeom`.
+- Doc updates in `burlerengine`, `perchengine`, and `hubgeom` — `doc.go` **and** the file-header and function comments in the edited production files, which this change falsifies just as directly. Known sites: `perchengine/engine.go:11` ("the `*lyxcwd.Location` it holds is used only to resolve the gate command's working directory"), `perchengine/engine.go:81` ("resolved by perchcli (the caller that already holds the `*lyxcwd.Location`)"), `perchengine/doc.go:245-246`, `burlerengine/engine.go:27-28` and `:36-40` (the `Engine`/`New` doc comments naming `layout`), `burlerengine/prompt.go:10`, `hubgeom/hubgeom.go:1-2` (the file header naming `ReedGeometry` as the file's whole content), and `hubgeom/doc.go` (which names `BurlerGeometry`/`PerchGeometry` as T6's *future* work — see Constraints).
 
 **Out:**
 
@@ -46,9 +46,9 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 
 ### told-geometry carrier — a package-owned `Geometry` struct per engine, not loose string params
 
-- **Decision.** `burlerengine.Geometry{WorktreeRoot, AnchorRoot string}` and `perchengine.Geometry{GateDir, AnchorRoot string}`, each declared by its own engine. `hubgeom.BurlerGeometry(l) burlerengine.Geometry` and `hubgeom.PerchGeometry(l) perchengine.Geometry` are the hub-mode tellers.
+- **Decision.** `burlerengine.Geometry{WorktreeRoot, AnchorPath string}` and `perchengine.Geometry{GateDir, AnchorPath string}`, each declared by its own engine. `hubgeom.BurlerGeometry(l) burlerengine.Geometry` and `hubgeom.PerchGeometry(l) perchengine.Geometry` are the hub-mode tellers.
 - **Rationale.** `internal/hubgeom/doc.go` — already on `main`, landed in wave 2 — states the contract outright: *"it converts a resolved `*lyxcwd.Location` into the geometry struct each engine holds … neither will burlerengine's or perchengine's or websterengine's own geometry types [import hubgeom] — so the told direction stays one-way"*, and names T6 as the task adding `BurlerGeometry` and `PerchGeometry`. `reedengine.Geometry` + `hubgeom.ReedGeometry` is the shipped precedent for exactly this pair.
-  Two loose strings at a call site are also the shape that makes the one silent failure mode possible: `New(shuttle, anchorRoot, worktreeRoot, …)` compiles and passes any test whose fixture lets the two coincide. Named struct fields make the swap visible at the call site.
+  Two loose strings at a call site are also the shape that makes the one silent failure mode possible: `New(shuttle, anchorPath, worktreeRoot, …)` compiles and passes any test whose fixture lets the two coincide. Named struct fields make the swap visible at the call site.
 - **Rejected.** (a) Plain positional string params, which is the T6 brief's literal wording — written before wave 2 landed `hubgeom`, and superseded by `hubgeom`'s own committed doc. It also leaves `hubgeom.BurlerGeometry` with nothing coherent to return. (b) One shared geometry type across engines — each engine would then carry fields it never reads, and the told-direction rule is per-engine by design. `shuttleengine.NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)` took plain strings in wave 1 and stays as it is; it predates `hubgeom` and is not re-opened by this task.
 
 ### `stencilsDir` stays a separate parameter, out of both `Geometry` structs
@@ -57,27 +57,34 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 - **Rationale.** Perch takes `stencilsDir` at `Run` time, not at construction, so a symmetric `Geometry.StencilsDir` is impossible for perch and would make the two structs disagree for no gain. `stencilsDir` is also flag-overridable in both modes once T8 lands (`--stencils-dir` is honoured in a real worktree too); geometry is structural, config-shaped values are not.
 - **Rejected.** Folding `StencilsDir` into `burlerengine.Geometry` and having `hubgeom.BurlerGeometry` default it from `fabricengine.StencilsDir(l.HubPath)` — `hubgeom` already imports `fabricengine` so it would cost no new import, but it buries a value T8 must override inside the struct T8 must not override.
 
-### `perchengine.RunsDir` / `ScratchDir` take a told `anchorRoot string`
+### `perchengine.RunsDir` / `ScratchDir` take a told `anchorPath string`
 
-- **Decision.** `RunsDir(anchorRoot string) string` and `ScratchDir(anchorRoot string) string`, mirroring `planparser.PlanDir(anchorPath string)` and `pattern.File(baseDir string)` from waves 1 and 2. Their doc comments keep the "per the Cwd Resolution Invariant, no other package may construct this path" line — still true, and still the point.
+- **Decision.** `RunsDir(anchorPath string) string` and `ScratchDir(anchorPath string) string`, mirroring `planparser.PlanDir(anchorPath string)` and `pattern.File(baseDir string)` from waves 1 and 2. Their doc comments keep the "per the Cwd Resolution Invariant, no other package may construct this path" line — still true, and still the point.
 - **Rationale.** `perchcli` needs both bases in `PersistentPreRunE`, before the per-invocation `perchengine.New` in `run.go` — so they cannot be methods on `*Engine`. Taking `Geometry` instead of a bare string would force every non-perch caller (`cmd/lyx` tests, `perchcli` integration tests) to build a `Geometry` to ask a one-field question.
 - **Rejected.** Methods on `*Engine` (wrong lifetime); taking `Geometry` (needless ceremony at every call site).
 
+### field names follow `reedengine.Geometry` exactly: `AnchorPath`, not `AnchorRoot`
+
+- **Decision.** The anchor-side field is `AnchorPath` in both new structs, matching `reedengine/geometry.go:22` and the `lyxcwd.Location.AnchorPath()` accessor it is filled from. The worktree-side field in `burlerengine.Geometry` is `WorktreeRoot`, matching `reedengine/geometry.go:25`.
+- **Rationale.** An earlier draft used `AnchorRoot`. That is wrong on two counts. First, this discussion names `hubgeom` "the pattern to copy exactly" and `reedengine.Geometry` the shipped precedent — copying a pattern while renaming its fields is the kind of near-miss that makes a reader check whether the two values are actually the same thing. They are: `hubgeom.ReedGeometry` fills `AnchorPath` from `l.AnchorPath()`, and both new tellers fill this field from the same accessor. Second, the Cwd Resolution Invariant is explicit that *"`root` always means the git worktree/repo root"* — the anchor is a worktree *subdirectory* whenever `AnchorRel != "."`, so `AnchorRoot` names a non-root `root` in the one repo whose invariant forbids exactly that.
+- **T8 consumption is unaffected.** T8's pinned-values table uses the prose labels `worktreeRoot` and `anchorRoot` for its two rows; those are the table's names for the *concepts*, and `Geometry.AnchorPath` is the field the `anchorRoot` row resolves to, exactly as `reedengine`'s already-landed `AnchorPath` field is what T8's reed rows resolve to. No renaming is owed to T8.
+- **Rejected.** `AnchorRoot`/`WorktreeRoot` as a matched-looking pair — the visual symmetry is worth less than agreeing with the precedent struct and the invariant, and `reedengine` already ships the asymmetric `AnchorPath`/`WorktreeRoot` pairing this adopts.
+
 ### `perchengine.Geometry`'s worktree-side field is named `GateDir`, not `WorktreeRoot`
 
-- **Decision.** `perchengine.Geometry{GateDir, AnchorRoot string}`. `hubgeom.PerchGeometry` maps `l.WorktreePath()` onto `GateDir`.
+- **Decision.** `perchengine.Geometry{GateDir, AnchorPath string}`. `hubgeom.PerchGeometry` maps `l.WorktreePath()` onto `GateDir`.
 - **Rationale.** Perch's only use of that root is `treadleengine.Profile.GateDir` — the gate command's working directory. It does not resolve profile-relative paths against it the way burler does. Naming the field after what perch does with it keeps the engine honest about the narrow thing it was told, which is the whole point of told-geometry; the T6 brief uses the same word (`gateDir`).
 - **Rejected.** `WorktreeRoot`, for symmetry with `burlerengine.Geometry` and with T8's pinned-values table. The symmetry is real but shallow — T8's table already records that perch's `GateDir` *is* the `worktreeRoot` row, so no information is lost, and the field name stays true to its single consumer.
 
 ### `Engine` stores the whole `Geometry` value
 
-- **Decision.** Both engines store `geom Geometry` as one field, not unpacked strings; `perchengine.Engine` therefore carries an `AnchorRoot` it does not read today.
-- **Rationale.** `reedengine.Engine` does the same, and the struct is the told-geometry unit — unpacking it into loose fields on construction reintroduces the swap hazard one layer in. `perchengine`'s unread `AnchorRoot` is documented as the caller's `RunsDir`/`ScratchDir` base carried alongside, so the two roots stay visible together at every perch call site.
+- **Decision.** Both engines store `geom Geometry` as one field, not unpacked strings; `perchengine.Engine` therefore carries an `AnchorPath` it does not read today.
+- **Rationale.** `reedengine.Engine` does the same, and the struct is the told-geometry unit — unpacking it into loose fields on construction reintroduces the swap hazard one layer in. `perchengine`'s unread `AnchorPath` is documented as the caller's `RunsDir`/`ScratchDir` base carried alongside, so the two roots stay visible together at every perch call site.
 - **Rejected.** Storing only the fields each engine reads. Saves one string and costs the co-located pair.
 
 ### `perchcli` keeps `c.layout`, fabric-only
 
-- **Decision.** `perchCLI` keeps its `layout *lyxcwd.Location` field and gains `perchGeom perchengine.Geometry`. `c.layout` is used only by the fabric call sites (`run.go:334` `fabricengine.ScopedPathspec(c.layout.AnchorRel, …)`, `run.go:344` `fabricengine.Open(c.layout)`) and by `fabricengine.StencilsDir(c.layout.HubPath)` at `run.go:301`. `perchengine.New` at `run.go:294` takes `c.perchGeom`; `c.runDirBase`/`c.scratchDirBase` come from `perchengine.RunsDir(c.perchGeom.AnchorRoot)` / `ScratchDir(c.perchGeom.AnchorRoot)`.
+- **Decision.** `perchCLI` keeps its `layout *lyxcwd.Location` field and gains `perchGeom perchengine.Geometry`. `c.layout` is used only by the fabric call sites (`run.go:334` `fabricengine.ScopedPathspec(c.layout.AnchorRel, …)`, `run.go:344` `fabricengine.Open(c.layout)`) and by `fabricengine.StencilsDir(c.layout.HubPath)` at `run.go:301`. `perchengine.New` at `run.go:294` takes `c.perchGeom`; `c.runDirBase`/`c.scratchDirBase` come from `perchengine.RunsDir(c.perchGeom.AnchorPath)` / `ScratchDir(c.perchGeom.AnchorPath)`.
 - **Rationale.** Fabric sync is genuinely hub-mode-only and genuinely needs the `Location`. This task is about what the *engines* are told, not about making the CLI hub-blind — that is T8, which is where those fabric sites get their standalone answer (skipped entirely).
 - **Rejected.** Dropping `layout` and threading extracted strings to the fabric sites too — that is T8's work done early, in the task that is supposed to change no behaviour.
 
@@ -115,13 +122,13 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 | `internal/burlerengine/engine.go:31` | `layout` field | `geom Geometry` |
 | `internal/burlerengine/engine.go:41` | `New(shuttle, layout, cfg, stencilsDir)` | `New(shuttle, geom, cfg, stencilsDir)` |
 | `internal/burlerengine/engine.go:97` | `e.layout.WorktreePath()` → `p.validate` | `e.geom.WorktreeRoot` |
-| `internal/burlerengine/engine.go:103` | `e.layout.AnchorPath()` → `pattern.Directive` | `e.geom.AnchorRoot` |
-| `internal/burlerengine/engine.go:111` | `e.layout.AnchorPath()` → `.lyx/burler` | `e.geom.AnchorRoot` |
+| `internal/burlerengine/engine.go:103` | `e.layout.AnchorPath()` → `pattern.Directive` | `e.geom.AnchorPath` |
+| `internal/burlerengine/engine.go:111` | `e.layout.AnchorPath()` → `.lyx/burler` | `e.geom.AnchorPath` |
 | `internal/perchengine/engine.go:52` | `layout` field | `geom Geometry` |
 | `internal/perchengine/engine.go:58` | `New(burler, shuttle, cfg, layout, opts)` | `New(burler, shuttle, cfg, geom, opts)` |
 | `internal/perchengine/engine.go:101` | `e.layout.WorktreePath()` → `treadleengine.Profile.GateDir` | `e.geom.GateDir` |
-| `internal/perchengine/identity.go:33` | `RunsDir(l *lyxcwd.Location)` | `RunsDir(anchorRoot string)` |
-| `internal/perchengine/identity.go:43` | `ScratchDir(l *lyxcwd.Location)` | `ScratchDir(anchorRoot string)` |
+| `internal/perchengine/identity.go:33` | `RunsDir(l *lyxcwd.Location)` | `RunsDir(anchorPath string)` |
+| `internal/perchengine/identity.go:43` | `ScratchDir(l *lyxcwd.Location)` | `ScratchDir(anchorPath string)` |
 
 `pattern.Directive` already takes `(anchorPath, stencilsDir string, role Role)` — wave 2 landed it, so `engine.go:103` needs only the argument swapped, not the call reshaped.
 
@@ -137,7 +144,8 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 
 - `internal/burlerengine/engine_test.go` — 8 `&lyxcwd.Location{…}` literals (lines 89, 174, 191, 224, 249, 274, 459, 579).
 - `internal/burlerengine/smoke_round_test.go:321`, `smoke_cluster_test.go:140` — `burlerengine.New(runner, h.Location, …)` from the external test package, using a `hubforge` hub. These may call `hubgeom.BurlerGeometry(h.Location)`: an external `_test` package importing `hubgeom` creates no cycle even though `hubgeom` imports `burlerengine`.
-- `internal/perchengine/run_test.go` — `newTestLayout` (line 267) and ~10 `New(fb, qs, Config{}, layout, Options{})` call sites.
+  **Both files carry `//go:build smoke`, not `integration`** — they are the only tagged files in `internal/burlerengine`. Neither `go test ./...` nor `go test -tags integration ./internal/burlerengine/...` compiles them, so a broken `burlerengine.New` call in either file is invisible to every ordinary verify command. The Verify list below carries an explicit `-tags smoke` step for this reason.
+- `internal/perchengine/run_test.go` — the largest mechanical edit in the task: `newTestLayout` (line 267), **33 `newTestLayout` references and 39 `New(fb, …)` construction sites** in this one 1841-line file. Counted against the tree, not estimated.
 - `internal/perchengine/identity_test.go` — `TestScratchDir`'s two-case table built from synthetic `Location`s.
 - `internal/perchcli/cli_integration_test.go` (lines 63, 81, 104, 114, 148, 162) and `run_integration_test.go` (lines 243, 250) — `perchengine.RunsDir(h.Location)` → `RunsDir(h.Location.AnchorPath())`.
 - `cmd/lyx/constructoranchoring_test.go`, `cmd/lyx/notransients_test.go` — see the Decision above. **`notransients_test.go` is not in the design doc's `Files` list for T6** — it was missed there. The doc itself warns that its enumerations go stale and instructs re-running them; this is one of the hits.
@@ -146,7 +154,7 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 
 **The perchcli anchoring proof already exists and does not need to be written.** `internal/perchcli/cli_integration_test.go:96` `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd` builds a real `hubforge.NewHub(t, "nested")`, drives the real `PersistentPreRunE` through `RunCLIIn(h.Location.AnchorPath(), …)`, and asserts the pause verb finds a run dir created under the anchored `_lyx/perch`. A production regression to `WorktreePath()` makes that lookup miss and the test fail. This is the perch equivalent of `webstercli`'s `TestPersistentPreRunE_PlanDirAnchoredAtSubpath`, which is the proof T4 relied on when its own `cmd/lyx` rows went tautological.
 
-**`burlerengine`'s equivalent proof needs strengthening, not creating.** `TestEngine_Run_MaterializesInstructionFiles` (`engine_test.go:450`) already builds a `Location` with `AnchorRel: "sub/dir"` precisely so the instruction dir's `AnchorPath` anchoring is observable, and asserts the round dir lands under `AnchorPath()/.lyx/burler`. Rewritten onto `Geometry`, it becomes the direct swap guard: distinct `WorktreeRoot` and `AnchorRoot`, instruction files under `AnchorRoot` only, profile-relative paths resolving under `WorktreeRoot` only.
+**`burlerengine`'s equivalent proof needs strengthening, not creating.** `TestEngine_Run_MaterializesInstructionFiles` (`engine_test.go:450`) already builds a `Location` with `AnchorRel: "sub/dir"` precisely so the instruction dir's `AnchorPath` anchoring is observable, and asserts the round dir lands under `AnchorPath()/.lyx/burler`. Rewritten onto `Geometry`, it becomes the direct swap guard: distinct `WorktreeRoot` and `AnchorPath`, instruction files under `AnchorPath` only, profile-relative paths resolving under `WorktreeRoot` only.
 
 **Coordination with T7 (`webster-told-geometry`), running in parallel.** Expected conflicts, both mechanical:
 
@@ -161,11 +169,11 @@ Neither is a logic conflict. Nothing else is shared: `burlercli`/`perchcli` and 
 
 From `CONSTRAINTS.md` (read this session):
 
-- **Cwd Resolution Invariant.** `internal/lyxcwd` alone owns cwd resolution. Neither engine may call `lyxcwd.Resolve`, `os.Getwd`, or `git rev-parse` — after this task neither imports `lyxcwd` at all. A module's own durable subdirectory (`perchDirName`) stays that module's private constant joined onto a told anchor. `root` always means a worktree/repo root, `cwd` means the current directory — the new field names must not blur that (`AnchorRoot` is a root; it is never a cwd).
+- **Cwd Resolution Invariant.** `internal/lyxcwd` alone owns cwd resolution. Neither engine may call `lyxcwd.Resolve`, `os.Getwd`, or `git rev-parse` — after this task neither imports `lyxcwd` at all. A module's own durable subdirectory (`perchDirName`) stays that module's private constant joined onto a told anchor. `root` always means a worktree/repo root, `cwd` means the current directory — which is why the anchor-side field is `AnchorPath` and not `AnchorRoot` (the anchor is a worktree subdirectory whenever `AnchorRel != "."`, so naming it a `root` would violate this bullet directly). See the field-names Decision.
 - **Lyxdirs Single-Declarer Invariant.** `_lyx` and `.lyx` only ever appear as `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName` in path construction. Enforced by `internal/lyxcwd/enforcement_test.go`.
 - **Durable-vs-Ephemeral State Invariant.** `RunsDir` (durable, `_lyx`) and `ScratchDir` (never-tracked, `.lyx`) must stay mirrored siblings differing in exactly that one segment. Enforced by `cmd/lyx/notransients_test.go` and `cmd/lyx/constructoranchoring_test.go` — both of which this task edits, so the guards must stay guards.
 - **CLI / Cobra Invariant.** No new command or flag here, so the help-tree obligations are untouched; the `Command()`/`RunCLI` seam in both CLIs stays as it is.
-- **Test Tier Purity Invariant.** Anything spawning a subprocess or building a real hub is `//go:build integration`. `hubgeom_test.go` and the `cmd/lyx` anchoring tables stay untagged pure-`filepath.Join` arithmetic.
+- **Test Tier Purity Invariant.** Anything spawning a subprocess or building a real hub is `//go:build integration`; the agent-spawning burler suites are a third tier, `//go:build smoke`. `hubgeom_test.go` and the `cmd/lyx` anchoring tables stay untagged pure-`filepath.Join` arithmetic. No test changes tier in this task.
 - **Hermetic Git Test Environment Invariant** — applies to the `hubforge`-backed integration tests being touched.
 - **Documentation Lifecycle** (project `CLAUDE.md`). Docs land in the same commit: `doc.go` for each touched module. `docs/overview.md` is unchanged (no module added, no execution-stack change), and `manifest/roadmap.md` moves only on completing a planned item — this task completes half of one, so it does not move (see Decisions).
 
@@ -179,17 +187,17 @@ Discovered during exploration:
 **Behaviour-preservation is the contract.** Every path must resolve byte-identically before and after; the existing suites are the primary evidence, and a test that only changes shape (a `Location` literal becoming a `Geometry` literal) must keep its original assertion intact.
 
 **`internal/hubgeom` — TDD candidate, write first.**
-`TestBurlerGeometry` and `TestPerchGeometry`, modelled on the existing `TestReedGeometry` and reusing its deliberately-hostile fixture: hub, worktree root, and anchor path as three distinct directories, `AnchorRel` a real nested subpath, `RepoName` differing from every basename. Assert each field against an independently computed `filepath.Join`, so a swapped `WorktreeRoot`/`AnchorRoot` assignment fails. This is the cheapest place to pin the mapping, and it is where the swap actually gets made.
+`TestBurlerGeometry` and `TestPerchGeometry`, modelled on the existing `TestReedGeometry` and reusing its deliberately-hostile fixture: hub, worktree root, and anchor path as three distinct directories, `AnchorRel` a real nested subpath, `RepoName` differing from every basename. Assert each field against an independently computed `filepath.Join`, so a swapped `WorktreeRoot`/`AnchorPath` assignment fails. This is the cheapest place to pin the mapping, and it is where the swap actually gets made.
 
 **`internal/burlerengine`.**
 - Convert every `New(...)` call to a `Geometry` literal. Where a test's fixture currently collapses the two roots (`HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)` with no `AnchorRel`), keep it collapsed — those tests are not about anchoring.
-- Strengthen `TestEngine_Run_MaterializesInstructionFiles` into the explicit swap guard: distinct `WorktreeRoot` and `AnchorRoot` directories, assert the round directory lands under `AnchorRoot/.lyx/burler` and *not* under `WorktreeRoot`, and assert a profile-relative path resolves under `WorktreeRoot`. A swapped constructor must fail this, not merely be caught by a downstream file-not-found.
+- Strengthen `TestEngine_Run_MaterializesInstructionFiles` into the explicit swap guard: distinct `WorktreeRoot` and `AnchorPath` directories, assert the round directory lands under `AnchorPath/.lyx/burler` and *not* under `WorktreeRoot`, and assert a profile-relative path resolves under `WorktreeRoot`. A swapped constructor must fail this, not merely be caught by a downstream file-not-found.
 - `Profile.validate`'s worktree-root resolution has existing coverage in `profile_test.go`; confirm it still exercises the told root.
-- Smoke tests (`smoke_round_test.go`, `smoke_cluster_test.go`) are integration-tier and change only their construction line.
+- Smoke tests (`smoke_round_test.go`, `smoke_cluster_test.go`) are `//go:build smoke`-tagged and change only their construction line — but they compile under no ordinary verify command, so they must be built explicitly (see Verify).
 
 **`internal/perchengine`.**
-- `identity_test.go`'s `TestScratchDir` takes told `anchorRoot` strings directly; keep both cases (unanchored and a nested subpath) and keep the mirrored-segment assertion — it is the package-local half of the Durable-vs-Ephemeral guard.
-- `run_test.go`'s `newTestLayout` becomes a `newTestGeometry` helper returning distinct `GateDir` and `AnchorRoot` values.
+- `identity_test.go`'s `TestScratchDir` takes told `anchorPath` strings directly; keep both cases (unanchored and a nested subpath) and keep the mirrored-segment assertion — it is the package-local half of the Durable-vs-Ephemeral guard.
+- `run_test.go`'s `newTestLayout` becomes a `newTestGeometry` helper returning distinct `GateDir` and `AnchorPath` values.
 - Add (or confirm) a case asserting `treadleengine.Profile.GateDir` equals the told `Geometry.GateDir` — that is perch's entire remaining geometry use, and it currently has no direct assertion.
 
 **`internal/burlercli` / `internal/perchcli`.**
@@ -203,7 +211,8 @@ Discovered during exploration:
 **Verify.**
 
 - Per-package: `go test ./internal/hubgeom/... ./internal/burlerengine/... ./internal/perchengine/... ./internal/burlercli/... ./internal/perchcli/... ./internal/shedadapters/... ./cmd/lyx/...`
-- Integration: `go test -tags integration ./internal/perchcli/... ./internal/burlerengine/...`
+- Integration: `go test -tags integration ./internal/perchcli/...`
+- **Smoke-tag compile step (mandatory, easy to forget):** `go vet -tags smoke ./internal/burlerengine/...` — `smoke_round_test.go` and `smoke_cluster_test.go` are `//go:build smoke` and construct `burlerengine.New` directly, so nothing above compiles them. Running the smoke suite itself is not required (it spawns real agents); compiling it is.
 - Done gate (task-wide): `go test ./...` from the worktree root.
 - Grep check: `internal/lyxcwd` must be absent from `internal/burlerengine`'s and `internal/perchengine`'s production (non-`_test`) imports.
 
@@ -211,7 +220,7 @@ Discovered during exploration:
 
 - **Q:** How is the told geometry carried — an engine-owned `Geometry` struct, plain string params per the T6 brief, or one shared type? **A:** [auto-pick] Engine-owned `Geometry` struct per engine. **Why:** `internal/hubgeom/doc.go`, already on `main`, states the contract as "the geometry struct each engine holds" and names T6 as the task adding `BurlerGeometry`/`PerchGeometry`; `reedengine.Geometry` + `hubgeom.ReedGeometry` is the shipped precedent, and named fields make the anchor/worktree swap visible at every call site.
 - **Q:** Does `stencilsDir` belong inside `burlerengine.Geometry`? **A:** [auto-pick] No — it stays a separate parameter. **Why:** perch takes it at `Run` time, not construction, so folding it in would make the two structs asymmetric; it is also flag-overridable in both modes once T8 lands, and geometry is structural, not config-shaped.
-- **Q:** What signature do `perchengine.RunsDir`/`ScratchDir` take? **A:** [auto-pick] A told `anchorRoot string`. **Why:** `perchcli` needs both bases in `PersistentPreRunE`, before the per-invocation `New` in `run.go`, so methods on `*Engine` are impossible; taking `Geometry` would force every caller to build a struct to ask a one-field question. Mirrors `planparser.PlanDir`/`pattern.File` from waves 1-2.
+- **Q:** What signature do `perchengine.RunsDir`/`ScratchDir` take? **A:** [auto-pick] A told `anchorPath string`. **Why:** `perchcli` needs both bases in `PersistentPreRunE`, before the per-invocation `New` in `run.go`, so methods on `*Engine` are impossible; taking `Geometry` would force every caller to build a struct to ask a one-field question. Mirrors `planparser.PlanDir`/`pattern.File` from waves 1-2.
 - **Q:** Does `perchcli` keep `c.layout`? **A:** [auto-pick] Yes — fabric-only, alongside a new `c.perchGeom`. **Why:** `fabricengine.ScopedPathspec`/`Open`/`StencilsDir` genuinely need the `Location` and are genuinely hub-mode-only; making the CLI hub-blind is T8's job, not this task's.
 - **Q:** Does `burlerengine.New` keep its positional shape? **A:** [auto-pick] Yes — `layout` becomes `geom` in place. **Why:** smallest reviewable diff in a task whose contract is "nothing resolves anywhere different"; an options-struct rewrite is unrelated churn.
 - **Q:** What happens to the `cmd/lyx` anchoring rows once they go tautological? **A:** [auto-pick] Rewritten in place with the same "real proof lives at the production call site" comment waves 1-2 added. **Why:** the design doc says this file is edited in place per task, never split or retired; the rows still pin the join arithmetic and the `_lyx`-vs-`.lyx` group placement even after they stop catching a wrong-root call site.
