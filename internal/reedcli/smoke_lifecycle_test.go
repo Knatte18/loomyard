@@ -289,7 +289,9 @@ func TestSmokeUpWithOnlyForeignPanesKeepsSessionUsable(t *testing.T) {
 // TestSmokeHeaderPaneDisplaysRenderedHeaderText pins the header pane's actual OUTPUT — the rendered
 // "hub: <hub path>" line from the embedded default template — not merely its liveness.
 // This is the regression test for the header-cwd defect the fable-header-r1 round found: the pane
-// used to be split with -c layout.Hub, a container directory that is by definition not a git repo,
+// used to be split with -c set to the HUB path, a container directory that is by definition not a
+// git repo (the engine field that then held it is long gone; today the anchor arrives as the told
+// Geometry.AnchorPath),
 // so its "lyx reed header --blocking" command died at geometry resolution ({"ok":false,"error":"not
 // a git repository"}) and the operator console showed a JSON error over a bash prompt forever —
 // while every liveness-only assertion stayed green, because the pane's parent shell survived the
