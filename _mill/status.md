@@ -6,6 +6,7 @@ slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: lift the orchestrator preflight out of loomengine, plus the shared standalone-CLI foundations
 task_description: |
   lift the orchestrator preflight out of loomengine, plus the shared standalone-CLI foundations
@@ -34,13 +35,20 @@ implementing  '2026-08-18T06:42:59Z'
 ```yaml
 batches:
   - name: buildinfo-and-mode-mapping
-    state: pending
+    state: running
+    implementer_session: c2cc5283-9aca-4b51-942a-f5080a6e2e7d
+    start_sha: 9b0654f242cad5077656ea17876a5cf3ef6bc737
+    verify_baseline_failures: ["FAIL\t./internal/buildinfo/... [setup failed]"]
   - name: standalonestate-leaf
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/standalonestate/... [setup failed]"]
   - name: preflight-lift
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/preflight/... [setup failed]"]
   - name: cli-gate-and-ldflags
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-invariants
     state: pending
+    verify_baseline_failures: []
 ```
