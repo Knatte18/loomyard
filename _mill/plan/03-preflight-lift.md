@@ -54,6 +54,7 @@ If the implementer finds itself needing to edit that file, the type-alias decisi
   - `internal/fabricengine/warpclean.go`
   - `internal/fabricengine/worktreelist.go`
   - `internal/lyxcwd/lyxcwd.go`
+  - `internal/lyxcwd/anchor.go`
 - **Edits:** none
 - **Creates:**
   - `internal/preflight/preflight.go`
@@ -80,7 +81,9 @@ If the implementer finds itself needing to edit that file, the type-alias decisi
 
   Reword the comment on `Check`'s non-`ErrNotAGitRepo` branch rather than lifting it verbatim: today's wording in `internal/loomengine/preflight.go` claims that branch catches a case such as the git subprocess failing to spawn, and that is false.
   `internal/lyxcwd/lyxcwd.go`'s `gitWorktreeRoot` wraps every non-`*gitexec.GitError` failure as `fmt.Errorf("%w: %v", ErrNotAGitRepo, err)`, so an exec-level failure also satisfies `errors.Is(err, ErrNotAGitRepo)` and lands in the short-circuit branch.
-  The residual branch is reachable only through the anchor gate — `lyxcwd.ErrCwdOutsideAnchor` and `lyxcwd.ErrStaleAnchorMarker` — and the comment must say that instead.
+  The residual branch is reachable only through `lyxcwd`'s anchor-resolution path, and the comment must say that instead.
+  Do not enumerate an exhaustive two-sentinel list: `internal/lyxcwd/anchor.go` reaches that branch by at least three distinct routes — `lyxcwd.ErrCwdOutsideAnchor` from the cwd gate, `lyxcwd.ErrStaleAnchorMarker` from a board carrying only the pre-rename marker, and a `lyxcwd.ErrInvalidAnchor`-wrapping failure when a recorded anchor exists but fails validation — so name the anchor-resolution path generically and cite the sentinels as examples rather than as a closed set.
+  A replacement comment that is itself incomplete would repeat the defect this reword exists to remove.
 
   Do not use the tokens `weft` or `warp` anywhere in this file: call `fabricengine.Ready(l)` and never name `WeftWorktree`, and describe check 2 as "worktree pair cleanliness" the way `internal/loomengine/preflight.go` already does.
 - **Commit:** `feat(preflight): lift tier-1 and tier-2 checks out of loomengine`
@@ -131,10 +134,10 @@ If the implementer finds itself needing to edit that file, the type-alias decisi
 
   1. **The report-not-error contract**, restated in full — `(Report{OK:true}, nil)` for a clean pass, `(Report{OK:false, Failures}, nil)` for a determined negative verdict, `(Report{}, err)` only for "could not determine", and a `fabricengine.PrimeName` failure deliberately reported as a `CheckGeometry` failure rather than escalated.
      A composing orchestrator reads this doc rather than `loomengine`'s.
-     Do **not** repeat the false claim that the non-`ErrNotAGitRepo` branch catches a git-subprocess spawn failure; say the residual branch is reachable only through the anchor gate, per card 10.
+     Do **not** repeat the false claim that the non-`ErrNotAGitRepo` branch catches a git-subprocess spawn failure; say the residual branch is reachable only through `lyxcwd`'s anchor-resolution path, per card 10, and do not enumerate a closed sentinel list there either.
   2. **Why there are two predicates**, and which one the stencil seed gates on.
      State that `Wired` asks "is Fabric wired for this worktree" and is the hub-mode trigger for standalone-capable CLIs;
-     that `HubPresent` asks "does the hub a hub-level write targets exist" and is what `cmd/lyx`'s stencil seed gates on;
+     that `HubPresent` asks "does the hub-level directory this write targets exist" and is what `cmd/lyx`'s stencil seed gates on;
      and that gating the seed on `Wired` is wrong because `fabricengine.Ready` probes the paired sibling of the current worktree, making it false at `<hub>/_board`, in an unpaired sibling, and in a worktree whose pair was removed — three real-hub situations that seed correctly today, so the narrowing would be a regression rather than a fix.
      State also why `HubPresent` is not merely a weaker `Wired`: a hub-level directory can exist while this particular worktree is not wired, and that resolved-but-not-wired case is exactly the one a standalone-capable CLI must answer with standalone mode.
 

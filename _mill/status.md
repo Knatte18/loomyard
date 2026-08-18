@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -20,4 +20,6 @@ discussion-fix-r4  '2026-08-18T05:55:18Z'
 discussion-fix-r5  '2026-08-18T06:00:16Z'
 discussed  '2026-08-18T06:00:16Z'
 planning  '2026-08-18T06:10:34Z'
+plan-review-r1  '2026-08-18T06:18:26Z'
+plan-fix-r1  '2026-08-18T06:18:26Z'
 ```
