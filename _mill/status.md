@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-webstercli-repoint
+phase: approved-burlercli-standalone-entry
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -34,6 +34,7 @@ implementing  '2026-08-18T14:32:10Z'
 approved-preflight-resolvemode  '2026-08-18T14:37:46Z'
 approved-standalonegeom-builders  '2026-08-18T14:41:13Z'
 approved-webstercli-repoint  '2026-08-18T14:47:05Z'
+approved-burlercli-standalone-entry  '2026-08-18T14:54:41Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     commit_sha: b7723bf33b49c23393479d5bb066065174cb617c
     verify_baseline_failures: []
   - name: burlercli-standalone-entry
-    state: running
+    state: approved
     implementer_session: e7396caa-246a-47cd-a04c-51fff49aa691
     start_sha: d1bcd3395ef0fcde4c5b9c9d6f3d0a4285089839
+    commit_sha: 571fadb967491be938f667011f6355961c951226
     verify_baseline_failures: []
   - name: perchcli-standalone-entry
     state: pending
