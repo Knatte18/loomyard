@@ -197,6 +197,15 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 		return false, nil, err
 	}
 
+	// Refuse a recorded-session collision here, ahead of the spawn below, rather than leaving it to
+	// loadOrInitStateLocked after the caller has already booted: a refusal must not deposit a bare
+	// session on the shared per-hub server as its residue. This is the first check needing a tmux
+	// round trip, so it cannot join the pre-tmux block above — but it still precedes everything that
+	// CREATES anything. See refuseRecordedForeignSessionBeforeBootLocked.
+	if err := e.refuseRecordedForeignSessionBeforeBootLocked(); err != nil {
+		return false, nil, err
+	}
+
 	session := e.SessionName()
 	up, err := e.tmux.hasSession(session)
 	if err != nil {

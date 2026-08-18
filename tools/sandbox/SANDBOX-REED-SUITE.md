@@ -376,6 +376,37 @@ An `up` that fails with `no space for new pane`, a header that does not end up t
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M23 -- A stale reed.json is never mistaken for live strands
+
+**Goal:** "Prove a `reed.json` older than the tmux session now running reports its strands honestly, instead of claiming a dead strand is alive."
+
+**Watch:** `up`, `add` one strand, then copy `.lyx/reed.json` somewhere safe.
+`down`, then `up` again -- the server died, so tmux's pane ids restart at `%0` and the saved file's ids now name panes belonging to the NEW session.
+Copy the saved `reed.json` back over `.lyx/reed.json` (this is exactly what a backup tool, a `git stash pop`, or a hand-copied `.lyx` does).
+`lyx reed status` must report the strand `live: false` with no pane id -- NOT `live: true` against whatever pane happens to hold that id now.
+`lyx reed resume` must then rebuild it (`resumed` at least 1) and the strand's command must genuinely be running afterwards (check the process, not just the pane).
+A `live: true` for a process that does not exist, or a `resumed: 0` that leaves the strand unrecovered, is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M24 -- A renamed worktree refuses instead of double-launching
+
+**Goal:** "Prove renaming a worktree while its session is up does not silently start a second copy of every strand and orphan the first."
+
+**Watch:** In a worktree, `up` and `add` one strand.
+Rename the worktree directory while that session is still running (`git worktree repair` afterwards;
+controlled exception, restore the name when done).
+`lyx reed resume` (and `up`, and `add`) in the renamed directory must REFUSE, with a JSON error naming the old session, the socket, and the exact `kill-session` command that clears it.
+`tmux -L <socket> ls` (controlled exception) must then show only the ORIGINAL session -- the refusal must not have deposited a second one -- and the strand's command must still be running exactly once, not twice.
+Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
+A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -407,6 +438,8 @@ M19: <OK|WARN|FAIL> -- <one-line note if not OK>
 M20: <OK|WARN|FAIL> -- <one-line note if not OK>
 M21: <OK|WARN|FAIL> -- <one-line note if not OK>
 M22: <OK|WARN|FAIL> -- <one-line note if not OK>
+M23: <OK|WARN|FAIL> -- <one-line note if not OK>
+M24: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

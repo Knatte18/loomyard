@@ -120,6 +120,28 @@ func (e *Engine) adoptPaneGenerationLocked(st *ReedState) error {
 	return nil
 }
 
+// refuseRecordedForeignSessionBeforeBootLocked runs refuseLiveForeignSessionLocked against the
+// state file directly, so the two booting verbs (Up, Resume) can refuse a recorded-session collision
+// BEFORE spawning rather than after.
+//
+// It costs one extra small read of reed.json under the already-held op lock, and buys the posture
+// every other told-identity refusal in this package already has: refuse before creating substrate,
+// never leave a bare session squatting on the SHARED per-hub server as the residue of a refusal
+// (the property validateToldTmuxIdentity exists for). loadOrInitStateLocked runs the same check
+// again on the state it loads, which is what covers the non-booting verbs; running it twice is
+// harmless because it mutates nothing.
+//
+// A corrupt or absent state file is not this check's business: loadOrInitStateLocked reports the
+// corruption with the diagnosis an operator can act on, and an absent file records no session to
+// collide with.
+func (e *Engine) refuseRecordedForeignSessionBeforeBootLocked() error {
+	st, err := LoadState(e.stateDir())
+	if err != nil || st == nil {
+		return nil
+	}
+	return e.refuseLiveForeignSessionLocked(st.PaneGeneration)
+}
+
 // refuseLiveForeignSessionLocked refuses the operation when recorded names a session that is STILL
 // RUNNING on this socket and is not this worktree's own — the one disagreement that must not be
 // resolved by silently carrying on.
