@@ -6,6 +6,7 @@ package reedengine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -128,5 +129,46 @@ func TestToRenderStrands_MapsFieldsAndSetsLiveFromPaneSet(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("toRenderStrands()[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+// TestLoadState_UnreadableFileIsActionable is the regression guard for the R5 review's R5-F1.
+//
+// Before the fix a corrupt reed.json made every verb that loads state refuse with
+// `load state: unmarshal state: unexpected end of JSON input` — naming neither the file nor a
+// remedy — while the tmux session and every strand process it describes stayed alive, and the only
+// verb that still worked was the one that destroys them. The `null` row is the worse half: it
+// decoded to a valid EMPTY state, so `status` answered ok:true with zero strands and the whole
+// persisted table vanished silently.
+func TestLoadState_UnreadableFileIsActionable(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "truncated mid-object", content: `{"socket":"lyx-x","session":"svc","stra`},
+		{name: "empty file", content: ""},
+		{name: "garbage bytes", content: "\x00\x00\x00\x00"},
+		{name: "a bare null document", content: "null"},
+		{name: "a bare null document with surrounding whitespace", content: "  null\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "reed.json")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+				t.Fatalf("write fixture: %v", err)
+			}
+
+			st, err := LoadState(dir)
+			if err == nil {
+				t.Fatalf("LoadState() = (%+v, nil); want an error — a state file reed cannot read must never decode to a plausible empty state", st)
+			}
+			for _, want := range []string{path, "lyx reed down"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("LoadState() error = %v; want it to contain %q so the operator can act on it", err, want)
+				}
+			}
+		})
 	}
 }

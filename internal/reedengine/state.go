@@ -7,6 +7,10 @@
 package reedengine
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -91,20 +95,75 @@ func (g PaneGeneration) SameIncarnation(other PaneGeneration) bool {
 // reedStateFileName is the reed.json file name inside .lyx directory.
 const reedStateFileName = "reed.json"
 
+// UnmarshalJSON decodes a ReedState, refusing a file whose entire content is the JSON document
+// "null".
+//
+// encoding/json accepts "null" into any type and leaves the value untouched, so without this a
+// four-byte corrupt file decoded to a valid EMPTY ReedState and reed answered `status` with
+// ok:true and zero strands — discarding the whole persisted table silently (R5 review finding
+// R5-F1). Silence is the worst possible outcome for a state file: every other corruption shape
+// (truncation, a partial write, garbage bytes) already fails loud, and this one shape has to join
+// them rather than being papered over with a plausible-looking empty answer.
+func (s *ReedState) UnmarshalJSON(data []byte) error {
+	if string(bytes.TrimSpace(data)) == "null" {
+		return errors.New(`the file's entire content is the JSON document "null", not a state object`)
+	}
+	// A local defined type with the same fields but no method set, so this call cannot recurse
+	// back into UnmarshalJSON.
+	type reedStateFields ReedState
+	var fields reedStateFields
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*s = ReedState(fields)
+	return nil
+}
+
 // LoadState reads the ReedState persisted at dotLyxDir/reed.json.
 // Returns (nil, nil) if absent, (nil, err) on corrupt or read errors.
+// A corrupt-file error is self-describing — it names the file and both remedies — so callers pass
+// it through bare rather than prefixing it (see unreadableStateError).
 func LoadState(dotLyxDir string) (*ReedState, error) {
 	path := filepath.Join(dotLyxDir, reedStateFileName)
 	lockPath := path + ".lock"
 
 	v, found, err := state.ReadJSON[ReedState](path, lockPath)
 	if err != nil {
-		return nil, err
+		return nil, unreadableStateError(path, err)
 	}
 	if !found {
 		return nil, nil
 	}
 	return &v, nil
+}
+
+// unreadableStateError describes a reed.json that exists but cannot be decoded, naming the file and
+// the two ways out.
+//
+// It exists because the bare decode error was not actionable and the situation it describes is not
+// rare: a crash, a `kill -9`, a full disk, or a power loss during a write leaves a partial or
+// invalid file, and reed then refuses EVERY verb that loads state — up, resume, status, add,
+// remove, even attach — with `load state: unmarshal state: unexpected end of JSON input`, naming
+// neither the file nor a remedy, while the tmux session and every strand process it describes stay
+// alive and healthy (R5 review finding R5-F1, reproduced live). The operator is left holding
+// running work they can no longer see, resume, or attach to, and the only verb that still functions
+// (`down`) is the one that destroys it.
+//
+// Both remedies are named because they are genuinely different trades, and the operator — not
+// reed — has to pick. Deleting the file keeps the session: with no strands recorded,
+// planReconcile's untracked reap does not fire (it needs a bound present pane) and
+// applyLayoutLocked skips (anyPlacedStrand is false), so the panes and their processes keep running
+// untracked and can be attached to.
+//
+// Repairing the file automatically is deliberately not offered: every repair reed could perform
+// amounts to discarding the strand table, which is exactly the silent loss the "null" refusal above
+// exists to prevent.
+func unreadableStateError(path string, err error) error {
+	return fmt.Errorf(
+		"reed state file %s is unreadable: %w — the tmux session it describes may still be running, "+
+			`so reed will not guess at its contents. Either run "lyx reed down" to tear that session down and clear the file, `+
+			"or delete %s by hand to keep the session (its panes and their processes keep running, untracked) and lose only reed's strand tracking",
+		path, err, path)
 }
 
 // SaveState writes s to dotLyxDir/reed.json atomically.

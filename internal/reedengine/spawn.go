@@ -187,7 +187,9 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 	st, err := LoadState(e.stateDir())
 	if err != nil {
-		return nil, fmt.Errorf("load state: %w", err)
+		// Passed through bare: LoadState's corrupt-file error already names the file and both
+		// remedies, and a "load state:" prefix in front of that would only bury the diagnosis.
+		return nil, err
 	}
 	if st == nil {
 		st = &ReedState{}
