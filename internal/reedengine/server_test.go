@@ -16,9 +16,12 @@ import (
 )
 
 // socketUnsafeChars matches the characters ServerName must never
-// produce: ':', '\', and space, all of which are unsafe in a tmux -L
+// produce: ':', '/', '\', and space, all of which are unsafe in a tmux -L
 // socket argument.
-var socketUnsafeChars = regexp.MustCompile(`[:\\ ]`)
+// '/' joined the set with the R2 review's R2-F3: tmux resolves -L as a filename under its per-user
+// socket directory, so a separator in the key names a path whose parent does not exist — and tmux
+// answers that with a stderr line and exit 0, which no reed probe can tell apart from a slow boot.
+var socketUnsafeChars = regexp.MustCompile(`[:/\\ ]`)
 
 func TestServerName_Deterministic(t *testing.T) {
 	hub := filepath.Join(t.TempDir(), "loomyard-HUB")
@@ -34,6 +37,24 @@ func TestServerName_SocketSafe(t *testing.T) {
 	got := ServerName(hub)
 	if socketUnsafeChars.MatchString(got) {
 		t.Errorf("ServerName(%q) = %q contains a socket-unsafe character", hub, got)
+	}
+}
+
+// TestServerName_SocketSafeForAHubAtTheFilesystemRoot is the regression guard for the R2 review's
+// R2-F3: a git worktree one level under the filesystem root — a container's /workspace or /app —
+// resolves its hub to "/", and filepath.Base("/") is "/", so ServerName used to emit a key
+// containing a path separator that tmux cannot create a socket for (and does not report as a
+// failure). The hash half is asserted intact alongside, since substitution must not change hub
+// identity.
+func TestServerName_SocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
+	root := string(filepath.Separator)
+
+	got := ServerName(root)
+	if socketUnsafeChars.MatchString(got) {
+		t.Errorf("ServerName(%q) = %q contains a socket-unsafe character; tmux cannot open a socket for it", root, got)
+	}
+	if got == ServerName(filepath.Join(root, "elsewhere-HUB")) {
+		t.Errorf("ServerName(%q) collided with a distinct hub; substitution must not touch the identity half", root)
 	}
 }
 
@@ -109,6 +130,39 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 			err := validateToldTmuxIdentity(geom)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateToldTmuxIdentity(SessionName=%q) error = %v; want error: %v", tt.sessionName, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateToldTmuxIdentity_SocketKey pins the contract backstop the standalone tellers of wave 3
+// will be bound by: a socket key carrying a path separator is refused rather than handed to tmux,
+// which answers such a key with a stderr line and exit 0.
+// The hub-mode teller cannot reach these cases (ServerName substitutes separators out at the
+// derivation), which is exactly why they need their own coverage here.
+func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
+	tests := []struct {
+		name      string
+		socketKey string
+		wantErr   bool
+	}{
+		{"derived hub-mode key", "lyx-loomyard-HUB-deadbeef", false},
+		{"dots are fine in a socket key", "lyx-svc.v2-HUB-deadbeef", false},
+		{"posix separator", "lyx-/-deadbeef", true},
+		{"windows separator", `lyx-\-deadbeef`, true},
+		{"empty", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			geom := Geometry{
+				SocketKey:    tt.socketKey,
+				SessionName:  "some-worktree",
+				WorktreeRoot: filepath.Join("hub", "some-worktree"),
+				HubPath:      "hub",
+			}
+			err := validateToldTmuxIdentity(geom)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateToldTmuxIdentity(SocketKey=%q) error = %v; want error: %v", tt.socketKey, err, tt.wantErr)
 			}
 		})
 	}

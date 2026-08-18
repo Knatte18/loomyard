@@ -14,6 +14,11 @@ package reedengine
 // Neither is imported here — this file states the contract, not the implementation.
 type Geometry struct {
 	// SocketKey is the tmux -L socket name; it is what Engine.Socket returns.
+	// It must carry no path separator: tmux resolves -L as a filename under its per-user socket
+	// directory, so a separator makes it a path whose parent does not exist — and tmux answers that
+	// with a stderr line and exit 0, indistinguishable from a slow boot. ServerName substitutes
+	// separators out at the derivation; validateToldTmuxIdentity (server.go) is the backstop for a
+	// teller that builds this field some other way.
 	SocketKey string
 	// SessionName is the tmux session name; it is what Engine.SessionName returns.
 	// It must carry neither '.' nor ':': tmux silently rewrites both to '_' and creates the session
