@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: scout-told-geometry
 branch: scout-told-geometry
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-18T12:04:23Z'
+discussion-fix-r4  '2026-08-18T12:58:23Z'
+discussed  '2026-08-18T12:58:23Z'
 ```
