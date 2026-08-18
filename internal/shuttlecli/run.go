@@ -74,11 +74,21 @@ the provider default.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			// Validate flag shape before ever touching c.runner (still
-			// unpopulated when config resolution aborted), so a bad flag
-			// combination is reported as its own flag error rather than
-			// being swallowed by the PersistentPreRunE abort's already-
-			// recorded exit code.
+			// PersistentPreRunE has already emitted its own error envelope and recorded an exit
+			// code when it aborted, and clihelp.Abort does not stop cobra from running this RunE.
+			// Emitting a second envelope after it produced TWO JSON objects on one invocation,
+			// which breaks every caller that unmarshals the output as one object — this package's
+			// own smoke tests included — and reported the SECONDARY problem after the primary one
+			// with nothing saying which to fix first.
+			// This guard costs nothing the flag checks below were written for: when the pre-run
+			// succeeded, ShouldAbort is false and a bad flag combination is still reported as its
+			// own flag error rather than being swallowed by an already-recorded exit code.
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			// Validate flag shape before ever touching c.runner, so a bad flag combination is
+			// reported as its own flag error.
 			havePrompt := prompt != ""
 			havePromptFile := promptFile != ""
 			if havePrompt == havePromptFile {
@@ -91,10 +101,6 @@ the provider default.`,
 			}
 			if len(outputFiles) == 0 {
 				clihelp.SetExit(cmd.Context(), output.Err(out, "--output-file must be given at least once"))
-				return nil
-			}
-
-			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
 

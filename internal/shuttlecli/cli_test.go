@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,12 +65,12 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_FlagValidation exercises run's flag-shape validation (missing --output-file, both
-// --prompt and --prompt-file, neither) against an uninitialized (non-git) directory.
-// Config resolution aborts first in that directory,
-// but run's RunE validates flag shape before ever touching c.runner, so each case's flag-specific
-// error still surfaces in the captured output alongside the PersistentPreRunE abort's own error
-// line.
+// TestRunCLI_Run_FlagValidation drives runCmd directly rather than through RunCLI, so no parent
+// PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,
+// which is what these cases are actually about. Its companion below covers what happens when a
+// pre-run abort and a flag error coincide.
+// Each case asserts the whole buffer parses as EXACTLY ONE JSON object: the module's contract is one
+// envelope per invocation, and a substring check cannot see a second one.
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -78,19 +79,67 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	}{
 		{
 			name:    "MissingOutputFile",
-			args:    []string{"run", "--prompt", "do the thing"},
+			args:    []string{"--prompt", "do the thing"},
 			wantErr: "--output-file",
 		},
 		{
 			name:    "BothPromptAndPromptFile",
-			args:    []string{"run", "--prompt", "do the thing", "--prompt-file", "task.md", "--output-file", "out.md"},
+			args:    []string{"--prompt", "do the thing", "--prompt-file", "task.md", "--output-file", "out.md"},
 			wantErr: "mutually exclusive",
 		},
 		{
 			name:    "NeitherPromptNorPromptFile",
-			args:    []string{"run", "--output-file", "out.md"},
+			args:    []string{"--output-file", "out.md"},
 			wantErr: "exactly one of --prompt or --prompt-file",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A nil runner is deliberate: every case here must be refused by the flag-shape checks
+			// before c.runner is ever dereferenced, and a nil runner is what proves it.
+			c := &shuttleCLI{}
+			cmd := c.runCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Errorf("envelope ok = true; want false for a flag error; output: %s", out.String())
+			}
+			if got, _ := envelope["error"].(string); !strings.Contains(got, tt.wantErr) {
+				t.Errorf("envelope error = %q; want substring %q", got, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope is R2-F1's regression guard.
+//
+// runCmd's flag-shape validation used to sit AHEAD of its clihelp.ShouldAbort check, on the
+// reasoning that a bad flag combination should be reported as its own error rather than swallowed by
+// the abort's already-recorded exit code. But clihelp.Abort only records an exit code — cobra still
+// runs RunE — so when geometry resolution failed AND a flag was bad, one invocation emitted TWO JSON
+// objects. That breaks any caller unmarshalling the output as a single object, this package's own
+// smoke tests included (they do json.Unmarshal over the whole buffer), and it reported the secondary
+// problem after the primary one with nothing saying which to fix first.
+//
+// Running from a non-git temp dir makes lyxcwd.Resolve fail, which is the abort this pins. The
+// original intent is untouched and still covered: TestRunCLI_Run_FlagValidation above proves a flag
+// error is reported on its own whenever the pre-run did NOT abort.
+func TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"AbortPlusMissingPrompt", []string{"run", "--output-file", "out.md"}},
+		{"AbortPlusMissingOutputFile", []string{"run", "--prompt", "do the thing"}},
+		{"AbortPlusMutuallyExclusivePrompts", []string{"run", "--prompt", "a", "--prompt-file", "b", "--output-file", "out.md"}},
 	}
 
 	for _, tt := range tests {
@@ -103,11 +152,37 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			if exitCode != 1 {
 				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
 			}
-			if !strings.Contains(out.String(), tt.wantErr) {
-				t.Errorf("RunCLI(%v) output = %q; want substring %q", tt.args, out.String(), tt.wantErr)
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Errorf("envelope ok = true; want false; output: %s", out.String())
+			}
+			// The pre-run failure is the one the operator must fix first, so it is the one reported.
+			if got, _ := envelope["error"].(string); !strings.Contains(got, "not a git repository") {
+				t.Errorf("envelope error = %q; want the pre-run failure (%q), not the secondary flag error", got, "not a git repository")
 			}
 		})
 	}
+}
+
+// parseSingleEnvelope decodes out as exactly one JSON object and fails the test if it holds none,
+// more than one, or trailing junk.
+// json.Unmarshal alone would not do: it rejects a second object with an opaque "invalid character
+// '{' after top-level value", which reads as malformed JSON rather than as the extra envelope it
+// actually is.
+func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
+	t.Helper()
+	decoder := json.NewDecoder(bytes.NewReader(out))
+	var envelope map[string]any
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("parse first envelope: %v; output: %s", err, out)
+	}
+	var extra map[string]any
+	if err := decoder.Decode(&extra); err == nil {
+		t.Fatalf("a second JSON envelope followed the first (%v) — one invocation must emit exactly one; output: %s", extra, out)
+	} else if !errors.Is(err, io.EOF) {
+		t.Fatalf("trailing junk after the envelope: %v; output: %s", err, out)
+	}
+	return envelope
 }
 
 // TestRunCLI_Interrupt_ArgValidation verifies that "lyx shuttle interrupt" enforces exactly one

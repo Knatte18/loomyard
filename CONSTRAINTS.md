@@ -192,6 +192,9 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - **Errors are JSON**, via the `internal/output` envelope (`output.Ok`/`output.Err`), one JSON object per line, through `clihelp.Execute`/root seam.
   No bare plain-text error paths.
   Parent groups set `RunE = clihelp.GroupRunE`.
+- **One envelope per invocation**, and `clihelp.ShouldAbort` is what keeps it that way: `clihelp.Abort` records an exit code but does NOT stop cobra from running `RunE`, so a `RunE` that emits before checking `ShouldAbort` writes a second envelope on top of the one `PersistentPreRunE` already wrote.
+  Every `RunE` therefore checks `ShouldAbort` **first**, ahead of its own validation — the placement `clihelp.ShouldAbort`'s own godoc specifies.
+  A consumer unmarshalling the output as a single object (which the smoke suites do) fails to parse two, and the second envelope names the secondary problem while the first names the one to fix.
 - **Interactive-handoff exception (narrow, per-command).**
   A subcommand that hands stdio to another interactive program and blocks, or self-displays and then blocks forever, is exempt from the envelope only on that terminal-handover/keepalive tail — everything that can fail stays pre-flight, on the envelope.
 - **Package naming.**
