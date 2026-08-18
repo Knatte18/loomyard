@@ -164,9 +164,10 @@
 // # engine/cli split: webster is fabric-blind
 //
 // websterengine is _lyx- and fabric-blind: every function here takes an
-// already-resolved directory string, and all `_lyx/webster` path
-// construction lives in internal/lyxcwd (WebsterDir/
-// WebsterReportsDir/WebsterPromptsDir), per the Cwd Resolution Invariant.
+// already-resolved directory string, and websterengine itself declares its own
+// `_lyx/webster` and `.lyx/webster` subpaths through the four told accessors in
+// state.go (Dir/ReportsDir/ScratchDir/PromptsDir) — the anchor root they are joined
+// onto is always supplied by the caller, per the Cwd Resolution Invariant.
 // Every fabric commit of a webster artifact (state.json, a batch report,
 // outcome.yaml, summary.md) happens in internal/webstercli, never here, at
 // the same deterministic boundary points: begin-batch, record-batch,
