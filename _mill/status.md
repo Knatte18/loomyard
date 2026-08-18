@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-preflight-resolvemode
+phase: approved-standalonegeom-builders
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r6  '2026-08-18T14:31:04Z'
 planned  '2026-08-18T14:31:21Z'
 implementing  '2026-08-18T14:32:10Z'
 approved-preflight-resolvemode  '2026-08-18T14:37:46Z'
+approved-standalonegeom-builders  '2026-08-18T14:41:13Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     commit_sha: d6cbec56ad61898fdc77d13fd0396235aa59588a
     verify_baseline_failures: []
   - name: standalonegeom-builders
-    state: running
+    state: approved
     implementer_session: 83709310-e786-4604-8e3c-9bf3387d5a83
     start_sha: f8826ec0710a9752df52b2da54c6add7779304df
+    commit_sha: 4a4afa168abfced1f17b9171c42dd399792997a6
     verify_baseline_failures: []
   - name: webstercli-repoint
     state: pending
