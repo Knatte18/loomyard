@@ -101,8 +101,13 @@ batches:
 ### Decision: hub mode stays byte-identical, with exactly four named deviations
 
 - **Decision:** every hub-mode config base directory, geometry output, stencils directory, run/scratch anchoring, and fabric pathspec/commit message resolves exactly as it does on `main` today.
-  The complete deviation list is: (1) a plain git repo with no `<hub>/_board/_lyx` beside it moves from fictional hub mode to standalone; (2) a cwd outside any git repository now succeeds standalone instead of aborting; (3) three additive envelope fields (`mode`, `stateDir`, `stencilsDir`) appear in both modes' run-verb success envelopes; (4) `webstercli` in a subdirectory of a wired worktree refuses instead of starting a silent standalone session.
+  The complete deviation list is: (1) a plain git repo with no `<hub>/_board/_lyx` beside it moves from fictional hub mode to standalone; (2) a cwd outside any git repository now succeeds standalone instead of aborting; (3) three additive envelope fields (`mode`, `stateDir`, `stencilsDir`) appear in both modes' success envelopes for **`lyx burler run` and `lyx perch run` only**; (4) `webstercli` in a subdirectory of a wired worktree refuses instead of starting a silent standalone session.
   A fifth deviation discovered during implementation is a bug in this plan, not a licence.
+
+  Deviation (3) is scoped to two verbs, and the two exclusions are deliberate rather than oversights.
+  `lyx webster run` does **not** gain the three fields: the discussion records that T7 shipped webster's standalone entry without them, that this is a gap in T7 rather than a precedent to copy, and that fixing it is out of scope here — so batch 3 stays the narrow mode-trigger repoint it declares itself to be, changing no verb, no flag and no envelope.
+  `lyx perch pause` does not gain them either, because its success envelope already reports an absolute `pauseFile`, which names `<state>` by construction, and pause is not where an operator first meets standalone mode.
+  Both exclusions are named here so the list stays exhaustive as claimed, which is what lets a reviewer treat any other observed output change as a regression without re-deriving the intent.
 - **Rationale:** stated rather than smuggled, per the design.
   The enumeration is what lets a reviewer treat any other observed change as a regression without re-deriving the intent.
 - **Applies to:** all batches.
