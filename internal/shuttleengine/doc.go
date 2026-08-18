@@ -25,10 +25,15 @@
 // The only channel in and out of a shuttle run is files: the prompt is handed to the provider as
 // the launch argument (never typed into a live pane),
 // and the agent writes its structured result to a file the caller reads.
-// This package (the foundation batch) provides the pure, hermetic building blocks the rest of
-// shuttleengine is built from: the config module (shuttle.yaml), the run Spec and its validation,
-// the run directory / run.json state and its age-guarded orphan sweep, and the Windows-to-POSIX
-// path helper the engine layer needs for hook commands.
-// Nothing here calls tmux or claude,
-// or knows about either.
+// The package is two halves.
+// The pure, hermetic half derives nothing and spawns nothing: the config module (shuttle.yaml), the
+// run Spec and its validation, the run directory / run.json state and its age-guarded orphan sweep,
+// and the Windows-to-POSIX path helper the engine layer needs for hook commands.
+// The run-loop half — Runner/Run in run.go and Wait in wait.go — drives a LIVE agent through the
+// ReedOps seam: it registers and removes strands, polls a real pane's capture through the engine's
+// Startup classifier, plays key choreography into that pane for Interrupt/Send/Inject, and reads
+// reed's own persisted state during the orphan sweep.
+// What stays true of BOTH halves is the provider boundary, not hermeticity: nothing here names a
+// tmux command or a Claude specific — panes are reed's vocabulary, reached only through ReedOps,
+// and provider grammar is the concrete Engine's, reached only through the Engine interface.
 package shuttleengine
