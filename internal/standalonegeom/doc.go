@@ -10,10 +10,14 @@
 // parameters are what keep this package hermetic by construction, rather than by each test
 // remembering to redirect XDG_STATE_HOME.
 //
-// This package is deliberately not a leaf: it imports reedengine and websterengine, so it must
-// not be added to internal/buildinfo's or internal/standalonestate's leaf-enforcement allowlists.
+// This package is deliberately not a leaf: it imports reedengine, websterengine, burlerengine and
+// perchengine, so it must not be added to internal/buildinfo's or internal/standalonestate's
+// leaf-enforcement allowlists.
 //
-// standalonegeom's contract today is ReedGeometry and WebsterGeometry, converting a told target,
-// stateDir, and (for reed) hash8 into a reedengine.Geometry or websterengine.Geometry
-// respectively. Neither engine imports this package back — the told direction stays one-way.
+// standalonegeom's contract today is ReedGeometry, WebsterGeometry, BurlerGeometry, and
+// PerchGeometry, converting a told target, stateDir, and (for reed) hash8 into a
+// reedengine.Geometry, websterengine.Geometry, burlerengine.Geometry, or perchengine.Geometry
+// respectively, plus the StencilsDir helper, which converts a told stateDir alone into the
+// standalone stencils directory path. Neither engine imports this package back — the told
+// direction stays one-way.
 package standalonegeom

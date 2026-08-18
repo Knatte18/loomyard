@@ -14,6 +14,64 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
+func TestBurlerGeometry(t *testing.T) {
+	t.Parallel()
+
+	// target is deliberately not under stateDir, since that is the whole reason
+	// WorktreeRoot and AnchorPath exist as separate fields.
+	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := BurlerGeometry(target, stateDir)
+
+	if got.WorktreeRoot != target {
+		t.Errorf("BurlerGeometry().WorktreeRoot = %q; want %q (target)", got.WorktreeRoot, target)
+	}
+	if got.AnchorPath != stateDir {
+		t.Errorf("BurlerGeometry().AnchorPath = %q; want %q (stateDir)", got.AnchorPath, stateDir)
+	}
+	// WorktreeRoot and AnchorPath asserted in the same case: the whole reason the two-root
+	// split exists is that they differ here, with a fixture target not under stateDir.
+	if got.WorktreeRoot == got.AnchorPath {
+		t.Errorf("BurlerGeometry().WorktreeRoot = %q; want != AnchorPath %q", got.WorktreeRoot, got.AnchorPath)
+	}
+}
+
+func TestPerchGeometry(t *testing.T) {
+	t.Parallel()
+
+	// target is deliberately not under stateDir, since that is the whole reason
+	// GateDir and AnchorPath exist as separate fields.
+	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := PerchGeometry(target, stateDir)
+
+	if got.GateDir != target {
+		t.Errorf("PerchGeometry().GateDir = %q; want %q (target)", got.GateDir, target)
+	}
+	if got.AnchorPath != stateDir {
+		t.Errorf("PerchGeometry().AnchorPath = %q; want %q (stateDir)", got.AnchorPath, stateDir)
+	}
+	// GateDir and AnchorPath asserted in the same case: the whole reason the two-root split
+	// exists is that they differ here, with a fixture target not under stateDir.
+	if got.GateDir == got.AnchorPath {
+		t.Errorf("PerchGeometry().GateDir = %q; want != AnchorPath %q", got.GateDir, got.AnchorPath)
+	}
+}
+
+func TestStencilsDir(t *testing.T) {
+	t.Parallel()
+
+	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lyx-state", "abcd1234")
+
+	got := StencilsDir(stateDir)
+
+	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils"); got != want {
+		t.Errorf("StencilsDir(%q) = %q; want %q", stateDir, got, want)
+	}
+}
+
 func TestReedGeometry(t *testing.T) {
 	t.Parallel()
 
@@ -94,5 +152,10 @@ func TestWebsterGeometry(t *testing.T) {
 	}
 	if want := filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils"); got.StencilsDir != want {
 		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q", got.StencilsDir, want)
+	}
+	// This equality pins the one-construction-site property: WebsterGeometry's StencilsDir
+	// field must always come from the shared StencilsDir helper, never a re-derived literal.
+	if want := StencilsDir(stateDir); got.StencilsDir != want {
+		t.Errorf("WebsterGeometry().StencilsDir = %q; want %q (StencilsDir(stateDir))", got.StencilsDir, want)
 	}
 }
