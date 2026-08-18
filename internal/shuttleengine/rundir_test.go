@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,8 +132,39 @@ func TestFindRunByStrand_Miss(t *testing.T) {
 	root := t.TempDir()
 	seedRun(t, root, "run-a", "strand-a")
 
-	if _, _, err := findRunByStrand(root, "does-not-exist"); err == nil {
+	_, _, err := findRunByStrand(root, "does-not-exist")
+	if err == nil {
 		t.Fatal("findRunByStrand() = nil error, want error for unknown strand guid")
+	}
+	// A clean scan must NOT hedge: every run.json was read, so "no run found"
+	// is the whole truth and adding the could-not-be-read clause would make an
+	// ordinary caller mistake read like possible corruption.
+	if strings.Contains(err.Error(), "could not be read") {
+		t.Errorf("findRunByStrand() error = %v; want no unreadable-directory clause when every run.json parsed", err)
+	}
+}
+
+func TestFindRunByStrand_MissNamesUnreadableDirs(t *testing.T) {
+	// A truncated run.json is skipped so one damaged dir cannot abort the scan,
+	// but the resulting miss must say the scan was incomplete: Runner.Interrupt
+	// and Runner.Send wrap this error as "%q is not a shuttle strand", which
+	// sends an operator away from an agent that is still live in its pane
+	// (proven live by truncating a running run's run.json).
+	root := t.TempDir()
+	seedRun(t, root, "run-a", "strand-a")
+	damaged := seedRun(t, root, "run-damaged", "strand-damaged")
+	if err := os.WriteFile(filepath.Join(damaged, runStateFileName), []byte(`{"strandGuid": "strand-dam`), 0o644); err != nil {
+		t.Fatalf("truncate run.json: %v", err)
+	}
+
+	_, _, err := findRunByStrand(root, "strand-damaged")
+	if err == nil {
+		t.Fatal("findRunByStrand() = nil error, want a miss for the unreadable run dir's guid")
+	}
+	for _, want := range []string{"1 run directory", "could not be read", "still in its pane"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("findRunByStrand() error = %v; want it to name %q", err, want)
+		}
 	}
 }
 
