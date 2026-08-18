@@ -11,6 +11,7 @@
 package reedengine
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -407,5 +408,58 @@ func TestAlivePanePIDs(t *testing.T) {
 
 	if got := alivePanePIDs(nil, live); got != nil {
 		t.Errorf("alivePanePIDs(no panes) = %v, want nil", got)
+	}
+}
+
+// TestSessionReapRoots is the regression guard for the R2 review's R2-F2: Down snapshotted its
+// descendant-closure roots from EVERY pane the session listed, dead ones included, while
+// RemoveStrand correctly filtered to alive panes only. tmux keeps reporting a dead pane's recorded
+// #{pane_pid} indefinitely (remain-on-exit is on for every reed session, and reconcile deliberately
+// KEEPS the last dead pane and any dead header corpse), so once the OS recycled that pid, Down would
+// expand an unrelated process's whole subtree, block on it for the full reapExitTimeout, and then
+// SIGKILL it.
+// The dead-pane row is the assertion that matters; the pid-less row pins that the two forms share
+// one predicate rather than each re-deriving it.
+func TestSessionReapRoots(t *testing.T) {
+	tests := []struct {
+		name string
+		live []LivePane
+		want []int
+	}{
+		{
+			name: "dead pane's recorded pid is never a reap root",
+			live: []LivePane{
+				{ID: "%1", Dead: false, PID: 100},
+				{ID: "%2", Dead: true, PID: 200},
+				{ID: "%3", Dead: false, PID: 300},
+			},
+			want: []int{100, 300},
+		},
+		{
+			name: "pid-less pane contributes nothing",
+			live: []LivePane{{ID: "%1", Dead: false, PID: 0}},
+			want: nil,
+		},
+		{
+			name: "every pane dead (the kept-corpse session shape)",
+			live: []LivePane{
+				{ID: "%1", Dead: true, PID: 100},
+				{ID: "%2", Dead: true, PID: 200},
+			},
+			want: nil,
+		},
+		{
+			name: "no panes at all",
+			live: nil,
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sessionReapRoots(tt.live)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("sessionReapRoots(%v) = %v; want %v", tt.live, got, tt.want)
+			}
+		})
 	}
 }

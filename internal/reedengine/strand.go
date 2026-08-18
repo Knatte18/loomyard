@@ -359,12 +359,20 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 	return result, err
 }
 
-// alivePanePIDs returns the #{pane_pid} roots of the panes in paneIDs
-// that are currently present AND not dead in live. Pane-destroying ops use
-// this to snapshot reap roots before kill-pane: only a still-running pane's
-// pid is a safe descendant-closure root (a dead pane's recorded pid may
-// already have been reused by an unrelated process — see
-// descendantClosurePIDs).
+// safeReapRoot reports whether p's #{pane_pid} may be used as a descendant-closure root by a
+// pane-destroying op.
+// Only a still-running pane qualifies: tmux keeps reporting a dead pane's recorded #{pane_pid} long
+// after that process exited (remain-on-exit is on for every reed session, so a corpse can sit in the
+// window for hours), and once the OS recycles that pid the closure walk would expand it into an
+// UNRELATED process's whole subtree — which the caller then waits on and finally SIGKILLs.
+// It is the single declaration of that rule so the two reap-root snapshots below cannot drift apart
+// again; they did, and Down was the one missing the filter (R2 review finding R2-F2).
+func safeReapRoot(p LivePane) bool {
+	return !p.Dead && p.PID > 0
+}
+
+// alivePanePIDs returns the safe reap roots (see safeReapRoot) among the panes named by paneIDs.
+// RemoveStrand uses this targeted form to snapshot only the doomed strands' panes.
 func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	wanted := make(map[string]bool, len(paneIDs))
 	for _, id := range paneIDs {
@@ -372,7 +380,22 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	}
 	var pids []int
 	for _, p := range live {
-		if wanted[p.ID] && !p.Dead && p.PID > 0 {
+		if wanted[p.ID] && safeReapRoot(p) {
+			pids = append(pids, p.PID)
+		}
+	}
+	return pids
+}
+
+// sessionReapRoots returns the safe reap roots (see safeReapRoot) among EVERY pane in live.
+// Down uses this whole-session form, since it tears the session down entirely rather than a named
+// subset of its panes;
+// it shares safeReapRoot with alivePanePIDs so the two forms can never disagree about which pids are
+// safe to expand and kill.
+func sessionReapRoots(live []LivePane) []int {
+	var pids []int
+	for _, p := range live {
+		if safeReapRoot(p) {
 			pids = append(pids, p.PID)
 		}
 	}

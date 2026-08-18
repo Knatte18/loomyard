@@ -715,6 +715,11 @@ func (e *Engine) Down() (DownResult, error) {
 		// holding the worktree directory is a deeper descendant of the pane
 		// pid). Reaping them is how down keeps its "no stray state" guarantee
 		// at the pane level (see reapPaneChildren).
+		// Roots come from ALIVE panes only (sessionReapRootsLocked): a dead
+		// pane's recorded #{pane_pid} names a process that already exited, and
+		// expanding a recycled pid would make this reap wait on, and then
+		// SIGKILL, an unrelated process tree — the rule RemoveStrand already
+		// followed and this path did not (R2 review finding R2-F2).
 		panePIDs := e.paneProcessTreePIDsLocked()
 
 		// Ignore the error: the session may already be gone, and Down must
@@ -817,26 +822,22 @@ func (e *Engine) serverPIDLocked() int {
 	return pid
 }
 
-// panePIDsLocked returns pane child process pids. Returns nil on failure.
+// sessionReapRootsLocked returns this session's safe descendant-closure reap roots — the
+// #{pane_pid} of every pane that is present AND still running (see safeReapRoot, strand.go).
+// Returns nil on failure.
 // Must run before kill-session while panes exist.
-func (e *Engine) panePIDsLocked() []int {
+func (e *Engine) sessionReapRootsLocked() []int {
 	live, err := e.tmux.listPanes(e.SessionName())
 	if err != nil {
 		return nil
 	}
-	var pids []int
-	for _, p := range live {
-		if p.PID > 0 {
-			pids = append(pids, p.PID)
-		}
-	}
-	return pids
+	return sessionReapRoots(live)
 }
 
-// paneProcessTreePIDsLocked returns pane child pids and their descendants.
+// paneProcessTreePIDsLocked returns this session's safe reap roots and their descendants.
 // Must run before kill-session while panes exist.
 func (e *Engine) paneProcessTreePIDsLocked() []int {
-	return e.descendantClosurePIDs(e.panePIDsLocked())
+	return e.descendantClosurePIDs(e.sessionReapRootsLocked())
 }
 
 // forceKillExitGrace bounds how long to wait for force-kill to land
@@ -931,8 +932,18 @@ func (e *Engine) reapSocketProcesses() error {
 // already-exited and reapPaneChildren's force-kill fallback never ran once.
 //
 // A pid that was recycled by an unrelated process after the caller snapshotted it reads as still
-// alive here and burns the full timeout; the callers bound that by snapshotting only pids whose
-// panes are alive at snapshot time (see alivePanePIDs).
+// alive here, burns the full timeout, and is then force-killed along with its whole subtree by
+// reapPaneChildren — so what bounds this is entirely the CALLER's snapshot discipline: both reap
+// paths take their descendant-closure roots from panes that are present AND not dead at snapshot
+// time (safeReapRoot, strand.go), because tmux keeps reporting a dead pane's #{pane_pid} long after
+// that process exited. Down did not honour that rule until the R2 review; the two snapshots now
+// share one predicate precisely so this comment cannot describe only one of them again.
+//
+// Honest limit: proc.IsAlive is a signal-0 probe, so a not-yet-reaped ZOMBIE reads as alive here.
+// That window is short in practice — every pid reed waits on is a child of the tmux server, which
+// reaps its own children, and once the server itself dies the survivors are reparented to init and
+// reaped there — but a caller must not read this function as proof the process's resources are
+// released, only that its pid no longer answers.
 func waitProcessExit(pid int, timeout time.Duration) error {
 	if pid <= 0 {
 		return nil
