@@ -9,10 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **producers standalone: told-geometry foundations** — `planparser` takes over the plan-directory path from `loomengine`, `configengine` gains a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
-   Three tasks, all parallel-safe against each other.
-   See [designs/producers-standalone.md](designs/producers-standalone.md).
-
 1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
    Two tasks, parallel-safe.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
@@ -116,6 +112,9 @@ No build order is implied between these items.
    Not yet designed.
 
 ## Done
+
+1. **producers standalone: told-geometry foundations** — `planparser` took over the plan-directory path from `loomengine`, `configengine` gained a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
+   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
    See the `internal/gitkit` and `internal/hubforge` package documentation.
