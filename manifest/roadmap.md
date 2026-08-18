@@ -13,17 +13,20 @@ Committed to, in this order, next.
    The final consolidation task for this line of work.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
-   First slice of `loom`'s producer list — the phase machine that wires it and `lyx loom status` land alongside it.
-   Next up after this slice, in order: **loom: Plan-phase producers** (`Plan-Sweep`, `Plan-Validate`, `Plan-Review` — `Plan-Write` itself already shipped), then **loom: Webster-Review**, then **loom: Finalize** (folding `raddle`'s regeneration into its own contract, per `designs/loom.md`).
-   Each becomes its own Planned item, decomposed the same way, once the slice ahead of it ships.
-   That is the whole remaining path to `loom` running autonomously end to end.
+1. **loom: phase-machine scaffolding** — wire the whole flat producer list for real, mechanical rows only: the `Shed` instance plus `lyx loom status`, `Discussion-Validate`, `Plan-Sweep`, `Plan-Validate`, and `Finalize` built as real mechanical producers, `Webster` wired in as the already-shipped module it is.
+   Every `LLM`/`LLM+perch` row (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stays a stub in the wired list.
+   Deliberate build order, operator-chosen: all scaffolding up first, so the full sequence — resume, crash-recovery, pause — runs and is provable end to end before a single LLM prompt is wired in for real.
+   Next up after this ships: **loom: wire in the real LLM producers**, the last task of the whole initiative — see Someday.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
-No build order is implied between these items.
+No build order is implied between these items, with one named exception: **loom: wire in the real LLM producers**, below, is next once the Planned `loom: phase-machine scaffolding` item ships — deliberately last within `loom`'s own initiative, not unscheduled the way the rest of this section is.
+
+1. **loom: wire in the real LLM producers** — replace every stub `loom: phase-machine scaffolding` leaves behind with the real thing: rewrite `Discussion-Write`'s and `Plan-Write`'s already-built prompts into `SingleLLMProducer` instances, and build `Discussion-Review`/`Plan-Review`/`Webster-Review` on the shipped `internal/shedadapters` `perch` adapter.
+   Deliberately the last task in the whole `loom` initiative — every other producer, including `Webster` itself, is real and proven end to end before this one starts.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
