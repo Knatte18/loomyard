@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: pattern-told-geometry
 branch: pattern-told-geometry
-plan: null
+plan: _mill/plan
 parent: standalone-producers
 task: pattern told-geometry
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-08-18T05:45:16Z'
 discussion-fix-r4  '2026-08-18T05:54:49Z'
 discussion-fix-r5  '2026-08-18T05:58:48Z'
 discussed  '2026-08-18T05:58:48Z'
+planning  '2026-08-18T06:04:28Z'
 ```
