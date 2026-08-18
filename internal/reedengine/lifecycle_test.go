@@ -259,9 +259,10 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 // pins its pane to Geometry.PaneCwd, not Geometry.AnchorPath — the two are distinct on newTestEngine's
 // fixture (lock_test.go), so this assertion cannot pass by coincidence.
 // This covers only the header split site: the new-session spawn site is not reachable from this
-// seam, since it builds its argv and runs it through exec.Command directly rather than through
-// e.tmux — that half of the same change is covered by the tagged reed suites this batch's verify:
-// also runs (contract_integration_test.go, mouse_boot_integration_test.go).
+// seam, since it builds its argv and runs it through the os/exec package's Command function
+// directly rather than through e.tmux — that half of the same change is covered by the tagged reed
+// suites this batch's verify: also runs (contract_integration_test.go,
+// mouse_boot_integration_test.go).
 func TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
 	e := newTestEngine(t)
 
