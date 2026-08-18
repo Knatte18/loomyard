@@ -314,3 +314,28 @@ distinction never matters (the path is resolved a moment earlier). For a long-li
 difference between reed's designed foreign-session refusal firing and reed cheerfully reporting an empty world.
 A possible reed-side answer would be to refuse an anchor path that has ceased to exist rather than re-creating
 it; that is reed's call, not this round's.
+
+## Post-clean-room reconciliation with rounds 1-2 (read only after the above was written and committed)
+
+- **R3-F1 is new.** Round 2's "Named residual — `Wait` cannot tell 'reed is gone' from 'reed refuses'" is a
+  DIFFERENT axis: it concerns two shapes of reed ERROR, both of which already take `Wait`'s honest
+  identity-plus-error exit. R3-F1 is the case where reed SUCCEEDS — `Status` returns `ok` with a strand table
+  that no longer contains the guid — and `Wait` manufactures a terminal `died` from it. Neither round reached
+  it, because neither drove a reed-side state reset against a run that was still polling. I take no position on
+  the named residual; it is unchanged and still correctly out of campaign.
+- **R3-F2 was examined by round 2 and deliberately NOT recorded** ("Assessed and deliberately NOT recorded as
+  findings", first bullet). Round 2 saw the same asymmetry and the same reed advice, and declined on the grounds
+  that "blocking the sweep on absence would break the ordinary post-`down` cleanup path".
+
+  I re-examined that reasoning and **disagree**, on a fact round 2 did not weigh: the sweep runs BEFORE
+  `AddStrand`, and `AddStrand` cannot succeed without a live reed session, and a live session means `lyx reed up`
+  has already written a `reed.json`. So the post-`down` cleanup path is not broken by skipping the sweep on
+  absence — it is merely deferred to the next run after the next `up`, which is the next run that can succeed at
+  all. Concretely: `down` (file deleted, dirs orphaned) → `up` (file recreated, zero strands) → `shuttle run`
+  → the sweep runs with a PRESENT-but-empty table and collects exactly what it would have collected before.
+  The only sweeps forgone are those on a `Start` that is about to fail at `AddStrand` anyway — plus the one
+  dangerous case. Round 2's "the age guard is the correct and sufficient protection" does not hold either: the
+  age guard protects a run that is STARTING, not one that has been running longer than 180 s, which is precisely
+  the run a live-agent sweep destroys.
+
+  Flagging the disagreement explicitly so the orchestrator can adjudicate rather than discover it.
