@@ -5,9 +5,12 @@ package reedcli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -446,5 +449,72 @@ func TestSmokeHeaderPaneSurvivesUpAddRemoveAndReconcile(t *testing.T) {
 	}
 	if paneID, _ := strand2["paneId"].(string); paneID == headerPaneID {
 		t.Errorf("strand %s was bound to the header pane %s; the header must never be adopted", second, headerPaneID)
+	}
+}
+
+// TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite is the end-to-end regression guard for the R2
+// review's BLOCKING finding, driven at the CLI seam a real operator uses.
+//
+// Reproduced live before the fix, in a hub with a sibling worktree named "svc.v2":
+// `lyx reed up` hung for the full 20s bootAttemptTimeout, failed with
+// `tmux server is up but session "svc.v2" did not materialize within 20s` (a message naming neither
+// cause nor remedy), and left a session named "svc_v2" running on the SHARED per-hub server — which
+// `lyx reed status` could not see, `lyx reed down` could not kill (it targets the exact "=svc.v2"),
+// and which then kept the shared server alive so no sibling worktree's `down` could tidy it either.
+//
+// The load-bearing assertion is the LAST one: no session under the rewritten name may exist on the
+// hub's socket after the refusal. A fix that merely produced a nicer error message, or that
+// sanitized the name instead of refusing it, fails there rather than reporting a false green.
+// The prime worktree is brought up first on purpose, so the hub's shared tmux server is genuinely
+// live when the bad worktree tries to boot — the exact shape that produced the stray.
+func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	// The '.' is the whole point: tmux rewrites it to '_' and creates the
+	// session under a name reed's exact targets can never address.
+	const rewritableName = "rewritable.v2"
+	const rewrittenSession = "rewritable_v2"
+	rewritable := materializeSibling(t, h, rewritableName)
+
+	deferHubRelease(t, h.PrimeWorktree())
+	deferHubRelease(t, rewritable)
+	t.Cleanup(func() {
+		_ = os.Chdir(h.PrimeWorktree())
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	// A genuinely live shared per-hub server for the bad worktree to boot against.
+	mustChdir(t, h.PrimeWorktree())
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("prime up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, primeSession := socketAndSession(t)
+
+	mustChdir(t, rewritable)
+	out.Reset()
+	code := RunCLI(&out, []string{"up"})
+	if code == 0 {
+		t.Fatalf("up in worktree %q = 0; want a non-zero refusal, output: %s", rewritableName, out.String())
+	}
+	if !strings.Contains(out.String(), rewritableName) {
+		t.Errorf("up refusal = %s; want it to name the offending worktree/session %q so the operator can act on it", out.String(), rewritableName)
+	}
+
+	// The stray. Read the socket's whole session list rather than probing the
+	// rewritten name through reed, since reed's own targets are exactly what
+	// cannot see it.
+	sessions, err := exec.Command(tmuxPath, "-L", socket, "list-sessions", "-F", "#{session_name}").Output()
+	if err != nil {
+		t.Fatalf("list-sessions on socket %s: %v", socket, err)
+	}
+	names := strings.Fields(strings.TrimSpace(string(sessions)))
+	if slices.Contains(names, rewrittenSession) {
+		t.Errorf("socket %s carries session %q after the refusal (sessions: %v); reed must never create substrate it cannot address or tear down", socket, rewrittenSession, names)
+	}
+	if !slices.Contains(names, primeSession) {
+		t.Errorf("socket %s lost the prime worktree's session %q (sessions: %v); the refusal must not disturb a sibling worktree", socket, primeSession, names)
 	}
 }

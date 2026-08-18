@@ -16,6 +16,12 @@ type Geometry struct {
 	// SocketKey is the tmux -L socket name; it is what Engine.Socket returns.
 	SocketKey string
 	// SessionName is the tmux session name; it is what Engine.SessionName returns.
+	// It must carry neither '.' nor ':': tmux silently rewrites both to '_' and creates the session
+	// under the rewritten name with exit 0, which every exact-match "=<name>" target this package
+	// issues would then miss forever. A hub-mode caller gets this for free only if the worktree
+	// directory name happens to be clean, so the constraint is enforced rather than assumed —
+	// validateToldTmuxIdentity (server.go) refuses such a name at every op boundary, before any tmux
+	// round trip.
 	SessionName string
 	// AnchorPath is the base stateDir joins onto for reed.json/reed.lock, and the cwd every pane is
 	// spawned with — passed explicitly as tmux's -c at all three spawn sites (new-session, the

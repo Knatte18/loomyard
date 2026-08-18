@@ -64,7 +64,18 @@ func (e *Engine) TmuxPath() string {
 // withOpLock acquires the operation lock, runs fn while holding it,
 // and releases it before returning. This is the only acquisition point
 // for reed.lock in the package; it is non-reentrant.
+//
+// It is also the single chokepoint every public engine op passes, which is why the told-geometry
+// pre-flight runs here rather than in New: New validates no Geometry field by documented contract
+// (geometry.go), so this is the first point at which an unusable identity can be refused without
+// changing that contract. Refusing before the lock — and therefore before any tmux round trip,
+// any directory creation, and any state read — is what keeps a bad identity from creating substrate
+// that no later reed verb can address (see validateToldTmuxIdentity in server.go).
 func (e *Engine) withOpLock(fn func() error) error {
+	if err := validateToldTmuxIdentity(e.geom); err != nil {
+		return err
+	}
+
 	dotLyx := e.stateDir()
 	// gofrs/flock opens the lock file with O_CREATE but never creates
 	// missing parent directories, so a brand-new worktree's first reed

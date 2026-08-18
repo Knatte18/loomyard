@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -368,6 +369,78 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	}
 	if up, err := reed.hasSession(sibling); err != nil || !up {
 		t.Fatalf("hasSession(%q) = (%v, %v) after the re-kill, want (true, nil) — the sibling must survive every exact-target op against its prefix", sibling, up, err)
+	}
+}
+
+// TestSessionNameRewriteIsSilentAndExactTargetsMissIt pins the wire-contract fact behind
+// validateToldTmuxIdentity (server.go): tmux does not REJECT a session name containing '.' or ':' —
+// it rewrites each to '_', creates the session under the rewritten name, and exits 0.
+// That silence is the whole hazard. Every session target this package issues is the exact-match
+// "=<name>" form, so the created session is unreachable by the very name that created it: the boot
+// loop polls forever, the operator sees a timeout naming no cause, and the rewritten session is left
+// squatting on a shared per-hub server with no reed verb able to address it.
+// Pinning it here, in the file that owns doc.go's multiplexer-contract claims, is what makes a
+// future tmux behaviour change (a hard rejection, a different substitute character, a wider rewrite
+// set) surface as a test failure rather than as a silently-weakened guard.
+func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedReedConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	socket := fmt.Sprintf("lyx-contract-rewrite-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	reed := NewTmuxCmd(cfg.Tmux, socket)
+	t.Cleanup(func() {
+		_ = reed.run("kill-server")
+	})
+
+	tests := []struct {
+		name      string
+		requested string
+		rewritten string
+	}{
+		{"dot", "rewrite-dot.v2", "rewrite-dot_v2"},
+		{"colon", "rewrite-colon:v2", "rewrite-colon_v2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// new-session SUCCEEDS: this is the silence the guard exists for.
+			if err := reed.run("new-session", "-d", "-s", tt.requested, "-x", "80", "-y", "24", cfg.Shell); err != nil {
+				t.Fatalf("new-session -s %q = %v; want nil — this test's premise is that tmux ACCEPTS the name rather than rejecting it", tt.requested, err)
+			}
+
+			// ...but under a different name than the one asked for.
+			out, err := reed.output("list-sessions", "-F", "#{session_name}")
+			if err != nil {
+				t.Fatalf("list-sessions: %v", err)
+			}
+			names := strings.Fields(strings.TrimSpace(out))
+			if !slices.Contains(names, tt.rewritten) {
+				t.Fatalf("list-sessions = %v after new-session -s %q; want it to contain the rewritten name %q", names, tt.requested, tt.rewritten)
+			}
+			if slices.Contains(names, tt.requested) {
+				t.Fatalf("list-sessions = %v; want the requested name %q ABSENT — if tmux stopped rewriting, validateToldTmuxIdentity's ban is now over-strict and must be revisited", names, tt.requested)
+			}
+
+			// And the exact-match target this package always uses misses it,
+			// which is what makes the created session untearable by reed.
+			if up, err := reed.hasSession(tt.requested); err != nil || up {
+				t.Fatalf("hasSession(%q) = (%v, %v); want (false, nil) — an exact target must not resolve the rewritten session", tt.requested, up, err)
+			}
+			// Deliberately NOT killed per case: killing the last session on a
+			// socket takes the server down with it, and the next case's
+			// new-session then races that asynchronous teardown ("server exited
+			// unexpectedly", observed while writing this test — the same
+			// async-kill hazard lifecycle.go's own doc comment describes).
+			// Every case's session is torn down together by the kill-server in
+			// t.Cleanup above.
+		})
 	}
 }
 
