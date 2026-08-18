@@ -74,7 +74,9 @@ batches:
     commit_sha: 42fbb3a4e3ae3820900c4f5a0c69cdda4df50b0d
     verify_baseline_failures: ["FAIL\t./internal/standalonegeom/... [setup failed]"]
   - name: websterengine told Deps and engine-owned fabric seams
-    state: pending
+    state: running
+    implementer_session: 2111c602-f15d-49f3-91e9-f28946797489
+    start_sha: c6d3034f88b239ca5d15aef03b60d3d23d000b02
     verify_baseline_failures: []
   - name: webstercli standalone entry
     state: pending
