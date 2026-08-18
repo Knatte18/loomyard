@@ -5,6 +5,15 @@
 // planparser.ParsePlan and the Plan/Card model it returns, so the on-disk grammar has
 // exactly one reader and the rest of webster never re-derives it.
 //
+// # Path ownership
+//
+// planparser owns not only the plan format but where the plan directory lives.
+// PlanDirName and PlanDirRel declare the worktree-relative token (`_lyx/plan`,
+// forward-slash, a document token used for Card.SourcePath); PlanDir and
+// PlanOverview declare the absolute form. The package never resolves cwd and never
+// imports internal/lyxcwd — the caller supplies the anchor path, which in a lyx
+// worktree is lyxcwd.Location.AnchorPath() and never WorktreePath().
+//
 // # Type model
 //
 // A parsed plan is a Plan: the overview's frontmatter (Format, Approved, Root), its

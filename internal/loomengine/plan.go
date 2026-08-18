@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -64,8 +65,8 @@ func PlanSpec(layout *lyxcwd.Location, stencilsDir string, cfg Config, reg model
 	}
 
 	decisionRecordPath := DiscussionDecisionRecord(layout)
-	planDir := PlanDir(layout)
-	overviewPath := PlanOverview(layout)
+	planDir := planparser.PlanDir(layout.AnchorPath())
+	overviewPath := planparser.PlanOverview(layout.AnchorPath())
 
 	directive, err := pattern.Directive(layout, stencilsDir, pattern.RoleImplementer)
 	if err != nil {
