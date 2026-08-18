@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: scout-told-geometry
 branch: scout-told-geometry
 plan: _mill/plan
@@ -22,4 +22,15 @@ plan-review-r1  '2026-08-18T13:15:47Z'
 plan-fix-r1  '2026-08-18T13:15:47Z'
 plan-fix-r2  '2026-08-18T13:23:18Z'
 planned  '2026-08-18T13:23:34Z'
+implementing  '2026-08-18T13:24:11Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: told-anchor-root-conversion
+    state: pending
+  - name: hub-mode-evidence
+    state: pending
 ```
