@@ -168,6 +168,18 @@
 // `_lyx/webster` and `.lyx/webster` subpaths through the four told accessors in
 // state.go (Dir/ReportsDir/ScratchDir/PromptsDir) — the anchor root they are joined
 // onto is always supplied by the caller, per the Cwd Resolution Invariant.
+// This claim is now literally true, not aspirational: no production file in this package imports
+// internal/fabricengine, and the two seams that used to reach it are engine-declared interfaces the
+// caller supplies instead — RefMatcher for the fork-audit's fabric-reference violation class, and
+// FabricBisector, reached through RunDeps.OpenBisector, for the integration-suite bisect.
+// internal/lyxcwd is likewise absent from this package's production imports: every path this package
+// consumes arrives already resolved, through a Geometry value (geometry.go), never through a
+// *lyxcwd.Location.
+// internal/hubgeom's WebsterGeometry and internal/standalonegeom are the two tellers that build a
+// Geometry — one from a resolved hub *lyxcwd.Location, the other from a standalone state tree — and
+// the dependency direction between them and this package is one-way: they import websterengine to
+// build the struct it declares, and websterengine never imports either back.
+// See geometry.go for what each of Geometry's eight fields means; this section does not restate them.
 // Every fabric commit of a webster artifact (state.json, a batch report,
 // outcome.yaml, summary.md) happens in internal/webstercli, never here, at
 // the same deterministic boundary points: begin-batch, record-batch,
