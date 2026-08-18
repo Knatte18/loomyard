@@ -167,8 +167,9 @@ See the "Named residual" section below. Short version: **I confirm round 1's ass
 
 ## Findings
 
-Ten findings: 2 MEDIUM, 6 LOW, 2 NIT. **No BLOCKING. None large enough to defer** — every one is a scoped,
-in-module fix, so there is no NOT-FIXED-THIS-ROUND item this round.
+Eleven findings: 2 MEDIUM, 7 LOW, 2 NIT. **No BLOCKING.**
+Ten are small and are fixed inline in Job 2. **One — R2-F11 — is LARGE and is named NOT-FIXED-THIS-ROUND**;
+it was discovered during Job 2 while fixing R2-F6, and is recorded below with the same detail as the rest.
 
 ---
 
@@ -447,6 +448,39 @@ in-module fix, so there is no NOT-FIXED-THIS-ROUND item this round.
 - **Suggested fix:** state the real rule in all three — the agent ended its turn without satisfying the file
   contract, *typically* because it is asking or is blocked, with `LastAssistantMessage` carrying whatever it
   last said. This is a wording fix only; no behaviour changes.
+
+---
+
+### R2-F11 — **NOT-FIXED-THIS-ROUND** — a count over a scrolling viewport cannot soundly verify pane delivery
+
+- **Where:** `internal/shuttleengine/run.go`'s `sendVerified`.
+- **Severity:** LOW. **Status:** PLAUSIBLE (traced; not reproducible live for the reason in R2-F6).
+- **SIZE: LARGE — named, not fixed.** Reason: closing it means REPLACING the delivery signal, not
+  adjusting it, and the signal it replaces is a live-proven guarantee (`sendVerified`'s
+  swallowed-send detection was earned against a real Claude TUI, and its "the provider TUI swallowed
+  the input" path is the reason `Send` does not report a silent no-op as success). Getting a
+  replacement wrong regresses that in the direction that fails silently. It needs its own design step
+  and live validation against a real TUI, which is a task rather than an inline crucible fix.
+- **Discovered during Job 2**, while writing R2-F6's fix and its test: recorded here rather than
+  quietly shipping a fix that reads as if it closed the whole class.
+- **What R2-F6's fix DOES close:** a baseline inflated by occurrences that later scroll away. The
+  count falling BELOW the baseline is now read as scrolling and re-baselines, so the poll can succeed
+  and no replay is issued. Sabotage-proved.
+- **What it does NOT close:** the case where one occurrence scrolls off the top *as* the delivered
+  one arrives at the bottom. The count is then unchanged — neither `>` nor `<` the baseline — so
+  every poll fails and the choreography is replayed into a pane that already received it. This is
+  reachable whenever the viewport is full and the earlier copy sits at its top, which is ordinary in
+  a busy pane.
+- **Why no small fix exists.** The information the check needs is not in a count: `CapturePane`
+  returns the visible viewport with no scrollback and no cursor/position context, so "one left as one
+  arrived" and "nothing arrived" are genuinely indistinguishable from two counts alone. A sound
+  signal has to use something else — the needle's POSITION relative to the end of the capture (the
+  delivered copy is always newest, hence lowest), a reed-side scrollback capture, or a
+  provider-specific echo marker. Each of those is a real design choice with its own failure modes.
+- **Suggested direction for the task:** prefer a position-aware check (needle present at or below the
+  region that was the capture's tail at baseline time) over a count, and validate it against a real
+  Claude TUI under a genuinely churning pane before trusting it; keep the swallowed-send failure path
+  exactly as it is.
 
 ## Assessed and deliberately NOT recorded as findings
 
