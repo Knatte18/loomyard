@@ -60,7 +60,9 @@ batches:
     commit_sha: 63ae1baf0ef0e81ee766df04bd0481a00d8fda0d
     verify_baseline_failures: []
   - name: webster path accessors take a told anchor root
-    state: pending
+    state: running
+    implementer_session: 7a5bbd4a-96e7-46f9-bc08-6fa4f9eba6c4
+    start_sha: b28a60a901bea2995107c2ccc7e1229f179b4716
     verify_baseline_failures: []
   - name: hubgeom.WebsterGeometry and the standalonegeom sibling
     state: pending
