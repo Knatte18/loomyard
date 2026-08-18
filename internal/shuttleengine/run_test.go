@@ -35,6 +35,80 @@ func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (runner *Runner, a
 	return NewRunner(reed, engine, anchorPath, worktreeRoot, cfg), anchorPath, worktreeRoot
 }
 
+// TestNewRunner_RefusesUnusableToldPaths pins the told-pair guard.
+// anchorPath and worktreeRoot are adjacent parameters of the same type with four semantically
+// distinct consumers, so a swap compiles cleanly and, in a subpath-anchored worktree, silently
+// relocates the run-dir root, reed's state lookup, and the fork audit's transcript directory into
+// the worktree root instead of the anchor. An empty or relative value fails the same way — it
+// succeeds against whatever working directory the process happens to have.
+// Every public entry point must refuse, not just Start: Interrupt/Send/Inject all resolve their run
+// through the same anchorPath.
+func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
+	worktreeRoot := t.TempDir()
+	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		anchorPath   string
+		worktreeRoot string
+		wantIn       string
+	}{
+		{"swapped_pair", worktreeRoot, anchorPath, "most likely swapped"},
+		{"empty_anchor", "", worktreeRoot, "empty path"},
+		{"empty_worktree_root", anchorPath, "", "empty path"},
+		{"relative_anchor", filepath.Join("sub", "dir"), worktreeRoot, "relative path"},
+		{"anchor_in_a_sibling_tree", t.TempDir(), worktreeRoot, "outside its worktree root"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := NewRunner(&fakeReed{}, &fakeEngine{}, tt.anchorPath, tt.worktreeRoot, Config{RunTimeoutMin: 5})
+
+			if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Start() error = %v; want it to name %q", err, tt.wantIn)
+			}
+			if err := runner.Interrupt("strand-1"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Interrupt() error = %v; want it to name %q", err, tt.wantIn)
+			}
+			if err := runner.Send("strand-1", "hi"); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Send() error = %v; want it to name %q", err, tt.wantIn)
+			}
+			if err := runner.Inject("strand-1", []PaneInput{{Key: "Escape"}}); err == nil || !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Inject() error = %v; want it to name %q", err, tt.wantIn)
+			}
+		})
+	}
+}
+
+// TestNewRunner_AcceptsHubGeometryShapes pins the other side: every pair hubgeom.ReedGeometry can
+// produce must pass, including the anchor-at-worktree-root case (AnchorRel "."), where the two
+// values are legitimately equal and a swap is a no-op.
+func TestNewRunner_AcceptsHubGeometryShapes(t *testing.T) {
+	worktreeRoot := t.TempDir()
+	subpathAnchor := filepath.Join(worktreeRoot, "sub", "dir")
+	if err := os.MkdirAll(subpathAnchor, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		anchorPath string
+	}{
+		{"anchored_at_worktree_root", worktreeRoot},
+		{"subpath_anchored", subpathAnchor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := NewRunner(&fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}, &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}, tt.anchorPath, worktreeRoot, Config{RunTimeoutMin: 5})
+			if runner.toldErr != nil {
+				t.Errorf("NewRunner(%q, %q).toldErr = %v; want nil", tt.anchorPath, worktreeRoot, runner.toldErr)
+			}
+		})
+	}
+}
+
 func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
@@ -237,8 +311,11 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 // runner.reed and runner.engine through run.state.StrandGUID.
 func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
 	t.Helper()
-	anchorPath := t.TempDir()
 	worktreeRoot := t.TempDir()
+	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
 	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, Config{})
 	return &Run{
 		runner: runner,

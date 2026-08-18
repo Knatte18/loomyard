@@ -31,14 +31,57 @@ type Runner struct {
 	anchorPath   string
 	worktreeRoot string
 	cfg          Config
+	// toldErr is validateToldPaths' verdict on the pair this Runner was constructed with, computed
+	// once and returned by every public entry point. It is held rather than returned from
+	// NewRunner because a constructor that cannot fail is what every caller already writes.
+	toldErr error
 }
 
 // NewRunner returns a Runner ready to start runs against reed and engine, scoped to anchorPath and
 // worktreeRoot and cfg's tuning knobs.
 // NewRunner is told anchorPath and worktreeRoot as plain strings and derives neither;
 // populating both with usable absolute paths is the caller's obligation.
+// The pair is validated here (see validateToldPaths) and an unusable one is reported by every
+// public method rather than by this constructor, which stays total.
 func NewRunner(reed ReedOps, engine Engine, anchorPath, worktreeRoot string, cfg Config) *Runner {
-	return &Runner{reed: reed, engine: engine, anchorPath: anchorPath, worktreeRoot: worktreeRoot, cfg: cfg}
+	return &Runner{
+		reed:         reed,
+		engine:       engine,
+		anchorPath:   anchorPath,
+		worktreeRoot: worktreeRoot,
+		cfg:          cfg,
+		toldErr:      validateToldPaths(anchorPath, worktreeRoot),
+	}
+}
+
+// validateToldPaths reports an error unless the told pair is one this package can spend.
+//
+// It exists because the two fields are ADJACENT PARAMETERS OF THE SAME TYPE with no structural
+// distinction between them, while their four consumers are semantically distinct: anchorPath sites
+// the run-dir root (.lyx is the anchor-side sibling of _lyx), is where reed keeps the reed.json the
+// orphan sweep reads, and is the pane's own process cwd that the fork audit derives the provider's
+// transcript directory from; worktreeRoot is what a relative OutputFiles entry resolves against, as
+// the run verb's own help promises. A caller that swaps them compiles cleanly and, in a
+// subpath-anchored worktree, silently puts all three of the first three somewhere real but wrong.
+// reed hardened the same seam from the other side (validateToldAnchorPath, server.go), on the same
+// reasoning: an empty or relative value does not fail, it succeeds against the WRONG tree.
+//
+// The containment clause is the swap detector rather than a geometric preference: hub geometry
+// always satisfies AnchorPath == WorktreeRoot/AnchorRel (hubgeom.ReedGeometry reads both off one
+// resolved Location), so a swap is exactly the case that violates it. Equality is allowed, since a
+// worktree anchored at its own root has AnchorRel ".".
+func validateToldPaths(anchorPath, worktreeRoot string) error {
+	if anchorPath == "" || worktreeRoot == "" {
+		return fmt.Errorf("shuttle: NewRunner was told an empty path (anchorPath %q, worktreeRoot %q); both are required and neither is derived", anchorPath, worktreeRoot)
+	}
+	if !filepath.IsAbs(anchorPath) || !filepath.IsAbs(worktreeRoot) {
+		return fmt.Errorf("shuttle: NewRunner was told a relative path (anchorPath %q, worktreeRoot %q): a relative value does not fail, it silently resolves the run directory, reed's state lookup, and the fork audit's transcript directory against whatever working directory the caller happens to have", anchorPath, worktreeRoot)
+	}
+	rel, err := filepath.Rel(worktreeRoot, anchorPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("shuttle: NewRunner was told an anchor path %q outside its worktree root %q: the anchor is always the worktree root or a subdirectory of it, so this pair is most likely swapped — anchorPath sites the run directory, reed's state lookup, and the fork audit's workdir, while worktreeRoot only resolves relative output files", anchorPath, worktreeRoot)
+	}
+	return nil
 }
 
 // Result is a completed run's terminal report: how it was classified, the identities a caller needs
@@ -91,6 +134,9 @@ const (
 // On a run.json persistence failure after AddStrand, both the directory and strand are cleaned up
 // to avoid leaking an untracked agent pane.
 func (r *Runner) Start(spec Spec) (*Run, error) {
+	if r.toldErr != nil {
+		return nil, r.toldErr
+	}
 	if err := spec.validate(r.worktreeRoot, r.cfg); err != nil {
 		return nil, err
 	}
@@ -250,6 +296,9 @@ func validateSendText(text string) error {
 // Run handle.
 // This is how the CLI's interrupt verb reaches a run started by a separate process.
 func (r *Runner) Interrupt(guid string) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
 	if _, _, err := FindRun(r.cfg, r.anchorPath, guid); err != nil {
 		return fmt.Errorf("shuttle: %q is not a shuttle strand: %w", guid, err)
 	}
@@ -263,6 +312,9 @@ func (r *Runner) Interrupt(guid string) error {
 // handle.
 // This is how the CLI's send verb reaches a run started by a separate process.
 func (r *Runner) Send(guid, text string) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
 	if err := validateSendText(text); err != nil {
 		return err
 	}
@@ -281,6 +333,9 @@ func (r *Runner) Send(guid, text string) error {
 // while the provider is busy.
 // Empty inputs is rejected.
 func (r *Runner) Inject(guid string, inputs []PaneInput) error {
+	if r.toldErr != nil {
+		return r.toldErr
+	}
 	if len(inputs) == 0 {
 		return fmt.Errorf("shuttle: Inject: inputs must not be empty — there is nothing to deliver")
 	}

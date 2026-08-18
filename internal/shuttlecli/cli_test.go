@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -233,8 +234,13 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &specCapturingEngine{}
-			anchorPath := t.TempDir()
+			// Distinct, but in the geometric relation NewRunner validates: the
+			// anchor is always the worktree root or a subdirectory of it.
 			worktreeRoot := t.TempDir()
+			anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+			if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+				t.Fatalf("mkdir anchor path: %v", err)
+			}
 			runner := shuttleengine.NewRunner(noopReed{}, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}
