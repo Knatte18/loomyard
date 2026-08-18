@@ -39,7 +39,9 @@ batches:
     commit_sha: 0c028c4901226137fd606b2b2c3dc3fb2efe125e
     verify_baseline_failures: []
   - name: batcher moves to the degrading side
-    state: pending
+    state: running
+    implementer_session: c24e1594-960c-4ea0-82e4-0d7dfef85729
+    start_sha: 72dd0c1bc45375dd0cdfe4912e0950f971f6c749
     verify_baseline_failures: []
   - name: preflight doc correction
     state: pending
