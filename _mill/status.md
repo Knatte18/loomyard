@@ -45,7 +45,9 @@ batches:
     commit_sha: d6cbec56ad61898fdc77d13fd0396235aa59588a
     verify_baseline_failures: []
   - name: standalonegeom-builders
-    state: pending
+    state: running
+    implementer_session: 83709310-e786-4604-8e3c-9bf3387d5a83
+    start_sha: f8826ec0710a9752df52b2da54c6add7779304df
     verify_baseline_failures: []
   - name: webstercli-repoint
     state: pending
