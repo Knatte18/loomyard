@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: reed-shuttle-crucible-hardening
 branch: reed-shuttle-crucible-hardening
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-18T05:11:03Z'
+done  '2026-08-18T19:58:24Z'
 ```
