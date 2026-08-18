@@ -1,6 +1,6 @@
 // config_test.go verifies perch.yaml's template parses, judge_model model-spec strings resolve
 // through LoadConfig/LoadConfigWithRegistry, the old split-key (judge_effort) format fails loud,
-// and the not-initialized error path behaves the way reedengine's and shuttleengine's config tests
+// and the template-fallback path behaves the way reedengine's and shuttleengine's config tests
 // establish the pattern.
 
 package perchengine_test
@@ -163,38 +163,53 @@ func TestLoadConfig_JudgeModelUnknownAliasFailsLoud(t *testing.T) {
 
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Seed under a non-"perch" module name; LoadConfig must resolve the file
-	// at that module's path, not a hardcoded "perch.yaml".
-	seedLyxConfig(t, tmpDir, "otherperch", perchengine.ConfigTemplate())
+	// Seed under a non-"perch" module name with a judge_model that differs
+	// from the template's "haiku", so a hardcoded module name would be
+	// caught either way: this module reads back its seeded model, and the
+	// never-seeded "perch" module reads back the template default instead.
+	seedLyxConfig(t, tmpDir, "otherperch", "judge_model: sonnet\nround_caps: [5, 8, 10]\n")
 
 	cfg, err := perchengine.LoadConfig(tmpDir, "otherperch")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.JudgeModel != "haiku" {
-		t.Errorf("JudgeModel = %q, want %q", cfg.JudgeModel, "haiku")
+	if cfg.JudgeModel != "sonnet" {
+		t.Errorf("JudgeModel = %q, want %q (seeded value)", cfg.JudgeModel, "sonnet")
 	}
 
-	// Loading under the default "perch" module name (never seeded) must fail.
-	if _, err := perchengine.LoadConfig(tmpDir, "perch"); err == nil {
-		t.Error("LoadConfig(tmpDir, \"perch\") = nil error, want error (module name must not be hardcoded)")
+	// The never-seeded "perch" module must fall back to the template
+	// default, not the "otherperch" module's seeded value.
+	defaultCfg, err := perchengine.LoadConfig(tmpDir, "perch")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultCfg.JudgeModel != "haiku" {
+		t.Errorf("JudgeModel = %q, want %q (template default)", defaultCfg.JudgeModel, "haiku")
 	}
 }
 
-func TestLoadConfig_NotInitialized(t *testing.T) {
+func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
+	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded
+	// template, resolving judge_model through the fallback registry
+	// (builtins()) exactly as modelspec.LoadRegistry's own absent-file
+	// fallback does.
 
 	cfg, err := perchengine.LoadConfig(tmpDir, "perch")
-	if err == nil {
-		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	if cfg.JudgeModel != "haiku" {
+		t.Errorf("JudgeModel = %q, want %q", cfg.JudgeModel, "haiku")
 	}
-	if !strings.Contains(errMsg, "lyx fabric reconcile") {
-		t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+	wantCaps := []int{5, 8, 10}
+	if len(cfg.RoundCaps) != len(wantCaps) {
+		t.Fatalf("RoundCaps = %v, want %v", cfg.RoundCaps, wantCaps)
+	}
+	for i, want := range wantCaps {
+		if cfg.RoundCaps[i] != want {
+			t.Errorf("RoundCaps[%d] = %d, want %d", i, cfg.RoundCaps[i], want)
+		}
 	}
 }

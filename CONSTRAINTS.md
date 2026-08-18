@@ -473,6 +473,30 @@ An instruction file — a producer's own prompt or skill — must never duplicat
 - Binds **instruction files** (agent prompts and skills) and format-contract docs, not Go source, and not design docs restating the rule for a human reader.
 - **Enforced by** review obligation.
 
+## Config Strictness Invariant
+
+`internal/configengine` offers two loading policies and a caller adopts exactly one.
+`Load` is strict: an absent `_lyx/` directory or an absent config file is an error. `LoadOrTemplate` degrades: either absence resolves the caller's embedded template instead.
+
+- **The membership rule**, stated as a predicate a future caller can apply rather than a bare list: a module belongs on the degrading side when it has, or is slated to have, a **standalone entry point** — a way to be invoked outside a lyx hub — because a config-less invocation is then a supported mode.
+  A module that only ever runs inside a hub stays strict, because there an absent config means the hub is broken.
+- **The two pinned sets** as they stand today: degrading is `{shuttleengine, reedengine, perchengine, websterengine}`;
+  strict is `{fabricengine, boardengine, loomengine, batcher}`.
+- **A third class, explicitly outside this invariant's guard subject: own-loader modules.**
+  These never call either entry point — they resolve the path with `configengine.ConfigFile` and read the file themselves with their own absent-file fallback.
+  `internal/burlerengine` (`burler.yaml`, absent file returns a zero `Config`, bypassing `Load` because `MissingKeys` would misfire on its open-ended lenses/fans key set), `internal/modelspec` (`models.yaml`, absent file returns `builtins()`;
+  it cannot call a logging `Load` at all, being capped by the Modelspec Leaf Invariant), and `internal/scoutengine` (`servers.yaml`, absent file returns `builtins()`) already have the degrading behaviour and are deliberately not repointed.
+  A set-equality grep over the two entry-point tokens is structurally blind to them — without this clause the invariant would read as though the two pinned sets enumerate every module config in the repo, which they do not.
+- **Absence is typed, not textual.** `FindBaseDir` wraps the exported `configengine.ErrNotInitialized` sentinel on its absent-`_lyx/` branch and deliberately does not wrap it on a stat failure, so a degrading caller falls back only on `errors.Is(err, ErrNotInitialized)`.
+  The four strict callers still use the older `strings.Contains(err.Error(), "not initialized")` rewrap;
+  the sentinel makes migrating them possible, but the migration is available rather than done.
+- **A watch item for T7/T10:** `batcher` sits on the strict side because it has no standalone entry of its own, but its config is read on webster's batching path.
+  If a standalone Webster reaches `batcher.Active`, `batcher` moves to the degrading side and these pinned sets change with it.
+- **Known guard blind spot:** a substring scan cannot see a call reached through an alias or a function value.
+- **Enforced by** review obligation today, with a set-equality grep guard named as a candidate and T10 named as its home.
+  The guard's shape, recorded here so T10 inherits a specification rather than re-deriving one: following `cmd/lyx/gitrepoboundary_test.go`'s pinned-set style, walk non-test `*.go` files under the module root, collect every package directory containing a `configengine.Load(` call and every one containing a `configengine.LoadOrTemplate(` call, compare each collected set against its pinned set, exclude `internal/configengine` itself as the declaration site, and skip `_test.go` files.
+  Resolving the scan root through `go env GOMOD` spawns a process, so the new guard must be allowlisted in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map alongside the entries already there for that same reason, with a one-line reason in their style.
+
 ## GitHub Auth Invariant
 
 All GitHub authentication goes through `internal/githubclient`;
