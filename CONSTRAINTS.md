@@ -57,6 +57,8 @@ Fuller design/how-to lives in godoc and `docs/`.
 Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to. `_lyx` holds tracked content only.
 
 - `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception the hub-wide pair under `BoardDir(hub)`.
+- A standalone session's `_lyx` and `.lyx` are ordinary directory siblings too, under the per-OS state directory `internal/standalonestate.Derive` returns rather than under `AnchorPath()` — the mirrored-subpath rule holds at that root exactly as it does at a hub anchor;
+  standalone is a different root, not a deviation from the rule.
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
 - `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key, which is reserved for optional, explicitly-named dirs only.
 - `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
@@ -181,12 +183,14 @@ Reverse import never allowed.
 
 ## Stencil Ownership Invariant
 
-Every producer prompt is read at call time from `<hub>/_board/_lyx/stencils/`, never from embedded bytes.
+Every producer prompt is read at call time from a told, absolute stencils directory, never from embedded bytes.
+`<hub>/_board/_lyx/stencils/` is what that directory resolves to in hub mode, not the only possibility —
+a standalone-capable CLI's own producer resolves it under the per-OS state directory instead (see the Durable-vs-Ephemeral State Invariant).
 
 - `//go:embed` in the top-level `contracts/stencils` package carries seed defaults only and is never a live read path.
 - `internal/stencilstore` is the sole owner of seeding, hash-stamping, edit detection, reading, and validation, and takes a fully resolved absolute base directory from its caller.
 - A file whose body hash does not match its stamp is never overwritten.
-- The seed/refresh pass runs once per process at `cmd/lyx`'s root pre-run, never lazily inside `stencilstore.Read`.
+- The seed/refresh pass runs once per process, either at `cmd/lyx`'s root pre-run in hub mode or at the producer CLI's own pre-run in standalone mode — never lazily inside `stencilstore.Read`.
 - The seeding commit is a `board.lock`-holding, positive-pathspec commit through `internal/fabricengine`, never `Bolt` and never a stage-all.
 - **Enforced by** `contracts/stencils/registry_test.go` for registry completeness, `internal/stencilstore`'s edit-detection tests, and `internal/lyxcwd/enforcement_test.go` for the vocabulary walk.
   Not reached: `contracts/stencils/stencils.go` is production Go outside `internal/` and `cmd/`, so it falls outside the Go half of the Fabric Vocabulary walk, whose `.md` half does now cover `contracts/stencils/**/*.md`.
@@ -307,7 +311,9 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   Junction exclusion / unwire: `internal/fabricengine/dotlyxjunction_integration_test.go`, `unwire_test.go`.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterProductionSource`);
   every other `fabricengine` caller remains a review obligation.
-  The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
+  The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation) **in hub-mode runs only** — a standalone run supplies `websterengine.NeverMatches` instead,
+  since standalone has no weft worktree and no fabric verb for a fork to drive, so there is nothing there for the check to catch;
+  a reader must not take the guard as universal across both modes.
 
 ## Fabric Destruction Chokepoint Invariant
 
