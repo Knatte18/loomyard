@@ -17,6 +17,8 @@ import (
 	"log"
 	"os"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // clock abstracts time for tests.
@@ -244,6 +246,13 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 
 // finalize builds run's terminal Result and performs cleanup for OutcomeDone.
 // For fork mode, audits fork subagents and attaches the result.
+//
+// It is also the run's teardown observability point, which the Live-Substrate Spawn Observability
+// invariant requires to be as instrumented as the spawn is: Start logs "run started" through
+// internal/logger, so without the logger.Info below the durable Info+ trace file would show every
+// shuttle run beginning and none of them ending. The two cleanup failures go to logger.Warn for the
+// same reason — a teardown that did not confirm clean is exactly what that level is for, and the
+// bare log package they used before never reaches the trace sink at all.
 func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	result := Result{
 		Outcome:              outcome,
@@ -261,14 +270,16 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 		result.ForkAudit = &audit
 	}
 
-	if outcome == OutcomeDone && !run.spec.KeepPane {
+	cleaned := outcome == OutcomeDone && !run.spec.KeepPane
+	if cleaned {
 		if _, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); err != nil {
-			log.Printf("shuttle: cleanup: remove strand %s (non-fatal): %v", run.state.StrandGUID, err)
+			logger.Warn("shuttle: cleanup: remove strand failed (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		}
 		if err := os.RemoveAll(run.runDir); err != nil {
-			log.Printf("shuttle: cleanup: remove run dir %s (non-fatal): %v", run.runDir, err)
+			logger.Warn("shuttle: cleanup: remove run dir failed (non-fatal)", "runDir", run.runDir, "error", err)
 		}
 	}
 
+	logger.Info("shuttle: run finished", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "outcome", string(outcome), "cleanedUp", cleaned)
 	return result, nil
 }

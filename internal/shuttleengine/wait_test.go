@@ -6,13 +6,16 @@
 package shuttleengine
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
@@ -92,6 +95,75 @@ func TestPollInterval_FloorsNonPositive(t *testing.T) {
 			got := pollInterval(Config{PollIntervalMS: tt.intervalMS})
 			if got != tt.want {
 				t.Errorf("pollInterval({PollIntervalMS: %d}) = %v; want %v", tt.intervalMS, got, tt.want)
+			}
+		})
+	}
+}
+
+// captureLoggerOutput redirects internal/logger's stderr half into a buffer at Info verbosity for
+// the duration of the calling test, restoring both when it ends.
+// It is the seam the teardown-observability assertion below needs: Info is gated on verbosity for
+// that half, and the durable trace file is not readable from a test.
+func captureLoggerOutput(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+	logger.SetVerbosity(1)
+	t.Cleanup(func() {
+		logger.SetVerbosity(0)
+		logger.SetOutput(os.Stderr)
+	})
+	return &buf
+}
+
+// TestRun_Wait_LogsTeardownThroughLogger pins the teardown half of the Live-Substrate Spawn
+// Observability invariant: Start already logs "run started" through internal/logger, so a finalize
+// that logs nothing would leave the durable Info+ trace file showing every shuttle run beginning
+// and none of them ending — and the bare log package finalize's cleanup failures used before never
+// reaches that sink at all.
+func TestRun_Wait_LogsTeardownThroughLogger(t *testing.T) {
+	tests := []struct {
+		name     string
+		keepPane bool
+		want     string
+	}{
+		{"cleaned_up", false, "cleanedUp=true"},
+		{"kept_pane", true, "cleanedUp=false"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl")
+			outputFile := filepath.Join(runDir, "out.md")
+			if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+				t.Fatalf("seed output file: %v", err)
+			}
+			if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+			runner := newWaitTestRunner(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, KeepPane: tt.keepPane},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(time.Minute),
+			}
+
+			buf := captureLoggerOutput(t)
+			if _, err := run.Wait(); err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+
+			logged := buf.String()
+			for _, want := range []string{"shuttle: run finished", `outcome=done`, "strand-1", tt.want} {
+				if !strings.Contains(logged, want) {
+					t.Errorf("teardown log = %q; want it to contain %q", logged, want)
+				}
 			}
 		})
 	}
