@@ -7,8 +7,10 @@
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
 // every output file already exists — the file contract can be satisfied an instant before the
 // process disappears, racing ahead of its own Stop hook.
-// died is reserved for a strand reed STILL TRACKS whose pane is not alive; a strand reed no longer
-// tracks at all is a mechanism failure, not a classification (see errStrandNotTracked).
+// died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not
+// alive; the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks
+// (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) —
+// are mechanism failures, not classifications.
 
 package shuttleengine
 
@@ -22,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // clock abstracts time for tests.
@@ -51,8 +54,9 @@ func pollInterval(cfg Config) time.Duration {
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
 const maxEventsReadRetries = 3
 
-// maxStatusRetries bounds consecutive liveness-check failures — both a reed.Status that could not be
-// run and a Status that ran but no longer lists this run's strand.
+// maxStatusRetries bounds consecutive liveness-check failures — a reed.Status that could not be run,
+// a Status that ran but no longer lists this run's strand, and a Status that lists it with no pane
+// bound.
 const maxStatusRetries = 2
 
 // errStrandNotTracked reports that reed answered the liveness check successfully but its strand table
@@ -74,6 +78,27 @@ var errStrandNotTracked = errors.New(
 		"(a reed remove/down, a lost or rebuilt reed.json, or a worktree renamed while the run was in flight), " +
 		`which says nothing about the agent: its process may still be working in its pane. Check "lyx reed status"`)
 
+// errStrandPaneBindingCleared reports that reed answered the liveness check successfully and still
+// lists this run's strand, but holds NO pane id for it.
+//
+// It exists because that is a third answer, and the one the not-live branch below would otherwise
+// swallow: a strand reed tracks with no pane bound is not a strand whose pane died, it is a strand
+// reed can no longer address at all. Reed clears every pane binding in a state file whose recorded
+// pane generation is not the incarnation now running (adoptPaneGenerationLocked — a restored backup,
+// a hand-copied .lyx, or simply a reed.json older than the session), and Status then reports the
+// strand with an empty PaneID, which its liveness lookup answers false for. Reproduced live in round
+// 4 against a real agent: reed logged the clear, shuttle answered ok:true outcome:"died" 4 seconds
+// later, and tmux still reported the pane alive with the agent working inside it — after which
+// restoring the stamp made the same strand report live:true again on the same pane.
+// Classifying that OutcomeDied is the same duplicate-agent hazard errStrandNotTracked exists to
+// avoid: an unattended caller reads "died" as "gone, retry" and puts a second agent on a worktree
+// whose first one is still working, unreachably.
+var errStrandPaneBindingCleared = errors.New(
+	"reed still tracks this run's strand but holds no pane id for it — its pane binding was cleared " +
+		"as stale (reed does that when the persisted pane generation is not the session incarnation now " +
+		"running: a restored backup, a copied .lyx, or a reed.json older than the session), " +
+		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lyx reed status"`)
+
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
 //
@@ -88,8 +113,9 @@ var errStrandNotTracked = errors.New(
 // foreign-session refusal — a renamed worktree or a copied .lyx, where the run may well be alive
 // under another session — and reed exposes no sentinel that tells the two apart, so guessing "died"
 // would report a live agent as dead.
-// The same reasoning binds the case where reed does NOT fail: a Status that succeeds without this
-// run's strand in it also exits here rather than as OutcomeDied — see errStrandNotTracked.
+// The same reasoning binds the two cases where reed does NOT fail: a Status that succeeds without
+// this run's strand in it, and one that returns the strand with no pane bound, both exit here rather
+// than as OutcomeDied — see errStrandNotTracked and errStrandPaneBindingCleared.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -123,10 +149,14 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
-					if errors.Is(err, errStrandNotTracked) {
+					switch {
+					case errors.Is(err, errStrandNotTracked):
 						return run.identity(), fmt.Errorf("shuttle: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					case errors.Is(err, errStrandPaneBindingCleared):
+						return run.identity(), fmt.Errorf("shuttle: reed held no pane binding for strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					default:
+						return run.identity(), fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
 					}
-					return run.identity(), fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
 				}
 			} else {
 				statusFailures = 0
@@ -250,12 +280,14 @@ func allOutputFilesExist(files []string) bool {
 }
 
 // checkLivenessTick checks strand liveness and probes the pane during
-// startup. Returns a non-nil error for a reed.Status that could not be run, and for a Status that ran
-// but no longer lists this run's strand (errStrandNotTracked — see there for why that is a mechanism
-// failure rather than a classification).
-// A satisfied file contract wins over both negative answers: the agent's output files ARE its return
+// startup. Returns a non-nil error for a reed.Status that could not be run, and for the two Status
+// answers that report reed's own bookkeeping rather than the agent's fate: a Status that no longer
+// lists this run's strand (errStrandNotTracked), and one that lists it with no pane bound
+// (errStrandPaneBindingCleared) — see each for why it is a mechanism failure rather than a
+// classification.
+// A satisfied file contract wins over every negative answer: the agent's output files ARE its return
 // value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped
-// tracking it.
+// tracking or addressing it.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
@@ -272,6 +304,14 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	if !strand.Live {
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
+		}
+		// Reed reports not-live for a strand it holds no pane id for, exactly as it does for one whose
+		// pane died — but those are different facts, and only the second is a dead run. An
+		// anchor:hidden strand is the one case where an empty pane id is normal rather than a cleared
+		// binding (reed realizes a pane for every other anchor), so it keeps today's classification;
+		// every other run's strand carries a pane id from the moment AddStrand persists it.
+		if strand.PaneID == "" && run.spec.Display.Anchor != render.AnchorHidden {
+			return "", errStrandPaneBindingCleared
 		}
 		return OutcomeDied, nil
 	}

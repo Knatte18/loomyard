@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // fakeClock is a virtual clock: Sleep instantly advances Now() by d instead
@@ -420,7 +421,7 @@ func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
 	outputFile := filepath.Join(runDir, "out.md")       // never created
 
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
 	engine := &fakeEngine{}
 	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
@@ -470,7 +471,7 @@ func TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied(t *testing.T) {
 		},
 		{
 			name:        "tracked_but_pane_not_live_is_still_died",
-			strands:     []reedengine.StrandStatus{{GUID: "strand-1", Live: false}},
+			strands:     []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}},
 			wantOutcome: OutcomeDied,
 			wantErr:     false,
 		},
@@ -571,7 +572,7 @@ func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
 		t.Fatalf("seed output file: %v", err)
 	}
 
-	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: false}}}}}
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}}
 	engine := &fakeEngine{}
 	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
 	fc := newFakeClock(time.Now())
@@ -994,5 +995,118 @@ func TestRun_Wait_EventsOffsetResilience_PartialLine(t *testing.T) {
 	}
 	if result.LastAssistantMessage != "partial" {
 		t.Errorf("LastAssistantMessage = %q, want %q", result.LastAssistantMessage, "partial")
+	}
+}
+
+// TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied is R4-F2's regression guard.
+//
+// Reed clears every pane binding in a state file whose recorded pane generation is not the session
+// incarnation now running, and its Status then reports the strand with an EMPTY PaneID — which its
+// liveness lookup answers false for, since no pane is bound to look up. Wait read that not-live
+// answer as a dead pane and returned ok:true/outcome:"died". Reproduced live in round 4: reed logged
+// the clear, shuttle answered "died" 4 s later, and the agent was still working in a pane tmux
+// reported alive — proven by restoring the stamp, after which the same strand reported live:true on
+// the same pane again.
+//
+// The hidden row is the one case that must NOT change: an anchor:hidden strand is never given a pane,
+// so its empty PaneID is normal rather than cleared. The genuinely-dead-pane case (a bound pane id
+// that is not alive) is pinned by TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied's second row.
+func TestRun_Wait_ClearedPaneBinding_IsMechanismFailureNotDied(t *testing.T) {
+	tests := []struct {
+		name        string
+		anchor      render.Anchor
+		wantOutcome Outcome
+		wantErr     bool
+	}{
+		{
+			name:        "cleared_binding_under_an_ordinary_run_is_a_mechanism_failure",
+			anchor:      render.AnchorBelowParent,
+			wantOutcome: "",
+			wantErr:     true,
+		},
+		{
+			name:        "hidden_strand_never_had_a_pane_and_is_still_died",
+			anchor:      render.AnchorHidden,
+			wantOutcome: OutcomeDied,
+			wantErr:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+			outputFile := filepath.Join(runDir, "out.md")       // never created
+
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
+				Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
+			}}}
+			runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: tt.anchor}},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(time.Minute),
+			}
+
+			result, err := run.Wait()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Wait() = (%+v, nil); want the cleared-pane-binding mechanism error", result)
+				}
+				if !errors.Is(err, errStrandPaneBindingCleared) {
+					t.Errorf("Wait() error = %v; want one wrapping errStrandPaneBindingCleared", err)
+				}
+				if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
+					t.Errorf("Wait() result = %+v; want the run's identity preserved (guid strand-1, session session-1, runDir %s)", result, runDir)
+				}
+			} else if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
+			}
+			if len(reed.RemoveStrandCalls) != 0 {
+				t.Errorf("RemoveStrand calls = %+v; want none — neither exit cleans up", reed.RemoveStrandCalls)
+			}
+			if _, err := os.Stat(runDir); err != nil {
+				t.Errorf("run dir removed: %v; want it kept for diagnosis", err)
+			}
+		})
+	}
+}
+
+// TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin pins that the file contract outranks a cleared
+// binding exactly as it outranks the other two negative liveness answers: an agent that wrote every
+// output file finished its work, whether or not reed can still address its pane.
+func TestRun_Wait_ClearedPaneBinding_OutputFilesStillWin(t *testing.T) {
+	runDir := t.TempDir()
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
+		Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}},
+	}}}
+	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, Display: render.Display{Anchor: render.AnchorBelowParent}},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v; want the satisfied file contract to classify done", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — the output files ARE the run's return value", result.Outcome, OutcomeDone)
 	}
 }

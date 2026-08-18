@@ -207,6 +207,31 @@ Tear down with `lyx reed remove <guid>` and `lyx reed down`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S7 -- Reed drops the pane binding of a run that is still working
+
+**Covers:** shuttle
+
+**Goal:** "Make reed decide this worktree's pane bindings are stale while a shuttle run is mid-turn, and confirm shuttle says it can no longer address the agent rather than declaring it dead."
+
+**Watch:** This is S5's sibling: there reed forgets the strand, here reed keeps the strand but forgets its PANE.
+Start the same kind of run that stays inside ONE turn for several minutes (see S5) and wait until the pane visibly shows the agent working.
+
+Then make the persisted pane generation stale, which is the state reed's own doc describes as "a reed.json older than the session now running" -- reachable in the wild from a restored backup or a copied `.lyx`.
+In `<anchor>/.lyx/reed.json`, change the `paneGeneration.created` value to any older number, writing the file atomically (write a temp file beside it and rename it over the original, so reed never reads a half-written file).
+
+Reed then logs `persisted pane bindings were minted against a different tmux session incarnation, clearing them`, and `lyx reed status` reports the strand with an empty `paneId` and `live: false` -- while `tmux list-panes` still shows its pane alive with the agent inside it.
+
+Two things must hold:
+
+1. The blocked `lyx shuttle run` must return `"ok":false` saying reed holds no pane binding for the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is the same FAIL as S5's, for the same reason: it tells an unattended caller to respawn onto a worktree whose agent is still running.
+2. `lyx shuttle interrupt <guid>` must refuse, and its message must NOT claim the run reached a terminal outcome or that its pane died -- neither is true here.
+
+Restore the original `created` value to make the binding usable again (`lyx reed status` will show the strand `live: true` on its pane once more, which also proves the agent was alive throughout), then `lyx reed remove <guid>` and `lyx reed down`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
