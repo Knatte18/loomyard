@@ -453,7 +453,10 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 
 - No other package parses `00-overview.md`/`NN-<card-slug>.md`;
   consumers read plan-level sections only from the `planparser.Plan` model a caller hands in.
-- Resolves `_lyx/plan/` via `lyxcwd`, never string literals.
+- `planparser` is the sole declarer of the plan directory's path.
+  `PlanDirName`/`PlanDirRel()` declare the worktree-relative token, and `PlanDir`/`PlanOverview` declare the absolute form.
+  The package never resolves cwd and never imports `internal/lyxcwd`;
+  the caller supplies the anchor path — `AnchorPath()`, never `WorktreePath()`.
 - **Enforced by** review obligation today (candidate future import/grep guard).
 
 ## Batcher Registry+Config Invariant

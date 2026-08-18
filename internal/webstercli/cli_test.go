@@ -23,8 +23,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -162,14 +162,21 @@ func TestFabricSync_NonBypassValidatesPairPaths(t *testing.T) {
 }
 
 // newTestCLI builds a minimal *websterCLI for validate/status/pause testing without a live git repo.
+//
+// The layout anchors at the non-"." subpath "backend" so AnchorPath() and WorktreePath() are
+// distinguishable strings, proving the plan paths behave correctly at a nested anchor. It does NOT
+// prove anchoring itself: this helper both computes planDir and is the same value the tests seed
+// into via seedValidPlanDir, so a WorktreePath() slip at the computation below would stay
+// self-consistent and pass at any AnchorRel. The subpath-anchored PersistentPreRunE case in
+// internal/webstercli/verbs_test.go is the place anchoring is actually proven for this module.
 func newTestCLI(t *testing.T) (*websterCLI, string) {
 	t.Helper()
 	hub := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "."}
+	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "backend"}
 	c := &websterCLI{
 		layout:            layout,
 		cfg:               websterengine.Config{},
-		planDir:           loomengine.PlanDir(layout),
+		planDir:           planparser.PlanDir(layout.AnchorPath()),
 		websterDir:        websterengine.Dir(layout),
 		websterScratchDir: websterengine.ScratchDir(layout),
 		reportsDir:        websterengine.ReportsDir(layout),
