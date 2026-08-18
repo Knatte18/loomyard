@@ -98,7 +98,121 @@ occurrence's distance from the bottom is monotonically non-decreasing until it s
 A copy that now sits strictly closer to the bottom than every copy the baseline counted therefore CANNOT be one of
 the baseline's copies — it is new, which is exactly the fact a bare count cannot express.
 
+### Focus item 2, scenario 1 — subpath-anchored worktree geometry under joint stress
+
+**Fixture (the campaign's first non-trivial anchor).** Hub `<scratch>/r4/hubS` with `_board/.lyx-anchor` recording
+**`srv/api`**, worktree `wt-sub`, so `AnchorPath = <hub>/wt-sub/srv/api` and `WorktreeRoot = <hub>/wt-sub` are
+genuinely different directories. `lyx reed up` from the anchor: session `wt-sub` (derived from the WORKTREE basename,
+not the anchor), socket `lyx-hubS-91c0e0d7`.
+
+Every one of the four things the brief named resolved correctly, each checked against the live fixture rather than read:
+
+1. **`validateToldPaths`' containment check** — passes and stays silent: the anchor IS a subdirectory of the worktree
+   root, which is the shape the clause was written to allow, and no run was ever refused.
+2. **The run-dir root and reed's state** both sit under the ANCHOR: `wt-sub/srv/api/.lyx/shuttle/<runID>` and
+   `wt-sub/srv/api/.lyx/reed.json`. Confirmed by `ls` and by the `runDir` field of every envelope below.
+3. **A relative `--output-file` resolves against the WORKTREE ROOT**, exactly as the run verb's help promises, and
+   NOT against the anchor. Proven without spending a process, using the pre-existing-file guard as an oracle:
+   with `<wt-sub>/out-sub.txt` present, `--output-file out-sub.txt` is refused naming
+   `…/wt-sub/out-sub.txt`; with `<wt-sub>/srv/api/out-anchor.txt` present, `--output-file out-anchor.txt` is NOT
+   refused. The two bases are demonstrably distinguished.
+4. **The fork audit's transcript directory** (`claudeProjectDirFor(anchorPath)`, `claudeengine/audit.go:97-112`)
+   points where the transcript actually lands. After a real run, `~/.claude/projects/` held BOTH
+   `…-hubS-wt-sub-srv-api` and `…-hubS-wt-sub`, and the session's `4f2abc3b-….jsonl` transcript was in the
+   **anchor-derived** one; the worktree-root-derived one held only a `memory/` directory. Deriving from the anchor
+   (the pane's own cwd, which reed sets via `new-session -c AnchorPath`) is correct, and deriving from the worktree
+   root would have found an empty directory.
+
+**Then round 3's scenario 2b re-run against this geometry** — `reed.json` deleted while a run is genuinely mid-turn
+(agent inside a 90 s blocking `python3` call):
+
+- delete at 21:14:45.4 → the run exited at 21:14:53.5 (8.0 s, two liveness ticks) with **`ok:false`** and R3-F1's
+  mechanism-failure message, the identity triple intact and `runDir` correctly under the anchor. Not the pre-R3-F1
+  `ok:true, outcome:"died"`.
+- the agent was still alive afterwards, and **both** run directories were still on disk.
+- `lyx shuttle interrupt`/`send` from the anchor: `ok:false`, `requireLiveStrand`'s not-tracked message. Honest.
+- A subsequent `Start` (made to fail at `Prepare` via `--effort bogus`, so the orphan sweep runs but no process is
+  ever spawned) logged R3-F2's skip naming the ANCHOR path, and both aged run dirs survived.
+
+**Verdict: CLEAN.** Subpath anchoring changes nothing about shuttle's behaviour, and both of round 3's fixes hold
+identically under it. No finding.
+
+### Focus item 2, scenario 2 — a `PaneGeneration` mismatch reed CLEARS, with a live run attached
+
+**The clear-not-refuse condition, read off `generation.go`:** `adoptPaneGenerationLocked` clears when the recorded
+stamp `Recorded()` and is NOT `SameIncarnation(live)` AND `refuseLiveForeignSessionLocked` returns nil — and per
+`classifyRecordedSessionLocked:203` that last part is immediate (`recordedSessionAbsent`) whenever
+`recorded.SessionName == e.SessionName()`. So the CLEAR path is precisely: **this worktree's own session name, a
+different incarnation** — reed's own doc calls it "simply a reed.json older than the session now running".
+
+**Construction.** Reusing the subpath fixture, a fresh long-turn run was started and confirmed mid-turn
+(strand `12334dbf…`, pane `%3`, agent inside a blocking `python3` call), then `reed.json`'s
+`paneGeneration.created` was rewritten to an older value by an atomic write+rename — one field, nothing else, the
+minimal mutation that isolates the clear condition while the session, the pane, the strand table and the agent all
+stay genuinely real. (The fully-organic routes to the same state — kill the server and re-`up`, or restore a backup
+taken before a rebirth — all kill the pane with the session, which would forfeit the "live run attached" half of the
+scenario.)
+
+Trigger at 21:17:10.8. Reed logged the clear, and 4.0 s later:
+
+```
+WARN reed: persisted pane bindings were minted against a different tmux session incarnation, clearing them
+     recordedTmuxSession=$0 recordedServerPID=3524614 liveTmuxSession=$0 liveServerPID=3524614
+{"guid":"12334dbf…","ok":true,"outcome":"died","runDir":"…","sessionId":"7b19df4a-…"}
+```
+
+State captured immediately afterwards:
+
+- `lyx reed status` → `{"guid":"12334dbf…","live":false,"name":"12334dbf","paneId":""}` — the strand is **still in
+  reed's table**, with an EMPTY pane binding.
+- `tmux list-panes` → `%3 claude dead=0`, and the capture still showed `esc to interrupt`: the agent was working.
+- `lyx shuttle interrupt`/`send` → `ok:false`, `"has no live pane — its run already reached a terminal outcome or
+  its pane died; keys would be silently dropped"` — refused (good) but on two claims that were both false.
+- Restoring the correct stamp made `reed status` report the same strand `live:true` on `%3` again, and
+  `lyx reed remove` then killed a genuinely running agent — proof the pane was alive throughout and that the
+  `died` verdict was purely a bookkeeping artefact.
+
+**Verdict: this is the third shape the brief asked about, and it is a real defect — see finding R4-F2.**
+It is neither R3-F1's ABSENT case (the guid IS in the table) nor the original `died` case (reed holds no pane for
+this strand at all, so there is no pane that "is not alive"). It lands in the one branch R3-F1's fix left untouched.
+
+### Focus item 2, scenario 3 — `Interrupt` and `Wait` genuinely racing a mid-refusal reed
+
+**Fixture.** Hub `<scratch>/r4/hubC`, worktree `wt-orig`, `AnchorRel = "."`, with a real
+`_lyx/config/shuttle.yaml` (the module template with `poll_interval_ms: 100` and `liveness_every_n_polls: 1`) so
+`Wait`'s liveness tick fires every 100 ms and its two-strike mechanism-failure exit lands ~200 ms after any trigger —
+shrinking the race window to something two external processes can genuinely collide inside.
+
+Long-turn run live (strand `7c050def…`, pane `%0`, agent inside a blocking `python3` call). Then, in one shell:
+two `lyx shuttle interrupt` processes pre-armed with a 50 ms head start, and the worktree renamed out from under the
+running `Wait`. Everything below happened inside a **164 ms** window:
+
+| t | who | result |
+| --- | --- | --- |
+| 21:20:20.614 → .652 | `mv wt-orig wt-moved` | rename completes |
+| .6678 | both `interrupt` processes start (23 µs apart) | — |
+| .702 | `interrupt` #1 | `ok:false` — reed's foreign-session refusal, naming `wt-orig`, the socket, and the `kill-session` remedy |
+| .717 | `interrupt` #2 | `ok:false` — byte-identical refusal |
+| .778 | the in-flight `Wait` | `ok:false` — R3-F1's `reed did not track strand … on 2 consecutive liveness checks`, identity triple intact |
+
+- **No double-fire and no double-log:** two concurrent interrupts serialized through reed's op lock and produced two
+  identical refusals; neither reached `playInputs`, so no key was delivered to any pane, once or twice.
+- **No inconsistent pair:** all three verdicts are `ok:false` mechanism failures, none claims the run is dead or
+  cleanable, and nothing was destroyed. They differ in VOCABULARY, and correctly so — they are answering from two
+  different geometries: the in-process engine still holds the pre-rename anchor path (so it sees an empty table),
+  while each CLI process resolves the post-rename one (so it sees reed's foreign-session refusal). Both statements
+  are true of what each can observe.
+- The agent was still alive and working afterwards; reed's phantom `<hub>/wt-orig/.lyx` was re-created exactly as
+  round 3's OUT-OF-CAMPAIGN reed note describes (unchanged, still reed's call, not fixed here).
+
+**Verdict: CLEAN.** No finding. Worth recording as an observation, not a defect: the `runDir` in `Wait`'s error names
+the pre-rename path, which no longer exists — the directory travelled with the worktree. No code can hold a path that
+was renamed under it, and the identity triple is still what lets an operator find the run.
+
 ## Findings
+
+Three findings: one MEDIUM closing R2-F11, one MEDIUM new, one LOW.
+No BLOCKING. Nothing deferred — no NOT-FIXED-THIS-ROUND finding.
 
 ### R4-F1 — `sendVerified` reports a delivered send as "NOT delivered" and replays it into the pane (closes R2-F11) — MEDIUM, CONFIRMED, small
 
@@ -130,3 +244,68 @@ the baseline's copies — it is new, which is exactly the fact a bare count cann
 - **Residual, stated honestly:** if the pane churns hard enough that the delivered copy is evicted between two
   250 ms polls, no viewport-only check can see it at all. That residual is inherent to `capture-pane -p` having no
   scrollback, is far narrower than the reproduced case, and is named in the code comment rather than papered over.
+
+### R4-F2 — a strand whose pane BINDING reed cleared is classified `died` while its agent is still working — MEDIUM, CONFIRMED, small
+
+- **Where:** `internal/shuttleengine/wait.go:272-277` (`checkLivenessTick`'s `if !strand.Live` branch).
+- **Severity:** MEDIUM. **Status: CONFIRMED, live-reproduced** (scenario 2 above). **Size: small** — one branch,
+  one file, plus a `wait_test.go` case against the existing `fakeReed`.
+- **Scenario:** reed's `adoptPaneGenerationLocked` decides this worktree's persisted pane bindings were minted
+  against a different session incarnation and CLEARS them (`clearAllPaneBindings` sets every `PaneID` to `""`).
+  Reed's `Status` then reports the strand with `PaneID: ""` and, because `aliveIDs[""]` is false,
+  `Live: false` (`lifecycle.go:1171`). Shuttle reads that as "the strand's pane is not alive" and returns
+  `OutcomeDied` — `ok:true`, a successful terminal classification — for an agent that is demonstrably still
+  working in a pane tmux reports as `dead=0`.
+- **Why it matters:** this is R3-F1's hazard exactly, reached through the branch R3-F1's fix did not cover.
+  `wait.go`'s own header states the rule — "died is reserved for a strand reed STILL TRACKS whose pane is not
+  alive" — and a strand whose binding was cleared does not satisfy it: reed holds NO pane for it, so there is no
+  pane whose liveness was assessed. The consequence is the same duplicate-agent hazard: an unattended caller
+  (loom, burler, CI) reads `died` as "gone, retry" and spawns a second agent against the same worktree while the
+  first keeps working unreachably.
+- **The distinction IS available to shuttle**, which is what makes this small: `reedengine.StrandStatus` already
+  carries `PaneID`, so "tracked, but reed holds no pane binding" is directly observable and needs no reed change.
+  Shuttle's own `wait.go` already draws the neighbouring distinction for the not-tracked case (`errStrandNotTracked`).
+- **Suggested fix:** in `checkLivenessTick`, before the `!strand.Live` branch, treat a tracked strand with an empty
+  `PaneID` as a mechanism failure in `errStrandNotTracked`'s style (a new sentinel with its own message naming the
+  cleared binding), so `Wait` takes its identity-preserving exit through the existing `statusFailures` two-strike
+  counter rather than manufacturing a terminal outcome. Keep the satisfied-file-contract short-circuit ahead of it,
+  exactly as the other two negative answers already do.
+- **One case must be excluded, or the fix would misfire:** a run started `--anchor hidden` is never given a pane at
+  all, so its strand legitimately carries an empty `PaneID` from the moment `AddStrand` persists it
+  (`strand.go:280-322` realizes a pane "unless added anchor:hidden"). The new branch must therefore be gated on
+  `run.spec.Display.Anchor != render.AnchorHidden`, leaving today's behaviour for hidden runs untouched.
+- **Behaviour change worth stating:** on a GENUINE server rebirth the clear also fires and the agent really is gone;
+  that case now reports a mechanism failure (`ok:false`, identity preserved, no cleanup) instead of
+  `outcome:"died"`. That is the same trade R3-F1 made deliberately: for a state where the agent's fate is unknown,
+  an honest mechanism failure is safe in both directions, while a confident `died` is wrong in one of them.
+
+### R4-F3 — the no-live-pane refusal asserts two things that are both false when the binding was cleared — LOW, CONFIRMED, small
+
+- **Where:** `internal/shuttleengine/run.go:436` (`requireLiveStrand`'s `!s.Live` message).
+- **Severity:** LOW. **Status: CONFIRMED** (quoted verbatim from scenario 2). **Size: small.**
+- **Scenario:** with the binding cleared as above, `lyx shuttle interrupt`/`send` answer
+  `strand "…" has no live pane — its run already reached a terminal outcome or its pane died; keys would be
+  silently dropped`. The refusal itself is right and nothing is destroyed, but both offered causes are false: the
+  run had not reached a terminal outcome and the pane had not died — reed simply no longer holds a pane id for the
+  strand. An operator following that message looks for a dead agent and finds a live one.
+- **Why it is worth fixing rather than tolerating:** this is the same class of defect the campaign already fixed
+  twice in `requireLiveStrand`'s sibling message (round 3's R3-F1, and the not-tracked message's own rewrite,
+  which explicitly stopped naming only the completed-and-cleaned-up cause because it "would be wrong more often
+  than right"). The cleared-binding case is now known to be reachable with a live agent, so the same reasoning
+  applies to this branch.
+- **Suggested fix:** split the empty-`PaneID` case out of the `!s.Live` branch with its own message — reed tracks
+  the strand but holds no pane binding for it (a binding cleared as stale, or a strand added `anchor:hidden`), the
+  agent may still be running in a pane reed can no longer address, check `lyx reed status`.
+
+## Assessed and deliberately NOT recorded as findings
+
+- **`Wait`'s error names a `runDir` that no longer exists after a worktree rename** (scenario 3). The directory
+  travelled with the worktree; no code can hold a path renamed under it, and the guid/sessionId still locate the run.
+- **The two concurrent `interrupt` processes produced identical output with no ordering guarantee between them.**
+  Round 2 already recorded inter-process ordering as inherent (P1); this round adds that it is also harmless in the
+  refusal path, since both processes refuse before touching the pane.
+- **Reed re-creating a vanished anchor path** (`withOpLock`'s `MkdirAll`) — reproduced again in scenario 3, still
+  OUT-OF-CAMPAIGN and still reed's call, recorded unchanged from round 3.
+- **The `--anchor hidden` shuttle run has no pane and therefore cannot ever satisfy its file contract.** Reachable
+  from the CLI, but it is a caller error rather than a shuttle defect, and R4-F2's fix deliberately preserves
+  today's behaviour for it rather than quietly changing it.
