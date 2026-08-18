@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-hubgeom.WebsterGeometry and the standalonegeom sibling
+phase: approved-websterengine told Deps and engine-owned fabric seams
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -31,6 +31,7 @@ approved-preflight doc correction  '2026-08-18T10:07:07Z'
 approved-websterengine Geometry and RefMatcher  '2026-08-18T10:09:36Z'
 approved-webster path accessors take a told anchor root  '2026-08-18T10:18:06Z'
 approved-hubgeom.WebsterGeometry and the standalonegeom sibling  '2026-08-18T10:21:58Z'
+approved-websterengine told Deps and engine-owned fabric seams  '2026-08-18T10:44:19Z'
 ```
 
 ## Batches
@@ -74,9 +75,10 @@ batches:
     commit_sha: 42fbb3a4e3ae3820900c4f5a0c69cdda4df50b0d
     verify_baseline_failures: ["FAIL\t./internal/standalonegeom/... [setup failed]"]
   - name: websterengine told Deps and engine-owned fabric seams
-    state: running
+    state: approved
     implementer_session: 2111c602-f15d-49f3-91e9-f28946797489
     start_sha: c6d3034f88b239ca5d15aef03b60d3d23d000b02
+    commit_sha: b34aa504574f1bd3660e58ebf6ef0cb807851cdd
     verify_baseline_failures: []
   - name: webstercli standalone entry
     state: pending
