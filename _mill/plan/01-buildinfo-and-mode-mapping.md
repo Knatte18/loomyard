@@ -24,6 +24,8 @@ No batch-local decisions differ from `## Shared Decisions` in the overview.
   - `internal/lyxdirs/doc.go`
   - `internal/hubgeom/doc.go`
   - `cmd/lyx/stencilseed.go`
+  - `internal/stencilstore/stencilstore.go`
+  - `internal/stencilstore/reconcile.go`
 - **Edits:** none
 - **Creates:**
   - `internal/buildinfo/buildinfo.go`

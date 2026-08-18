@@ -67,6 +67,8 @@ Card 16's three positive rows exist specifically so that narrowing cannot land u
   - `internal/gitkit/gitkit.go`
   - `internal/fabricengine/junctionnames.go`
   - `internal/lyxcwd/lyxcwd.go`
+  - `internal/lyxcwd/cwdcontext.go`
+  - `cmd/lyx/stencilenvelope_integration_test.go`
 - **Edits:** none
 - **Creates:**
   - `cmd/lyx/stencilseed_integration_test.go`
@@ -75,6 +77,8 @@ Card 16's three positive rows exist specifically so that narrowing cannot land u
 - **Requirements:**
   A test file whose first non-empty line is `//go:build integration`, in `package main` alongside the rest of `cmd/lyx`'s tests.
   It spawns git through its fixtures, and `cmd/lyx/testmain_test.go` already supplies the `TestMain` calling `gitkit.HermeticGitEnv()`, so no new `TestMain` is added.
+  Read `cmd/lyx/stencilenvelope_integration_test.go` first: it already drives `seedStencils` and `seedStencilsAt` end-to-end and is the sibling this new file sits beside.
+  It stays passing unedited — both of its assertions run behind the `testing.Testing()` guard and are unaffected by the gate change — so do not modify it.
 
   Drive `stencilSeedTarget` directly, threading the cwd in with `lyxcwd.WithCwd(ctx, dir)` rather than changing the process working directory — `cmd/lyx/cwdmutation_test.go` guards this package's migrated files against reintroducing `t.Chdir(` or `os.Chdir(`, and a new file should not add one.
 
