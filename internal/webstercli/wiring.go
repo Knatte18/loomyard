@@ -1,8 +1,8 @@
 // wiring.go implements wire, the package-private method resolvePersistentPreRun (cli.go) delegates
-// to once it has resolved cwd and the preflight.HubPresent probe: the mode decision itself, and the
-// whole engine stack construction for whichever mode wins.
+// to once it has resolved cwd and told mode via preflight.ResolveMode: the mode decision itself, and
+// the whole engine stack construction for whichever mode wins.
 // The mode decision lives HERE, inside the extracted function, rather than upstream in
-// resolvePersistentPreRun, precisely so a test can drive it with a told HubPresent result and stay
+// resolvePersistentPreRun, precisely so a test can drive it with a told preflight.Mode and stay
 // tier 1 -- driving the real pre-run would reach lyxcwd.Resolve and its git spawn.
 
 package webstercli
@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -29,15 +30,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// wire computes hub-or-standalone mode from loc/hubPresent -- the *lyxcwd.Location and boolean
-// preflight.HubPresent(cwd) already returned -- and builds the whole engine stack onto c: module
+// wire computes hub-or-standalone mode from loc/mode -- the *lyxcwd.Location and preflight.Mode a
+// preflight.ResolveMode(cwd) call already told it -- and builds the whole engine stack onto c: module
 // configs, the model registry, resolved roles, the reed/claude engines, the shuttleengine.Runner and
 // its three adapted seams, the told websterengine.Geometry, the injected RefMatcher, and the lazy
 // fabric opener.
 //
-// hubPresent true selects hub mode, because the Location's paths are real. hubPresent false selects
-// standalone mode, which covers BOTH a plain downloaded git repository and an unresolvable cwd --
-// preflight.HubPresent returns a nil Location for each, and the two are indistinguishable from here.
+// mode == preflight.ModeHub selects hub mode, because the Location's paths are real.
+// preflight.ModeStandalone selects standalone mode, which covers BOTH a plain downloaded git
+// repository and an unresolvable cwd -- preflight.ResolveMode returns a nil Location for each, and
+// the two are indistinguishable from here.
+//
+// wire never sees the refused case at all: a ResolveMode error aborts upstream in
+// resolvePersistentPreRun, because a refusal is a resolution verdict rather than a wiring choice --
+// which is why mode carries only two reachable values here and no third Mode value exists for
+// refusal.
 //
 // preflight.Wired is deliberately never consulted: Wired is a per-worktree question ("is fabric wired
 // for the worktree at this exact cwd"), not a mode-selection one, and it is false in three healthy hub
@@ -55,8 +62,8 @@ import (
 // wire performs no cwd resolution and spawns no process -- every path it touches is either supplied by
 // the caller (loc, cwd) or a plain filesystem read (config loads, the standalone stencil seed) -- so a
 // test can drive it directly and stay inside the Test Tier Purity Invariant.
-func (c *websterCLI) wire(loc *lyxcwd.Location, hubPresent bool, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
-	if hubPresent {
+func (c *websterCLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, planDirFlag, targetDirFlag string) error {
+	if mode == preflight.ModeHub {
 		return c.wireHub(loc, stencilsDirFlag, planDirFlag, targetDirFlag)
 	}
 	return c.wireStandalone(cwd, stencilsDirFlag, planDirFlag, targetDirFlag)
