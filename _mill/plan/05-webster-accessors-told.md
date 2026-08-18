@@ -37,6 +37,7 @@ only the parameter type changes.
   `ReportsDir(anchorRoot)` must keep composing on `Dir(anchorRoot)` and `PromptsDir(anchorRoot)` on `ScratchDir(anchorRoot)`, so the `_lyx`/`.lyx` mirroring stays derived rather than restated.
   Drop the `internal/lyxcwd` import from this file if nothing else in it uses the package.
   Update each accessor's doc comment to name the told parameter instead of the Location, and keep each one's existing "no other package may construct this path" sentence.
+  Correct one stray reference while those comments are already open: `ReportsDir`'s sentence attributes the rule to a "Hub Geometry Invariant", which `CONSTRAINTS.md` does not define — change it to the Cwd Resolution Invariant the other three accessors already cite.
   Fix the file-header comment's claim that callers resolve `websterDir` via the accessors so it reads as told-parameter shaped.
   In `internal/websterengine/doc.go`, the "engine/cli split: webster is fabric-blind" section states that "all `_lyx/webster` path construction lives in internal/lyxcwd (WebsterDir/WebsterReportsDir/WebsterPromptsDir)" — that is already false and becomes conspicuously so here.
   Rewrite those two lines to say that `websterengine` itself declares its own `_lyx/webster` and `.lyx/webster` subpaths through the four told accessors in `state.go`, and that the anchor root they are joined onto is always supplied by the caller, per the Cwd Resolution Invariant.

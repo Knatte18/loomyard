@@ -305,7 +305,11 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
 ## Batch Tests
 
 `verify:` runs the untagged suites of `./internal/websterengine/...`, `./internal/webstercli/...` and `./cmd/lyx/...`, which is every package this batch's signature changes reach, plus a chained `go test -tags integration ./internal/websterengine/... ./internal/webstercli/...`.
-The tagged half carries most of this batch's weight rather than being a formality: five of the six fixture files cards 31 and 32 touch — `beginbatch_test.go`, `recordbatch_test.go`, `recoverbatch_test.go`, `runlevel_test.go` and `webstercli`'s `verbs_test.go` — are `//go:build integration`, so the untagged run does not compile them at all, and card 32's nil-bisector test lives in `runlevel_test.go`.
+The tagged half carries much of this batch's weight rather than being a formality.
+Cards 31 and 32 touch six `internal/websterengine` fixture files, and four of them — `beginbatch_test.go`, `recordbatch_test.go`, `recoverbatch_test.go` and `runlevel_test.go` — are `//go:build integration`, so the untagged run does not compile them at all;
+the remaining two, `audit_test.go` and `template_test.go`, are untagged and do run there.
+Separately, `internal/webstercli/verbs_test.go`, which card 33 edits in the other package, is also `//go:build integration`.
+Card 32's nil-bisector test lives in `runlevel_test.go` and is therefore reachable only through the tagged invocation.
 The regression net for the mechanical two-thirds of the batch is that the existing `websterengine` and `webstercli` suites keep passing with unchanged expected values — cards 30 and 31 convert fixtures without moving a single directory or expectation, so any drift shows up as a failure rather than as a silently different path.
 Card 32 carries the batch's genuinely new coverage, and each of its three tests exists because the corresponding hub-only fixture cannot distinguish correct from broken:
 with `anchorRoot == promptWorktreeRoot` the prompt renders identically either way;

@@ -3,7 +3,7 @@
 ```yaml
 task: websterengine + webstercli told-geometry, and Webster standalone entry
 slug: webster-told-geometry
-approved: false
+approved: true
 started: 20260818-091010
 parent: standalone-producers
 root: ""
