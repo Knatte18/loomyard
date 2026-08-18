@@ -54,19 +54,19 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 
 ### webster-geometry-struct
 
-- **Decision:** add `websterengine.Geometry`, mirroring `reedengine.Geometry`, carrying the nine told values webster needs:
-  `AnchorRoot`, `WorktreeRoot`, `AuditWorkdir`, `WebsterDir`, `ReportsDir`, `PromptsDir`, `ScratchDir`, `StencilsDir`, plus `PlanDir`.
+- **Decision:** add `websterengine.Geometry`, mirroring `reedengine.Geometry`, carrying the eight told values webster needs:
+  `AnchorRoot`, `WorktreeRoot`, `WebsterDir`, `ReportsDir`, `PromptsDir`, `ScratchDir`, `StencilsDir`, plus `PlanDir`.
 
-  **`AuditWorkdir` is a distinct field, not an alias for `AnchorRoot`.**
-  It is today's `deps.Layout.AnchorPath()` at five call sites — `recordbatch.go:102` (`AuditForksIncremental`'s workdir), `recordbatch.go:129,133` and `runlevel.go:724,728` (`CheckParent`/`CheckFork`'s `workdir`).
-  It must equal **the pane's actual cwd**, i.e. the same value as reed's `PaneCwd`: `AnchorRoot` in hub mode (unchanged), the `--target-dir` in standalone.
+  **The fork-audit workdir is `WorktreeRoot`** — not `AnchorRoot`, and not a ninth field of its own.
+  It is today's `deps.Layout.AnchorPath()` at five call sites — `recordbatch.go:102` (`AuditForksIncremental`'s workdir), `recordbatch.go:129,133` and `runlevel.go:724,728` (`CheckParent`/`CheckFork`'s `workdir`) — and it must equal **the pane's actual cwd**, i.e. the same value as reed's `PaneCwd`.
+  `WorktreeRoot` already is that value in both modes (`AnchorPath()` in hub, the `--target-dir` in standalone), so a separate field would be provably equal to it everywhere and would only invite the two to drift apart.
   `internal/hubgeom` gains `WebsterGeometry(l *lyxcwd.Location) websterengine.Geometry`;
   `internal/standalonegeom` gains the told-mode builder.
   `RunDeps`, `BeginDeps`, `RecordDeps` and `RecoverDeps` each carry a `Geom Geometry` field replacing `Layout` and the flat `WebsterDir`/`ReportsDir`/`PromptsDir`/`ScratchDir`/`WorktreeRoot`/`PlanDir` fields they hold today.
 - **Rationale:** the design doc names `hubgeom` as the single site for the `Location`-to-geometry conversion, and `hubgeom` needs a type to return.
-  One struct also keeps the four Deps structs from drifting apart on the same nine values, and it is exactly the shape `reedengine` already proved.
-  `AuditWorkdir` earns its own field because the fork audit resolves **transcript-relative write paths** against it (`audit.go:129-135`, `resolveWritePath` joins any non-absolute recorded path onto `workdir`).
-  A fork that records `internal/foo/bar.go` is naming a path relative to the directory it was actually running in, so a mechanical conversion of these five sites to `Geom.AnchorRoot` would resolve every relative write against `<state>` in standalone and silently mis-attribute — or silently exonerate — every file the audit is supposed to police.
+  One struct also keeps the four Deps structs from drifting apart on the same eight values, and it is exactly the shape `reedengine` already proved.
+  Pinning the audit workdir to `WorktreeRoot` matters because the fork audit resolves **transcript-relative write paths** against it (`audit.go:129-135`, `resolveWritePath` joins any non-absolute recorded path onto `workdir`).
+  A fork that records `internal/foo/bar.go` is naming a path relative to the directory it was actually running in, so a mechanical conversion of these five sites to `Geom.AnchorRoot` — the tempting one, since the old code said `AnchorPath()` — would resolve every relative write against `<state>` in standalone and silently mis-attribute, or silently exonerate, every file the audit is supposed to police.
   The told direction stays one-way: `hubgeom` and `standalonegeom` import `websterengine`, never the reverse.
 - **Rejected:** keeping the flat fields and having `hubgeom.WebsterGeometry` return a `webstercli`-local bag — the bag would have to be re-declared in `standalonegeom` too, which is the duplication `hubgeom` exists to prevent.
 
@@ -124,9 +124,9 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
   - `RefMatcher interface { Matches(cmd string) bool }`, declared in `websterengine`.
     `CheckFork` and `CheckParent` take a `RefMatcher` instead of a `*fabricengine.RefScanner`;
     `RecordDeps` and `RunDeps` carry one.
-  - `FabricBisector` (already a websterengine-declared interface) becomes **always caller-supplied**.
+  - `FabricBisector` (already a websterengine-declared interface) becomes **always caller-supplied, through an opener**.
     `runIntegrationStage`'s `if bisector == nil { fabricengine.Open(deps.Layout) }` fallback is deleted;
-    the CLI constructs the real `*fabricengine.Fabric` in hub mode and supplies `nil` in standalone.
+    the CLI supplies `RunDeps.OpenBisector` in hub mode and `nil` in standalone (see the `standalone-has-no-fabric` Decision for why the opener is a closure rather than a value).
 - **Rationale:** `*fabricengine.RefScanner` needs nothing from webster but a compiled regexp over `WeftWorktree(l)`, and `fabricengine.Open` needs a `Location` webster will no longer hold.
   Injecting both is what actually removes the hub concept from the engine — the design doc's stated goal for this file set.
   It also removes the last production use of `deps.Layout`.
@@ -142,9 +142,16 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
     all four commit points skip the call entirely in standalone.
     Only `run` surfaces the result — `run.go:106`'s `fabricCommitted` output field, which reports `false` in standalone.
     The other three call sites (`beginbatch.go:136`, `recordbatch.go:135`, `recoverbatch.go:155,189`) already discard the bool and only surface a sync *error*, so in standalone they emit nothing new.
-  - `RunDeps.Bisector` is `nil` in standalone.
-    `runIntegrationStage` must then skip the bisect without nil-panicking, and still record the failure — see the `standalone-integration-failure-is-recorded-with-unknown-localization` Decision for the exact channel and state writes.
-  - `RefMatcher` in standalone is a never-matching matcher (a `websterengine`-local zero value or a `standalonegeom`-supplied one) — there is no weft worktree and no fabric verb to police.
+  - The bisect seam becomes `RunDeps.OpenBisector func() (FabricBisector, error)` rather than a pre-built `Bisector` value — `nil` in standalone.
+    This keeps the construction as lazy as today's `fabricengine.Open(deps.Layout)` inside `runIntegrationStage` (`runlevel.go:832`), so a run that never reaches a failing integration suite never opens a fabric handle, and the three healthy-but-unwired locations are not forced to open one at wiring time.
+    A `nil` opener means standalone: skip the bisect without nil-panicking and still record the failure — see the `standalone-integration-failure-is-recorded-with-unknown-localization` Decision.
+    Tests keep injecting a fake by supplying an opener that returns it.
+  - **`RefMatcher` is never `nil` in either mode.**
+    Standalone's supplier is a single named type, `websterengine.NeverMatches` — an exported empty struct in `websterengine` whose `Matches(string) bool` always returns `false`.
+    Hub mode supplies `fabricengine.NewRefScanner(layout)`, which satisfies the same interface.
+- **The `NeverMatches` supplier is pinned, not left to the implementer.**
+  `CheckFork` and `CheckParent` call `fabricRef.Matches(cmd)` unguarded (`audit.go:114,183`), so a `nil` interface panics on the first standalone `record-batch`.
+  It lives in `websterengine` beside the `RefMatcher` interface it implements — not in `standalonegeom`, which has no business knowing webster's audit vocabulary, and not as an unnamed inline literal, which would be re-invented at each of the four `Deps`-construction sites.
 - **Rationale:** every one of these is fabric-repo machinery, and standalone has no fabric repo by construction.
   Building a plain `gitrepo.Repo` over `--target-dir` as the Bisector was considered and rejected: `FabricBisector`'s methods `CheckoutDetached`/`ResetHard` **mutate a working tree**, and doing that to a directory the operator merely told webster to work in violates the design's "the target directory receives only what the caller explicitly named" property.
 - **Rejected:** refusing `run` in standalone whenever the plan declares an integration suite — that would make standalone webster useless for most real plans, when degrading to "suite failed, here is the report, bisect unavailable" is honest and still actionable.
@@ -208,8 +215,10 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
   | `StencilsDir` | `fabricengine.StencilsDir(l.HubPath)`, overridable by `--stencils-dir` | `<state>/_lyx/stencils`, overridable by `--stencils-dir` |
   | config `baseDir` (shuttle, reed, webster, batcher, modelspec) | `l.AnchorPath()` | `<state>` |
   | reed `Geometry.PaneCwd` (pane spawn cwd) | `l.AnchorPath()` — today's value at both spawn sites | the absolute `--target-dir` |
-  | `AuditWorkdir` (fork-audit + `AuditForksIncremental` workdir) | `l.AnchorPath()` — unchanged | the absolute `--target-dir`, always equal to `PaneCwd` |
-  | `planparser.Validate`'s `worktreeRoot` argument (`validate.go:73`) | `l.AnchorPath()` — unchanged | the absolute `--target-dir` |
+  | fork-audit + `AuditForksIncremental` workdir | `l.AnchorPath()` — unchanged | *derived* — `WorktreeRoot`, always equal to `PaneCwd` |
+  | `planparser.Validate`'s `worktreeRoot` argument (`validate.go:73`) | `l.AnchorPath()` — unchanged | *derived* — `WorktreeRoot` |
+  | `shuttleengine.NewRunner`'s `anchorPath` argument (`cli.go:184`) | `reedGeom.AnchorPath` = `l.AnchorPath()` | `<state>` |
+  | `shuttleengine.NewRunner`'s `worktreeRoot` argument (`cli.go:184`) | `reedGeom.WorktreeRoot` = `l.WorktreePath()` | the absolute `--target-dir` |
   | `{{.worktree_root}}` in the fork/recovery/integration prompts | `AnchorRoot` (fork, recovery) / `WorktreeRoot` (integration) — both `l.AnchorPath()` today | `WorktreeRoot` |
 
   Hub mode must keep passing `l.AnchorPath()` for `WorktreeRoot`, exactly as the four CLI call sites do today — this task changes no resolved path in a real worktree.
@@ -301,15 +310,27 @@ T8 (the burler/perch standalone entry) lands *after* this task and explicitly re
 - **Decision:** the `layout *lyxcwd.Location` field on `websterCLI` (`cli.go:52`) is **deleted**, not left nil-in-standalone.
   Its replacements:
   - `c.geom websterengine.Geometry` — the told values every verb reads.
-  - `c.fabric *fabricengine.Fabric` — opened **once** in the wiring function in hub mode (replacing `fabricSync`'s per-call `fabricengine.Open`), `nil` in standalone.
-    It is the single source for all three fabric-bound needs: the commit handle, the `FabricBisector`, and the `RefMatcher`.
+  - `c.openFabric func() (*fabricengine.Fabric, error)` — a **lazy opener closure**, not an opened handle.
+    In hub mode the wiring function captures `layout` in a closure calling `fabricengine.Open(layout)`;
+    in standalone it is `nil`, and `nil` is what every fabric-bound call site branches on.
+  - `c.refMatcher websterengine.RefMatcher` — built eagerly in the wiring function and **never `nil` in either mode**: `fabricengine.NewRefScanner(layout)` in hub mode, `websterengine.NeverMatches{}` in standalone.
+    It is built while `layout` is still in scope, since `NewRefScanner` takes a `*lyxcwd.Location` (`refscanner.go:24`) and `*fabricengine.Fabric` exposes neither a scanner nor a `Location`.
+    `NewRefScanner` only compiles a regexp from `WeftWorktree(l)` — it touches no filesystem and cannot fail — so eager construction is safe where eager `Open` is not.
   - `c.anchorRel string` — hub mode's `layout.AnchorRel`, empty in standalone.
   - `validate.go:73`'s `planparser.Validate(plan, c.layout.AnchorPath())` becomes `planparser.Validate(plan, c.geom.WorktreeRoot)`.
 
-  **`fabricSync` (`internal/webstercli/sync.go`) changes signature** to `fabricSync(f *fabricengine.Fabric, anchorRel, label string) (bool, error)`.
+  **`fabricSync` (`internal/webstercli/sync.go`) changes signature** to `fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string) (bool, error)`.
   It needs two things from the deleted field and neither survives on its own: `layout.AnchorRel` for `fabricengine.ScopedPathspec` (`sync.go:22`) and the whole `*lyxcwd.Location` for `fabricengine.Open` (`sync.go:26`).
-  `fabricengine.Fabric` exposes no `AnchorRel`, so the pathspec scope must be told separately — hence the second parameter rather than deriving it from the handle.
-  A `nil` `f` means standalone and returns `(false, nil)` without touching git, which is what the four call sites branch on.
+  `fabricengine.Fabric` exposes no `AnchorRel`, so the pathspec scope must be told separately rather than derived from the handle.
+
+  **The opener stays lazy, and the `SkipGit` short-circuit is preserved exactly.**
+  `sync.go`'s existing order is load-bearing: it reads `EnvSyncOptions()` first and calls `Open` only inside `if !opts.SkipGit` (`sync.go:20-26`).
+  That order is kept — `WEFT_SKIP_GIT=1` still means *never open*, and `open == nil` (standalone) returns `(false, nil)` without touching git.
+  **Why lazy rather than opened once.**
+  `fabricengine.Open` is `newPaired(l.WorktreePath(), WeftWorktree(l))` and stat-checks **both** paths, returning `*ErrMissingPath` when either is absent (`open.go:12`, `fabric.go:67-74`).
+  The weft sibling is absent in precisely the three healthy-but-unwired locations the mode-selection Decision preserves — `<hub>/_board`, an unpaired sibling, a pair-removed worktree.
+  Opening eagerly in the wiring function would therefore fail the pre-run and break `lyx webster validate`/`status`/`run` in all three, which work today because `sync.go` opens lazily and only at an actual commit point.
+  A hub whose weft is genuinely broken still fails — at the commit point, with fabric's own error, exactly as today.
 - **Rationale:** a surviving `layout` field would be `nil` in standalone and every existing dereference is an unguarded nil-panic waiting for the first standalone verb — `validate` most immediately.
   Deleting the field makes the compiler enumerate every remaining consumer instead of leaving them to be found at runtime.
   `planparser.Validate`'s second parameter is **named `worktreeRoot`** (`internal/planparser/validate.go:56`) and resolves each card's move source/target files, so `WorktreeRoot` is the correct told value on its own terms — hub mode passes `l.AnchorPath()` for it exactly as today, so no hub behaviour changes.
@@ -401,6 +422,13 @@ Preserve that.
 **`internal/hubgeom`** currently exports `ReedGeometry` only.
 Its `doc.go` already names `WebsterGeometry` as T7's addition and states that standalone CLIs do not call `hubgeom` — that sentence stays true and is why `standalonegeom` is a separate package.
 
+**`WorktreeRoot` names two different paths in hub mode, and the plan must not conflate them.**
+`websterengine.Geometry.WorktreeRoot` is `l.AnchorPath()` — every one of webster's four CLI call sites passes that today.
+`reedengine.Geometry.WorktreeRoot` is `l.WorktreePath()` (`hubgeom.go:22`).
+The two coincide only at `AnchorRel == "."`.
+This is a deliberate collision kept for continuity — renaming webster's field would make every diff in this task look like a behaviour change — so `websterengine.Geometry`'s doc comment must state outright that its `WorktreeRoot` is the anchor-anchored value and is **not** reed's, or the next reader will "fix" one to match the other.
+In standalone both become the `--target-dir`, so the divergence is a hub-mode-only artifact.
+
 **`reedengine.Geometry`'s two consumers of `AnchorPath`** (`internal/reedengine/lifecycle.go`): `stateDir` at `:33` (`Join(AnchorPath, ".lyx")`), and the pane spawn cwd at `:294` (`new-session -c`) and `:489` (`split-window -c`).
 `Geometry.WorktreeRoot` is consumed only by `strand.go:175-176` (strand name resolution and the `Strand.Worktree` stamp).
 `shuttleengine.Spec.validate` already resolves relative file entries against its own told `worktreeRoot` (`spec.go:115,132`).
@@ -486,13 +514,17 @@ the migration must keep them green with only mechanical construction changes.
   `webstergeom_test.go`, `template_test.go` (which owns `testLayout`, `patternActiveLayout` and `patternActiveMissingPatternStencilsLayout` at `:184,198,818` and is the main consumer of the render functions' `Location` parameter), `beginbatch_test.go`, `recordbatch_test.go`, `recoverbatch_test.go`, `runlevel_test.go`, `audit_test.go`.
 - `webstergeom_test.go` is rewritten: the four accessors now take `anchorRoot string`, so the fixture builds `l.AnchorPath()` once and passes it in.
   Keep both the unanchored and subpath-anchored cases — they still pin the `_lyx`/`.lyx` split.
-- New: `CheckFork`/`CheckParent` against a fake `RefMatcher`, proving the audit's fabric-reference violation fires on a matcher hit and stays silent on a never-matching one.
+- New: `CheckFork`/`CheckParent` against a fake `RefMatcher`, proving the audit's fabric-reference violation fires on a matcher hit and stays silent on a never-matching one, plus a case pinning `NeverMatches{}` itself.
   This is a genuine TDD candidate — write the interface's test before deleting the `*fabricengine.RefScanner` parameter.
+- **`audit_test.go`'s existing `TestRefScannerMatches` cases stay where they are, unchanged in substance** (`:41,90,199` build a real `fabricengine.NewRefScanner` and `WeftWorktree` from a `fakeLayout`).
+  `*fabricengine.RefScanner` satisfies the new `RefMatcher` interface, and `NewRefScanner` still takes a `*lyxcwd.Location` — that is `fabricengine`'s own API, untouched by this task — so the only change these cases need is the `Deps`-construction conversion every other fixture gets.
+  Keeping them preserves the real-scanner coverage the Fabric Git Invariant cites as its machine check;
+  the new fake-`RefMatcher` cases are added alongside, not in place of them.
 - New: `runIntegrationStage` with a `nil` Bisector must not panic, must surface the standalone-mode explanation in the new `RunResult.Warnings`, and must still leave `state.json` and `summary.md` carrying the failure with `"unknown"`/`"unknown"` localization.
   Assert the `warnings` key reaches `run`'s JSON envelope too — the field is new on both `RunResult` and the envelope, so a test that stops at the struct proves nothing an operator can see.
   TDD candidate — the nil-fallback deletion is what makes nil reachable.
-- New: the fork audit resolves a **relative** transcript write path against `AuditWorkdir`, not `AnchorRoot`.
-  Drive `CheckFork`/`CheckParent` with `AuditWorkdir != AnchorRoot` and a relative recorded path, and assert the violation is judged against the workdir-joined path.
+- New: the fork audit resolves a **relative** transcript write path against `WorktreeRoot`, not `AnchorRoot`.
+  Drive `CheckFork`/`CheckParent` with `WorktreeRoot != AnchorRoot` and a relative recorded path, and assert the violation is judged against the worktree-joined path.
   TDD candidate — with the two values equal (the hub case) the correct and the broken implementation are indistinguishable.
 - `render.go`'s existing tests move from a `Location` fixture to told `anchorRoot`/`stencilsDir` strings.
   Two assertions, not one — this is a TDD candidate, since the standalone case is the one the first draft of this discussion got wrong:
@@ -516,7 +548,8 @@ The existing reed suite must stay green unchanged — that is the actual regress
   Plus the plan-dir cases: hub default, standalone default, explicit override, and missing-in-standalone ⇒ usage error naming `--plan-dir`.
   Plus `validate`'s told root: `planparser.Validate` receives `WorktreeRoot` in both modes, and the `websterCLI` struct carries no `*lyxcwd.Location` field at all.
   Plus `--target-dir` refused in hub mode.
-  Plus the geometry the function builds in standalone: `PaneCwd`, `AuditWorkdir`, `WorktreeRoot` and the `worktree_root` token all resolve to the target, while every `_lyx`/`.lyx` path and every config `baseDir` resolves under `<state>`.
+  Plus the geometry the function builds in standalone: `PaneCwd`, `WorktreeRoot`, the audit workdir and the `worktree_root` token all resolve to the target, while every `_lyx`/`.lyx` path and every config `baseDir` resolves under `<state>`.
+  Plus the two seams that must never be `nil`-or-eager: `refMatcher` is non-`nil` in **both** modes, and `openFabric`/`OpenBisector` are `nil` in standalone and are **not** invoked during wiring in hub mode — assert the wiring function opens no fabric handle, which is what keeps the three healthy-but-unwired locations working.
   The function must perform no cwd resolution and no spawn, so this stays tier 1 — which is only possible because the mode decision lives inside it.
 - **`//go:build integration` test** driving `RunCLIIn(<temp dir outside any git repo>, …)` and asserting the pre-run reaches the run verb's own flag validation rather than a resolution error.
   `internal/perchcli/cli_integration_test.go` is the shape to follow;
@@ -545,7 +578,7 @@ The existing reed suite must stay green unchanged — that is the actual regress
 - **Q:** `{{.worktree_root}}` is filled from `AnchorPath` in three renderers and from `WorktreeRoot` in the fourth — converge? **A:** [auto-pick] preserve today's values exactly;
   record the mismatch in the doc comment. **Why:** this is a signature migration;
   converging would silently change prompt text in subpath-anchored hubs with no test looking for it.
-- **Q:** What shape does the geometry hand-off take? **A:** [auto-pick] a `websterengine.Geometry` struct mirroring `reedengine.Geometry`, built by `hubgeom.WebsterGeometry` and by `standalonegeom`. **Why:** `hubgeom` needs a type to return, and one struct keeps the four Deps structs from drifting on the same six values.
+- **Q:** What shape does the geometry hand-off take? **A:** [auto-pick] a `websterengine.Geometry` struct mirroring `reedengine.Geometry`, built by `hubgeom.WebsterGeometry` and by `standalonegeom`. **Why:** `hubgeom` needs a type to return, and one struct keeps the four Deps structs from drifting on the same eight values.
 - **Q:** Where does the standalone reed geometry live, given T8 needs the identical builder a wave later? **A:** [auto-pick] a new `internal/standalonegeom`, hubgeom's told-mode sibling. **Why:** the design's own "no additive twins" reasoning — inlining it in `webstercli` guarantees either a duplicate or a lift.
 - **Q:** What triggers hub mode? **A:** [auto-pick] `preflight.Wired`, with a `_board`-present discriminator turning "not wired" into a hard error rather than standalone. **Why:** `Resolve` succeeds in any ordinary git repo, so it is not a usable trigger;
   and standalone must not become where broken hubs hide.
@@ -567,7 +600,7 @@ The existing reed suite must stay green unchanged — that is the actual regress
 - **Q:** [review r1 gap] The `_board` discriminator needs a `worktreeRoot`, but `preflight.Wired` returns `(nil, false)` on both failure branches — where does it come from? **A:** [recommended] It does not;
   use `preflight.HubPresent(cwd)` as the discriminator, and move the mode decision inside the extracted wiring function. **Why:** T5 built `HubPresent` to answer exactly this question, and hand-derived hub arithmetic would be wrong anyway under a nested `AnchorRel` since webster's hub `worktreeRoot` is `AnchorPath()`;
   the decision has to sit inside the extracted function for the truth-table test to reach it at tier 1.
-- **Q:** [review r2 gap] The fork audit's workdir is `Layout.AnchorPath()` and `resolveWritePath` joins relative transcript paths onto it — which told field does it become? **A:** [recommended] Its own `Geometry.AuditWorkdir` field, always equal to reed's `PaneCwd`. **Why:** a mechanical conversion to `AnchorRoot` would resolve every relative recorded write against `<state>` in standalone, silently mis-attributing or exonerating every file the audit exists to police.
+- **Q:** [review r2 gap] The fork audit's workdir is `Layout.AnchorPath()` and `resolveWritePath` joins relative transcript paths onto it — which told field does it become? **A:** [recommended] Not `AnchorRoot` — it must equal the pane's actual cwd. **Why:** a mechanical conversion to `AnchorRoot` would resolve every relative recorded write against `<state>` in standalone, silently mis-attributing or exonerating every file the audit exists to police. *(r2 gave this its own `Geometry.AuditWorkdir` field; **superseded in r4** — the value is `WorktreeRoot` in both modes, so the field was dropped as provably redundant.)*
 - **Q:** [review r2 gap] `preflight.Wired` is false in three *healthy* hub situations (`<hub>/_board`, an unpaired sibling, a pair-removed worktree) — is `(wired=false, hubPresent=true)` really a broken hub? **A:** [recommended] No: drop `Wired` from mode selection entirely and key on `HubPresent` alone — hub if a hub exists, standalone otherwise. **Why:** `Wired` is a per-worktree question and the r1 table would have refused three locations that run webster today;
   `HubPresent` still sends a plain downloaded repo to standalone, which was T8's actual motivating hazard, and a damaged hub gets hub mode and fails loudly at the point of use rather than hiding in standalone. Flagged for T8/T10 to reconcile.
 - **Q:** [review r2 gap] What happens to the `websterCLI.layout` field and `validate.go:73` in standalone? **A:** [recommended] Delete the field;
@@ -581,5 +614,13 @@ The existing reed suite must stay green unchanged — that is the actual regress
   it is justified by T5's own enumerated facts — the three healthy-but-unwired locations are the counterexample to the sentence four lines below them, and routing them to standalone would relocate a real hub's state to `<state>`.
 - **Q:** [review r3 gap] Is the affected-file list complete? **A:** [recommended] No — replace the hand list with a mechanical grep per changed exported symbol and record every hit's disposition. **Why:** the four accessors alone had hits in three files nobody had named (`notransients_test.go`, `cli_test.go`, and `constructoranchoring_test.go`'s `174-175` map);
   the design doc already states this enumeration obligation and warns the constructor-only reading is wrong at least once.
+- **Q:** [review r4 gap] `fabricengine.Open` stat-checks the weft sibling and errors when it is absent — does opening `c.fabric` once in the wiring function break the three healthy-but-unwired locations? **A:** [recommended] Yes;
+  replace the handle with a lazy `openFabric` closure, and keep `sync.go`'s `SkipGit`-before-`Open` order so `WEFT_SKIP_GIT=1` still means never open. **Why:** my own r3 fix introduced this regression — `validate`/`status` work at those locations today precisely because `sync.go` opens lazily at a commit point, never at pre-run.
+- **Q:** [review r4 gap] Which supplier provides the standalone `RefMatcher`? **A:** [recommended] One named type, `websterengine.NeverMatches`, beside the interface it implements;
+  never `nil` in either mode. **Why:** `CheckFork`/`CheckParent` call `Matches` unguarded (`audit.go:114,183`), so leaving it as "a zero value **or** a `standalonegeom`-supplied one" is a nil-panic on the first standalone `record-batch`;
+  and `standalonegeom` has no business knowing webster's audit vocabulary.
+- **Q:** [review r4 gap] Does the audit workdir need its own `Geometry` field? **A:** [recommended] No — it equals `WorktreeRoot` in both pinned modes, so pin `WorktreeRoot` and drop the ninth field. **Why:** a field provably equal to an existing one everywhere adds no information and invites the two to drift.
+- **Q:** [review r4 gap] `websterengine.Geometry.WorktreeRoot` is `AnchorPath()` while `reedengine.Geometry.WorktreeRoot` is `WorktreePath()` — is that a mistake? **A:** [recommended] No, but it must be documented in the `Geometry` doc comment, and the two-roots table gains rows for `shuttleengine.NewRunner`'s told arguments. **Why:** the collision is deliberate continuity — renaming webster's field would make every diff look like a behaviour change — but undocumented it invites someone to "fix" one to match the other.
+- **Q:** [review r4 gap] What happens to `audit_test.go`'s real-`RefScanner` cases? **A:** [recommended] They stay, unchanged in substance. **Why:** `*fabricengine.RefScanner` satisfies the new interface and `NewRefScanner`'s own signature is untouched by this task, so keeping them preserves the real-scanner coverage the Fabric Git Invariant cites as its machine check.
 - **Q:** What happens to `cmd/lyx/constructoranchoring_test.go`? **A:** [auto-pick] webster's four rows rewritten in place in both test functions;
   accept the expected textual conflict with T6's adjacent rows. **Why:** the design's explicit disposition for the file, and the non-tautological anchoring proof lives in `verbs_test.go` regardless.
