@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-gate-and-ldflags
+phase: approved-docs-and-invariants
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-buildinfo-and-mode-mapping  '2026-08-18T06:47:18Z'
 approved-standalonestate-leaf  '2026-08-18T06:51:54Z'
 approved-preflight-lift  '2026-08-18T07:00:55Z'
 approved-cli-gate-and-ldflags  '2026-08-18T07:07:34Z'
+approved-docs-and-invariants  '2026-08-18T07:10:20Z'
 ```
 
 ## Batches
@@ -63,8 +64,9 @@ batches:
     commit_sha: 423f595de7894bf9042103fce23f4c96511545c1
     verify_baseline_failures: []
   - name: docs-and-invariants
-    state: running
+    state: approved
     implementer_session: 2865451f-72d1-4d94-828a-b7ac81b053bd
     start_sha: 426c05bbf60587409b03affc6b33aa07946a5fc1
+    commit_sha: efad52c6ef36238b9ac922d14c11523a08ea833c
     verify_baseline_failures: []
 ```
