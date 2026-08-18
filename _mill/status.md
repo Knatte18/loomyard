@@ -39,7 +39,9 @@ batches:
     commit_sha: 629f8c6699ed5653de449f6e1d3f8a4afea0efd1
     verify_baseline_failures: []
   - name: burler told-geometry
-    state: pending
+    state: running
+    implementer_session: 3e36368d-324a-4b3b-8947-c9acb2378adf
+    start_sha: 56d2cc93578726d13686f01c82737ad6bd318b09
     verify_baseline_failures: []
   - name: perch told-geometry
     state: pending
