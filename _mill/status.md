@@ -52,7 +52,9 @@ batches:
     commit_sha: 4a4afa168abfced1f17b9171c42dd399792997a6
     verify_baseline_failures: []
   - name: webstercli-repoint
-    state: pending
+    state: running
+    implementer_session: b9218973-3631-4098-a820-64176428e6db
+    start_sha: ded6b6339d6bfde6a51c14ab0ac21c5402d3b924
     verify_baseline_failures: []
   - name: burlercli-standalone-entry
     state: pending
