@@ -23,6 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -176,6 +177,9 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	c := &websterCLI{
 		layout:            layout,
 		cfg:               websterengine.Config{},
+		geom:              hubgeom.WebsterGeometry(layout),
+		refMatcher:        fabricengine.NewRefScanner(layout),
+		openFabric:        func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 		planDir:           planparser.PlanDir(layout.AnchorPath()),
 		websterDir:        websterengine.Dir(layout.AnchorPath()),
 		websterScratchDir: websterengine.ScratchDir(layout.AnchorPath()),

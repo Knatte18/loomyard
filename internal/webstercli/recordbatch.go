@@ -97,16 +97,15 @@ Example:
 			}
 
 			deps := websterengine.RecordDeps{
-				Batches:      batches,
-				State:        st,
-				Config:       c.cfg,
-				Engine:       c.engine,
-				Layout:       c.layout,
-				WorktreeRoot: c.layout.AnchorPath(),
-				ReportsDir:   c.reportsDir,
-				OutcomePath:  websterengine.OutcomePath(c.websterDir),
-				SummaryPath:  websterengine.SummaryPath(c.websterDir),
-				Sleeper:      realSleeper{},
+				Batches:     batches,
+				State:       st,
+				Config:      c.cfg,
+				Engine:      c.engine,
+				Geom:        c.geom,
+				RefMatcher:  c.refMatcher,
+				OutcomePath: websterengine.OutcomePath(c.websterDir),
+				SummaryPath: websterengine.SummaryPath(c.websterDir),
+				Sleeper:     realSleeper{},
 			}
 
 			result, err := websterengine.RecordBatch(deps, batchNumber)

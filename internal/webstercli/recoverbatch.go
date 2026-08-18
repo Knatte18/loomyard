@@ -113,19 +113,16 @@ Example:
 			}
 
 			deps := websterengine.RecoverDeps{
-				Starter:      c.starter,
-				Plan:         plan,
-				Batches:      batches,
-				State:        st,
-				Roles:        c.roles,
-				Config:       c.cfg,
-				Engine:       c.engine,
-				Reed:         c.reed,
-				ShuttleCfg:   c.shuttleCfg,
-				Layout:       c.layout,
-				WorktreeRoot: c.layout.AnchorPath(),
-				WebsterDir:   c.websterDir,
-				ReportsDir:   c.reportsDir,
+				Starter:    c.starter,
+				Plan:       plan,
+				Batches:    batches,
+				State:      st,
+				Roles:      c.roles,
+				Config:     c.cfg,
+				Engine:     c.engine,
+				Reed:       c.reed,
+				ShuttleCfg: c.shuttleCfg,
+				Geom:       c.geom,
 			}
 
 			bs, spawned, err := websterengine.RecoverSpawnOrAttach(deps, batchNumber, recoverRealClock{})

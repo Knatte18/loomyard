@@ -89,20 +89,15 @@ Example:
 			}
 
 			deps := websterengine.BeginDeps{
-				Plan:         plan,
-				Batches:      batches,
-				State:        st,
-				Roles:        c.roles,
-				Config:       c.cfg,
-				Engine:       c.engine,
-				Injector:     c.injector,
-				Reed:         c.reed,
-				WorktreeRoot: c.layout.AnchorPath(),
-				Layout:       c.layout,
-				WebsterDir:   c.websterDir,
-				ReportsDir:   c.reportsDir,
-				PromptsDir:   c.promptsDir,
-				ScratchDir:   c.websterScratchDir,
+				Plan:     plan,
+				Batches:  batches,
+				State:    st,
+				Roles:    c.roles,
+				Config:   c.cfg,
+				Engine:   c.engine,
+				Injector: c.injector,
+				Reed:     c.reed,
+				Geom:     c.geom,
 			}
 
 			result, err := websterengine.BeginBatch(deps, batchNumber)

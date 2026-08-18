@@ -55,20 +55,18 @@ Example:
 			}
 
 			deps := websterengine.RunDeps{
-				Starter:      c.masterStarter,
-				Reed:         c.reed,
-				Engine:       c.engine,
-				ShuttleCfg:   c.shuttleCfg,
-				Layout:       c.layout,
-				Roles:        c.roles,
-				Config:       c.cfg,
-				Batcher:      c.batcher,
-				PlanDir:      c.planDir,
-				WebsterDir:   c.websterDir,
-				ReportsDir:   c.reportsDir,
-				PromptsDir:   c.promptsDir,
-				ScratchDir:   c.websterScratchDir,
-				WorktreeRoot: c.layout.AnchorPath(),
+				Starter:    c.masterStarter,
+				Reed:       c.reed,
+				Engine:     c.engine,
+				ShuttleCfg: c.shuttleCfg,
+				Roles:      c.roles,
+				Config:     c.cfg,
+				Batcher:    c.batcher,
+				Geom:       c.geom,
+				RefMatcher: c.refMatcher,
+				OpenBisector: func() (websterengine.FabricBisector, error) {
+					return c.openFabric()
+				},
 			}
 
 			result, runErr := websterengine.Run(deps, websterengine.RunOptions{Fresh: fresh})
@@ -104,6 +102,7 @@ Example:
 				"batches_done":    result.BatchesDone,
 				"summary_title":   result.SummaryTitle,
 				"fabricCommitted": committed,
+				"warnings":        result.Warnings,
 			}))
 			return nil
 		},

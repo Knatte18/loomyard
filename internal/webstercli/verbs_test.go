@@ -40,6 +40,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -48,6 +49,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/websterengine"
+	"github.com/spf13/cobra"
 )
 
 // seedHubStencils populates hub's real fabricengine.StencilsDir(hub) with every shipped stencil,
@@ -274,6 +276,9 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		reed:       reed,
 		layout:     layout,
 		shuttleCfg: shuttleCfg,
+		geom:       hubgeom.WebsterGeometry(layout),
+		refMatcher: fabricengine.NewRefScanner(layout),
+		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 		cfg: websterengine.Config{
 			SelfFixCap:         2,
 			MasterTimeoutMin:   480,
@@ -290,6 +295,35 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	}
 
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}
+}
+
+// TestPersistentPreRun_OpenFabricWiredButUninvoked proves the laziness argument cli.go's own
+// resolvePersistentPreRun doc comment makes: the fabric-handle opener is built as a closure and
+// stored on c, but is never itself called during pre-run wiring.
+// The fixture worktree carries no weft sibling worktree at all -- fabricengine.Open stat-checks that
+// sibling, so an eager call here would stat-fail and surface as a non-nil error from the "status"
+// verb below (one of the three healthy-but-unwired locations the doc comment names). Reaching exit 0
+// is therefore itself the behavioural half of the proof; c.openFabric != nil is the structural half.
+func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
+	worktree := newScratchRepo(t)
+	commitFile(t, worktree, "base.txt", "base", "base commit")
+
+	c := &websterCLI{}
+	parent := &cobra.Command{
+		Use:               "webster",
+		PersistentPreRunE: c.resolvePersistentPreRun,
+	}
+	parent.AddCommand(c.statusCmd())
+
+	var out strings.Builder
+	exitCode := clihelp.ExecuteIn(parent, worktree, &out, []string{"status"})
+
+	if exitCode != 0 {
+		t.Fatalf("status = %d; want 0 (an eager fabricengine.Open would stat-fail on the weft-less fixture worktree), output: %s", exitCode, out.String())
+	}
+	if c.openFabric == nil {
+		t.Fatal("c.openFabric = nil after PersistentPreRunE; want a wired opener closure")
+	}
 }
 
 // testPlanFingerprint recomputes the plan-identity hash websterengine's own

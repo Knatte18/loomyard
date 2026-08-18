@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -52,6 +53,19 @@ type websterCLI struct {
 	cfg        websterengine.Config
 	roles      map[websterengine.Role]modelspec.Resolved
 
+	// geom is the told websterengine.Geometry every verb's Deps construction reads its paths from —
+	// hubgeom.WebsterGeometry(layout) in hub mode.
+	geom websterengine.Geometry
+	// refMatcher is the injected fabric-reference class matcher record-batch's and run's own audit
+	// consult — a real *fabricengine.RefScanner in hub mode, built eagerly because NewRefScanner only
+	// compiles a regexp and cannot fail.
+	refMatcher websterengine.RefMatcher
+	// openFabric is the lazy fabric-handle opener RunDeps.OpenBisector is built from. It must NOT be
+	// opened during PersistentPreRunE: fabricengine.Open stat-checks the weft sibling and would fail
+	// the pre-run in the three healthy-but-unwired locations that run validate and status today,
+	// which never reach the integration bisect.
+	openFabric func() (*fabricengine.Fabric, error)
+
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher
 
@@ -79,10 +93,117 @@ func (s runnerMasterStarter) StartMaster(spec shuttleengine.Spec) (websterengine
 	return run, nil
 }
 
+// resolvePersistentPreRun resolves cwd -> layout -> shuttle config -> reed config -> webster
+// config -> model registry -> resolved roles -> reed engine -> claude engine ->
+// shuttleengine.Runner exactly once per invocation, storing the resolved ingredients on c, per
+// cli.go's own file-header doc comment.
+// Extracted from Command()'s PersistentPreRunE assignment so a test can invoke it directly against a
+// *websterCLI it holds a reference to and inspect the populated fields afterward -- most notably that
+// c.openFabric is built here as a closure but never itself called.
+// Skips resolution entirely when the group command itself is invoked (bare listing or
+// unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
+// be present.
+func (c *websterCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
+	if cmd.Name() == "webster" {
+		return nil
+	}
+
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	cwd, err := lyxcwd.CwdFrom(ctx)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	layout, err := lyxcwd.Resolve(cwd)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	websterCfg, err := websterengine.LoadConfig(layout.AnchorPath(), "webster")
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	activeBatcher, err := batcher.Active(layout.AnchorPath())
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	registry, err := modelspec.LoadRegistry(layout.AnchorPath())
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	roles, err := websterengine.ResolveRoles(websterCfg, registry)
+	if err != nil {
+		output.Err(out, err.Error())
+		clihelp.Abort(ctx, 1)
+		return nil
+	}
+
+	reedGeom := hubgeom.ReedGeometry(layout)
+	reedEngine := reedengine.New(reedCfg, reedGeom)
+	claudeEngine := claudeengine.New()
+	runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+
+	c.runner = runner
+	c.starter = runner
+	c.injector = runner
+	c.masterStarter = runnerMasterStarter{runner: runner}
+	c.engine = claudeEngine
+	c.reed = reedEngine
+	c.layout = layout
+	c.shuttleCfg = shuttleCfg
+	c.cfg = websterCfg
+	c.roles = roles
+	c.geom = hubgeom.WebsterGeometry(layout)
+	// The matcher is built eagerly because NewRefScanner only compiles a
+	// regexp and cannot fail. The fabric handle stays a closure and must NOT
+	// be opened here: fabricengine.Open stat-checks the weft sibling and
+	// would fail this pre-run in the three healthy-but-unwired locations
+	// that run validate and status today, neither of which ever reaches the
+	// integration bisect.
+	c.refMatcher = fabricengine.NewRefScanner(layout)
+	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
+	c.batcher = activeBatcher
+	c.planDir = planparser.PlanDir(layout.AnchorPath())
+	c.websterDir = websterengine.Dir(layout.AnchorPath())
+	c.reportsDir = websterengine.ReportsDir(layout.AnchorPath())
+	c.websterScratchDir = websterengine.ScratchDir(layout.AnchorPath())
+	c.promptsDir = websterengine.PromptsDir(layout.AnchorPath())
+	return nil
+}
+
 // Command returns the cobra command tree for the webster module.
 //
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd and configs into c,
-// skipping resolution when the group command itself is invoked.
+// The parent "webster" command carries a PersistentPreRunE (c.resolvePersistentPreRun) that resolves
+// cwd and configs into c, skipping resolution when the group command itself is invoked.
 func Command() *cobra.Command {
 	c := &websterCLI{}
 
@@ -109,98 +230,8 @@ Verbs:
 		// RunE is set so that bare "lyx webster" lists subcommands and "lyx
 		// webster bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
-		RunE: clihelp.GroupRunE,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Guard: when the webster group command itself is invoked (bare
-			// listing or unknown-subcommand error path via GroupRunE), skip
-			// cwd/layout/config/engine resolution so that neither path
-			// requires a git repository to be present.
-			if cmd.Name() == "webster" {
-				return nil
-			}
-
-			ctx := cmd.Context()
-			out := cmd.OutOrStdout()
-
-			cwd, err := lyxcwd.CwdFrom(ctx)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			layout, err := lyxcwd.Resolve(cwd)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			shuttleCfg, err := shuttleengine.LoadConfig(layout.AnchorPath(), "shuttle")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			reedCfg, err := reedengine.LoadConfig(layout.AnchorPath(), "reed")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			websterCfg, err := websterengine.LoadConfig(layout.AnchorPath(), "webster")
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			activeBatcher, err := batcher.Active(layout.AnchorPath())
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			registry, err := modelspec.LoadRegistry(layout.AnchorPath())
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			roles, err := websterengine.ResolveRoles(websterCfg, registry)
-			if err != nil {
-				output.Err(out, err.Error())
-				clihelp.Abort(ctx, 1)
-				return nil
-			}
-
-			reedGeom := hubgeom.ReedGeometry(layout)
-			reedEngine := reedengine.New(reedCfg, reedGeom)
-			claudeEngine := claudeengine.New()
-			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-
-			c.runner = runner
-			c.starter = runner
-			c.injector = runner
-			c.masterStarter = runnerMasterStarter{runner: runner}
-			c.engine = claudeEngine
-			c.reed = reedEngine
-			c.layout = layout
-			c.shuttleCfg = shuttleCfg
-			c.cfg = websterCfg
-			c.roles = roles
-			c.batcher = activeBatcher
-			c.planDir = planparser.PlanDir(layout.AnchorPath())
-			c.websterDir = websterengine.Dir(layout.AnchorPath())
-			c.reportsDir = websterengine.ReportsDir(layout.AnchorPath())
-			c.websterScratchDir = websterengine.ScratchDir(layout.AnchorPath())
-			c.promptsDir = websterengine.PromptsDir(layout.AnchorPath())
-			return nil
-		},
+		RunE:              clihelp.GroupRunE,
+		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
 
 	parent.AddCommand(c.validateCmd())
