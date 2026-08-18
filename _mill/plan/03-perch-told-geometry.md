@@ -100,7 +100,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:** In `internal/perchengine/run_test.go`, replace the `newTestLayout(t *testing.T) *lyxcwd.Location` helper with `newTestGeometry(t *testing.T) Geometry`, returning a `Geometry` whose `GateDir` and `AnchorPath` are two distinct fresh temp directories rather than one collapsed root — the gate command's working directory and the runs/scratch base are separate things and the fixture should say so.
   Its doc comment states that it returns the told geometry standing in for the worktree root a command gate's cwd resolves against, and that the two fields are deliberately distinct so a swapped constructor argument is observable.
-  Rename every local variable currently holding the helper's result from `layout` to `geom`, and update all thirty-three call sites of the helper accordingly.
+  Rename every local variable currently holding the helper's result from `layout` to `geom`, and update all thirty-one call sites of the helper accordingly.
   Update all thirty-nine `New(fb, ...)` construction sites to pass `geom` in the former `layout` argument position; the argument count and order are otherwise unchanged.
   The two assertion lines currently comparing the recorded gate-command dir against `layout.WorktreePath()` become a comparison against `geom.GateDir`, with the failure message reworded to name `geom.GateDir`.
   That pair is perch's direct `treadleengine.Profile.GateDir` assertion — it is what the discussion asks be confirmed rather than newly written, and it becomes load-bearing once `GateDir` and `AnchorPath` are distinct, since a swapped constructor would now make it fail.
@@ -215,7 +215,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `cmd/lyx/notransients_test.go`, change all five `perchengine.RunsDir(l)` / `perchengine.ScratchDir(l)` call sites to pass `l.AnchorPath()`: the two rows in `durableSet`, the `perchengine.ScratchDir` row and the two nested uses inside the `PauseFlagPath` rows in `transientSet`, and the `perchengine.RunsDir/ScratchDir` entry in the `mirroredPairs` table.
+- **Requirements:** In `cmd/lyx/notransients_test.go`, change every `perchengine.RunsDir(l)` / `perchengine.ScratchDir(l)` call to pass `l.AnchorPath()` — six lines carrying seven such call expressions, since the `mirroredPairs` row carries both on one line: the two rows in `durableSet`, the `perchengine.ScratchDir` row and the two nested uses inside the `PauseFlagPath` rows in `transientSet`, and the `perchengine.RunsDir/ScratchDir` entry in the `mirroredPairs` table.
   Every expectation and every assertion stays as it is.
   Extend the comment above `durableSet` that already annotates the two `planparser` rows as tautological with respect to anchoring so it names the `perchengine` rows alongside them, pointing at the same perch production-call-site proof named in `cmd/lyx/constructoranchoring_test.go`.
   Two guards in this file must keep firing and must not be weakened: the mirrored-pair equality check, which rewrites the durable path's `_lyx` segment to `.lyx` and requires the result to equal the scratch path — load-bearing for the Durable-vs-Ephemeral State Invariant and unrelated to anchoring — and the non-empty-table sanity guard.
@@ -235,7 +235,8 @@ The load-bearing evidence here is existing coverage kept intact, not new asserti
 - The gate-command-dir assertion in `internal/perchengine/run_test.go` becomes a real `Geometry.GateDir` guard once card 15's fixture makes `GateDir` and `AnchorPath` distinct.
 
 Manual check to run once at batch end, per the discussion's Verify list: `grep -rn lyxcwd internal/perchengine/ --include=*.go` must return no hit in a production (non-`_test.go`) file.
-Cards 12, 13, and 14 are the three places a hit could survive.
+Cards 12 and 13 are the two places a hit could survive — `engine.go` and `identity.go` are the only production files in the package naming `lyxcwd` today.
+Card 14's `doc.go` contains no occurrence of the literal string at all; it describes the held `Location` in prose without naming the package, which is why it is edited for accuracy rather than for the grep.
 
 The overview's module-wide `verify: go build ./...` runs at the batch boundary and covers any consumer of the two changed signatures outside the packages listed above; the enumeration was re-run against the tree for this task and found none.
 `pipeline.done_gate` (`go test ./... && go test -tags integration ./...`) is the task-wide net mill-go runs before marking the task done, which is where a regression in a package no batch verify names would surface.
