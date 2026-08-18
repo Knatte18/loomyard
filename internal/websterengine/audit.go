@@ -25,6 +25,29 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
+// RefMatcher is the narrow seam CheckFork and CheckParent consult for the fabric-reference violation
+// class. *fabricengine.RefScanner satisfies it without any adapter, since that type already has the
+// identical method.
+type RefMatcher interface {
+	// Matches reports whether cmd references fabric's two-checkout mechanism.
+	Matches(cmd string) bool
+}
+
+// NeverMatches is the pinned RefMatcher supplier for a mode with no fabric repo at all — standalone
+// mode's answer where hub mode supplies a real *fabricengine.RefScanner.
+// It lives here, beside the interface it implements, rather than in a geometry package that has no
+// business knowing webster's audit vocabulary, and it is a named exported type rather than an inline
+// literal so every Deps-construction site shares one supplier instead of re-inventing it.
+// CheckFork and CheckParent call Matches unguarded, so a nil RefMatcher is a panic on the first
+// standalone record-batch — the field must therefore never be nil in either mode.
+type NeverMatches struct{}
+
+// Matches always returns false: NeverMatches never sees a fabric reference, because a mode that
+// supplies it has no fabric repo to reference.
+func (NeverMatches) Matches(string) bool {
+	return false
+}
+
 // AuditViolationClass discriminates the fail-loud violation classes CheckFork and CheckParent can
 // report.
 // It exists so a caller (e.g.
