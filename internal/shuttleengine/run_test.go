@@ -200,24 +200,29 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
+	// anchorPath is a real subpath of worktree, never the same value twice:
+	// passing one directory for both fields would let a swapped NewRunner
+	// argument pair pass this test, which is exactly the masking case
+	// newTestRunner's own contract exists to prevent.
 	worktree := t.TempDir()
+	anchorPath := filepath.Join(worktree, "sub", "dir")
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
-	if err := os.MkdirAll(filepath.Join(worktree, lyxdirs.DotLyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(anchorPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(worktree, lyxdirs.DotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
 		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 
 	// An old, kept run dir (as an asking/died/timeout outcome would leave
 	// behind) whose strand is not in reed.json's live set — because reed.json
 	// itself is unreadable, not because the strand is genuinely gone.
-	shuttleRoot := runDirRoot(cfg, worktree)
+	shuttleRoot := runDirRoot(cfg, anchorPath)
 	keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")
 	setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
 
-	runner := NewRunner(reed, engine, worktree, worktree, cfg)
+	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
