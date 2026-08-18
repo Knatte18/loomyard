@@ -182,10 +182,10 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 **Verified state of the tree** (all figures checked during exploration, not inherited from the design doc):
 
 - **Producer engines carry no `internal/lyxcwd` production import.**
-  `planparser`, `reedengine`, `websterengine`, `shuttleengine`, `scoutengine` mention it in comments only;
-  `configengine`, `tokenvocab`, `pattern`, `buildinfo`, `burlerengine`, `perchengine`, `standalonegeom` do not mention it at all;
-  `standalonestate` mentions it in one comment.
-- **The orchestrator/CLI tier legitimately imports it:** `internal/preflight` (`predicates.go`, `preflight.go`), `internal/webstercli` (`wiring.go`, `cli.go`), `internal/scoutcli` (`cli.go`), `internal/hubgeom`.
+  `planparser`, `reedengine`, `websterengine`, `shuttleengine`, `scoutengine`, `burlerengine` (`geometry.go:10`), `perchengine` (`geometry.go:9`), and `standalonestate` each mention it in comments only — the two `geometry.go` comments say `*lyxcwd.Location, but is deliberately not imported here`, which is the contract statement, not an import.
+  `configengine`, `tokenvocab`, `pattern`, `buildinfo`, and `standalonegeom` do not mention it at all.
+  Note for anyone re-verifying: a grep for the import path `internal/lyxcwd` misses both `geometry.go` comments, which spell it `*lyxcwd.Location` — grep the bare token `lyxcwd`.
+- **The orchestrator/CLI tier legitimately imports it:** `internal/preflight` (`predicates.go`, `preflight.go`), `internal/webstercli` (`wiring.go`, `cli.go`), `internal/burlercli` (`wiring.go`, `cli.go`), `internal/perchcli` (`wiring.go`, `cli.go`), `internal/scoutcli` (`cli.go`), `internal/hubgeom`.
   This is exactly the split the invariant describes, so the invariant is stating a fact about the current tree rather than an aspiration.
 
 **Key files:**
@@ -219,7 +219,7 @@ compare each collected set against its pinned set;
 exclude `internal/configengine` itself as the declaration site;
 skip `_test.go` files.
 The pinned sets as `CONSTRAINTS.md` records them: degrading is `{shuttleengine, reedengine, perchengine, websterengine, batcher}`, strict is `{fabricengine, boardengine, loomengine}`.
-Resolving the scan root through `go env GOMOD` spawns a process, so the guard must be allowlisted in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map with a one-line reason in the style of the twelve entries already there (see `cmd/lyx/tierpurity_test.go:28-43`).
+Resolving the scan root through `go env GOMOD` spawns a process, so the guard must be allowlisted in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map with a one-line reason in the style of the fourteen entries already there (see `cmd/lyx/tierpurity_test.go:28-43`).
 The three own-loader modules (`burlerengine`, `modelspec`, `scoutengine`) call neither entry point and are structurally invisible to a substring scan — they need no exclusion, but the guard's doc comment should say so, since the invariant's own text is careful about it.
 **If the collected sets do not match the pinned sets when the guard first runs**, the pinned sets in both the test and `CONSTRAINTS.md` are what is wrong — verify against the tree and correct both in the same commit rather than loosening the assertion.
 
