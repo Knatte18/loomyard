@@ -356,7 +356,10 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("shuttle: strand %q is not tracked by reed — its run has completed and been cleaned up", guid)
+	// Naming only the completed-and-cleaned-up cause would be wrong more often than right: a
+	// `lyx reed remove`, a `down`/`up` cycle, and a server rebirth all reach this same branch with
+	// the run still very much unfinished (proven live). State what was observed, then the causes.
+	return fmt.Errorf("shuttle: strand %q is not tracked by reed — either its run completed and was cleaned up, or reed's strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check \"lyx reed status\"", guid)
 }
 
 // playInputs plays inputs into guid's pane through reed in order, with

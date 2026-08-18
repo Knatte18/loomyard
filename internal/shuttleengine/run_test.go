@@ -467,9 +467,15 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 	tests := []struct {
 		name   string
 		status []reedengine.StatusResult
+		// wantIn is a phrase the refusal must name. The untracked case pins the
+		// state-reset cause explicitly: reed's table is also emptied by a remove,
+		// a down/up cycle, and a server rebirth, so a refusal claiming only that
+		// "its run has completed and been cleaned up" misdirects an operator whose
+		// agent is still running in its pane (proven live).
+		wantIn string
 	}{
-		{"dead_pane", liveStrandStatus(false)},
-		{"untracked_strand", []reedengine.StatusResult{{}}},
+		{"dead_pane", liveStrandStatus(false), "no live pane"},
+		{"untracked_strand", []reedengine.StatusResult{{}}, "reed's strand table was reset under it"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -478,6 +484,8 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 
 			if err := run.Interrupt(); err == nil {
 				t.Error("Interrupt() = nil error, want liveness refusal")
+			} else if !strings.Contains(err.Error(), tt.wantIn) {
+				t.Errorf("Interrupt() error = %v; want it to name %q", err, tt.wantIn)
 			}
 			if err := run.Send("still there?"); err == nil {
 				t.Error("Send() = nil error, want liveness refusal")
