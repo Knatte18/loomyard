@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-standalonestate-leaf
+phase: approved-preflight-lift
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-08-18T06:42:27Z'
 implementing  '2026-08-18T06:42:59Z'
 approved-buildinfo-and-mode-mapping  '2026-08-18T06:47:18Z'
 approved-standalonestate-leaf  '2026-08-18T06:51:54Z'
+approved-preflight-lift  '2026-08-18T07:00:55Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     commit_sha: 7ef3b358fc4a95abcf0100ec06422f9ac2845600
     verify_baseline_failures: ["FAIL\t./internal/standalonestate/... [setup failed]"]
   - name: preflight-lift
-    state: running
+    state: approved
     implementer_session: 409ad931-50d5-4919-86b7-cef99c32dce6
     start_sha: 90f2576ba6c99f81ca34af02d795be83cd5fd2e4
+    commit_sha: e9b2c73046e6316a671d74e469a19b3c83ff6eec
     verify_baseline_failures: ["FAIL\t./internal/preflight/... [setup failed]"]
   - name: cli-gate-and-ldflags
     state: pending
