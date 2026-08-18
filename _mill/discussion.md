@@ -29,7 +29,6 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 - `internal/burlercli/cli.go` and `internal/perchcli/cli.go` / `run.go`: construction sites repointed through `hubgeom`.
 - Tests in all five packages, plus the `perchengine.RunsDir`/`ScratchDir` rows in `cmd/lyx/constructoranchoring_test.go` and `cmd/lyx/notransients_test.go`.
 - `doc.go` updates in `burlerengine`, `perchengine`, and `hubgeom`.
-- `manifest/roadmap.md`: the burler/perch half of the "producers standalone: producer engines" Planned item moves to Done.
 
 **Out:**
 
@@ -41,6 +40,7 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 - `CONSTRAINTS.md` — no invariant changes here (see Decisions).
 - `docs/overview.md` — no module added or removed, no execution-stack change.
 - `manifest/designs/producers-standalone.md` — the design doc survives until the last wave lands; it is not annotated per-task.
+- `manifest/roadmap.md` — not touched by this task (see Decisions); the wave-3 Planned item moves only when the wave is closed.
 
 ## Decisions
 
@@ -93,11 +93,12 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 - **Rationale.** This is exactly what wave 1 and wave 2 did for `planparser.PlanDir` and `pattern.File`, and the comment explaining it is already in the file. Once a function takes the anchor as a parameter, a row that passes `l.AnchorPath()` in and compares against an anchor-derived expectation can no longer catch a production site that passes the wrong root — but it still pins the join arithmetic and the `_lyx`-vs-`.lyx` group placement, which is why the design doc says this file is *edited in place, per task, never split or retired*.
 - **Rejected.** Deleting the rows. The mirrored-subpath equality check in `notransients_test.go` (`RunsDir` → swap `_lyx` for `.lyx` → must equal `ScratchDir`) is load-bearing for the Durable-vs-Ephemeral State Invariant and has nothing to do with anchoring.
 
-### `manifest/roadmap.md`: split the Planned item rather than leaving it for whoever lands second
+### `manifest/roadmap.md` is not touched by this task — the wave-closing task owns the move
 
-- **Decision.** Reword Planned item 1 ("producers standalone: producer engines") to name only the remaining Webster half, and add a Done entry for the burler/perch half.
-- **Rationale.** That roadmap line covers T6 *and* T7, which run in parallel. "Move it when both are done" has an obvious failure mode: each task reads the rule, sees a half-done item, and skips — so it never moves. Splitting is self-coordinating: whichever lands first shrinks the item, whichever lands second moves what remains to Done. The cost is one extra one-paragraph merge conflict with T7, on top of the `constructoranchoring_test.go` conflict the design doc already predicts.
-- **Rejected.** Not touching the roadmap (the never-moves failure mode above); moving the whole item to Done (false — Webster is not done).
+- **Decision.** This task makes no edit to `manifest/roadmap.md`. Planned item 1 ("producers standalone: producer engines") covers T6 *and* T7; whichever of the two lands **second** — recognizing at that point that wave 3 is complete — performs the single one-shot move of the whole item to Done. This is T7's rule, adopted verbatim so both parallel tasks state the same one.
+- **Rationale.** An earlier draft of this discussion had T6 split the item (shrink it to the Webster half, add a Done entry for burler/perch) and called that "self-coordinating". It is not, for two reasons. First, T7's discussion had already decided to touch the roadmap not at all, so only one of the two tasks was committed to any edit — the protocol needs both sides to implement it. Second, and independently: the split as written was a single unconditional action, not one conditioned on whether T7 had landed. Trace both orders and each is wrong. **T6 first:** the item correctly shrinks to Webster, T7 then lands and touches nothing, leaving a Planned entry for completed work. **T7 first:** the roadmap is untouched, then T6 executes its unconditional reword and produces a Planned entry naming Webster — which is already done — with no Done entry for the Webster half ever created. Deferring to the wave-closing task needs no cross-task protocol at all: the second task to land observes a complete wave and moves the whole item once.
+- **Rationale, secondary.** This also brings the roadmap in line with how this task's `Out` section already treats every other shared doc (`docs/overview.md`, `CONSTRAINTS.md`, the design doc itself): T6 edits only what its own change falsifies, and a half-complete wave falsifies nothing in the roadmap's text. It removes the extra `manifest/roadmap.md` merge conflict with T7 as a side effect.
+- **Rejected.** (a) The split described above — wrong in both merge orders, as traced. (b) Moving the whole item to Done in this task — false while Webster is pending. (c) Making T6's edit conditional on inspecting the roadmap's live state at merge time — it would work, but it requires both tasks to carry branching logic where deferring requires neither.
 
 ### `CONSTRAINTS.md` is not edited by this task
 
@@ -150,9 +151,11 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 **Coordination with T7 (`webster-told-geometry`), running in parallel.** Expected conflicts, both mechanical:
 
 1. `cmd/lyx/constructoranchoring_test.go` — T6's `perchengine` rows (88/98/145/155) sit directly beneath T7's `websterengine` rows (86-87/96-97/143-144/150-ish). Whichever merges second rebases.
-2. `manifest/roadmap.md` — the split described above; whichever merges second rewrites the remaining half.
+2. `internal/hubgeom` — both tasks append an independent function to `hubgeom.go`, a test to `hubgeom_test.go`, and a line to `doc.go`. Resolve by keeping both sides.
 
-Neither is a logic conflict. Nothing else is shared: `burlercli`/`perchcli` and `webstercli` are distinct packages, and `hubgeom.WebsterGeometry` is a separate function in the same file (a possible third, trivial conflict in `hubgeom.go`/`hubgeom_test.go`/`doc.go` if both add functions — resolve by keeping both).
+Neither is a logic conflict. Nothing else is shared: `burlercli`/`perchcli` and `webstercli` are distinct packages, and `manifest/roadmap.md` is touched by neither task (see the roadmap Decision above), so it is not a conflict site.
+
+**T7 alignment, checked explicitly.** T6 and T7 reach the same conclusion on `manifest/roadmap.md` (neither touches it) and on the `constructoranchoring_test.go`/`hubgeom` conflicts (whichever merges second rebases). They reach *different* conclusions on `CONSTRAINTS.md` — T7 edits it, T6 does not — and that difference is principled rather than inconsistent: T7 ships a standalone `<state>` root and a told stencils directory, which falsify the current Stencil Ownership and Durable-vs-Ephemeral wording; T6 ships neither and falsifies nothing.
 
 ## Constraints
 
@@ -164,7 +167,7 @@ From `CONSTRAINTS.md` (read this session):
 - **CLI / Cobra Invariant.** No new command or flag here, so the help-tree obligations are untouched; the `Command()`/`RunCLI` seam in both CLIs stays as it is.
 - **Test Tier Purity Invariant.** Anything spawning a subprocess or building a real hub is `//go:build integration`. `hubgeom_test.go` and the `cmd/lyx` anchoring tables stay untagged pure-`filepath.Join` arithmetic.
 - **Hermetic Git Test Environment Invariant** — applies to the `hubforge`-backed integration tests being touched.
-- **Documentation Lifecycle** (project `CLAUDE.md`). Docs land in the same commit: `doc.go` for each touched module, and `manifest/roadmap.md` for the completed half. `docs/overview.md` is unchanged (no module added, no execution-stack change).
+- **Documentation Lifecycle** (project `CLAUDE.md`). Docs land in the same commit: `doc.go` for each touched module. `docs/overview.md` is unchanged (no module added, no execution-stack change), and `manifest/roadmap.md` moves only on completing a planned item — this task completes half of one, so it does not move (see Decisions).
 
 Discovered during exploration:
 
@@ -213,6 +216,6 @@ Discovered during exploration:
 - **Q:** Does `burlerengine.New` keep its positional shape? **A:** [auto-pick] Yes — `layout` becomes `geom` in place. **Why:** smallest reviewable diff in a task whose contract is "nothing resolves anywhere different"; an options-struct rewrite is unrelated churn.
 - **Q:** What happens to the `cmd/lyx` anchoring rows once they go tautological? **A:** [auto-pick] Rewritten in place with the same "real proof lives at the production call site" comment waves 1-2 added. **Why:** the design doc says this file is edited in place per task, never split or retired; the rows still pin the join arithmetic and the `_lyx`-vs-`.lyx` group placement even after they stop catching a wrong-root call site.
 - **Q:** Where does the anchor/worktree swap guard live? **A:** [auto-pick] New `hubgeom_test.go` cases on the three-distinct-directories fixture, plus strengthening `burlerengine`'s existing `TestEngine_Run_MaterializesInstructionFiles`; perch's proof already exists at `perchcli/cli_integration_test.go:96`. **Why:** `hubgeom_test.go`'s own file comment declares this exact failure mode as its reason for existing, and writing a new perchcli test would duplicate a passing one.
-- **Q:** What happens to `manifest/roadmap.md`, given the Planned item covers T6 and T7 together? **A:** [auto-pick] Split it — burler/perch half to Done, Webster half stays Planned. **Why:** "move it when both are done" fails silently when both parallel tasks defer to each other; splitting is self-coordinating, at the cost of one extra one-paragraph conflict with T7.
+- **Q:** What happens to `manifest/roadmap.md`, given the Planned item covers T6 and T7 together? **A:** [auto-pick] Split it — burler/perch half to Done, Webster half stays Planned. **Why:** "move it when both are done" fails silently when both parallel tasks defer to each other; splitting is self-coordinating, at the cost of one extra one-paragraph conflict with T7. **Superseded by orchestrator review:** T6 now touches `manifest/roadmap.md` not at all, adopting T7's rule — the wave-closing task (whichever of T6/T7 lands second) performs the single move. The split was wrong in both merge orders because it was an unconditional action described by a conditional rationale, and because T7 had already committed to no roadmap edit, leaving only one side implementing the protocol. See the roadmap Decision for the full trace.
 - **Q:** Does `CONSTRAINTS.md` change? **A:** [auto-pick] No. **Why:** no invariant is falsified — hub mode still joins `perchDirName` onto `AnchorPath()`, just via `hubgeom`; the Stencil Ownership and Durable-vs-Ephemeral rewords belong to T8/T10, where a standalone root actually appears.
 - **Q:** What is the verification set? **A:** [auto-pick] The design doc's per-package set plus `./internal/hubgeom/...` and `./internal/shedadapters/...`, the perchcli integration tag, and `go test ./...` as the task-wide done gate. **Why:** the signature change reaches packages the constructor-only reading misses — `cmd/lyx/notransients_test.go` is already one confirmed omission from the design doc's own `Files` list.
