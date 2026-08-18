@@ -42,7 +42,7 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 - The three-tier `CONSTRAINTS.md` invariant, `docs/overview.md`, and `manifest/roadmap.md` — T10's consolidation.
 - A `--plan-dir` flag — webster-only; burler and perch parse no plan.
 - `lyx burler run <path>` as a positional argument — explicitly rejected by the design.
-- Any change to hub-mode behaviour. Hub mode must stay byte-identical.
+- Any change to where hub mode *resolves* or *writes*. Every hub-mode path stays byte-identical; the one deliberate hub-visible change is the three additive envelope fields (see the byte-identity decision, which names both exceptions).
 
 ## Decisions
 
@@ -76,6 +76,7 @@ This task is therefore substantially a mirroring exercise, not a design exercise
   - `BurlerGeometry(target, stateDir string) burlerengine.Geometry` → `{WorktreeRoot: target, AnchorPath: stateDir}`.
   - `PerchGeometry(target, stateDir string) perchengine.Geometry` → `{GateDir: target, AnchorPath: stateDir}`.
   Neither takes `hash8`: no value in either struct is hash-derived, and `standalonegeom.WebsterGeometry` already set the precedent of omitting the parameter rather than carrying an unused one for symmetry.
+  **Neither carries the stencils directory** — see the next decision for where that value comes from.
 - **Rationale:** this is the `worktreeRoot`/`anchorRoot` split the design calls "the load-bearing move", expressed once per engine in the one package that already owns told-mode geometry construction.
   `WorktreeRoot`/`GateDir` = the target directory, because `burlerengine`'s `Profile.validate` resolves `Target.Paths`, `Fasit.Paths`, `ReviewPath`, `FixerReportPath` and both prior-report lists against it, and perch's `GateDir` is the gate command's working directory.
   `AnchorPath` = `<state>`, because it is the base every `_lyx`/`.lyx` path joins onto — which is what relocates burler's `.lyx/burler`, perch's `RunsDir`/`ScratchDir`, reed's `stateDir`, and shuttle's `runDirRoot` automatically, rather than as four separate things an implementer must remember.
@@ -102,10 +103,24 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 - **Rationale:** `Derive` normalises through `EvalSymlinks`+`Clean` and compares case-insensitively on Windows, so two spellings of the same directory must not produce different `<state>` values — but that only holds if the input is already absolute.
 - **Rejected:** exporting the helper from a shared package — three near-identical five-line functions across three CLI packages is cheaper than a package that exists only to hold one of them; revisit if a fourth standalone CLI appears.
 
+### standalone stencils directory — one owner, `standalonegeom.StencilsDir`
+
+- **Decision:** the standalone stencils default is produced by a new exported helper,
+  `standalonegeom.StencilsDir(stateDir string) string` → `filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")`, in a new `internal/standalonegeom/stencilsdir.go`.
+  Both CLIs' `wireStandalone` call it and carry the result as a plain local/receiver `stencilsDir string`, **never** as a geometry field.
+  `standalonegeom.WebsterGeometry` is repointed at the same helper for its own `StencilsDir` field, replacing the inline `filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")` it computes today — a one-line, same-package change that leaves the shipped value byte-identical.
+- **Rationale:** this closes a real hole in the first draft of this discussion, which copied `webstercli`'s `geom.StencilsDir` snippet without checking that the field exists.
+  It does not: `websterengine.Geometry` carries a `StencilsDir` field, but `burlerengine.Geometry` is `{WorktreeRoot, AnchorPath}` (`internal/burlerengine/geometry.go:12`) and `perchengine.Geometry` is `{GateDir, AnchorPath}` (`internal/perchengine/geometry.go:10`).
+  Adding a `StencilsDir` field to either engine's geometry would be wrong: burler already takes `stencilsDir` as its own fourth `New` parameter, and perch takes it per-call at `Engine.Run`, so a geometry field would be a second, competing home for a value both engines already accept directly.
+  A single exported helper gives the `<state>/_lyx/stencils` literal exactly one construction site across all three CLIs, which is what makes "standalone's `<state>` plays the hub's role, mirroring `fabricengine.StencilsDir`" checkable rather than repeated by hand.
+- **Rejected:** a per-CLI local `filepath.Join(stateDir, lyxdirs.LyxDirName, "stencils")` — three copies of the same literal, the exact drift the helper prevents.
+  Also rejected: adding `StencilsDir` to `burlerengine.Geometry`/`perchengine.Geometry` (a competing home for a value both `New`/`Run` signatures already take, and a T6 signature change this task is scoped out of).
+  Also rejected: leaving `WebsterGeometry`'s inline join alone (would leave two construction sites the moment the helper exists).
+
 ### stencils bootstrap — the derived default only, and a hard error
 
-- **Decision:** when `--stencils-dir` is **unset** in standalone, seed the derived `<state>/_lyx/stencils` on first use via `stencilstore.Reconcile(geom.StencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), "")`, and treat a `Reconcile` error as a hard pre-run failure.
-  When `--stencils-dir` **is** set, the directory is read and never written, in either mode.
+- **Decision:** when `--stencils-dir` is **unset** in standalone, seed the derived directory returned by `standalonegeom.StencilsDir(stateDir)` on first use via `stencilstore.Reconcile(stencilsDir, stencils.Registry(), stencilstore.ModeFor(buildinfo.IsDev()), "")` — a told plain string, not a geometry field — and treat a `Reconcile` error as a hard pre-run failure.
+  When `--stencils-dir` **is** set, the directory is read and never written, in either mode, and the helper is not consulted at all.
 - **Rationale:** nothing else will ever create the derived directory, so a silent failure there surfaces much later as an opaque prompt-render error.
   Conversely, an operator who pointed the flag at a curated stencil set must never have it reconciled out from under them — that is what makes the "read-only" characterisation literally true rather than approximately true.
   `ModeFor(buildinfo.IsDev())` reuses the existing dev/prod selector so a dev binary keeps dev seeding semantics standalone exactly as in a hub; the empty fourth argument is the "no source tree here" value that keeps the port-back drift warning silent.
@@ -128,11 +143,13 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 
 ### burler's stack — no fabric relationship at all
 
-- **Decision:** `burlercli` stores only `c.engine *burlerengine.Engine`.
-  Both wiring branches construct it as `burlerengine.New(runner, geom, burlerCfg, stencilsDir)`; the only differences between branches are where `geom`, the config base directory, and `stencilsDir` come from.
-  No `openFabric`, no `anchorRel`.
-- **Rationale:** `internal/burlercli/run.go` references neither `layout` nor `fabricengine` today — verified.
+- **Decision:** `burlercli` carries **no fabric relationship and no `*lyxcwd.Location`** — no `openFabric`, no `anchorRel`, no `layout`.
+  Its receiver holds `c.engine *burlerengine.Engine`, the two raw flag fields (`stencilsDirFlag`, `targetDirFlag`), and the three reporting fields the wiring branches set for the envelope (`mode`, `stateDir`, `stencilsDir`).
+  Both wiring branches construct the engine as `burlerengine.New(runner, geom, burlerCfg, stencilsDir)`; the only differences between branches are where `geom`, the config base directory, and `stencilsDir` come from.
+- **Rationale:** `internal/burlercli/run.go` references neither `layout` nor `fabricengine` today — verified by grep, which returns nothing.
   Burler is the simplest of the three CLIs, and the wiring split must not invent a fabric relationship it does not have.
+  The three reporting fields are listed explicitly because `run.go` can only read them off the receiver, so "stores only `c.engine`" would have been false the moment the envelope decision landed.
+- **Rejected:** threading the reporting values through `burlerengine.Result` (they are CLI-level facts about how the stack was wired, not results of a review round, and the engine must stay unaware of which mode built it).
 
 ### config base directory — `<state>` in standalone, unchanged in hub
 
@@ -144,12 +161,15 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 
 ### operator visibility — the run envelopes name the directories
 
-- **Decision:** both run verbs' success envelopes gain three fields: `mode` (`"hub"` or `"standalone"`), `stateDir` (the derived `<state>`, empty in hub mode), and `stencilsDir` (the resolved directory, populated in both modes).
+- **Decision:** both run verbs' success envelopes gain three fields **in both modes**: `mode` (`"hub"` or `"standalone"`), `stateDir` (the derived `<state>` in standalone, empty string in hub mode), and `stencilsDir` (the resolved directory, populated in both).
+  This is a deliberate, hub-visible output change, and it is the second named exception to hub byte-identity — recorded in that decision rather than left to be discovered.
   For burler this means `resultEnvelope` takes the values as parameters; for perch they are added to the existing `output.Ok` map alongside `runDir`/`scratchDir`/`fabricCommitted`.
 - **Rationale:** T8's Watch note is explicit — the `--stencils-dir` bootstrap and the `<state>` tree both write files, so the command must say where it wrote them — and the operator-config decision depends on `<state>` being findable rather than guessed.
   The JSON envelope is the only output channel available: a stray `fmt.Println` would corrupt the envelope contract that every caller parses.
   T7 did not add this for webster; that is a gap in T7, not a precedent to copy, and it is out of scope to fix here.
-- **Rejected:** printing to stderr outside the envelope (breaks the machine-readable contract for anything reading combined output); a separate `lyx burler where` verb (a whole verb for one string).
+  Emitting them in both modes rather than standalone-only is the deliberate call: a `mode` field that exists only in standalone cannot be used to tell the two modes apart, which is its whole purpose, and `stencilsDir` is equally worth reporting in a hub run that was pointed at an experimental stencil set via the flag.
+  The fields are additive JSON keys, so no existing consumer breaks — but "no consumer breaks" is not the same as "nothing changed", which is why it is recorded as an exception rather than waved through.
+- **Rejected:** printing to stderr outside the envelope (breaks the machine-readable contract for anything reading combined output); a separate `lyx burler where` verb (a whole verb for one string); scoping the three fields to standalone only (cheaper against byte-identity, but it makes `mode` self-defeating and leaves a hub `--stencils-dir` override invisible).
 
 ### `CONSTRAINTS.md` — verify, expect no edit
 
@@ -164,7 +184,13 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 ### hub mode is byte-identical
 
 - **Decision:** every hub-mode value — config base directories, `hubgeom.ReedGeometry`/`BurlerGeometry`/`PerchGeometry` outputs, `fabricengine.StencilsDir(loc.HubPath)`, `perchengine.RunsDir`/`ScratchDir` anchoring, the fabric sync's pathspec and commit message — resolves exactly as it does on `main` today.
-  The one intentional behaviour change is the plain-git-repo case: a repository with no `<hub>/_board/_lyx` beside it moves from (fictional) hub mode to standalone.
+  Byte-identity is claimed over **resolved paths and write locations**, and there are exactly **two** intentional deviations, both named here:
+  1. **The plain-git-repo case.** A repository with no `<hub>/_board/_lyx` beside it moves from (fictional) hub mode to standalone.
+     This is the behaviour change the whole design exists to make.
+  2. **Three additive envelope fields.** `mode`/`stateDir`/`stencilsDir` appear in both modes' run-verb success envelopes (see the operator-visibility decision).
+     Output-shape only: no path resolves differently and nothing new is written in hub mode.
+
+  Any third deviation discovered during implementation is a bug in this plan, not a licence.
 - **Rationale:** stated rather than smuggled, per the design.
   A wired lyx worktree is unaffected because `HubPresent` is true there.
   This must be pinned by test, since the nested-init anchoring case (`TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd`) is exactly the kind of thing a careless refactor breaks.
@@ -195,6 +221,11 @@ It contains `wire`, `wireHub`, `wireStandalone`, `setRunner`, `resolveStandalone
 - `reedengine.New(cfg, geom Geometry)`, with `Geometry{SocketKey, SessionName, AnchorPath, PaneCwd, WorktreeRoot, LogsDir, RepoName, HubPath}`.
 - `shuttleengine.NewRunner(reedEngine, engine, anchorPath, worktreeRoot string, shuttleCfg)`.
 
+**Engine geometry structs carry no stencils directory.**
+Only `websterengine.Geometry` has a `StencilsDir` field; `burlerengine.Geometry` is `{WorktreeRoot, AnchorPath}` and `perchengine.Geometry` is `{GateDir, AnchorPath}`.
+Burler takes `stencilsDir` as `New`'s fourth parameter and perch takes it per-call at `Engine.Run`, so both CLIs carry it as a plain string from `standalonegeom.StencilsDir(stateDir)` (standalone) or `fabricengine.StencilsDir(loc.HubPath)` (hub).
+Do not copy `webstercli`'s `geom.StencilsDir` expression into either CLI — it does not compile there.
+
 **`standalonegeom.ReedGeometry(target, stateDir, hash8)`** already produces every pinned reed value: `SocketKey: "lyx-"+hash8`, `SessionName: filepath.Base(target)+"-"+hash8`, `AnchorPath: stateDir`, `PaneCwd: target`, `WorktreeRoot: target`, `LogsDir: filepath.Join(stateDir, "logs")`, `RepoName: filepath.Base(target)`, `HubPath: stateDir`.
 Reuse it as-is for both CLIs; do not re-derive.
 
@@ -202,20 +233,24 @@ Reuse it as-is for both CLIs; do not re-derive.
 
 | File | Change |
 |---|---|
-| `internal/burlercli/cli.go` | receiver fields, extracted `resolvePersistentPreRun`, two persistent flags, mode-aware `Long` |
+| `internal/burlercli/cli.go` | receiver fields (`engine`, two flag fields, three reporting fields), extracted `resolvePersistentPreRun`, two persistent flags, mode-aware `Long` |
 | `internal/burlercli/wiring.go` | new — `wire`/`wireHub`/`wireStandalone`/`resolveStandaloneTarget` |
 | `internal/burlercli/run.go` | `resultEnvelope` gains `mode`/`stateDir`/`stencilsDir` |
 | `internal/burlercli/wiring_test.go` | new — tier-1 truth table and pinned values |
+| `internal/burlercli/cli_test.go` | `TestRunCLI_Run_MissingProfile` — state-root redirect and stale double-failure comment |
 | `internal/burlercli/cli_integration_test.go` | new — `RunCLIIn` from outside a git repo |
 | `internal/perchcli/cli.go` | as burlercli, plus removing the `layout` field |
 | `internal/perchcli/wiring.go` | new |
 | `internal/perchcli/run.go` | three `c.layout` uses rerouted; envelope fields; nil-`openFabric` sync skip |
 | `internal/perchcli/wiring_test.go` | new |
+| `internal/perchcli/cli_test.go` | `TestRunCLI_Pause_MissingRunID` — state-root redirect and stale double-failure comment |
 | `internal/perchcli/cli_integration_test.go` | extended with the standalone pre-run case |
 | `internal/standalonegeom/burlergeom.go` | new — `BurlerGeometry` |
 | `internal/standalonegeom/perchgeom.go` | new — `PerchGeometry` |
+| `internal/standalonegeom/stencilsdir.go` | new — `StencilsDir(stateDir)`, the sole construction site |
+| `internal/standalonegeom/webstergeom.go` | one line — inline join repointed at `StencilsDir` |
 | `internal/standalonegeom/standalonegeom_test.go` | extended |
-| `internal/standalonegeom/doc.go` | contract sentence updated to name four builders |
+| `internal/standalonegeom/doc.go` | contract sentence updated to name the builders plus `StencilsDir` |
 | `CONSTRAINTS.md` | verification pass; expected no-op |
 
 **Gotchas found during exploration:**
@@ -226,9 +261,12 @@ Reuse it as-is for both CLIs; do not re-derive.
   The wiring function therefore stores `perchGeom`, `runDirBase`, `scratchDirBase`, `perchCfg`, `modelReg`, `burlerEngine`, `runner`, and now `stencilsDir`/`anchorRel`/`openFabric` — it does not construct the perch engine.
 - `runDirBase`/`scratchDirBase` are computed as `perchengine.RunsDir(perchGeom.AnchorPath)` / `perchengine.ScratchDir(perchGeom.AnchorPath)` in **both** modes.
   The nested-init comment in `cli.go` explaining why they anchor at `AnchorPath` and not `WorktreeRoot` must be preserved — `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd` enforces it.
-- `perchcli` already has a hermetic `TestMain` (`internal/perchcli/testmain_test.go`); `burlercli` does not, and will need one if its integration test requires environment isolation.
-- `standalonestate.Derive` reads live `XDG_STATE_HOME`/`HOME`/`LOCALAPPDATA`.
-  Tests that reach `wireStandalone` must redirect those, or drive the geometry builders directly — which is why `standalonegeom` never calls `Derive` itself.
+- `perchcli` already has a hermetic `TestMain` (`internal/perchcli/testmain_test.go`), but it calls `gitkit.HermeticGitEnv()` only — git-config isolation, **not** state-directory isolation.
+  `burlercli` has no `TestMain` at all.
+  Neither package is protected from `standalonestate.Derive` reaching the operator's real home directory.
+- `standalonestate.Derive` reads live `XDG_STATE_HOME` and `LOCALAPPDATA` via `os.Getenv`, and `HOME` via `os.UserHomeDir()` on the non-Windows branch.
+  **Every** test that reaches `wireStandalone` — new or existing — must redirect those with `t.Setenv`, or drive the geometry builders directly.
+  This is why `standalonegeom` never calls `Derive` itself (see its package doc), and it is what makes the two flipping tests named in Testing a correctness issue rather than a tidiness one.
 - `internal/standalonegeom` is deliberately **not** a leaf: it imports engine packages and must not be added to `internal/buildinfo`'s or `internal/standalonestate`'s leaf-enforcement allowlists.
 - `cmd/lyx/constructoranchoring_test.go` is already in post-T6 shape and needs no row change; `cmd/lyx/helptree_test.go` asserts module presence and `Short`, not flags, so it should pass untouched — but run it, since the new flags change help output.
 
@@ -277,8 +315,21 @@ Drive `RunCLIIn(<temp dir outside any git repo>, out, args)` and assert the pre-
 Follow `internal/perchcli/cli_integration_test.go`'s existing shape.
 Add a companion asserting the target directory is unchanged after the invocation — nothing hidden written into it — mirroring `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged`.
 
+**Two existing untagged tests flip from "pre-run aborts" to "pre-run succeeds standalone" and must be handled explicitly.**
+`internal/burlercli/cli_test.go:81` (`TestRunCLI_Run_MissingProfile`) and `internal/perchcli/cli_test.go:99` (`TestRunCLI_Pause_MissingRunID`) both `t.Chdir(t.TempDir())` and then drive a *real* subcommand (`run` / `pause`).
+Today their `PersistentPreRunE` aborts because the temp dir is not a git repository, which is exactly what their doc comments call "the same documented double-failure shape as shuttlecli's `TestRunCLI_Run_FlagValidation`".
+After this task `HubPresent` is false there, so the pre-run enters `wireStandalone`, calls `standalonestate.Derive` against the operator's **live** `XDG_STATE_HOME`/`HOME` (or `LOCALAPPDATA`), and `Reconcile`s a stencils tree into the operator's real state directory — from an untagged unit test.
+`webstercli` never hit this because its own chdir tests stop at the group guard.
+Required disposition, both tests:
+
+- Redirect the state root before the call: `t.Setenv("XDG_STATE_HOME", t.TempDir())` **and** `t.Setenv("LOCALAPPDATA", t.TempDir())`, so both `Derive` branches land inside the test's own temp tree on every platform.
+  `gitkit.HermeticGitEnv()` in `internal/perchcli/testmain_test.go` does **not** cover this — it isolates git config only — and `internal/burlercli` has no `TestMain` at all.
+- Update both doc comments: the double-failure shape is gone, since the pre-run now succeeds and only the verb's own flag error is emitted.
+  Leaving the stale rationale in place would teach the next reader a behaviour the code no longer has.
+- The assertions themselves (`exitCode == 1`, output contains `--profile is required` / `--run-id is required`) still hold and should stay — what changes is the surrounding output, not the flag-validation contract each test exists to pin.
+
 **Regression coverage that must keep passing unchanged:**
-`TestRunCLI_GroupGuard_OutsideGitRepo` (both packages), `TestCommand_EveryCommandHasShort` (both), `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd`, and the `cmd/lyx` help-tree and constructor-anchoring suites.
+`TestRunCLI_GroupGuard_OutsideGitRepo` (both packages — the group guard returns before any wiring, so these are genuinely untouched), `TestCommand_EveryCommandHasShort` (both), `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd`, and the `cmd/lyx` help-tree and constructor-anchoring suites.
 
 **Verify command:**
 `go test ./internal/burlercli/... ./internal/perchcli/... ./internal/standalonegeom/... ./cmd/lyx/...`, then `go test -tags integration ./internal/burlercli/... ./internal/perchcli/...`, then `go test ./...` as the task-wide gate.
@@ -297,4 +348,5 @@ Smoke check on top of the tests, never instead of them: `lyx burler run --profil
 - **Q:** How does the operator learn where `<state>` and the seeded stencils landed? **A:** [auto-pick] Add `mode`/`stateDir`/`stencilsDir` to both run verbs' success envelopes. **Why:** T8's Watch note requires the command to say where it wrote; the JSON envelope is the only channel that does not corrupt the machine-readable output contract.
 - **Q:** What test tiers pin the behaviour? **A:** [auto-pick] One untagged tier-1 `wiring_test.go` per CLI for the truth table and pinned values, plus one `//go:build integration` test per CLI driving `RunCLIIn` outside a git repo. **Why:** the design names both tiers as required, and the untagged tier is only reachable through the wiring extraction.
 - **Q:** Keep a nil-able `layout` field for convenience? **A:** [auto-pick] No — remove it entirely from both CLIs. **Why:** a nil-able `*lyxcwd.Location` on a receiver is the fictional-`Location` shape the whole design was written to eliminate, and it invites a later dereference no compiler catches.
-- **Q:** May hub-mode behaviour shift at all? **A:** [auto-pick] No, byte-identical, with one stated exception. **Why:** the only intentional change is that a plain git repo with no `<hub>/_board/_lyx` beside it moves from fictional hub mode to standalone — stated in the design rather than smuggled, and pinned by test.
+- **Q:** May hub-mode behaviour shift at all? **A:** [auto-pick] Byte-identical over resolved paths and write locations, with exactly two named exceptions. **Why:** the plain-git-repo reclassification is the change the design exists to make, and the three additive envelope fields are an output-shape-only change; both are named in the byte-identity decision so no third deviation can slip in as precedent.
+- **Q:** (r1 gap) Who constructs the standalone stencils directory, given that neither `burlerengine.Geometry` nor `perchengine.Geometry` has a `StencilsDir` field? **A:** A new `standalonegeom.StencilsDir(stateDir string) string`, the sole construction site, with `standalonegeom.WebsterGeometry` repointed at it. **Why:** the first draft copied `webstercli`'s `geom.StencilsDir` expression, which does not compile for burler or perch; both engines already accept `stencilsDir` as a told parameter, so a geometry field would be a competing home for a value they already take, and a per-CLI inline join would put the same literal in three places.
