@@ -31,6 +31,7 @@ T10 (`standalone-docs-and-invariants`) must otherwise record scout's remaining d
 - `internal/scoutcli/cli.go` — delete `resolveLocation` entirely; `lookupContext` returns `(scoutengine.Registry, string, error)` where the string is the anchor root; `buildOptions` takes `anchorRoot string`; all four call sites (`refs` ~151/177/192, `definition` ~286/312/327, `symbol` ~396/403/426, `assert-no-callers` ~593/605) rename their `layout` local to `anchorRoot`.
 - Tests in `internal/scoutengine`: `scoutdaemon_test.go` (rewritten as told-string path math), `ensureserver_test.go:354-355`, `supervised_test.go:65/67-68, 130/132-133, 209/211-212`, `supervised_scout_test.go:26/28, 88/90`, `supervised_integration_test.go:57-58`, `ensureserver_integration_test.go:143-144`, `refs_integration_test.go:84-85/94, 200-201/210, 239-240/249`.
 - `internal/scoutcli/cli_test.go` — the `resolveLocation`, `lookupContext`, and `buildOptions` tests (lines ~555-635).
+- `internal/scoutcli/cli_integration_test.go` — **new file**, `//go:build integration`, pinning `lookupContext`'s hub-mode branch against a real `hubforge.NewHub` fixture. See Testing.
 - `cmd/lyx/constructoranchoring_test.go` — its `scoutengine.DaemonStateFile`/`DaemonLock` rows (102-103, 160-161, 181-182).
 - `cmd/lyx/notransients_test.go` — its `transientSet` rows (79-80). **This file is missing from T9's Files list in the design doc and will not compile without the change; treat that as a Files-list correction, not a scope expansion.**
 
@@ -43,7 +44,7 @@ T10 (`standalone-docs-and-invariants`) must otherwise record scout's remaining d
 - Adding `internal/lyxcwd` to `scoutengine`'s banned-import list in `seam_enforcement_test.go`, and any `CONSTRAINTS.md` edit — T10 owns that, uniformly across every producer package.
 - `docs/overview.md` — the module table and execution-stack description are unaffected by a signature change.
 - `manifest/roadmap.md` — T10 moves the wave entries; per `CLAUDE.md` the roadmap moves only on completing a planned item, and T9 alone does not complete the wave.
-- `manifest/designs/producers-standalone.md` — T10 deletes it per the documentation lifecycle; this task does not edit it.
+- `manifest/designs/producers-standalone.md` — T10 deletes it per the documentation lifecycle; this task does not edit it. **This leaves the document knowingly stale, and the staleness is accepted, not overlooked** — see the disposition below.
 - The daemon lifecycle, staleness check, wedged-daemon escalation, toolchain manager, and every LSP behaviour — pure signature/plumbing change, zero behavioural change intended.
 
 ## Decisions
@@ -58,7 +59,9 @@ T10 (`standalone-docs-and-invariants`) must otherwise record scout's remaining d
 
 - **Decision:** `scoutengine.Options` drops `Layout *lyxcwd.Location` and gains `AnchorRoot string`. The value threads unchanged through `acquireConnection` → `ensureServer` → `ensureSupervised`, each renaming its `layout *lyxcwd.Location` parameter to `anchorRoot string`.
 - **Rationale:** Direct translation of what the engine reads. `Options.Layout`'s doc says "required and must be non-nil"; the told equivalent is "required, must be a usable absolute path, populating it is entirely the caller's obligation" — the exact wording `burlerengine.Geometry` and `websterengine.Geometry` already use. The engine validates nothing, consistent with every converted sibling.
+- **Accepted consequence — the *misuse* failure mode goes from loud to silent.** Today a caller that forgets to populate `Layout` panics at `l.AnchorPath()` (`refs.go:52` says "required and must be non-nil"; nothing validates it, so a nil pointer dereferences). After the change an empty `AnchorRoot` does not panic — `filepath.Join("", lyxdirs.DotLyxDirName, "scout", lang, "daemon.json")` yields the *relative* path `.lyx/scout/<lang>/daemon.json`, and the daemon writes its state wherever the process happens to stand. This is accepted, not overlooked: it is the identical trade every converted sibling already made (`burlerengine`, `perchengine`, `websterengine` all validate no `Geometry` field), and adding a scout-only guard would reintroduce the asymmetry this task exists to remove. **It is explicitly outside the "zero behavioural change" property below**, which covers the two real call paths only, never the never-taken misuse path. If a future task wants told-geometry validated, it must add it uniformly across all four engines, not here.
 - **Rejected:** Keeping `Layout` and deriving `anchorRoot` inside the engine — that keeps `lyxcwd` in `scoutengine`'s import graph and leaves the fictional-`Location` synthesis alive in `scoutcli`, i.e. it does none of the work.
+- **Rejected:** Having `ensureSupervised` return an error on an empty `anchorRoot` to preserve loudness — it puts validation in the one engine whose siblings have none, and `scoutcli` is the only caller, which always populates it.
 
 ### `resolveLocation` is deleted, and its job folds into `lookupContext`'s existing `Resolve`
 
@@ -93,6 +96,17 @@ T10 (`standalone-docs-and-invariants`) must otherwise record scout's remaining d
 - **Rationale:** `scoutengine` has no `manifest/designs/` module doc (deleted on landing per the documentation lifecycle; `docs/overview.md:408` records that its durable rationale lives in the package documentation). `doc.go` *is* the module doc for this package, so the `CLAUDE.md` "docs land in the same commit" rule points there.
 - **Note:** every comment that describes the *fiction* — `resolveLocation`'s whole doc block, `daemonstate.go`'s "built on `*lyxcwd.Location`", `doc.go`'s "per (layout, lang)" — must be deleted or rewritten, not left describing a shape that no longer exists.
 
+### disposition of `producers-standalone.md`'s own staleness
+
+- **Decision:** Leave `manifest/designs/producers-standalone.md` untouched, knowingly stale on three counts, all bounded by T10's deletion of the file:
+  - `:198` describes scout's synthesized `Location` as a live "deliberate, documented fiction". After this task it describes nothing that exists.
+  - `:641`'s T9 Files list cites `cmd/lyx/constructoranchoring_test.go` rows **91-92/140-141**; the live rows are **102-103/160-161/181-182**, and `cmd/lyx/notransients_test.go` is missing from the list entirely. The Scope section above is the corrected enumeration — where the two disagree, Scope wins.
+  - T10's own Files list claims "the `doc.go` of each converted package", which overlaps this task's decision to update `internal/scoutengine/doc.go` here.
+- **Rationale:** The "must not leave a comment describing a shape that no longer exists" rule in the Note above governs **Go comments and package docs** — the durable, in-code documentation a reader hits while working. A planning document already scheduled for deletion by a named downstream task is a different artifact with a different lifecycle: editing it would touch a file T6, T7, and T8 all deliberately left alone, and would create merge contention across wave 4 for text that ceases to exist in wave 5.
+- **On the `doc.go` overlap:** touching `internal/scoutengine/doc.go` twice is by design, not duplicated work. This task removes the `*lyxcwd.Location` wording because it becomes false the moment the code lands (the same-commit docs rule). T10 later adds the cross-cutting three-tier invariant reference once every package obeys it. Different content, different preconditions.
+- **Rejected:** Correcting `:198` and `:641` in this commit — it edits a doomed document, contends with wave-4 siblings, and none of the corrections outlive T10.
+- **Carried to T10:** if T9 lands, T10's "Record scout's remaining deviation if T9 was skipped" is a no-op, and `internal/scoutengine` should instead be included in whatever per-producer enforcement T10 lands.
+
 ## Technical context
 
 **Current call chain.**
@@ -110,8 +124,10 @@ T10 (`standalone-docs-and-invariants`) must otherwise record scout's remaining d
 
 **Precedent to copy, in order of usefulness.**
 
-- `internal/websterengine/geometry.go` + `internal/websterengine/webstergeom_test.go` — the bare-`anchorRoot string` free-function shape and its three-case test (unanchored `Location`, subpath-anchored `Location`, pure told directory with no `Location` at all). Scout's rewritten `scoutdaemon_test.go` should mirror this structure directly.
-- `internal/burlerengine/geometry.go` — the "populating every field with a usable absolute path is entirely the caller's obligation" doc-comment wording.
+- `internal/websterengine/state.go:41/49/58/67` — **this is the file that declares the bare-`anchorRoot string` free functions** (`Dir`, `ReportsDir`, `ScratchDir`, `PromptsDir`). It is the shape to copy for `DaemonStateFile`/`DaemonLock`. Do **not** copy `internal/websterengine/geometry.go` for the shape — that file holds webster's eight-field `Geometry` struct, which is precisely the shape this task's first Decision rejects for scout.
+- `internal/websterengine/webstergeom_test.go` — the three-case test for those free functions (unanchored `Location`, subpath-anchored `Location`, pure told directory with no `Location` at all). Scout's rewritten `scoutdaemon_test.go` should mirror this structure directly.
+- `internal/burlerengine/geometry.go` and `internal/websterengine/geometry.go` — cited for the **doc-comment wording only** ("populating every field with a usable absolute path is entirely the caller's obligation"), never for the parameter shape.
+- `internal/perchcli/cli_integration_test.go` — the `hubforge.NewHub(t, ".")` / `h.PrimeWorktree()` fixture shape for the new hub-mode test below.
 - `internal/hubgeom/hubgeom.go` — the hub-mode teller pattern. **Not needed for scout** (one string, read inline as `l.AnchorPath()`), but it is why `cmd/lyx` test rows read `f(l.AnchorPath())`.
 - Commit `33018982` (`burlerengine + perchengine told-geometry`) and `3255efa6` (`websterengine + webstercli told-geometry`) — the exact file-set and comment-rewrite discipline of a landed sibling task.
 
@@ -138,7 +154,8 @@ From `CONSTRAINTS.md`:
 
 Discovered during discussion:
 
-- **Zero behavioural change.** Every resolved daemon-state and lock path must be byte-identical before and after, in hub mode and out-of-hub mode, at both unanchored and subpath-anchored geometries. This is the single acceptance property the whole task hangs on.
+- **Zero behavioural change.** Every resolved daemon-state and lock path must be byte-identical before and after, in hub mode and out-of-hub mode, at both unanchored and subpath-anchored geometries. This is the single acceptance property the whole task hangs on. It covers the two real call paths only; the never-taken *misuse* path (an unpopulated `AnchorRoot`) is explicitly excluded and its loud-to-silent shift is recorded as an accepted consequence under Decisions.
+- **Both halves of that property need named automated evidence.** Out-of-hub is covered by the reshaped `lookupContext` test; hub mode is covered by the new `//go:build integration` test in `internal/scoutcli`. Neither half may rest on the manual smoke run.
 - **`lyx scout` must keep resolving symbols in a directory outside any hub** — the design doc names this as "the behaviour this task must not regress".
 
 ## Testing
@@ -155,13 +172,25 @@ Keep the existing per-language distinctness tests (`go` vs `python` for both sta
 **`internal/scoutengine` — mechanical conversions.**
 `ensureserver_test.go`, `supervised_test.go`, `supervised_scout_test.go`, `supervised_integration_test.go`, `ensureserver_integration_test.go`, `refs_integration_test.go`: replace the hand-built `Location` with the bare `worktreeRoot` string it was wrapping. No assertion changes — if any of these tests changes behaviour, the migration is wrong.
 
-**`internal/scoutcli` — TDD candidate: the reshaped `lookupContext` test.**
-Replace `TestLookupContext_OutsideHubReturnsSynthesizedLocationAndBuiltinRegistry` with a test asserting the out-of-hub return is `(BuiltinRegistry(), filepath.Abs(dir))` — an absolute-path *string*, no `Location`. Keep the existing chdir-into-a-non-git-temp-dir setup, which is what forces the degraded branch. Cover:
+**`internal/scoutcli` — TDD candidate: the reshaped out-of-hub `lookupContext` test.**
+Replace `TestLookupContext_OutsideHubReturnsSynthesizedLocationAndBuiltinRegistry` with a test asserting the out-of-hub return is `(BuiltinRegistry(), filepath.Abs(dir))` — an absolute-path *string*, no `Location`. Keep the existing setup shape: the current test passes two `t.TempDir()` values as the `cwd`/`dir` arguments and **never chdirs** (`cli_test.go:584-607`); the chdir-into-a-non-git-temp-dir setup belongs to the separate `RunCLI_*_NoLanguageError` tests at lines 82, 165, 205, 798. Do not introduce a process-wide chdir the current test does not have. Cover:
 
 - out-of-hub with an explicit `dir` → anchor root is `filepath.Abs(dir)`, registry is the built-in;
 - out-of-hub with `dir` defaulted from `cwd` → anchor root is `filepath.Abs(cwd)`, **not** `filepath.Abs("")`. `lookupContext`'s existing doc comment calls out this exact trap ("dir is the already-defaulted directory, never the raw `--target-dir` flag value") and it must survive the rewrite.
 
 Delete `resolveLocation`'s own test with the function. Reshape `TestBuildOptions_ThreadsEveryFieldFromItsArguments` to assert `got.AnchorRoot` directly — a plain string comparison, simpler than the old `WorktreePath()` round-trip.
+
+**`internal/scoutcli` — the hub-mode branch, in a new `cli_integration_test.go`.**
+The out-of-hub tests above cover only half the acceptance property. The hub branch — `anchorRoot = layout.AnchorPath()` when `lyxcwd.Resolve(cwd)` succeeds — has no automated coverage today and must not be left to the manual smoke run, which this section elsewhere forbids as sole evidence. `cmd/lyx/constructoranchoring_test.go` does **not** close this: it exercises the two constructors directly and never calls `lookupContext`.
+
+Add `internal/scoutcli/cli_integration_test.go`, first line `//go:build integration` (mandatory — `hubforge.NewHub` is banned in untagged tests by the Test Tier Purity Invariant), following `internal/perchcli/cli_integration_test.go`'s fixture shape:
+
+- Build a hub with `hubforge.NewHub(t, ".")`.
+- Call `lookupContext(h.PrimeWorktree(), <a separate t.TempDir()>)` — deliberately passing a `dir` that is **not** the worktree.
+- Assert the returned anchor root is the hub worktree's anchor, **not** `filepath.Abs(dir)`. This is the discriminating assertion: an implementation that wrongly took the out-of-hub branch in both cases fails it, which a same-value fixture would not catch.
+- Assert the returned registry is the loaded overlay rather than `BuiltinRegistry()`, pinning that `LoadRegistry(layout.AnchorPath())` still anchors where it did.
+
+This is the one genuinely new test the task adds; everything else is a conversion.
 
 **`cmd/lyx` — the anchoring tables.**
 `constructoranchoring_test.go` rows 102-103, 160-161, 181-182 and `notransients_test.go` rows 79-80 become `scoutengine.DaemonStateFile(l.AnchorPath(), "go")` / `scoutengine.DaemonLock(l.AnchorPath(), "go")`, matching the `websterengine.Dir(l.AnchorPath())` rows directly above them. Expected paths are unchanged — that is the point.
@@ -170,6 +199,7 @@ Delete `resolveLocation`'s own test with the function. Reshape `TestBuildOptions
 
 - `go test ./internal/scoutengine/... ./internal/scoutcli/... ./cmd/lyx/...`
 - `go test -tags scout ./internal/scoutengine/...` — mandatory, not optional: four of the converted test files are `scout`-tagged and are invisible to the untagged run.
+- `go test -tags integration ./internal/scoutcli/...` — mandatory: the new hub-mode test is the only automated evidence for the hub half of the acceptance property, and it is invisible to the untagged run.
 - `go build ./...` — cheap guard that no other package referenced the changed symbols.
 - Manual acceptance, as a smoke check on top of the tests and never as the only evidence: run `lyx scout symbol <name> --target-dir <dir>` from a scratch directory outside any git repository and confirm it still resolves, and run `lyx scout refs` inside this worktree and confirm `.lyx/scout/go/daemon.json` appears at the same path as before the change.
 
@@ -183,4 +213,5 @@ Delete `resolveLocation`'s own test with the function. Reshape `TestBuildOptions
 - **Q:** How is the `filepath.Abs` error fallback preserved? **A:** [auto-pick] As `filepath.Clean(dir)`. **Why:** the old synthesis's `AnchorPath()` on that branch was `filepath.Join(filepath.Dir(dir), filepath.Base(dir))` = `filepath.Clean(dir)`, and the existing comment requires the failure mode not to change silently.
 - **Q:** `cmd/lyx/notransients_test.go` calls both constructors but is absent from T9's Files list — include it? **A:** [auto-pick] Include it, as a Files-list correction. **Why:** `./cmd/lyx/...` will not compile otherwise.
 - **Q:** Where do the doc updates land, given `scoutengine` has no `manifest/designs/` doc? **A:** [auto-pick] `internal/scoutengine/doc.go` plus the affected file headers and comments, same commit; no `docs/overview.md` and no `manifest/roadmap.md` change. **Why:** the module doc was deleted on landing and `doc.go` is its durable home; the module table, execution stack, and wave completion are all unaffected by a signature change.
+- **Q:** [review r1 gap] The acceptance property claims byte-identical paths in *both* modes, but every named test covered only the out-of-hub branch — `lookupContext`'s hub branch (`anchorRoot = layout.AnchorPath()`) had no automated evidence, and `constructoranchoring_test.go` does not call `lookupContext` at all. Name a hub test, or justify the gap? **A:** [auto-pick] Name one: a new `internal/scoutcli/cli_integration_test.go` (`//go:build integration`) driving a `hubforge.NewHub` fixture, calling `lookupContext(h.PrimeWorktree(), <separate t.TempDir()>)` and asserting the anchor root is the hub anchor rather than `filepath.Abs(dir)`. **Why:** the justify-the-gap alternative would rest the hub half of the sole acceptance property on a manual smoke run that the same section forbids as sole evidence; the mismatched-`dir` fixture is what makes the assertion discriminating rather than tautological, and `perchcli/cli_integration_test.go` already supplies the fixture shape at near-zero cost.
 - **Q:** What is the test strategy for the new told accessors? **A:** [auto-pick] Rewrite `scoutdaemon_test.go` as told-string path math across unanchored, subpath-anchored, and pure-told-directory cases; add a reshaped `scoutcli` `lookupContext` test; leave the `-tags scout` integration tests behaviourally unchanged. **Why:** mirrors `webstergeom_test.go`, and pins the byte-identical-paths property that is this task's sole acceptance criterion.
