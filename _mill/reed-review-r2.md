@@ -225,4 +225,6 @@ Nothing is shipped beyond scope; nothing plan-promised is deferred that should b
 ## Merge-readiness verdict
 
 **Not merge-ready as reviewed** — R2-F1 is a BLOCKING defect in the normal single-instance flow (hard failure plus permanent stray state on a shared server, plus a `down` that falsely reports success).
-Merge-ready once R2-F1–R2-F6 are fixed, all gates stay green, and the live scenarios are re-driven against a re-deployed binary; see `_mill/reed-review-r2-fixer-report.md`.
+
+**Merge-ready as fixed.** All six findings are closed and verified; nothing deferred. Every hermetic, integration and live-smoke gate is green, the four new regression tests were each sabotage-proved, the 3× concurrent sweep went from 2 failures in 9 suite runs to 9/9 clean, every live scenario was re-driven against the re-deployed binary, and teardown confirmed zero stray tmux/`lyx`/payload processes.
+See `_mill/reed-review-r2-fixer-report.md` for the per-finding detail, the sabotage proofs, the process deviations, and what could not be verified on this host.
