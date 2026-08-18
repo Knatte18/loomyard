@@ -21,4 +21,19 @@ Scope: `internal/reedengine`, `internal/reedcli`, `internal/hubgeom`, `cmd/lyx` 
 
 ## What was tested
 
-(appended live as commands return)
+Hermetic gates (all green):
+- `go build ./...` — pass.
+- `go vet ./internal/reedengine/... ./internal/reedcli/... ./internal/hubgeom/...` — pass.
+- `go test -count=5 ./internal/reedengine/... ./internal/reedcli/... ./internal/hubgeom/... ./cmd/lyx/...` — pass (reedengine 0.79s, cmd/lyx 0.88s).
+
+Direct tmux 3.6 grammar probes (isolated socket `r3probe1`, torn down after each):
+- `new-session -d -s "a<TAB>b"` → exit 0, session created as the FOUR literal characters `a\tb` (vis-encoded), `has-session -t '=a<TAB>b'` MISSES. Same for newline (`\n` → literal `\n`), ESC (→ `\033`), DEL (→ `\177`), BEL (→ `\a`), and the invalid-UTF-8 byte 0xFF (→ literal `\377`). Exit 0 every time, exact-match target misses every time. **This is a live-confirmed R2-F1-shaped gap — see finding R3-F1.**
+- Names that pass verbatim and exact-hit: a space-only name `" "`, unicode `svc-åäö-⚙`, `=`-leading, `-`-leading, `a#b%c`. So refusing only the vis-encode class is correct — no over-refusal needed.
+- Socket-key side: `tmux -L "r3<TAB>sock" new-session` works (a socket key is a filename; control characters are legal there). The vis-encode gap is session-name-only.
+
+Live CLI driving (dev binary `./deploy-dev` @ 84f3558b; real hub built with `lyx fabric clone` into the session scratchpad — `warp-HUB` with warp prime + two unicode worktrees):
+- **S1 fresh-hub first boot**: `lyx reed up` in the warp prime of a hub whose `_board/.lyx/logs` did NOT yet exist → ok in 0.17s, logs dir created 0755, session `warp` up with header pane (%1 running the real `lyx reed header --blocking` keepalive) + initial bash pane. `fabricengine.HubLogsDir` ownership move holds on the very first boot.
+- **S2 lifecycle + child reap**: added parent strand `bash -c "sleep 600 & sleep 600 & wait"` + child strand; `remove --recursive` removed both strands and the WHOLE process subtree (both `sleep 600` grandchildren confirmed gone immediately after return); session + header survived; status empty.
+- **S3 crash/rebirth**: added strand with distinct `--resume-cmd 'sleep 401'`; `tmux kill-server` out from under; `lyx reed resume` → rebooted server, resumed:1, replayed the RESUME cmd (`sleep 401` live, not `sleep 400`), header pane relaunched with rendered hub token.
+- **S4 unicode worktrees**: `lyx fabric add svc-åäö-⚙` and `svc-åäö-⚙-x` (a unicode PREFIX-colliding pair — a fixture neither round 1 nor round 2 used); `reed up` + `add` in both → sessions created verbatim, exact targets hit.
+- **S5 unicode prefix-pair scope**: `reed down` in `svc-åäö-⚙` (the prefix) left `svc-åäö-⚙-x`'s session, strand, and `sleep 301` process untouched; a SECOND down (idempotence path, where a bare `-t` would prefix-match now that our session is gone) also left the sibling untouched; the downed worktree's `sleep 300` was reaped.
