@@ -914,8 +914,16 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	}
 }
 
-// serverPIDLocked returns the tmux server's OS pid, or 0 if unknown.
-// Must run before kill-session when the caller intends to wait on server.
+// serverPIDLocked returns the pid of the tmux server holding this engine's socket, or 0 when no
+// server answers.
+// Must run before kill-session when the caller intends to wait on the server.
+//
+// It is the SERVER's pid, not this session's, and it comes back even when this worktree's session
+// does not exist: #{pid} is server-global and display-message exits 0 for a -t target naming no
+// session (see generation.go's paneGenerationLocked). So on a socket a sibling worktree is using,
+// this answers that shared server's pid rather than 0 — which is correct for its one consumer, since
+// Down only spends the value after list-sessions came back empty, but is not what "this session's
+// server, or 0 if unknown" would lead a reader to expect (R6 review finding R6-F4).
 func (e *Engine) serverPIDLocked() int {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{pid}")
 	if err != nil {

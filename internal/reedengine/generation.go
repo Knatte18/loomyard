@@ -36,6 +36,14 @@ const (
 // parsePaneGeneration turns one display-message answer into a PaneGeneration for sessionName.
 // A short or empty answer is an error rather than a partially-filled stamp: a stamp missing a field
 // would compare unequal to every future probe and clear this worktree's bindings on every op.
+//
+// That rejection carries a second, load-bearing job the field-count phrasing does not reveal: it is
+// also how an ABSENT session is detected at all. display-message exits 0 for a -t target naming no
+// session and expands the session-scoped fields to empty (see paneGenerationLocked), so
+// "|<serverpid>|" is tmux's real answer for "that session is gone" — not an error. Relaxing this
+// check would therefore not merely admit a partial stamp: it would turn the still-running-orphan
+// refusal into one that never fires. contract_integration_test.go's
+// TestDisplayMessageDoesNotErrorForAnAbsentSession pins both halves together.
 func parsePaneGeneration(sessionName, out string) (PaneGeneration, error) {
 	fields := strings.Split(strings.TrimSpace(out), paneGenerationFieldSeparator)
 	if len(fields) != paneGenerationExpectedFields {

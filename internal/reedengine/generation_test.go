@@ -47,6 +47,14 @@ func TestParsePaneGeneration(t *testing.T) {
 			out:     "$0||1787043918",
 			wantErr: true,
 		},
+		{
+			// tmux 3.6's real answer for a -t target naming no session: exit 0, session-scoped
+			// fields empty, server-global #{pid} filled. This rejection is what the orphan check
+			// reads as "that session is gone" (R6 review finding R6-F4).
+			name:    "tmux's own absent-session answer is an error, which is how absence is detected",
+			out:     "|2912080|",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

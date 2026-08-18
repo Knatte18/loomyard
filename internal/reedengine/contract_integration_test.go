@@ -372,6 +372,79 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 	}
 }
 
+// TestDisplayMessageDoesNotErrorForAnAbsentSession pins the wire-contract fact the pane-generation
+// guards rest on, and which the code that spends it originally documented backwards (R6 review
+// finding R6-F4).
+//
+// Unlike has-session and list-panes, which exit 1 for a -t target naming no session, display-message
+// exits 0 and expands every session-scoped format to empty while the server-global #{pid} still
+// fills — and it does NOT fall back to a current session when other sessions exist on the socket.
+// The generation probe's absent-session case therefore surfaces as parsePaneGeneration's empty-field
+// rejection rather than as a tmux error, so that rejection is load-bearing rather than cosmetic:
+// relaxing it would turn the still-running-orphan check into one that never refuses and
+// adoptPaneGenerationLocked into one that clears every worktree's bindings on every op.
+// The assertions below are therefore paired — the raw wire answer AND what parsePaneGeneration makes
+// of it — so the connection cannot be broken from either end without a failure.
+func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
+	tmpDir := t.TempDir()
+	seedReedConfig(t, tmpDir)
+
+	cfg, err := LoadConfig(tmpDir, "reed")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if _, err := exec.LookPath(cfg.Tmux); err != nil {
+		t.Skipf("configured multiplexer binary %q not found: %v", cfg.Tmux, err)
+	}
+
+	socket := fmt.Sprintf("lyx-contract-absent-session-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	const present = "absent-probe-present"
+	const absent = "absent-probe-missing"
+	reed := NewTmuxCmd(cfg.Tmux, socket)
+
+	t.Cleanup(func() {
+		_ = reed.run("kill-server")
+	})
+
+	if err := reed.run("new-session", "-d", "-s", present, "-x", "80", "-y", "24", cfg.Shell); err != nil {
+		t.Fatalf("new-session %s: %v", present, err)
+	}
+
+	// The present session answers a complete, parseable stamp.
+	out, err := reed.output("display-message", "-p", "-t", exactSessionWindowTarget(present), paneGenerationFormat)
+	if err != nil {
+		t.Fatalf("display-message for the present session %q: %v", present, err)
+	}
+	presentGeneration, err := parsePaneGeneration(present, out)
+	if err != nil {
+		t.Fatalf("parsePaneGeneration(%q) for the present session: %v", out, err)
+	}
+	if !presentGeneration.Recorded() {
+		t.Errorf("parsePaneGeneration(%q) = %+v; want a recorded generation", out, presentGeneration)
+	}
+
+	// The absent session answers with EXIT 0 — the whole point of this test. A future tmux that
+	// errors here instead would make the probe's error path mean two different things.
+	absentOut, err := reed.output("display-message", "-p", "-t", exactSessionWindowTarget(absent), paneGenerationFormat)
+	if err != nil {
+		t.Fatalf("display-message for the absent session %q = %v; want no error — the guards in generation.go are built on display-message NOT reporting absence as an error, and doc.go states that as a pinned contract", absent, err)
+	}
+
+	// It must not resolve to the one session that IS on the socket, which would make an absent
+	// session indistinguishable from a live namesake.
+	if strings.Contains(absentOut, presentGeneration.TmuxSessionID) {
+		t.Errorf("display-message -t %q answered %q, which carries the present session's id %q; want the session-scoped fields empty — a fallback to a current session would let a gone session masquerade as a live one",
+			exactSessionWindowTarget(absent), absentOut, presentGeneration.TmuxSessionID)
+	}
+
+	// And the empty-field answer must be what parsePaneGeneration rejects, since that rejection is
+	// the only thing standing between "the session is gone" and a partial stamp reed would compare
+	// against every future probe.
+	if _, err := parsePaneGeneration(absent, absentOut); err == nil {
+		t.Errorf("parsePaneGeneration(%q) for an absent session = nil error; want a rejection — the orphan check reads a probe failure as 'not identifiable', and a partial stamp accepted here would be compared as an identity", absentOut)
+	}
+}
+
 // TestSessionNameRewriteIsSilentAndExactTargetsMissIt pins the wire-contract fact behind
 // validateToldTmuxIdentity (server.go): tmux does not REJECT a session name containing '.' or ':' —
 // it rewrites each to '_', creates the session under the rewritten name, and exits 0.
