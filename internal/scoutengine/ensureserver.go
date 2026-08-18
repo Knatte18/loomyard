@@ -1,4 +1,4 @@
-// ensureserver.go implements the EnsureServer(lang, layout) -> LSPConn seam from
+// ensureserver.go implements the EnsureServer(lang, anchorRoot) -> LSPConn seam from
 // manifest/designs/scout-redesign.md: given a registry entry whose HasNativeDaemon field is true,
 // it resolves, spawns or dials, and hands back an already-initialized, already-probed *lspClient
 // ready for immediate use.
@@ -21,7 +21,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
@@ -52,7 +51,7 @@ const (
 
 // ensureServer resolves, spawns or dials, and initializes a language server connection,
 // returning it ready for use alongside the connKind needed for correct teardown.
-func ensureServer(ctx context.Context, lang string, entry Entry, targetDir string, layout *lyxcwd.Location, timeout time.Duration) (*lspClient, connKind, error) {
+func ensureServer(ctx context.Context, lang string, entry Entry, targetDir string, anchorRoot string, timeout time.Duration) (*lspClient, connKind, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
 		return nil, connKindNative, fmt.Errorf("scoutengine: resolve go toolchain for %q: %w", lang, err)
@@ -64,7 +63,7 @@ func ensureServer(ctx context.Context, lang string, entry Entry, targetDir strin
 	// binPath-plus-extraArgs composition nativeArgv applies for the native
 	// strategy's own argv.
 	command := append([]string{binPath}, entry.Command[1:]...)
-	client, err := ensureSupervised(ctx, command, lang, targetDir, layout, timeout)
+	client, err := ensureSupervised(ctx, command, lang, targetDir, anchorRoot, timeout)
 	if err == nil {
 		return client, connKindSupervised, nil
 	}
@@ -296,11 +295,11 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // entry dispatches here as its live V1 strategy (via ensureServer), that
 // escalation is what keeps a single wedged daemon from stranding every
 // caller in this worktree indefinitely.
-func ensureSupervised(ctx context.Context, command []string, lang, targetDir string, layout *lyxcwd.Location, timeout time.Duration) (*lspClient, error) {
-	statePath := DaemonStateFile(layout, lang)
-	lockPath := DaemonLock(layout, lang)
+func ensureSupervised(ctx context.Context, command []string, lang, targetDir string, anchorRoot string, timeout time.Duration) (*lspClient, error) {
+	statePath := DaemonStateFile(anchorRoot, lang)
+	lockPath := DaemonLock(anchorRoot, lang)
 	// The daemon's socket path is a deterministic function of
-	// (layout, lang), not randomly chosen at spawn time — this keeps
+	// (anchorRoot, lang), not randomly chosen at spawn time — this keeps
 	// the state file's address field stable across restarts, since there is
 	// nothing to "choose" or persist separately from recomputing it.
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
