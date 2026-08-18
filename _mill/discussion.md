@@ -36,7 +36,7 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 - **Any change to where a directory resolves in a real worktree.** Every path this task touches must resolve byte-identically before and after.
 - `internal/websterengine` / `internal/webstercli` — that is T7, running in parallel.
 - `internal/shuttleengine`, `internal/reedengine`, `internal/pattern`, `internal/treadleengine` — already converted or never coupled.
-- `internal/shedadapters` — already fully told (`NewPerchProducer` takes `runDirBase`/`scratchDirBase`/`stencilsDir` as strings); it mentions `perchengine.New` only in a doc comment, which may need a wording touch but no code change.
+- `internal/shedadapters` — **no change at all.** It is already fully told (`NewPerchProducer` takes `runDirBase`/`scratchDirBase`/`stencilsDir` as strings), and its one mention of `perchengine.New`, the `PerchFactory` doc comment at `perch.go:34`, is about `Options.PauseRequested` being consumed at construction time — it names no geometry and stays true verbatim. Verified, not assumed.
 - `CONSTRAINTS.md` — no invariant changes here (see Decisions).
 - `docs/overview.md` — no module added or removed, no execution-stack change.
 - `manifest/designs/producers-standalone.md` — the design doc survives until the last wave lands; it is not annotated per-task.
@@ -102,10 +102,17 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 
 ### `manifest/roadmap.md` is not touched by this task — the wave-closing task owns the move
 
-- **Decision.** This task makes no edit to `manifest/roadmap.md`. Planned item 1 ("producers standalone: producer engines") covers T6 *and* T7; whichever of the two lands **second** — recognizing at that point that wave 3 is complete — performs the single one-shot move of the whole item to Done. This is T7's rule, adopted verbatim so both parallel tasks state the same one.
+- **Decision.** This task makes no edit to `manifest/roadmap.md`. Planned item 1 ("producers standalone: producer engines") covers T6 *and* T7; whichever of the two lands **second** — recognizing at that point that wave 3 is complete — performs the single one-shot move of the whole item to Done, and failing that T10 sweeps it: T10's own `Files` list names `manifest/roadmap.md` and its brief says outright "move the roadmap entries to Done". This is T7's rule, adopted verbatim so both parallel tasks state the same one.
 - **Rationale.** An earlier draft of this discussion had T6 split the item (shrink it to the Webster half, add a Done entry for burler/perch) and called that "self-coordinating". It is not, for two reasons. First, T7's discussion had already decided to touch the roadmap not at all, so only one of the two tasks was committed to any edit — the protocol needs both sides to implement it. Second, and independently: the split as written was a single unconditional action, not one conditioned on whether T7 had landed. Trace both orders and each is wrong. **T6 first:** the item correctly shrinks to Webster, T7 then lands and touches nothing, leaving a Planned entry for completed work. **T7 first:** the roadmap is untouched, then T6 executes its unconditional reword and produces a Planned entry naming Webster — which is already done — with no Done entry for the Webster half ever created. Deferring to the wave-closing task needs no cross-task protocol at all: the second task to land observes a complete wave and moves the whole item once.
 - **Rationale, secondary.** This also brings the roadmap in line with how this task's `Out` section already treats every other shared doc (`docs/overview.md`, `CONSTRAINTS.md`, the design doc itself): T6 edits only what its own change falsifies, and a half-complete wave falsifies nothing in the roadmap's text. It removes the extra `manifest/roadmap.md` merge conflict with T7 as a side effect.
 - **Rejected.** (a) The split described above — wrong in both merge orders, as traced. (b) Moving the whole item to Done in this task — false while Webster is pending. (c) Making T6's edit conditional on inspecting the roadmap's live state at merge time — it would work, but it requires both tasks to carry branching logic where deferring requires neither.
+
+### the `internal/lyxcwd`-absent property gets no enforcement test here — T10 owns that decision
+
+- **Decision.** This task adds no import-allowlist or leaf-enforcement test pinning "`internal/lyxcwd` is absent from `burlerengine`'s and `perchengine`'s production imports". The property is verified once, by the grep step in Verify, and left unguarded thereafter.
+- **Rationale.** T10's brief already owns this question and answers it for every converted package at once: it lands the three-tier invariant in `CONSTRAINTS.md` *"with its enforcement basis named honestly (an import-allowlist test per producer package where one exists, review obligation where none does)"*. Deciding it here, for two packages out of the set, is what would produce the inconsistency — `internal/pattern` has `leaf_enforcement_test.go` because it is a genuine leaf with a short allowlist, and `internal/shuttleengine` has `seam_enforcement_test.go` for its seam; `burlerengine` and `perchengine` are neither, so a copied test would need a new shape invented in a task whose contract is "change no behaviour".
+- **The direct precedent points the same way.** `reedengine` made this exact conversion in wave 1 and got no guard — and still names `lyxcwd` in `server.go:3-4`, `geometry.go:13` and `doc.go:21-24`, all in prose explaining what it is told *by* a `Location` it no longer holds. That residue is correct and is what a naive grep-based guard would flag, which is a second reason to let T10 design the check rather than bolt one on here.
+- **Rejected.** (a) Adding a bespoke import test in T6 — invents a per-package shape T10 is scheduled to standardise. (b) Leaving the question unstated, which is what round 2's review flagged: a plan writer would have to guess.
 
 ### `CONSTRAINTS.md` is not edited by this task
 
@@ -138,7 +145,7 @@ Burler and perch are one task, not two: `perchengine` imports `burlerengine` dir
 - `internal/perchcli/cli.go:147` — same `burlerengine.New` call, same already-present `hubgeom` import (line 20).
 - `internal/perchcli/cli.go:160,166` — `perchengine.RunsDir(layout)` / `ScratchDir(layout)`. The long comments at 152-159 and 161-165 explaining *why* these are `AnchorPath()`-anchored must survive the rewrite; they are the record of a real bug class (a nested-init repo stranding artifacts outside fabric).
 - `internal/perchcli/run.go:294` — `perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.layout, …)`.
-- `internal/shedadapters/perch.go` — no call, one doc-comment mention of `perchengine.New` at line 34 (about `Options.PauseRequested` consumption at construction time). Still accurate; check the wording survives.
+- `internal/shedadapters/perch.go` — no call site and no edit. Its one doc-comment mention of `perchengine.New` (line 34) explains why `PerchFactory` is a factory rather than a seam over a built engine: `New` consumes `Options.PauseRequested` at construction time. That statement names no geometry and remains true after this task, so the file is untouched.
 
 **Test call sites** (`*_test.go`), all mechanical:
 

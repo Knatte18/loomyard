@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-08-18T08:16:48Z'
 discussion-fix-r1  '2026-08-18T08:39:16Z'
+discussion-fix-r2  '2026-08-18T08:44:24Z'
+discussed  '2026-08-18T08:44:24Z'
 ```
