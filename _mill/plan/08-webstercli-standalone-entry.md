@@ -36,7 +36,7 @@ The `CONSTRAINTS.md` rewords the shipped code makes necessary land in this batch
   its hub default is the hub's stencils directory and its standalone default is the state directory's own `_lyx/stencils`.
   `--plan-dir` is optional in both modes and read-only in both;
   its hub default is `planparser.PlanDir` over the anchor path, identical to today, and its standalone default is the same accessor over the state directory.
-  `--target-dir` is standalone-only, defaults to the current working directory, and is resolved to an absolute path at this CLI boundary.
+  `--target-dir` is standalone-only, defaults to the current working directory, and is resolved to an absolute path at this CLI boundary -- "this CLI boundary" spans card 35's wiring function, not `cli.go` itself: the raw flag value is declared here and stored unresolved, and `filepath.Abs` runs later, inside the wiring function's standalone branch, before `--target-dir` reaches `standalonestate.Derive`.
   Each flag's usage string must be accurate about which mode honours it and whether it is read-only, since help accuracy is a review obligation under the CLI / Cobra Invariant and these three are new observable behaviour.
   Extend the parent command's `Long` with a short "Modes" paragraph naming hub mode and standalone mode and listing the three flags with a concrete example of a standalone invocation, so the behaviour is self-discoverable from `lyx webster --help`.
   Declare only the flags and the variables in this card;
