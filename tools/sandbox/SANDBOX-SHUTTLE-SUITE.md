@@ -138,6 +138,23 @@ Sending multiline text must be rejected outright (a "must be a single line" erro
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S4 -- One envelope per invocation, even when two things are wrong at once
+
+**Covers:** shuttle
+
+**Goal:** "Make a `lyx shuttle run` invocation fail for TWO independent reasons at the same time, and confirm it still answers with exactly one JSON object naming the one to fix first."
+
+**Watch:** From a directory that is NOT a git repository (e.g. a fresh `mkdir` under the system temp dir), run `lyx shuttle run --output-file out.md` -- geometry resolution fails AND no `--prompt`/`--prompt-file` was given, so both the pre-flight and the flag check have something to say.
+The command must print **exactly one** JSON object, and it must be the pre-flight one (`"error":"not a git repository"`), because that is the problem the operator has to fix before the flag error can even be evaluated.
+Two objects on one invocation is a FAIL, not a cosmetic issue: a caller that reads the output with a single-object JSON parse gets a parse error instead of the real cause.
+Repeat with `--prompt a --prompt-file b --output-file out.md` (mutually exclusive flags) for the same result.
+Then, from inside a real lyx worktree, run `lyx shuttle run --output-file out.md` and confirm the flag error IS reported on its own there -- suppressing it only when the pre-flight already failed is the point, suppressing it always would be a different bug.
+This scenario starts no agent and costs no provider tokens.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
