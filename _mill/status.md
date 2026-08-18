@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r6
+phase: planned
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -28,4 +28,5 @@ plan-fix-r4  '2026-08-18T14:03:02Z'
 plan-fix-r5  '2026-08-18T14:13:47Z'
 plan-review-r6  '2026-08-18T14:31:04Z'
 plan-fix-r6  '2026-08-18T14:31:04Z'
+planned  '2026-08-18T14:31:21Z'
 ```
