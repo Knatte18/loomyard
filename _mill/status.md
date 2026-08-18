@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-hubgeom.WebsterGeometry and the standalonegeom sibling  '2026-08-18T10:
 approved-websterengine told Deps and engine-owned fabric seams  '2026-08-18T10:44:19Z'
 approved-webstercli standalone entry  '2026-08-18T11:04:51Z'
 holistic-reviewing  '2026-08-18T11:05:28Z'
+holistic-fixing  '2026-08-18T11:10:52Z'
 ```
 
 ## Batches
