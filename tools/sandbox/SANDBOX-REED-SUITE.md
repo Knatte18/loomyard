@@ -81,7 +81,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M21`).
+- `ref` is the scenario id (`M0`-`M22`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -362,6 +362,20 @@ A new server on the default socket (the capability probe's historical leak, R2-F
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M22 -- Recovery from a scrubbed reed.json while the session is up
+
+**Goal:** "Prove a lost `.lyx/reed.json` does not permanently wedge a worktree whose tmux session is still running."
+
+**Watch:** `up`, then `add` one strand, so the one-row header band at the top of the window is actually laid out.
+Delete `.lyx/reed.json` (or run `git clean -xdf` in the worktree -- `.lyx` is never-tracked machine-local scratch, so this is a sanctioned operator action) while leaving the session up.
+`lyx reed up` must then SUCCEED, and the rebuilt header band must be visible at the very top of the window with the strand stack below it -- not inverted, not squeezed to nothing.
+A subsequent `lyx reed add` must run its command for real (check the pane, and check the process exists), not type it onto a pane that is already busy.
+An `up` that fails with `no space for new pane`, a header that does not end up topmost, or an added strand whose command never runs is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -392,6 +406,7 @@ M18: <OK|WARN|FAIL> -- <one-line note if not OK>
 M19: <OK|WARN|FAIL> -- <one-line note if not OK>
 M20: <OK|WARN|FAIL> -- <one-line note if not OK>
 M21: <OK|WARN|FAIL> -- <one-line note if not OK>
+M22: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
