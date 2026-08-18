@@ -175,6 +175,12 @@ func socketAndSessionIn(t *testing.T, cwd string) (socket, session string) {
 	return socket, session
 }
 
+// smokeClaudeModel is the model every real `claude` process this package spawns must run on.
+// The suite's Claude-adjacent assertions are about reed (env hygiene on the server spawn, opaque
+// resumeCmd replay), never about model capability, so the cheapest model is always the right one —
+// and leaving it unpinned silently bills the operator's default model on every sweep.
+const smokeClaudeModel = "haiku"
+
 // smokeReapLaunchCmd returns the OS-appropriate long-running command line
 // the pane-child-reap fixtures (TestSmokeDownReapsPaneChildProcesses,
 // TestSmokeDownLeavesNoTmuxOnSocket, TestSmokeRemoveReapsRemovedPaneChildProcesses,
