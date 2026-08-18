@@ -32,13 +32,47 @@ import (
 // filename under its per-user socket directory, so a key carrying a separator names a path whose
 // parent does not exist; tmux prints "error creating <path>" and STILL EXITS 0 (verified live,
 // tmux 3.6), which no probe reed has can tell apart from a slow boot.
-// Substituting keeps the key usable and cannot collide, since the hash is untouched.
+// The readable half is bounded for the same reason and by the same logic (see
+// maxSocketSafeBaseRunes): a tmux -L key is a filename inside the per-user socket directory, and
+// that whole path must fit sockaddr_un's 108-byte sun_path, so an unbounded basename produces a key
+// no tmux invocation can spend.
+// Substituting and truncating both keep the key usable and neither can collide, since the hash is
+// untouched.
 func ServerName(hubPath string) string {
 	abs := cleanAbsHubPath(hubPath)
-	base := socketSafeBase(filepath.Base(abs))
+	base := truncateAtRuneBoundary(socketSafeBase(filepath.Base(abs)), maxSocketSafeBaseBytes)
 	sum := sha256.Sum256([]byte(abs))
 	shortHash := hex.EncodeToString(sum[:])[:8]
 	return "lyx-" + base + "-" + shortHash
+}
+
+// maxSocketSafeBaseBytes caps the human-readable half of a ServerName key, in BYTES — the unit the
+// kernel's limit is expressed in, so the resulting bound holds for a multi-byte hub name too.
+//
+// A tmux -L key names a socket file inside the per-user socket directory, and that whole path must
+// fit sockaddr_un.sun_path (108 bytes). Measured live on tmux 3.6 with the default
+// "/tmp/tmux-<uid>/" directory: a 92-byte key works and a 93-byte one fails with
+// "error creating <path> (File name too long)" on EVERY invocation, which makes the hub unusable —
+// `lyx reed up` cannot boot it at all (R4 review finding R4-F2).
+// A ServerName key is len(base)+13 bytes, so this cap holds every key at or under 61 bytes, leaving
+// headroom for a socket directory considerably longer than the default (TMUX_TMPDIR).
+const maxSocketSafeBaseBytes = 48
+
+// truncateAtRuneBoundary returns s cut to at most maxBytes bytes, never splitting a UTF-8 rune.
+// A trailing rune that would straddle the limit is dropped whole rather than left half-written,
+// since a socket key carrying a broken rune is no more usable than an over-long one.
+func truncateAtRuneBoundary(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := 0
+	for i := range s {
+		if i > maxBytes {
+			break
+		}
+		cut = i
+	}
+	return s[:cut]
 }
 
 // socketSafeBase substitutes '_' for every path separator in base.

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // socketUnsafeChars matches the characters ServerName must never
@@ -55,6 +56,60 @@ func TestServerName_SocketSafeForAHubAtTheFilesystemRoot(t *testing.T) {
 	}
 	if got == ServerName(filepath.Join(root, "elsewhere-HUB")) {
 		t.Errorf("ServerName(%q) collided with a distinct hub; substitution must not touch the identity half", root)
+	}
+}
+
+// TestServerName_BoundedForALongHubBasename is the regression guard for the R4 review's R4-F2: the
+// readable half of the key was unbounded, so a long hub directory name produced a -L key whose
+// socket path could not fit sockaddr_un's 108-byte sun_path. Measured live on tmux 3.6 with the
+// default "/tmp/tmux-<uid>/": a 92-byte key works, a 93-byte one fails "(File name too long)" on
+// every invocation and the hub cannot be booted at all.
+// Two distinct long-named hubs are asserted apart alongside the bound, since truncation must not
+// change hub identity any more than the separator substitution above does.
+func TestServerName_BoundedForALongHubBasename(t *testing.T) {
+	longBase := strings.Repeat("h", 200) + "-HUB"
+	parent := t.TempDir()
+
+	got := ServerName(filepath.Join(parent, longBase))
+	// The measured ceiling is 92 for the default socket directory; the bound
+	// asserted here is the one the cap actually promises, with headroom for a
+	// longer TMUX_TMPDIR.
+	const wantAtMost = maxSocketSafeBaseBytes + len("lyx-") + len("-") + 8
+	if len(got) > wantAtMost {
+		t.Errorf("ServerName(<200-char hub basename>) = %q (%d bytes); want at most %d — tmux cannot open a socket for an over-long key", got, len(got), wantAtMost)
+	}
+	if other := ServerName(filepath.Join(parent, "other", longBase)); got == other {
+		t.Errorf("ServerName collided for two distinct hubs sharing a long basename: %q; truncation must not touch the identity half", got)
+	}
+}
+
+func TestTruncateAtRuneBoundary(t *testing.T) {
+	tests := []struct {
+		name     string
+		in       string
+		maxBytes int
+		want     string
+	}{
+		{"under the limit is untouched", "short", 48, "short"},
+		{"exactly at the limit is untouched", "abcd", 4, "abcd"},
+		{"ascii is cut to the limit", "abcdefgh", 3, "abc"},
+		{"a straddling rune is dropped whole", "ääää", 3, "ä"},
+		{"a rune ending exactly at the limit is kept", "ääää", 4, "ää"},
+		{"zero keeps nothing", "abc", 0, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateAtRuneBoundary(tt.in, tt.maxBytes)
+			if got != tt.want {
+				t.Errorf("truncateAtRuneBoundary(%q, %d) = %q; want %q", tt.in, tt.maxBytes, got, tt.want)
+			}
+			if len(got) > tt.maxBytes {
+				t.Errorf("truncateAtRuneBoundary(%q, %d) = %q (%d bytes); want at most %d", tt.in, tt.maxBytes, got, len(got), tt.maxBytes)
+			}
+			if !utf8.ValidString(got) {
+				t.Errorf("truncateAtRuneBoundary(%q, %d) = %q; want valid UTF-8 (a rune must never be split)", tt.in, tt.maxBytes, got)
+			}
+		})
 	}
 }
 
