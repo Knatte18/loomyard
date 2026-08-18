@@ -318,7 +318,7 @@ func TestSmokeBurlerRoundToyFixture(t *testing.T) {
 	reedGeom := hubgeom.ReedGeometry(h.Location)
 	reedEngine := reedengine.New(reedCfg, reedGeom)
 	runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-	engine := burlerengine.New(runner, h.Location, burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath))
+	engine := burlerengine.New(runner, hubgeom.BurlerGeometry(h.Location), burlerengine.Config{}, fabricengine.StencilsDir(h.Location.HubPath))
 
 	result, err := engine.Run(profile, burlerengine.RunOpts{Timeout: 5 * time.Minute})
 	if err != nil {
