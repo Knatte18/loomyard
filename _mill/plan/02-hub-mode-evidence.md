@@ -33,7 +33,9 @@ The batch closes with the tagged-suite gate that batch 1's `verify:` deliberatel
 - **Moves:** none
 - **Requirements:** Create `internal/scoutcli/testmain_test.go` as a copy of `internal/perchcli/testmain_test.go`, changing only the package clause to `package scoutcli` and the file-header prose to name scoutcli's own fixture instead of perchcli's.
   It declares `func TestMain(m *testing.M)` calling `gitkit.HermeticGitEnv()` then `os.Exit(m.Run())`, and imports `os`, `testing`, and `github.com/Knatte18/loomyard/internal/gitkit`.
-  Carry no build tag on this file: `cmd/lyx/hermeticenv_test.go` scans tag-agnostically and would not see a tagged `TestMain` as satisfying the requirement for the tagged file card 12 adds.
+  Carry no build tag on this file, matching `internal/perchcli/testmain_test.go`, which is untagged even though the `hubforge.NewHub` fixture it covers lives behind `//go:build integration`.
+  `TestMain` is the single entry point of a package's whole test binary, so an untagged one puts every tier of this package's tests — the existing untagged `cli_test.go` included — under the hermetic git environment, whereas tagging it `integration` would confine that to the integration binary alone.
+  This is not a `cmd/lyx/hermeticenv_test.go` requirement: that guard reads every `*_test.go` file's raw content with no build-tag filtering, so it would see a tagged `TestMain` identically.
   This file is a direct, non-optional consequence of card 12 — `hubforge.NewHub` is one of `hermeticenv_test.go`'s git-spawn tokens and `internal/scoutcli` is not on its `allowedNonHermetic` allowlist, so without this file `TestHermeticGitEnv_GitSpawningPackagesHaveTestMain` fails.
 - **Commit:** `test(scoutcli): add the hermetic git TestMain companion`
 

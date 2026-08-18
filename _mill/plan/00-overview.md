@@ -3,7 +3,7 @@
 ```yaml
 task: "scoutengine told-geometry (optional uniformity pass)"
 slug: "scout-told-geometry"
-approved: false
+approved: true
 started: "20260818-130215"
 parent: "standalone-producers"
 root: ""
