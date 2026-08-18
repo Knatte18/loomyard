@@ -81,7 +81,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M19`).
+- `ref` is the scenario id (`M0`-`M21`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -335,6 +335,33 @@ A `split header pane: ... no space for new pane` error from `up` is the wedged-h
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M20 -- Refusal of a worktree name tmux would silently rewrite
+
+**Goal:** "Prove reed refuses, up front and loudly, a worktree whose directory name tmux would silently rewrite -- instead of hanging and stranding a session on the shared hub server."
+
+**Watch:** Rename a worktree directory so its name carries a `.` (e.g. `svc.v2`), or -- the second rewrite class -- a control character (e.g. a literal TAB via `mv svc3 "svc$(printf '\t')3"`, plus `git worktree repair`;
+controlled exception, restore the name afterwards).
+`lyx reed up` (and every other reed verb) must refuse IMMEDIATELY (sub-second, no 20s hang) with a JSON error naming the offending character and the worktree directory to rename.
+Afterwards `tmux -L <socket> ls` (controlled exception) must show NO new session -- neither the raw name nor a rewritten one (`svc_v2`, `svc\t3`) -- squatting on the shared hub server.
+A hang, a "did not materialize" timeout, or any leftover session is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M21 -- Reed never touches the operator's default tmux socket
+
+**Goal:** "Prove a full reed session never starts a server on the operator's own default tmux socket."
+
+**Watch:** Before starting, note whether `tmux ls` (default socket, controlled exception) reports a server.
+Run a normal cycle -- `up`, `add`, `status`, `resume`, `down`.
+Afterwards `tmux ls` must report exactly what it did before: if there was no default-socket server, there still is none ("no server running").
+A new server on the default socket (the capability probe's historical leak, R2-F6) is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -363,6 +390,8 @@ M16: <OK|WARN|FAIL> -- <one-line note if not OK>
 M17: <OK|WARN|FAIL> -- <one-line note if not OK>
 M18: <OK|WARN|FAIL> -- <one-line note if not OK>
 M19: <OK|WARN|FAIL> -- <one-line note if not OK>
+M20: <OK|WARN|FAIL> -- <one-line note if not OK>
+M21: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
