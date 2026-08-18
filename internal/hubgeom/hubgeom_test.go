@@ -17,9 +17,11 @@ import (
 
 func TestReedGeometry(t *testing.T) {
 	tests := []struct {
-		name string
+		name      string
+		anchorRel string
 	}{
-		{"subpath-anchored fixture"},
+		{"subpath-anchored fixture", filepath.Join("sub", "dir")},
+		{"unanchored fixture", "."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -27,14 +29,13 @@ func TestReedGeometry(t *testing.T) {
 			hub := filepath.Join(root, "some-hub-HUB")
 			worktreeName := "some-worktree"
 			worktreeRoot := filepath.Join(hub, worktreeName)
-			anchorRel := filepath.Join("sub", "dir")
-			anchorPath := filepath.Join(worktreeRoot, anchorRel)
+			anchorPath := filepath.Join(worktreeRoot, tt.anchorRel)
 
 			l := &lyxcwd.Location{
 				RepoName:     "distinct-repo-name",
 				HubPath:      hub,
 				WorktreeName: worktreeName,
-				AnchorRel:    anchorRel,
+				AnchorRel:    tt.anchorRel,
 			}
 
 			got := ReedGeometry(l)
@@ -47,6 +48,16 @@ func TestReedGeometry(t *testing.T) {
 			}
 			if got.AnchorPath != anchorPath {
 				t.Errorf("ReedGeometry(l).AnchorPath = %q; want %q", got.AnchorPath, anchorPath)
+			}
+			if got.PaneCwd != l.AnchorPath() {
+				t.Errorf("ReedGeometry(l).PaneCwd = %q; want %q (l.AnchorPath())", got.PaneCwd, l.AnchorPath())
+			}
+			if tt.anchorRel != "." && got.PaneCwd == worktreeRoot {
+				// The subpath-anchored row must catch a later "simplification"
+				// that repoints the spawn sites at WorktreeRoot: the two only
+				// coincide when AnchorRel is ".", which this row deliberately is
+				// not.
+				t.Errorf("ReedGeometry(l).PaneCwd = %q; want != WorktreeRoot %q", got.PaneCwd, worktreeRoot)
 			}
 			if got.WorktreeRoot != worktreeRoot {
 				t.Errorf("ReedGeometry(l).WorktreeRoot = %q; want %q", got.WorktreeRoot, worktreeRoot)

@@ -19,6 +19,7 @@ func ReedGeometry(l *lyxcwd.Location) reedengine.Geometry {
 		SocketKey:    reedengine.ServerName(l.HubPath),
 		SessionName:  reedengine.SessionName(l.WorktreePath()),
 		AnchorPath:   l.AnchorPath(),
+		PaneCwd:      l.AnchorPath(),
 		WorktreeRoot: l.WorktreePath(),
 		LogsDir:      fabricengine.HubLogsDir(l.HubPath),
 		RepoName:     l.RepoName,
