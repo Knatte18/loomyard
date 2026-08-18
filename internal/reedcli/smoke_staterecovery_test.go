@@ -6,7 +6,8 @@
 // .lyx directory copied between two worktrees of one hub (R5-F4).
 // All three are ordinary operator/environment events — a backup restore, a `mv`, a `cp -r` — not
 // adversarial misuse, which is why they belong in the live suite rather than only in hermetic unit
-// tests.
+// tests. Each also has a hermetic counterpart pinning the specific decision it rests on
+// (generation_test.go, strand_test.go); these pin the OUTCOME an operator would actually see.
 
 package reedcli
 
@@ -197,5 +198,74 @@ func TestSmokeRenamedWorktreeRefusesRatherThanDoubleLaunching(t *testing.T) {
 	out.Reset()
 	if code := RunCLIIn(renamed, &out, []string{"resume"}); code != 0 {
 		t.Fatalf("resume after the orphan was killed = %d; want 0 — the refusal must be escapable by the remedy it names, output: %s", code, out.String())
+	}
+}
+
+// TestSmokeRemoveNeverKillsASiblingWorktreesPane is the end-to-end regression guard for the R5
+// review's R5-F4, driven at the CLI seam.
+//
+// Reproduced live before the fix: the tmux socket is per HUB and tmux pane ids are server-global, so
+// a reed.json carrying another worktree's pane ids addresses that worktree's LIVE panes.
+// RemoveStrand spent its recorded pane ids as kill-pane targets with no membership check, so
+// `lyx reed remove` in one worktree destroyed a sibling worktree's strand pane and its running
+// process — reporting ok:true, with the sibling left showing only that its strand had died.
+func TestSmokeRemoveNeverKillsASiblingWorktreesPane(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	victim := materializeSibling(t, h, "victim")
+
+	deferHubRelease(t, h.PrimeWorktree())
+	deferHubRelease(t, victim)
+
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLIIn(victim, &buf, []string{"down"})
+		buf.Reset()
+		RunCLIIn(h.PrimeWorktree(), &buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLIIn(victim, &out, []string{"up"}); code != 0 {
+		t.Fatalf("victim up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, victimSession := socketAndSessionIn(t, victim)
+	victimGUID := addStrandIn(t, victim, smokeReapLaunchCmd(), "--name", "victim-strand")
+	victimPane := paneIDForStrandIn(t, victim, victimGUID)
+
+	out.Reset()
+	if code := RunCLIIn(h.PrimeWorktree(), &out, []string{"up"}); code != 0 {
+		t.Fatalf("attacker up = %d; want 0, output: %s", code, out.String())
+	}
+
+	// The hand-copy the R5 review drove: an operator moving a .lyx directory between worktrees of
+	// one hub. The copied table's pane ids are the VICTIM's live panes.
+	victimState, err := os.ReadFile(filepath.Join(victim, ".lyx", "reed.json"))
+	if err != nil {
+		t.Fatalf("read victim state: %v", err)
+	}
+	attackerStatePath := filepath.Join(h.PrimeWorktree(), ".lyx", "reed.json")
+	if err := os.WriteFile(attackerStatePath, victimState, 0o600); err != nil {
+		t.Fatalf("write copied state to %s: %v", attackerStatePath, err)
+	}
+
+	// remove may succeed or be refused; either is an acceptable outcome for a copied state file.
+	// What is NOT acceptable is the victim's pane being destroyed by it.
+	out.Reset()
+	RunCLIIn(h.PrimeWorktree(), &out, []string{"remove", victimGUID})
+
+	if !sessionAlive(tmuxPath, socket, victimSession) {
+		t.Fatalf("victim session %s died after a remove in another worktree", victimSession)
+	}
+	found := false
+	for _, line := range listPaneLines(t, tmuxPath, socket, victimSession) {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == victimPane && fields[1] == "0" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("victim pane %s is gone or dead after a remove in another worktree; panes=%v — a persisted pane id must never be spent as a tmux target outside its own session",
+			victimPane, listPaneLines(t, tmuxPath, socket, victimSession))
 	}
 }

@@ -3,15 +3,19 @@
 // launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
 // itself is out of hermetic reach, see spawn_test.go), UpdateStrand's visible->hidden rejection,
 // and RemoveStrand's non-leaf guard/cascade.
-// None of these touch tmux: addStrandLocked/updateStrandLocked only reach tmux through
+// None of the *Locked cases touch tmux: addStrandLocked/updateStrandLocked only reach tmux through
 // launchStrandLocked,
 // and every case here either stays hidden or is a rejection that never gets there;
 // removeStrandLocked never touches tmux at all.
+// The R5-F4 cases at the end of this file are the exception: they drive the pane-TARGETING half of
+// RemoveStrand and the transport ops, which is tmux-facing by definition, through TmuxCmd's
+// execHook seam rather than a live server.
 
 package reedengine
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -461,5 +465,160 @@ func TestSessionReapRoots(t *testing.T) {
 				t.Errorf("sessionReapRoots(%v) = %v; want %v", tt.live, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestPaneIDsInSession is the regression guard for the R5 review's R5-F4: RemoveStrand spent every
+// persisted pane id as a kill-pane target with no check that it belonged to this worktree's
+// session. The -L socket is per hub and tmux pane ids are server-global, so a stale or copied
+// reed.json routinely carries a valid, addressable id belonging to a SIBLING worktree's live
+// session — reproduced live, one worktree's remove killed another's strand pane and its process
+// while reporting ok:true.
+func TestPaneIDsInSession(t *testing.T) {
+	live := []LivePane{
+		{ID: "%1", Dead: false},
+		{ID: "%2", Dead: true},
+	}
+
+	tests := []struct {
+		name    string
+		paneIDs []string
+		want    []string
+	}{
+		{
+			name:    "every id is a pane of this session",
+			paneIDs: []string{"%1", "%2"},
+			want:    []string{"%1", "%2"},
+		},
+		{
+			name:    "a sibling worktree's live pane id is dropped",
+			paneIDs: []string{"%1", "%7"},
+			want:    []string{"%1"},
+		},
+		{
+			name:    "a dead-but-present pane is kept, since membership and not aliveness is the filter",
+			paneIDs: []string{"%2"},
+			want:    []string{"%2"},
+		},
+		{
+			name:    "no id belongs to this session",
+			paneIDs: []string{"%7", "%8"},
+			want:    []string{},
+		},
+		{
+			name:    "an empty request stays empty",
+			paneIDs: nil,
+			want:    []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := paneIDsInSession(tt.paneIDs, live)
+			if !equalStringSlices(got, tt.want) {
+				t.Errorf("paneIDsInSession(%v, live) = %v; want %v", tt.paneIDs, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolvePaneInThisSessionLocked is R5-F4's guard for the transport half: SendText, SendKey and
+// CapturePane share this resolution, and a pane id belonging to another worktree's session on the
+// shared socket is a target send-keys accepts — one agent's input typed into another agent's pane.
+func TestResolvePaneInThisSessionLocked(t *testing.T) {
+	st := &ReedState{Strands: []Strand{{GUID: "a", PaneID: "%7"}}}
+
+	tests := []struct {
+		name            string
+		listPanesOut    string
+		wantErrFragment string
+	}{
+		{
+			name:         "a pane of this session resolves",
+			listPanesOut: "%7 0 0 100 20 4321\n",
+		},
+		{
+			name:            "a pane belonging to another session on the shared socket is refused",
+			listPanesOut:    "%1 0 0 100 20 4321\n",
+			wantErrFragment: "not a pane of this worktree's session",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+				if args[0] == "list-panes" {
+					return tt.listPanesOut, nil
+				}
+				return "", nil
+			}
+
+			paneID, err := e.resolvePaneInThisSessionLocked(st, "a")
+			if tt.wantErrFragment == "" {
+				if err != nil {
+					t.Fatalf("resolvePaneInThisSessionLocked() error = %v; want nil", err)
+				}
+				if paneID != "%7" {
+					t.Errorf("resolvePaneInThisSessionLocked() = %q; want %q", paneID, "%7")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("resolvePaneInThisSessionLocked() = (%q, nil); want a refusal", paneID)
+			}
+			if !strings.Contains(err.Error(), tt.wantErrFragment) {
+				t.Errorf("resolvePaneInThisSessionLocked() error = %v; want it to contain %q", err, tt.wantErrFragment)
+			}
+		})
+	}
+}
+
+// TestRemoveStrand_NeverKillsAPaneOutsideThisSession pins R5-F4 at the CALL SITE rather than at the
+// helper: paneIDsInSession is only worth having if RemoveStrand's kill-pane loop actually consults
+// it, and the destructive shape the R5 review reproduced live was a kill-pane issued against a
+// sibling worktree's live pane.
+// It drives the whole op through TmuxCmd's execHook seam, recording every kill-pane target.
+func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
+	e := newTestEngine(t)
+
+	// Only %1 is a pane of this session; %7 is a sibling worktree's live pane on the shared socket,
+	// which is what a stale or hand-copied reed.json records.
+	const thisSessionPane = "%1"
+	const siblingPane = "%7"
+
+	var killed []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "has-session":
+			return "", nil
+		case "display-message":
+			return "$0|4321|1787000000", nil
+		case "list-panes":
+			return thisSessionPane + " 0 0 100 20 4321\n", nil
+		case "kill-pane":
+			killed = append(killed, args[len(args)-1])
+			return "", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{
+		HeaderPaneID: thisSessionPane,
+		Strands:      []Strand{{GUID: "copied", Name: "copied", PaneID: siblingPane, Display: render.Display{Anchor: render.AnchorBelowParent}}},
+	}
+	if err := SaveState(e.stateDir(), st); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	if _, err := e.RemoveStrand("copied", false); err != nil {
+		t.Fatalf("RemoveStrand: %v", err)
+	}
+
+	for _, id := range killed {
+		if id == siblingPane {
+			t.Fatalf("RemoveStrand issued kill-pane against %s, a pane outside this worktree's session; killed=%v", siblingPane, killed)
+		}
 	}
 }
