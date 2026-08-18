@@ -1,11 +1,16 @@
 // cli.go builds the cobra command tree for the webster module and the RunCLI seam that wires it
 // into the standard io.Writer-based call contract.
-// The parent "webster" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
-// config -> reed config -> webster config -> model registry -> resolved roles -> reed engine ->
-// claude engine -> shuttleengine.Runner exactly once per invocation, storing the resolved
-// ingredients on websterCLI, per the discussion's cli-shape decision: every _lyx/plan
-// and _lyx/webster path this module touches is anchored at layout.AnchorPath() -- the directory lyx
-// init ran in, never WorktreeRoot or a fabric sibling.
+// The parent "webster" command carries a PersistentPreRunE that resolves cwd, runs one
+// preflight.HubPresent probe, and delegates to c.wire (wiring.go), which selects hub or standalone
+// mode and builds the whole engine stack for whichever mode wins, storing the resolved ingredients
+// on websterCLI exactly once per invocation.
+// The module holds no *lyxcwd.Location: every path it touches -- every _lyx/plan and _lyx/webster
+// path included -- arrives as a websterengine.Geometry, told by hubgeom.WebsterGeometry(loc) in hub
+// mode or internal/standalonegeom.WebsterGeometry(target, stateDir) in standalone, never re-derived
+// from a stored Location.
+// Fabric is reached only through the lazy c.openFabric closure, which is nil in standalone mode --
+// standalone has no fabric repo by construction, and the closure is never called during wiring in
+// either mode.
 //
 // websterCLI stores THREE adapted
 // views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of
