@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: scout-told-geometry
 branch: scout-told-geometry
 plan: _mill/plan
@@ -18,4 +18,6 @@ discussing  '2026-08-18T12:04:23Z'
 discussion-fix-r4  '2026-08-18T12:58:23Z'
 discussed  '2026-08-18T12:58:23Z'
 planning  '2026-08-18T13:06:55Z'
+plan-review-r1  '2026-08-18T13:15:47Z'
+plan-fix-r1  '2026-08-18T13:15:47Z'
 ```

@@ -228,8 +228,10 @@ The executed `-tags scout` run is batch 2's card 13 gate.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** This is a zero-diff verification gate for the closed documentation rule in the overview's Shared Decisions: every mention of `layout` or `*lyxcwd.Location` in scout comments, production and test, is rewritten or deleted by this task.
-  Run `grep -rn "layout\|Location" internal/scoutengine internal/scoutcli` and confirm every surviving hit is intentional.
-  The known-intentional survivors are: `internal/scoutengine/doc.go`'s toolchain-cache paragraph naming `internal/lyxcwd`, which is about `os.UserCacheDir()` and stays; `internal/scoutcli/cli.go`'s live `lyxcwd.Resolve` and `lyxcwd.CwdFrom` calls and the comments describing them; `internal/scoutengine/refs_integration_test.go`'s `lyxcwd` path-string literals and its test names citing `lyxcwd.Resolve` as the symbol under query; and `internal/scoutcli/cli_test.go`'s comments about `lyxcwd.Resolve` degrading outside a hub.
+  Run `grep -rnE "lyxcwd\.Location|\blayout\b" internal/scoutengine internal/scoutcli` and confirm every surviving hit is intentional.
+  The pattern is deliberately narrower than a bare `Location`: the scout engine owns an unrelated LSP wire-type family — the `lspLocation` type, the `formatLocation` helper, and the `Location` field on LSP result structs — which this task does not touch and which a bare-`Location` sweep surfaces as roughly fifty false positives spread across the package's position, LSP-client, symbol, and definition sources and their tests.
+  Do not widen the pattern to bare `Location` and do not edit the LSP wire types.
+  The known-intentional survivors of the narrowed pattern are: `internal/scoutengine/doc.go`'s toolchain-cache paragraph naming `internal/lyxcwd`, which is about `os.UserCacheDir()` and stays; `internal/scoutcli/cli.go`'s live `lyxcwd.Resolve` and `lyxcwd.CwdFrom` calls and the comments describing them; `internal/scoutengine/refs_integration_test.go`'s `lyxcwd` path-string literals and its test names citing `lyxcwd.Resolve` as the symbol under query; and `internal/scoutcli/cli_test.go`'s comments about `lyxcwd.Resolve` degrading outside a hub.
   Also confirm `grep -rn "Options.Layout\|\.Layout\b" internal/scoutengine internal/scoutcli` returns nothing.
   A surviving unintentional hit means an earlier card in this same batch was implemented incompletely; correct it in the card that owns that file before the batch is done, rather than deferring it.
 - **Commit:** none
