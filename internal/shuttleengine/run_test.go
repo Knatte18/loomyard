@@ -613,6 +613,45 @@ func TestRun_Send_PreexistingText_RequiresNewOccurrence(t *testing.T) {
 
 // repeatCapture returns n copies of capture, the fixture shape fakeReed's
 // CaptureQueue consumes one-per-call.
+// TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery is R2-F6's regression guard.
+//
+// CapturePane returns the pane's visible VIEWPORT, not its scrollback, so an occurrence counted at
+// baseline time can scroll off while the agent works. The delivery check demanded a count strictly
+// ABOVE that baseline forever, so once the baseline was inflated by copies that later scrolled away,
+// no poll could ever satisfy it — every one of the 20 attempts failed and the try loop REPLAYED the
+// whole ComposeSend choreography, typing the instruction into the pane a second time.
+//
+// A false negative here is not a harmless retry: it is a duplicate agent turn, from a send that
+// actually landed. Sending the same text twice in one session is ordinary (an operator re-issuing a
+// nudge, loom's repeated one-line pointers), which is what makes an inflated baseline reachable.
+func TestRun_Send_BaselineOccurrencesScrolledAway_NoDuplicateDelivery(t *testing.T) {
+	stubInputSleep(t)
+	reed := &fakeReed{
+		StatusQueue: liveStrandStatus(true),
+		CaptureQueue: []string{
+			// Ready-TUI probe and the pre-send baseline: the text is already on screen TWICE from
+			// earlier turns, so baseline starts at 2.
+			"❯ do it again do it again",
+			"❯ do it again do it again",
+			// First verification poll: the agent's output has pushed both earlier copies off the
+			// top of the viewport, and the delivered copy is not rendered yet. Count 0.
+			"❯ working...",
+			// Second poll: the delivered copy is on screen. Count 1 — below the ORIGINAL baseline of
+			// 2, which is exactly why the pre-fix check could never pass. The last queue entry
+			// sticks, so every later poll sees this too.
+			"❯ do it again",
+		},
+	}
+	run := newInterruptTestRun(t, reed, readyAgentEngine())
+
+	if err := run.Send("do it again"); err != nil {
+		t.Fatalf("Send() error: %v; want the delivery recognised once the scrolled-away baseline is re-lowered", err)
+	}
+	if len(reed.SendTextCalls) != 1 {
+		t.Errorf("SendText calls = %d; want exactly 1 — a replay here re-types an instruction the agent already received", len(reed.SendTextCalls))
+	}
+}
+
 func repeatCapture(capture string, n int) []string {
 	out := make([]string, n)
 	for i := range out {

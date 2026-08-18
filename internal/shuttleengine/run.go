@@ -438,8 +438,18 @@ func playInputs(reed ReedOps, guid string, inputs []PaneInput) error {
 	return nil
 }
 
-// sendVerified plays engine.ComposeSend(text) and verifies delivery by
-// polling for the sent text to appear MORE times than before the send.
+// sendVerified plays engine.ComposeSend(text) and verifies delivery by polling for the sent text to
+// appear MORE times in the pane than it did before the send.
+//
+// The baseline is RE-LOWERED whenever the count drops below it, because CapturePane returns the
+// pane's visible VIEWPORT, not its scrollback: an occurrence counted at baseline time can scroll off
+// while the agent works. Sending the same text twice in one session (an operator re-issuing a nudge,
+// loom's repeated one-line pointers) then set baseline 1, and if the earlier copy scrolled away
+// before the poll saw the new one, the count read 1 — not > 1 — so verification failed and the try
+// loop REPLAYED the whole choreography, typing the instruction into the pane a second time. A false
+// negative here is not a harmless retry, it is a duplicate agent turn.
+// A count that has fallen below the baseline is evidence of scrolling, never of non-delivery, so it
+// re-baselines rather than counting against the send.
 func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 	needle := normalizePaneText(text)
 	if runes := []rune(needle); len(runes) > 48 {
@@ -457,8 +467,15 @@ func sendVerified(reed ReedOps, engine Engine, guid, text string) error {
 		}
 		for attempt := 0; attempt < sendVerifyAttempts; attempt++ {
 			capture, err := reed.CapturePane(guid)
-			if err == nil && strings.Count(normalizePaneText(capture), needle) > baseline {
-				return nil
+			if err == nil {
+				switch count := strings.Count(normalizePaneText(capture), needle); {
+				case count > baseline:
+					return nil
+				case count < baseline:
+					// The viewport scrolled past an occurrence the baseline counted. Track the
+					// pane's reality rather than holding a threshold it can no longer reach.
+					baseline = count
+				}
 			}
 			inputSleep(sendVerifyInterval)
 		}
