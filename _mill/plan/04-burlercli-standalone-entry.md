@@ -29,6 +29,7 @@ Burler is the simpler of the two producer CLIs: it has no fabric relationship at
   - `internal/standalonegeom/reedgeom.go`
   - `internal/standalonegeom/stencilsdir.go`
   - `internal/hubgeom/hubgeom.go`
+  - `internal/burlerengine/engine.go`
   - `internal/burlerengine/geometry.go`
   - `internal/burlerengine/config.go`
   - `internal/standalonestate/standalonestate.go`
