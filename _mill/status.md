@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -39,6 +39,8 @@ approved-perchcli-standalone-entry  '2026-08-18T15:02:49Z'
 approved-docs-and-cross-cutting-verification  '2026-08-18T15:05:04Z'
 holistic-reviewing  '2026-08-18T15:05:50Z'
 holistic-fixing  '2026-08-18T15:09:48Z'
+nits-fixed-holistic  '2026-08-18T15:10:54Z'
+holistic-approved  '2026-08-18T15:11:02Z'
 ```
 
 ## Batches
