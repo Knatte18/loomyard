@@ -846,6 +846,11 @@ const forceKillExitGrace = 5 * time.Second
 // Generous for CPU saturation; reaps confirm actual exit, not just timer.
 const reapExitTimeout = 15 * time.Second
 
+// processExitPoll is how often waitProcessExit re-probes a pid's liveness.
+// It polls rather than blocking on the kernel because every pid reed waits on belongs to another
+// process's child tree — see waitProcessExit.
+const processExitPoll = 50 * time.Millisecond
+
 // ensureServerGoneLocked guarantees no tmux process remains on this engine's
 // socket after kill-server. Force-reaps if needed; waits for async teardown.
 func (e *Engine) ensureServerGoneLocked(serverPID int) error {
@@ -867,12 +872,16 @@ func reapPaneChildren(pids []int, timeout time.Duration) {
 		if err := waitProcessExit(pid, time.Until(deadline)); err == nil {
 			continue
 		}
-		p, findErr := os.FindProcess(pid)
-		if findErr != nil {
+		// The graceful window elapsed with the process still up — a pane child
+		// that ignores or is out of reach of tmux's own SIGHUP cascade (a
+		// trapped SIGHUP, a detached session). Force-kill it and confirm.
+		if err := proc.KillPID(pid); err != nil {
+			logger.Warn("reed: failed to force-kill straggling pane child", "pid", pid, "err", err)
 			continue
 		}
-		_ = p.Kill()
-		_ = waitProcessExit(pid, forceKillExitGrace)
+		if err := waitProcessExit(pid, forceKillExitGrace); err != nil {
+			logger.Warn("reed: pane child survived force-kill", "pid", pid, "err", err)
+		}
 	}
 }
 
@@ -898,33 +907,44 @@ func (e *Engine) waitServerProcessesGone(timeout time.Duration) error {
 func (e *Engine) reapSocketProcesses() error {
 	_ = e.tmux.run("kill-server")
 	for _, pid := range e.serverProcessesOnSocket() {
-		if proc, err := os.FindProcess(pid); err == nil {
-			_ = proc.Kill()
+		// Best-effort per pid: a socket holder that already exited between the
+		// scan and this kill is exactly what the reap wanted, and
+		// waitServerProcessesGone below is what actually decides the outcome.
+		if err := proc.KillPID(pid); err != nil {
+			logger.Debug("reed: best-effort kill of socket holder failed", "socket", e.Socket(), "pid", pid, "err", err)
 		}
 	}
 	return e.waitServerProcessesGone(reapExitTimeout)
 }
 
-// waitProcessExit blocks until the process exits, or errors after timeout.
-// Necessary because tmux's kill-server is asynchronous.
+// waitProcessExit blocks until the process named by pid is no longer running, or errors after
+// timeout.
+// It is necessary because tmux's kill-server and kill-session both terminate their process trees
+// asynchronously.
+//
+// Liveness is POLLED via proc.IsAlive rather than blocked on with os.Process.Wait, and that choice
+// is load-bearing rather than stylistic: every pid reed waits on — the tmux server and each pane's
+// process subtree — is a child of the TMUX server, never of this process. os.Process.Wait on a
+// non-child returns ECHILD ("waitid: no child processes") immediately, measured at ~20µs against a
+// demonstrably live process, so a Wait-based implementation reported EVERY such pid as
+// already-exited and reapPaneChildren's force-kill fallback never ran once.
+//
+// A pid that was recycled by an unrelated process after the caller snapshotted it reads as still
+// alive here and burns the full timeout; the callers bound that by snapshotting only pids whose
+// panes are alive at snapshot time (see alivePanePIDs).
 func waitProcessExit(pid int, timeout time.Duration) error {
 	if pid <= 0 {
 		return nil
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return nil
-	}
-	done := make(chan struct{})
-	go func() {
-		_, _ = proc.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("tmux server (pid %d) still up %s after kill-server", pid, timeout)
+	deadline := time.Now().Add(timeout)
+	for {
+		if !proc.IsAlive(pid) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("process %d still up %s after teardown", pid, timeout)
+		}
+		time.Sleep(processExitPoll)
 	}
 }
 
