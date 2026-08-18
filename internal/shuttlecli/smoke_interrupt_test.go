@@ -123,6 +123,7 @@ func startMidTurnCountingRun(t *testing.T, runner *shuttleengine.Runner, engine 
 	run, err := runner.Start(shuttleengine.Spec{
 		Prompt:      prompt,
 		OutputFiles: []string{outputPath},
+		Model:       smokeClaudeModel,
 		Timeout:     5 * time.Minute,
 	})
 	if err != nil {
