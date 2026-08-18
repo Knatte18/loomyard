@@ -15,10 +15,10 @@ Committed to, in this order, next.
 
 1. **loom: phase-machine scaffolding** — mechanical rows only, every `LLM`/`LLM+perch` row stays a stub.
    - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
-   - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections.
-   - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`.
-   - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`).
-   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold — `raddle` has no finished design yet (see Someday), so Finalize v1 ships without it and gains the fold as a later, separate task.
+   - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
+   - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
+   - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
+   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold — `raddle` has no finished design yet (see Someday), so Finalize v1 ships without it and gains the fold as a later, separate task. **The one genuine gap of the four**: no merge-back or PR-creation code exists anywhere in the repo today (`internal/gitrepo`, `internal/githubclient` — checked, zero hits) — this is new logic, not a wrap.
    - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
    - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review` — each returns `Done` without doing real work.
    - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
