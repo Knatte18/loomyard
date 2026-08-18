@@ -6,6 +6,7 @@ slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: the standalone CLI path
 task_description: |
   the standalone CLI path
@@ -37,15 +38,23 @@ implementing  '2026-08-18T14:32:10Z'
 ```yaml
 batches:
   - name: preflight-resolvemode
-    state: pending
+    state: running
+    implementer_session: 0162a819-a281-435e-8ab8-8104cb5b3dce
+    start_sha: dd41b400c1ee4d1bdf9bf3e28389623311a0172a
+    verify_baseline_failures: []
   - name: standalonegeom-builders
     state: pending
+    verify_baseline_failures: []
   - name: webstercli-repoint
     state: pending
+    verify_baseline_failures: []
   - name: burlercli-standalone-entry
     state: pending
+    verify_baseline_failures: []
   - name: perchcli-standalone-entry
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-cross-cutting-verification
     state: pending
+    verify_baseline_failures: []
 ```
