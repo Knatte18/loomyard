@@ -54,6 +54,7 @@ Two independent resolutions would let `--stencils-dir` reach perch's own rounds 
   - `internal/reedengine/config.go`
   - `internal/shuttleengine/config.go`
   - `internal/shuttleengine/run.go`
+  - `internal/shuttleengine/claudeengine/claudeengine.go`
 - **Edits:** none
 - **Creates:**
   - `internal/perchcli/wiring.go`
@@ -301,7 +302,13 @@ Two independent resolutions would let `--stencils-dir` reach perch's own rounds 
 `verify:` runs `go test ./internal/perchcli/...` followed by `go test -tags integration ./internal/perchcli/...`.
 Both are required.
 The untagged run covers cards 23 and 24 plus the package's large existing untagged surface (`cli_test.go`, `run_test.go`), which is the regression coverage proving the `layout` removal and the `cli.go` rewrite preserved the group guard, the cobra seam, and every flag-validation contract.
-The tagged run compiles card 25's two new tests and, critically, the five pre-existing ones — `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd` among them, which is the anchoring regression this batch is most able to break and which the untagged run never executes.
+The tagged run compiles card 25's two new tests and, critically, the five pre-existing ones in `cli_integration_test.go` — `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd` among them, which is the anchoring regression this batch is most able to break and which the untagged run never executes.
+
+It also compiles `internal/perchcli/run_integration_test.go`, which this batch never edits but which is card 22's most direct regression coverage and is named here so it is not overlooked.
+Its four tests — `TestRunCLI_Run_FabricSyncRunsOnEngineError`, `TestRunCLI_Run_FabricCommitExcludesLockFiles`, `TestRunCLI_Run_FabricCommitExcludesLockFiles_NestedRelPath` and `TestRunCLI_Run_BusyBlockSkipsFabricSync` — exercise exactly the block-exit fabric sync card 22 reroutes from `fabricengine.Open(c.layout)` onto `c.openFabric()`, including the `opts.SkipGit` short-circuit and the `ErrBlockBusy` skip that must both compose unchanged with the new nil-opener guard.
+They run in hub mode, where this task claims byte-identity, so all four must keep passing without modification;
+a failure there is the clearest possible signal that the opener reroute changed hub behaviour rather than merely relocating it.
+Re-derive the exact test names from the file rather than trusting this list.
 
 The scope is the single package.
 Card 26 is verification-only and contributes no diff; its findings, if any, are reported rather than fixed in place.

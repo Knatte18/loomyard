@@ -83,6 +83,8 @@ A non-nil error means refuse; the zero `Mode` value is never a valid mode and ap
   - `internal/preflight/testmain_test.go`
   - `internal/hubforge/hub.go`
   - `internal/gitkit/gitkit.go`
+  - `internal/gitkit/callerset_enforcement_test.go`
+  - `CONSTRAINTS.md`
   - `internal/lyxcwd/anchor.go`
   - `internal/fabricengine/junctionnames.go`
 - **Edits:**
@@ -111,7 +113,13 @@ A non-nil error means refuse; the zero `Mode` value is never a valid mode and ap
   For row five, assert `errors.Is(err, lyxcwd.ErrCwdOutsideAnchor)` **and** that the returned error is the gated one by asserting its message names the anchor marker file — the whole point of returning the original error rather than the second probe's.
   For row six, assert `errors.Is(err, lyxcwd.ErrStaleAnchorMarker)`.
   Build row seven by removing (or never creating) the `<hub>/_board/_lyx` directory under an otherwise-real hub fixture, and add a comment naming it as the design's recorded residual rather than a bug.
-  For the plain-repo rows, create a bare `git init` repository via the existing `gitkit` fixture helpers the file already imports — never a `hubforge` hub, which would supply the board directory these rows must not have.
+  For the plain-repo rows, create the repository with `gitkit.MustRun(t, dir, "git", "init", "-b", "main")` over a `t.TempDir()` — `MustRun` is already imported and used four times in this file, and it is one of the gitkit helpers the Leaf Invariant leaves unpinned.
+  Never a `hubforge` hub, which would supply the board directory these rows must not have.
+
+  **Do not call `gitkit.CopyRepo` here.**
+  It is the semantically obvious pick — its whole purpose is a plain git repo with a bare origin and no hub — but `CONSTRAINTS.md`'s gitkit Leaf Invariant pins it to `internal/lyxcwd` alone, and `internal/gitkit/callerset_enforcement_test.go`'s `TestCopyRepoCallerSet_LyxcwdOnly` machine-enforces that pin by walking the AST of every package for a `gitkit.CopyRepo` selector call.
+  A call from `internal/preflight` is a hard violation, and it would be invisible to this batch's own `verify:` — `go test ./internal/preflight/...` compiles and passes with the violation present, because the failing test lives in `internal/gitkit`, which no batch in this plan runs.
+  Only the task-wide done gate would eventually catch it, after five more batches of work.
 
   Every standalone and refuse row must additionally assert the returned `*lyxcwd.Location` is nil, since handing a caller a Location outside hub mode is the fictional-`Location` shape the whole design rejects.
   Do not add a `TestMain` — `internal/preflight/testmain_test.go` already provides the hermetic git environment and is untagged, so it compiles into both test binaries.

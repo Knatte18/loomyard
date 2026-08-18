@@ -1,0 +1,33 @@
+MILL_REVIEW_BEGIN
+# Review: the standalone CLI path — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5 (Claude Sonnet, Anthropic; self-reported, not independently verifiable)
+reviewed_file: plan/
+date: 2026-08-18
+```
+
+## Findings
+
+### [BLOCKING:design] Card 3's plain-repo fixture guidance traps the implementer into a gitkit Leaf Invariant violation
+**Location:** batch 1, card 3 (`internal/preflight/preflight_integration_test.go`)
+**Issue:** The card says to build the plain-repo rows "via the existing gitkit fixture helpers the file already imports." `gitkit.CopyRepo` is the one gitkit primitive whose whole purpose is "a plain git repo with a bare origin, never a hub" — the semantically obvious pick — but `internal/gitkit/callerset_enforcement_test.go`'s `TestCopyRepoCallerSet_LyxcwdOnly` machine-enforces that `CopyRepo` is callable from `internal/lyxcwd` alone (CONSTRAINTS.md's gitkit Leaf Invariant); `internal/preflight` calling it is a hard violation. Worse, this violation would NOT be caught by batch 1's own `verify:` (`go test ./internal/preflight/...`) — it only surfaces in `go test ./internal/gitkit/...`, which no batch in this plan runs; only the task-wide done gate would eventually catch it.
+**Fix:** Name the exact mechanism explicitly — `gitkit.MustRun(t, dir, "git", "init", "-b", "main")` (already imported/used in this file) — and add an explicit note that `gitkit.CopyRepo` must not be called here per the gitkit Leaf Invariant.
+
+### [NIT:scope] `claudeengine.New()` referenced in Requirements without a backing Context entry
+**Location:** batch 4 card 13 (`internal/burlercli/wiring.go`), batch 5 card 20 (`internal/perchcli/wiring.go`)
+**Issue:** Both cards' Requirements say to build "the claude engine" via `claudeengine.New()`, but neither card's `Context:` list includes `internal/shuttleengine/claudeengine`. The omission is low-risk because `internal/webstercli/wiring.go` (which both cards mirror and which IS in Context) shows the exact import and call, but it's a literal gap against the Context-completeness rule.
+**Fix:** Add `internal/shuttleengine/claudeengine/*.go` (or the relevant file) to both cards' `Context:` lists.
+
+### [NIT:scope] `internal/perchcli/run_integration_test.go` is untouched but unmentioned as batch 5's most relevant regression coverage for card 22
+**Location:** batch 5 (Batch Scope / Batch Tests)
+**Issue:** This pre-existing integration-tagged file (four tests: `FabricSyncRunsOnEngineError`, `FabricCommitExcludesLockFiles`, `FabricCommitExcludesLockFiles_NestedRelPath`, `BusyBlockSkipsFabricSync`) is the direct regression suite for card 22's `fabricengine.Open(c.layout)` → `c.openFabric()` reroute, yet neither card 22 nor the batch's "Batch Tests" narrative names it — only `cli_integration_test.go`'s five pause tests are called out. It will still run under `go test -tags integration ./internal/perchcli/...` and should keep passing unmodified (hub mode stays byte-identical), so this is a documentation-completeness gap, not a functional one.
+**Fix:** Add a sentence to batch 5's "Batch Tests" naming `run_integration_test.go`'s four fabric-sync tests as regression coverage for card 22's opener reroute.
+
+## Verdict
+
+REQUEST_CHANGES
+Card 3's fixture guidance risks a real, batch-1-verify-invisible gitkit Leaf Invariant violation; the rest of the plan checks out cleanly.
+MILL_REVIEW_END

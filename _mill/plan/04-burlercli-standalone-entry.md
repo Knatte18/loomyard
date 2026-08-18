@@ -41,6 +41,7 @@ Burler is the simpler of the two producer CLIs: it has no fabric relationship at
   - `internal/reedengine/config.go`
   - `internal/shuttleengine/config.go`
   - `internal/shuttleengine/run.go`
+  - `internal/shuttleengine/claudeengine/claudeengine.go`
 - **Edits:** none
 - **Creates:**
   - `internal/burlercli/wiring.go`

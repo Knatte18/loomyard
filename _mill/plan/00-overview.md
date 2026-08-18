@@ -3,7 +3,7 @@
 ```yaml
 task: "the standalone CLI path"
 slug: "standalone-cli-entry"
-approved: false
+approved: true
 started: "20260818-131358"
 parent: "standalone-producers"
 root: ""
