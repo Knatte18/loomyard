@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // socketUnsafeChars matches the characters ServerName must never
@@ -281,9 +283,33 @@ func TestValidateToldAnchorPath(t *testing.T) {
 // TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState asserts the anchor refusal lands at
 // the same op boundary the identity refusal does — before the .lyx directory is created, which is
 // the very act that would otherwise litter the caller's own working directory with reed state.
+//
+// The empty told anchor is what makes this assertion possible AND what makes it fragile: stateDir()
+// then joins onto "", so the subject path is a bare ".lyx" relative to the TEST PROCESS's working
+// directory, i.e. this package's own source directory. Any earlier run of a binary predating
+// validateToldAnchorPath — precisely the bug this guards — leaves .lyx/reed.lock sitting there
+// permanently, and the guard is then red forever in that checkout, with a message that reads as a
+// live production regression rather than as stale scratch. That is not hypothetical: it was the
+// state of this branch when the R5 review began (R5 review finding R5-F7).
+// Clearing the directory before asserting, and again on cleanup, makes the assertion mean "this
+// call created the file" — which is what it was always trying to measure — and keeps the test from
+// leaving the source tree dirtier than it found it.
 func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T) {
 	e := newTestEngine(t)
 	e.geom.AnchorPath = ""
+
+	cwdRelativeStateDir := e.stateDir()
+	if cwdRelativeStateDir != lyxdirs.DotLyxDirName {
+		t.Fatalf("stateDir() with an empty anchor = %q; want the bare %q this test's cleanup is written for",
+			cwdRelativeStateDir, lyxdirs.DotLyxDirName)
+	}
+	removeCwdRelativeStateDir := func() {
+		if err := os.RemoveAll(cwdRelativeStateDir); err != nil {
+			t.Fatalf("clear %q in the test process's working directory: %v", cwdRelativeStateDir, err)
+		}
+	}
+	removeCwdRelativeStateDir()
+	t.Cleanup(removeCwdRelativeStateDir)
 
 	ran := false
 	err := e.withOpLock(func() error {
