@@ -13,6 +13,8 @@ package reedengine
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // planPaneTarget decides how the next strand realization obtains its pane:
@@ -192,6 +194,16 @@ func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 	}
 	st.Socket = e.Socket()
 	st.Session = e.SessionName()
+
+	// Repair a table whose pane bindings contradict each other before any caller reads it. This runs
+	// on every load, not only after a rebirth, because the corrupt tables it exists for arrive
+	// BETWEEN boots (a restored backup, a hand-edited file) and would otherwise be trusted all the
+	// way into select-layout, where tmux answers the contradiction by destroying panes — see
+	// clearConflictingPaneBindings for both observed shapes.
+	if cleared := clearConflictingPaneBindings(st); len(cleared) > 0 {
+		logger.Warn("reed: cleared strand pane bindings that named a pane another owner already claims",
+			"socket", e.Socket(), "session", e.SessionName(), "strands", cleared)
+	}
 	return st, nil
 }
 

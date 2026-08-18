@@ -191,6 +191,23 @@
 //     zombie that no later add can host a strand in — anyPlacedStrand
 //     refuses to call select-layout at all when no strand would place a
 //     present pane.
+//   - Duplicate-pane-cell session destruction (render/policy.go's
+//     removeDuplicatePaneCells, reconcile.go's clearConflictingPaneBindings):
+//     the twin of the empty-layout hazard above, reached from the opposite
+//     direction. select-layout likewise does not REJECT a layout string that
+//     names one pane TWICE — it accepts it (exit 0), assigns cells
+//     positionally, and destroys every pane the resulting short cell list no
+//     longer covers (verified live, tmux 3.6: one `up` reduced a two-pane
+//     session to one and reported ok:true). Nothing reed constructs can
+//     produce such a table — planPaneTarget never adopts or splits the header
+//     and validateSplitCreatedNewPane guarantees a fresh id — so the source
+//     is always a CORRUPT persisted table: a restored backup, a hand-edited
+//     or partially-restored reed.json (R5 review finding R5-F3). It is
+//     guarded twice on purpose: the engine clears such bindings at the single
+//     load chokepoint, and render.Rules independently drops a duplicated pane
+//     cell so the destructive string is unreachable from inside that pure,
+//     total function's own contract rather than only by a caller remembering
+//     to sanitize first.
 //   - Async kill-server / probe-always-exits-0 (lifecycle.go): kill-server
 //     returns before the server process (and its "__warm__" helper) have
 //     actually released the -L socket, and no probe — list-sessions,
