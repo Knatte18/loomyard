@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"time"
 
@@ -237,7 +236,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
-		log.Printf("shuttle: capture pane during startup probe (non-fatal, retrying): %v", err)
+		logger.Warn("shuttle: capture pane during startup probe (non-fatal, retrying)", "strandGUID", run.state.StrandGUID, "error", err)
 		// A pane that cannot be captured has told us nothing about whether the provider came up,
 		// so it stays inside the startup window and expires with it — see classifyStartupWindow.
 		return run.classifyStartupWindow(startupDeadline), nil
@@ -249,7 +248,7 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 		return "", nil
 	case StartupTrustPrompt:
 		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
-			log.Printf("shuttle: dismiss trust prompt (non-fatal): %v", err)
+			logger.Warn("shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		}
 	}
 	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and

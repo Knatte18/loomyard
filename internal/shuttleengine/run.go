@@ -7,7 +7,6 @@ package shuttleengine
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,7 +195,7 @@ func (r *Runner) Start(spec Spec) (*Run, error) {
 		// AddStrand-failure path above performs.
 		logger.Warn("shuttle: save run state failed", "runDir", runDir, "strandGUID", strand.GUID, "error", err)
 		if _, rerr := r.reed.RemoveStrand(strand.GUID, false); rerr != nil {
-			log.Printf("shuttle: start run: remove strand %s after save-state failure (non-fatal): %v", strand.GUID, rerr)
+			logger.Warn("shuttle: start run: remove strand after save-state failure (non-fatal)", "strandGUID", strand.GUID, "error", rerr)
 		}
 		_ = os.RemoveAll(runDir)
 		return nil, fmt.Errorf("shuttle: save run state: %w", err)
@@ -239,7 +238,7 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 func (r *Runner) sweepOrphansOpportunistic() {
 	st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName))
 	if err != nil {
-		log.Printf("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds): %v", err)
+		logger.Warn("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds)", "anchorPath", r.anchorPath, "error", err)
 		return
 	}
 
@@ -252,8 +251,9 @@ func (r *Runner) sweepOrphansOpportunistic() {
 
 	startupTimeout := time.Duration(r.cfg.StartupTimeoutS) * time.Second
 	minAge := 2 * startupTimeout
-	if _, err := sweepOrphans(runDirRoot(r.cfg, r.anchorPath), guids, minAge, time.Now()); err != nil {
-		log.Printf("shuttle: orphan sweep failed (non-fatal, new run proceeds): %v", err)
+	root := runDirRoot(r.cfg, r.anchorPath)
+	if _, err := sweepOrphans(root, guids, minAge, time.Now()); err != nil {
+		logger.Warn("shuttle: orphan sweep failed (non-fatal, new run proceeds)", "runDirRoot", root, "error", err)
 	}
 }
 

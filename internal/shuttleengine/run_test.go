@@ -6,6 +6,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -230,6 +231,89 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("run dir root has %d leftover entr(y/ies), want 0 (save-state failure must clean up)", len(entries))
+	}
+}
+
+// TestRunner_Start_StrandTeardownFailure_LogsThroughLogger is one half of R2-F8's regression guard.
+//
+// By the time saveRunState fails, AddStrand has already put a real pane and a real provider process
+// on the substrate, so the RemoveStrand that follows is a live-substrate teardown — and a
+// RemoveStrand that ERRORS is precisely "a teardown that did not confirm clean", which
+// CONSTRAINTS.md's Live-Substrate Spawn Observability invariant requires on internal/logger at Warn.
+// It used to go to the bare log package, which the durable Info+ trace sink never captures, so the
+// one record of a leaked live pane existed only on an ephemeral stderr with no trace correlation id
+// on it. Verified live: a bare log.Printf from this package appeared on stderr and was absent from
+// the trace file for the very same invocation.
+func TestRunner_Start_StrandTeardownFailure_LogsThroughLogger(t *testing.T) {
+	reed := &fakeReed{
+		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+		RemoveStrandErr: errors.New("reed: no session"),
+	}
+	engine := &fakeEngine{
+		PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"},
+		// Plant run.json as a DIRECTORY so saveRunState cannot succeed, which is what drives Start
+		// into the teardown path under test.
+		PrepareHook: func(runDir string) {
+			if err := os.MkdirAll(filepath.Join(runDir, runStateFileName), 0o755); err != nil {
+				t.Fatalf("plant run.json dir: %v", err)
+			}
+		},
+	}
+	runner, _, _ := newTestRunner(t, reed, engine)
+
+	buf := captureLoggerOutput(t)
+	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
+		t.Fatal("Start() = nil error; want the save-run-state failure to propagate")
+	}
+
+	logged := buf.String()
+	for _, want := range []string{"remove strand after save-state failure", "strand-1", "reed: no session"} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("logger output = %q; want it to contain %q", logged, want)
+		}
+	}
+}
+
+// TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger is the other half of R2-F8's guard, and
+// the one that actually prevents reintroduction.
+//
+// This whole package is a live-substrate module: every operational message it emits is about a real
+// pane or a real provider process, so every one of them belongs on internal/logger's durable sink
+// rather than on the stdlib log package, whose output the trace file never sees and which carries no
+// trace correlation id. R1-F10 migrated finalize's two sites and left five siblings behind in these
+// same two files; a behavioural test can only ever pin the sites it happens to exercise, so the
+// no-reintroduction half is a source scan, following the guard-test idiom cmd/lyx already uses.
+//
+// The scan reads this package's own production sources by name from the test's own working
+// directory — no process is spawned and no scan root has to be resolved, so the Test Tier Purity
+// Invariant is satisfied without an allowlist entry.
+func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
+	sources, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("glob package sources: %v", err)
+	}
+	if len(sources) == 0 {
+		t.Fatal("glob matched no .go files; the scan would pass vacuously")
+	}
+
+	scanned := 0
+	for _, source := range sources {
+		if strings.HasSuffix(source, "_test.go") {
+			continue
+		}
+		data, readErr := os.ReadFile(source)
+		if readErr != nil {
+			t.Fatalf("read %s: %v", source, readErr)
+		}
+		scanned++
+		for _, banned := range []string{"log.Printf(", "log.Println(", "log.Fatal", "fmt.Println("} {
+			if strings.Contains(string(data), banned) {
+				t.Errorf("%s uses %s — this package's operational messages are all about a real pane or provider process, so they belong on internal/logger (logger.Info for a normal spawn/teardown, logger.Warn for a retry or a teardown that did not confirm clean), whose durable Info+ trace sink the stdlib log package never reaches", source, banned)
+			}
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no production source files scanned; the guard would pass vacuously")
 	}
 }
 
