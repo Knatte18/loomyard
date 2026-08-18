@@ -238,22 +238,39 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
 		log.Printf("shuttle: capture pane during startup probe (non-fatal, retrying): %v", err)
-		return "", nil
+		// A pane that cannot be captured has told us nothing about whether the provider came up,
+		// so it stays inside the startup window and expires with it — see classifyStartupWindow.
+		return run.classifyStartupWindow(startupDeadline), nil
 	}
 
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:
 		*started = true
+		return "", nil
 	case StartupTrustPrompt:
 		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
 			log.Printf("shuttle: dismiss trust prompt (non-fatal): %v", err)
 		}
-	case StartupPending:
-		if run.clock.Now().After(startupDeadline) {
-			return OutcomeDied, nil
-		}
 	}
-	return "", nil
+	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
+	// share the one deadline that governs the whole startup window.
+	return run.classifyStartupWindow(startupDeadline), nil
+}
+
+// classifyStartupWindow reports OutcomeDied once startupDeadline has passed on a run whose provider
+// has still not reached StartupReady, and "" while that window is still open.
+//
+// It is called from every not-yet-started exit of checkLivenessTick, not just the still-booting one,
+// because the startup window belongs to the WINDOW rather than to one classification within it.
+// Enforcing it only on StartupPending let the two silent paths — a trust prompt whose dismissal
+// never takes, and a pane that fails every capture — skip the deadline entirely and burn the full
+// run_timeout_min (30 minutes by default) instead of startup_timeout_s (90), and be reported as
+// OutcomeTimeout ("the agent was working") rather than OutcomeDied ("it never started").
+func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
+	if run.clock.Now().After(startupDeadline) {
+		return OutcomeDied
+	}
+	return ""
 }
 
 // identity returns the run's identifying fields with an empty Outcome: what Wait hands back

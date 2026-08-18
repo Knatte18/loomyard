@@ -491,6 +491,66 @@ func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath is R2-F9's regression guard.
+//
+// The startup deadline used to be consulted from ONE arm of checkLivenessTick's switch,
+// StartupPending, so the two other ways a run can sit in the startup window without ever reaching
+// StartupReady — a trust prompt whose dismissal never takes, and a pane that fails every capture —
+// escaped it entirely and ran on to the full run deadline instead. Both subtests below keep the run
+// deadline (10 minutes) an order of magnitude beyond the startup deadline (1 second), so a run that
+// only ever classifies OutcomeTimeout is exactly the pre-fix behaviour and a run that classifies
+// OutcomeDied proves the startup window bound the path under test.
+func TestRun_Wait_StartupDeadline_BindsEveryNotReadyPath(t *testing.T) {
+	tests := []struct {
+		name string
+		// startupScript drains FIFO and its last entry then repeats forever, so a single-entry
+		// script pins the pane in that state for the whole run.
+		startupScript []StartupState
+		captureErr    error
+	}{
+		{"trust_prompt_that_never_clears", []StartupState{StartupTrustPrompt}, nil},
+		{"pane_capture_fails_every_probe", nil, errors.New("capture pane: no such pane")},
+		{"still_booting", []StartupState{StartupPending}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+			outputFile := filepath.Join(runDir, "out.md")       // never created
+
+			reed := &fakeReed{
+				StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}},
+				CaptureErr:  tt.captureErr,
+			}
+			engine := &fakeEngine{StartupScript: tt.startupScript}
+			runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 600, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: 10 * time.Minute},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(10 * time.Minute),
+			}
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDied {
+				t.Errorf("Outcome = %q; want %q — the 1s startup deadline must bind this path, not the 10m run deadline", result.Outcome, OutcomeDied)
+			}
+			// A run that reached the RUN deadline instead would have burned the whole 10 minutes of
+			// virtual time; the startup deadline is 1s, so anything past a few seconds means the
+			// window did not bind.
+			if elapsed := fc.Now().Sub(run.deadline.Add(-10 * time.Minute)); elapsed > time.Minute {
+				t.Errorf("virtual time elapsed = %s; want well under a minute (the 1s startup window), not the 10m run window", elapsed)
+			}
+		})
+	}
+}
+
 func TestRun_Wait_Died_ViaStartupTimeout_TrustDismissRecorded(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
