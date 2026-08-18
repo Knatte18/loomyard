@@ -172,6 +172,7 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 - **Decision:** the audit's subject set is exactly these fifteen packages, enumerated here rather than by count or by reference to the wiki brief —
   `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/tokenvocab`, `internal/pattern`, `internal/preflight`, `internal/buildinfo`, `internal/standalonestate`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/webstercli`, `internal/scoutengine`, `internal/scoutcli`.
   This set is the producers-standalone waves' converted packages, and it is deliberately **not** the same as the enforcement-basis lists above: it includes `internal/preflight`, `internal/webstercli`, and `internal/scoutcli` (tier-2/tier-3 packages that resolve rather than are told, and therefore appear in neither enforcement list), and it excludes the two geometry adapters, which are covered by their own already-explicit doc comments.
+  The delta runs both ways: `internal/shedengine` and `internal/treadleengine` appear in the machine-enforced enforcement list but **not** in this audit set, because neither was converted by this line of work — each arrived at told geometry through its own earlier seam invariant and already documents the property in its own package doc.
   It is not every package the membership predicate above reaches;
   `internal/batcher`, `internal/stencilstore`, and `internal/shedadapters` are bound by the invariant but are out of this audit's scope, since none of them was converted by this line of work and each already documents the property in its own words.
   For each converted package, confirm its `doc.go` carries one sentence naming which tier it sits in and whether it is told or resolves.
@@ -233,8 +234,9 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 
 - **Producer engines carry no `internal/lyxcwd` production import.**
   `planparser`, `reedengine`, `websterengine`, `shuttleengine`, `scoutengine`, `burlerengine` (`geometry.go:10`), `perchengine` (`geometry.go:9`), and `standalonestate` each mention it in comments only — the two `geometry.go` comments say `*lyxcwd.Location, but is deliberately not imported here`, which is the contract statement, not an import.
-  `configengine`, `tokenvocab`, `pattern`, `buildinfo`, and `standalonegeom` do not mention it at all.
-  Note for anyone re-verifying: a grep for the import path `internal/lyxcwd` misses both `geometry.go` comments, which spell it `*lyxcwd.Location` — grep the bare token `lyxcwd`.
+  `configengine`, `tokenvocab`, `pattern`, `buildinfo`, and `standalonegeom` do not mention it at all **in production files**;
+  `internal/configengine`'s test file does (`config_test.go:678`, `:693`, `:708`, all comments about code moved out of `lyxcwd`), so a re-verifier must filter `_test.go` out or read those three hits as noise.
+  Note for anyone re-verifying: a grep for the import path `internal/lyxcwd` misses both `geometry.go` comments, which spell it `*lyxcwd.Location` — grep the bare token `lyxcwd`, excluding `_test.go`.
 - **The orchestrator/CLI tier legitimately imports it:** `internal/preflight` (`predicates.go`, `preflight.go`), `internal/webstercli` (`wiring.go`, `cli.go`), `internal/burlercli` (`wiring.go`, `cli.go`), `internal/perchcli` (`wiring.go`, `cli.go`), `internal/scoutcli` (`cli.go`), `internal/hubgeom`.
   This is exactly the split the invariant describes, so the invariant is stating a fact about the current tree rather than an aspiration.
 
