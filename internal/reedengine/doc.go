@@ -96,6 +96,13 @@
 // semantics for each. The engine may also pass the standard tmux -v/-vv
 // verbose-logging global flags on the server-spawning invocation, opt-in
 // via the debug_log config key; the configured binary must accept them.
+// The capability probe (probe.go) additionally issues -V and
+// list-commands, and those two differ in a way that matters: -V is
+// answered CLIENT-SIDE and contacts no server, while list-commands is
+// answered BY a server and starts one if none is running. Both are
+// therefore issued through TmuxCmd, carrying reed's own -L socket, so the
+// probe can never start a server on the operator's GLOBAL DEFAULT socket
+// — see probeCapabilityLocked for what that cost while it did.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it
 // load-bearing:
