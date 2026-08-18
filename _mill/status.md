@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: scout-told-geometry
 branch: scout-told-geometry
 plan: _mill/plan
@@ -28,6 +28,7 @@ approved-hub-mode-evidence  '2026-08-18T13:43:52Z'
 holistic-reviewing  '2026-08-18T13:44:37Z'
 holistic-approved  '2026-08-18T13:46:49Z'
 done  '2026-08-18T13:47:58Z'
+pr-pending  '2026-08-18T13:48:52Z'
 ```
 
 ## Batches
