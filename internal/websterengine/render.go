@@ -171,7 +171,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, prevDigest, reportPath string, l 
 	}
 
 	stencilsDir := fabricengine.StencilsDir(l.HubPath)
-	directive, err := pattern.Directive(l, stencilsDir, pattern.RoleImplementer)
+	directive, err := pattern.Directive(l.AnchorPath(), stencilsDir, pattern.RoleImplementer)
 	if err != nil {
 		return nil, fmt.Errorf("webster: recovery prompt directive: %w", err)
 	}
@@ -234,7 +234,7 @@ func RenderMasterPrompt(plan *planparser.Plan, st *State, outcomePath, summaryPa
 	}
 
 	stencilsDir := fabricengine.StencilsDir(l.HubPath)
-	directive, err := pattern.Directive(l, stencilsDir, pattern.RoleOrchestrator)
+	directive, err := pattern.Directive(l.AnchorPath(), stencilsDir, pattern.RoleOrchestrator)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
 	}
