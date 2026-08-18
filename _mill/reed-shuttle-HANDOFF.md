@@ -89,8 +89,21 @@ Six rounds, 37 findings total (10+6+2+5+8+6), every one fixed and independently 
 
 **Operator confirmed reed done (2026-08-18): "Er vi ikke ferdige nå?" in response to the convergence report — REED CAMPAIGN OFFICIALLY CLOSED.**
 
+## SHUTTLE CAMPAIGN — STARTED (2026-08-18)
+
+Second, separate campaign on `internal/shuttleengine` + `internal/shuttleengine/claudeengine` + `internal/shuttlecli`.
+**Round rotation (operator's call, 2026-08-18): same pattern as reed — Opus/Medium → Opus/High → Fable/High → Opus/Medium, used only as far as needed to converge.** Operator confirmed via "Ok. finalize" after the orchestrator recommended reusing reed's rotation.
+Standing mandatory rule (unconditional on the round, stated at the top of this file): every real `claude` process a round agent spawns while live-driving shuttle MUST use `--model haiku` (or cheapest available), unless a specific finding genuinely requires testing model-specific behavior.
+
+**Round 1 seeded and launching: Opus / Medium**, tag `opus-medium-r1`. First round of a fresh campaign — no prior residual, full clean-room review + fix per `crucible/review-prompt-template.md`.
+Seed prompt: `_mill/shuttle-review-prompt.md` (written fresh, committed).
+
+Key framing baked into the prompt:
+- Wave-1 changed `Runner`'s construction from a single `*lyxcwd.Location` to two independently-passed, untyped `string` params (`anchorPath`, `worktreeRoot`) — NO structural type safety distinguishing them, unlike reed's `Geometry` struct which at least has named fields and a validating pre-flight. A swapped argument pair at the one production call site (`shuttlecli/cli.go`'s `hubgeom.ReedGeometry(layout)` → `NewRunner(..., reedGeom.AnchorPath, reedGeom.WorktreeRoot, ...)`) would compile cleanly — this is round 1's single highest-yield focus item.
+- Shuttle drives reed directly through `ReedOps`, and reed's own six-round campaign changed several behavioral contracts underneath it (the foreign-session refusal on `up`/`resume`, `Down`'s new `AbandonedSession` field, `LoadState`'s new actionable-vs-opaque corrupt-state errors) — round 1 is explicitly asked whether `sweepOrphansOpportunistic` and the `Interrupt`/`Send`/`Inject` paths still assume reed's OLDER, simpler behavior.
+- This module has documented history (from a torn-down prior worktree, lessons folded into `crucible/review-prompt-template.md` itself): a round killed mid-fix with an uncommitted diff, and a round that interleaved review and fix. The prompt calls this out explicitly at the top so R1 does not repeat it.
+- `LLM-DRIVING: YES` — 4 smoke tests, each spawns exactly ONE real `claude` process (no fan/cluster shape exists in this module — shuttle runs one agent per `Start` call by design). No execution ban needed; the mandatory `--model haiku` rule and the "name the exact test, never bare `-run Smoke`" discipline both apply. No N×-concurrent sweep for this module (real `claude` subprocess cost).
+- Out of scope: reed's own code (campaign closed — read reed's CURRENT contract as context, but do not re-review or fix reed itself; a genuine reed defect found while reviewing shuttle gets named as an out-of-campaign finding, not fixed here), burler/perch/loom (built on top of shuttle), Windows live-driving (host is Linux; `posix.go`'s Windows path named as a gap).
+
 ## Next action
-1. ~~Report R6's closure and get explicit confirmation~~ — DONE, operator confirmed.
-2. Start the separate shuttle campaign (`internal/shuttleengine` + `internal/shuttlecli`) — its own prompt file (`_mill/shuttle-review-prompt.md`, does not exist yet), its own round numbering starting at R1. **Ask the operator for shuttle's round rotation (model/effort per round)** before seeding R1 — reed's rotation was operator-specified per-campaign, not a template to reuse blindly.
-3. Carry forward for shuttle: the mandatory `--model haiku` (or cheapest available) rule for every real `claude` process a round agent spawns while live-driving shuttle (`lyx shuttle run` invocations) — operator-mandated cost rule stated at the top of this file, unconditional on the round.
-4. Continue maintaining this HANDOFF file as shuttle's campaign state once it starts — same discipline as reed's six rounds.
+Wait for shuttle R1 (`opus-medium-r1`) to complete, then the orchestrator independently verifies from a cold state — same protocol as every reed round: rerun every gate, sabotage-prove every new regression test (reproduce the bug, confirm the test fails at the intended assertion, restore, confirm empty diff), spot-check doc fixes, independently re-drive at least the headline fix on a fresh fixture/scenario different from the round's own, confirm teardown via `ps -eo comm | grep -cx 'tmux: server'` = 0 AND zero stray `claude` processes. Never trust a round's own merge-readiness verdict — same discipline that ran for all six reed rounds. Re-seed and spawn round 2 (Opus/High per the rotation) once round 1 is closed and verified, carrying forward CLOSED-AND-VERIFIED findings with commit shas so round 2 doesn't re-litigate them.
