@@ -226,6 +226,7 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
   - `internal/websterengine/recoverbatch_test.go`
   - `internal/websterengine/runlevel_test.go`
   - `internal/websterengine/audit_test.go`
+  - `internal/websterengine/integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
