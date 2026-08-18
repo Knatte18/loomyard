@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-reed pane cwd
+phase: approved-batcher moves to the degrading side
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-08-18T09:54:12Z'
 planned  '2026-08-18T09:54:22Z'
 implementing  '2026-08-18T09:54:54Z'
 approved-reed pane cwd  '2026-08-18T10:01:16Z'
+approved-batcher moves to the degrading side  '2026-08-18T10:05:02Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: 0c028c4901226137fd606b2b2c3dc3fb2efe125e
     verify_baseline_failures: []
   - name: batcher moves to the degrading side
-    state: running
+    state: approved
     implementer_session: c24e1594-960c-4ea0-82e4-0d7dfef85729
     start_sha: 72dd0c1bc45375dd0cdfe4912e0950f971f6c749
+    commit_sha: 1204b1567f0ed3567ec1a506a2d7177074eb3d1d
     verify_baseline_failures: []
   - name: preflight doc correction
     state: pending
