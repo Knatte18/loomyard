@@ -1,0 +1,1 @@
+- `--target-dir` absolute-path resolution happens in `wiring.go`, not at the flag-parsing CLI boundary: Location: internal/webstercli/cli.go:184-189, internal/webstercli/wiring.go:225-233

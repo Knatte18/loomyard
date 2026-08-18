@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -37,6 +37,8 @@ holistic-reviewing  '2026-08-18T11:05:28Z'
 holistic-fixing  '2026-08-18T11:10:52Z'
 holistic-reviewing  '2026-08-18T11:15:58Z'
 holistic-fixing  '2026-08-18T11:21:18Z'
+nits-fixed-holistic  '2026-08-18T11:23:48Z'
+holistic-approved  '2026-08-18T11:23:55Z'
 ```
 
 ## Batches
