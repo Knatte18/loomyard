@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-18T18:58:35Z'
+discussion-fix-r1  '2026-08-18T19:15:58Z'
 ```

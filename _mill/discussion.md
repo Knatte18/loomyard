@@ -69,9 +69,12 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
   2. **The split:** a producer requires none of the three.
      An orchestrator requires tier 3 and threads the extracted plain values down through its whole producer list.
      A standalone CLI invocation of a single producer never enters tier 1 at all.
-  3. **The adapter direction:** `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are the two sole constructors of engine geometry structs.
+  3. **The adapter direction:** where an engine takes a `Geometry` **struct**, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors.
      Both depend on the engines; no engine imports either back.
-     A new engine adds a sibling constructor in each rather than deriving geometry inline at a call site or spawning a per-engine geometry package.
+     An engine that gains a `Geometry` struct adds a sibling constructor in each rather than deriving geometry inline at a call site or spawning a per-engine geometry package.
+     The rule is scoped to `Geometry` structs deliberately: **plain told values are the other permitted shape**, and two shipped packages use it — `internal/treadleengine` is told `runDir` and `Profile.GateDir`, `internal/shedengine` is told `StatusPath`/`LockPath`/`StatusLockPath`, neither through a geometry struct and neither with a `hubgeom`/`standalonegeom` constructor.
+     The pair is also not symmetric: `standalonegeom.StencilsDir` has no `hubgeom` sibling, because hub mode resolves that directory through `fabricengine` instead.
+     Stating "the two sole constructors of engine geometry" unscoped would make the invariant false on the day it lands.
   4. **The mode trigger:** `preflight.ResolveMode` is what a standalone-capable CLI's pre-run consults — never `preflight.Wired`, and never a bare `HubPresent` (see `internal/preflight/doc.go` for why each alternative is wrong).
 - **Rationale:** these are exactly the four facts a future task can violate silently.
   Points 3 and 4 are not in the task brief but are load-bearing parts of the same rule — without 3 the told direction inverts into a cycle, and without 4 a CLI silently relocates a live hub's state into the per-OS standalone state directory.
@@ -80,6 +83,14 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 ### Enforcement basis — named honestly, per package
 
 - **Decision:** the invariant's **Enforced by** line enumerates the machine-checked set exactly, and names the review-obligation set exactly rather than gesturing at it.
+
+  **The membership predicate the two sets are derived from**, stated in the invariant so a future task can re-derive them rather than guess:
+  a package is *bound* by the Told-Geometry Invariant when it takes the absolute paths it operates on from its caller and imports `internal/lyxcwd` in production not at all.
+  It is *machine-enforced* when that non-import is asserted by a test in its own package that policies its production import set (an allowlist that omits `internal/lyxcwd`, or a banned list that names it);
+  otherwise it is a *review obligation*.
+  The predicate is what binds;
+  the two lists below are the packages converted by the producers-standalone waves, and are **not exhaustive** of every package the predicate reaches.
+  `internal/batcher` (`config.go:31-33`), `internal/stencilstore` (`doc.go:3-7`), and `internal/shedadapters` (`doc.go:27`, "Told, never derived") each satisfy the predicate today, arrived there by other routes, and are named in the invariant as such — bound, unconverted-by-this-line-of-work, and review obligation.
 
   **Machine-enforced** (an import allowlist that genuinely excludes `internal/lyxcwd`):
   `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
@@ -104,10 +115,12 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 ### Cwd Resolution Invariant — the reword
 
 - **Decision:** add one new bullet near the top of the existing `## Cwd Resolution Invariant`, stating what `Resolve` validates, in four sub-points:
-  `git rev-parse --show-toplevel` must succeed at `cwd`, else `ErrNotAGitRepo` — this is its only real validation;
+  `git rev-parse --show-toplevel` must succeed at `cwd`, else `ErrNotAGitRepo` — the only validation `Resolve` makes of the **repository** itself;
   an **absent** anchor marker is not an error (`AnchorRel` falls back to `"."`), only a stale pre-rename marker hard-errors;
   `cwd` must equal `Join(worktreeRoot, AnchorRel)`, which with no marker reduces to "cwd is the git worktree root";
   `HubPath` is `filepath.Dir(worktreeRoot)` **unconditionally**, never verified to be a hub, and `RepoName` is `Base(hubPath)` with `-HUB` trimmed, with no check the suffix was ever there.
+  Sub-points 2 and 3 are the other two checks `Resolve` genuinely makes (`ErrStaleAnchorMarker`, `ErrCwdOutsideAnchor`);
+  they are checks about the **anchor marker and the caller's position**, not about whether the repository is a lyx worktree, which is why sub-point 1's "only" is scoped to the repository and must stay scoped when the bullet is written.
   Close with the consequence: `Resolve` succeeds in any ordinary git repository run from its root, and `HubPath`/`RepoName` are fiction in that case — proving initialization is tier 2/3's job, not tier 1's.
   Cross-link to the new Told-Geometry Invariant.
 - **Rationale:** the existing bullets are individually accurate but collectively silent on what `Resolve` does *not* prove, which is what readers inferred.
@@ -129,7 +142,9 @@ T10 was gated on T5 in particular — the three-tier rule is only true once the 
 
 ### `doc.go` audit — additive, not a rewrite
 
-- **Decision:** for each converted package, confirm its `doc.go` carries one sentence naming which tier it sits in and whether it is told or resolves.
+- **Decision:** the audit's subject set is the packages converted by the producers-standalone waves — the same fifteen the brief's Files list names — not every package the membership predicate above reaches;
+  `internal/batcher`, `internal/stencilstore`, and `internal/shedadapters` are bound by the invariant but are out of this audit's scope, since none of them was converted by this line of work and each already documents the property in its own words.
+  For each converted package, confirm its `doc.go` carries one sentence naming which tier it sits in and whether it is told or resolves.
   Add the sentence where absent;
   where told-geometry prose already exists (`shuttleengine`, `reedengine`, `pattern`, `perchengine`, `websterengine`, `hubgeom`, `standalonegeom`, `planparser`, `scoutengine`), leave it alone.
   `internal/configengine`, `internal/webstercli`, and `internal/scoutcli` have no `doc.go` at all — do not create one; their told-geometry status is covered by the invariant, and creating a package doc file is a larger editorial act than this task's brief carries.
@@ -229,8 +244,15 @@ The three own-loader modules (`burlerengine`, `modelspec`, `scoutengine`) call n
   Anchor slugs follow GitHub's rule as implemented in `docsLinkSlug`: strip leading `#` run and one space, delete backticks, lowercase, delete every rune that is not a letter/digit/`_`/`-`/space, replace spaces with `-`.
   Note the em-dash consequence: ` — ` leaves two spaces behind and becomes a double hyphen.
   A new `## Told-Geometry Invariant` heading therefore anchors as `#told-geometry-invariant`.
-- `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`) — the `weft`/`warp` vocabulary walk covers `.md` files.
-  The new invariant text should say Fabric/warp/weft only where the two sides genuinely must be told apart (tier 2's description), per the Fabric Vocabulary Invariant.
+- `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`) — **does not reach this task's `.md` edits.**
+  Its `.md` walk covers `{internal, contracts/stencils}` only (`enforcement_test.go:940`), so `CONSTRAINTS.md`, `docs/overview.md`, and `manifest/roadmap.md` are all outside it.
+  What the guard does cover here is the `doc.go` audit, via its `{internal, cmd}` `.go` walk (`enforcement_test.go:907`).
+  Fabric vocabulary in the three `.md` files is therefore a **review obligation**: say Fabric/warp/weft only where the two sides genuinely must be told apart (tier 2's description), per the Fabric Vocabulary Invariant, and expect no machine check to catch a slip.
+- `internal/lyxcwd/docslink_test.go`'s `docsLinkAllowlist` (`docslink_test.go:394-397`) — a **self-expiring** allowlist of two known-broken links, keyed by `(file, target)`;
+  an entry whose key matches no break in a scan is reported as deletable, which is a test *failure*, not a pass.
+  One entry is `{docs/overview.md, ../CONSTRAINTS.md#package-naming}` — a file this task edits.
+  Leave that link exactly as it is: incidentally repairing or removing it while editing `docs/overview.md` strands its allowlist entry and fails the build unless the entry is deleted in the same commit.
+  The other entry (`{manifest/designs/loom.md, ../../docs/overview.md#hub-geometry-invariants}`) is untouched by this task, but do not add a `#hub-geometry-invariants` heading to `docs/overview.md` either, for the same reason in reverse.
 - `cmd/lyx/tierpurity_test.go` — the new guard spawns `go env GOMOD` and must be allowlisted, or it fails the Test Tier Purity Invariant.
 - The new guard file will itself contain the literal tokens `configengine.Load(` and `configengine.LoadOrTemplate(` as scan data, which is harmless (it is a `_test.go` file and the guard skips those) but should be noted in its doc comment, matching how the other guards document the same self-reference.
 
@@ -284,7 +306,9 @@ a guard written to match whatever the tree currently says would assert nothing.
 
 - `go test ./...` — the task-wide verify command.
 - `internal/lyxcwd/docslink_test.go` — link and anchor integrity across every reworded doc, and the gate that proves the five roadmap references were fixed before the design doc was deleted.
-- `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`) — the vocabulary walk over the new `.md` prose.
+- `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_FabricVocabulary`) — the vocabulary walk over the `doc.go` edits only.
+  It does **not** reach `CONSTRAINTS.md`, `docs/overview.md`, or `manifest/roadmap.md` (see Technical context);
+  vocabulary in those three is a review obligation.
 - `cmd/lyx/tierpurity_test.go` — proves the new guard's `allowedSpawners` entry is correct.
 
 **Manual review obligations**, not machine-checkable:
