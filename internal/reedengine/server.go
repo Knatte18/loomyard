@@ -1,8 +1,10 @@
 // server.go computes the per-hub tmux server identity: the server name (also reused as the -L
 // socket name) and the per-worktree session name.
-// Server-name construction lives here, in the tmux domain, rather than in lyxcwd, because it is a
-// tmux-specific derivation (not a filesystem path) computed from a Location.HubPath value lyxcwd
-// already resolves.
+// Both construction rules live here, in the tmux domain, rather than in lyxcwd, because each is a
+// tmux-specific derivation (a socket key and a session name, neither of them a filesystem path)
+// over a plain hub or worktree path string its caller already resolved.
+// Neither function sees a *lyxcwd.Location: hubgeom.ReedGeometry calls them to fill
+// Geometry.SocketKey/SessionName, and this package only ever reads those told fields back.
 // The file is named server.go, not naming.go, so it is not confusable with the strand-name helpers
 // in name.go.
 package reedengine
@@ -26,12 +28,6 @@ func ServerName(hubPath string) string {
 // SessionName returns the tmux session name for a worktree: its directory slug.
 func SessionName(worktreeRoot string) string {
 	return filepath.Base(worktreeRoot)
-}
-
-// socketName returns the socket-safe server name for the hub at hubPath,
-// identical to ServerName.
-func socketName(hubPath string) string {
-	return ServerName(hubPath)
 }
 
 // cleanAbsHubPath resolves hubPath to its cleaned absolute form for stable hashing.

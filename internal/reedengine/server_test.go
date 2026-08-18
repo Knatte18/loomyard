@@ -1,5 +1,8 @@
-// server_test.go verifies ServerName/socketName determinism, socket-safety, and per-hub uniqueness,
-// plus SessionName's worktree-slug derivation.
+// server_test.go verifies ServerName's determinism, socket-safety, and per-hub uniqueness, plus
+// SessionName's worktree-slug derivation.
+// ServerName is the SINGLE derivation of the -L socket key: hubgeom.ReedGeometry calls it to fill
+// Geometry.SocketKey, and Engine.Socket returns that field verbatim, so there is no second
+// spelling here to cross-check it against.
 
 package reedengine
 
@@ -9,7 +12,7 @@ import (
 	"testing"
 )
 
-// socketUnsafeChars matches the characters ServerName/socketName must never
+// socketUnsafeChars matches the characters ServerName must never
 // produce: ':', '\', and space, all of which are unsafe in a tmux -L
 // socket argument.
 var socketUnsafeChars = regexp.MustCompile(`[:\\ ]`)
@@ -59,13 +62,6 @@ func TestServerName_HasHubBasenameAndPrefix(t *testing.T) {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
 			t.Errorf("ServerName(%q) hash suffix %q has non-hex char %c", hub, hash, c)
 		}
-	}
-}
-
-func TestSocketName_MatchesServerName(t *testing.T) {
-	hub := filepath.Join(t.TempDir(), "loomyard-HUB")
-	if socketName(hub) != ServerName(hub) {
-		t.Errorf("socketName(%q) = %q, want ServerName = %q", hub, socketName(hub), ServerName(hub))
 	}
 }
 
