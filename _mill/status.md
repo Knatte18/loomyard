@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -26,4 +26,21 @@ plan-review-r2  '2026-08-18T06:28:40Z'
 plan-fix-r2  '2026-08-18T06:28:40Z'
 plan-fix-r3  '2026-08-18T06:42:02Z'
 planned  '2026-08-18T06:42:27Z'
+implementing  '2026-08-18T06:42:59Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: buildinfo-and-mode-mapping
+    state: pending
+  - name: standalonestate-leaf
+    state: pending
+  - name: preflight-lift
+    state: pending
+  - name: cli-gate-and-ldflags
+    state: pending
+  - name: docs-and-invariants
+    state: pending
 ```
