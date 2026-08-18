@@ -693,6 +693,67 @@ func TestRun_Wait_ForkAudit_AttachedOnlyForForkModeDone(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome is R2-F2's regression guard.
+//
+// A fork-mode run that satisfies the file contract has reached OutcomeDone before AuditForks is ever
+// called, so an audit failure is a failure of the AUDIT, not of the run. finalize used to hand back
+// run.identity() here — a Result with an empty Outcome — which is the shape Wait reserves for a
+// mechanism failure that reached no classification at all. Because this branch also skips cleanup,
+// leaving the strand and run dir in place exactly as a mechanism failure does, a caller had nothing
+// left to tell the two apart with.
+func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
+	runDir := t.TempDir()
+	eventsPath := filepath.Join(runDir, "events.jsonl")
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+	if err := os.WriteFile(eventsPath, []byte("STOP:done\n"), 0o644); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}}
+	engine := &fakeEngine{
+		StartupScript: []StartupState{StartupReady},
+		AuditForksErr: errors.New("read parent transcript: no such file or directory"),
+	}
+	runner := newWaitTestRunner(t, reed, engine, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute, ForkSubagents: true},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err == nil {
+		t.Fatalf("Wait() error = nil; want the audit failure surfaced")
+	}
+	if !strings.Contains(err.Error(), "audit forks for session") {
+		t.Errorf("Wait() error = %v; want it to name the fork audit", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q — the run satisfied the file contract before the audit was attempted", result.Outcome, OutcomeDone)
+	}
+	if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
+		t.Errorf("identity = (%q, %q, %q); want (%q, %q, %q)", result.StrandGUID, result.SessionID, result.RunDir, "strand-1", "session-1", runDir)
+	}
+	if result.ForkAudit != nil {
+		t.Errorf("Result.ForkAudit = %+v; want nil — nil is what \"not audited\" means", result.ForkAudit)
+	}
+	// The audit failure must not have triggered the done-outcome cleanup: both the strand and the
+	// run dir have to survive for the caller to diagnose what the audit could not read.
+	if len(reed.RemoveStrandCalls) != 0 {
+		t.Errorf("RemoveStrand calls = %+v; want none — an audit failure must not tear the run down", reed.RemoveStrandCalls)
+	}
+	if _, statErr := os.Stat(runDir); statErr != nil {
+		t.Errorf("run dir removed after an audit failure: %v", statErr)
+	}
+}
+
 func TestRun_Wait_MultiStopOffsetTracking(t *testing.T) {
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl")

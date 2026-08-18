@@ -95,8 +95,11 @@ type Result struct {
 	LastAssistantMessage string
 	RunDir               string
 	// ForkAudit is populated only when the Spec that started this run set
-	// ForkSubagents and the run classified OutcomeDone; nil otherwise (including
-	// when ForkSubagents was set but the run did not reach OutcomeDone).
+	// ForkSubagents, the run classified OutcomeDone, and the audit itself
+	// succeeded; nil otherwise. A nil ForkAudit therefore always reads as "not
+	// audited" and never as "audited, found nothing" — including on the one
+	// path where Outcome is OutcomeDone and the returned error is non-nil,
+	// which is a done run whose audit could not be read (see finalize).
 	ForkAudit *ForkAudit
 }
 

@@ -305,9 +305,14 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	if outcome == OutcomeDone && run.spec.ForkSubagents {
 		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.anchorPath)
 		if err != nil {
-			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the identity is
-			// the caller's only route back to a strand and run dir that are both still there.
-			return run.identity(), fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
+			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
+			// whole classified Result back — identity AND Outcome — not the bare identity().
+			// identity() is for Wait's mechanism-failure exits, where no outcome was ever reached;
+			// here one was, and blanking it left a caller unable to tell a run that finished and
+			// merely failed its audit from a run that never classified at all. Since this branch
+			// skips cleanup either way, the identity fields alone do not separate them.
+			// ForkAudit stays nil, which already means "not audited".
+			return result, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
 		}
 		result.ForkAudit = &audit
 	}
