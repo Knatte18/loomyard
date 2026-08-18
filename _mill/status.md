@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-18T12:04:09Z'
+discussion-fix-r5  '2026-08-18T13:10:34Z'
+discussed  '2026-08-18T13:10:34Z'
 ```
