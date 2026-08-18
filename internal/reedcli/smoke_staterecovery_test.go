@@ -201,6 +201,69 @@ func TestSmokeRenamedWorktreeRefusesRatherThanDoubleLaunching(t *testing.T) {
 	}
 }
 
+// TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume is the end-to-end
+// regression guard for the R6 review's R6-F1, driven at the CLI seam.
+//
+// Reproduced live before the fix: both ordinary routes into the foreign-session refusal — a worktree
+// renamed while its session was up, a .lyx copied between worktrees of one hub — leave THIS
+// worktree's session absent, so every non-booting verb lands in requireSessionLocked. That returned
+// `no reed session (1 strands persisted); run "lyx reed resume" to rebuild, or "lyx reed up" for a
+// bare substrate`, and both commands it named then refused with the orphan-session error. The
+// operator's whole diagnostic surface reported a bare "no session", never named the still-running
+// session, and routed them into a loop.
+//
+// The test asserts the diagnosis at the CALL SITE rather than the helper: refuseLiveForeignSessionLocked
+// has its own hermetic coverage (generation_test.go), and what is not otherwise pinned is that
+// requireSessionLocked consults it at all. Removing that call restores the misleading text verbatim,
+// which the negative assertion below catches.
+func TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	original := materializeSibling(t, h, "diag-before-rename")
+	renamed := filepath.Join(h.Path, "diag-after-rename")
+
+	deferHubRelease(t, h.PrimeWorktree())
+	deferHubRelease(t, renamed)
+
+	var out bytes.Buffer
+	if code := RunCLIIn(original, &out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, originalSession := socketAndSessionIn(t, original)
+	t.Cleanup(func() {
+		exec.Command(tmuxPath, "-L", socket, "kill-session", "-t", "="+originalSession).Run()
+		var buf bytes.Buffer
+		RunCLIIn(renamed, &buf, []string{"down"})
+	})
+	addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "pre-rename")
+
+	if err := os.Rename(original, renamed); err != nil {
+		t.Fatalf("rename %s -> %s: %v", original, renamed, err)
+	}
+
+	// Every verb that goes through requireSessionLocked rather than through a boot must report the
+	// same diagnosis: status is the one an operator reaches for first, attach the one they reach for
+	// next, and add the one an agent driving reed hits.
+	for _, verb := range [][]string{{"status"}, {"attach"}, {"add", "--cmd", smokeReapLaunchCmd(), "--name", "post-rename"}} {
+		out.Reset()
+		if code := RunCLIIn(renamed, &out, verb); code == 0 {
+			t.Fatalf("%v in the renamed worktree = 0; want a failure naming the orphan session, output: %s", verb, out.String())
+		}
+		reported := out.String()
+		for _, want := range []string{originalSession, "kill-session"} {
+			if !strings.Contains(reported, want) {
+				t.Errorf("%v error = %s; want it to name %q so the operator can act on it", verb, reported, want)
+			}
+		}
+		// The pre-fix text named resume as the remedy, and resume refuses for exactly the reason
+		// the message omitted. Naming it here would send the operator back into that loop.
+		if strings.Contains(reported, `run "lyx reed resume"`) {
+			t.Errorf("%v error = %s; want it NOT to point at resume, which refuses while %q is still running", verb, reported, originalSession)
+		}
+	}
+}
+
 // TestSmokeRemoveNeverKillsASiblingWorktreesPane is the end-to-end regression guard for the R5
 // review's R5-F4, driven at the CLI seam.
 //

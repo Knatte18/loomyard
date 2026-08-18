@@ -1053,6 +1053,19 @@ func noSessionMessage(strandCount int, stateReadable bool) string {
 
 // requireSessionLocked returns an actionable error when this worktree's
 // session does not exist, including whether resume would have content to rebuild.
+//
+// "Actionable" is why the foreign-session diagnosis is consulted here rather than left to the two
+// booting verbs. Both routes into refuseLiveForeignSessionLocked — a worktree renamed while its
+// session was up, a .lyx copied between worktrees of one hub — leave THIS worktree's session absent,
+// so every non-booting verb lands in this function, and the plain no-session text it used to return
+// names `lyx reed resume` and `lyx reed up` as the remedies. Both of those then refuse, for exactly
+// the reason this text did not mention: the operator's whole diagnostic surface, `status` above all,
+// reported a bare "no session" and routed them into a loop, while the state file naming the orphan
+// was already loaded right here (R6 review finding R6-F1).
+//
+// It costs no tmux round trip on the healthy path: refuseLiveForeignSessionLocked returns
+// immediately when the recorded session name is empty or is this worktree's own, which is every
+// state file reed itself writes.
 func (e *Engine) requireSessionLocked() error {
 	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil {
@@ -1070,6 +1083,9 @@ func (e *Engine) requireSessionLocked() error {
 	st, loadErr := LoadState(e.stateDir())
 	if st != nil {
 		strandCount = len(st.Strands)
+		if err := e.refuseLiveForeignSessionLocked(st.PaneGeneration); err != nil {
+			return err
+		}
 	}
 	// An ABSENT file is readable-and-empty, not unreadable: a brand-new worktree has no reed.json
 	// and must still get the plain "run lyx reed up" text.
