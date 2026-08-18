@@ -78,6 +78,24 @@ Review is never a property attached to the producer it reviews — it is always 
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
 
+**Build order follows from this, as a deliberate operator decision, not just a testing technique: every `mechanical` row is built for real before any `LLM`/`LLM/perch` row is.**
+That is `Preflight` (done), `Discussion-Validate`, `Plan-Sweep`, `Plan-Validate`, `Batchifier` (done), and `Finalize`, plus the `Shed` wiring itself and `lyx loom status` — the whole flat list runs a full phase sequence, including resume/crash-recovery/pause, with every `LLM` row (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`) left as a stub producer.
+`Webster` (row 10) is exempt from the stub-until-last rule: it is already a shipped, standalone module (`internal/websterengine`/`internal/webstercli`), so wiring loom's call into it is scaffolding glue, not new LLM-prompt authoring, and does not need to wait.
+Wiring the real LLM producers in — rewriting `Discussion-Write`'s and `Plan-Write`'s already-built prompts into `SingleLLMProducer` instances, and building `Discussion-Review`/`Plan-Review`/`Webster-Review` on the `perch` adapter — is the last task of this whole initiative, deliberately, not the next one.
+
+### LLM-prompt work — deliberately parked, all of it, in one place
+
+The three `LLM/perch` review gates are today in three different, undocumented states of readiness, scattered across this doc with no single place naming what's missing.
+This section is that single place, and it is the authoritative scope for the Someday `loom: remove/park all LLM-prompt work` task — every item below stays out of scope until then, and nothing below is scoped anywhere else in this doc.
+
+- **`Discussion-Review` rubric — half-written.** [The rubric section below](#discussion-producer-detail--validation-checks-and-review-rubric) states what *not* to flag; no "what to check" half exists yet.
+- **`Plan-Review` rubric — does not exist.** The table above points `Plan-Review` at `loom-plan-spec.md`, but that file is `Plan-Validate`'s structural format spec (hard-fail checks), not review judgment criteria — it answers "is this plan shaped correctly," never "is this the right plan."
+- **`Webster-Review` rubric — does not exist.** Same gap, same reason: the plan's card contract is structural, not judgment criteria for "does this diff actually satisfy the card."
+- **`Discussion-Write` and `Plan-Write` are not wired into `Shed`'s producer list.** Their prompts are already built and shipped (`contracts/stencils/loom/loom-template-discussion.md`, `loom-template-plan.md`, `DiscussionSpec`/`PlanSpec` in `internal/loomengine`) — this is Go glue work (rewrap each as a `SingleLLMProducer` instance), not prompt authoring, but it is parked alongside the rest so all LLM-touching work in this initiative lands in one pass rather than being split across tasks.
+
+**Explicitly NOT parked by this — stays in scope for `loom: phase-machine scaffolding` now, unaffected:** `perch`'s own round-loop, gate (`llm-verdict`/`command`/`both`), milestone-cap ladder, progress-judge, and cluster fan-out machinery; `burler`'s own A-review/B-fix round machinery; and `webster`'s own already-shipped black-box engine.
+None of that is prompt content — it is already-built, already-tested Go infrastructure that `loom: remove/park all LLM-prompt work` later plugs real profiles into, not something it authors from scratch.
+
 Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored the plan format's `depends-on-order` check — is now resolved, not open.
 The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks the [Discussion producer detail](#discussion-producer-detail--validation-checks-and-review-rubric) section below defines.
 The second question — whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition — is now resolved too, over all four producers that share some form of thin Output (`Preflight`, `Discussion-Validate`, `Plan-Validate`, `Finalize`): see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the two-case statement, rather than restating either case here.
