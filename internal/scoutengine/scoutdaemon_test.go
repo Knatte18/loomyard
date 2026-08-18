@@ -1,7 +1,7 @@
 // scoutdaemon_test.go tests the DaemonStateFile/DaemonLock path constructors as told-string path
 // math over three fixtures — an unanchored worktree root, a subpath-anchored root, and a plain told
-// directory not derived from any *lyxcwd.Location at all — pure path arithmetic, no spawning,
-// untagged (Tier 1).
+// directory driven with no anchoring type at all — pure path arithmetic, no spawning, untagged
+// (Tier 1).
 
 package scoutengine
 
@@ -53,7 +53,7 @@ func TestDaemonLock_SubpathAnchored(t *testing.T) {
 }
 
 // TestDaemonStateFile_ToldDirectory drives DaemonStateFile with a plain told directory that is not
-// derived from any *lyxcwd.Location at all, proving the constructor needs only a string.
+// derived from any anchoring type at all, proving the constructor needs only a string.
 func TestDaemonStateFile_ToldDirectory(t *testing.T) {
 	anchorRoot := "/var/lib/lyx-standalone/state"
 
