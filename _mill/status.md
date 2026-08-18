@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: _mill/plan
@@ -23,4 +23,17 @@ plan-fix-r1  '2026-08-18T09:02:53Z'
 plan-fix-r2  '2026-08-18T09:11:56Z'
 plan-review-r3  '2026-08-18T09:18:39Z'
 planned  '2026-08-18T09:18:49Z'
+implementing  '2026-08-18T09:19:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: geometry types and hubgeom tellers
+    state: pending
+  - name: burler told-geometry
+    state: pending
+  - name: perch told-geometry
+    state: pending
 ```
