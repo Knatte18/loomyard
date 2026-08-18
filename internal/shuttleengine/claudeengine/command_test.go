@@ -342,22 +342,32 @@ func TestResolveModelID(t *testing.T) {
 }
 
 func TestBuildResumeCmd(t *testing.T) {
+	// The resumed process is a fresh claude that inherits nothing from the launch, and reed replays
+	// this string verbatim — so every mode-bearing flag buildLaunchCmd emits must be here too, or a
+	// resumed autonomous run comes back permission-gated (it then stalls at its first tool dialog
+	// with no operator present, which shuttle can only classify as a timeout) and on the provider
+	// default model rather than the pinned one.
 	tests := []struct {
 		name          string
+		model         string
+		effort        string
+		interactive   bool
 		forkSubagents bool
 		want          string
 	}{
-		{"fork_mode_off", false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`},
+		{"autonomous_bare", "", "", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --dangerously-skip-permissions`},
+		{"interactive_bare", "", "", true, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`},
+		{"model_and_effort_pinned", "haiku", "low", false, false, `& 'claude' --resume 'abc-123' --settings 'C:\run\settings.json' --model 'haiku' --effort 'low' --dangerously-skip-permissions`},
 		{
 			// A resumed fork-mode session must keep the fork-subagent
 			// capability it launched with.
-			"fork_mode_on", true,
+			"fork_mode_on", "", "", true, true,
 			`$env:CLAUDE_CODE_FORK_SUBAGENT = '1'; & 'claude' --resume 'abc-123' --settings 'C:\run\settings.json'`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.forkSubagents)
+			got := buildResumeCmd(shell.Pwsh(), "claude", `C:\run\settings.json`, "abc-123", tt.model, tt.effort, tt.interactive, tt.forkSubagents)
 			if got != tt.want {
 				t.Errorf("buildResumeCmd(...) = %q; want %q", got, tt.want)
 			}
