@@ -434,6 +434,14 @@ func requireLiveStrand(reed ReedOps, guid string) error {
 			continue
 		}
 		if !s.Live {
+			// Reed reports not-live both for a pane that died and for a strand it holds no pane id
+			// for at all, and only the first of those is a run that ended. Naming a terminal outcome
+			// or a dead pane for the second was wrong on both counts (proven live in round 4: the
+			// agent was working in a pane tmux reported alive), and it sends an operator looking for
+			// a corpse instead of for the binding reed dropped.
+			if s.PaneID == "" {
+				return fmt.Errorf("shuttle: reed tracks strand %q but holds no pane id for it — either its pane binding was cleared as stale (reed does that when the persisted pane generation is not the session incarnation now running: a restored backup, a copied .lyx, or a reed.json older than the session) or the strand was added anchor:hidden and never given a pane. Its agent may still be working in a pane reed can no longer address, so keys have nowhere to go; check \"lyx reed status\"", guid)
+			}
 			return fmt.Errorf("shuttle: strand %q has no live pane — its run already reached a terminal outcome or its pane died; keys would be silently dropped", guid)
 		}
 		return nil

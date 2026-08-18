@@ -447,9 +447,12 @@ func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
 
 // liveStrandStatus scripts a fakeReed Status answer reporting strand-1 with
 // the given liveness — what the Interrupt/Send liveness guard consumes.
+// The pane id is part of the fixture rather than incidental: reed reports one for every strand whose
+// pane it still holds, so an EMPTY pane id means something different (a binding reed cleared), and a
+// not-live fixture without one would be testing that case instead of a dead pane.
 func liveStrandStatus(live bool) []reedengine.StatusResult {
 	return []reedengine.StatusResult{
-		{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: live}}},
+		{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: live}}},
 	}
 }
 
@@ -713,6 +716,10 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 		wantIn string
 	}{
 		{"dead_pane", liveStrandStatus(false), "no live pane"},
+		// A strand reed tracks with NO pane bound is not a dead pane: reed cleared the binding as
+		// stale, and its agent is very often still working in a pane reed can no longer address
+		// (proven live). Naming a terminal outcome or a dead pane there was wrong on both counts.
+		{"cleared_pane_binding", []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}}}}, "holds no pane id for it"},
 		{"untracked_strand", []reedengine.StatusResult{{}}, "reed's strand table was reset under it"},
 	}
 	for _, tt := range tests {
