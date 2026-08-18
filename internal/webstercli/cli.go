@@ -77,6 +77,15 @@ type websterCLI struct {
 	reportsDir        string
 	promptsDir        string
 	websterScratchDir string
+
+	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw, as-parsed values of the three
+	// standalone-entry persistent flags (--stencils-dir, --plan-dir, --target-dir), each bound by
+	// Command() and read by the wiring function (wiring.go) inside resolvePersistentPreRun. An empty
+	// value means the flag was not passed; the wiring function computes each mode's own default
+	// rather than a zero-value fallback landing here.
+	stencilsDirFlag string
+	planDirFlag     string
+	targetDirFlag   string
 }
 
 // runnerMasterStarter adapts *shuttleengine.Runner to websterengine.MasterStarter.
@@ -226,13 +235,33 @@ Verbs:
   lyx webster begin-batch 3                  Master's bracket call immediately before forking batch 3
   lyx webster await-batch 3                  block until batch 3's report lands (forks are backgrounded)
   lyx webster record-batch 3                 Master's bracket call once batch 3's fork has delivered
-  lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand`,
+  lyx webster recover-batch 3 --wait 8m      escalate batch 3 to a cold recovery strand
+
+Modes:
+  webster runs in hub mode inside a lyx hub worktree, and in standalone
+  mode anywhere else -- a plain git checkout with no lyx hub beside it.
+  Three persistent flags cross that boundary: --stencils-dir and
+  --plan-dir are optional and read-only in BOTH modes (hub default: the
+  hub's own stencils/plan directories; standalone default: the derived
+  state directory's own _lyx/stencils and _lyx/plan); --target-dir is
+  standalone-only, defaults to the current directory, and is refused in
+  hub mode, where the worktree itself is structurally the target.
+
+Example (standalone, outside any lyx hub):
+  lyx webster run --target-dir /path/to/repo`,
 		// RunE is set so that bare "lyx webster" lists subcommands and "lyx
 		// webster bogus" emits a JSON error envelope instead of falling
 		// through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: c.resolvePersistentPreRun,
 	}
+
+	parent.PersistentFlags().StringVar(&c.stencilsDirFlag, "stencils-dir", "",
+		"override the stencils directory read at call time (read-only in both modes; hub default: the hub's own stencils dir; standalone default: the derived state directory's _lyx/stencils)")
+	parent.PersistentFlags().StringVar(&c.planDirFlag, "plan-dir", "",
+		"override the plan directory parsed at call time (read-only in both modes; hub default: the anchor's _lyx/plan; standalone default: the derived state directory's _lyx/plan)")
+	parent.PersistentFlags().StringVar(&c.targetDirFlag, "target-dir", "",
+		"standalone-only: the git repository webster drives Master and its forks against; defaults to the current directory; refused in hub mode, where the worktree is already the target")
 
 	parent.AddCommand(c.validateCmd())
 	parent.AddCommand(c.runCmd())
