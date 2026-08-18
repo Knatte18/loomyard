@@ -400,10 +400,26 @@ A `live: true` for a process that does not exist, or a `resumed: 0` that leaves 
 **Watch:** In a worktree, `up` and `add` one strand.
 Rename the worktree directory while that session is still running (`git worktree repair` afterwards;
 controlled exception, restore the name when done).
-`lyx reed resume` (and `up`, and `add`) in the renamed directory must REFUSE, with a JSON error naming the old session, the socket, and the exact `kill-session` command that clears it.
+`lyx reed resume` (and `up`, and `add`, and `status`, and `attach`) in the renamed directory must REFUSE, with a JSON error naming the old session, the socket, and the exact `kill-session` command that clears it.
+`status` above all: it is the verb an operator reaches for first, and a plain "no reed session; run `lyx reed resume`" there is a `FAIL` -- it names a remedy that itself refuses, sending the operator round a loop.
 `tmux -L <socket> ls` (controlled exception) must then show only the ORIGINAL session -- the refusal must not have deposited a second one -- and the strand's command must still be running exactly once, not twice.
 Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
 A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M25 -- Down names the session it abandons
+
+**Goal:** "Prove the one escape from the refusal that needs no raw tmux says out loud what it leaves behind."
+
+**Watch:** Set up M24's state again (a worktree renamed while its session is up, with one strand running), but this time escape with `lyx reed down` in the renamed directory instead of the `kill-session` M24 uses.
+`down` must SUCCEED -- it is the only route out of the refusal for an operator who can run `lyx` but not raw `tmux` -- and its JSON must carry `abandonedSession` naming the still-running old session.
+`tmux -L <socket> ls` (controlled exception) must still show that session, and the strand's command must still be running: `down` reports the abandonment, it never kills a session it cannot prove is this worktree's own (it may be a sibling worktree's live work).
+An `ok: true` with no `abandonedSession` key is a `FAIL` -- `down` deletes `reed.json`, so that key is the last thing that ever names the orphan.
+A `down` that kills the old session is also a `FAIL`.
+Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confirm `abandonedSession` is ABSENT there -- the key must be signal, not noise.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
