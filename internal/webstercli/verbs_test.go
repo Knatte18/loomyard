@@ -283,10 +283,10 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 		roles:             roles,
 		batcher:           activeBatcher,
 		planDir:           planparser.PlanDir(layout.AnchorPath()),
-		websterDir:        websterengine.Dir(layout),
-		websterScratchDir: websterengine.ScratchDir(layout),
-		reportsDir:        websterengine.ReportsDir(layout),
-		promptsDir:        websterengine.PromptsDir(layout),
+		websterDir:        websterengine.Dir(layout.AnchorPath()),
+		websterScratchDir: websterengine.ScratchDir(layout.AnchorPath()),
+		reportsDir:        websterengine.ReportsDir(layout.AnchorPath()),
+		promptsDir:        websterengine.PromptsDir(layout.AnchorPath()),
 	}
 
 	return &verbsFixture{CLI: c, Reed: reed, Engine: engine, Runner: runner, Worktree: worktree}

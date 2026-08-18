@@ -195,10 +195,10 @@ Verbs:
 			c.roles = roles
 			c.batcher = activeBatcher
 			c.planDir = planparser.PlanDir(layout.AnchorPath())
-			c.websterDir = websterengine.Dir(layout)
-			c.reportsDir = websterengine.ReportsDir(layout)
-			c.websterScratchDir = websterengine.ScratchDir(layout)
-			c.promptsDir = websterengine.PromptsDir(layout)
+			c.websterDir = websterengine.Dir(layout.AnchorPath())
+			c.reportsDir = websterengine.ReportsDir(layout.AnchorPath())
+			c.websterScratchDir = websterengine.ScratchDir(layout.AnchorPath())
+			c.promptsDir = websterengine.PromptsDir(layout.AnchorPath())
 			return nil
 		},
 	}
