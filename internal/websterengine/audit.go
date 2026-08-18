@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -106,7 +105,11 @@ func (v AuditViolation) Error() string {
 // and repo-native git are explicitly allowed.
 // It bans three hard violations: any attempted Agent call, any write to the two contract files
 // (outcomePath or summaryPath), and any Bash command referencing the fabric repo.
-func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef *fabricengine.RefScanner) []AuditViolation {
+// fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
+// *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
+// mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
+// exists as the pinned no-fabric supplier.
+func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	if f.AgentCalls > 0 {
@@ -177,7 +180,11 @@ func isTranscriptPathAbsolute(path string) bool {
 // Master must NOT write except to the two contract files (outcomePath and summaryPath).
 // It bans three hard violations: any named spawn, any parent write outside contract files, and any
 // Bash command referencing the fabric repo.
-func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef *fabricengine.RefScanner) []AuditViolation {
+// fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
+// *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
+// mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
+// exists as the pinned no-fabric supplier.
+func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	if a.NamedSpawns > 0 {
