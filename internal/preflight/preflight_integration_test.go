@@ -14,8 +14,10 @@
 package preflight_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -331,4 +333,180 @@ func TestPredicates_AtBoard(t *testing.T) {
 	if !ok || loc == nil {
 		t.Errorf("HubPresent(%s) = (%v, %v); want (non-nil, true)", board, loc, ok)
 	}
+}
+
+// TestResolveMode pins ResolveMode's full seven-row hub/standalone/refuse table. Rows three and
+// five are the pair the design's r4 review exposed: both arrive as lyxcwd.ErrCwdOutsideAnchor from
+// lyxcwd.Resolve and must diverge -- see each row's own comment below.
+func TestResolveMode(t *testing.T) {
+	t.Parallel()
+
+	t.Run("NotAGitRepoAtAll", func(t *testing.T) {
+		t.Parallel()
+
+		cwd := t.TempDir()
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err != nil {
+			t.Fatalf("ResolveMode(%s) error = %v; want nil", cwd, err)
+		}
+		if mode != preflight.ModeStandalone {
+			t.Errorf("ResolveMode(%s) mode = %v; want ModeStandalone", cwd, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", cwd, loc)
+		}
+	})
+
+	t.Run("PlainRepoAtRoot", func(t *testing.T) {
+		t.Parallel()
+
+		cwd := t.TempDir()
+		gitkit.MustRun(t, cwd, "git", "init", "-b", "main")
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err != nil {
+			t.Fatalf("ResolveMode(%s) error = %v; want nil", cwd, err)
+		}
+		if mode != preflight.ModeStandalone {
+			t.Errorf("ResolveMode(%s) mode = %v; want ModeStandalone", cwd, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", cwd, loc)
+		}
+	})
+
+	// A plain repo's subdirectory arrives as lyxcwd.ErrCwdOutsideAnchor from lyxcwd.Resolve,
+	// exactly like a wired hub worktree's subdirectory (see the RefuseWiredWorktreeSubdirectory
+	// row below) -- ResolveMode must tell the two apart by re-probing for hub geometry, not by
+	// inspecting the error class, and this row pins the standalone side of that divergence.
+	t.Run("PlainRepoSubdirectory", func(t *testing.T) {
+		t.Parallel()
+
+		root := t.TempDir()
+		gitkit.MustRun(t, root, "git", "init", "-b", "main")
+		sub := filepath.Join(root, "sub")
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", sub, err)
+		}
+
+		loc, mode, err := preflight.ResolveMode(sub)
+		if err != nil {
+			t.Fatalf("ResolveMode(%s) error = %v; want nil", sub, err)
+		}
+		if mode != preflight.ModeStandalone {
+			t.Errorf("ResolveMode(%s) mode = %v; want ModeStandalone", sub, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", sub, loc)
+		}
+	})
+
+	t.Run("WiredHubWorktreeAtAnchor", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := setupFixture(t)
+		cwd := h.PrimeWorktree()
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err != nil {
+			t.Fatalf("ResolveMode(%s) error = %v; want nil", cwd, err)
+		}
+		if mode != preflight.ModeHub {
+			t.Errorf("ResolveMode(%s) mode = %v; want ModeHub", cwd, mode)
+		}
+		if loc == nil {
+			t.Errorf("ResolveMode(%s) Location = nil; want non-nil", cwd)
+		}
+	})
+
+	// A wired hub worktree's subdirectory arrives as the exact same lyxcwd.ErrCwdOutsideAnchor
+	// sentinel as a plain repo's subdirectory (see the PlainRepoSubdirectory row above) -- this is
+	// the pair the design's r4 review exposed, and the whole reason ResolveMode re-probes for hub
+	// geometry via lyxcwd.ResolveWorktree instead of trusting the error class alone.
+	t.Run("RefuseWiredWorktreeSubdirectory", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := setupFixture(t)
+		sub := filepath.Join(h.PrimeWorktree(), "sub")
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", sub, err)
+		}
+
+		loc, mode, err := preflight.ResolveMode(sub)
+		if err == nil {
+			t.Fatalf("ResolveMode(%s) error = nil; want non-nil", sub)
+		}
+		if !errors.Is(err, lyxcwd.ErrCwdOutsideAnchor) {
+			t.Errorf("ResolveMode(%s) error = %v; want wrapped ErrCwdOutsideAnchor", sub, err)
+		}
+		// The gated error, not the second probe's, is what must reach the operator: assert its
+		// message names the anchor marker file so a substitution of the second probe's error
+		// would be caught here.
+		if !strings.Contains(err.Error(), lyxcwd.AnchorFileName) {
+			t.Errorf("ResolveMode(%s) error = %v; want message naming %s", sub, err, lyxcwd.AnchorFileName)
+		}
+		if mode != preflight.Mode(0) {
+			t.Errorf("ResolveMode(%s) mode = %v; want the zero Mode value", sub, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", sub, loc)
+		}
+	})
+
+	t.Run("StaleAnchorMarker", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := setupFixture(t)
+		cwd := h.PrimeWorktree()
+
+		anchorPath := filepath.Join(h.BoardDir(), lyxcwd.AnchorFileName)
+		if err := os.Remove(anchorPath); err != nil {
+			t.Fatalf("remove %s: %v", anchorPath, err)
+		}
+		stalePath := filepath.Join(h.BoardDir(), lyxcwd.StaleAnchorFileName)
+		if err := os.WriteFile(stalePath, []byte("."), 0o644); err != nil {
+			t.Fatalf("write %s: %v", stalePath, err)
+		}
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err == nil {
+			t.Fatalf("ResolveMode(%s) error = nil; want non-nil", cwd)
+		}
+		if !errors.Is(err, lyxcwd.ErrStaleAnchorMarker) {
+			t.Errorf("ResolveMode(%s) error = %v; want wrapped ErrStaleAnchorMarker", cwd, err)
+		}
+		if mode != preflight.Mode(0) {
+			t.Errorf("ResolveMode(%s) mode = %v; want the zero Mode value", cwd, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", cwd, loc)
+		}
+	})
+
+	// A hub whose <hub>/_board/_lyx is missing is the design's recorded residual, not a bug: at
+	// that point nothing on disk distinguishes it from a plain git repo, so it degrades to
+	// standalone rather than refusing.
+	t.Run("HubMissingBoardLyx", func(t *testing.T) {
+		t.Parallel()
+
+		h, _ := setupFixture(t)
+		cwd := h.PrimeWorktree()
+
+		boardLyx := filepath.Join(h.BoardDir(), lyxdirs.LyxDirName)
+		if err := os.RemoveAll(boardLyx); err != nil {
+			t.Fatalf("remove %s: %v", boardLyx, err)
+		}
+
+		loc, mode, err := preflight.ResolveMode(cwd)
+		if err != nil {
+			t.Fatalf("ResolveMode(%s) error = %v; want nil", cwd, err)
+		}
+		if mode != preflight.ModeStandalone {
+			t.Errorf("ResolveMode(%s) mode = %v; want ModeStandalone", cwd, mode)
+		}
+		if loc != nil {
+			t.Errorf("ResolveMode(%s) Location = %+v; want nil", cwd, loc)
+		}
+	})
 }
