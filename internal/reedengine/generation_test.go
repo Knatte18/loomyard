@@ -5,7 +5,7 @@
 package reedengine
 
 import (
-	"errors"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -111,22 +111,41 @@ func TestPaneGeneration_RecordedAndSameIncarnation(t *testing.T) {
 	}
 }
 
-// generationHook returns an execHook answering display-message with the generation recorded in
-// generationsBySessionTarget, and erroring for any session not in it — the shape tmux itself has for
-// a session that does not exist.
-// Every other subcommand answers empty/nil, since adoptPaneGenerationLocked issues none of them.
-func generationHook(t *testing.T, generationsBySessionTarget map[string]string) func(bool, ...string) (string, error) {
+// unprobeableSession is the answer that marks a session as present in list-sessions but unable to
+// answer the identity probe — the transport-failure shape R6-F2 covers, where one tmux round trip
+// fails on an otherwise-healthy server. An empty answer reaches parsePaneGeneration as a probe
+// error, which is exactly what a failed round trip produces.
+const unprobeableSession = ""
+
+// generationHook returns an execHook answering list-sessions with the session names in
+// answersBySessionName and display-message with each session's own generation answer.
+// A session absent from the map is absent from both answers, which is how a recorded session that no
+// longer exists is expressed; a session mapped to unprobeableSession is listed but does not answer.
+// Every other subcommand answers empty/nil, since the generation code issues none of them.
+func generationHook(t *testing.T, answersBySessionName map[string]string) func(bool, ...string) (string, error) {
 	t.Helper()
+	names := make([]string, 0, len(answersBySessionName))
+	for name := range answersBySessionName {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	return func(capture bool, args ...string) (string, error) {
-		if args[0] != "display-message" {
+		switch args[0] {
+		case "list-sessions":
+			return strings.Join(names, "\n") + "\n", nil
+		case "display-message":
+			target := args[len(args)-2]
+			out, ok := answersBySessionName[strings.TrimSuffix(strings.TrimPrefix(target, "="), ":")]
+			if !ok {
+				// tmux 3.6 answers an absent session with exit 0 and empty session-scoped fields,
+				// not an error (see paneGenerationLocked); #{pid} is server-global and still fills.
+				return "|4321|", nil
+			}
+			return out, nil
+		default:
 			return "", nil
 		}
-		target := args[len(args)-2]
-		out, ok := generationsBySessionTarget[target]
-		if !ok {
-			return "", errors.New("exit status 1: can't find session")
-		}
-		return out, nil
 	}
 }
 
@@ -140,7 +159,9 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// generations maps an exact-match window target to the display-message answer for it.
+		// generations maps a session name to its display-message answer; a name absent from the map
+		// is absent from list-sessions too, and one mapped to unprobeableSession is listed but does
+		// not answer the probe.
 		generations     map[string]string
 		recorded        PaneGeneration
 		wantErrFragment string
@@ -149,28 +170,28 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 	}{
 		{
 			name:           "an unstamped state adopts the live generation without clearing",
-			generations:    map[string]string{"=worktree:": liveAnswer},
+			generations:    map[string]string{"worktree": liveAnswer},
 			recorded:       PaneGeneration{},
 			wantCleared:    false,
 			wantGeneration: liveGeneration,
 		},
 		{
 			name:           "a matching stamp keeps the bindings",
-			generations:    map[string]string{"=worktree:": liveAnswer},
+			generations:    map[string]string{"worktree": liveAnswer},
 			recorded:       liveGeneration,
 			wantCleared:    false,
 			wantGeneration: liveGeneration,
 		},
 		{
 			name:           "a stamp from an earlier incarnation of the same session clears the bindings",
-			generations:    map[string]string{"=worktree:": liveAnswer},
+			generations:    map[string]string{"worktree": liveAnswer},
 			recorded:       PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "100", Created: "1787000000"},
 			wantCleared:    true,
 			wantGeneration: liveGeneration,
 		},
 		{
 			name:           "a stamp naming a session that no longer exists clears the bindings",
-			generations:    map[string]string{"=worktree:": liveAnswer},
+			generations:    map[string]string{"worktree": liveAnswer},
 			recorded:       PaneGeneration{SessionName: "svc-orig", TmuxSessionID: "$0", ServerPID: "100", Created: "1787000000"},
 			wantCleared:    true,
 			wantGeneration: liveGeneration,
@@ -178,8 +199,8 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 		{
 			name: "a stamp naming a DIFFERENT session that is still live refuses the operation",
 			generations: map[string]string{
-				"=worktree:": liveAnswer,
-				"=svc-orig:": "$0|900|1787000000",
+				"worktree": liveAnswer,
+				"svc-orig": "$0|900|1787000000",
 			},
 			recorded:        PaneGeneration{SessionName: "svc-orig", TmuxSessionID: "$0", ServerPID: "900", Created: "1787000000"},
 			wantErrFragment: "STILL RUNNING",
@@ -187,12 +208,26 @@ func TestAdoptPaneGenerationLocked(t *testing.T) {
 		{
 			name: "a namesake session that is a different incarnation is not mistaken for the orphan",
 			generations: map[string]string{
-				"=worktree:": liveAnswer,
-				"=svc-orig:": "$7|900|1787043999",
+				"worktree": liveAnswer,
+				"svc-orig": "$7|900|1787043999",
 			},
 			recorded:       PaneGeneration{SessionName: "svc-orig", TmuxSessionID: "$0", ServerPID: "100", Created: "1787000000"},
 			wantCleared:    true,
 			wantGeneration: liveGeneration,
+		},
+		{
+			// R6 review finding R6-F2: the recorded session is demonstrably THERE (list-sessions
+			// names it) and only its identity probe failed. Reading that as "gone" is the fail-open
+			// that let one transient round trip re-open R5-F5's double-launch, and — because the
+			// pre-boot and post-boot call sites run this same check — deposit a bare session on the
+			// shared per-hub server as a refusal's residue.
+			name: "a recorded session that is listed but does not answer the probe refuses rather than assuming it is gone",
+			generations: map[string]string{
+				"worktree": liveAnswer,
+				"svc-orig": unprobeableSession,
+			},
+			recorded:        PaneGeneration{SessionName: "svc-orig", TmuxSessionID: "$0", ServerPID: "900", Created: "1787000000"},
+			wantErrFragment: "did not answer reed's identity probe",
 		},
 		{
 			name:           "a probe failure leaves the bindings exactly as loaded",

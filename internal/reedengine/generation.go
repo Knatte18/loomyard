@@ -54,9 +54,34 @@ func parsePaneGeneration(sessionName, out string) (PaneGeneration, error) {
 	}, nil
 }
 
+// sessionNameListed reports whether sessionName appears as a whole line in a
+// `list-sessions -F '#{session_name}'` answer.
+// The comparison is whole-line and exact, matching every other session target this package builds
+// (see exactSessionTarget): a prefix or substring match would let a sibling worktree's session stand
+// in for the recorded one.
+func sessionNameListed(listSessionsOutput, sessionName string) bool {
+	for _, line := range strings.Split(listSessionsOutput, "\n") {
+		if strings.TrimSpace(line) == sessionName {
+			return true
+		}
+	}
+	return false
+}
+
 // paneGenerationLocked reads sessionName's current generation off this engine's socket.
-// It errors when the session does not exist, which is how the orphan check below distinguishes
-// "the session this state was recorded against is gone" from "it is still running".
+//
+// It does NOT error merely because the session is absent, contrary to what a reader might expect
+// from every other tmux subcommand this package spends: measured on tmux 3.6, display-message exits
+// 0 for a `-t` target that resolves to no session and expands the session-scoped fields to empty,
+// while the server-global #{pid} still fills — `-t '=nosuch:'` answers "|2912080|" with exit 0.
+// (has-session and list-panes DO exit 1 for the same target; display-message is the odd one out.)
+// The absent case therefore surfaces as parsePaneGeneration's empty-field rejection rather than as a
+// tmux error, which is why that rejection is load-bearing rather than cosmetic.
+//
+// A returned error consequently means the probe could not be RUN or could not be understood — a
+// failed exec of the tmux binary, an unreachable socket, a non-exit-1 tmux failure, or an answer
+// that did not parse. Callers must not read it as "the session is gone";
+// refuseLiveForeignSessionLocked below answers that question with list-sessions instead.
 func (e *Engine) paneGenerationLocked(sessionName string) (PaneGeneration, error) {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(sessionName), paneGenerationFormat)
 	if err != nil {
@@ -166,16 +191,51 @@ func (e *Engine) refuseRecordedForeignSessionBeforeBootLocked() error {
 // Refuse rather than adopt or kill: the recorded session's panes may hold live agent work, and
 // destroying it unasked is not reed's call. The message therefore names the session, the socket, and
 // the exact command that clears it.
+//
+// Existence is answered by list-sessions, never by the generation probe's error, and never by
+// treating "I could not ask" as "it is not there". This is the one check in the package whose whole
+// purpose is to REFUSE, so it is also the one place where failing open costs the most: guessing
+// "gone" wrong launches a second copy of every strand (R5-F5) or spends another worktree's pane ids
+// as targets (R5-F4). adoptPaneGenerationLocked's own fail-open is a different and genuinely
+// two-sided trade — clearing a healthy table over a hiccup is worse than the staleness it guards —
+// and must not be read as licence for this one (R6 review finding R6-F2).
+//
+// The split is only possible because the two questions have different authorities: list-sessions
+// exits 1 for an unreachable socket and answers a definite list otherwise, while display-message
+// exits 0 for a session that is not there (see paneGenerationLocked). An errored list-sessions is
+// read as "no reachable server on this socket, so nothing can be running under the recorded name",
+// the same reading Down and sessionlessSocketHolderPersists already give it. A session that IS
+// listed but does not answer the identity probe is the genuinely anomalous case — the transport
+// failed between two consecutive round trips — and is refused rather than waved through.
+//
+// Failing open here also broke a guarantee stated elsewhere: because the pre-boot and post-boot call
+// sites run this same check against the same recorded value, ONE transient probe failure at the
+// pre-boot call was enough to split their verdicts, so Up booted and then refused — depositing the
+// bare session on the shared per-hub server that refuseRecordedForeignSessionBeforeBootLocked exists
+// to prevent (reproduced live, tmux 3.6).
 func (e *Engine) refuseLiveForeignSessionLocked(recorded PaneGeneration) error {
 	if recorded.SessionName == "" || recorded.SessionName == e.SessionName() {
 		return nil
 	}
 
+	listed, err := e.tmux.output("list-sessions", "-F", "#{session_name}")
+	if err != nil {
+		// No reachable server on this socket, so nothing can be running under the recorded name;
+		// the caller clears the stale bindings and carries on.
+		return nil
+	}
+	if !sessionNameListed(listed, recorded.SessionName) {
+		// The recorded session is definitively gone, so there is nothing to collide with.
+		return nil
+	}
+
 	orphan, err := e.paneGenerationLocked(recorded.SessionName)
 	if err != nil {
-		// The recorded session is gone, so there is nothing to collide with; the caller clears the
-		// stale bindings and carries on.
-		return nil
+		return fmt.Errorf(
+			"this worktree's reed state was recorded against tmux session %q, which IS listed on socket %q but did not answer reed's identity probe (%w) — "+
+				"reed will not guess whether it is the session this state was recorded against, because continuing on a wrong guess would launch a second copy of every strand. "+
+				"Re-run this command, or tear that session down with \"%s -L %s kill-session -t '=%s'\" if it is not one you need",
+			recorded.SessionName, e.Socket(), err, e.TmuxPath(), e.Socket(), recorded.SessionName)
 	}
 	if !orphan.SameIncarnation(recorded) {
 		return nil

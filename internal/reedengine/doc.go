@@ -208,6 +208,20 @@
 //     on this socket under a name that is not this worktree's — a renamed
 //     worktree or a copied .lyx — because carrying on there launches a second
 //     copy of every strand and leaves the first unreachable.
+//   - display-message does NOT exit 1 for an absent session (generation.go):
+//     unlike has-session and list-panes, which exit 1 for a `-t` target that
+//     names no session, display-message exits 0 and expands every
+//     session-scoped format to empty while the server-global #{pid} still
+//     fills — `-t '=nosuch:' '#{session_id}|#{pid}|#{session_created}'`
+//     answers "|2912080|" with exit 0 (verified live, tmux 3.6), and it does
+//     not fall back to a current session when several exist. The generation
+//     probe's absent case therefore surfaces as parsePaneGeneration's
+//     empty-field rejection rather than as a tmux error, and an error from
+//     that probe means the round trip could not be RUN, never that the
+//     session is gone. The still-running-orphan refusal answers existence
+//     with list-sessions for exactly this reason and refuses a listed session
+//     it cannot identify, rather than failing open on it (R6 review finding
+//     R6-F2).
 //   - Duplicate-pane-cell session destruction (render/policy.go's
 //     removeDuplicatePaneCells, reconcile.go's clearConflictingPaneBindings):
 //     the twin of the empty-layout hazard above, reached from the opposite
