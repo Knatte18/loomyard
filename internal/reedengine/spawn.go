@@ -148,17 +148,22 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with
 // the engine's server/socket/session identity for a fresh worktree.
+// The two identity fields are re-stamped on every load, not only at init: nothing in production
+// reads them back (every consumer uses the told Geometry via Socket()/SessionName()), so they exist
+// purely as an on-disk forensic diagnostic — and a diagnostic recording an identity reed no longer
+// drives (a renamed worktree carries its .lyx state along, but its session name changes with the
+// directory) is worse than none (R3 review finding R3-F2). The caller persists via the op's normal
+// SaveState tail, so no extra write happens here.
 func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 	st, err := LoadState(e.stateDir())
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
 	if st == nil {
-		st = &ReedState{
-			Socket:  e.Socket(),
-			Session: e.SessionName(),
-		}
+		st = &ReedState{}
 	}
+	st.Socket = e.Socket()
+	st.Session = e.SessionName()
 	return st, nil
 }
 

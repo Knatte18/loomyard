@@ -147,15 +147,20 @@ func TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity(t *testin
 	}
 }
 
-func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
+// TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity pins the R3 review's R3-F2
+// contract: strand data loads verbatim from the persisted file, while the Socket/Session identity
+// diagnostic is re-stamped from the engine's told geometry on every load — a renamed worktree
+// carries its .lyx state along, but its session name changes with the directory, and a diagnostic
+// recording an identity reed no longer drives is worse than none.
+func TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity(t *testing.T) {
 	e := newTestEngine(t)
 
-	want := &ReedState{
-		Socket:  "some-other-server",
-		Session: "some-other-session",
+	persisted := &ReedState{
+		Socket:  "stale-server-from-before-a-rename",
+		Session: "stale-session-from-before-a-rename",
 		Strands: []Strand{{GUID: "g1", PaneID: "%1"}},
 	}
-	if err := SaveState(e.stateDir(), want); err != nil {
+	if err := SaveState(e.stateDir(), persisted); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
@@ -163,8 +168,11 @@ func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadOrInitStateLocked: %v", err)
 	}
-	if st.Socket != want.Socket || st.Session != want.Session {
-		t.Errorf("loadOrInitStateLocked() = %+v, want the persisted state, not a freshly initialized one", st)
+	if st.Socket != e.Socket() {
+		t.Errorf("loadOrInitStateLocked() Socket = %q, want the re-stamped %q, not the stale persisted value", st.Socket, e.Socket())
+	}
+	if st.Session != e.SessionName() {
+		t.Errorf("loadOrInitStateLocked() Session = %q, want the re-stamped %q, not the stale persisted value", st.Session, e.SessionName())
 	}
 	if len(st.Strands) != 1 || st.Strands[0].GUID != "g1" {
 		t.Errorf("loadOrInitStateLocked() Strands = %+v, want the persisted strand", st.Strands)
