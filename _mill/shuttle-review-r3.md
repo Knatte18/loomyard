@@ -72,6 +72,49 @@ which is what isolates R3-F1 as a `Wait`-side classification defect rather than 
 
 Teardown after scenarios 1+5: renamed back, `lyx reed down` → `ok:true`; `tmux: server` count 0, `pgrep -xc claude` 4 (= baseline).
 
+### Scenario 2 — `reed.json` corrupted / deleted DURING a live run
+
+**2a — truncated mid-run.** Long-running run started, strand `42c4b9e2…` live, agent mid-flight;
+`reed.json` truncated to `{"socket":"lyx-hub1-e4bce` at 16:38:30.9.
+The run itself exited 6 s later on an ordinary `asking` classification (the agent had ended its turn),
+so this attempt did not read the liveness path — but the out-of-process verbs, issued while the
+corrupt file was in place and the agent still live, were clean:
+
+- `lyx shuttle interrupt <guid>` → `ok:false`, `shuttle: check strand liveness: reed state file …/reed.json is
+  unreadable: unmarshal state: unexpected end of JSON input — the tmux session it describes may still be running …`
+- `lyx shuttle send <guid> …` → identical.
+- `lyx reed status` → the same, bare.
+
+Verdict: **CLEAN.** reed's `unreadableStateError` reaches the operator intact through shuttle's one-line
+`check strand liveness:` prefix, nothing is destroyed, and the message names both remedies.
+
+**2b — `reed.json` DELETED mid-run.** This is not a synthetic corruption: it is verbatim the second remedy
+reed's own `unreadableStateError` recommends ("delete `<path>` by hand to keep the session (its panes and
+their processes keep running, untracked)"), and it is also what a `git clean -xdf` does — a sanctioned
+operator action under `CONSTRAINTS.md`'s Durable-vs-Ephemeral State Invariant.
+
+1. Run started with a prompt holding ONE turn open for ~5 minutes (three blocking `python3 -c 'import time;
+   time.sleep(100)'` Bash calls — note the `claude` CLI refuses standalone `sleep`, so this shape was needed).
+   Strand `5f14bfe5…`, pane `%2`, live; pane capture confirmed the agent was 50 s into its third python wait.
+2. `rm .lyx/reed.json` at 16:43:09.294.
+3. `lyx shuttle run` EXITED at 16:43:15.204 — 5.9 s later — with
+   `{"ok":true,"outcome":"died","guid":"5f14bfe5…","sessionId":"a9bab1ab-…","runDir":"…"}`.
+4. Immediately after: `claude` pid 3379261 still alive; pane capture still showed
+   `⎿ $ python3 -c 'import time; time.sleep(100); print(3)' (1m 10s)` — still in the SAME turn, still working;
+   the output file was still absent 10 s after the "died" verdict.
+
+Verdict: **second, cleaner reproduction of R3-F1**, with no rename involved and via an operator action reed
+itself recommends.
+
+Teardown after scenario 2: `reed.json` restored, `lyx reed down` → `ok:true`; tmux servers 0, claude 4 (baseline).
+
+### Normal-flow confirmations gathered along the way (no defect)
+
+- Happy path: 30-Bash-call run → `{"ok":true,"outcome":"done"}`, output file written, strand removed from
+  `reed status`, run dir deleted, claude count back to baseline. R1-F1's model pin (`--model haiku`) honored.
+- `asking` path: a run whose agent ended its turn without writing the output file → `{"ok":true,"outcome":"asking"}`
+  carrying the real `lastAssistantMessage`, pane and run dir deliberately kept.
+
 ## Findings
 
 (appended as spotted)
