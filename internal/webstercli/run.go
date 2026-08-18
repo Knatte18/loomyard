@@ -19,6 +19,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// runDeps builds the websterengine.RunDeps for this CLI's current wiring.
+// c.openFabric is nil in standalone mode; OpenBisector must stay nil in that case rather than being
+// wrapped in a non-nil closure over a nil c.openFabric, so that runIntegrationStage's own nil check
+// ("no fabric in this mode") fires instead of the closure panicking when invoked.
+func (c *websterCLI) runDeps() websterengine.RunDeps {
+	var openBisector func() (websterengine.FabricBisector, error)
+	if c.openFabric != nil {
+		openBisector = func() (websterengine.FabricBisector, error) {
+			return c.openFabric()
+		}
+	}
+
+	return websterengine.RunDeps{
+		Starter:      c.masterStarter,
+		Reed:         c.reed,
+		Engine:       c.engine,
+		ShuttleCfg:   c.shuttleCfg,
+		Roles:        c.roles,
+		Config:       c.cfg,
+		Batcher:      c.batcher,
+		Geom:         c.geom,
+		RefMatcher:   c.refMatcher,
+		OpenBisector: openBisector,
+	}
+}
+
 // runCmd builds the `run` subcommand.
 func (c *websterCLI) runCmd() *cobra.Command {
 	var fresh bool
@@ -54,22 +80,7 @@ Example:
 				return nil
 			}
 
-			deps := websterengine.RunDeps{
-				Starter:    c.masterStarter,
-				Reed:       c.reed,
-				Engine:     c.engine,
-				ShuttleCfg: c.shuttleCfg,
-				Roles:      c.roles,
-				Config:     c.cfg,
-				Batcher:    c.batcher,
-				Geom:       c.geom,
-				RefMatcher: c.refMatcher,
-				OpenBisector: func() (websterengine.FabricBisector, error) {
-					return c.openFabric()
-				},
-			}
-
-			result, runErr := websterengine.Run(deps, websterengine.RunOptions{Fresh: fresh})
+			result, runErr := websterengine.Run(c.runDeps(), websterengine.RunOptions{Fresh: fresh})
 
 			if errors.Is(runErr, websterengine.ErrRunBusy) {
 				clihelp.SetExit(cmd.Context(), output.Err(out, runErr.Error()))

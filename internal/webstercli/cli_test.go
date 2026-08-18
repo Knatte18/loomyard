@@ -163,6 +163,40 @@ func TestFabricSync_NonBypassValidatesPairPaths(t *testing.T) {
 	}
 }
 
+// TestRunDeps_OpenBisectorNilWhenOpenFabricNil proves run.go's own websterengine.RunDeps
+// construction, not just c.openFabric in isolation: with c.openFabric nil (standalone mode),
+// runDeps must leave RunDeps.OpenBisector literally nil rather than wrapping the nil opener in a
+// non-nil closure, since a non-nil closure over a nil c.openFabric panics the first time
+// runIntegrationStage invokes it instead of taking its own nil-OpenBisector bypass.
+func TestRunDeps_OpenBisectorNilWhenOpenFabricNil(t *testing.T) {
+	c := &websterCLI{cfg: websterengine.Config{}}
+
+	deps := c.runDeps()
+
+	if deps.OpenBisector != nil {
+		t.Error("runDeps().OpenBisector != nil; want nil when c.openFabric is nil")
+	}
+}
+
+// TestRunDeps_OpenBisectorWrapsOpenFabric proves the hub-mode half of the same construction: a
+// non-nil c.openFabric is wrapped into a non-nil OpenBisector that proxies through to it.
+func TestRunDeps_OpenBisectorWrapsOpenFabric(t *testing.T) {
+	wantErr := errors.New("probe: openFabric reached")
+	c := &websterCLI{
+		cfg:        websterengine.Config{},
+		openFabric: func() (*fabricengine.Fabric, error) { return nil, wantErr },
+	}
+
+	deps := c.runDeps()
+
+	if deps.OpenBisector == nil {
+		t.Fatal("runDeps().OpenBisector = nil; want a wrapped closure when c.openFabric is non-nil")
+	}
+	if _, err := deps.OpenBisector(); !errors.Is(err, wantErr) {
+		t.Errorf("runDeps().OpenBisector() error = %v; want the wrapped c.openFabric() error %v", err, wantErr)
+	}
+}
+
 // newTestCLI builds a minimal *websterCLI for validate/status/pause testing without a live git repo.
 //
 // The layout anchors at the non-"." subpath "backend" so AnchorPath() and WorktreePath() are
