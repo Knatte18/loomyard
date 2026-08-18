@@ -130,6 +130,7 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
   - `internal/websterengine/render.go`
   - `internal/websterengine/audit.go`
   - `internal/websterengine/integration.go`
+  - `internal/websterengine/recoverbatch.go`
   - `internal/planparser/parse.go`
   - `internal/planparser/validate.go`
 - **Edits:**
@@ -145,7 +146,7 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
   `LoadState`/`SaveState`, the archive helpers, `AcquireStateMutation`, `ClearPause`, `OutcomePath`/`SummaryPath`, `AwaitIntegration`, `ParseReport`, `IntegrationReportPath` and `verifyEveryBatchDone` take the matching `deps.Geom` directories.
   The `RenderIntegrationPrompt` call passes `deps.Geom.WorktreeRoot` and `deps.Geom.StencilsDir`, replacing the inline `fabricengine.StencilsDir(deps.Layout.HubPath)` derivation.
   The `RenderMasterPrompt` call passes `deps.Geom.AnchorRoot` and `deps.Geom.StencilsDir`.
-  Both `shuttleengine.FindRun` calls pass `deps.Geom.AnchorRoot`.
+  The single `shuttleengine.FindRun` call in this file passes `deps.Geom.AnchorRoot`, mirroring card 26's identical change to the other call site, which lives in `internal/websterengine/recoverbatch.go` and is already converted by then.
   In `runExitAuditCrossCheck`, delete the `fabricengine.NewRefScanner(deps.Layout)` construction, use `deps.RefMatcher`, and pass `deps.Geom.WorktreeRoot` as the workdir to `CheckParent` and `CheckFork` — the same audit-workdir reasoning card 25 records applies verbatim here.
   Remove the `internal/fabricengine` and `internal/lyxcwd` imports from this file.
   Rewrite the `RunDeps` doc comment and the `OpenBisector` field comment: the opener is caller-supplied rather than defaulted, it stays lazy so a run that never reaches a failing integration suite never opens a fabric handle, tests inject a fake by supplying an opener that returns it, and a nil opener means "no fabric in this mode" rather than "construct the production default".
@@ -155,6 +156,7 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
 
 - **Context:**
   - `internal/websterengine/integration.go`
+  - `internal/websterengine/summary.go`
   - `internal/websterengine/geometry.go`
   - `internal/websterengine/recordbatch.go`
 - **Edits:**
@@ -274,6 +276,7 @@ Both are provably no-ops in hub mode, where `AnchorRoot == WorktreeRoot` and the
   - `internal/websterengine/beginbatch.go`
   - `internal/websterengine/recordbatch.go`
   - `internal/websterengine/recoverbatch.go`
+  - `internal/websterengine/integration.go`
   - `internal/fabricengine/refscanner.go`
   - `internal/fabricengine/open.go`
 - **Edits:**

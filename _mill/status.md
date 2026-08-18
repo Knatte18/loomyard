@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: plan-fix-r2
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussed  '2026-08-18T09:06:02Z'
 planning  '2026-08-18T09:22:35Z'
 plan-review-r1  '2026-08-18T09:33:38Z'
 plan-fix-r1  '2026-08-18T09:33:38Z'
+plan-review-r2  '2026-08-18T09:45:09Z'
+plan-fix-r2  '2026-08-18T09:45:09Z'
 ```
