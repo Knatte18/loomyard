@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pattern told geometry
+phase: holistic-reviewing
 slug: pattern-told-geometry
 branch: pattern-told-geometry
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-08-18T06:16:13Z'
 planned  '2026-08-18T06:16:28Z'
 implementing  '2026-08-18T06:16:59Z'
 approved-pattern told geometry  '2026-08-18T06:26:46Z'
+holistic-reviewing  '2026-08-18T06:27:21Z'
 ```
 
 ## Batches
