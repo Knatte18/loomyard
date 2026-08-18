@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: scout-told-geometry
 branch: scout-told-geometry
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-told-anchor-root-conversion  '2026-08-18T13:35:47Z'
 approved-hub-mode-evidence  '2026-08-18T13:43:52Z'
 holistic-reviewing  '2026-08-18T13:44:37Z'
 holistic-approved  '2026-08-18T13:46:49Z'
+done  '2026-08-18T13:47:58Z'
 ```
 
 ## Batches
