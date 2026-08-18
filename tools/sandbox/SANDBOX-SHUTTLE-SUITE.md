@@ -155,6 +155,32 @@ This scenario starts no agent and costs no provider tokens.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S5 -- Reed's bookkeeping is reset under a run that is still working
+
+**Covers:** shuttle
+
+**Goal:** "Take reed's strand table away from underneath a live shuttle run, and confirm shuttle says it does not know rather than declaring the agent dead -- and that it does not delete the live run's directory."
+
+**Watch:** Start a run that stays inside ONE turn for several minutes, e.g.
+`lyx shuttle run --prompt "run python3 -c 'import time; time.sleep(100); print(1)' in the foreground three times in a single reply, then write done.md" --output-file done.md --model haiku`.
+Wait until `lyx reed status` shows the strand `live: true` and the pane visibly shows the agent working (a running tool call with a rising elapsed counter -- do not proceed while it is still booting).
+Then, from a second terminal, delete reed's state file: `rm <worktree>/.lyx/reed.json`.
+This is not vandalism -- it is verbatim the second remedy reed's own corrupt-state error recommends ("delete it by hand to keep the session"), and it is what a `git clean -xdf` in the worktree does.
+
+Three things must hold, and each was a real defect before:
+
+1. The blocked `lyx shuttle run` must return `"ok":false` with an error saying reed no longer tracks the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is a FAIL: it tells an unattended caller to respawn, which puts a second agent on the worktree while the first keeps running unreachably.
+2. The envelope must still carry `guid`, `sessionId` and `runDir`, so the operator can reach the pane that is still running.
+3. Confirm the agent really is still alive afterward (`tmux -L <socket> capture-pane` on its pane shows the same turn still progressing) -- the whole point of the verdict in (1).
+
+Then, with `reed.json` still absent, start a SECOND run in the same worktree (it will fail at `add strand: no reed session` -- that is expected and costs no tokens) and confirm the FIRST run's directory under `<worktree>/.lyx/shuttle/` is **still there**. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lyx shuttle interrupt/send <guid>` can no longer find the running agent at all.
+
+Restore with `lyx reed up` (which writes a fresh `reed.json`) and `lyx reed down` to tear the session down.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
