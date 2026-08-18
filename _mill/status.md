@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: orchestrator-preflight
 branch: orchestrator-preflight
-plan: null
+plan: _mill/plan
 parent: standalone-producers
 task: lift the orchestrator preflight out of loomengine, plus the shared standalone-CLI foundations
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r3  '2026-08-18T05:49:17Z'
 discussion-fix-r4  '2026-08-18T05:55:18Z'
 discussion-fix-r5  '2026-08-18T06:00:16Z'
 discussed  '2026-08-18T06:00:16Z'
+planning  '2026-08-18T06:10:34Z'
 ```
