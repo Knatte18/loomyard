@@ -6,6 +6,7 @@ slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: websterengine + webstercli told-geometry, and Webster standalone entry
 task_description: |
   websterengine + webstercli told-geometry, and Webster standalone entry
@@ -31,19 +32,29 @@ implementing  '2026-08-18T09:54:54Z'
 ```yaml
 batches:
   - name: reed pane cwd
-    state: pending
+    state: running
+    implementer_session: c875bda6-4fd6-480a-962e-146d15370f64
+    start_sha: 406fde433a3f2317971e90d5dfa9ee5c7af30e00
+    verify_baseline_failures: []
   - name: batcher moves to the degrading side
     state: pending
+    verify_baseline_failures: []
   - name: preflight doc correction
     state: pending
+    verify_baseline_failures: []
   - name: websterengine Geometry and RefMatcher
     state: pending
+    verify_baseline_failures: []
   - name: webster path accessors take a told anchor root
     state: pending
+    verify_baseline_failures: []
   - name: hubgeom.WebsterGeometry and the standalonegeom sibling
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/standalonegeom/... [setup failed]"]
   - name: websterengine told Deps and engine-owned fabric seams
     state: pending
+    verify_baseline_failures: []
   - name: webstercli standalone entry
     state: pending
+    verify_baseline_failures: []
 ```
