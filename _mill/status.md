@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-buildinfo-and-mode-mapping
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r2  '2026-08-18T06:28:40Z'
 plan-fix-r3  '2026-08-18T06:42:02Z'
 planned  '2026-08-18T06:42:27Z'
 implementing  '2026-08-18T06:42:59Z'
+approved-buildinfo-and-mode-mapping  '2026-08-18T06:47:18Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-18T06:42:59Z'
 ```yaml
 batches:
   - name: buildinfo-and-mode-mapping
-    state: running
+    state: approved
     implementer_session: c2cc5283-9aca-4b51-942a-f5080a6e2e7d
     start_sha: 9b0654f242cad5077656ea17876a5cf3ef6bc737
+    commit_sha: 50eda5d3f32aa11d73d532dfae554fba855880ef
     verify_baseline_failures: ["FAIL\t./internal/buildinfo/... [setup failed]"]
   - name: standalonestate-leaf
     state: pending
