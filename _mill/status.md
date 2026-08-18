@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-geometry types and hubgeom tellers
+phase: approved-burler told-geometry
 slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-review-r3  '2026-08-18T09:18:39Z'
 planned  '2026-08-18T09:18:49Z'
 implementing  '2026-08-18T09:19:21Z'
 approved-geometry types and hubgeom tellers  '2026-08-18T09:24:35Z'
+approved-burler told-geometry  '2026-08-18T09:29:31Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: 629f8c6699ed5653de449f6e1d3f8a4afea0efd1
     verify_baseline_failures: []
   - name: burler told-geometry
-    state: running
+    state: approved
     implementer_session: 3e36368d-324a-4b3b-8947-c9acb2378adf
     start_sha: 56d2cc93578726d13686f01c82737ad6bd318b09
+    commit_sha: 209ec5790a9df5cfb3c71873f867a88d6ff30859
     verify_baseline_failures: []
   - name: perch told-geometry
     state: pending
