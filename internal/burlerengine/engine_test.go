@@ -2,10 +2,11 @@
 // the ClusterFan -> Spec.ForkSubagents wiring), the cluster audit policy wiring (a violating audit
 // fails the round, a clean one passes with warnings copied through, and a non-cluster profile never
 // invokes it), every shuttleengine.Outcome, the review-file parse path (valid BLOCKING/APPROVED,
-// missing file, malformed frontmatter) plus a hard shuttle error, and the per-round
+// missing file, malformed frontmatter) plus a hard shuttle error, the per-round
 // instruction-file materialization step (happy path writes exactly three files under
 // lyxdirs.DotLyxDirName, and a materialization failure returns a hard error before the shuttle
-// ever runs).
+// ever runs), and the PATTERN-directive transposition detector for the pattern.Directive call site
+// (active/inactive pair pinning that the directive reaches instruction-1-explore.md).
 // Every *lyxcwd.Location built here sets HubPath and WorktreeName to a test temp dir, so
 // WorktreePath() resolves materialization there rather than into the real package source tree.
 
@@ -488,6 +489,72 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 	}
 	if !strings.Contains(string(content), p.Rubric) {
 		t.Errorf("instruction-1-explore.md content = %q; want it to contain the profile's rubric %q", content, p.Rubric)
+	}
+}
+
+// TestEngine_Run_PatternDirectiveReachesInstruction1 closes the one pattern.Directive call site with
+// no behavioural coverage at all before this task: Engine.Run passes the directive into
+// composePrompt as patternDirective, and composePrompt fills it into the instruction-1 values map
+// only, through stencil.FillOptional with pattern_directive in the optional set, so instructions 2
+// and 3 never receive it and the orchestrator prompt never carries it.
+// The active sub-test plants root/_lyx/PATTERN.md before Run; the inactive sub-test plants nothing.
+// Both assert on instruction-1-explore.md's disk content for the literal relative pointer
+// "_lyx/PATTERN.md" that every role variant carries — the pair is what makes the assertion
+// meaningful, since a presence-only assertion cannot distinguish a working read from a template that
+// hardcodes the text.
+func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
+	tests := []struct {
+		name       string
+		writeFile  bool
+		wantPinned bool
+	}{
+		{name: "PATTERN active", writeFile: true, wantPinned: true},
+		{name: "PATTERN inactive", writeFile: false, wantPinned: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, p := newEngineTestProfile(t)
+			if tt.writeFile {
+				patternDir := filepath.Join(root, lyxdirs.LyxDirName)
+				if err := os.MkdirAll(patternDir, 0o755); err != nil {
+					t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+				}
+				if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+				}
+			}
+			shuttle := &fakeShuttle{
+				reviewContent: approvedReview,
+				fixerContent:  "nothing fixed",
+				result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
+			}
+			e := newEngineForTest(t, root, shuttle)
+
+			if _, err := e.Run(p, RunOpts{}); err != nil {
+				t.Fatalf("Run() = %v; want nil error", err)
+			}
+
+			burlerDir := filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName, "burler")
+			entries, err := os.ReadDir(burlerDir)
+			if err != nil {
+				t.Fatalf("ReadDir(%q) = %v; want nil", burlerDir, err)
+			}
+			if len(entries) != 1 {
+				t.Fatalf("ReadDir(%q) = %v; want exactly one round entry", burlerDir, entries)
+			}
+
+			instruction1Path := filepath.Join(burlerDir, entries[0].Name(), "instruction-1-explore.md")
+			content, err := os.ReadFile(instruction1Path)
+			if err != nil {
+				t.Fatalf("ReadFile(instruction-1-explore.md) = %v; want nil", err)
+			}
+
+			gotPinned := strings.Contains(string(content), "_lyx/PATTERN.md")
+			if gotPinned != tt.wantPinned {
+				t.Errorf("instruction-1-explore.md contains \"_lyx/PATTERN.md\" = %v; want %v", gotPinned, tt.wantPinned)
+			}
+		})
 	}
 }
 

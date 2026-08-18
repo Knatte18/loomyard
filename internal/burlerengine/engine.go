@@ -100,7 +100,7 @@ func (e *Engine) Run(p Profile, opts RunOpts) (Result, error) {
 
 	logger.Info("burler: round starting", "round", opts.Round, "clusterFan", p.ClusterFan, "forkCount", len(p.clusterLenses), "reviewPath", p.ReviewPath)
 
-	directive, err := pattern.Directive(e.layout, e.stencilsDir, pattern.RoleReviewFix)
+	directive, err := pattern.Directive(e.layout.AnchorPath(), e.stencilsDir, pattern.RoleReviewFix)
 	if err != nil {
 		return Result{}, fmt.Errorf("burler: %w", err)
 	}
