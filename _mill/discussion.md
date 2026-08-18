@@ -40,7 +40,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 - `cmd/lyx/stencilseed.go`: drops its own `buildChannel` variable in favour of `buildinfo`, and gates `seedStencils` on the tier-1-AND-tier-2 wiring predicate.
 - `tools/deploy/main.go:62`: the ldflags path repointed from `-X main.buildChannel=dev` to `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`.
 - `CONSTRAINTS.md`: two new leaf invariants (`Buildinfo Leaf Invariant`, `Standalonestate Leaf Invariant`), each with a mechanical enforcement test.
-- Docs in the same commit: `doc.go` for each new package, three rows in `docs/overview.md`'s directory tree, and three bullets under `docs/shared-libs/README.md`'s **`## Implementation-only libraries`** section.
+- Docs in the same commit: `doc.go` for each new package, three rows in `docs/overview.md`'s directory tree, the shared-infrastructure sentence at `docs/overview.md:315`, and three bullets under `docs/shared-libs/README.md`'s **`## Implementation-only libraries`** section.
   Not `## Libraries` — that section's contract is one dedicated `<name>.md` doc file per entry, and all three of these are documented in their own `doc.go`, exactly as `internal/modelspec` and `internal/state` already are.
   No new `.md` files under `docs/shared-libs/` are created by this task.
 
@@ -76,11 +76,14 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 
 ### preflight-exposes-three-entry-points
 
-- **Decision.** `internal/preflight` exports exactly three functions:
+- **Decision.** `internal/preflight` exports exactly four functions:
   - `Check(cwd string) (Report, *lyxcwd.Location, error)` — resolves geometry itself, runs tiers 1 and 2, and hands the resolved `Location` back so the caller never re-resolves.
     On `lyxcwd.ErrNotAGitRepo` it returns `(Report{OK:false, Failures:[{CheckGeometry, "not inside a git repository"}]}, nil, nil)`; on any other `Resolve` error it returns `(Report{}, nil, err)`.
   - `CheckResolved(l *lyxcwd.Location) (Report, error)` — the same tier-2 body against an already-resolved `Location`, for callers that hold one and for tests that synthesise one with no backing directory on disk.
-  - `Wired(cwd string) (*lyxcwd.Location, bool)` — the cheap boolean hub-mode predicate (see the next Decision).
+  - `Wired(cwd string) (*lyxcwd.Location, bool)` — the cheap boolean hub-mode predicate.
+  - `HubPresent(cwd string) (*lyxcwd.Location, bool)` — the cheap boolean hub-existence predicate the stencil seed gates on.
+
+  The two predicates are deliberately distinct; see the next Decision for why one cannot serve both.
 - **Rationale.** `Check` is what an orchestrator calls; `CheckResolved` is what `loomengine`'s existing `CheckResolvedForTest` seam becomes, preserving the ability to drive checks against a hand-built `Location`; `Wired` is what a CLI pre-run calls.
   Returning the `*lyxcwd.Location` from `Check` matters: `lyxcwd.Resolve` spawns `git rev-parse --show-toplevel`, so a shape that forced `loomengine` to resolve again to reach `LoomStatusFile(l)` would double the git spawns of every preflight.
 - **Rejected.**
@@ -89,21 +92,37 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 
 ### seed-gate-is-tier1-plus-Ready-not-the-full-tier-2-report
 
-- **Decision.** `preflight.Wired(cwd)` is `lyxcwd.Resolve(cwd)` succeeding **and** `fabricengine.Ready(l)` returning true; it returns `(nil, false)` on any error rather than surfacing one, since it is a predicate for a pre-run that must never block a command.
-  `cmd/lyx/stencilseed.go`'s `seedStencils` gates on exactly this.
-- **Rationale.** `fabricengine.Ready` (`internal/fabricengine/ready.go:17`) is a single `os.Stat` of `WeftWorktree(l)` — the `<hub>/<worktree-base>-weft` sibling — with zero process spawns.
-  In a plain downloaded repo at `/x/repo`, `HubPath` is the fiction `/x`, so it stats `/x/repo-weft`, finds nothing, and the gate closes: exactly the defect this task fixes, at no per-command cost.
+- **Decision.** Two distinct predicates, because the seed gate and the hub-mode trigger are asking two different questions, and conflating them regresses a real hub.
+  - `preflight.Wired(cwd) (*lyxcwd.Location, bool)` — `lyxcwd.Resolve(cwd)` succeeding **and** `fabricengine.Ready(l)` returning true.
+    This is the **hub-mode trigger** T7 and T8 consume to choose hub mode over standalone: "is Fabric wired *for this worktree*".
+  - `preflight.HubPresent(cwd) (*lyxcwd.Location, bool)` — `lyxcwd.Resolve(cwd)` succeeding **and** `<hub>/_board/_lyx` existing on disk (`filepath.Join(fabricengine.BoardDir(l.HubPath), lyxdirs.LyxDirName)`, one `os.Stat`).
+    This is the **seed gate**: "does the hub this write targets actually exist".
+    `cmd/lyx/stencilseed.go`'s `seedStencils` gates on this one, not on `Wired`.
+
+  Both return `(nil, false)` on any error rather than surfacing one, since both are predicates for a pre-run that must never block a command.
+- **Rationale for splitting them.** `fabricengine.Ready` (`internal/fabricengine/ready.go:17`) is a single `os.Stat` of the *paired sibling* of the current worktree — `weftname.SiblingPath(l.HubPath, filepath.Base(l.WorktreePath()))`.
+  That is a per-worktree pairing probe, not a hub probe, and the difference bites in a real, healthy hub.
+  `<hub>/_board` is itself a second Fabric worktree materialised by `fabricengine`'s clone (`clone.go:84,290`), and it has no paired sibling of its own — so `Ready` is false when cwd is `<hub>/_board`, and equally false in any unpaired sibling or in a worktree whose pair was removed.
+  Today `seedStencils` seeds correctly from all of those, because `HubPath` is `filepath.Dir(worktreeRoot)` and that value is *right* in every one of them.
+  Gating the seed on `Ready` would therefore silently stop stencil seeding in three real-hub situations, which is a regression this task has no mandate for — it is here to close the fictional-hub write, not to narrow a working path.
+  The honest precondition for the seed is the one `HubPresent` states: the write targets `<hub>/_board/_lyx/stencils`, so the thing that must exist is `<hub>/_board/_lyx`.
+  That predicate is true in all three real-hub cases above and false in a plain downloaded repo at `/x/repo` (where `HubPath` is the fiction `/x` and `/x/_board/_lyx` does not exist), so it closes the defect and narrows nothing.
+  It is structurally the same cheap hub predicate `fabricengine`'s own `looksLikeHub` (`clone.go:641`) already uses internally — reused in spirit rather than by export, since widening `fabricengine`'s API is out of scope for this task.
+  Both predicates cost zero process spawns, which is what makes either viable before every single command.
   The full tier-2 set is wrong for *this* gate on two counts.
   `Clean` spawns `git status` on both sides of the pair, and `seedStencils` runs before every single `lyx` command via `EnableTraverseRunHooks` — that is a per-invocation regression on every command in the CLI.
   Worse, `Clean` failing would mean a *dirty hub does not get its stencils seeded*, which is a behaviour change nobody asked for and which would surface as stencils mysteriously going stale mid-work.
   `Healthy`'s branch-mismatch case has the same problem.
-  `PrimeName` spawns `git worktree list` and adds nothing the `Ready` stat does not already prove for the purpose of "is there a real hub here".
+  `PrimeName` spawns `git worktree list` and adds nothing either stat does not already prove.
 - **Note for the reviewer.** T5's brief says "the identical tier-1-AND-tier-2 check".
-  This is that check in the sense the design doc means it — the tier-2 *wiring* predicate, `fabricengine.Ready`-class, named in T8's own brief as "`fabricengine.Ready`-class, reached through the `internal/preflight` package T5 lifts" — not the full four-function tier-2 report.
-  `Wired` living in `internal/preflight` is what satisfies the real constraint, which is that no `*cli` package imports `internal/fabricengine` to make the check.
+  `Wired` is that check in the sense the design doc means it — the tier-2 *wiring* predicate, named in T8's own brief as "`fabricengine.Ready`-class, reached through the `internal/preflight` package T5 lifts" — not the full four-function tier-2 report.
+  Both predicates living in `internal/preflight` is what satisfies the real constraint, which is that no `*cli` package imports `internal/fabricengine` to make the check.
+  The brief's one sentence about the root gate assumed a single predicate served both purposes; it does not, and this discussion splits them rather than regressing the seed to make one name cover both.
 - **Rejected.**
-  *Gate on `preflight.Check(cwd).OK`* — the `Clean`/`Healthy` problems above.
-  *Stat `<hub>/_board/_lyx` inline in `stencilseed.go`* — re-implements the gate outside `preflight`, so T7's and T8's copies would be a third and fourth implementation, and the fabric-vocabulary knowledge leaks into `package main`.
+  *One predicate for both purposes.* Either choice is wrong for one of the two callers: `Ready` regresses the seed in `_board` and unpaired worktrees, and a hub-presence probe is too weak for T7/T8's mode selection, since a hub-level `_board/_lyx` can exist while *this* worktree is not wired — which is exactly the `(resolved, not wired)` plain-worktree row T8's brief calls out as selecting standalone.
+  *Gate on `preflight.Check(cwd).OK`* — the `Clean`/`Healthy` problems above, on top of the `Ready` narrowing.
+  *Stat `<hub>/_board/_lyx` inline in `stencilseed.go`* — re-implements the gate outside `preflight`, so T7's and T8's copies would be a third and fourth implementation, and the Fabric geometry knowledge leaks into `package main`.
+  *Exporting `fabricengine.looksLikeHub`* — widening `internal/fabricengine`'s API is scoped out of this task, and `BoardDir` already exports the only token `HubPresent` needs.
 
 ### report-exposes-Has-instead-of-a-blocks-seed-field
 
@@ -153,6 +172,11 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   `Derive` returns an error in exactly three cases, and no others: `target` is not absolute; `LOCALAPPDATA` is unset on Windows; `XDG_STATE_HOME` is unset *and* `os.UserHomeDir` fails elsewhere.
   `EvalSymlinks` failing is explicitly *not* an error — it is the documented `Clean`-only fallback for a target that does not exist on disk yet.
   Internally it is a thin wrapper over an unexported `derive(goos, localAppData, xdgStateHome, home, target string) (string, string, error)`, re-exported through `export_test.go`.
+
+  **At the seam boundary, the empty string means "unset".**
+  The three env-ish parameters are plain strings, so `derive` cannot distinguish unset from set-to-empty and deliberately does not try: an empty `localAppData` on the Windows branch is the error case, and an empty `xdgStateHome` on the POSIX branch is what selects the `home` fallback.
+  That collapse is correct on its own terms — neither an empty `%LOCALAPPDATA%` nor an empty `$XDG_STATE_HOME` is a usable directory, so treating both the same as absent is the only sane reading.
+  `Derive` fills the parameters from `os.Getenv("LOCALAPPDATA")`, `os.Getenv("XDG_STATE_HOME")` and `os.UserHomeDir()`, and calls `os.UserHomeDir` **only on the POSIX branch** — on Windows it passes `""` for `home`, so a `UserHomeDir` failure can never surface as an error on a branch that never reads the value.
 - **Rationale on normalisation.** Two spellings of the same directory — a symlinked path, a differing-case path on Windows or macOS — must hash identically, or two standalone runs against the same target get different sockets, sessions and state directories, silently destroying the "one tmux server per target directory, resumable" property this whole derivation buys.
   The semantics deliberately mirror `internal/lyxcwd/anchor.go`'s `normalizePath`/`samePath` (`anchor.go:112-129`), which already solve this exact class of problem: `EvalSymlinks` with a `Clean` fallback, plus case-insensitive comparison on Windows.
   Note the one intentional difference — `samePath` compares case-insensitively *after* normalising, whereas hashing has no comparison step, so the case fold must happen to the string before it is hashed.
@@ -197,7 +221,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 
 ### seed-gate-tested-through-an-extracted-target-seam
 
-- **Decision.** `cmd/lyx/stencilseed.go` extracts the gate into `func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool)`, which does the `lyxcwd.CwdFrom` → `preflight.Wired` sequence and returns `ok == false` whenever seeding must be skipped.
+- **Decision.** `cmd/lyx/stencilseed.go` extracts the gate into `func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool)`, which does the `lyxcwd.CwdFrom` → `preflight.HubPresent` sequence and returns `ok == false` whenever seeding must be skipped.
   `seedStencils` keeps its `testing.Testing()` early return and becomes a three-line wrapper over `stencilSeedTarget` + `seedStencilsAt`.
   An integration-tagged `cmd/lyx` test drives `stencilSeedTarget` against a real plain git repository and asserts both `ok == false` and that no `_board` directory exists beside the repo afterwards.
 - **Rationale.** `seedStencils` returns immediately under `testing.Testing()` (`stencilseed.go:40-42`), so a test can never observe its gate through the exported entry point — the test would pass vacuously and prove nothing.
@@ -240,7 +264,7 @@ That makes the blast radius of the signature work small, and it means the integr
 - New `cmd/lyx` test files must respect the Test Tier Purity Invariant — the plain-repo gate test spawns git, so it needs a `//go:build integration` first line, and `cmd/lyx` already has a `TestMain` for the Hermetic Git Test Environment Invariant.
 - `internal/preflight` and `internal/standalonestate` both need their package name checked against nothing existing — `ls internal/` confirms neither name is taken.
 
-**Docs to touch (same commit, per `CLAUDE.md`).** `docs/overview.md`'s directory tree around lines 228-244 (add three rows, alongside `internal/hubgeom`, `internal/modelspec`, `internal/tokenvocab`) and its shared-infrastructure sentence at line 315; `docs/shared-libs/README.md`'s `## Libraries` section.
+**Docs to touch (same commit, per `CLAUDE.md`).** `docs/overview.md`'s directory tree around lines 228-244 (add three rows, alongside `internal/hubgeom`, `internal/modelspec`, `internal/tokenvocab`) and its shared-infrastructure sentence at line 315; `docs/shared-libs/README.md`'s `## Implementation-only libraries` section (**not** `## Libraries` — see the Scope bullet, which is authoritative for this).
 `manifest/designs/producers-standalone.md` itself is deleted by T10, not edited here.
 
 ## Constraints
@@ -303,7 +327,10 @@ Plus `leaf_enforcement_test.go` with an empty allowlist.
 
 **`cmd/lyx` — the defect test named in T5's verify line.**
 Integration-tagged: build a plain git repository with no `_board` sibling, drive `stencilSeedTarget` against it, assert `ok == false`, then assert no `_board` directory was created beside the repo.
-A companion positive case against a `hubforge` fixture asserting `ok == true` and the returned `hub`/`worktree` matching the fixture's, so the gate is not trivially always-false.
+Then three positive cases against a `hubforge` fixture, all asserting `ok == true` with the returned `hub`/`worktree` matching the fixture's — these are the anti-regression rows for the `Wired`-vs-`HubPresent` split, and each one would fail if the gate were `Wired`:
+cwd at an ordinary warp worktree; cwd at `<hub>/_board`; and cwd at a worktree whose paired sibling has been removed.
+Without them the gate is trivially always-false and nothing catches the narrowing.
+Separately, a `Wired`-vs-`HubPresent` divergence test in `internal/preflight` itself: at `<hub>/_board`, `HubPresent` is true and `Wired` is false — the one assertion that pins why both exist.
 
 **Task-wide verify.**
 `go test ./...` from the worktree root, plus the task's named check: `go test ./internal/loomengine/... ./internal/fabricengine/... ./internal/preflight/... ./internal/buildinfo/... ./internal/standalonestate/...`, and the integration-tagged runs for the same packages and `cmd/lyx`.
@@ -324,5 +351,6 @@ The same applies to the three new `doc.go` files' own outgoing links.
 - **Q:** Which `CONSTRAINTS.md` entries land in this commit? **A:** [auto-pick] two new leaf invariants with mechanical enforcement tests; the three-tier rule is deferred. **Why:** T10's brief explicitly reserves the three-tier invariant and says writing it before T5 ships would pin a model the code does not implement; the leaf claims, by contrast, are only true if enforced.
 - **Q:** Do the docs land in the same commit? **A:** [auto-pick] yes — `doc.go` per new package, `docs/overview.md` tree rows, `docs/shared-libs/README.md` entries. **Why:** the project's task-completion rule requires it for a task adding modules; `manifest/roadmap.md` is excluded because it moves per completed wave, not per task.
 - **Q:** How is the plain-repo no-op tested, given `seedStencils` returns early under `testing.Testing()`? **A:** [auto-pick] extract `stencilSeedTarget(ctx) (hub, worktree, ok)` and drive that from an integration-tagged test. **Why:** a test against `seedStencils` itself would pass vacuously through the `testing.Testing()` guard and prove nothing about the gate.
+- **Q:** [review r2 gap] `fabricengine.Ready` probes the *pair of this worktree*, not the hub — so gating the stencil seed on it would silently stop seeding in three real-hub cases (cwd at `<hub>/_board`, cwd at an unpaired sibling, cwd at a worktree whose pair was removed), all of which seed correctly today. Accept and document the narrowing, or gate on a hub-level probe? **A:** gate on a hub-level probe — split into `preflight.Wired` (tier 1 + `Ready`, the T7/T8 hub-mode trigger) and `preflight.HubPresent` (tier 1 + `<hub>/_board/_lyx` exists, the seed gate). **Why:** the task's mandate is to close the fictional-hub write, not to narrow a working path, and the honest precondition for a write to `<hub>/_board/_lyx/stencils` is that `<hub>/_board/_lyx` exists. One predicate cannot serve both: a hub-level probe is too weak for mode selection, since `(resolved, not wired)` in a real hub must select standalone per T8's brief.
 - **Q:** [review r1 gap] `Derive`'s normalisation began with `filepath.Abs`, which resolves against the process cwd via `os.Getwd` — contradicting this discussion's own Constraints entry ("must not resolve a cwd at all") and making the "pure" `derive` seam host-dependent. Reject relative targets, or make the base directory a seam parameter? **A:** reject — `Derive` requires an absolute `target` and errors on a relative one; no `filepath.Abs` anywhere in the package. **Why:** it keeps `standalonestate` a pure function of its arguments and leaves the one legitimate cwd consultation at the CLI argument-parsing boundary that owns it; both T7 and T8 already hold an absolute path by the time they call, so the seam-parameter alternative would add a parameter for a case no caller has.
 - **Q:** Do the tier-1/tier-2 test functions move from `loomengine` to `preflight`? **A:** [auto-pick] no — `loomengine`'s tests stay and are untouched; `preflight` gets additive new ones in an external `package preflight_test`. **Why:** those tests are the only proof the lift changed no behaviour, and `hubforge` imports `fabriccli`, so an in-package fixture test in `preflight` would close a compile cycle later.
