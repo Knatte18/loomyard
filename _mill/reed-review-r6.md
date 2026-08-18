@@ -223,3 +223,5 @@ It is reachable trivially against a real tmux, since `has-session` against a soc
 | wiring-test gaps (Part B) | 2 | R6-B1, R6-B2 |
 
 All four code findings are CONFIRMED (reproduced or measured against real tmux 3.6), none PLAUSIBLE-only.
+
+Every one is closed in `_mill/reed-review-r6-fixer-report.md`. Nothing deferred.
