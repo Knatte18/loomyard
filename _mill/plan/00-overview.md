@@ -3,7 +3,7 @@
 ```yaml
 task: "lift the orchestrator preflight out of loomengine, plus the shared standalone-CLI foundations"
 slug: "orchestrator-preflight"
-approved: false
+approved: true
 started: "20260818-060343"
 parent: "standalone-producers"
 root: ""

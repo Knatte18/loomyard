@@ -187,6 +187,9 @@ If the implementer finds itself needing to edit that file, the type-alias decisi
 
   The last two are the behaviours a naive rewrite silently removes, so neither may be omitted.
 
+  Assert both predicates on their positive path against the ordinary healthy pair the fixture builds: `Wired(cwd)` returns a non-nil `*lyxcwd.Location` and true, and `HubPresent(cwd)` does the same.
+  `Wired` is a newly exported predicate with no consumer in this task — T7 and T8 are its first callers — so without this row its true branch ships exercised only indirectly, through the `fabricengine.Ready` call inside `CheckResolved`.
+
   Add one more assertion that exists purely to pin why both predicates ship: with cwd at `<hub>/_board`, `HubPresent` returns true and `Wired` returns false.
   Reach that directory through the `hubforge` fixture's own accessors and `fabricengine.BoardDir`, never by joining a `_board` literal.
 - **Commit:** `test(preflight): cover the lifted checks and the predicate split`
