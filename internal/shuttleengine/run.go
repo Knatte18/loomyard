@@ -233,20 +233,43 @@ func (r *Runner) Run(spec Spec) (Result, error) {
 }
 
 // sweepOrphansOpportunistic removes run directories whose strand is no longer
-// tracked in reed state. A LoadState error skips the sweep entirely, to avoid
-// sweeping kept diagnosis dirs over an unrelated I/O problem. Failures never block Start.
+// tracked in reed state. Failures never block Start.
+//
+// It sweeps only against a reed state file it actually READ. Both of the other two answers
+// LoadState can give — unreadable, and absent — skip the sweep entirely, because neither is evidence
+// that any run is an orphan and treating them as one deletes live work:
+//
+//   - Unreadable (a truncated or partial reed.json): skipping avoids sweeping kept diagnosis dirs
+//     over an unrelated I/O problem.
+//   - ABSENT: an empty live-guid set makes EVERY run directory past the age guard look orphaned. That
+//     is precisely the state reed's own corrupt-state error tells an operator to create ("delete
+//     <path> by hand to keep the session (its panes and their processes keep running, untracked)"),
+//     and the state a `git clean -xdf` leaves — a sanctioned operator action under the
+//     Durable-vs-Ephemeral State Invariant. What the sweep then destroys is not inert: events.jsonl is
+//     the file the provider's Stop hook is still appending to, and run.json is the ONLY map from a
+//     strand guid back to a run, so afterwards `lyx shuttle interrupt/send <guid>` answers "is not a
+//     shuttle strand" for an agent still working in its pane — the exact outcome findRunByStrand's
+//     own message was hardened to avoid.
+//
+// Skipping the absent case costs no cleanup. This sweep runs BEFORE AddStrand, which cannot succeed
+// without a live reed session — and a live session means `lyx reed up` has already written a
+// reed.json. So the sweeps forgone here belong either to a Start that is about to fail anyway, or to
+// the dangerous case; after the next `up` the file is present again (with zero strands after a
+// `down`) and ordinary sweeping resumes unchanged.
 func (r *Runner) sweepOrphansOpportunistic() {
 	st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName))
 	if err != nil {
 		logger.Warn("shuttle: orphan sweep: load reed state failed, skipping this sweep (non-fatal, new run proceeds)", "anchorPath", r.anchorPath, "error", err)
 		return
 	}
+	if st == nil {
+		logger.Warn("shuttle: orphan sweep: no reed state file, skipping this sweep (non-fatal, new run proceeds) — an absent strand table is not evidence that any run is an orphan, and its panes may still be live", "anchorPath", r.anchorPath)
+		return
+	}
 
 	guids := map[string]bool{}
-	if st != nil {
-		for _, s := range st.Strands {
-			guids[s.GUID] = true
-		}
+	for _, s := range st.Strands {
+		guids[s.GUID] = true
 	}
 
 	startupTimeout := time.Duration(r.cfg.StartupTimeoutS) * time.Second

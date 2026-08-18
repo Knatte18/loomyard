@@ -390,6 +390,44 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	}
 }
 
+// TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState is R3-F2's regression guard.
+//
+// An ABSENT reed.json used to fall through to a sweep with an EMPTY live-guid set, so every run dir
+// past the age guard was deleted — including one whose agent is still working. That state is not
+// exotic: it is exactly what reed's own corrupt-state error recommends ("delete <path> by hand to
+// keep the session (its panes and their processes keep running, untracked)") and what a
+// `git clean -xdf` of .lyx leaves behind. The sweep then removes the live run's events.jsonl (the
+// file the Stop hook is still appending to) and its run.json, after which interrupt/send answer "is
+// not a shuttle strand" for a running agent.
+// Absence must skip the sweep for the same reason unreadability already does — see the sibling test
+// above.
+func TestRunner_Start_SweepSkipsEntirelyOnAbsentReedState(t *testing.T) {
+	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
+	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
+
+	worktree := t.TempDir()
+	anchorPath := filepath.Join(worktree, "sub", "dir")
+	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
+
+	// .lyx exists (reed created it) but holds NO reed.json — the hand-deleted / git-cleaned shape.
+	if err := os.MkdirAll(filepath.Join(anchorPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
+		t.Fatalf("mkdir .lyx: %v", err)
+	}
+
+	shuttleRoot := runDirRoot(cfg, anchorPath)
+	liveRunDir := seedRun(t, shuttleRoot, "live-run", "still-running-strand")
+	setDirMTime(t, liveRunDir, time.Now(), 10*time.Minute)
+
+	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
+	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+
+	if _, err := os.Stat(liveRunDir); err != nil {
+		t.Errorf("run dir was swept with no reed.json to prove it orphaned, want it preserved: %v", err)
+	}
+}
+
 // newInterruptTestRun returns a bare Run handle wired to reed/engine, with
 // no Start/Wait machinery involved — Interrupt/Send only ever touch
 // runner.reed and runner.engine through run.state.StrandGUID.
