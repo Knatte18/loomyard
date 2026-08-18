@@ -115,9 +115,94 @@ Teardown after scenario 2: `reed.json` restored, `lyx reed down` → `ok:true`; 
 - `asking` path: a run whose agent ended its turn without writing the output file → `{"ok":true,"outcome":"asking"}`
   carrying the real `lastAssistantMessage`, pane and run dir deliberately kept.
 
+### Scenario 3 — tmux SERVER killed DURING a live run
+
+Long-turn run live (strand `8636c54b…`, agent 38 s into its first python wait).
+`tmux -L lyx-hub2… kill-server` at 16:45:27.292 → the run EXITED at 16:45:39.314 (12.0 s, i.e. two
+liveness ticks) with:
+
+```
+{"ok":false,"guid":"8636c54b…","sessionId":"41506282-…","runDir":"…",
+ "error":"shuttle: reed status failed 2 times consecutively: reed status: no reed session (1 strands persisted); run \"lyx reed resume\" to rebuild, or \"lyx reed up\" for a bare substrate"}
+```
+
+Verdict: **CLEAN.** Prompt detection (no hang against a dead server), honest `ok:false` mechanism failure
+rather than a fabricated classification, R1-F2's identity triple intact, and reed's own remedy text passed
+through. Teardown after: tmux servers 0, claude 4 (baseline).
+
+### Scenario 6 — `lyx reed down` + `lyx reed up` WHILE a run believes its pane exists
+
+Long-turn run live (strand `622ddcf4…`, pane `%0`). At 16:46:57.3 a second process ran `lyx reed down`
+immediately followed by `lyx reed up` (complete in 0.9 s — a full session rebuild inside one liveness tick).
+
+- `lyx reed status` after the cycle: session up, `strands: []`.
+- `lyx shuttle interrupt 622ddcf4…` → `ok:false`,
+  `shuttle: strand "622ddcf4…" is not tracked by reed — either its run completed and was cleaned up, or reed's
+  strand table was reset under it (a reed remove/down, or a lost or rebuilt reed.json); check "lyx reed status"`
+- `lyx shuttle send …` → identical.
+- The in-flight run exited 8.5 s later with `{"ok":true,"outcome":"died", …}`.
+
+Verdict: **no wrong-pane addressing** — the rebuilt session's fresh `%0` was never mistaken for the run's pane
+(reed's `PaneGeneration` clear does its job and shuttle inherits it correctly), and the out-of-process verbs are
+honest. The `died` here happens to be factually correct (the `down` killed the agent), but it is produced by the
+same undiscriminating branch as scenarios 1 and 2b — this scenario is what makes the asymmetry visible in one
+frame: for the SAME reed state ("guid absent from reed's table"), `interrupt`/`send` say "reed's strand table was
+reset under it" while `Wait` says "died".
+
+### Scenario 4 — cross-worktree contamination under REAL concurrent live agent load
+
+Hub `<scratch>/hub2`, worktrees `wt-a` and `wt-b`, both `reed up` on the shared socket `lyx-hub2-2fbe4ed5`.
+Two long-turn runs started simultaneously — **exactly 2 real `claude` processes** (`pgrep -xc claude` = 6 = baseline 4 + 2),
+the round's authorized ceiling. `wt-a` → strand `880a882f…` pane `%0`; `wt-b` → strand `d3c405c5…` pane `%2`.
+
+Both confirmed mid-flight, then at 16:48:35.4: `cp wt-a/.lyx/reed.json wt-b/.lyx/reed.json` — reed's own
+R5-F4 shape, now with two live agents rather than fixtures.
+
+- `wt-b`: `lyx reed status` → `ok:false`, the foreign-session refusal naming `wt-a`, the socket, and the
+  `kill-session` remedy.
+- `wt-b`: `lyx shuttle interrupt <wt-a's guid>` → `ok:false`,
+  `shuttle: "880a882f…" is not a shuttle strand: shuttle: no run found for strand "880a882f…"` —
+  **shuttle's OWN `FindRun` guard refuses before reed is touched at all**, because `wt-b`'s run-dir root holds no
+  such run. Same for `send`.
+- `wt-b`'s in-flight run exited 9.4 s later with `ok:false`, reed's refusal verbatim, and **`wt-b`'s own**
+  guid/sessionId/runDir — not `wt-a`'s.
+- `wt-a` throughout and after: still live, `reed status` unchanged, pane capture still on its own prompt with
+  **no trace of the text sent from `wt-b`**. Output file untouched.
+
+Verdict: **CLEAN, two independent layers deep.** shuttle adds no new cross-contamination risk at its own layer
+and correctly inherits reed's; an operator watching `wt-a` saw zero bleed from `wt-b`.
+Teardown: both `down` → tmux servers 0, claude 4 (baseline).
+
+### Sweep probe — `Start`'s opportunistic orphan sweep vs. an absent `reed.json` (no LLM cost)
+
+Aged run dir `…/.lyx/shuttle/deadbeef…` (mtime 2 h old) holding a `run.json` whose `strandGuid` is tracked,
+in `wt-a`, with the session DOWN so `Start` fails at `AddStrand` and no `claude` is ever spawned — the sweep
+still runs (it precedes `AddStrand`), so the three state shapes are separable at zero live-substrate cost:
+
+| `reed.json` state | `lyx shuttle run` outcome | aged run dir |
+| --- | --- | --- |
+| present, guid tracked | `add strand: no reed session (1 strands persisted)…` | **PRESENT** (correct) |
+| corrupt (`{"socket":"x`) | `add strand: no reed session, and reed's persisted state could not be read…` | **PRESENT** (correct — the documented skip) |
+| **absent** (`rm .lyx/reed.json`) | `add strand: no reed session; run "lyx reed up"` | **GONE — swept** |
+
+Verdict: see finding R3-F2.
+
+### Not verified this round (stated honestly)
+
+- **Subpath-anchored geometry.** Still `AnchorRel = "."` everywhere; none of the joint scenarios naturally
+  constructed a subpath-anchored fixture, and the brief says not to spend a dedicated scenario on it.
+- **R2-F9's two silent startup paths** (a trust prompt whose dismissal never takes; a pane that fails every
+  capture). No scenario produced either — every run this round reached `StartupReady` promptly, and reed's
+  `CapturePane` never failed. Still deadline-bound by construction (`classifyStartupWindow` is called from
+  every not-yet-started exit), but unexercised live.
+- **R2-F11** (`sendVerified` viewport scroll) — out of scope by the brief. Two `send` calls were issued this
+  round and both were refused upstream of `sendVerified` (by `requireLiveStrand`), so its known limitation was
+  not exercised either way.
+
 ## Findings
 
-(appended as spotted)
+Two findings, both CONFIRMED, both small. One OUT-OF-CAMPAIGN observation about reed.
+No BLOCKING. No NOT-FIXED-THIS-ROUND large finding.
 
 ### R3-F1 — `Wait` classifies a LIVE agent as `died` when reed's strand table goes empty mid-run — MEDIUM, CONFIRMED, small
 
@@ -161,3 +246,71 @@ its pane, check `lyx reed status`. Because it goes through `Wait`'s existing `st
 one-tick blip does not trip it.
 
 Size: small — one function, plus a hermetic `wait_test.go` case against the existing `fakeReed`.
+
+### R3-F2 — the orphan sweep deletes a LIVE run's directory when `reed.json` is absent — MEDIUM, CONFIRMED, small
+
+`internal/shuttleengine/run.go:238-258` (`sweepOrphansOpportunistic`).
+
+```go
+st, err := reedengine.LoadState(filepath.Join(r.anchorPath, lyxdirs.DotLyxDirName))
+if err != nil { logger.Warn(…); return }   // corrupt  -> skip the sweep
+guids := map[string]bool{}
+if st != nil { for _, s := range st.Strands { guids[s.GUID] = true } }   // ABSENT -> empty guid set
+```
+
+`LoadState` has three answers, and this function collapses two of them. A corrupt file returns an error and
+correctly SKIPS the sweep — the comment says why: "to avoid sweeping kept diagnosis dirs over an unrelated I/O
+problem". An ABSENT file returns `(nil, nil)`, which falls through with an EMPTY live-guid set, so
+`sweepOrphans` classifies **every** run directory older than `2 × startup_timeout_s` (180 s by default) as an
+orphan and `os.RemoveAll`s it — including the directory of a run whose agent is still working in its pane.
+
+Reproduced (see the sweep-probe table above): identical fixture, identical aged run dir whose `strandGuid` is
+genuinely tracked — PRESENT with `reed.json` present, PRESENT with `reed.json` corrupt, **GONE** with
+`reed.json` deleted.
+
+Why "absent while agents are live" is a real state, not a contrived one — it is the state reed's own
+`unreadableStateError` instructs the operator to create:
+
+> or delete `<path>` by hand to keep the session (its panes and their processes keep running, untracked) and
+> lose only reed's strand tracking
+
+and it is also what a `git clean -xdf` produces, which `CONSTRAINTS.md`'s Durable-vs-Ephemeral State Invariant
+makes a sanctioned operator action. Scenario 2b drove exactly that state with a live agent.
+
+What the sweep destroys is not inert: `events.jsonl` is the file the provider's Stop hook is still appending to
+(deleting the directory loses the run's completion signal permanently), `settings.json` and `prompt.md` are the
+live process's own artifacts, and `run.json` is the ONLY thing that maps the strand guid back to a run — so
+after the sweep `lyx shuttle interrupt/send <guid>` answers `"<guid>" is not a shuttle strand`. That is
+verbatim the outcome `findRunByStrand`'s own doc comment says must be avoided ("sends them away from a running
+agent"); it was hardened there against a TRUNCATED run.json and is reintroduced here by deleting the file
+outright.
+
+Note also that a `Start` reaching this branch is almost always a `Start` that is about to FAIL: `AddStrand`
+needs a live reed session, and a live session means `reed up` has already written a `reed.json`. So the sweeps
+this branch performs are, in practice, either useless (the run fails a moment later at `AddStrand`) or
+destructive (the hand-deleted-while-session-live case). Skipping them costs nothing real: after the next
+`lyx reed up` a present-but-empty `reed.json` restores ordinary sweeping.
+
+Suggested fix: treat "no state file" the same way as "unreadable state file" — skip this sweep and log it,
+with the reasoning stated in the comment (an absent table is not evidence that any run is an orphan; it is
+absence of evidence, and reed itself documents deleting it as the way to KEEP a live session).
+
+Size: small — one branch in one function, plus a `rundir_test.go`/`run_test.go` case.
+
+### OUT-OF-CAMPAIGN (reed) — an in-process engine silently resurrects a vanished anchor path
+
+Not a shuttle defect and NOT fixed here (reed's campaign is closed); recorded because it is the mechanism that
+turns scenario 1's rename into R3-F1's false `died`, and the operator decides whether it warrants reopening reed.
+
+`reedengine.withOpLock` (`lock.go:87-94`) does `os.MkdirAll(e.stateDir())` on the told `AnchorPath` before every
+op. When a long-lived in-process engine outlives a rename of its worktree, that path no longer exists — and reed
+RE-CREATES it. Observed in scenario 1: after `mv svc-orig svc-moved`, the shuttle process's next `Status()` left
+behind a phantom `<hub>/svc-orig/` containing only `.lyx/reed.lock` and `.lyx/reed.json.lock`, then answered
+`ok:true` with zero strands, because `LoadState` found no `reed.json` there.
+
+`validateToldAnchorPath` (`server.go:226`) checks that the told anchor is non-empty and absolute — the two
+shapes that "succeed against the wrong tree" — but not that it still EXISTS. For an out-of-process caller that
+distinction never matters (the path is resolved a moment earlier). For a long-lived in-process engine it is the
+difference between reed's designed foreign-session refusal firing and reed cheerfully reporting an empty world.
+A possible reed-side answer would be to refuse an anchor path that has ceased to exist rather than re-creating
+it; that is reed's call, not this round's.
