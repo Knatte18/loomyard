@@ -48,9 +48,10 @@ this worktree's session: adding, removing, resuming, and attaching to
 strands, plus rendering their layout on every mutation.
 
 The tmux session is named after this worktree's directory, so that name must
-carry neither "." nor ":" — tmux silently rewrites both to "_" and would then
-create a session reed can never address or tear down. Every reed verb refuses
-up front, naming the directory, rather than booting substrate it cannot reach.`,
+carry neither "." nor ":" nor any control character or invalid UTF-8 — tmux
+silently rewrites all of these and would then create a session reed can never
+address or tear down. Every reed verb refuses up front, naming the directory,
+rather than booting substrate it cannot reach.`,
 		// RunE is set so that bare "lyx reed" lists subcommands and "lyx reed bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE: clihelp.GroupRunE,

@@ -17,7 +17,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ServerName returns the deterministic tmux server name for the hub: "lyx-<basename>-<hash>", where
@@ -58,15 +60,44 @@ func SessionName(worktreeRoot string) string {
 
 // rewrittenSessionNameChars are the characters tmux silently rewrites to '_' inside a session name.
 // tmux does not REJECT them: new-session exits 0 and creates a session under the rewritten name
-// (verified live, tmux 3.6: "a.b" and "a:b" both become "a_b"; no other character is touched).
+// (verified live, tmux 3.6: "a.b" and "a:b" both become "a_b").
 // That silence is what makes the ban necessary rather than cosmetic — every other -t target this
 // package issues is an EXACT-match "=<name>" form (see exactSessionTarget), deliberately so, and an
 // exact target can never match a name tmux rewrote behind reed's back.
+// This substitution is only the FIRST of the two rewrite halves tmux's session-name check performs;
+// firstVisEncodedSessionNameByte below covers the second (the vis-encode class), and
+// validateToldTmuxIdentity refuses both.
 const rewrittenSessionNameChars = ".:"
 
 // socketKeySeparators are the path separators a tmux -L socket key must not contain;
 // see ServerName for what tmux does with one that does.
 const socketKeySeparators = `/\`
+
+// firstVisEncodedSessionNameByte returns a printable description of the first byte or rune in name
+// that tmux would silently vis-encode into a multi-character escape, and whether one exists.
+// This is the SECOND half of tmux's session-name rewrite (the first is the '.'/':' substitution
+// above): after substituting those two characters, tmux passes the name through a
+// vis(3)-style encoder, which rewrites every ASCII control character (below 0x20), DEL (0x7F), and
+// every byte that is not part of a valid UTF-8 sequence into an escape SEQUENCE — verified live on
+// tmux 3.6: TAB becomes the two literal characters `\t`, ESC becomes `\033`, DEL becomes `\177`,
+// and the invalid byte 0xFF becomes `\377`, each with exit 0 and the session created under the
+// rewritten name, unreachable by any exact-match "=<name>" target carrying the raw form.
+// Valid multi-byte UTF-8 passes through the encoder untouched (verified live: "svc-åäö-⚙" is
+// created verbatim and exact-matches), so this check refuses ONLY the vis-encode class and never a
+// unicode worktree name.
+func firstVisEncodedSessionNameByte(name string) (string, bool) {
+	for i := 0; i < len(name); {
+		r, size := utf8.DecodeRuneInString(name[i:])
+		if r == utf8.RuneError && size == 1 {
+			return fmt.Sprintf("the invalid UTF-8 byte 0x%02X", name[i]), true
+		}
+		if r < 0x20 || r == 0x7F {
+			return strconv.QuoteRune(r), true
+		}
+		i += size
+	}
+	return "", false
+}
 
 // validateToldTmuxIdentity reports an error when the told SocketKey or SessionName is one the
 // configured multiplexer cannot spend verbatim, naming the hub or worktree directory it derives from
@@ -104,6 +135,11 @@ func validateToldTmuxIdentity(geom Geometry) error {
 		return fmt.Errorf(
 			"tmux will not create session %q verbatim: it contains %q, which tmux silently rewrites to \"_\" — rename the worktree directory %q so its name carries no %q",
 			geom.SessionName, string(geom.SessionName[i]), geom.WorktreeRoot, rewrittenSessionNameChars)
+	}
+	if desc, found := firstVisEncodedSessionNameByte(geom.SessionName); found {
+		return fmt.Errorf(
+			"tmux will not create session %q verbatim: it contains %s, which tmux silently rewrites into a multi-character escape — rename the worktree directory %q so its name carries no control characters or invalid UTF-8",
+			geom.SessionName, desc, geom.WorktreeRoot)
 	}
 	return nil
 }

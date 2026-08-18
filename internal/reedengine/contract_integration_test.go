@@ -407,6 +407,12 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 	}{
 		{"dot", "rewrite-dot.v2", "rewrite-dot_v2"},
 		{"colon", "rewrite-colon:v2", "rewrite-colon_v2"},
+		// The vis-encode half of the rewrite (R3-F1): a raw TAB becomes the
+		// TWO literal characters backslash-t, not '_' — a different rewrite
+		// mechanism with the same silence, pinned here so a tmux that starts
+		// rejecting (or differently encoding) control characters surfaces as
+		// a failure rather than a silently-weakened guard.
+		{"tab", "rewrite-tab\tv2", `rewrite-tab\tv2`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

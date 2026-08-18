@@ -99,12 +99,15 @@ func TestSessionName_IsWorktreeBasename(t *testing.T) {
 }
 
 // TestValidateToldTmuxIdentity_SessionName is the regression guard for the R2 review's BLOCKING
-// finding: a worktree directory whose name carries '.' or ':' produced a session name tmux silently
-// rewrote to '_', so the boot loop polled an exact "=<name>" target that could never match, timed
-// out after 20s with a message naming no cause, and left the rewritten session running on the shared
-// per-hub server where no reed verb could address or tear it down.
-// The two rewritten characters are asserted individually rather than as one combined case, so a fix
-// that catches only one of them fails here instead of passing.
+// finding and the R3 review's R3-F1: a worktree directory whose name carries '.' or ':' produced a
+// session name tmux silently rewrote to '_' — and one carrying an ASCII control character, DEL, or
+// an invalid-UTF-8 byte produces a name tmux silently vis-encodes into a multi-character escape
+// (TAB becomes the two literal characters `\t`; verified live, tmux 3.6) — so the boot loop polled
+// an exact "=<name>" target that could never match, timed out after 20s with a message naming no
+// cause, and left the rewritten session running on the shared per-hub server where no reed verb
+// could address or tear it down.
+// Each rewritten character class is asserted individually rather than as one combined case, so a
+// fix that catches only some of them fails here instead of passing.
 func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -115,9 +118,19 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 		{"underscores and digits", "svc_v2_3", false},
 		{"dash-heavy mill slug", "reed-shuttle-crucible-hardening", false},
 		{"space is left alone by tmux", "two words", false},
+		{"space-only name is left alone by tmux", " ", false},
+		{"valid multi-byte UTF-8 is left alone by tmux", "svc-åäö-⚙", false},
+		{"literal U+FFFD is valid UTF-8 and left alone", "svc-�", false},
+		{"format and target metacharacters are left alone", "a#b%c=d-e", false},
 		{"dot is rewritten by tmux", "svc.v2", true},
 		{"colon is rewritten by tmux", "svc:v2", true},
 		{"dot anywhere, not just the middle", "release-2.", true},
+		{"tab is vis-encoded by tmux", "svc\tv3", true},
+		{"newline is vis-encoded by tmux", "svc\nv3", true},
+		{"escape is vis-encoded by tmux", "svc\x1bv3", true},
+		{"DEL is vis-encoded by tmux", "svc\x7fv3", true},
+		{"bell is vis-encoded by tmux", "svc\av3", true},
+		{"invalid UTF-8 byte is vis-encoded by tmux", "svc-\xffv3", true},
 		{"empty", "", true},
 	}
 	for _, tt := range tests {
