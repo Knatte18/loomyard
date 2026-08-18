@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-told-anchor-root-conversion
 slug: scout-told-geometry
 branch: scout-told-geometry
 plan: _mill/plan
@@ -23,6 +23,7 @@ plan-fix-r1  '2026-08-18T13:15:47Z'
 plan-fix-r2  '2026-08-18T13:23:18Z'
 planned  '2026-08-18T13:23:34Z'
 implementing  '2026-08-18T13:24:11Z'
+approved-told-anchor-root-conversion  '2026-08-18T13:35:47Z'
 ```
 
 ## Batches
@@ -30,9 +31,10 @@ implementing  '2026-08-18T13:24:11Z'
 ```yaml
 batches:
   - name: told-anchor-root-conversion
-    state: running
+    state: approved
     implementer_session: 81249a12-0fba-48b8-bf7d-4181e40cf132
     start_sha: d2507c861a2b2ef7801159bab5b0fa341e1e8edd
+    commit_sha: 9737932d322d3f057eec90362ef02a002f4516fc
     verify_baseline_failures: []
   - name: hub-mode-evidence
     state: pending
