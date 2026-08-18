@@ -38,12 +38,18 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 - A new stdlib-only `internal/standalonestate` package owning the `hash8` + per-OS `<state>` directory derivation, plus its `doc.go` and tests.
 - A new `stencilstore.ModeFor(dev bool) Mode` helper — the single mapping site from "is this a dev build" to `stencilstore.Mode` — plus its test.
 - A drift guard in `tools/deploy`'s existing `main_test.go` pinning the ldflags `-X` path against `internal/buildinfo`'s symbol.
-- `cmd/lyx/stencilseed.go`: drops its own `buildChannel` variable in favour of `buildinfo`, and gates `seedStencils` on the tier-1-AND-tier-2 wiring predicate.
+- `cmd/lyx/stencilseed.go`: drops its own `buildChannel` variable in favour of `buildinfo`, and gates `seedStencils` on **`preflight.HubPresent`**.
+  Not `preflight.Wired` — the wiring predicate is the T7/T8 hub-mode trigger and is explicitly rejected for this gate, because it would stop seeding in a real hub whenever cwd is `<hub>/_board` or an unpaired worktree. See the `seed-gate-…` Decision.
 - `tools/deploy/main.go:62`: the ldflags path repointed from `-X main.buildChannel=dev` to `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`.
 - `CONSTRAINTS.md`: two new leaf invariants (`Buildinfo Leaf Invariant`, `Standalonestate Leaf Invariant`), each with a mechanical enforcement test.
-- Docs in the same commit: `doc.go` for each new package, three rows in `docs/overview.md`'s directory tree, the shared-infrastructure sentence at `docs/overview.md:315`, and three bullets under `docs/shared-libs/README.md`'s **`## Implementation-only libraries`** section.
-  Not `## Libraries` — that section's contract is one dedicated `<name>.md` doc file per entry, and all three of these are documented in their own `doc.go`, exactly as `internal/modelspec` and `internal/state` already are.
+- Docs in the same commit: `doc.go` for each of the three new packages, three rows in `docs/overview.md`'s directory tree, and **two** bullets — `internal/buildinfo` and `internal/standalonestate` only — under `docs/shared-libs/README.md`'s `## Implementation-only libraries` section.
+  Not `## Libraries`: that section's contract is one dedicated `<name>.md` doc file per entry, and both of these are documented in their own `doc.go`, exactly as `internal/modelspec` and `internal/state` already are.
   No new `.md` files under `docs/shared-libs/` are created by this task.
+- **`internal/preflight` deliberately does not go in `docs/shared-libs/README.md` at all** — it gets the `docs/overview.md` tree row and its `doc.go`, and nothing else.
+  That file's stated line is that a shared lib "does one mechanical thing … carries *no* domain logic" (`README.md:7-9`), and `preflight` carries orchestrator precondition *policy*: which checks constitute readiness, how a failure is classified, what blocks a downstream seed read.
+  Listing it beside `fsx` and `lock` would quietly redefine what that section means.
+  `buildinfo` (read a stamped string) and `standalonestate` (hash a path, pick a directory) are mechanical in exactly the intended sense and belong there.
+  Correspondingly, `docs/overview.md:315`'s shared-infrastructure sentence gains `internal/buildinfo` and `internal/standalonestate`, not `internal/preflight`.
 
 **Out:**
 
@@ -108,7 +114,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   Gating the seed on `Ready` would therefore silently stop stencil seeding in three real-hub situations, which is a regression this task has no mandate for — it is here to close the fictional-hub write, not to narrow a working path.
   The honest precondition for the seed is the one `HubPresent` states: the write targets `<hub>/_board/_lyx/stencils`, so the thing that must exist is `<hub>/_board/_lyx`.
   That predicate is true in all three real-hub cases above and false in a plain downloaded repo at `/x/repo` (where `HubPath` is the fiction `/x` and `/x/_board/_lyx` does not exist), so it closes the defect and narrows nothing.
-  It is structurally the same cheap hub predicate `fabricengine`'s own `looksLikeHub` (`clone.go:641`) already uses internally — reused in spirit rather than by export, since widening `fabricengine`'s API is out of scope for this task.
+  It is structurally the same cheap hub predicate `fabricengine`'s own `looksLikeHub` (`clone.go:645`) already uses internally — reused in spirit rather than by export, since widening `fabricengine`'s API is out of scope for this task.
   Both predicates cost zero process spawns, which is what makes either viable before every single command.
   The full tier-2 set is wrong for *this* gate on two counts.
   `Clean` spawns `git status` on both sides of the pair, and `seedStencils` runs before every single `lyx` command via `EnableTraverseRunHooks` — that is a per-invocation regression on every command in the CLI.
@@ -205,7 +211,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   This is a property of `path/filepath`, not something the seam can or should fight.
   The Windows-row assertion is therefore built with the same `filepath.Join(localAppData, "lyx", hash8)` the implementation uses — never a literal backslash string, which would pass only on Windows and fail everywhere else.
   What the test pins is that the Windows branch consults `localAppData` (and the POSIX branch does not), plus the case fold; the separator is left to `filepath`.
-  This is the same `export_test.go` idiom `internal/loomengine/export_test.go` already uses for `CheckResolvedForTest`.
+  (`internal/loomengine/export_test.go`'s `CheckResolvedForTest` is the in-repo precedent for *injecting a seam a test needs* — reference only. It is not replicated here: `loomengine` needs a shim because its integration tests must be an external package to avoid the `hubforge` cycle, and `standalonestate`'s do not.)
 - **Rejected.**
   *`Derive` also doing `os.MkdirAll`* — a pure derivation is testable with no filesystem and no cleanup, and the consumer that actually writes there (T7/T8) is better placed to decide when the directory should exist.
   *Reading `runtime.GOOS` and `os.Getenv` directly with `t.Setenv`-driven tests* — `t.Setenv` handles the env vars but cannot change `runtime.GOOS`, so half the table stays untested.
@@ -264,7 +270,7 @@ That makes the blast radius of the signature work small, and it means the integr
   `Ready` is a one-line `os.Stat` of the paired sibling directory whose name the Fabric Vocabulary Invariant forbids `internal/preflight` from spelling — call `Ready`, never that helper, and see the Constraints section.
 - `internal/lyxcwd`: `Resolve(cwd)`, `ErrNotAGitRepo`, `CwdFrom(ctx)`, and — as the semantic reference for `standalonestate`, not as an import — `normalizePath`/`samePath` (`anchor.go:112-129`).
 - `internal/tokenvocab/leaf_enforcement_test.go` — copy this file's structure for both new leaf enforcement tests; it is the current idiom (`go/parser`, `parser.ImportsOnly`, allowlist map, stdlib-by-first-segment heuristic).
-- `internal/loomengine/export_test.go` — the `export_test.go` shim idiom, for both `preflight` and `standalonestate`.
+- `internal/loomengine/export_test.go` — reference only, for the external-test-package shape it demonstrates. This task adds no `export_test.go`; `preflight`'s seams are exported and `standalonestate`'s tests are in-package.
 - `internal/hubgeom/doc.go` — the told-geometry vocabulary and tone the new `doc.go` files should match.
 
 **Gotchas.**
@@ -288,7 +294,8 @@ That makes the blast radius of the signature work small, and it means the integr
 - New `cmd/lyx` test files must respect the Test Tier Purity Invariant — the plain-repo gate test spawns git, so it needs a `//go:build integration` first line, and `cmd/lyx` already has a `TestMain` for the Hermetic Git Test Environment Invariant.
 - `internal/preflight` and `internal/standalonestate` both need their package name checked against nothing existing — `ls internal/` confirms neither name is taken.
 
-**Docs to touch (same commit, per `CLAUDE.md`).** `docs/overview.md`'s directory tree around lines 228-244 (add three rows, alongside `internal/hubgeom`, `internal/modelspec`, `internal/tokenvocab`) and its shared-infrastructure sentence at line 315; `docs/shared-libs/README.md`'s `## Implementation-only libraries` section (**not** `## Libraries` — see the Scope bullet, which is authoritative for this).
+**Docs to touch (same commit, per `CLAUDE.md`).** `docs/overview.md`'s directory tree around lines 228-244 (add three rows, alongside `internal/hubgeom`, `internal/modelspec`, `internal/tokenvocab`) and its shared-infrastructure sentence at line 315 (which gains `buildinfo` and `standalonestate` only); `docs/shared-libs/README.md`'s `## Implementation-only libraries` section, two bullets, again `buildinfo` and `standalonestate` only.
+See the Scope bullets, which are authoritative for both the section choice and `preflight`'s deliberate absence.
 `manifest/designs/producers-standalone.md` itself is deleted by T10, not edited here.
 
 ## Constraints
