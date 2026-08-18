@@ -1,8 +1,8 @@
-// hubscratch_test.go covers fabricengine.HubScratchDir and reed's own log-dir idempotency against it.
-// It is an external test package because it imports both fabricengine and reedengine, which an
-// in-package (package fabricengine) file cannot do without closing the fabricengine[test] ->
-// reedengine -> fabricengine cycle — clone_test.go's own header comment documents the same
-// constraint from the in-package side.
+// hubscratch_test.go covers fabricengine.HubScratchDir and fabricengine.HubLogsDir's own
+// idempotency against it.
+// It is an external test package because clone_test.go's own header comment documents the same
+// import-cycle constraint from the in-package side; keeping this file as package fabricengine_test
+// rather than folding it back into an in-package file is deliberate and out of scope to change.
 // It adds no TestMain: the package shares the single one testmain_test.go declares for the whole
 // fabricengine test binary.
 
@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // TestHubScratchDir_IsBoardAnchored asserts that fabricengine.HubScratchDir(hub) equals
@@ -54,20 +53,33 @@ func TestHubScratchDir_IgnoresAnchorRel(t *testing.T) {
 	}
 }
 
-// TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx asserts the second half of the
-// hub-scratch-move batch's coverage: reedengine's own idempotent os.MkdirAll(HubLogsDir(...))
-// boot-path call still succeeds, twice in a row, when fabricengine.HubScratchDir(hubPath) already
-// exists as a real directory — the shape CloneHub now produces at <hub>/_board/.lyx.
+// TestHubLogsDir_IsHubScratchDirLogsSubdir asserts that fabricengine.HubLogsDir(hub) equals
+// filepath.Join(fabricengine.HubScratchDir(hub), "logs") for a synthetic hub path — the derivation
+// HubLogsDir's own doc comment states.
+func TestHubLogsDir_IsHubScratchDirLogsSubdir(t *testing.T) {
+	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-HUB")
+
+	got := fabricengine.HubLogsDir(hub)
+	want := filepath.Join(fabricengine.HubScratchDir(hub), "logs")
+	if got != want {
+		t.Errorf("HubLogsDir(%q) = %q; want %q", hub, got, want)
+	}
+}
+
+// TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx asserts the second half of the
+// hub-scratch-move batch's coverage: reed's boot path's idempotent
+// os.MkdirAll(fabricengine.HubLogsDir(...)) call still succeeds, twice in a row, when
+// fabricengine.HubScratchDir(hubPath) already exists as a real directory — the shape CloneHub now
+// produces at <hub>/_board/.lyx.
 // Moved verbatim from clone_test.go except that the pre-created directory is
 // fabricengine.HubScratchDir(hubPath) instead of the old bare <hub>/.lyx join.
-func TestReedHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx(t *testing.T) {
+func TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx(t *testing.T) {
 	hubPath := t.TempDir()
 	if err := os.MkdirAll(fabricengine.HubScratchDir(hubPath), 0o755); err != nil {
 		t.Fatalf("mkdir HubScratchDir(%s): %v", hubPath, err)
 	}
 
-	l := &lyxcwd.Location{HubPath: hubPath}
-	logsDir := reedengine.HubLogsDir(l)
+	logsDir := fabricengine.HubLogsDir(hubPath)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		t.Fatalf("first MkdirAll(%s) = %v; want nil", logsDir, err)
 	}

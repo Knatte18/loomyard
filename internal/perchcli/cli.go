@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -140,8 +141,9 @@ Example:
 				return nil
 			}
 
-			reedEngine := reedengine.New(reedCfg, layout)
-			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), layout, shuttleCfg)
+			reedGeom := hubgeom.ReedGeometry(layout)
+			reedEngine := reedengine.New(reedCfg, reedGeom)
+			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(layout.HubPath))
 			c.runner = runner
 			c.perchCfg = perchCfg

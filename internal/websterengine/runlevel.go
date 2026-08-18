@@ -527,7 +527,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	runState, _, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout, st.MasterStrand)
+	runState, _, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout.AnchorPath(), st.MasterStrand)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve spawned master run: %w", err)
 	}

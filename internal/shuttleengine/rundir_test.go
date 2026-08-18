@@ -11,38 +11,38 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 func TestRunDirRoot_DefaultUsesDotLyxShuttle(t *testing.T) {
-	// AnchorRel is a real subpath here so the default branch's AnchorPath
-	// anchoring (as opposed to WorktreePath) is actually observable.
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`), AnchorRel: filepath.Join("sub", "dir")}
-	got := runDirRoot(Config{}, layout)
-	want := filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle")
+	// anchorPath is a real subpath of a worktree root here so the default
+	// branch's anchor-path anchoring (as opposed to a worktree-root anchoring)
+	// is actually observable.
+	anchorPath := filepath.Join(`C:\worktree`, "sub", "dir")
+	got := runDirRoot(Config{}, anchorPath)
+	want := filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}
 }
 
 func TestRunDirRoot_RelativeResolvesAgainstAnchorRoot(t *testing.T) {
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`)}
-	got := runDirRoot(Config{RunDir: "custom-runs"}, layout)
-	want := filepath.Join(layout.AnchorPath(), "custom-runs")
+	anchorPath := `C:\worktree`
+	got := runDirRoot(Config{RunDir: "custom-runs"}, anchorPath)
+	want := filepath.Join(anchorPath, "custom-runs")
 	if got != want {
 		t.Errorf("runDirRoot() = %q, want %q", got, want)
 	}
 }
 
 func TestRunDirRoot_AbsoluteUsedVerbatim(t *testing.T) {
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(`C:\worktree`), WorktreeName: filepath.Base(`C:\worktree`)}
+	anchorPath := `C:\worktree`
 	// An OS-absolute RunDir must be returned verbatim, never re-joined against
-	// WorktreeRoot. t.TempDir() yields an absolute path on any host (a
+	// anchorPath. t.TempDir() yields an absolute path on any host (a
 	// drive-rooted path on Windows, a /… path on POSIX), so the test is not
 	// tied to one OS's notion of "absolute".
 	abs := filepath.Join(t.TempDir(), "runs")
-	got := runDirRoot(Config{RunDir: abs}, layout)
+	got := runDirRoot(Config{RunDir: abs}, anchorPath)
 	if got != abs {
 		t.Errorf("runDirRoot() = %q, want %q", got, abs)
 	}

@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // TestSmokeDebugLog arms debug_log via LYX_REED_DEBUG and checks log rotation.
@@ -37,7 +37,7 @@ func TestSmokeDebugLog(t *testing.T) {
 		RunCLI(&buf, []string{"down"})
 	})
 
-	logsDir := reedengine.HubLogsDir(h.Location)
+	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		t.Fatalf("mkdir fake logs dir: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestSmokeDebugLog_RepeatedCrashBootsBoundServerClientAndOutLogs(t *testing.
 		RunCLI(&buf, []string{"down"})
 	})
 
-	logsDir := reedengine.HubLogsDir(h.Location)
+	logsDir := fabricengine.HubLogsDir(h.Location.HubPath)
 
 	var out bytes.Buffer
 	if code := RunCLI(&out, []string{"up"}); code != 0 {

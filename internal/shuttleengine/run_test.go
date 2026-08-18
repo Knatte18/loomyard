@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
@@ -22,19 +21,24 @@ import (
 
 // newTestRunner returns a Runner over reed/engine scoped to a fresh temp
 // worktree, with tuning knobs small enough that any later Wait-driving test
-// built on top of it runs fast.
-func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (*Runner, *lyxcwd.Location) {
+// built on top of it runs fast. anchorPath and worktreeRoot are distinct
+// values (never the same temp dir twice) so a swapped NewRunner argument
+// pair fails a test rather than passing.
+func newTestRunner(t *testing.T, reed ReedOps, engine Engine) (runner *Runner, anchorPath, worktreeRoot string) {
 	t.Helper()
-	root := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
+	worktreeRoot = t.TempDir()
+	anchorPath = filepath.Join(worktreeRoot, "sub", "dir")
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1, LivenessEveryNPolls: 1}
-	return NewRunner(reed, engine, layout, cfg), layout
+	return NewRunner(reed, engine, anchorPath, worktreeRoot, cfg), anchorPath, worktreeRoot
 }
 
 func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}}
-	runner, _ := newTestRunner(t, reed, engine)
+	runner, _, _ := newTestRunner(t, reed, engine)
 
 	spec := Spec{
 		Prompt:      "do the thing",
@@ -81,7 +85,7 @@ func TestRunner_Start_HappyPath_WiresAddSpecVerbatim(t *testing.T) {
 func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T) {
 	reed := &fakeReed{}
 	engine := &fakeEngine{}
-	runner, _ := newTestRunner(t, reed, engine)
+	runner, _, _ := newTestRunner(t, reed, engine)
 
 	if _, err := runner.Start(Spec{}); err == nil {
 		t.Fatal("Start() = nil error, want validation error for empty spec")
@@ -97,13 +101,13 @@ func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T
 func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 	reed := &fakeReed{AddStrandErr: fmt.Errorf("boom")}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
-	runner, layout := newTestRunner(t, reed, engine)
+	runner, anchorPath, _ := newTestRunner(t, reed, engine)
 
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error, want AddStrand failure to propagate")
 	}
 
-	root := runDirRoot(runner.cfg, layout)
+	root := runDirRoot(runner.cfg, anchorPath)
 	entries, rerr := os.ReadDir(root)
 	if rerr != nil && !os.IsNotExist(rerr) {
 		t.Fatalf("read run dir root: %v", rerr)
@@ -129,7 +133,7 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 			}
 		},
 	}
-	runner, layout := newTestRunner(t, reed, engine)
+	runner, anchorPath, _ := newTestRunner(t, reed, engine)
 
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err == nil {
 		t.Fatal("Start() = nil error, want save-run-state failure to propagate")
@@ -145,7 +149,7 @@ func TestRunner_Start_SaveRunStateFailure_RemovesStrandAndRunDir(t *testing.T) {
 		t.Errorf("RemoveStrand(strand-1, false) not recorded after save-state failure; strand leaked. calls = %+v", reed.RemoveStrandCalls)
 	}
 
-	root := runDirRoot(runner.cfg, layout)
+	root := runDirRoot(runner.cfg, anchorPath)
 	entries, rerr := os.ReadDir(root)
 	if rerr != nil && !os.IsNotExist(rerr) {
 		t.Fatalf("read run dir root: %v", rerr)
@@ -160,22 +164,25 @@ func TestRunner_Start_SweepErrorDoesNotBlockStart(t *testing.T) {
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
 	worktree := t.TempDir()
-	// AnchorRel is a real subpath here so reed's AnchorPath-anchored state
-	// lookup (as opposed to WorktreePath) is actually observable.
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: filepath.Join("sub", "dir")}
+	// anchorPath is a real subpath of worktree here so reed's anchor-anchored
+	// state lookup (as opposed to worktreeRoot) is actually observable.
+	anchorPath := filepath.Join(worktree, "sub", "dir")
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
 	// Seed a corrupt reed.json so reedengine.LoadState errors during Start's
 	// opportunistic orphan sweep — Start must log and continue rather than
 	// fail the whole run over a housekeeping error.
-	if err := os.MkdirAll(filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(anchorPath, lyxdirs.DotLyxDirName), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
 		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 
-	runner := NewRunner(reed, engine, layout, cfg)
+	runner := NewRunner(reed, engine, anchorPath, worktree, cfg)
 	run, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}})
 	if err != nil {
 		t.Fatalf("Start() error: %v, want sweep failure to be non-blocking", err)
@@ -194,24 +201,23 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "sess"}}
 
 	worktree := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 
-	if err := os.MkdirAll(filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(worktree, lyxdirs.DotLyxDirName), 0o755); err != nil {
 		t.Fatalf("mkdir .lyx: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(worktree, lyxdirs.DotLyxDirName, "reed.json"), []byte("not json"), 0o644); err != nil {
 		t.Fatalf("seed corrupt reed.json: %v", err)
 	}
 
 	// An old, kept run dir (as an asking/died/timeout outcome would leave
 	// behind) whose strand is not in reed.json's live set — because reed.json
 	// itself is unreadable, not because the strand is genuinely gone.
-	shuttleRoot := runDirRoot(cfg, layout)
+	shuttleRoot := runDirRoot(cfg, worktree)
 	keptDir := seedRun(t, shuttleRoot, "kept-run", "some-other-strand")
 	setDirMTime(t, keptDir, time.Now(), 10*time.Minute)
 
-	runner := NewRunner(reed, engine, layout, cfg)
+	runner := NewRunner(reed, engine, worktree, worktree, cfg)
 	if _, err := runner.Start(Spec{Prompt: "x", OutputFiles: []string{"out.md"}}); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
@@ -226,9 +232,9 @@ func TestRunner_Start_SweepSkipsEntirelyOnReedStateReadError(t *testing.T) {
 // runner.reed and runner.engine through run.state.StrandGUID.
 func newInterruptTestRun(t *testing.T, reed ReedOps, engine Engine) *Run {
 	t.Helper()
-	root := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
-	runner := NewRunner(reed, engine, layout, Config{})
+	anchorPath := t.TempDir()
+	worktreeRoot := t.TempDir()
+	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, Config{})
 	return &Run{
 		runner: runner,
 		state:  RunState{StrandGUID: "strand-1"},

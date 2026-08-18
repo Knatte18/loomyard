@@ -3,7 +3,7 @@
 // a plain anchor string rather than a *lyxcwd.Location), to the anchoring table the overview's Shared
 // Decisions record: there is no single base.
 // It lives in cmd/lyx because this is the only package that may import every owning module at once
-// (loomengine, websterengine, perchengine, scoutengine, pattern, logger, reedengine,
+// (loomengine, websterengine, perchengine, scoutengine, pattern, logger, fabricengine,
 // planparser).
 // Every case here is pure filepath.Join arithmetic -- no subprocess is spawned and no fixture tree
 // is copied -- so this file stays untagged, per the Test Tier Purity Invariant.
@@ -15,7 +15,7 @@
 // filepath.Join computed independently in this file.
 // For the subpath-anchored fixture, every worktree-level constructor -- the _lyx-durable group and
 // the .lyx group alike -- moves down by AnchorRel, since this batch re-anchors the whole .lyx group
-// onto AnchorPath; only reedengine.HubLogsDir (hub-anchored through the board, one server per hub)
+// onto AnchorPath; only fabricengine.HubLogsDir (hub-anchored through the board, one server per hub)
 // stays byte-identical.
 //
 // As of this batch there are two groups, not three: the _lyx-durable group, and the .lyx group in
@@ -32,6 +32,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -39,7 +40,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -101,7 +101,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 
 	// HubPath-anchored through the board: HubLogsDir alone, so one reed server per hub
 	// resolves to one deterministic place.
-	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, "_board", ".lyx", "logs"))
+	assertPath(t, "fabricengine.HubLogsDir", fabricengine.HubLogsDir(l.HubPath), filepath.Join(hub, "_board", ".lyx", "logs"))
 }
 
 // TestConstructorAnchoring_SubpathAnchored asserts the anchor-aware move: every worktree-level
@@ -156,7 +156,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// Hub-anchored through the board: stays byte-identical, ignoring AnchorRel entirely.
-	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, "_board", ".lyx", "logs"))
+	assertPath(t, "fabricengine.HubLogsDir", fabricengine.HubLogsDir(l.HubPath), filepath.Join(hub, "_board", ".lyx", "logs"))
 
 	// Regression guard for the two-roots bug this whole re-anchoring exists
 	// to remove: every worktree-level .lyx constructor's result must have

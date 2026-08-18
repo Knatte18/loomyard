@@ -1,7 +1,7 @@
 // rundir.go implements the per-run directory lifecycle: minting a run id, resolving the run-dir
-// root from Config/lyxcwd, persisting a run's RunState as run.json, looking a run up by its owning
-// strand guid, and sweeping orphaned run dirs left behind when a strand no longer exists in reed
-// state.
+// root from Config and a told anchor path, persisting a run's RunState as run.json, looking a run up
+// by its owning strand guid, and sweeping orphaned run dirs left behind when a strand no longer
+// exists in reed state.
 // Everything here is pure I/O over a caller-supplied root and caller-injected guids/clock — no
 // tmux, no claude, so it is testable without either.
 
@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -37,23 +36,23 @@ func newRunID() (string, error) {
 
 // runDirRoot resolves the directory under which every run's subdirectory is
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
-// against layout.AnchorPath(), an already-absolute value is used verbatim.
+// against anchorPath, an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
-// filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle"): the
+// filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle"): the
 // ephemeral, machine-local .lyx tree, built from lyxdirs.DotLyxDirName, never
 // a literal ".lyx" inline.
-// Both branches share layout.AnchorPath() as their base deliberately: one
+// Both branches share anchorPath as their base deliberately: one
 // function must never resolve against two different bases when
-// AnchorRel != ".", or a subpath-anchored repo would end up with two
+// the repo is subpath-anchored, or a subpath-anchored repo would end up with two
 // distinct run-dir roots depending on which branch a given cfg took.
-func runDirRoot(cfg Config, layout *lyxcwd.Location) string {
+func runDirRoot(cfg Config, anchorPath string) string {
 	if cfg.RunDir == "" {
-		return filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle")
+		return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir
 	}
-	return filepath.Join(layout.AnchorPath(), cfg.RunDir)
+	return filepath.Join(anchorPath, cfg.RunDir)
 }
 
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.
@@ -143,12 +142,12 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 }
 
 // FindRun resolves guid to the RunState and run directory of the shuttle run whose strand it names,
-// deriving the run directory root from cfg/layout the same way Start does.
+// deriving the run directory root from cfg/anchorPath the same way Start does.
 // This is how the CLI's interrupt/send verbs (and any other out-of-process caller) turn an
 // operator-supplied guid into the run they need to act on, confirming the guid actually names a
 // shuttle run before ever touching reed.
-func FindRun(cfg Config, layout *lyxcwd.Location, guid string) (RunState, string, error) {
-	return findRunByStrand(runDirRoot(cfg, layout), guid)
+func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
+	return findRunByStrand(runDirRoot(cfg, anchorPath), guid)
 }
 
 // sweepOrphans removes every run directory under root whose run.json names

@@ -11,6 +11,7 @@ import (
 	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -80,7 +81,8 @@ strands, plus rendering their layout on every mutation.`,
 				return nil
 			}
 
-			c.eng = reedengine.New(cfg, layout)
+			reedGeom := hubgeom.ReedGeometry(layout)
+			c.eng = reedengine.New(cfg, reedGeom)
 			return nil
 		},
 	}

@@ -5,10 +5,7 @@
 package shuttleengine
 
 import (
-	"path/filepath"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newInjectTestRunner returns a Runner over reed/engine, with a run seeded
@@ -17,12 +14,12 @@ import (
 // Run handle to draw StrandGUID from and must resolve it from run.json.
 func newInjectTestRunner(t *testing.T, reed ReedOps, engine Engine, guid string) *Runner {
 	t.Helper()
-	root := t.TempDir()
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}
+	anchorPath := t.TempDir()
+	worktreeRoot := t.TempDir()
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
-	runner := NewRunner(reed, engine, layout, cfg)
+	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
 	if guid != "" {
-		seedRun(t, runDirRoot(cfg, layout), "run-1", guid)
+		seedRun(t, runDirRoot(cfg, anchorPath), "run-1", guid)
 	}
 	return runner
 }

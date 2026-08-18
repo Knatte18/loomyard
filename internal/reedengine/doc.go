@@ -17,6 +17,12 @@
 // computing a layout; render never imports reedengine, so the import graph
 // stays acyclic (reedcli -> reedengine -> render).
 //
+// reedengine is told its geometry as a Geometry value (geometry.go) and
+// derives none of it. internal/lyxcwd and internal/fabricengine are
+// consequently absent from this package's production imports;
+// hubgeom.ReedGeometry is the hub-mode teller that builds a Geometry from a
+// resolved *lyxcwd.Location for every hub-mode caller.
+//
 // One additional invariant this package enforces: exactly one named tmux
 // server per hub. The server name is derived deterministically from the hub
 // path (ServerName), so every worktree under the same hub locates and shares

@@ -16,8 +16,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newIntegrationEngine builds an Engine rooted at a fresh t.TempDir() hub, with
@@ -47,8 +45,16 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	// wants to exercise, rather than relying on LYX_REED_MOUSE env plumbing.
 	cfg.Mouse = mouse
 
-	layout := &lyxcwd.Location{HubPath: hubDir, WorktreeName: filepath.Base(worktreeDir), AnchorRel: "."}
-	e := New(cfg, layout)
+	geom := Geometry{
+		SocketKey:    ServerName(hubDir),
+		SessionName:  SessionName(worktreeDir),
+		AnchorPath:   worktreeDir,
+		WorktreeRoot: worktreeDir,
+		LogsDir:      filepath.Join(hubDir, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hubDir,
+	}
+	e := New(cfg, geom)
 
 	t.Cleanup(func() {
 		// Always torn down, success or failure: a leaked scratch server on a
@@ -123,7 +129,7 @@ func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 	// layout and cfg (with Mouse overridden) rather than a fresh temp dir.
 	cfg2 := e1.cfg
 	cfg2.Mouse = "on"
-	e2 := New(cfg2, e1.layout)
+	e2 := New(cfg2, e1.geom)
 	if _, err := e2.Up(); err != nil {
 		t.Fatalf("second Up() against the already-up session: %v", err)
 	}

@@ -21,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -177,9 +178,10 @@ Verbs:
 				return nil
 			}
 
-			reedEngine := reedengine.New(reedCfg, layout)
+			reedGeom := hubgeom.ReedGeometry(layout)
+			reedEngine := reedengine.New(reedCfg, reedGeom)
 			claudeEngine := claudeengine.New()
-			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, layout, shuttleCfg)
+			runner := shuttleengine.NewRunner(reedEngine, claudeEngine, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 
 			c.runner = runner
 			c.starter = runner

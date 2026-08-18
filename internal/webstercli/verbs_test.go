@@ -250,7 +250,7 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	reed := &verbsFakeReed{}
 	engine := &verbsFakeEngine{}
 	shuttleCfg := shuttleengine.Config{RunDir: filepath.Join(t.TempDir(), "runs"), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, layout.AnchorPath(), layout.WorktreePath(), shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
