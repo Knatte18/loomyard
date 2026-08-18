@@ -9,7 +9,9 @@ package shuttlecli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -282,5 +284,74 @@ func TestRunCLI_Send_ArgValidation(t *testing.T) {
 				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
 			}
 		})
+	}
+}
+
+// preparingEngine is a hermetic Engine double that Prepares successfully and never becomes ready,
+// so a Runner built over it reaches Wait — where statusFailingReed's error drives the
+// mechanism-failure path the identity envelope below is about.
+type preparingEngine struct{ specCapturingEngine }
+
+func (e *preparingEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	e.gotSpec = spec
+	return shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"}, nil
+}
+
+// statusFailingReed registers a strand, then fails every Status the way a torn-down reed session
+// does — the live shape that produced this finding.
+type statusFailingReed struct{ noopReed }
+
+func (statusFailingReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{GUID: "strand-1"}, nil
+}
+
+func (statusFailingReed) Status() (reedengine.StatusResult, error) {
+	return reedengine.StatusResult{}, errors.New(`no reed session; run "lyx reed up"`)
+}
+
+// TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity pins that a run which fails after its
+// strand registered still names the strand, session, and run directory in its error envelope.
+// Reproduced live before this: tearing the reed session down under an in-flight run answered with
+// the bare error and no handle at all, while the run directory was still on disk and the strand
+// possibly still live — nothing left for the operator to attach to or tear down.
+func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
+	anchorPath := t.TempDir()
+	worktreeRoot := filepath.Dir(anchorPath)
+	runner := shuttleengine.NewRunner(statusFailingReed{}, &preparingEngine{}, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+
+	c := &shuttleCLI{runner: runner}
+	cmd := c.runCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--prompt", "do the thing", "--output-file", filepath.Join(anchorPath, "never-written.md")})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("parse envelope: %v; output: %s", err, out.String())
+	}
+	if ok, _ := envelope["ok"].(bool); ok {
+		t.Fatalf("envelope ok = true; want false for a mechanism failure; output: %s", out.String())
+	}
+	if got, _ := envelope["guid"].(string); got != "strand-1" {
+		t.Errorf("envelope guid = %q; want %q; output: %s", got, "strand-1", out.String())
+	}
+	if got, _ := envelope["sessionId"].(string); got != "session-1" {
+		t.Errorf("envelope sessionId = %q; want %q; output: %s", got, "session-1", out.String())
+	}
+	if got, _ := envelope["runDir"].(string); got == "" {
+		t.Errorf("envelope runDir is empty; want the run dir that is still on disk; output: %s", out.String())
+	}
+}
+
+// TestIdentityFields_NilBeforeAnyStrandExists pins the other half: a failure BEFORE a strand
+// existed (a flag, config, or spec-validation error) must not decorate its envelope with three
+// empty strings.
+func TestIdentityFields_NilBeforeAnyStrandExists(t *testing.T) {
+	if got := identityFields(shuttleengine.Result{}); got != nil {
+		t.Errorf("identityFields(zero Result) = %v; want nil", got)
 	}
 }

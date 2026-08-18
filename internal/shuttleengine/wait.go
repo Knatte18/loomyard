@@ -53,6 +53,18 @@ const maxStatusRetries = 2
 
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
+//
+// An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
+// empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
+// so the run directory is still on disk and the strand may still be registered, and without those
+// three the caller cannot diagnose, resume, or tear down what it started.
+// Reproduced live: tearing the reed session down under an in-flight run returned reed's
+// no-session error and, before this, a wholly zero Result.
+//
+// It is deliberately NOT reclassified as OutcomeDied. reed returns the same untyped error for its
+// foreign-session refusal — a renamed worktree or a copied .lyx, where the run may well be alive
+// under another session — and reed exposes no sentinel that tells the two apart, so guessing "died"
+// would report a live agent as dead.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -72,7 +84,7 @@ func (run *Run) Wait() (Result, error) {
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
-				return Result{}, fmt.Errorf("shuttle: events file unreadable after %d attempts: %w", maxEventsReadRetries, err)
+				return run.identity(), fmt.Errorf("shuttle: events file unreadable after %d attempts: %w", maxEventsReadRetries, err)
 			}
 		} else {
 			eventsFailures = 0
@@ -86,7 +98,7 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
-					return Result{}, fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
+					return run.identity(), fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
 				}
 			} else {
 				statusFailures = 0
@@ -244,6 +256,17 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 	return "", nil
 }
 
+// identity returns the run's identifying fields with an empty Outcome: what Wait hands back
+// alongside a mechanism-failure error, so the caller keeps the handles it needs to diagnose,
+// resume, or tear down a run that reached no classification.
+func (run *Run) identity() Result {
+	return Result{
+		SessionID:  run.state.SessionID,
+		StrandGUID: run.state.StrandGUID,
+		RunDir:     run.runDir,
+	}
+}
+
 // finalize builds run's terminal Result and performs cleanup for OutcomeDone.
 // For fork mode, audits fork subagents and attaches the result.
 //
@@ -265,7 +288,9 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	if outcome == OutcomeDone && run.spec.ForkSubagents {
 		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.anchorPath)
 		if err != nil {
-			return Result{}, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
+			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the identity is
+			// the caller's only route back to a strand and run dir that are both still there.
+			return run.identity(), fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
 		}
 		result.ForkAudit = &audit
 	}

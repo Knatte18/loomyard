@@ -16,6 +16,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// identityFields returns the error-envelope fields naming the run a failed Run call had already
+// started, or nil when it failed before any strand existed (a flag, config, or validation error,
+// where every field would be empty and an all-empty-string envelope only adds noise).
+func identityFields(result shuttleengine.Result) map[string]any {
+	if result.StrandGUID == "" && result.SessionID == "" && result.RunDir == "" {
+		return nil
+	}
+	return map[string]any{
+		"guid":      result.StrandGUID,
+		"sessionId": result.SessionID,
+		"runDir":    result.RunDir,
+	}
+}
+
 // runCmd builds the `run` subcommand, validating flags and blocking on runner.Run
 // until a terminal outcome is reached. All outcomes (done/asking/died/timeout) report
 // success; only mechanism failures (flag errors, read errors, engine errors) report errors.
@@ -114,7 +128,12 @@ the provider default.`,
 
 			result, err := c.runner.Run(spec)
 			if err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				// A mechanism failure after the strand registered still carries the run's
+				// identity (see Run.Wait), and that is exactly when the operator needs it: no
+				// cleanup ran, so the run dir is still on disk and the strand may still be
+				// live. Emit those three whenever they exist rather than the bare message,
+				// which left an operator with nothing to attach to or tear down.
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, err.Error(), identityFields(result)))
 				return nil
 			}
 

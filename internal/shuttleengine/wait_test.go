@@ -7,6 +7,7 @@ package shuttleengine
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -114,6 +115,46 @@ func captureLoggerOutput(t *testing.T) *bytes.Buffer {
 		logger.SetOutput(os.Stderr)
 	})
 	return &buf
+}
+
+// TestRun_Wait_MechanismFailure_KeepsRunIdentity pins that a Wait which reaches no classification
+// still hands its caller the run's identity.
+// A mechanism failure is exactly when those handles matter: finalize never ran, so the run
+// directory is still on disk and the strand may still be registered, and a wholly zero Result
+// leaves the caller unable to diagnose, resume, or tear down what it started.
+// Reproduced live by tearing the reed session down under an in-flight run.
+func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
+	// A permanently failing reed.Status is the live shape (a torn-down session answers every
+	// Status the same way), so Wait gives up after maxStatusRetries consecutive failures.
+	reed := &fakeReed{StatusErr: errors.New(`no reed session; run "lyx reed up"`)}
+	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	runDir := t.TempDir()
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{filepath.Join(runDir, "out.md")}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: filepath.Join(runDir, "events.jsonl")},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err == nil {
+		t.Fatal("Wait() = nil error, want the consecutive-status-failure mechanism error")
+	}
+	if result.Outcome != "" {
+		t.Errorf("Outcome = %q; want empty — a mechanism failure reached no classification", result.Outcome)
+	}
+	if result.StrandGUID != "strand-1" {
+		t.Errorf("StrandGUID = %q; want %q, so the caller can still reach the strand", result.StrandGUID, "strand-1")
+	}
+	if result.SessionID != "session-1" {
+		t.Errorf("SessionID = %q; want %q, so the caller can still resume the session", result.SessionID, "session-1")
+	}
+	if result.RunDir != runDir {
+		t.Errorf("RunDir = %q; want %q, so the caller can still diagnose and clean up the run dir", result.RunDir, runDir)
+	}
 }
 
 // TestRun_Wait_LogsTeardownThroughLogger pins the teardown half of the Live-Substrate Spawn
