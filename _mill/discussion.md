@@ -24,7 +24,10 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 
 - `internal/burlercli` — a new `wiring.go` (`wire`/`wireHub`/`wireStandalone`), `cli.go` reduced to cwd + one `preflight.HubPresent` probe + delegation, two new persistent flags, and a `Long` that documents the two modes.
 - `internal/perchcli` — the same, plus removing `c.layout` from the receiver and rerouting `run.go`'s three `c.layout` uses onto told values.
-- `internal/standalonegeom` — new `BurlerGeometry(target, stateDir)` and `PerchGeometry(target, stateDir)` builders, siblings of the existing `ReedGeometry`/`WebsterGeometry`.
+- `internal/standalonegeom` — new `BurlerGeometry(target, stateDir)` and `PerchGeometry(target, stateDir)` builders, siblings of the existing `ReedGeometry`/`WebsterGeometry`, plus the `StencilsDir(stateDir)` helper.
+- `internal/preflight` — additive `ResolveMode(cwd)`, the three-way trigger that refuses on a non-`ErrNotAGitRepo` resolve failure instead of degrading (see the mode-trigger part 2 decision).
+- `internal/webstercli` — **narrowly**: `resolvePersistentPreRun` repointed onto `ResolveMode`, and its wiring test gains the refuse row.
+  Nothing else in the package is touched.
 - Two new persistent flags on each of `lyx burler` and `lyx perch`: `--stencils-dir` and `--target-dir`.
 - Standalone stencils bootstrap via `stencilstore.Reconcile` for the derived default directory only.
 - Operator-visible reporting of the standalone state and stencils directories in the run verbs' JSON envelopes.
@@ -37,7 +40,7 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 - `internal/buildinfo` and `internal/standalonestate` — T5's packages, imported here, never modified here.
 - `internal/burlerengine` and `internal/perchengine` — T6 already converted both to told geometry; no signature changes remain.
 - `cmd/lyx/constructoranchoring_test.go` — already in its post-T6 told-string shape; no row this task changes.
-- `internal/webstercli` — T7's standalone entry is done and is the reference, not a target.
+- `internal/webstercli` beyond the one-line `ResolveMode` repoint named in "In" — T7's standalone entry is otherwise done and is the reference, not a target.
 - `internal/scoutcli`/`scoutengine` — that is T9, optional and independent.
 - The three-tier `CONSTRAINTS.md` invariant, `docs/overview.md`, and `manifest/roadmap.md` — T10's consolidation.
 - A `--plan-dir` flag — webster-only; burler and perch parse no plan.
@@ -55,20 +58,49 @@ This task is therefore substantially a mirroring exercise, not a design exercise
   Keying mode selection on `Ready` would route all three to standalone and silently relocate a live hub's state into the per-OS state directory: strictly worse than the misclassification it would be avoiding.
   `HubPresent` (a `lyxcwd.Resolve` plus one `os.Stat` of `<hub>/_board/_lyx`) asks the honest question — does a hub-level directory exist for this write to target — and still routes a plain downloaded repo to standalone, which was the hazard the split was built for.
   It also addresses the brief's "a wired-but-broken hub is refused, never silently degraded to standalone" requirement by a different mechanism: a damaged hub stays in hub mode and fails loudly at the point of use.
-  **Residual class, recorded rather than claimed away:** `HubPresent` stats `<hub>/_board/_lyx` and nothing else, so a hub damaged *precisely there* — that directory missing while the rest of the hub stands — returns false and does degrade silently to standalone.
-  The requirement is met for every damage class that leaves `<hub>/_board/_lyx` intact, which is the overwhelming majority (broken junctions, an out-of-sync weft, an unclean tree), and not for that one.
-  Widening the probe to close it is out of scope here: it would change `cmd/lyx`'s stencil-seed gate too, since both read the same predicate.
-  Recording the gap is the honest disposition; asserting the requirement is fully satisfied would not be.
+
+### mode-trigger, part 2 — a `Resolve` error that is not `ErrNotAGitRepo` refuses, never degrades
+
+- **Decision:** `preflight.HubPresent` alone is **not** a sufficient trigger, because it collapses two very different negatives.
+  Add an additive three-way resolver to `internal/preflight`:
+
+  ```go
+  // ModeHub or ModeStandalone on success; a non-nil error means refuse, never degrade.
+  func ResolveMode(cwd string) (*lyxcwd.Location, Mode, error)
+  ```
+
+  with exactly this behaviour:
+  - `lyxcwd.Resolve(cwd)` fails with `ErrNotAGitRepo` → `(nil, ModeStandalone, nil)`.
+    This is the genuine standalone target: an arbitrary folder, a Models directory, anything outside git.
+  - `lyxcwd.Resolve(cwd)` fails with **anything else** — `ErrCwdOutsideAnchor`, `ErrStaleAnchorMarker`, an `ErrInvalidAnchor`-wrapping failure → `(nil, 0, err)`, surfaced verbatim.
+    **Refuse. Never standalone.**
+  - `Resolve` succeeds and `<hub>/_board/_lyx` stats → `(loc, ModeHub, nil)`.
+  - `Resolve` succeeds and it does not → `(nil, ModeStandalone, nil)`.
+    The plain downloaded repo.
+
+  All three standalone-capable CLIs consume `ResolveMode`; `wire` gains an error return path for the refuse case rather than a third mode.
+  `preflight.HubPresent` stays exactly as it is for `cmd/lyx`'s stencil-seed gate, whose never-block-a-command contract is genuinely different from a CLI choosing how to wire itself.
+- **Rationale:** without this split the trigger has a silent, common failure mode inside *healthy* hubs.
+  `lyxcwd.Resolve` returns `ErrCwdOutsideAnchor` whenever cwd is not **exactly** the anchored directory (`internal/lyxcwd/anchor.go:95-140`) — so running `lyx burler run` from an ordinary **subdirectory** of a fully wired worktree fails `Resolve`, `HubPresent` returns false, and a `HubPresent`-only trigger would quietly start a standalone session writing into the per-OS state directory.
+  Today that same invocation produces a loud, self-describing error naming both paths and the marker file.
+  Trading a precise error for a silent relocation of state is strictly worse than the fictional-hub hazard this design was written to eliminate, and it would hit operators constantly, not rarely.
+  `ErrStaleAnchorMarker` and `ErrInvalidAnchor` are the same shape: each means "there is lyx geometry here and it is wrong", which is never an invitation to pretend there is none.
+  The residual class named in the previous round is subsumed by this: what remains is only a hub damaged precisely at `<hub>/_board/_lyx` while `Resolve` still succeeds, which degrades to standalone by design (nothing distinguishes it from a plain repo at that point) and is recorded here rather than claimed away.
+- **Scope amendment this forces, stated rather than smuggled:** `internal/preflight` gains `ResolveMode` (additive — no existing function changes), and `internal/webstercli`'s `resolvePersistentPreRun` is repointed onto it in this same commit.
+  The earlier scope-Out of `webstercli` is narrowed for exactly this reason: the mode-trigger decision rests on all three CLIs selecting modes by one rule, so fixing burler and perch alone would reintroduce the divergence that decision exists to prevent.
+  `go test ./internal/webstercli/...` and `go test -tags integration ./internal/webstercli/...` therefore join this task's verify set, and `webstercli`'s wiring test gains the refuse-case row.
+- **Rejected:** accepting the silent degrade and recording it as a residual (matches `webstercli` today, but the harm is a routine operator action losing a precise error); a CLI-local second `lyxcwd.Resolve` call in each standalone branch (duplicates the predicate in three packages, costs an extra git spawn, and leaves webster diverging); making refuse a third `Mode` value (an error is what a refusal is, and every one of these sentinels is already self-describing).
 - **Rejected:** the brief's literal `Ready`-class trigger with a `fabricengine.BoardDir(filepath.Dir(worktreeRoot))` discriminator — superseded by T5/T7, and re-implementing it here would make burler and perch select modes differently from webster in the same tree.
   Also rejected: importing `internal/fabricengine` into either CLI to reach `Ready` directly, which the design forbids outright.
 
 ### structure — a `wiring.go` per CLI, mirroring `webstercli`
 
-- **Decision:** each CLI gains `internal/<mod>cli/wiring.go` holding `func (c *<mod>CLI) wire(loc *lyxcwd.Location, hubPresent bool, cwd, stencilsDirFlag, targetDirFlag string) error`, delegating to `wireHub` and `wireStandalone`.
-  `cli.go`'s `PersistentPreRunE` becomes an extracted method `resolvePersistentPreRun` that does the group-command guard, `lyxcwd.CwdFrom`, one `preflight.HubPresent` call, and one `c.wire(...)` call.
+- **Decision:** each CLI gains `internal/<mod>cli/wiring.go` holding `func (c *<mod>CLI) wire(loc *lyxcwd.Location, mode preflight.Mode, cwd, stencilsDirFlag, targetDirFlag string) error`, delegating to `wireHub` and `wireStandalone`.
+  `cli.go`'s `PersistentPreRunE` becomes an extracted method `resolvePersistentPreRun` that does the group-command guard, `lyxcwd.CwdFrom`, one `preflight.ResolveMode` call — surfacing its error verbatim and aborting when it refuses — and one `c.wire(...)` call.
   The mode decision lives **inside** `wire`, not in `resolvePersistentPreRun`.
+  The *refusal* is the one thing that stays upstream, in `resolvePersistentPreRun`: it is a resolution verdict, not a wiring choice, and `wire` never sees the refused case at all.
 - **Rationale:** the extraction is what makes the truth-table test tier 1.
-  A test that drives the real pre-run reaches `lyxcwd.Resolve`, which spawns git through `gitexec.Run` and breaches the Test Tier Purity Invariant; a test that calls `wire` with a told `(loc, hubPresent)` pair does not.
+  A test that drives the real pre-run reaches `lyxcwd.Resolve`, which spawns git through `gitexec.Run` and breaches the Test Tier Purity Invariant; a test that calls `wire` with a told `(loc, mode)` pair does not.
   Placing the decision inside `wire` rather than upstream is precisely what lets the test drive both arms.
   Following `webstercli` byte-for-byte in shape means a reader who knows one of the three CLIs knows all three.
 - **Rejected:** keeping an inline `PersistentPreRunE` closure with an `if` — untestable at tier 1, which is the design's stated non-negotiable.
@@ -142,6 +174,8 @@ This task is therefore substantially a mirroring exercise, not a design exercise
   - `fabricengine.ScopedPathspec(c.layout.AnchorRel, ...)` (line ~334) → a told `c.anchorRel string`, `loc.AnchorRel` in hub mode and `""` in standalone.
   - `fabricengine.Open(c.layout)` (line ~344) → `c.openFabric func() (*fabricengine.Fabric, error)`, a closure in hub mode and **nil** in standalone.
   When `c.openFabric` is nil the whole block-exit fabric sync is skipped and the envelope reports `fabricCommitted: false`.
+  `perchCLI` carries the **same three reporting fields as `burlerCLI`** — `mode`, `stateDir`, `stencilsDir` — set by whichever wiring branch ran, because perch's run verb reads them off the receiver for its own envelope exactly as burler's does.
+  So perch's full post-task receiver inventory is: `burlerEngine`, `runner`, `perchCfg`, `modelReg`, `perchGeom`, `runDirBase`, `scratchDirBase`, `stencilsDir`, `anchorRel`, `openFabric`, the two flag fields, and `mode`/`stateDir` — and **no** `layout`.
 - **Rationale:** this is `webstercli`'s exact shape (`c.refMatcher` + nil `c.openFabric`), and it is what makes "no `*lyxcwd.Location` survives on the receiver" true rather than nearly true.
   Standalone has no fabric repo by construction — not a broken one, an absent one — so nil is the honest representation, and a closure that would stat-fail if called is not.
   The existing `opts.SkipGit` short-circuit stays exactly as it is: it is a separate CI/test bypass, not a mode question, and the two conditions compose.
@@ -191,13 +225,17 @@ This task is therefore substantially a mirroring exercise, not a design exercise
 ### hub mode is byte-identical
 
 - **Decision:** every hub-mode value — config base directories, `hubgeom.ReedGeometry`/`BurlerGeometry`/`PerchGeometry` outputs, `fabricengine.StencilsDir(loc.HubPath)`, `perchengine.RunsDir`/`ScratchDir` anchoring, the fabric sync's pathspec and commit message — resolves exactly as it does on `main` today.
-  Byte-identity is claimed over **resolved paths and write locations**, and there are exactly **two** intentional deviations, both named here:
+  Byte-identity is claimed over **resolved paths and write locations in a healthy, correctly-entered hub**, and there are exactly **three** intentional deviations, all named here.
+  Two of them are not hub cases at all — they are invocations that abort today:
   1. **The plain-git-repo case.** A repository with no `<hub>/_board/_lyx` beside it moves from (fictional) hub mode to standalone.
      This is the behaviour change the whole design exists to make.
-  2. **Three additive envelope fields.** `mode`/`stateDir`/`stencilsDir` appear in both modes' run-verb success envelopes (see the operator-visibility decision).
+  2. **The not-a-repository case.** A cwd outside any git repository, where the pre-run aborts today (`internal/burlercli/cli.go:68-74` and perch's equivalent), now succeeds standalone.
+     This is the headline capability, and it is listed here so the enumeration is genuinely complete rather than only covering the sibling case.
+  3. **Three additive envelope fields.** `mode`/`stateDir`/`stencilsDir` appear in both modes' run-verb success envelopes (see the operator-visibility decision).
      Output-shape only: no path resolves differently and nothing new is written in hub mode.
 
-  Any third deviation discovered during implementation is a bug in this plan, not a licence.
+  Deliberately **not** a deviation, and the reason the mode-trigger part 2 decision exists: a wrongly-entered hub — cwd is a subdirectory of a wired worktree, or the anchor marker is stale — keeps aborting exactly as it does today, with the same error.
+  Any fourth deviation discovered during implementation is a bug in this plan, not a licence.
 - **Rationale:** stated rather than smuggled, per the design.
   A wired lyx worktree is unaffected because `HubPresent` is true there.
   This must be pinned by test, since the nested-init anchoring case (`TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd`) is exactly the kind of thing a careless refactor breaks.
@@ -244,7 +282,7 @@ Reuse it as-is for both CLIs; do not re-derive.
 | `internal/burlercli/wiring.go` | new — `wire`/`wireHub`/`wireStandalone`/`resolveStandaloneTarget` |
 | `internal/burlercli/run.go` | `resultEnvelope` gains `mode`/`stateDir`/`stencilsDir` |
 | `internal/burlercli/wiring_test.go` | new — tier-1 truth table and pinned values |
-| `internal/burlercli/cli_test.go` | `TestRunCLI_Run_MissingProfile` — state-root redirect and stale double-failure comment |
+| `internal/burlercli/cli_test.go` | two reasons: `TestRunCLI_Run_MissingProfile`'s state-root redirect and stale double-failure comment, **and** `TestResultEnvelope_ForkCountNilGuard` (`:285`, `:305`), which calls `resultEnvelope` directly and must follow its new signature |
 | `internal/burlercli/cli_integration_test.go` | new — `RunCLIIn` from outside a git repo |
 | `internal/perchcli/cli.go` | as burlercli, plus removing the `layout` field |
 | `internal/perchcli/wiring.go` | new |
@@ -260,7 +298,10 @@ Reuse it as-is for both CLIs; do not re-derive.
 | `internal/standalonegeom/standalonegeom_test.go` | extended |
 | `internal/standalonegeom/doc.go` | contract sentence updated to name the builders plus `StencilsDir` |
 | `CONSTRAINTS.md` | verification pass; expected no-op |
-| `manifest/designs/producers-standalone.md` | correction note on T8's entry: shipped trigger is `HubPresent`; the `CONSTRAINTS.md` rewords already landed in T7 |
+| `internal/preflight/predicates.go` (+ `doc.go`, tests) | additive `ResolveMode`; `HubPresent`/`Wired` unchanged |
+| `internal/webstercli/cli.go` | one line — `HubPresent` → `ResolveMode` |
+| `internal/webstercli/wiring.go`, `wiring_test.go` | `wire`'s `hubPresent bool` → `mode preflight.Mode`; refuse row added |
+| `manifest/designs/producers-standalone.md` | correction note on T8's entry: shipped trigger is `ResolveMode` over `HubPresent`, not `Ready`; the `CONSTRAINTS.md` rewords already landed in T7 |
 
 **Gotchas found during exploration:**
 
@@ -311,13 +352,19 @@ TDD candidates — write these before the wiring.
 Each calls `wire` directly on a receiver the test holds, with a told `(loc, hubPresent)` pair and a `t.TempDir()`-redirected state root:
 
 - Mode-selection truth table, driven at `wire`'s parameter boundary:
-  - `(loc non-nil, hubPresent=true)` → hub mode.
-  - `(loc nil, hubPresent=false)` → standalone.
-    This one row covers **both** real-world causes — the plain downloaded repo and an unresolvable cwd — because `preflight.HubPresent` returns `(nil, false)` on both of its failure paths (`internal/preflight/predicates.go:57-66`), making them indistinguishable at `wire`'s boundary; `webstercli/wiring.go`'s `wire` doc comment says exactly this.
-    Do **not** write a `(loc non-nil, hubPresent=false)` row: no caller can produce it.
+  - `(loc non-nil, ModeHub)` → hub mode.
+  - `(loc nil, ModeStandalone)` → standalone.
+    This one row covers **both** surviving standalone causes — the plain downloaded repo and a genuine non-repository directory — because `ResolveMode` returns a nil `loc` for each, making them indistinguishable at `wire`'s boundary.
+    Do **not** write a `(loc non-nil, ModeStandalone)` row: no caller can produce it.
     The plain-git-repo *cause* is what the design's own r5 review caught, so name it in the test's comment even though it shares a row.
   - The consequence to assert directly: **`wireStandalone` must never read `loc`** — it takes `cwd` and the flags, nothing else.
   - And that `wire` never itself resolves anything.
+
+- **`preflight.ResolveMode`'s own table**, tested in `internal/preflight` (integration-tagged where it needs a real repo, since it spawns git):
+  `ErrNotAGitRepo` → standalone; `ErrCwdOutsideAnchor` (a subdirectory of a healthy wired worktree) → **error, not standalone**; `ErrStaleAnchorMarker` → error; resolved with `<hub>/_board/_lyx` present → hub; resolved without it → standalone.
+  The `ErrCwdOutsideAnchor` row is the one this round's review exposed and is the reason the function exists — pin it explicitly, not by inference.
+
+- **`webstercli`'s wiring test** gains the refuse row too, so the repoint is covered rather than assumed.
 - Every pinned standalone value: `WorktreeRoot`/`GateDir` = target, `AnchorPath` = `<state>`, reed `SocketKey`/`SessionName`/`LogsDir`/`RepoName`/`HubPath`, perch `runDirBase`/`scratchDirBase` under `<state>`, config base = `<state>`, stencils default = `<state>/_lyx/stencils`.
 - Hub mode resolves the same values it does today, given a told `Location`.
 - `--target-dir` refused in hub mode with an error naming the reason.
@@ -365,7 +412,8 @@ Required disposition, all four tests:
 `TestRunCLI_GroupGuard_OutsideGitRepo` (both packages — the group guard returns before any wiring, so these are genuinely untouched), `TestCommand_EveryCommandHasShort` (both), `TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd`, and the `cmd/lyx` help-tree and constructor-anchoring suites.
 
 **Verify command:**
-`go test ./internal/burlercli/... ./internal/perchcli/... ./internal/standalonegeom/... ./cmd/lyx/...`, then `go test -tags integration ./internal/burlercli/... ./internal/perchcli/...`, then `go test ./...` as the task-wide gate.
+`go test ./internal/burlercli/... ./internal/perchcli/... ./internal/webstercli/... ./internal/preflight/... ./internal/standalonegeom/... ./cmd/lyx/...`, then `go test -tags integration ./internal/burlercli/... ./internal/perchcli/... ./internal/webstercli/... ./internal/preflight/...`, then `go test ./...` as the task-wide gate.
+`webstercli` and `preflight` are in the set because of the `ResolveMode` scope amendment, not incidentally.
 Smoke check on top of the tests, never instead of them: `lyx burler run --profile p.yaml --stencils-dir <dir>` from a scratch directory outside any git repository.
 
 ## Q&A log
@@ -382,6 +430,8 @@ Smoke check on top of the tests, never instead of them: `lyx burler run --profil
 - **Q:** What test tiers pin the behaviour? **A:** [auto-pick] One untagged tier-1 `wiring_test.go` per CLI for the truth table and pinned values, plus one `//go:build integration` test per CLI driving `RunCLIIn` outside a git repo. **Why:** the design names both tiers as required, and the untagged tier is only reachable through the wiring extraction.
 - **Q:** Keep a nil-able `layout` field for convenience? **A:** [auto-pick] No — remove it entirely from both CLIs. **Why:** a nil-able `*lyxcwd.Location` on a receiver is the fictional-`Location` shape the whole design was written to eliminate, and it invites a later dereference no compiler catches.
 - **Q:** May hub-mode behaviour shift at all? **A:** [auto-pick] Byte-identical over resolved paths and write locations, with exactly two named exceptions. **Why:** the plain-git-repo reclassification is the change the design exists to make, and the three additive envelope fields are an output-shape-only change; both are named in the byte-identity decision so no third deviation can slip in as precedent.
+- **Q:** (r3 gap) `preflight.HubPresent` returns false whenever `lyxcwd.Resolve` errors — including `ErrCwdOutsideAnchor` from an ordinary subdirectory of a healthy wired worktree. Does that invocation become a standalone session? **A:** No — refuse. Add `preflight.ResolveMode`, where only `ErrNotAGitRepo` means standalone and every other resolve failure surfaces verbatim. **Why:** the alternative trades today's precise, self-describing cwd-gate error for a silent relocation of state into the per-OS state directory, on a routine operator action; that is worse than the fictional-hub hazard the design was written to eliminate.
+- **Q:** (r3 follow-on) Fixing that in burler/perch alone would leave webster on the old trigger. Widen the scope? **A:** Yes — `internal/preflight` gains `ResolveMode` additively, and `webstercli` is repointed onto it in the same commit. **Why:** the mode-trigger decision's whole rationale is that all three CLIs select modes by one rule; a fix that restores the divergence it was written to prevent is not a fix.
 - **Q:** (r2 gap) `perchcli` resolves `fabricengine.StencilsDir(layout.HubPath)` at two sites, not one — `run.go:301` and `cli.go:152`'s nested `burlerengine.New`. Does the second consumer get the same told value? **A:** Yes — one `stencilsDir` per invocation, reaching both consumers in both modes, pinned by the perch wiring test. **Why:** two independent resolutions would let `--stencils-dir` reach perch's own rounds but not its nested burler rounds, which is a half-working flag and exactly the kind of split a single told value exists to prevent.
 - **Q:** (r2 gap) The Constraints section makes the design-doc edit conditional and then establishes the condition. Resolve it. **A:** Add a correction note to T8's entry in `manifest/designs/producers-standalone.md`, in this task's commit. **Why:** the doc lives until T10 deletes it, so anyone reading it in between gets a brief contradicting the merged code; a commit message is not where people read the design from.
 - **Q:** (r1 gap) Who constructs the standalone stencils directory, given that neither `burlerengine.Geometry` nor `perchengine.Geometry` has a `StencilsDir` field? **A:** A new `standalonegeom.StencilsDir(stateDir string) string`, the sole construction site, with `standalonegeom.WebsterGeometry` repointed at it. **Why:** the first draft copied `webstercli`'s `geom.StencilsDir` expression, which does not compile for burler or perch; both engines already accept `stencilsDir` as a told parameter, so a geometry field would be a competing home for a value they already take, and a per-CLI inline join would put the same literal in three places.
