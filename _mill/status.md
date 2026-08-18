@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-preflight doc correction
+phase: approved-websterengine Geometry and RefMatcher
 slug: webster-told-geometry
 branch: webster-told-geometry
 plan: _mill/plan
@@ -28,6 +28,7 @@ implementing  '2026-08-18T09:54:54Z'
 approved-reed pane cwd  '2026-08-18T10:01:16Z'
 approved-batcher moves to the degrading side  '2026-08-18T10:05:02Z'
 approved-preflight doc correction  '2026-08-18T10:07:07Z'
+approved-websterengine Geometry and RefMatcher  '2026-08-18T10:09:36Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: c7cb323f1875fd01a4d479d568f65bc3dc43a895
     verify_baseline_failures: []
   - name: websterengine Geometry and RefMatcher
-    state: running
+    state: approved
     implementer_session: 412ef7c9-741d-40e0-bf3a-369732a75526
     start_sha: c2a8bdd381ba186d4050d61361120cdb842f9714
+    commit_sha: 63ae1baf0ef0e81ee766df04bd0481a00d8fda0d
     verify_baseline_failures: []
   - name: webster path accessors take a told anchor root
     state: pending
