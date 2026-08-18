@@ -19,8 +19,10 @@ import (
 // Returns (Report{OK:true}, l, nil) when every precondition is met.
 // Returns (Report{OK:false, Failures}, l, nil) when one or more preconditions are unmet — a normal,
 // expected outcome, not an error.
-// Returns (Report{}, nil, err) when Check could not determine an answer at all — the caller must
-// escalate, not treat this as "not ready".
+// Returns (Report{}, nil, err) when Check could not determine an answer at all because
+// lyxcwd.Resolve itself failed — the caller must escalate, not treat this as "not ready". When
+// Resolve succeeds but the downstream CheckResolved(l) call returns an infra error instead, Check
+// returns (Report{}, l, err) with a non-nil Location alongside the error.
 //
 // The resolved *lyxcwd.Location is returned on success (both the OK and the determined-failure
 // cases) so the caller never re-resolves: lyxcwd.Resolve spawns `git rev-parse --show-toplevel`,
