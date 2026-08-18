@@ -73,6 +73,8 @@ batches:
     commit_sha: 2e46a57210f232971be08e3a76f7a949e9a5f547
     verify_baseline_failures: []
   - name: docs-and-cross-cutting-verification
-    state: pending
+    state: running
+    implementer_session: 9a2d2d68-01cf-41ce-b704-4d3c9089641a
+    start_sha: 6f6f29ffff6b90a2f74ce806e4e46681a77daf5f
     verify_baseline_failures: []
 ```
