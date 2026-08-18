@@ -7,8 +7,9 @@
 // lyxdirs.DotLyxDirName, and a materialization failure returns a hard error before the shuttle
 // ever runs), and the PATTERN-directive transposition detector for the pattern.Directive call site
 // (active/inactive pair pinning that the directive reaches instruction-1-explore.md).
-// Every *lyxcwd.Location built here sets HubPath and WorktreeName to a test temp dir, so
-// WorktreePath() resolves materialization there rather than into the real package source tree.
+// Every Geometry built here points WorktreeRoot at a test temp dir, so materialization lands there
+// rather than in the real package source tree. TestEngine_Run_MaterializesInstructionFiles is the
+// one site that keeps WorktreeRoot and AnchorPath distinct on purpose.
 
 package burlerengine
 
@@ -20,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -61,7 +61,7 @@ func (f *fakeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, error)
 
 // newEngineTestProfile builds a minimal valid Profile (relative paths — the
 // engine resolves them against root via validate) plus the *Engine wired
-// to a *lyxcwd.Location rooted at root and to shuttle.
+// to a Geometry rooted at root and to shuttle.
 func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 	t.Helper()
 	root = t.TempDir()
@@ -86,7 +86,7 @@ func newEngineTestProfile(t *testing.T) (root string, p Profile) {
 
 func newEngineForTest(t *testing.T, root string, shuttle Shuttle) *Engine {
 	t.Helper()
-	return New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{}, newTestStencilsDir(t))
+	return New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, newTestStencilsDir(t))
 }
 
 const (
@@ -171,7 +171,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 				},
 			},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -188,7 +188,7 @@ func TestEngine_Run_ForkSubagentsSpecWiring(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
 
 		if _, err := e.Run(p, RunOpts{}); err != nil {
 			t.Fatalf("Run() = %v; want nil error", err)
@@ -221,7 +221,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: violatingAudit},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
 
 		got, err := e.Run(p, RunOpts{})
 		if err == nil {
@@ -246,7 +246,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 			fixerContent:  "nothing fixed",
 			result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, ForkAudit: cleanAudit},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -271,7 +271,7 @@ func TestEngine_Run_ClusterAuditPolicy(t *testing.T) {
 				ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{WriteCalls: 99}}},
 			},
 		}
-		e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, cfg, newTestStencilsDir(t))
+		e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, cfg, newTestStencilsDir(t))
 
 		got, err := e.Run(p, RunOpts{})
 		if err != nil {
@@ -454,22 +454,34 @@ func TestEngine_Run_MaterializesInstructionFiles(t *testing.T) {
 		fixerContent:  "nothing fixed",
 		result:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
-	// AnchorRel is a real subpath here so the instruction dir's AnchorPath
-	// anchoring (as opposed to WorktreePath) is actually observable.
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root), AnchorRel: filepath.Join("sub", "dir")}
-	e := New(shuttle, layout, Config{}, newTestStencilsDir(t))
+	// worktreeRoot and anchorPath are two distinct directories here — anchorPath sits under
+	// worktreeRoot at the same "sub/dir" subpath a real AnchorRel would produce — so the instruction
+	// dir's AnchorPath anchoring (as opposed to WorktreeRoot) is actually observable, and a swapped
+	// constructor is caught directly by the two assertions below rather than surfacing downstream as
+	// an unrelated file-not-found.
+	worktreeRoot := root
+	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+	e := New(shuttle, Geometry{WorktreeRoot: worktreeRoot, AnchorPath: anchorPath}, Config{}, newTestStencilsDir(t))
 
 	if _, err := e.Run(p, RunOpts{}); err != nil {
 		t.Fatalf("Run() = %v; want nil error", err)
 	}
 
-	burlerDir := filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "burler")
+	burlerDir := filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "burler")
 	matches, err := filepath.Glob(filepath.Join(burlerDir, "round-*", "instruction-*.md"))
 	if err != nil {
 		t.Fatalf("filepath.Glob() = %v; want nil", err)
 	}
 	if len(matches) != 3 {
 		t.Fatalf("materialized instruction files = %v; want exactly 3", matches)
+	}
+
+	// The round directory must land under AnchorPath, never under WorktreeRoot — a swapped
+	// constructor (WorktreeRoot/AnchorPath transposed) must fail here, at the construction boundary,
+	// rather than surfacing downstream as a file-not-found.
+	worktreeBurlerDir := filepath.Join(worktreeRoot, lyxdirs.DotLyxDirName, "burler")
+	if _, err := os.Stat(worktreeBurlerDir); !os.IsNotExist(err) {
+		t.Errorf("os.Stat(%q) = %v; want it NOT to exist (the round dir must land under AnchorPath, not WorktreeRoot)", worktreeBurlerDir, err)
 	}
 
 	for _, path := range matches {
@@ -535,7 +547,7 @@ func TestEngine_Run_PatternDirectiveReachesInstruction1(t *testing.T) {
 				t.Fatalf("Run() = %v; want nil error", err)
 			}
 
-			burlerDir := filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName, "burler")
+			burlerDir := filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName, "burler")
 			entries, err := os.ReadDir(burlerDir)
 			if err != nil {
 				t.Fatalf("ReadDir(%q) = %v; want nil", burlerDir, err)
@@ -576,7 +588,7 @@ func TestEngine_Run_MaterializeFailure(t *testing.T) {
 	}
 
 	shuttle := &fakeShuttle{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
-	e := New(shuttle, &lyxcwd.Location{HubPath: filepath.Dir(root), WorktreeName: filepath.Base(root)}, Config{}, newTestStencilsDir(t))
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root}, Config{}, newTestStencilsDir(t))
 
 	_, err := e.Run(p, RunOpts{})
 	if err == nil {
