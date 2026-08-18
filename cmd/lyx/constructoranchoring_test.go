@@ -70,12 +70,13 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 
 	// _lyx-durable group: AnchorPath-anchored.
 	//
-	// The two planparser rows below still pin the join arithmetic and the _lyx-vs-.lyx group
-	// placement, but because they pass l.AnchorPath() in and compare against an anchor-derived
-	// expectation, they are tautological with respect to anchoring and can no longer catch a
-	// production call site that passes the wrong root. That proof now lives in the subpath-anchored
-	// PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE
-	// case in internal/webstercli/verbs_test.go.
+	// The two planparser rows below, plus the pattern.File row, still pin the join arithmetic and the
+	// _lyx-vs-.lyx group placement, but because they pass l.AnchorPath() in and compare against an
+	// anchor-derived expectation, they are tautological with respect to anchoring and can no longer
+	// catch a production call site that passes the wrong root. That proof now lives in the
+	// subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored
+	// PersistentPreRunE case in internal/webstercli/verbs_test.go, and
+	// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
 	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
 	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
@@ -85,7 +86,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
-	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
+	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
 	// .lyx group, now collapsed into one AnchorPath-anchored base: every
 	// worktree-level .lyx entry, ephemeral and never git-tracked, joins onto
@@ -126,12 +127,13 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// _lyx-durable group: moves down by AnchorRel, exactly like the .lyx
 	// group below -- both groups now share one anchoring rule.
 	//
-	// The two planparser rows below still pin the join arithmetic and the _lyx-vs-.lyx group
-	// placement, but because they pass l.AnchorPath() in and compare against an anchor-derived
-	// expectation, they are tautological with respect to anchoring and can no longer catch a
-	// production call site that passes the wrong root. That proof now lives in the subpath-anchored
-	// PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE
-	// case in internal/webstercli/verbs_test.go.
+	// The two planparser rows below, plus the pattern.File row, still pin the join arithmetic and the
+	// _lyx-vs-.lyx group placement, but because they pass l.AnchorPath() in and compare against an
+	// anchor-derived expectation, they are tautological with respect to anchoring and can no longer
+	// catch a production call site that passes the wrong root. That proof now lives in the
+	// subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored
+	// PersistentPreRunE case in internal/webstercli/verbs_test.go, and
+	// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
 	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
 	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
@@ -141,7 +143,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
 	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
-	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
+	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
 	// .lyx group: AnchorPath-anchored in full as of this batch, so every
 	// entry moves down by AnchorRel here too, just like the _lyx-durable
