@@ -36,7 +36,8 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 - `internal/loomengine/preflight.go` rewritten to compose `internal/preflight` with its own check-4 (`_lyx/loom/status.json`) logic; `internal/loomengine/report.go` reduced to the loom-specific check IDs plus aliases.
 - A new stdlib-only `internal/buildinfo` package owning the ldflags-stamped build channel, plus its `doc.go` and tests.
 - A new stdlib-only `internal/standalonestate` package owning the `hash8` + per-OS `<state>` directory derivation, plus its `doc.go` and tests.
-- A new `stencilstore.ModeFor(dev bool) Mode` helper — the single mapping site from "is this a dev build" to `stencilstore.Mode`.
+- A new `stencilstore.ModeFor(dev bool) Mode` helper — the single mapping site from "is this a dev build" to `stencilstore.Mode` — plus its test.
+- A drift guard in `tools/deploy`'s existing `main_test.go` pinning the ldflags `-X` path against `internal/buildinfo`'s symbol.
 - `cmd/lyx/stencilseed.go`: drops its own `buildChannel` variable in favour of `buildinfo`, and gates `seedStencils` on the tier-1-AND-tier-2 wiring predicate.
 - `tools/deploy/main.go:62`: the ldflags path repointed from `-X main.buildChannel=dev` to `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`.
 - `CONSTRAINTS.md`: two new leaf invariants (`Buildinfo Leaf Invariant`, `Standalonestate Leaf Invariant`), each with a mechanical enforcement test.
@@ -180,7 +181,9 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   Eight hex characters is 32 bits, so two distinct targets can in principle derive the same `stateDir`, socket and session — the same failure the normalisation rules exist to prevent, arriving by a different route.
   `Derive` does not detect this and has no collision return: the truncation width is inherited from the design doc's `hash8` definition, not chosen here, and re-litigating it is out of scope for T5.
   The disposition is stated rather than left implicit so a later reader knows it was considered: a colliding pair shares one tmux server and one state directory, which is a wrong-but-not-corrupting outcome, and the fix if it ever matters is to widen `hash8` in this one package — every consumer takes the value from `Derive` rather than re-deriving it, so the widening is a one-line change with no call-site churn.
-  Internally it is a thin wrapper over an unexported `derive(goos, localAppData, xdgStateHome, home, target string) (string, string, error)`, re-exported through `export_test.go`.
+  Internally it is a thin wrapper over an unexported `derive(goos, localAppData, xdgStateHome, home, target string) (string, string, error)`, driven directly by **in-package** tests (`package standalonestate`).
+  No `export_test.go`: an in-package test reaches an unexported function without one, so a shim would be the same dead code the `preflight-tests-are-an-external-test-package` decision rejects.
+  In-package is available here — and was not for `preflight` — because `standalonestate` is stdlib-only and its tests need no `hubforge` fixture, so there is no import cycle to route around.
 
   **At the seam boundary, the empty string means "unset".**
   The three env-ish parameters are plain strings, so `derive` cannot distinguish unset from set-to-empty and deliberately does not try: an empty `localAppData` on the Windows branch is the error case, and an empty `xdgStateHome` on the POSIX branch is what selects the `home` fallback.
@@ -195,7 +198,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
   Calling it would make `internal/standalonestate` a cwd resolver, which the Cwd Resolution Invariant reserves to `internal/lyxcwd` alone, and would make the supposedly pure `derive(goos, env…, target)` seam depend on the host cwd of whatever test process ran it — silently host-dependent rather than injected.
   Rejecting a relative target keeps the package a pure function of its arguments and puts the one legitimate cwd consultation at the CLI boundary that owns it.
 - **Rationale on the injectable seam.** `runtime.GOOS` is a compile-time constant, so without a seam the Windows row of the `<state>` table is untestable on Linux and the POSIX row is untestable on Windows — meaning CI would only ever exercise one of the two branches this task ships.
-  Passing `goos` and the three environment values as parameters makes both rows' **branch selection and case-fold behaviour** testable everywhere, and `export_test.go` keeps the seam out of the public API.
+  Passing `goos` and the three environment values as parameters makes both rows' **branch selection and case-fold behaviour** testable everywhere, and keeping `derive` unexported keeps the seam out of the public API.
 
   **What the seam does *not* make host-independent: the path separator.**
   `filepath.Join` and `filepath.Clean` take their separator from the compile-time host, not from the injected `goos`, so on Linux the `goos == "windows"` row yields `/localappdata/lyx/<hash8>`, not `%LOCALAPPDATA%\lyx\<hash8>`.
@@ -224,7 +227,7 @@ It is invisible today only because nobody points `lyx` at a non-lyx git repo on 
 
 - **Decision.** `internal/preflight`'s git-fixture tests live in `package preflight_test` (external), integration-tagged, calling the exported `CheckResolved(l)` directly.
   `internal/preflight` gets **no** `export_test.go` — every seam its tests need is already exported, so a shim would be dead code.
-  (`internal/standalonestate` does get one, for its unexported `derive` seam; that is the only new `export_test.go` in this task.)
+  (Nor does `internal/standalonestate`: its tests are in-package and reach `derive` directly. **This task adds no `export_test.go` anywhere.**)
   `internal/loomengine`'s existing `preflight_integration_test.go` stays where it is and keeps testing `loomengine.Preflight` end-to-end unchanged.
 - **Rationale.** The comment at the head of `internal/loomengine/preflight_integration_test.go` records why: `internal/hubforge` (the fixture helper) imports `internal/fabriccli`, so an *in-package* test importing `hubforge` from a package inside `fabriccli`'s dependency set closes a compile cycle.
   `internal/preflight` will sit in that same dependency set the moment anything under `fabriccli` reaches it, so adopting the external-test-package shape from the start avoids discovering the cycle later.
@@ -272,10 +275,16 @@ That makes the blast radius of the signature work small, and it means the integr
   The comment at `preflight.go:70-74` explaining this must move to `internal/preflight` with the code, not be dropped.
 - `Preflight`'s contract is *report, not error*: `(Report{}, err)` means "could not determine", and a `PrimeName` failure is deliberately reported as a `CheckGeometry` failure rather than escalated.
   `internal/preflight` must preserve this exactly, and its `doc.go` should restate it, since `Hardener` will be reading that doc rather than `loomengine`'s.
+- **The comment being lifted alongside that contract is already false — do not carry it across verbatim.**
+  `internal/loomengine/preflight.go:48-50` says the non-`ErrNotAGitRepo` branch catches "e.g. the git subprocess itself failed to spawn".
+  It does not: `lyxcwd.gitWorktreeRoot` (`internal/lyxcwd/lyxcwd.go:150-163`) returns the bare sentinel for a `*gitexec.GitError` and `fmt.Errorf("%w: %v", ErrNotAGitRepo, err)` for everything else — so an exec-level failure *also* satisfies `errors.Is(err, ErrNotAGitRepo)` and lands in the short-circuit branch, not the escalation branch.
+  The residual `(Report{}, nil, err)` branch is reachable only through the anchor gate (`ErrCwdOutsideAnchor`, `ErrStaleAnchorMarker`).
+  Reword it when lifting, and do not repeat the false characterisation in `internal/preflight/doc.go` — a shared package shipping a wrong claim about its own error contract is worse than the same claim sitting in one orchestrator.
 - `stencilstore.Mode` is `ModeProduction Mode = iota` then `ModeDev` — `ModeProduction` is the zero value, which is why an unstamped binary safely means production.
   `ModeFor(false)` must return `ModeProduction`.
 - Changing the ldflags path in `tools/deploy/main.go` and the variable's home in `cmd/lyx/stencilseed.go` must land together: a stale `-X main.buildChannel=dev` against a removed `main.buildChannel` fails silently (Go's linker does not error on an unmatched `-X`), producing a dev binary that behaves as production.
   Grep confirms exactly three sites: `tools/deploy/main.go:60,62` and `cmd/lyx/stencilseed.go:24,29,74`.
+  The same-commit rule alone is a review obligation with no machine check behind it, which is why this task also adds the `tools/deploy` drift guard named in the Testing section — `tools/` lies outside every existing enforcement walk, so nothing else would ever catch the mismatch.
 - New `cmd/lyx` test files must respect the Test Tier Purity Invariant — the plain-repo gate test spawns git, so it needs a `//go:build integration` first line, and `cmd/lyx` already has a `TestMain` for the Hermetic Git Test Environment Invariant.
 - `internal/preflight` and `internal/standalonestate` both need their package name checked against nothing existing — `ls internal/` confirms neither name is taken.
 
@@ -344,8 +353,17 @@ If the type aliases are done right, this file needs zero edits, and "it compiles
 Untagged: empty `Channel` → `IsDev() == false`; `Channel == "dev"` → true; any other value (`"prod"`, `"Dev"`, whitespace) → false, so the comparison stays exact rather than drifting to a prefix or case-insensitive match.
 Plus `leaf_enforcement_test.go` with an empty allowlist.
 
+**`internal/stencilstore` — one new exported symbol, one new test.**
+Untagged, in-package: `ModeFor(true) == ModeDev` and `ModeFor(false) == ModeProduction`.
+Two assertions, but they are the ones that keep the `buildinfo` split honest — `ModeProduction` being `iota`'s zero value (`stencilstore.go:142`) is what makes an unstamped binary safe, and nothing else in the tree pins that mapping once `stencilseed.go` stops doing the comparison itself.
+
+**`tools/deploy` — a drift guard for the ldflags repoint.**
+Untagged, in `tools/deploy`'s existing `main_test.go`: assert the `-X` string in `main.go` is exactly `-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev`, and that `internal/buildinfo`'s source declares an exported `Channel` at that path.
+This exists because Go's linker silently ignores an unmatched `-X`: without a guard, a future rename of the variable or its package leaves a `-dev` build that behaves as production, with no build error, no test failure, and no visible symptom until someone notices stencils refreshing when they should not.
+The same-commit rule stated in Gotchas is a review obligation, not a check — this test is what makes the pairing machine-enforced, and it is cheap because `tools/deploy` is already a package with its own test file.
+
 **`internal/standalonestate` — TDD candidate.**
-Untagged in-package tests over the injected `derive` seam.
+Untagged in-package tests (`package standalonestate`) calling the unexported `derive` seam directly — no `export_test.go`.
 Scenarios: the Windows row produces `%LOCALAPPDATA%\lyx\<hash8>` and the POSIX row produces `$XDG_STATE_HOME/lyx/<hash8>`, both driven on any host via the seam; the `XDG_STATE_HOME`-unset fallback to `~/.local/state`; `LOCALAPPDATA` unset on Windows returning an error; both spellings of a case-differing path producing the *same* `hash8` under `goos == "windows"` and *different* hashes under `goos == "linux"`; a relative target being **rejected** with an error (and, since this is the whole point of the rejection, the same test asserting the result does not vary with the test process' cwd); `hash8` being exactly 8 lowercase hex characters; and stability — the same input yielding the same hash across calls, which is the property the whole resumability story rests on.
 A symlink case needs a real filesystem, so it belongs in a small integration-tagged test (creating a symlink is a filesystem spawn, not a git one, but tagging keeps tier 1 clean).
 Also assert `Derive` creates nothing on disk.
@@ -360,6 +378,7 @@ Separately, a `Wired`-vs-`HubPresent` divergence test in `internal/preflight` it
 
 **Task-wide verify.**
 `go test ./...` from the worktree root, plus the task's named check: `go test ./internal/loomengine/... ./internal/fabricengine/... ./internal/preflight/... ./internal/buildinfo/... ./internal/standalonestate/...`, and the integration-tagged runs for the same packages and `cmd/lyx`.
+`go test ./...` is what picks up the two additions the named check omits — `./internal/stencilstore/...` and `./tools/deploy/...`.
 `internal/lyxcwd/docslink_test.go` (`TestEnforcement_MarkdownLinks`) covers the `docs/overview.md` and `docs/shared-libs/README.md` edits, since it scans `manifest/` and `docs/` as link *sources*.
 It does **not** cover links written inside the two new `CONSTRAINTS.md` invariant sections: the Markdown Link Integrity invariant states outright that `.md` files outside `manifest/`/`docs/` — `README.md`, `CLAUDE.md`, `internal/**/*.md`, and root docs such as `CONSTRAINTS.md` — "have their own outgoing links checked by nobody".
 Links *pointing at* `CONSTRAINTS.md` anchors from a scanned file are checked; links *inside* the new sections are a review obligation.
