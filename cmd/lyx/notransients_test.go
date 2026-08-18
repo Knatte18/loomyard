@@ -76,8 +76,8 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 		{"perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath())},
 		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
-		{"scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go")},
-		{"scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go")},
+		{"scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go")},
+		{"scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go")},
 		{"perchengine.PauseFlagPath", perchengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
 		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
 	}
