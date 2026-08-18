@@ -81,7 +81,7 @@ After all scenarios are run, write **all** `WARN`/`FAIL` findings to `./sandbox-
 
 - `source` is the literal string `"sandbox-report"`.
 - `items[]` holds only `WARN`/`FAIL` findings -- do not record `OK` scenarios here.
-- `ref` is the scenario id (`M0`-`M19`).
+- `ref` is the scenario id (`M0`-`M22`).
 - `title` is a short one-line summary.
 - `body` folds the detail, repro steps, and verdict into one markdown string.
 
@@ -335,6 +335,94 @@ A `split header pane: ... no space for new pane` error from `up` is the wedged-h
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### M20 -- Refusal of a worktree name tmux would silently rewrite
+
+**Goal:** "Prove reed refuses, up front and loudly, a worktree whose directory name tmux would silently rewrite -- instead of hanging and stranding a session on the shared hub server."
+
+**Watch:** Rename a worktree directory so its name carries one of tmux's three rewrite classes (`git worktree repair` after each;
+controlled exception, restore the name afterwards): a `.` (e.g. `svc.v2`), a `\` (e.g. `mv svc2 'svc\v2'`, POSIX hosts only -- on Windows `\` cannot appear in a directory name), or a control character (e.g. a literal TAB via `mv svc3 "svc$(printf '\t')3"`).
+`lyx reed up` (and every other reed verb) must refuse IMMEDIATELY (sub-second, no 20s hang) with a JSON error naming the offending character and the worktree directory to rename.
+Afterwards `tmux -L <socket> ls` (controlled exception) must show NO new session -- neither the raw name nor a rewritten one (`svc_v2`, `svc\\v2`, `svc\t3`) -- squatting on the shared hub server.
+A hang, a "did not materialize" timeout, or any leftover session is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M21 -- Reed never touches the operator's default tmux socket
+
+**Goal:** "Prove a full reed session never starts a server on the operator's own default tmux socket."
+
+**Watch:** Before starting, note whether `tmux ls` (default socket, controlled exception) reports a server.
+Run a normal cycle -- `up`, `add`, `status`, `resume`, `down`.
+Afterwards `tmux ls` must report exactly what it did before: if there was no default-socket server, there still is none ("no server running").
+A new server on the default socket (the capability probe's historical leak, R2-F6) is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M22 -- Recovery from a scrubbed reed.json while the session is up
+
+**Goal:** "Prove a lost `.lyx/reed.json` does not permanently wedge a worktree whose tmux session is still running."
+
+**Watch:** `up`, then `add` one strand, so the one-row header band at the top of the window is actually laid out.
+Delete `.lyx/reed.json` (or run `git clean -xdf` in the worktree -- `.lyx` is never-tracked machine-local scratch, so this is a sanctioned operator action) while leaving the session up.
+`lyx reed up` must then SUCCEED, and the rebuilt header band must be visible at the very top of the window with the strand stack below it -- not inverted, not squeezed to nothing.
+A subsequent `lyx reed add` must run its command for real (check the pane, and check the process exists), not type it onto a pane that is already busy.
+An `up` that fails with `no space for new pane`, a header that does not end up topmost, or an added strand whose command never runs is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M23 -- A stale reed.json is never mistaken for live strands
+
+**Goal:** "Prove a `reed.json` older than the tmux session now running reports its strands honestly, instead of claiming a dead strand is alive."
+
+**Watch:** `up`, `add` one strand, then copy `.lyx/reed.json` somewhere safe.
+`down`, then `up` again -- the server died, so tmux's pane ids restart at `%0` and the saved file's ids now name panes belonging to the NEW session.
+Copy the saved `reed.json` back over `.lyx/reed.json` (this is exactly what a backup tool, a `git stash pop`, or a hand-copied `.lyx` does).
+`lyx reed status` must report the strand `live: false` with no pane id -- NOT `live: true` against whatever pane happens to hold that id now.
+`lyx reed resume` must then rebuild it (`resumed` at least 1) and the strand's command must genuinely be running afterwards (check the process, not just the pane).
+A `live: true` for a process that does not exist, or a `resumed: 0` that leaves the strand unrecovered, is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M24 -- A renamed worktree refuses instead of double-launching
+
+**Goal:** "Prove renaming a worktree while its session is up does not silently start a second copy of every strand and orphan the first."
+
+**Watch:** In a worktree, `up` and `add` one strand.
+Rename the worktree directory while that session is still running (`git worktree repair` afterwards;
+controlled exception, restore the name when done).
+`lyx reed resume` (and `up`, and `add`, and `status`, and `attach`) in the renamed directory must REFUSE, with a JSON error naming the old session, the socket, and the exact `kill-session` command that clears it.
+`status` above all: it is the verb an operator reaches for first, and a plain "no reed session; run `lyx reed resume`" there is a `FAIL` -- it names a remedy that itself refuses, sending the operator round a loop.
+`tmux -L <socket> ls` (controlled exception) must then show only the ORIGINAL session -- the refusal must not have deposited a second one -- and the strand's command must still be running exactly once, not twice.
+Running the `kill-session` the error names, then `lyx reed resume` again, must succeed normally.
+A silent success, two copies of the strand process, a second session left on the socket, or a refusal the operator cannot escape is a `FAIL`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### M25 -- Down names the session it abandons
+
+**Goal:** "Prove the one escape from the refusal that needs no raw tmux says out loud what it leaves behind."
+
+**Watch:** Set up M24's state again (a worktree renamed while its session is up, with one strand running), but this time escape with `lyx reed down` in the renamed directory instead of the `kill-session` M24 uses.
+`down` must SUCCEED -- it is the only route out of the refusal for an operator who can run `lyx` but not raw `tmux` -- and its JSON must carry `abandonedSession` naming the still-running old session.
+`tmux -L <socket> ls` (controlled exception) must still show that session, and the strand's command must still be running: `down` reports the abandonment, it never kills a session it cannot prove is this worktree's own (it may be a sibling worktree's live work).
+An `ok: true` with no `abandonedSession` key is a `FAIL` -- `down` deletes `reed.json`, so that key is the last thing that ever names the orphan.
+A `down` that kills the old session is also a `FAIL`.
+Then run an ordinary `lyx reed up` / `down` cycle in a normal worktree and confirm `abandonedSession` is ABSENT there -- the key must be signal, not noise.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -363,6 +451,11 @@ M16: <OK|WARN|FAIL> -- <one-line note if not OK>
 M17: <OK|WARN|FAIL> -- <one-line note if not OK>
 M18: <OK|WARN|FAIL> -- <one-line note if not OK>
 M19: <OK|WARN|FAIL> -- <one-line note if not OK>
+M20: <OK|WARN|FAIL> -- <one-line note if not OK>
+M21: <OK|WARN|FAIL> -- <one-line note if not OK>
+M22: <OK|WARN|FAIL> -- <one-line note if not OK>
+M23: <OK|WARN|FAIL> -- <one-line note if not OK>
+M24: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

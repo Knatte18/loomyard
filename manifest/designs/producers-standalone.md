@@ -54,15 +54,17 @@ Lifting them into a shared, orchestrator-agnostic preflight is what makes this m
 
 ## What actually blocks standalone today
 
-Every row below was verified against the current tree, not inherited from the discovery task.
+Every row below was verified against the tree at discovery time, not inherited from the discovery task.
+Rows whose task has since LANDED are marked **done** inline and record the shipped state rather than the blocker;
+an unmarked row is a discovery-time reading that no later task has re-verified, not a fresh one.
 
 ### Layer 1 — engine constructors take `*lyxcwd.Location`
 
 | Package | Sites | What it reads from the `Location` |
 |---|---|---|
 | `internal/shuttleengine` | `run.go` (`NewRunner`, `Runner.layout`), `rundir.go` (`runDirRoot`, `FindRun`) | `AnchorPath()`, `WorktreePath()` |
-| `internal/reedengine` | `lock.go` (`New`, `Engine.layout`, `socketName`, `SessionName`), `lifecycle.go` (pane spawn cwd; the hub-logs derivation now lives in `fabricengine.HubLogsDir(hubPath string)`) | `HubPath` (tmux socket name), `WorktreePath()` (session name), `AnchorPath()` (pane cwd) |
-| `internal/tokenvocab` | `tokenvocab.go` (`Ctx.Layout`) | `RepoName`, `HubPath` — two fields of a 327-line package; built only at `reedengine/header.go:16` |
+| `internal/reedengine` — **done (T3)** | takes a `reedengine.Geometry` (`geometry.go`), holds no `Location`, and has no `Engine.layout` field | nothing: `hubgeom.ReedGeometry` reads `HubPath`/`WorktreePath()`/`AnchorPath()`/`RepoName` off the `Location` at the `reedcli` seam and hands the engine seven told strings. `fabricengine.HubLogsDir(hubPath string)` owns the hub-logs derivation |
+| `internal/tokenvocab` — **done (T3)** | `tokenvocab.go` (`Ctx.RepoName`, `Ctx.HubPath`) | nothing: `Ctx` carries the two plain strings, `lyxcwd` left the package's import allowlist entirely (see [CONSTRAINTS.md's Tokenvocab Leaf Invariant](../../CONSTRAINTS.md#tokenvocab-leaf-invariant)), and `reedengine/header.go` fills `Ctx` from its own told `Geometry` |
 | `internal/pattern` | `pattern.go` (`Directive`, `FileHere`, `isActive`) | `WorktreePath()` + `AnchorRel`, i.e. exactly `AnchorPath()` |
 | `internal/burlerengine` | `engine.go` (`New`, `Engine.layout`, `Run`) | `WorktreePath()` (profile validation), `AnchorPath()` (`.lyx/burler`) |
 | `internal/perchengine` | `engine.go` (`New`, `Engine.layout`), `identity.go` (`RunsDir`, `ScratchDir`) | `WorktreePath()` (gate dir), `AnchorPath()` (run/scratch dirs) |
@@ -89,14 +91,17 @@ c.engine = burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(
 `perchcli` additionally loads `modelspec.LoadRegistry` and `perchengine.LoadConfigWithRegistry`.
 Fixing every constructor in layer 1 does not help while this code stands: nothing branches around `Resolve` itself.
 
-### Layer 3 — three of five config loads hard-fail on an absent file
+### Layer 3 — config loads that hard-fail on an absent file
+
+Which loader sits on the strict side and which degrades is pinned by [CONSTRAINTS.md's Config Strictness Invariant](../../CONSTRAINTS.md#config-strictness-invariant), which is the authority here;
+this table records the discovery-time reading plus whichever rows a landed task has since moved.
 
 | Loader | Behaviour with no config present | Blocks standalone |
 |---|---|---|
 | `modelspec.LoadRegistry` | returns `builtins()` — `sonnet`/`opus`/`haiku`/`fable` mapped to the `claude` engine | no |
 | `burlerengine.LoadConfig` | own `os.ReadFile`, absent file decodes to the zero `Config{}` | no |
 | `shuttleengine.LoadConfig` | `configengine.Load` → `"not initialized: _lyx/ directory not found"` | **yes** |
-| `reedengine.LoadConfig` | same | **yes** |
+| `reedengine.LoadConfig` — **done** | `configengine.LoadOrTemplate` → resolves the embedded template on a proven-absent `_lyx/` or config file | no |
 | `perchengine.LoadConfigWithRegistry` | same | **yes** |
 
 All five already take `baseDir string` — the loaders themselves are not coupled to `Location`.

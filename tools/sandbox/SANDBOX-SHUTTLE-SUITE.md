@@ -138,6 +138,100 @@ Sending multiline text must be rejected outright (a "must be a single line" erro
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
+---
+
+### S4 -- One envelope per invocation, even when two things are wrong at once
+
+**Covers:** shuttle
+
+**Goal:** "Make a `lyx shuttle run` invocation fail for TWO independent reasons at the same time, and confirm it still answers with exactly one JSON object naming the one to fix first."
+
+**Watch:** From a directory that is NOT a git repository (e.g. a fresh `mkdir` under the system temp dir), run `lyx shuttle run --output-file out.md` -- geometry resolution fails AND no `--prompt`/`--prompt-file` was given, so both the pre-flight and the flag check have something to say.
+The command must print **exactly one** JSON object, and it must be the pre-flight one (`"error":"not a git repository"`), because that is the problem the operator has to fix before the flag error can even be evaluated.
+Two objects on one invocation is a FAIL, not a cosmetic issue: a caller that reads the output with a single-object JSON parse gets a parse error instead of the real cause.
+Repeat with `--prompt a --prompt-file b --output-file out.md` (mutually exclusive flags) for the same result.
+Then, from inside a real lyx worktree, run `lyx shuttle run --output-file out.md` and confirm the flag error IS reported on its own there -- suppressing it only when the pre-flight already failed is the point, suppressing it always would be a different bug.
+This scenario starts no agent and costs no provider tokens.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### S5 -- Reed's bookkeeping is reset under a run that is still working
+
+**Covers:** shuttle
+
+**Goal:** "Take reed's strand table away from underneath a live shuttle run, and confirm shuttle says it does not know rather than declaring the agent dead -- and that it does not delete the live run's directory."
+
+**Watch:** Start a run that stays inside ONE turn for several minutes, e.g.
+`lyx shuttle run --prompt "run python3 -c 'import time; time.sleep(100); print(1)' in the foreground three times in a single reply, then write done.md" --output-file done.md --model haiku`.
+Wait until `lyx reed status` shows the strand `live: true` and the pane visibly shows the agent working (a running tool call with a rising elapsed counter -- do not proceed while it is still booting).
+Then, from a second terminal, delete reed's state file: `rm <worktree>/.lyx/reed.json`.
+This is not vandalism -- it is verbatim the second remedy reed's own corrupt-state error recommends ("delete it by hand to keep the session"), and it is what a `git clean -xdf` in the worktree does.
+
+Three things must hold, and each was a real defect before:
+
+1. The blocked `lyx shuttle run` must return `"ok":false` with an error saying reed no longer tracks the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is a FAIL: it tells an unattended caller to respawn, which puts a second agent on the worktree while the first keeps running unreachably.
+2. The envelope must still carry `guid`, `sessionId` and `runDir`, so the operator can reach the pane that is still running.
+3. Confirm the agent really is still alive afterward (`tmux -L <socket> capture-pane` on its pane shows the same turn still progressing) -- the whole point of the verdict in (1).
+
+Then, with `reed.json` still absent, start a SECOND run in the same worktree (it will fail at `add strand: no reed session` -- that is expected and costs no tokens) and confirm the FIRST run's directory under `<worktree>/.lyx/shuttle/` is **still there**. A missing run directory is a FAIL: it holds the `events.jsonl` the live agent's Stop hook is still appending to, and the `run.json` without which `lyx shuttle interrupt/send <guid>` can no longer find the running agent at all.
+
+Restore with `lyx reed up` (which writes a fresh `reed.json`) and `lyx reed down` to tear the session down.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### S6 -- Re-sending the same text into a pane that has scrolled
+
+**Covers:** shuttle
+
+**Goal:** "Send one instruction twice into a busy agent pane, with the first copy scrolled to the very top of the viewport, and confirm the second send is delivered exactly once and reported as delivered."
+
+**Watch:** Start a run with `--keep-pane` and a trivial prompt (e.g. `lyx shuttle run --prompt "write READY into ready.txt" --output-file ready.txt --keep-pane --model haiku`), which leaves one live, idle agent pane to drive.
+Note the `guid` from `lyx reed status`.
+
+Send an instruction whose ANSWER is long enough to fill the pane, e.g. `lyx shuttle send <guid> "reply with the numbers 1 to 38 one per line and nothing else"`.
+Wait for the reply to finish, then look at the pane (`tmux -L <socket> capture-pane -p -t <paneId>`): the line echoing your instruction must have been pushed to within a line or two of the TOP of the viewport, still visible.
+That is the setup -- if it scrolled off entirely, send it once more and re-check.
+
+Now send the SAME instruction again, timing it while the earlier copy is still visible at the top.
+Two things must hold:
+
+1. The command answers `{"ok":true,"action":"send",...}` within about a second. An `"ok":false` "the send was NOT delivered" here is a FAIL -- and the giveaway is that it takes ~11 s to say it.
+2. The pane must show the instruction accepted exactly ONCE more, not twice. A second, duplicate copy of your instruction (and a second answer to it) is the same FAIL seen from the other side: the delivery check gave up and re-typed a message the agent had already received.
+
+Both halves failed before this was fixed, because the earlier copy scrolling off as the new one arrived left the occurrence COUNT unchanged, which is indistinguishable from nothing arriving unless position is taken into account.
+Tear down with `lyx reed remove <guid>` and `lyx reed down`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### S7 -- Reed drops the pane binding of a run that is still working
+
+**Covers:** shuttle
+
+**Goal:** "Make reed decide this worktree's pane bindings are stale while a shuttle run is mid-turn, and confirm shuttle says it can no longer address the agent rather than declaring it dead."
+
+**Watch:** This is S5's sibling: there reed forgets the strand, here reed keeps the strand but forgets its PANE.
+Start the same kind of run that stays inside ONE turn for several minutes (see S5) and wait until the pane visibly shows the agent working.
+
+Then make the persisted pane generation stale, which is the state reed's own doc describes as "a reed.json older than the session now running" -- reachable in the wild from a restored backup or a copied `.lyx`.
+In `<anchor>/.lyx/reed.json`, change the `paneGeneration.created` value to any older number, writing the file atomically (write a temp file beside it and rename it over the original, so reed never reads a half-written file).
+
+Reed then logs `persisted pane bindings were minted against a different tmux session incarnation, clearing them`, and `lyx reed status` reports the strand with an empty `paneId` and `live: false` -- while `tmux list-panes` still shows its pane alive with the agent inside it.
+
+Two things must hold:
+
+1. The blocked `lyx shuttle run` must return `"ok":false` saying reed holds no pane binding for the strand and that the agent may still be working -- **never** `"ok":true` with `"outcome":"died"`. A `died` envelope here is the same FAIL as S5's, for the same reason: it tells an unattended caller to respawn onto a worktree whose agent is still running.
+2. `lyx shuttle interrupt <guid>` must refuse, and its message must NOT claim the run reached a terminal outcome or that its pane died -- neither is true here.
+
+Restore the original `created` value to make the binding usable again (`lyx reed status` will show the strand `live: true` on its pane once more, which also proves the agent was alive throughout), then `lyx reed remove <guid>` and `lyx reed down`.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
 ## Session log format
 
 After running all scenarios, record a short session summary:

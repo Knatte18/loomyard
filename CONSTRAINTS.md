@@ -213,6 +213,9 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - **Errors are JSON**, via the `internal/output` envelope (`output.Ok`/`output.Err`), one JSON object per line, through `clihelp.Execute`/root seam.
   No bare plain-text error paths.
   Parent groups set `RunE = clihelp.GroupRunE`.
+- **One envelope per invocation**, and `clihelp.ShouldAbort` is what keeps it that way: `clihelp.Abort` records an exit code but does NOT stop cobra from running `RunE`, so a `RunE` that emits before checking `ShouldAbort` writes a second envelope on top of the one `PersistentPreRunE` already wrote.
+  Every `RunE` therefore checks `ShouldAbort` **first**, ahead of its own validation — the placement `clihelp.ShouldAbort`'s own godoc specifies.
+  A consumer unmarshalling the output as a single object (which the smoke suites do) fails to parse two, and the second envelope names the secondary problem while the first names the one to fix.
 - **Interactive-handoff exception (narrow, per-command).**
   A subcommand that hands stdio to another interactive program and blocks, or self-displays and then blocks forever, is exempt from the envelope only on that terminal-handover/keepalive tail — everything that can fail stays pre-flight, on the envelope.
 - **Package naming.**
@@ -421,7 +424,11 @@ The durable Info+ trace-file sink captures these regardless of verbosity or env-
 - A spawned pane/child must never re-exec `os.Executable()` while running under `go test`: a Go test binary invoked with positional arguments does not error on them, so the arguments are silently ignored and the full suite runs unfiltered.
   Guarded by `reedengine`'s `headerLaunchLine` (suppresses header re-exec when `testing.Testing()`) and `gitkit.HermeticGitEnv` (`refuseCLIReexec` refuses any test binary invoked with a leading positional argument).
 - A retry loop around a real process spawn must cap attempt COUNT, not only elapsed time — a fast-failing spawn burns a time-only budget in far more attempts than it was sized for. `maxBootAttempts` in `internal/reedengine/lifecycle.go` is the pattern: track an attempt counter, exit on whichever of (time, count) is hit first.
-- Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/burlerengine/engine.go`, `internal/scoutengine/ensureserver.go`.
+- Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/shuttleengine/wait.go`, `internal/burlerengine/engine.go`, `internal/scoutengine/ensureserver.go`.
+- **A live-substrate module's operational messages all belong on `internal/logger`, not only the spawn and teardown lines themselves.**
+  A retry, a probe that could not read the substrate, and a cleanup that skipped are exactly the events an operator goes looking for after the fact, and the stdlib `log` package reaches neither the durable trace file nor a trace correlation id — so a bare `log.Printf` there loses the only record that the unhappy path happened at all.
+  `internal/shuttleengine` pins this for itself with a source scan (`run_test.go`'s `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger`);
+  every other live-substrate module remains a review obligation.
 
 ## Sandbox Suite Coverage
 

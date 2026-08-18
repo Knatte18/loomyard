@@ -14,8 +14,21 @@ package reedengine
 // Neither is imported here — this file states the contract, not the implementation.
 type Geometry struct {
 	// SocketKey is the tmux -L socket name; it is what Engine.Socket returns.
+	// It must carry no path separator: tmux resolves -L as a filename under its per-user socket
+	// directory, so a separator makes it a path whose parent does not exist — and tmux answers that
+	// with a stderr line and exit 0, indistinguishable from a slow boot. ServerName substitutes
+	// separators out at the derivation; validateToldTmuxIdentity (server.go) is the backstop for a
+	// teller that builds this field some other way.
 	SocketKey string
 	// SessionName is the tmux session name; it is what Engine.SessionName returns.
+	// It must carry none of tmux's three rewrite classes: '.' or ':' (silently rewritten to '_'),
+	// '\' (silently doubled to "\\"), or any ASCII control character, DEL, or invalid-UTF-8 byte
+	// (silently vis-encoded into a multi-character escape).
+	// Any of the three creates the session under the rewritten name with exit 0, which every
+	// exact-match "=<name>" target this package issues would then miss forever. A hub-mode caller
+	// gets this for free only if the worktree directory name happens to be clean, so the constraint
+	// is enforced rather than assumed — validateToldTmuxIdentity (server.go) refuses such a name at
+	// every op boundary, before any tmux round trip.
 	SessionName string
 	// AnchorPath is the base stateDir joins onto for reed.json/reed.lock.
 	AnchorPath string

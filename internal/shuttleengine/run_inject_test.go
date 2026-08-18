@@ -5,6 +5,8 @@
 package shuttleengine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -12,10 +14,17 @@ import (
 // under its run-dir root (seedRun) so FindRun can resolve guid — Inject's
 // out-of-process entry point, unlike (*Run).Interrupt/Send, has no in-process
 // Run handle to draw StrandGUID from and must resolve it from run.json.
+// anchorPath is a real subpath of worktreeRoot, never an unrelated temp dir:
+// the two are distinct (so a swapped NewRunner argument pair fails a test) but
+// still in the geometric relation NewRunner validates, which two independent
+// t.TempDir() calls are not.
 func newInjectTestRunner(t *testing.T, reed ReedOps, engine Engine, guid string) *Runner {
 	t.Helper()
-	anchorPath := t.TempDir()
 	worktreeRoot := t.TempDir()
+	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+		t.Fatalf("mkdir anchor path: %v", err)
+	}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5}
 	runner := NewRunner(reed, engine, anchorPath, worktreeRoot, cfg)
 	if guid != "" {
