@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: scout-told-geometry
 branch: scout-told-geometry
-plan: null
+plan: _mill/plan
 parent: standalone-producers
 task: scoutengine told-geometry (optional uniformity pass)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-18T12:04:23Z'
 discussion-fix-r4  '2026-08-18T12:58:23Z'
 discussed  '2026-08-18T12:58:23Z'
+planning  '2026-08-18T13:06:55Z'
 ```
