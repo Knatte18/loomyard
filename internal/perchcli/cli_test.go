@@ -93,11 +93,15 @@ func TestCommand_EveryCommandHasShort(t *testing.T) {
 
 // TestRunCLI_Pause_MissingRunID verifies that "lyx perch pause" without --run-id fails with pause's
 // own manual flag-shape error (not cobra's MarkFlagRequired) before ever touching c.runDirBase.
-// This case runs against an uninitialized (non-git) directory, so PersistentPreRunE's own abort
-// error is also present in the captured output alongside the flag-specific error line — the same
-// documented double-failure shape as run_test.go's TestRunCLI_Run_MissingProfile.
+// This case runs against an uninitialized (non-git) directory, which resolves to standalone mode:
+// the pre-run therefore succeeds and only the verb's own flag error is emitted. XDG_STATE_HOME and
+// LOCALAPPDATA are redirected to the test's own temp tree before RunCLI so the standalone wiring's
+// Derive call and stencil seed land there instead of the operator's real state directory. Not
+// t.Parallel(), which t.Setenv requires.
 func TestRunCLI_Pause_MissingRunID(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"pause"})
