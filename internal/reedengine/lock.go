@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // reedLockFileName is the reed operation lock's file name inside the ephemeral
@@ -98,5 +99,56 @@ func (e *Engine) withOpLock(fn func() error) error {
 		return fmt.Errorf("acquire reed op lock: %w", err)
 	}
 	defer l.Release()
-	return fn()
+
+	// The identity of the file this lock is actually held on, snapshotted while it is provably the
+	// file at lockPath, so the post-op check below can tell whether it still is. A stat failure here
+	// leaves no baseline to compare against, so the check is skipped rather than guessed at.
+	heldLockFile, heldErr := os.Stat(lockPath)
+	if heldErr != nil {
+		logger.Debug("reed: could not identify the op lock file, skipping the post-op exclusion check",
+			"socket", e.Socket(), "lock", lockPath, "err", heldErr)
+	}
+
+	opErr := fn()
+	if heldErr != nil {
+		return opErr
+	}
+	if lockErr := opLockCompromisedError(lockPath, heldLockFile); lockErr != nil {
+		if opErr != nil {
+			return fmt.Errorf("%w — and the operation itself failed: %w", lockErr, opErr)
+		}
+		return lockErr
+	}
+	return opErr
+}
+
+// opLockCompromisedError reports an error when the file this op's lock was held on is no longer the
+// file at lockPath — meaning the exclusion the lock was supposed to provide did not hold for the
+// duration of the operation.
+//
+// A flock is held on an INODE, not on a name. Deleting .lyx while an op holds reed.lock — an
+// ordinary `rm -rf`, or the `git clean -xdf` the Durable-vs-Ephemeral State Invariant makes a
+// sanctioned operator action — unlinks that inode without disturbing the lock, and the next op's
+// os.MkdirAll + O_CREATE then mints a FRESH inode whose lock is granted immediately. Two reed ops
+// then drive the same tmux session and the same reed.json concurrently, last writer wins.
+// Measured live (R5 review finding R5-F6): with reed.lock held, a second `lyx reed status` blocked
+// for 11027ms as designed; with .lyx deleted mid-hold it was granted in 107ms.
+//
+// This DETECTS that, it does not prevent it, and the distinction is deliberate rather than a
+// shortcut: once the inode is unlinked it is unreachable by name, so no name-based lock can make the
+// second op wait for the first. What is achievable — and what an operator actually needs — is that
+// an operation which ran without the exclusion it claimed says so, instead of returning ok:true over
+// possibly-interleaved state. The same reasoning applies one layer down to reed.json.lock
+// (internal/state), which is left alone: reed.lock is the outer lock, so a compromise there is
+// already reported by the op that noticed it.
+func opLockCompromisedError(lockPath string, heldLockFile os.FileInfo) error {
+	current, err := os.Stat(lockPath)
+	if err == nil && os.SameFile(heldLockFile, current) {
+		return nil
+	}
+	return fmt.Errorf(
+		"reed's operation lock %s was removed or replaced while this operation was running, so it did not exclude other reed processes — "+
+			"something deleted the .lyx directory (an rm, or a `git clean -xdf` in the worktree) mid-operation. "+
+			"Reed state and the tmux session may now disagree; run \"lyx reed status\" to inspect, or \"lyx reed down\" and \"lyx reed resume\" to rebuild",
+		lockPath)
 }

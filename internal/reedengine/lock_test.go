@@ -8,8 +8,10 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -188,5 +190,71 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 	wantSession := filepath.Base(worktreeRoot)
 	if got := e.SessionName(); got != wantSession {
 		t.Errorf("SessionName() = %q, want %q", got, wantSession)
+	}
+}
+
+// TestWithOpLock_ReportsALockFileRemovedMidOperation is the regression guard for the R5 review's
+// R5-F6.
+//
+// A flock is held on an inode, not on a name, so deleting .lyx while an op holds reed.lock unlinks
+// that inode without disturbing the lock — and the next op's MkdirAll + O_CREATE mints a fresh one
+// whose lock is granted immediately. Measured live: a second `lyx reed status` blocked 11027ms with
+// the lock genuinely held, and was granted in 107ms once .lyx was deleted mid-hold, so two reed
+// processes then drove the same session and the same reed.json concurrently.
+// Reed cannot make the second op wait (an unlinked inode is unreachable by name), so what it must
+// not do is return success over state it did not actually have exclusive access to.
+func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
+	e := newTestEngine(t)
+
+	ran := false
+	err := e.withOpLock(func() error {
+		ran = true
+		// Exactly what `rm -rf .lyx` / `git clean -xdf` does to a held lock.
+		return os.RemoveAll(e.stateDir())
+	})
+	if !ran {
+		t.Fatal("withOpLock did not run the operation body")
+	}
+	if err == nil {
+		t.Fatal("withOpLock = nil after its lock file was removed mid-operation; want an error — the operation ran without the exclusion it claimed")
+	}
+	for _, want := range []string{reedLockFileName, "did not exclude other reed processes"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("withOpLock error = %v; want it to contain %q", err, want)
+		}
+	}
+}
+
+// TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed pins that the lock-compromise report
+// never swallows the operation's own error: an operator debugging a removed .lyx still needs to know
+// what the operation itself hit.
+func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) {
+	e := newTestEngine(t)
+
+	opFailure := errors.New("the operation's own failure")
+	err := e.withOpLock(func() error {
+		if rmErr := os.RemoveAll(e.stateDir()); rmErr != nil {
+			t.Fatalf("remove state dir: %v", rmErr)
+		}
+		return opFailure
+	})
+	if err == nil {
+		t.Fatal("withOpLock = nil; want an error")
+	}
+	if !errors.Is(err, opFailure) {
+		t.Errorf("withOpLock error = %v; want it to wrap the operation's own error", err)
+	}
+	if !strings.Contains(err.Error(), "did not exclude other reed processes") {
+		t.Errorf("withOpLock error = %v; want it to also report the compromised lock", err)
+	}
+}
+
+// TestWithOpLock_QuietWhenTheLockFileSurvives pins the other half: an ordinary operation must not
+// pay for this check with a spurious failure.
+func TestWithOpLock_QuietWhenTheLockFileSurvives(t *testing.T) {
+	e := newTestEngine(t)
+
+	if err := e.withOpLock(func() error { return nil }); err != nil {
+		t.Errorf("withOpLock on an undisturbed lock file = %v; want nil", err)
 	}
 }
