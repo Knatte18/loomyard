@@ -16,9 +16,24 @@ import (
 )
 
 // planPaneTarget decides how the next strand realization obtains its pane:
-// adopt an existing alive pane when no strand holds a binding, or split
-// the tallest alive non-header pane otherwise. Exactly one of adoptID or
-// splitTargetID is non-empty on success.
+// adopt the session's sole alive non-header pane when no strand holds a
+// binding, or split the tallest alive non-header pane otherwise. Exactly one
+// of adoptID or splitTargetID is non-empty on success.
+//
+// Adoption is deliberately narrowed to the SOLE-pane case, because that is the
+// only case it was written for: the pane new-session leaves behind on a fresh
+// boot, which would otherwise sit unused beside every strand pane forever.
+// Adopting one of SEVERAL untracked panes is a guess about which of them is an
+// idle shell, and a wrong guess is silent: send-keys into a pane already
+// running a blocking command exits 0, types the strand's command onto that
+// pane's screen where it never executes, and reed then reports the strand
+// live. Reproduced live (R4 review finding R4-F5): after .lyx/reed.json was
+// scrubbed from a running session, the next add adopted the previous header
+// pane — still running "lyx reed header --blocking" — and the strand's command
+// was typed into it and never ran, with status reporting live:true and no such
+// process on the box. Splitting a fresh pane instead is always correct: the new
+// pane's shell is idle by construction, and any leftover untracked pane is
+// reaped by the reconcile tail once a strand is bound.
 func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error) {
 	if len(live) == 0 {
 		return "", "", fmt.Errorf("session has no panes to adopt or split")
@@ -32,13 +47,8 @@ func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (ado
 		}
 	}
 	if !anyBound {
-		for _, p := range live {
-			if p.ID == headerPaneID {
-				continue
-			}
-			if !p.Dead {
-				return p.ID, "", nil
-			}
+		if sole, ok := soleAliveNonHeaderPane(live, headerPaneID); ok {
+			return sole, "", nil
 		}
 	}
 
@@ -71,6 +81,24 @@ func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (ado
 		splitTargetID = live[0].ID
 	}
 	return "", splitTargetID, nil
+}
+
+// soleAliveNonHeaderPane returns the id of the session's only alive pane that is not the header,
+// and whether exactly one such pane exists.
+// It reports false both when there is none and when there are several — see planPaneTarget for why
+// "several" must not be adopted from.
+func soleAliveNonHeaderPane(live []LivePane, headerPaneID string) (string, bool) {
+	found := ""
+	for _, p := range live {
+		if p.Dead || p.ID == headerPaneID {
+			continue
+		}
+		if found != "" {
+			return "", false
+		}
+		found = p.ID
+	}
+	return found, found != ""
 }
 
 // validateSplitCreatedNewPane returns an error unless paneID is genuinely

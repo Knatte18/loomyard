@@ -1,7 +1,8 @@
 // spawn_test.go table-tests planPaneTarget's adopt-vs-split decision — including the corpse-pane
 // rules tmux forces (never adopt a dead pane; split the tallest alive pane, or the kept corpse when
-// nothing is alive) and the header-pane exclusion (never adopted, never the preferred split target,
-// but the sole-pane fallback) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
+// nothing is alive), the header-pane exclusion (never adopted, never the preferred split target,
+// but the sole-pane fallback), and the sole-candidate narrowing on adoption (never guess which of
+// several untracked panes is idle) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
 // Both are pure/hermetic, no live tmux required.
 // launchStrandLocked itself always makes a real tmux round trip (list-panes/split-window +
 // send-keys), so it is exercised only through this decision seam, not invoked directly here;
@@ -93,6 +94,35 @@ func TestPlanPaneTarget(t *testing.T) {
 			live:            []LivePane{{ID: "%header", Height: 90}, {ID: "%1", Height: 10}},
 			headerPaneID:    "%header",
 			wantSplitTarget: "%1",
+		},
+		{
+			name: "SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt",
+			// R4 review finding R4-F5, reproduced live: after .lyx/reed.json
+			// was scrubbed from a running session, no strand held a binding
+			// and several untracked alive panes remained — one of them the
+			// previous header pane, still running "lyx reed header
+			// --blocking". Adoption picked it, send-keys typed the strand's
+			// command onto a blocked pane's screen where it never executed
+			// (exit 0 throughout), and status then reported the strand live
+			// with no such process on the box. With more than one candidate
+			// there is no way to tell an idle shell from a busy one, so the
+			// planner must split a guaranteed-idle new pane instead — off the
+			// tallest, %2 here.
+			strands:         nil,
+			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%stale", Height: 12}, {ID: "%2", Height: 37}},
+			headerPaneID:    "%header",
+			wantSplitTarget: "%2",
+		},
+		{
+			name: "SeveralAlivePanesButOnlyOneNonHeaderAlive_StillAdopts",
+			// The narrowing must not reach the case adoption exists for: a
+			// fresh boot's header plus the sole new-session pane, with a dead
+			// corpse also present. Exactly one alive non-header pane, so
+			// adopting it is still unambiguous.
+			strands:      nil,
+			live:         []LivePane{{ID: "%header", Height: 1}, {ID: "%corpse", Dead: true, Height: 12}, {ID: "%1", Height: 37}},
+			headerPaneID: "%header",
+			wantAdoptID:  "%1",
 		},
 		{
 			name: "HeaderIsSolePane_SplitTargetFallsBackToHeader",
