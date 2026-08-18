@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -29,4 +29,23 @@ plan-fix-r5  '2026-08-18T14:13:47Z'
 plan-review-r6  '2026-08-18T14:31:04Z'
 plan-fix-r6  '2026-08-18T14:31:04Z'
 planned  '2026-08-18T14:31:21Z'
+implementing  '2026-08-18T14:32:10Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: preflight-resolvemode
+    state: pending
+  - name: standalonegeom-builders
+    state: pending
+  - name: webstercli-repoint
+    state: pending
+  - name: burlercli-standalone-entry
+    state: pending
+  - name: perchcli-standalone-entry
+    state: pending
+  - name: docs-and-cross-cutting-verification
+    state: pending
 ```
