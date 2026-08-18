@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-review-r3
 slug: burler-perch-told-geometry
 branch: burler-perch-told-geometry
 plan: _mill/plan
@@ -21,4 +21,5 @@ discussed  '2026-08-18T08:44:24Z'
 planning  '2026-08-18T08:53:21Z'
 plan-fix-r1  '2026-08-18T09:02:53Z'
 plan-fix-r2  '2026-08-18T09:11:56Z'
+plan-review-r3  '2026-08-18T09:18:39Z'
 ```

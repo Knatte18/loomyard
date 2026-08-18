@@ -3,7 +3,7 @@
 ```yaml
 task: "burlerengine + perchengine told-geometry"
 slug: "burler-perch-told-geometry"
-approved: false
+approved: true
 started: "20260818-084814"
 parent: "standalone-producers"
 root: ""
