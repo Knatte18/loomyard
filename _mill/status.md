@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-buildinfo-and-mode-mapping
+phase: approved-standalonestate-leaf
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r3  '2026-08-18T06:42:02Z'
 planned  '2026-08-18T06:42:27Z'
 implementing  '2026-08-18T06:42:59Z'
 approved-buildinfo-and-mode-mapping  '2026-08-18T06:47:18Z'
+approved-standalonestate-leaf  '2026-08-18T06:51:54Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     commit_sha: 50eda5d3f32aa11d73d532dfae554fba855880ef
     verify_baseline_failures: ["FAIL\t./internal/buildinfo/... [setup failed]"]
   - name: standalonestate-leaf
-    state: running
+    state: approved
     implementer_session: a851199e-5f44-487f-b5e7-642dac3312fe
     start_sha: ca62cf3ae287bcfad712de22065c859633daaedc
+    commit_sha: 7ef3b358fc4a95abcf0100ec06422f9ac2845600
     verify_baseline_failures: ["FAIL\t./internal/standalonestate/... [setup failed]"]
   - name: preflight-lift
     state: pending
