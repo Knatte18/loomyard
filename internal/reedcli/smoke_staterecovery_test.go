@@ -202,6 +202,85 @@ func TestSmokeRenamedWorktreeRefusesRatherThanDoubleLaunching(t *testing.T) {
 	}
 }
 
+// envelopeError returns the "error" field of a one-line JSON output envelope, so an assertion reads
+// the message reed actually produced rather than its JSON-escaped rendering.
+func envelopeError(t *testing.T, envelope []byte) string {
+	t.Helper()
+	var result map[string]any
+	if err := json.Unmarshal(envelope, &result); err != nil {
+		t.Fatalf("parse output envelope %s: %v", envelope, err)
+	}
+	message, _ := result["error"].(string)
+	if message == "" {
+		t.Fatalf("output envelope %s carries no error message", envelope)
+	}
+	return message
+}
+
+// TestSmokeNoSessionMessageDistinguishesAnUnreadableStateFromAnEmptyOne pins R5-F8's readable/
+// unreadable split at the CALL SITE rather than at the helper.
+//
+// noSessionMessage's own table test (lifecycle_test.go) covers both branches of the pure function,
+// but nothing asserted that requireSessionLocked passes the real load outcome rather than a constant:
+// hard-coding it left the whole hermetic AND smoke suites green — the second wiring gap the
+// orchestrator's independent verification of round 5 found.
+//
+// The branch cannot be reached through the hermetic execHook seam, which is why this lives here: it
+// needs TmuxCmd.hasSession to answer (false, nil), and that requires a real *exec.ExitError with code
+// 1, which os.ProcessState offers no way to construct. A real tmux supplies it for free — has-session
+// against a socket with no server exits 1 — so this test boots no session and costs one tmux
+// invocation per assertion.
+//
+// Both branches are asserted, so pinning either constant fails: an unreadable file must not be
+// reported as an empty worktree (which sends the operator to `up`, where it fails again with the
+// corrupt-file error), and an ABSENT file must still get the plain "run lyx reed up" text, since a
+// brand-new worktree is readable-and-empty rather than unreadable.
+func TestSmokeNoSessionMessageDistinguishesAnUnreadableStateFromAnEmptyOne(t *testing.T) {
+	tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	worktree := h.PrimeWorktree()
+	deferHubRelease(t, worktree)
+
+	statePath := filepath.Join(worktree, ".lyx", "reed.json")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("create %s: %v", filepath.Dir(statePath), err)
+	}
+	// A truncated write is the ordinary way this file becomes unreadable: a crash, a kill -9, a full
+	// disk, or a power loss partway through a save.
+	if err := os.WriteFile(statePath, []byte(`{"socket":"lyx-x","strands":[{"gu`), 0o600); err != nil {
+		t.Fatalf("write %s: %v", statePath, err)
+	}
+
+	var out bytes.Buffer
+	if code := RunCLIIn(worktree, &out, []string{"status"}); code == 0 {
+		t.Fatalf("status with an unreadable reed.json = 0; want a failure, output: %s", out.String())
+	}
+	unreadable := envelopeError(t, out.Bytes())
+	if !strings.Contains(unreadable, "could not be read") {
+		t.Errorf("status error with an unreadable reed.json = %s; want it to say reed could not read the state, not that the worktree is empty", unreadable)
+	}
+	if strings.Contains(unreadable, `no reed session; run "lyx reed up"`) {
+		t.Errorf("status error with an unreadable reed.json = %s; want it NOT to claim nothing is persisted — reed cannot tell, and `up` fails again with the corrupt-file error", unreadable)
+	}
+
+	if err := os.Remove(statePath); err != nil {
+		t.Fatalf("remove %s: %v", statePath, err)
+	}
+
+	out.Reset()
+	if code := RunCLIIn(worktree, &out, []string{"status"}); code == 0 {
+		t.Fatalf("status with no reed.json = 0; want a failure, output: %s", out.String())
+	}
+	absent := envelopeError(t, out.Bytes())
+	if !strings.Contains(absent, `no reed session; run "lyx reed up"`) {
+		t.Errorf("status error with no reed.json at all = %s; want the plain up text — an ABSENT file is readable-and-empty, not unreadable", absent)
+	}
+	if strings.Contains(absent, "could not be read") {
+		t.Errorf("status error with no reed.json at all = %s; want it NOT to report an unreadable state for a brand-new worktree", absent)
+	}
+}
+
 // TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume is the end-to-end
 // regression guard for the R6 review's R6-F1, driven at the CLI seam.
 //
