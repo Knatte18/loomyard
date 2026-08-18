@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-fixing  '2026-08-18T15:09:48Z'
 nits-fixed-holistic  '2026-08-18T15:10:54Z'
 holistic-approved  '2026-08-18T15:11:02Z'
 done  '2026-08-18T15:12:08Z'
+pr-pending  '2026-08-18T15:14:16Z'
 ```
 
 ## Batches
