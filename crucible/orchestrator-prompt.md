@@ -45,7 +45,15 @@ The single discipline that makes this work: **you never trust a round's own "mer
 4. **One concern per round.**
    The review prompt is a full review+fix.
    A narrow follow-up (e.g. "close this one coverage gap", "split this file") is a *separate* targeted agent with its own tight brief — do not fold it into a review round.
-5. **Operator stop/restart is DELIBERATE — NEVER "recover" from it.**
+5. **A LARGE finding becomes a mill-wiki task, not an inline crucible fix — this is a SIZE line, not a severity line.**
+   "Fix every finding, all severities including NIT" (see `README.md`'s "Why fix every finding") is about SEVERITY: a NIT still gets fixed, in this round, in the commit-per-fix loop — severity affects only how a finding is reported.
+   This rule is a different axis: SIZE.
+   If a finding's fix is large — a genuine subsystem/feature addition, a cross-cutting refactor reaching outside the module under review, anything that would benefit from its own design/plan step rather than a scoped bugfix — the round must NOT cram it into Job 2.
+   Recognize it during review, record it fully in the review report exactly like any other finding (severity, scenario, suggested fix), but mark it explicitly **NOT-FIXED-THIS-ROUND** with the reason ("too large for an inline crucible fix — needs its own mill-wiki task").
+   Once the round closes, YOU (the orchestrator) open a proper mill-wiki task for it through the normal mill flow (mill-start/plan/go) — never by hand-editing wiki files (`CLAUDE.md`'s "Mill wiki — never touched directly": all wiki interaction goes through mill's wiki module or the `/mill-*` skills).
+   This keeps a crucible round scoped to hardening — bugs, races, error handling, doc drift — instead of silently growing into feature work nobody asked this round to build.
+   The size line is judgment, not a fixed token/LOC threshold; when genuinely unsure, ask the operator rather than guessing either way.
+6. **Operator stop/restart is DELIBERATE — NEVER "recover" from it.**
    The operator stops running round agents constantly, on purpose — to ask a question, redirect, or re-run from a cleaner point — and then either resumes the same session OR kills it and respawns a fresh one.
    This is the single most common thing that will happen to a live round,
    and it is done for a reason that is theirs, not yours to second-guess or undo.

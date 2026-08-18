@@ -223,6 +223,8 @@ Round count dropped sharply once the instruction changed to fix everything a rou
 This is why the shuttle instance of this method (and the template, going forward) requires fixing every recorded finding — including NITs — not just the BLOCKING/MEDIUM ones;
 severity affects how a finding is reported, not whether it gets fixed.
 
+**This is a severity rule, not a size rule — a large finding is a separate case.** A NIT still gets fixed inline, in this round; but a finding whose fix is genuinely LARGE (a subsystem/feature addition, a cross-cutting refactor reaching outside the module) does not belong in a round's commit-per-fix loop at all, regardless of its severity label. See `orchestrator-prompt.md`'s Hard Rule 5 for the full instruction: record it like any other finding, mark it NOT-FIXED-THIS-ROUND, and the orchestrator spins it into its own mill-wiki task instead of letting a hardening round grow into feature work.
+
 ## Worked example — the fabric campaign (where the method was refined)
 
 Six serial rounds against `fabric` after the slice 1–10 v2 rewrite.
