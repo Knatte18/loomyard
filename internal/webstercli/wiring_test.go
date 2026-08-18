@@ -1,7 +1,7 @@
 // wiring_test.go pins wire's mode truth table at tier 1: every case drives c.wire directly with a
-// told preflight.HubPresent result -- never through the real pre-run -- so no case spawns a process
-// or resolves cwd. websterCLI itself carries no *lyxcwd.Location field (see cli.go's struct): that is
-// a compile-time property of this package, not something a test can additionally assert at runtime.
+// told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
+// cwd. websterCLI itself carries no *lyxcwd.Location field (see cli.go's struct): that is a
+// compile-time property of this package, not something a test can additionally assert at runtime.
 //
 // The hub-mode cases below hand wire fictional, on-disk-absent *lyxcwd.Location values: every module
 // config load wire performs (shuttleengine.LoadConfig, reedengine.LoadConfig, websterengine.LoadConfig,
@@ -9,8 +9,19 @@
 // directory, so a fictional anchor path drives the whole hub branch without touching disk.
 //
 // The standalone-mode cases reach the one call site of standalonestate.Derive that exists anywhere in
-// this codebase: each such case redirects XDG_STATE_HOME to a t.TempDir() BEFORE calling wire, and
-// none of those cases is marked t.Parallel(), since t.Setenv panics under a parallel test.
+// this codebase: each such case redirects both XDG_STATE_HOME and LOCALAPPDATA to a t.TempDir() BEFORE
+// calling wire, so both of Derive's per-OS branches land inside the test's own temp tree on every
+// platform, and none of those cases is marked t.Parallel(), since t.Setenv panics under a parallel
+// test.
+//
+// Two structural facts a later reader might otherwise try to "fix": first, no (loc non-nil,
+// ModeStandalone) row exists in this file because no caller can produce one -- preflight.ResolveMode
+// returns a nil Location for both standalone causes. Second, the refuse case is deliberately absent
+// from this file because wire never receives it -- the error return aborts upstream in
+// resolvePersistentPreRun before c.wire is ever called -- and manufacturing one here would require
+// driving the real pre-run, which spawns git and breaches the Test Tier Purity Invariant, the exact
+// invariant wire's extraction exists to satisfy. The refusal is pinned instead in
+// internal/webstercli/cli_integration_test.go.
 
 package webstercli
 
@@ -21,6 +32,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -43,12 +55,12 @@ func seedStandalonePlanDir(t *testing.T, dir string) {
 	}
 }
 
-// TestWire_HubPresentTrueSelectsHubMode covers the three healthy-but-unwired locations that run
+// TestWire_ModeHubSelectsHubMode covers the three healthy-but-unwired locations that run
 // webster verbs today under hub mode: an ordinary worktree standing in for <hub>/_board, an unpaired
 // sibling, and a worktree whose paired sibling has been removed. A Wired-keyed implementation would
 // silently send every one of these to standalone mode; none of them may be refused, and none of them
 // may land in standalone.
-func TestWire_HubPresentTrueSelectsHubMode(t *testing.T) {
+func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 	tests := []struct {
 		name         string
 		worktreeName string
@@ -64,7 +76,7 @@ func TestWire_HubPresentTrueSelectsHubMode(t *testing.T) {
 			loc := hubLocation(hub, tt.worktreeName, ".")
 
 			c := &websterCLI{}
-			if err := c.wire(loc, true, "", "", "", ""); err != nil {
+			if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 				t.Fatalf("wire() = %v; want nil -- a healthy-but-unwired hub location must never be refused", err)
 			}
 
@@ -99,11 +111,11 @@ func TestWire_HubPresentTrueSelectsHubMode(t *testing.T) {
 	}
 }
 
-// TestWire_HubPresentFalseSelectsStandaloneMode covers both cases preflight.HubPresent folds into
-// "false": a plain downloaded git repository (no hub-level directory beside it) and an unresolvable
-// cwd (lyxcwd.Resolve itself failed). HubPresent returns a nil Location for each, and wire cannot and
-// must not try to tell them apart -- both land in standalone mode.
-func TestWire_HubPresentFalseSelectsStandaloneMode(t *testing.T) {
+// TestWire_ModeStandaloneSelectsStandaloneMode covers both causes preflight.ResolveMode folds into
+// ModeStandalone: a plain downloaded git repository (no hub-level directory beside it) and an
+// unresolvable cwd (lyxcwd.Resolve itself failed). ResolveMode returns a nil Location for each, and
+// wire cannot and must not try to tell them apart -- both land in standalone mode.
+func TestWire_ModeStandaloneSelectsStandaloneMode(t *testing.T) {
 	tests := []struct {
 		name string
 	}{
@@ -116,12 +128,13 @@ func TestWire_HubPresentFalseSelectsStandaloneMode(t *testing.T) {
 			target := t.TempDir()
 			stateHome := t.TempDir()
 			t.Setenv("XDG_STATE_HOME", stateHome)
+			t.Setenv("LOCALAPPDATA", t.TempDir())
 			seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8For(t, target), "_lyx", "plan"))
 
 			c := &websterCLI{}
-			// loc is nil regardless of which real HubPresent branch produced the false: both
-			// carry a nil Location, and wire consults hubPresent (the bool) alone to choose mode.
-			if err := c.wire(nil, false, target, "", "", ""); err != nil {
+			// loc is nil regardless of which real ResolveMode cause produced ModeStandalone: both
+			// carry a nil Location, and wire consults mode alone to choose the dispatch branch.
+			if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 				t.Fatalf("wire() = %v; want nil", err)
 			}
 
@@ -162,7 +175,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		loc := hubLocation(hub, "warp", ".")
 
 		c := &websterCLI{}
-		if err := c.wire(loc, true, "", "", "", ""); err != nil {
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		if c.geom.PlanDir == "" {
@@ -174,12 +187,13 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		target := t.TempDir()
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
 		hash8 := hash8For(t, target)
 		defaultPlanDir := filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan")
 		seedStandalonePlanDir(t, defaultPlanDir)
 
 		c := &websterCLI{}
-		if err := c.wire(nil, false, target, "", "", ""); err != nil {
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		if c.geom.PlanDir != defaultPlanDir {
@@ -193,7 +207,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		override := filepath.Join(t.TempDir(), "custom-plan")
 
 		c := &websterCLI{}
-		if err := c.wire(loc, true, "", "", override, ""); err != nil {
+		if err := c.wire(loc, preflight.ModeHub, "", "", override, ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		if c.geom.PlanDir != override {
@@ -205,11 +219,12 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		target := t.TempDir()
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
 		override := t.TempDir()
 		seedStandalonePlanDir(t, override)
 
 		c := &websterCLI{}
-		if err := c.wire(nil, false, target, "", override, ""); err != nil {
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", override, ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		if c.geom.PlanDir != override {
@@ -221,10 +236,11 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		target := t.TempDir()
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
 		// Deliberately never seed the default plan dir: it stays absent.
 
 		c := &websterCLI{}
-		err := c.wire(nil, false, target, "", "", "")
+		err := c.wire(nil, preflight.ModeStandalone, target, "", "", "")
 		if err == nil {
 			t.Fatal("wire() error = nil; want a usage error naming --plan-dir")
 		}
@@ -240,7 +256,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 		loc := hubLocation(hub, "warp", ".")
 
 		c := &websterCLI{}
-		if err := c.wire(loc, true, "", "", "", ""); err != nil {
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil -- hub mode must not gate on plan-dir presence", err)
 		}
 	})
@@ -254,7 +270,7 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 	loc := hubLocation(hub, "warp", ".")
 
 	c := &websterCLI{}
-	err := c.wire(loc, true, "", "", "", filepath.Join(t.TempDir(), "elsewhere"))
+	err := c.wire(loc, preflight.ModeHub, "", "", "", filepath.Join(t.TempDir(), "elsewhere"))
 	if err == nil {
 		t.Fatal("wire() error = nil; want a refusal naming --target-dir")
 	}
@@ -271,12 +287,13 @@ func TestWire_StandaloneRootsResolveToTarget(t *testing.T) {
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	hash8 := hash8For(t, target)
 	stateDir := filepath.Join(stateHome, "lyx", hash8)
 	seedStandalonePlanDir(t, filepath.Join(stateDir, "_lyx", "plan"))
 
 	c := &websterCLI{}
-	if err := c.wire(nil, false, target, "", "", ""); err != nil {
+	if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
@@ -307,14 +324,14 @@ func TestWire_StandaloneRootsResolveToTarget(t *testing.T) {
 // nil-or-eager: the RefMatcher is non-nil in both modes (a nil interface would panic the first time
 // CheckFork/CheckParent calls Matches unguarded), and the fabric opener is nil in standalone (there is
 // no fabric repo to reach) and non-nil, but never invoked by wire itself, in hub mode -- the latter
-// half is covered by TestWire_HubPresentTrueSelectsHubMode's explicit per-case check.
+// half is covered by TestWire_ModeHubSelectsHubMode's explicit per-case check.
 func TestWire_MatcherNeverNilOpenerNilOnlyInStandalone(t *testing.T) {
 	t.Run("HubMode", func(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(hub, "warp", ".")
 
 		c := &websterCLI{}
-		if err := c.wire(loc, true, "", "", "", ""); err != nil {
+		if err := c.wire(loc, preflight.ModeHub, "", "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		if c.refMatcher == nil {
@@ -329,11 +346,12 @@ func TestWire_MatcherNeverNilOpenerNilOnlyInStandalone(t *testing.T) {
 		target := t.TempDir()
 		stateHome := t.TempDir()
 		t.Setenv("XDG_STATE_HOME", stateHome)
+		t.Setenv("LOCALAPPDATA", t.TempDir())
 		hash8 := hash8For(t, target)
 		seedStandalonePlanDir(t, filepath.Join(stateHome, "lyx", hash8, "_lyx", "plan"))
 
 		c := &websterCLI{}
-		if err := c.wire(nil, false, target, "", "", ""); err != nil {
+		if err := c.wire(nil, preflight.ModeStandalone, target, "", "", ""); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 		if c.refMatcher == nil {
