@@ -99,6 +99,8 @@ The `CONSTRAINTS.md` rewords the shipped code makes necessary land in this batch
   - `internal/webstercli/status.go`
   - `internal/webstercli/awaitbatch.go`
   - `internal/webstercli/pause.go`
+  - `internal/webstercli/cli_test.go`
+  - `internal/webstercli/verbs_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -109,7 +111,12 @@ The `CONSTRAINTS.md` rewords the shipped code makes necessary land in this batch
   In `internal/webstercli/validate.go`, `planparser.Validate(plan, c.layout.AnchorPath())` becomes `planparser.Validate(plan, c.geom.WorktreeRoot)`.
   That parameter is named `worktreeRoot` at its declaration and resolves each card's move source and target files, so the told worktree root is correct on its own terms;
   hub mode's `WorktreeRoot` is the anchor path, exactly the value passed today, so no hub behaviour changes.
-  Removing the field rather than leaving it nil is the point of this card: every surviving dereference would otherwise be an unguarded panic on the first standalone verb, and deleting it makes the compiler enumerate the consumers instead.
+  Two test fixtures populate the deleted fields as composite-literal keys and must be converted in this same card, or the package will not compile:
+  `newTestCLI` in `internal/webstercli/cli_test.go`, and the `websterCLI{...}` literal in `internal/webstercli/verbs_test.go`.
+  Both currently set `layout`, `planDir`, `websterDir`, `websterScratchDir`, `reportsDir` and `promptsDir`, and both already gained `geom`, `refMatcher` and `openFabric` in batch 7.
+  Delete the six stale keys from each and let the geometry each fixture already builds supply those paths, exactly as the production wiring now does.
+  Keep each fixture's on-disk layout and every existing expectation unchanged — `verbs_test.go`'s subpath-anchored pre-run case in particular must keep passing, since it is this module's non-tautological anchoring proof.
+  Removing the field rather than leaving it nil is the point of this card: every surviving dereference would otherwise be an unguarded panic on the first standalone verb, and deleting it makes the compiler enumerate the consumers — the two fixtures above included — instead of leaving them to be found at runtime.
   Drop the `internal/lyxcwd` import from any file that no longer uses it.
 - **Commit:** `refactor(webstercli): delete the layout field and read every path off the told Geometry`
 
