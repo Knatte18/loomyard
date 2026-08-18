@@ -46,7 +46,9 @@ batches:
     commit_sha: 1204b1567f0ed3567ec1a506a2d7177074eb3d1d
     verify_baseline_failures: []
   - name: preflight doc correction
-    state: pending
+    state: running
+    implementer_session: 2d850da3-ee88-42d6-a8f9-e053260f3dbb
+    start_sha: 1e93ad689896550d069b64e9fb8c40d60f56cf9b
     verify_baseline_failures: []
   - name: websterengine Geometry and RefMatcher
     state: pending
