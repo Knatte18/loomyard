@@ -11,25 +11,29 @@ An LLM is spawned only on merge conflict (during merge-in from parent, or the me
 Mostly wiring on top of the already-built `fabric` mechanics (see [`internal/fabricengine`](../../internal/fabricengine/doc.go));
 worktree/branch/junction/portal teardown is explicitly **out of scope** — that's `lyx fabric cleanup`'s existing, separate job, which cannot run from inside the worktree being removed, the same reason `mill-cleanup` runs from the hub, never a task worktree.
 
-## Two merge targets, not one — warp and weft, handled differently
+## Fabric hands Finalize one of two conflict shapes — never "warp" or "weft"
 
-Merge-back is not a single git-merge operation — it is two, with genuinely different conflict mechanics, because `_lyx/raddle/` content is reached through a **filesystem junction** (not git-aware) inside the warp worktree:
+**Correction (found in review, not machine-caught):** this section used to be titled "Two merge targets, not one — warp and weft, handled differently" and named "Warp side"/"Weft side" as Finalize's own vocabulary.
+That violates the Fabric Vocabulary Invariant's consumer-doc rule (`CONSTRAINTS.md`): `Finalize` is not in the invariant's owner set (`internal/fabricengine`, `internal/fabriccli`, `internal/weftname`, `internal/gitkit`, `internal/hubforge`, `internal/boardengine`, `internal/configsync`), so it "does not know weft exists" — a doc describing Finalize's own behavior rewords to Fabric, it does not restate the owner's internal split.
+`internal/fabricengine`'s own package documentation is the correct, and only correct, place for the warp/weft mechanics below — this section now describes only what `fabricengine` **hands Finalize**, never which internal component produced it.
 
-- **Warp side** — an ordinary git merge conflict.
-  The agent operates in its own worktree, where `git diff`/`git status` behave normally.
-  No special handling.
-- **Weft side** — deliberately **not** represented as a git conflict at all, even though the files are reachable at what looks like an ordinary path inside warp (via the `_lyx` junction). `git diff` run from the warp worktree cannot see across a junction boundary into weft's own, separate `.git` history — it would silently report nothing, which is worse than an error, since nothing signals the agent it asked the wrong tool the wrong question.
-  So weft-side conflicts are never given git conflict markers: Go precomputes the diff directly against the real weft worktree (both weft SHAs are already known via `fabric`'s `Warp-SHA` correspondence tracking) and hands the agent a plain **document** describing the discrepancy — the agent reads it, resolves, and writes the final content via the junction path (a transparent write-through to the real weft files) — never invoking git for the weft side at all.
+Merge-back is not a single git-merge operation from `fabricengine`'s own perspective — a real internal distinction exists, owned entirely inside `fabricengine`, and it never surfaces past that boundary as vocabulary.
+What Finalize's own contract sees is one of exactly two **conflict-artifact shapes**, handed to it by `fabricengine`:
 
-## Only Raddle forwards from child weft to parent weft — not `_lyx`
+- **An ordinary git conflict.** The agent operates in a real git worktree with normal conflict markers, `git diff`/`git status` behaving as usual.
+  No special handling in Finalize's own instructions beyond "resolve this the way you'd resolve any git conflict."
+- **A discrepancy document.** For content `fabricengine` cannot express as a git conflict from Finalize's vantage, `fabricengine` precomputes the diff itself and hands the agent a plain document describing the discrepancy — the agent reads it, resolves, and writes the final content back through the path `fabricengine` gave it, never invoking git directly for this shape.
+  *Why this shape exists at all* is `fabricengine`'s own fact to state, not Finalize's — see its package documentation.
 
-`_lyx` is committed into every task's own weft branch **by design** (see `internal/fabricengine`'s package documentation and the [Fabric Git Invariant (warp + weft)](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft)) — it is the per-task session/orchestration state,
-and it is correct for it to live there for the task's own lifetime.
-It was never meant to propagate to parent, though — merge-back only forwards **Raddle**'s regenerated output (see [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) for when that regeneration actually runs) using a **narrowed pathspec**: `fabric.CommitWeft` already accepts an arbitrary pathspec (it is not hardwired to `_lyx` — `internal/fabricengine/weftgit.go`'s `CommitWeft` takes the pathspec as a parameter,
-and the fabric config's own `pathspec` key is whitespace-separated, so a hub can already name several directories at once), so the merge-back commit simply calls it with `["_lyx"]` — raddle and PATTERN content are both inside `_lyx` now, which is precisely why the earlier per-directory scoping (`_raddle` vs. `_pattern`) is obsolete.
+## Only Raddle's output forwards to the parent — not the rest of `_lyx`
+
+`_lyx` is committed into every task's own Fabric branch **by design** — see `internal/fabricengine`'s package documentation and the [Fabric Git Invariant (warp + weft)](../../CONSTRAINTS.md#fabric-git-invariant-warp--weft) for the owner's own account of why, in the owner's own vocabulary.
+From Finalize's side: it is the per-task session/orchestration state, correct to live there for the task's own lifetime, but never meant to propagate to the parent.
+Merge-back forwards only **Raddle**'s regenerated output (see [raddle.md](raddle.md#when-it-runs-deferred-to-merge-time-not-mid-task) for when that regeneration runs), via a Fabric commit call scoped to a narrowed pathspec, `["_lyx"]` — raddle and PATTERN content are both inside `_lyx` now, which is precisely why the earlier per-directory scoping (`_raddle` vs. `_pattern`) is obsolete.
 No new exclusion mechanism is needed — this is a call-site decision, not an architecture gap.
+(The pathspec-scoped commit primitive this calls is `fabricengine`'s own, currently `commitWeft`/`commitWeftLocked` in `internal/fabricengine/weftgit.go` — unexported today, so it will need either an exported wrapper or to live as a method Finalize's own package calls through `fabricengine`'s public surface; verify the actual exported name against the tree when this task is picked up rather than trusting this note.)
 
-Note: since Raddle and (eventually) `scout`'s own index are both pure functions of the current source code, they **regenerate** at merge-time rather than being merged/diffed across branches at all (see [raddle.md](raddle.md) for the reasoning) — so in practice the weft-side document-driven conflict path above is expected to matter mainly for genuinely hand/LLM-authored weft content like `PATTERN.md`, not for Raddle's own output.
+Note: since Raddle and (eventually) `scout`'s own index are both pure functions of the current source code, they **regenerate** at merge-time rather than being merged/diffed across branches at all (see [raddle.md](raddle.md) for the reasoning) — so in practice the discrepancy-document conflict shape above is expected to matter mainly for genuinely hand/LLM-authored content like `PATTERN.md`, not for Raddle's own output.
 
 ## Raddle regeneration — part of the merge, not a step before it
 
