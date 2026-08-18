@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: pattern-told-geometry
 branch: pattern-told-geometry
 plan: _mill/plan
@@ -27,6 +27,7 @@ approved-pattern told geometry  '2026-08-18T06:26:46Z'
 holistic-reviewing  '2026-08-18T06:27:21Z'
 holistic-approved  '2026-08-18T06:29:46Z'
 done  '2026-08-18T06:31:12Z'
+pr-pending  '2026-08-18T06:32:03Z'
 ```
 
 ## Batches
