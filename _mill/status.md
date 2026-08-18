@@ -81,6 +81,8 @@ batches:
     commit_sha: b34aa504574f1bd3660e58ebf6ef0cb807851cdd
     verify_baseline_failures: []
   - name: webstercli standalone entry
-    state: pending
+    state: running
+    implementer_session: 2fc4d90a-d255-4678-98bd-6d5ed470acd8
+    start_sha: 238b3cf1c9ef31e0b52e01119bb4222cc1231912
     verify_baseline_failures: []
 ```
