@@ -445,6 +445,118 @@ func TestRun_Wait_Died_ViaStatusNotLive(t *testing.T) {
 	}
 }
 
+// TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied is R3-F1's regression guard.
+//
+// Wait used to derive one boolean from reed's strand table and treat both negative answers alike, so
+// a Status that succeeded with the run's guid simply ABSENT — reed's bookkeeping reset under a run
+// whose agent is still working — classified OutcomeDied. Reproduced live twice: renaming the worktree
+// under an in-flight run, and deleting .lyx/reed.json (the remedy reed's own corrupt-state error
+// recommends) both returned ok:true/outcome:"died" ~6 s later while the claude process kept working
+// in its pane.
+// The first subtest is the defect; the second pins that a strand reed DOES track whose pane is not
+// alive still classifies OutcomeDied, so the fix narrows the branch rather than removing it.
+func TestRun_Wait_UntrackedStrand_IsMechanismFailureNotDied(t *testing.T) {
+	tests := []struct {
+		name        string
+		strands     []reedengine.StrandStatus
+		wantOutcome Outcome
+		wantErr     bool
+	}{
+		{
+			name:        "absent_from_table_is_a_mechanism_failure",
+			strands:     []reedengine.StrandStatus{{GUID: "someone-elses-strand", Live: true}},
+			wantOutcome: "",
+			wantErr:     true,
+		},
+		{
+			name:        "tracked_but_pane_not_live_is_still_died",
+			strands:     []reedengine.StrandStatus{{GUID: "strand-1", Live: false}},
+			wantOutcome: OutcomeDied,
+			wantErr:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, "events.jsonl") // never created
+			outputFile := filepath.Join(runDir, "out.md")       // never created
+
+			reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: tt.strands}}}
+			runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+			fc := newFakeClock(time.Now())
+			run := &Run{
+				runner:   runner,
+				spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+				runDir:   runDir,
+				state:    RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath},
+				clock:    fc,
+				deadline: fc.Now().Add(time.Minute),
+			}
+
+			result, err := run.Wait()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Wait() = (%+v, nil); want the untracked-strand mechanism error", result)
+				}
+				if !errors.Is(err, errStrandNotTracked) {
+					t.Errorf("Wait() error = %v; want one wrapping errStrandNotTracked", err)
+				}
+				if !strings.Contains(err.Error(), "strand-1") {
+					t.Errorf("Wait() error = %v; want it to name the run's guid so the operator can find the pane", err)
+				}
+				// A mechanism failure must keep the run's identity (R1-F2) — the agent may still be
+				// live, so the caller needs the handles to reach it.
+				if result.StrandGUID != "strand-1" || result.SessionID != "session-1" || result.RunDir != runDir {
+					t.Errorf("Wait() result = %+v; want the run's identity preserved (guid strand-1, session session-1, runDir %s)", result, runDir)
+				}
+			} else if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != tt.wantOutcome {
+				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
+			}
+			if len(reed.RemoveStrandCalls) != 0 {
+				t.Errorf("RemoveStrand calls = %+v; want none — neither exit cleans up", reed.RemoveStrandCalls)
+			}
+			if _, err := os.Stat(runDir); err != nil {
+				t.Errorf("run dir removed: %v; want it kept for diagnosis", err)
+			}
+		})
+	}
+}
+
+// TestRun_Wait_UntrackedStrand_OutputFilesStillWin pins that the file contract outranks reed's
+// bookkeeping: an agent that wrote every output file and was then untracked (its pane removed by a
+// `lyx reed remove`, say) finished its work, and a caller must not be told to go diagnose a run that
+// actually succeeded.
+func TestRun_Wait_UntrackedStrand_OutputFilesStillWin(t *testing.T) {
+	runDir := t.TempDir()
+	outputFile := filepath.Join(runDir, "out.md")
+	if err := os.WriteFile(outputFile, []byte("result"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+
+	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
+	runner := newWaitTestRunner(t, reed, &fakeEngine{}, Config{PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 30})
+	fc := newFakeClock(time.Now())
+	run := &Run{
+		runner:   runner,
+		spec:     Spec{OutputFiles: []string{outputFile}, Timeout: time.Minute},
+		runDir:   runDir,
+		state:    RunState{StrandGUID: "strand-1", EventsPath: filepath.Join(runDir, "events.jsonl")},
+		clock:    fc,
+		deadline: fc.Now().Add(time.Minute),
+	}
+
+	result, err := run.Wait()
+	if err != nil {
+		t.Fatalf("Wait() error: %v", err)
+	}
+	if result.Outcome != OutcomeDone {
+		t.Errorf("Outcome = %q; want %q (the file contract is satisfied, whatever reed still tracks)", result.Outcome, OutcomeDone)
+	}
+}
+
 func TestRun_Wait_Died_ButOutputFilesExist_ClassifiesDone(t *testing.T) {
 	// The pane died (reed.Status reports not live) but every output file
 	// already exists on disk — the agent must have written its result and

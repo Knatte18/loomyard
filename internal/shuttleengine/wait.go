@@ -7,17 +7,21 @@
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
 // every output file already exists — the file contract can be satisfied an instant before the
 // process disappears, racing ahead of its own Stop hook.
+// died is reserved for a strand reed STILL TRACKS whose pane is not alive; a strand reed no longer
+// tracks at all is a mechanism failure, not a classification (see errStrandNotTracked).
 
 package shuttleengine
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
 // clock abstracts time for tests.
@@ -47,8 +51,28 @@ func pollInterval(cfg Config) time.Duration {
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
 const maxEventsReadRetries = 3
 
-// maxStatusRetries bounds consecutive reed.Status failures.
+// maxStatusRetries bounds consecutive liveness-check failures — both a reed.Status that could not be
+// run and a Status that ran but no longer lists this run's strand.
 const maxStatusRetries = 2
+
+// errStrandNotTracked reports that reed answered the liveness check successfully but its strand table
+// no longer holds this run's guid.
+//
+// It exists because that answer says nothing about the agent. A strand reed still tracks whose pane is
+// not alive IS a dead run; a strand reed does not track at all is reed's own bookkeeping going away
+// under a run whose agent very often keeps working — reed's strand table is reset by an ordinary
+// `lyx reed down`/`remove`, by a `git clean -xdf` of .lyx (a sanctioned operator action under the
+// Durable-vs-Ephemeral State Invariant), by reed's own documented remedy for a corrupt reed.json
+// ("delete it by hand to keep the session"), and by a worktree renamed while a run is in flight, which
+// leaves this process's told anchor path pointing at a directory reed then re-creates empty.
+// Classifying any of those OutcomeDied reports a live agent as gone, and an unattended caller answers
+// "died" by respawning — leaving two agents on one worktree, the first unreachable. That is the
+// duplicate-agent hazard reed's own foreign-session refusal exists to prevent, one layer up.
+// Interrupt/Send already draw exactly this distinction (see requireLiveStrand); this is Wait's half.
+var errStrandNotTracked = errors.New(
+	"reed's strand table no longer holds this run's strand — reed's bookkeeping was reset under the run " +
+		"(a reed remove/down, a lost or rebuilt reed.json, or a worktree renamed while the run was in flight), " +
+		`which says nothing about the agent: its process may still be working in its pane. Check "lyx reed status"`)
 
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
@@ -64,6 +88,8 @@ const maxStatusRetries = 2
 // foreign-session refusal — a renamed worktree or a copied .lyx, where the run may well be alive
 // under another session — and reed exposes no sentinel that tells the two apart, so guessing "died"
 // would report a live agent as dead.
+// The same reasoning binds the case where reed does NOT fail: a Status that succeeds without this
+// run's strand in it also exits here rather than as OutcomeDied — see errStrandNotTracked.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -97,6 +123,9 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
+					if errors.Is(err, errStrandNotTracked) {
+						return run.identity(), fmt.Errorf("shuttle: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					}
 					return run.identity(), fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
 				}
 			} else {
@@ -198,6 +227,18 @@ func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 	return consumed, offset + int64(len(consumed)), nil
 }
 
+// strandStatusByGUID returns the strand reed reports for guid, and whether reed reported one at all.
+// The second return value is what separates "reed tracks this strand and its pane is not alive" from
+// "reed does not track this strand", which a bare liveness bool cannot express — see errStrandNotTracked.
+func strandStatusByGUID(strands []reedengine.StrandStatus, guid string) (reedengine.StrandStatus, bool) {
+	for _, s := range strands {
+		if s.GUID == guid {
+			return s, true
+		}
+	}
+	return reedengine.StrandStatus{}, false
+}
+
 // allOutputFilesExist reports whether every entry in files exists on disk.
 func allOutputFilesExist(files []string) bool {
 	for _, f := range files {
@@ -209,21 +250,26 @@ func allOutputFilesExist(files []string) bool {
 }
 
 // checkLivenessTick checks strand liveness and probes the pane during
-// startup. Returns a non-nil error only for reed.Status failures.
+// startup. Returns a non-nil error for a reed.Status that could not be run, and for a Status that ran
+// but no longer lists this run's strand (errStrandNotTracked — see there for why that is a mechanism
+// failure rather than a classification).
+// A satisfied file contract wins over both negative answers: the agent's output files ARE its return
+// value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped
+// tracking it.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
 		return "", fmt.Errorf("reed status: %w", err)
 	}
 
-	live := false
-	for _, s := range status.Strands {
-		if s.GUID == run.state.StrandGUID {
-			live = s.Live
-			break
+	strand, tracked := strandStatusByGUID(status.Strands, run.state.StrandGUID)
+	if !tracked {
+		if allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil
 		}
+		return "", errStrandNotTracked
 	}
-	if !live {
+	if !strand.Live {
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
 		}
