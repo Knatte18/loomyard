@@ -68,7 +68,7 @@ type websterCLI struct {
 	// compiles a regexp and cannot fail.
 	refMatcher websterengine.RefMatcher
 	// openFabric is the lazy fabric-handle opener RunDeps.OpenBisector is built from. It must NOT be
-	// opened during PersistentPreRunE: fabricengine.Open stat-checks the weft sibling and would fail
+	// opened during PersistentPreRunE: fabricengine.Open stat-checks the paired sibling and would fail
 	// the pre-run in the three healthy-but-unwired locations that run validate and status today,
 	// which never reach the integration bisect.
 	openFabric func() (*fabricengine.Fabric, error)

@@ -40,7 +40,7 @@
 // orchestrator asks; it is explicitly not the mode trigger.
 //
 // This is a considered override of an earlier design for this package, not a doc catching up to
-// code: fabricengine.Ready, which Wired calls, probes the paired weft sibling of the current
+// code: fabricengine.Ready, which Wired calls, probes the paired sibling of the current
 // worktree rather than the hub, so Wired is false at <hub>/_board, false in an unpaired sibling,
 // and false in a worktree whose pair was removed — three real, healthy hub situations that run
 // producer verbs today. Keying mode selection on Wired would route all three to standalone mode,

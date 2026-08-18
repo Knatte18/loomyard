@@ -118,7 +118,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDirFlag, planDirFlag,
 	c.anchorRel = loc.AnchorRel
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail. The
 	// fabric handle stays a closure and must NOT be opened here: fabricengine.Open stat-checks the
-	// weft sibling and would fail this pre-run in the three healthy-but-unwired locations that run
+	// paired sibling and would fail this pre-run in the three healthy-but-unwired locations that run
 	// validate and status today, neither of which ever reaches the integration bisect.
 	c.refMatcher = fabricengine.NewRefScanner(loc)
 	c.openFabric = func() (*fabricengine.Fabric, error) { return fabricengine.Open(loc) }
