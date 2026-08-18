@@ -99,8 +99,8 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
-	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
-	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
+	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
+	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// HubPath-anchored through the board: HubLogsDir alone, so one reed server per hub
 	// resolves to one deterministic place.
@@ -157,8 +157,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
-	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
-	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
+	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
+	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// Hub-anchored through the board: stays byte-identical, ignoring AnchorRel entirely.
 	assertPath(t, "fabricengine.HubLogsDir", fabricengine.HubLogsDir(l.HubPath), filepath.Join(hub, "_board", ".lyx", "logs"))
@@ -178,8 +178,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 		"websterengine.ScratchDir":    websterengine.ScratchDir(l.AnchorPath()),
 		"perchengine.ScratchDir":      perchengine.ScratchDir(l.AnchorPath()),
 		"logger.LogsDir":              logger.LogsDir(l),
-		"scoutengine.DaemonStateFile": scoutengine.DaemonStateFile(l, "go"),
-		"scoutengine.DaemonLock":      scoutengine.DaemonLock(l, "go"),
+		"scoutengine.DaemonStateFile": scoutengine.DaemonStateFile(l.AnchorPath(), "go"),
+		"scoutengine.DaemonLock":      scoutengine.DaemonLock(l.AnchorPath(), "go"),
 	}
 	for name, got := range dotLyxConstructors {
 		if !strings.HasPrefix(got, dotLyxBase) {
