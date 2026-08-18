@@ -213,6 +213,7 @@ Two independent resolutions would let `--stencils-dir` reach perch's own rounds 
   - `internal/standalonegeom/burlergeom.go`
   - `internal/standalonegeom/reedgeom.go`
   - `internal/standalonegeom/stencilsdir.go`
+  - `internal/standalonegeom/standalonegeom_test.go`
   - `internal/standalonestate/standalonestate.go`
   - `internal/perchengine/identity.go`
   - `internal/lyxcwd/lyxcwd.go`
@@ -229,7 +230,11 @@ Two independent resolutions would let `--stencils-dir` reach perch's own rounds 
   Assert that `wireStandalone` never reads `loc`.
   Record in the file header that the refuse case is pinned in `internal/preflight`'s integration table, not here.
 
-  Pin every standalone value: `c.perchGeom.GateDir` equals the target and `c.perchGeom.AnchorPath` equals `<state>`; `c.runDirBase` equals `perchengine.RunsDir(<state>)` and `c.scratchDirBase` equals `perchengine.ScratchDir(<state>)`, both therefore under `<state>`; the reed geometry values match `standalonegeom.ReedGeometry(target, stateDir, hash8)`; the config base is `<state>`; `c.stencilsDir` equals `standalonegeom.StencilsDir(stateDir)` when the flag is unset.
+  Pin every standalone value: `c.perchGeom.GateDir` equals the target and `c.perchGeom.AnchorPath` equals `<state>`; `c.runDirBase` equals `perchengine.RunsDir(<state>)` and `c.scratchDirBase` equals `perchengine.ScratchDir(<state>)`, both therefore under `<state>`; the config base is `<state>`; `c.stencilsDir` equals `standalonegeom.StencilsDir(stateDir)` when the flag is unset.
+
+  **Do not assert the reed geometry's field values here, and do not add an accessor to make them assertable**, for the same reason card 18 records for burler: `shuttleengine.Runner` holds every field unexported with no geometry accessor, and `perchCLI` stores only `c.runner`, so `SocketKey`, `SessionName`, `LogsDir`, `RepoName` and `HubPath` are unreachable from this in-package test.
+  They are pinned one layer down by `TestReedGeometry` in `internal/standalonegeom/standalonegeom_test.go`.
+  The linkage — that `wireStandalone` passes this invocation's own `target`, `stateDir` and `hash8` to `standalonegeom.ReedGeometry` — is a review obligation, not an assertion; record that in a comment here.
 
   Add the two perch-only assertions the design names:
   `c.openFabric` is non-nil in hub mode and nil in standalone, and `c.anchorRel` equals `loc.AnchorRel` in hub mode and `""` in standalone;

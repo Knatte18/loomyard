@@ -212,6 +212,7 @@ Burler is the simpler of the two producer CLIs: it has no fabric relationship at
   - `internal/standalonegeom/burlergeom.go`
   - `internal/standalonegeom/reedgeom.go`
   - `internal/standalonegeom/stencilsdir.go`
+  - `internal/standalonegeom/standalonegeom_test.go`
   - `internal/standalonestate/standalonestate.go`
   - `internal/lyxcwd/lyxcwd.go`
 - **Edits:** none
@@ -232,10 +233,17 @@ Burler is the simpler of the two producer CLIs: it has no fabric relationship at
 
   Pin every standalone value the design names, asserting against a `stateDir` the test derives itself via `standalonestate.Derive(target)` under a redirected state root:
   the burler geometry's `WorktreeRoot` equals the target and its `AnchorPath` equals `<state>`;
-  the reed geometry's `SocketKey`, `SessionName`, `LogsDir`, `RepoName` and `HubPath` match `standalonegeom.ReedGeometry(target, stateDir, hash8)`'s values;
   the config base is `<state>`;
   and `c.stencilsDir` equals `standalonegeom.StencilsDir(stateDir)` when the flag is unset.
   Where a value is not observable from outside the constructed `*burlerengine.Engine`, assert it through the receiver's own reporting fields (`c.mode`, `c.stateDir`, `c.stencilsDir`) and add a comment naming what is and is not observable at this seam rather than inventing an accessor on the engine.
+
+  **Do not assert the reed geometry's field values here, and do not add an accessor to make them assertable.**
+  `burlerengine.Engine` exposes only `Run` and holds its `geom`, `cfg` and `stencilsDir` unexported; `shuttleengine.Runner` holds `reed`, `engine`, `anchorPath`, `worktreeRoot` and `cfg` unexported with no geometry accessor.
+  Both are different packages from this in-package test, so `SocketKey`, `SessionName`, `LogsDir`, `RepoName` and `HubPath` are unreachable from here, and none of the three reporting fields encodes them.
+  `internal/webstercli/wiring_test.go`, the file this one mirrors, asserts no reed-geometry values either.
+  Those five values are already pinned one layer down, by `TestReedGeometry` in `internal/standalonegeom/standalonegeom_test.go`, which asserts all eight fields against told parameters.
+  What that leaves uncovered by any test is the *linkage* — that `wireStandalone` calls `standalonegeom.ReedGeometry` with this invocation's own `target`, `stateDir` and `hash8` rather than some other triple.
+  No seam exposes it, so it is a review obligation rather than an assertion: state that explicitly in a comment at this point in the file, so a later reader knows the gap is recorded rather than overlooked.
 
   Cover hub mode resolving the same values it does today given a told `Location`: `c.mode` is `"hub"`, `c.stateDir` is empty, and `c.stencilsDir` equals `fabricengine.StencilsDir(loc.HubPath)`.
   Cover the flags: `--target-dir` refused in hub mode with an error naming the reason; `--stencils-dir` honoured in both modes; the standalone default seeded on disk when the flag is unset; an explicit `--stencils-dir` never written to, asserted by pointing it at an empty `t.TempDir()` and checking the directory is still empty afterwards.

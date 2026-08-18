@@ -94,6 +94,7 @@ The discussion pins the expected outcome as no change, and a cross-cutting invar
   - `cmd/lyx/drift_test.go`
   - `cmd/lyx/seamsignature_test.go`
   - `internal/burlercli/cli.go`
+  - `internal/burlercli/testmain_test.go`
   - `internal/perchcli/cli.go`
 - **Edits:** none
 - **Creates:** none
@@ -104,7 +105,10 @@ The discussion pins the expected outcome as no change, and a cross-cutting invar
   Four of them are the ones this task is able to break, and each must be checked for the specific reason it could fail rather than merely observed green:
 
   `TestTierPurity_UntaggedTestsSpawnNothing` — the three new untagged `wiring_test.go` files must contain none of the banned tokens, and the match is a raw substring match, so a token appearing inside a comment or a string literal trips it too.
-  `TestHermeticGitEnv_GitSpawningPackagesHaveTestMain` — `internal/burlercli` now spawns git indirectly through its integration test's `RunCLIIn`, which is why batch 4 added a `TestMain`; confirm the guard sees it.
+  `TestHermeticGitEnv_GitSpawningPackagesHaveTestMain` — this suite passes trivially for `internal/burlercli` and that is expected, not a success signal.
+  The guard scans for literal tokens (`gitexec.Run`, `exec.Command`, `gitkit.Copy*`, `hubforge.NewHub`), none of which appear in burlercli's test files after batch 4, since its integration test reaches git indirectly through `RunCLIIn`.
+  So the guard never classifies the package as git-spawning and has nothing to check — exactly the blind spot batch 4 card 17 documents, and the reason that card's `TestMain` is required by review discipline rather than by this suite.
+  Confirm the `TestMain` is present by reading `internal/burlercli/testmain_test.go`; do not treat a green run here as evidence it exists.
   The help-tree and `Short`-completeness suites — both CLIs gained two persistent flags and a rewritten `Long`, so help output changed even though these suites assert module presence and `Short` rather than flags.
   `cmd/lyx/constructoranchoring_test.go` — already in its post-T6 told-string shape and expected to need no row change, but it is what would catch a geometry constructor accidentally re-anchored by batch 4 or 5.
 
