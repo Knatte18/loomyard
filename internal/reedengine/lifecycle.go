@@ -47,9 +47,16 @@ type ResumeResult struct {
 	Resumed int
 }
 
-// DownResult reports the outcome of Down: the session name that was torn down.
+// DownResult reports the outcome of Down: the session name that was torn down, plus the name of a
+// live session Down knowingly walked away from.
 type DownResult struct {
 	Session string
+	// AbandonedSession names a tmux session this worktree's state file was recorded against, which
+	// is STILL RUNNING on the shared per-hub socket under a name that is not this worktree's, and
+	// which Down did not kill and could not track any further because it deleted the state file
+	// naming it. Empty in every ordinary teardown. See Down for why it is reported rather than
+	// killed.
+	AbandonedSession string
 }
 
 // StrandStatus is one strand's status in StatusResult.
@@ -767,6 +774,21 @@ func (e *Engine) Resume() (ResumeResult, error) {
 // Down tears this worktree's session down and waits for async teardown to finish.
 // Only kill-session (not kill-server, which other worktrees share).
 // Waits for server and pane-child processes to actually release resources.
+//
+// Down is also the only lyx-only escape from the foreign-session refusal (generation.go): it loads
+// no state and so never reaches that check, which matters for an operator who can run lyx but not
+// raw tmux — a CI-like environment, a sandboxed agent — since the refusal's own message names only a
+// `tmux kill-session` remedy. That escape used to be silent about its cost: with a worktree renamed
+// while its session was up, `down` reported ok:true, deleted reed.json, and left the recorded session
+// and every strand process in it running on the shared socket, addressable by no reed verb ever
+// again because no worktree of that name exists to derive it from (R6 review finding R6-F3,
+// reproduced live). It now names that session in the result and at Warn.
+//
+// It still does not KILL it, and must not: the recorded name is this worktree's own former session
+// after a rename, but a SIBLING worktree's live session after a hand-copied .lyx (R5-F4), and reed
+// cannot tell those apart. Killing it would re-open R5-F4's damage under a different verb.
+// It still DELETES the state file, so `down` stays the idempotent escape it is — reporting the
+// abandonment is what keeps that from being a silent loss.
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
@@ -847,12 +869,25 @@ func (e *Engine) Down() (DownResult, error) {
 			return serverErr
 		}
 
+		// Read the state file for the abandonment report BEFORE deleting it: after the delete there
+		// is nothing left that names the orphan. A corrupt or absent file simply reports nothing —
+		// Down must stay idempotent and must never fail over a file it is about to remove.
+		abandoned := ""
+		if st, loadErr := LoadState(e.stateDir()); loadErr == nil && st != nil {
+			if verdict, _ := e.classifyRecordedSessionLocked(st.PaneGeneration); verdict == recordedSessionLive {
+				abandoned = st.PaneGeneration.SessionName
+				logger.Warn("reed: down left a recorded session running on the shared socket and deleted the state naming it",
+					"socket", e.Socket(), "session", e.SessionName(), "abandonedSession", abandoned,
+					"remedy", fmt.Sprintf("%s -L %s kill-session -t '=%s'", e.TmuxPath(), e.Socket(), abandoned))
+			}
+		}
+
 		path := filepath.Join(e.stateDir(), reedStateFileName)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("delete state: %w", err)
 		}
 
-		result = DownResult{Session: e.SessionName()}
+		result = DownResult{Session: e.SessionName(), AbandonedSession: abandoned}
 		return nil
 	})
 	return result, err

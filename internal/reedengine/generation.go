@@ -167,6 +167,52 @@ func (e *Engine) refuseRecordedForeignSessionBeforeBootLocked() error {
 	return e.refuseLiveForeignSessionLocked(st.PaneGeneration)
 }
 
+// recordedSessionVerdict is what a state file's recorded session name resolves to on this engine's
+// socket right now: the answer both the refusal and Down's abandonment report are built on.
+type recordedSessionVerdict int
+
+const (
+	// recordedSessionAbsent means the recorded name is this worktree's own, is unset, or names no
+	// session reachable on this socket — nothing to collide with, nothing to report.
+	recordedSessionAbsent recordedSessionVerdict = iota
+	// recordedSessionLive means a session of that name is running AND answered the identity probe
+	// as the same incarnation the state was recorded against.
+	recordedSessionLive
+	// recordedSessionUnidentifiable means a session of that name IS listed on the socket but did
+	// not answer the identity probe, so reed cannot tell whether it is the recorded one.
+	recordedSessionUnidentifiable
+)
+
+// classifyRecordedSessionLocked resolves recorded.SessionName against this socket, returning the
+// probe error alongside a recordedSessionUnidentifiable verdict so the caller can quote it.
+//
+// Existence is answered by list-sessions, never by the generation probe's error: display-message
+// exits 0 for an absent session (see paneGenerationLocked), so a probe error means the round trip
+// could not be run, and reading that as "gone" is the fail-open R6-F2 closed.
+// An errored list-sessions is read as "no reachable server on this socket, so nothing can be running
+// under the recorded name" — the same reading Down and sessionlessSocketHolderPersists give it.
+func (e *Engine) classifyRecordedSessionLocked(recorded PaneGeneration) (recordedSessionVerdict, error) {
+	if recorded.SessionName == "" || recorded.SessionName == e.SessionName() {
+		return recordedSessionAbsent, nil
+	}
+
+	listed, err := e.tmux.output("list-sessions", "-F", "#{session_name}")
+	if err != nil || !sessionNameListed(listed, recorded.SessionName) {
+		return recordedSessionAbsent, nil
+	}
+
+	orphan, probeErr := e.paneGenerationLocked(recorded.SessionName)
+	if probeErr != nil {
+		return recordedSessionUnidentifiable, probeErr
+	}
+	if !orphan.SameIncarnation(recorded) {
+		// A legitimate namesake: a new worktree reusing the old name answers with a different
+		// incarnation, so it is not this state's orphan.
+		return recordedSessionAbsent, nil
+	}
+	return recordedSessionLive, nil
+}
+
 // refuseLiveForeignSessionLocked refuses the operation when recorded names a session that is STILL
 // RUNNING on this socket and is not this worktree's own — the one disagreement that must not be
 // resolved by silently carrying on.
@@ -192,53 +238,30 @@ func (e *Engine) refuseRecordedForeignSessionBeforeBootLocked() error {
 // destroying it unasked is not reed's call. The message therefore names the session, the socket, and
 // the exact command that clears it.
 //
-// Existence is answered by list-sessions, never by the generation probe's error, and never by
-// treating "I could not ask" as "it is not there". This is the one check in the package whose whole
-// purpose is to REFUSE, so it is also the one place where failing open costs the most: guessing
-// "gone" wrong launches a second copy of every strand (R5-F5) or spends another worktree's pane ids
-// as targets (R5-F4). adoptPaneGenerationLocked's own fail-open is a different and genuinely
-// two-sided trade — clearing a healthy table over a hiccup is worse than the staleness it guards —
-// and must not be read as licence for this one (R6 review finding R6-F2).
-//
-// The split is only possible because the two questions have different authorities: list-sessions
-// exits 1 for an unreachable socket and answers a definite list otherwise, while display-message
-// exits 0 for a session that is not there (see paneGenerationLocked). An errored list-sessions is
-// read as "no reachable server on this socket, so nothing can be running under the recorded name",
-// the same reading Down and sessionlessSocketHolderPersists already give it. A session that IS
-// listed but does not answer the identity probe is the genuinely anomalous case — the transport
-// failed between two consecutive round trips — and is refused rather than waved through.
+// A session reed cannot IDENTIFY is refused too, not waved through — this is the one check in the
+// package whose whole purpose is to refuse, so it is also the one place where failing open costs the
+// most: guessing "gone" wrong launches a second copy of every strand (R5-F5) or spends another
+// worktree's pane ids as targets (R5-F4). adoptPaneGenerationLocked's own fail-open is a different
+// and genuinely two-sided trade — clearing a healthy table over a hiccup is worse than the staleness
+// it guards — and must not be read as licence for this one.
 //
 // Failing open here also broke a guarantee stated elsewhere: because the pre-boot and post-boot call
 // sites run this same check against the same recorded value, ONE transient probe failure at the
 // pre-boot call was enough to split their verdicts, so Up booted and then refused — depositing the
 // bare session on the shared per-hub server that refuseRecordedForeignSessionBeforeBootLocked exists
-// to prevent (reproduced live, tmux 3.6).
+// to prevent (R6 review finding R6-F2, reproduced live on tmux 3.6). See
+// classifyRecordedSessionLocked for the authorities the three verdicts rest on.
 func (e *Engine) refuseLiveForeignSessionLocked(recorded PaneGeneration) error {
-	if recorded.SessionName == "" || recorded.SessionName == e.SessionName() {
+	verdict, probeErr := e.classifyRecordedSessionLocked(recorded)
+	switch verdict {
+	case recordedSessionAbsent:
 		return nil
-	}
-
-	listed, err := e.tmux.output("list-sessions", "-F", "#{session_name}")
-	if err != nil {
-		// No reachable server on this socket, so nothing can be running under the recorded name;
-		// the caller clears the stale bindings and carries on.
-		return nil
-	}
-	if !sessionNameListed(listed, recorded.SessionName) {
-		// The recorded session is definitively gone, so there is nothing to collide with.
-		return nil
-	}
-
-	orphan, err := e.paneGenerationLocked(recorded.SessionName)
-	if err != nil {
+	case recordedSessionUnidentifiable:
 		return fmt.Errorf(
 			"this worktree's reed state was recorded against tmux session %q, which IS listed on socket %q but did not answer reed's identity probe (%w) — "+
 				"reed will not guess whether it is the session this state was recorded against, because continuing on a wrong guess would launch a second copy of every strand. "+
 				"Re-run this command, or tear that session down with \"%s -L %s kill-session -t '=%s'\" if it is not one you need",
-			recorded.SessionName, e.Socket(), err, e.TmuxPath(), e.Socket(), recorded.SessionName)
-	}
-	if !orphan.SameIncarnation(recorded) {
-		return nil
+			recorded.SessionName, e.Socket(), probeErr, e.TmuxPath(), e.Socket(), recorded.SessionName)
 	}
 
 	return fmt.Errorf(

@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -261,6 +262,63 @@ func TestSmokeDiagnosticVerbsNameTheOrphanSessionRatherThanPointingAtResume(t *t
 		if strings.Contains(reported, `run "lyx reed resume"`) {
 			t.Errorf("%v error = %s; want it NOT to point at resume, which refuses while %q is still running", verb, reported, originalSession)
 		}
+	}
+}
+
+// TestSmokeDownReportsTheSessionItAbandons is the end-to-end regression guard for the R6 review's
+// R6-F3, driven at the CLI seam.
+//
+// Reproduced live before the fix: down loads no state and so never reaches the foreign-session
+// refusal, which makes it the only lyx-only escape from that refusal — and the one a tmux-less
+// operator is therefore steered toward. In a renamed worktree it reported {"ok":true,...}, deleted
+// reed.json, and left the recorded session and its strand process running on the shared per-hub
+// socket, addressable by no reed verb ever again and named by nothing left on disk.
+//
+// The assertions are that down still SUCCEEDS (it is the escape, and it is idempotent), that the
+// abandoned session is named in the envelope, and that down did not kill it — the recorded name is a
+// sibling worktree's live session in the hand-copied-.lyx case, so killing it would re-open R5-F4.
+func TestSmokeDownReportsTheSessionItAbandons(t *testing.T) {
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	original := materializeSibling(t, h, "abandon-before-rename")
+	renamed := filepath.Join(h.Path, "abandon-after-rename")
+
+	deferHubRelease(t, h.PrimeWorktree())
+	deferHubRelease(t, renamed)
+
+	var out bytes.Buffer
+	if code := RunCLIIn(original, &out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+	socket, originalSession := socketAndSessionIn(t, original)
+	t.Cleanup(func() {
+		exec.Command(tmuxPath, "-L", socket, "kill-session", "-t", "="+originalSession).Run()
+		var buf bytes.Buffer
+		RunCLIIn(renamed, &buf, []string{"down"})
+	})
+	addStrandIn(t, original, smokeReapLaunchCmd(), "--name", "pre-rename")
+
+	if err := os.Rename(original, renamed); err != nil {
+		t.Fatalf("rename %s -> %s: %v", original, renamed, err)
+	}
+
+	out.Reset()
+	if code := RunCLIIn(renamed, &out, []string{"down"}); code != 0 {
+		t.Fatalf("down in the renamed worktree = %d; want 0 — down is the only lyx-only escape from the refusal, output: %s", code, out.String())
+	}
+	var downResult map[string]any
+	if err := json.Unmarshal(out.Bytes(), &downResult); err != nil {
+		t.Fatalf("parse down result: %v", err)
+	}
+	if got, _ := downResult["abandonedSession"].(string); got != originalSession {
+		t.Errorf("down abandonedSession = %q; want %q — deleting reed.json removes the only record naming that still-running session", got, originalSession)
+	}
+
+	// Reporting it must not become killing it: after a hand-copied .lyx the recorded name is a
+	// SIBLING worktree's live session, and reed cannot tell that case from this one.
+	if names := sessionNamesOnSocket(t, tmuxPath, socket); !slices.Contains(names, originalSession) {
+		t.Errorf("sessions on socket %s = %v; want %s still among them — down must report the abandoned session, never kill it", socket, names, originalSession)
 	}
 }
 
