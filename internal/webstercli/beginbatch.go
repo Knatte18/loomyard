@@ -55,7 +55,7 @@ Example:
 				return nil
 			}
 
-			plan, err := planparser.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.geom.PlanDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -66,7 +66,7 @@ Example:
 			// BeginBatch (guards + mutate) -> SaveState sequence: every
 			// holder's section is bounded, so the blocking acquire is
 			// always short.
-			mutateLock, err := websterengine.AcquireStateMutation(c.websterScratchDir)
+			mutateLock, err := websterengine.AcquireStateMutation(c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -78,7 +78,7 @@ Example:
 				}
 			}()
 
-			st, err := websterengine.LoadState(c.websterDir, c.websterScratchDir)
+			st, err := websterengine.LoadState(c.geom.WebsterDir, c.geom.ScratchDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -89,20 +89,15 @@ Example:
 			}
 
 			deps := websterengine.BeginDeps{
-				Plan:         plan,
-				Batches:      batches,
-				State:        st,
-				Roles:        c.roles,
-				Config:       c.cfg,
-				Engine:       c.engine,
-				Injector:     c.injector,
-				Reed:         c.reed,
-				WorktreeRoot: c.layout.AnchorPath(),
-				Layout:       c.layout,
-				WebsterDir:   c.websterDir,
-				ReportsDir:   c.reportsDir,
-				PromptsDir:   c.promptsDir,
-				ScratchDir:   c.websterScratchDir,
+				Plan:     plan,
+				Batches:  batches,
+				State:    st,
+				Roles:    c.roles,
+				Config:   c.cfg,
+				Engine:   c.engine,
+				Injector: c.injector,
+				Reed:     c.reed,
+				Geom:     c.geom,
 			}
 
 			result, err := websterengine.BeginBatch(deps, batchNumber)
@@ -121,7 +116,7 @@ Example:
 				return nil
 			}
 
-			if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
+			if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 				_ = mutateLock.Release()
 				mutateHeld = false
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
@@ -133,7 +128,7 @@ Example:
 			_ = mutateLock.Release()
 			mutateHeld = false
 
-			if _, syncErr := fabricSync(c.layout, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
+			if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("begin-batch %s", result.BatchName)); syncErr != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("webster: batch %s begun but the fabric sync failed: %v", result.BatchName, syncErr)))
 				return nil
 			}
@@ -143,7 +138,7 @@ Example:
 				"prompt_path": result.PromptPath,
 				"start_sha":   result.StartSHA,
 				"model":       result.AssertedModel,
-				"warnings":    ownerlessRunWarnings(c.websterScratchDir, nil),
+				"warnings":    ownerlessRunWarnings(c.geom.ScratchDir, nil),
 			}))
 			return nil
 		},

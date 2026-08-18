@@ -54,7 +54,7 @@ Example:
 				return nil
 			}
 
-			plan, err := planparser.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.geom.PlanDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -71,7 +71,7 @@ Example:
 				waitBudget = time.Duration(websterengine.DefaultAwaitWaitS) * time.Second
 			}
 
-			result, err := websterengine.AwaitBatch(batches, c.reportsDir, batchNumber, waitBudget, recoverRealClock{})
+			result, err := websterengine.AwaitBatch(batches, c.geom.ReportsDir, batchNumber, waitBudget, recoverRealClock{})
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
@@ -81,7 +81,7 @@ Example:
 				"batch":     result.BatchName,
 				"report":    result.ReportPresent,
 				"elapsed_s": result.ElapsedS,
-				"warnings":  ownerlessRunWarnings(c.websterScratchDir, nil),
+				"warnings":  ownerlessRunWarnings(c.geom.ScratchDir, nil),
 			}))
 			return nil
 		},

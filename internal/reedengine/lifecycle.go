@@ -285,13 +285,13 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	spawnSession := func() error {
 		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
 		// -L/new-session on the argv; -c pins new-session's pane default cwd
-		// to the invoking worktree cwd, so panes keep today's behavior even
-		// though the server process's own cwd (cmd.Dir) has moved to logsDir.
+		// to Geometry.PaneCwd, the told pane spawn directory, even though
+		// the server process's own cwd (cmd.Dir) has moved to logsDir.
 		argv := append([]string{}, debugArgs...)
 		argv = append(argv,
 			"-L", e.Socket(),
 			"new-session", "-d", "-s", session,
-			"-c", e.geom.AnchorPath,
+			"-c", e.geom.PaneCwd,
 			"-x", strconv.Itoa(e.cfg.Width),
 			"-y", strconv.Itoa(e.cfg.Height),
 			e.cfg.Shell,
@@ -486,7 +486,7 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	// pane instead). Every subsequent strand split (spawn.go) always
 	// targets a non-header pane and inserts below it, so this is the only
 	// split in the whole engine that needs -b.
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.AnchorPath, "-P", "-F", "#{pane_id}")
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
 	if err != nil {
 		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)

@@ -23,8 +23,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
@@ -132,8 +132,9 @@ func TestFabricSync_SkipGitBypassNeedsNoFabricWorktree(t *testing.T) {
 
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
+	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-	committed, err := fabricSync(layout, "bypass probe")
+	committed, err := fabricSync(open, layout.AnchorRel, "bypass probe")
 	if err != nil {
 		t.Fatalf("fabricSync() error = %v; want nil, the bypass must never touch the filesystem or git", err)
 	}
@@ -150,14 +151,49 @@ func TestFabricSync_NonBypassValidatesPairPaths(t *testing.T) {
 
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: hub, WorktreeName: filepath.Base(filepath.Join(hub, "warp")), AnchorRel: "."}
+	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-	committed, err := fabricSync(layout, "missing-pair probe")
+	committed, err := fabricSync(open, layout.AnchorRel, "missing-pair probe")
 	if committed {
 		t.Error("fabricSync() committed = true; want false, no repo exists to commit to")
 	}
 	var missing *fabricengine.ErrMissingPath
 	if !errors.As(err, &missing) {
 		t.Fatalf("fabricSync() error = %v; want a *fabricengine.ErrMissingPath from Open's stat validation", err)
+	}
+}
+
+// TestRunDeps_OpenBisectorNilWhenOpenFabricNil proves run.go's own websterengine.RunDeps
+// construction, not just c.openFabric in isolation: with c.openFabric nil (standalone mode),
+// runDeps must leave RunDeps.OpenBisector literally nil rather than wrapping the nil opener in a
+// non-nil closure, since a non-nil closure over a nil c.openFabric panics the first time
+// runIntegrationStage invokes it instead of taking its own nil-OpenBisector bypass.
+func TestRunDeps_OpenBisectorNilWhenOpenFabricNil(t *testing.T) {
+	c := &websterCLI{cfg: websterengine.Config{}}
+
+	deps := c.runDeps()
+
+	if deps.OpenBisector != nil {
+		t.Error("runDeps().OpenBisector != nil; want nil when c.openFabric is nil")
+	}
+}
+
+// TestRunDeps_OpenBisectorWrapsOpenFabric proves the hub-mode half of the same construction: a
+// non-nil c.openFabric is wrapped into a non-nil OpenBisector that proxies through to it.
+func TestRunDeps_OpenBisectorWrapsOpenFabric(t *testing.T) {
+	wantErr := errors.New("probe: openFabric reached")
+	c := &websterCLI{
+		cfg:        websterengine.Config{},
+		openFabric: func() (*fabricengine.Fabric, error) { return nil, wantErr },
+	}
+
+	deps := c.runDeps()
+
+	if deps.OpenBisector == nil {
+		t.Fatal("runDeps().OpenBisector = nil; want a wrapped closure when c.openFabric is non-nil")
+	}
+	if _, err := deps.OpenBisector(); !errors.Is(err, wantErr) {
+		t.Errorf("runDeps().OpenBisector() error = %v; want the wrapped c.openFabric() error %v", err, wantErr)
 	}
 }
 
@@ -174,13 +210,11 @@ func newTestCLI(t *testing.T) (*websterCLI, string) {
 	hub := t.TempDir()
 	layout := &lyxcwd.Location{HubPath: filepath.Dir(hub), WorktreeName: filepath.Base(hub), AnchorRel: "backend"}
 	c := &websterCLI{
-		layout:            layout,
-		cfg:               websterengine.Config{},
-		planDir:           planparser.PlanDir(layout.AnchorPath()),
-		websterDir:        websterengine.Dir(layout),
-		websterScratchDir: websterengine.ScratchDir(layout),
-		reportsDir:        websterengine.ReportsDir(layout),
-		promptsDir:        websterengine.PromptsDir(layout),
+		cfg:        websterengine.Config{},
+		geom:       hubgeom.WebsterGeometry(layout),
+		anchorRel:  layout.AnchorRel,
+		refMatcher: fabricengine.NewRefScanner(layout),
+		openFabric: func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) },
 	}
 	return c, hub
 }
@@ -205,7 +239,7 @@ func seedValidPlanDir(t *testing.T, dir string) {
 
 func TestValidateCmd_ValidPlan(t *testing.T) {
 	c, _ := newTestCLI(t)
-	seedValidPlanDir(t, c.planDir)
+	seedValidPlanDir(t, c.geom.PlanDir)
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
@@ -256,7 +290,7 @@ func seedMissingFieldPlanDir(t *testing.T, dir string) {
 
 func TestValidateCmd_FindingsUseCardKey(t *testing.T) {
 	c, _ := newTestCLI(t)
-	seedMissingFieldPlanDir(t, c.planDir)
+	seedMissingFieldPlanDir(t, c.geom.PlanDir)
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(c.validateCmd(), &out, nil)
@@ -304,7 +338,7 @@ func TestStatusCmd_WithBatches(t *testing.T) {
 			2: {Slug: "second", Kind: "recovery", Status: "", Terminal: false},
 		},
 	}
-	if err := websterengine.SaveState(c.websterDir, c.websterScratchDir, st); err != nil {
+	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
 		t.Fatalf("SaveState() error = %v", err)
 	}
 

@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -133,7 +132,6 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 
 	engine := &recordFakeEngine{scripted: scripted}
 	sleeper := &recordFakeSleeper{}
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
 
 	state := &websterengine.State{
 		MasterSessionID: "session-1",
@@ -144,16 +142,19 @@ func newRecordFixture(t *testing.T, scripted []shuttleengine.ForkAudit) *recordF
 	}
 
 	deps := websterengine.RecordDeps{
-		Batches:      batches,
-		State:        state,
-		Config:       websterengine.Config{},
-		Engine:       engine,
-		Layout:       layout,
-		WorktreeRoot: worktree,
-		ReportsDir:   reportsDir,
-		OutcomePath:  filepath.Join(contractDir, "outcome.yaml"),
-		SummaryPath:  filepath.Join(contractDir, "summary.md"),
-		Sleeper:      sleeper,
+		Batches: batches,
+		State:   state,
+		Config:  websterengine.Config{},
+		Engine:  engine,
+		Geom: websterengine.Geometry{
+			AnchorRoot:   worktree,
+			WorktreeRoot: worktree,
+			ReportsDir:   reportsDir,
+		},
+		RefMatcher:  websterengine.NeverMatches{},
+		OutcomePath: filepath.Join(contractDir, "outcome.yaml"),
+		SummaryPath: filepath.Join(contractDir, "summary.md"),
+		Sleeper:     sleeper,
 	}
 
 	return &recordFixture{Deps: deps, Engine: engine, Sleeper: sleeper, Worktree: worktree, ReportsDir: reportsDir, StartSHA: startSHA, HeadSHA: headSHA}

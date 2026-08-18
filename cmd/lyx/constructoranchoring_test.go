@@ -85,8 +85,8 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "loom", "status.json"))
-	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
-	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
+	assertPath(t, "websterengine.Dir", websterengine.Dir(l.AnchorPath()), filepath.Join(lyxBase, "webster"))
+	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath()), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath()), filepath.Join(lyxBase, "perch"))
 	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
@@ -95,8 +95,8 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	// dotLyxBase.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "loom", "status.json.lock"))
-	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxBase, "webster", "prompts"))
-	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxBase, "webster"))
+	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
+	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
@@ -143,8 +143,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "loom", "status.json"))
-	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
-	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
+	assertPath(t, "websterengine.Dir", websterengine.Dir(l.AnchorPath()), filepath.Join(lyxBase, "webster"))
+	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath()), filepath.Join(lyxBase, "webster", "reports"))
 	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath()), filepath.Join(lyxBase, "perch"))
 	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
@@ -153,8 +153,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// group above.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "loom", "status.json.lock"))
-	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxBase, "webster", "prompts"))
-	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxBase, "webster"))
+	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
+	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
 	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
@@ -174,8 +174,8 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	wrongRoot := filepath.Join(worktree, ".lyx")
 	dotLyxConstructors := map[string]string{
 		"loomengine.LoomStatusLock":   loomengine.LoomStatusLock(l),
-		"websterengine.PromptsDir":    websterengine.PromptsDir(l),
-		"websterengine.ScratchDir":    websterengine.ScratchDir(l),
+		"websterengine.PromptsDir":    websterengine.PromptsDir(l.AnchorPath()),
+		"websterengine.ScratchDir":    websterengine.ScratchDir(l.AnchorPath()),
 		"perchengine.ScratchDir":      perchengine.ScratchDir(l.AnchorPath()),
 		"logger.LogsDir":              logger.LogsDir(l),
 		"scoutengine.DaemonStateFile": scoutengine.DaemonStateFile(l, "go"),

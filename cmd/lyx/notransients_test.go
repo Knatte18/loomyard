@@ -61,8 +61,8 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath())},
 		{"loomengine.DiscussionDir", loomengine.DiscussionDir(l)},
 		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
-		{"websterengine.Dir", websterengine.Dir(l)},
-		{"websterengine.ReportsDir", websterengine.ReportsDir(l)},
+		{"websterengine.Dir", websterengine.Dir(l.AnchorPath())},
+		{"websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath())},
 		{"perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath())},
 		{"perchengine.RunsDir/blk", filepath.Join(perchengine.RunsDir(l.AnchorPath()), "blk")},
 	}
@@ -71,8 +71,8 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 // transientSet returns every relocated, never-tracked artifact a module exposes for l.
 func transientSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
-		{"websterengine.ScratchDir", websterengine.ScratchDir(l)},
-		{"websterengine.PromptsDir", websterengine.PromptsDir(l)},
+		{"websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath())},
+		{"websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath())},
 		{"perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath())},
 		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
@@ -154,7 +154,7 @@ func TestNoTransientsUnderLyx(t *testing.T) {
 				durable string
 				scratch string
 			}{
-				{"websterengine.Dir/ScratchDir", websterengine.Dir(l), websterengine.ScratchDir(l)},
+				{"websterengine.Dir/ScratchDir", websterengine.Dir(l.AnchorPath()), websterengine.ScratchDir(l.AnchorPath())},
 				{"perchengine.RunsDir/ScratchDir", perchengine.RunsDir(l.AnchorPath()), perchengine.ScratchDir(l.AnchorPath())},
 			}
 			for _, mp := range mirroredPairs {

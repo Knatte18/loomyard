@@ -255,6 +255,63 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 	}
 }
 
+// TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath pins that the header split-window call
+// pins its pane to Geometry.PaneCwd, not Geometry.AnchorPath — the two are distinct on newTestEngine's
+// fixture (lock_test.go), so this assertion cannot pass by coincidence.
+// This covers only the header split site: the new-session spawn site is not reachable from this
+// seam, since it builds its argv and runs it through the os/exec package's Command function
+// directly rather than through e.tmux — that half of the same change is covered by the tagged reed
+// suites this batch's verify: also runs (contract_integration_test.go,
+// mouse_boot_integration_test.go).
+func TestEnsureHeaderPaneLocked_SplitsWithPaneCwdNotAnchorPath(t *testing.T) {
+	e := newTestEngine(t)
+
+	const existingPaneID = "%0"
+	const newPaneID = "%1"
+	listPanesOut := existingPaneID + " 0 0 100 20 4321\n"
+
+	var splitArgs []string
+	e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+		switch args[0] {
+		case "list-panes":
+			return listPanesOut, nil
+		case "split-window":
+			splitArgs = append([]string{}, args...)
+			// A genuinely new pane id, distinct from the pre-split live set, so
+			// the silent-split guard (validateSplitCreatedNewPane) does not
+			// reject the call.
+			return newPaneID + "\n", nil
+		default:
+			return "", nil
+		}
+	}
+
+	st := &ReedState{Socket: e.Socket(), Session: e.SessionName()}
+	if err := e.ensureHeaderPaneLocked(st); err != nil {
+		t.Fatalf("ensureHeaderPaneLocked: %v", err)
+	}
+
+	found := false
+	for i, arg := range splitArgs {
+		if arg != "-c" {
+			continue
+		}
+		if i+1 >= len(splitArgs) {
+			t.Fatalf("split-window argv %v has a trailing -c with no value", splitArgs)
+		}
+		found = true
+		if splitArgs[i+1] != e.geom.PaneCwd {
+			t.Errorf("split-window -c value = %q, want %q (Geometry.PaneCwd)", splitArgs[i+1], e.geom.PaneCwd)
+		}
+		if splitArgs[i+1] == e.geom.AnchorPath {
+			t.Errorf("split-window -c value = %q, want it to differ from AnchorPath %q on this fixture", splitArgs[i+1], e.geom.AnchorPath)
+		}
+	}
+	if !found {
+		t.Fatalf("split-window argv %v has no -c flag", splitArgs)
+	}
+}
+
 // TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure pins the validateSplitCreatedNewPane
 // guard at its call site (against regression).
 func TestEnsureHeaderPaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {

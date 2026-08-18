@@ -27,10 +27,14 @@ func newTestEngine(t *testing.T) *Engine {
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
 	anchorPath := filepath.Join(worktreeRoot, "anchor")
+	// PaneCwd is deliberately set to a directory distinct from AnchorPath, so
+	// a spawn site that regresses to reading AnchorPath instead of PaneCwd
+	// cannot pass by coincidence (see lifecycle_test.go's split-window assertion).
 	geom := Geometry{
 		SocketKey:    ServerName(hub),
 		SessionName:  SessionName(worktreeRoot),
 		AnchorPath:   anchorPath,
+		PaneCwd:      filepath.Join(hub, "pane"),
 		WorktreeRoot: worktreeRoot,
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
@@ -59,6 +63,7 @@ func TestWithOpLock_PathIsUnderDotLyx(t *testing.T) {
 		SocketKey:    ServerName(hub),
 		SessionName:  SessionName(worktreeRoot),
 		AnchorPath:   anchorPath,
+		PaneCwd:      anchorPath,
 		WorktreeRoot: worktreeRoot,
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
@@ -173,6 +178,7 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 		SocketKey:    ServerName(hub),
 		SessionName:  SessionName(worktreeRoot),
 		AnchorPath:   worktreeRoot,
+		PaneCwd:      worktreeRoot,
 		WorktreeRoot: worktreeRoot,
 		LogsDir:      filepath.Join(hub, "logs"),
 		RepoName:     "test-repo",
