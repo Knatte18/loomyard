@@ -1,0 +1,23 @@
+MILL_REVIEW_BEGIN
+# Review: the standalone CLI path — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnetxhigh
+reviewer_self_id: claude-sonnet-5
+reviewed_file: plan/
+date: 2026-08-18
+```
+
+## Findings
+
+### [BLOCKING:consistency] wiring_test.go's pre-existing standalone cases never get LOCALAPPDATA
+**Location:** batch 3 / card 11 (`internal/webstercli/wiring_test.go`)
+**Issue:** The overview's "every test reaching `wireStandalone` redirects the state root" decision (applies to batches 3/4/5, explicitly "new or pre-existing") requires both `XDG_STATE_HOME` and `LOCALAPPDATA` before any `wireStandalone`-reaching call. Card 11 edits this file only to swap the bool parameter for `preflight.Mode`, and never adds `t.Setenv("LOCALAPPDATA", ...)`. Verified against the current file: `TestWire_HubPresentFalseSelectsStandaloneMode`, three `TestWire_PlanDirResolution` standalone subtests, `TestWire_StandaloneRootsResolveToTarget`, and `TestWire_MatcherNeverNilOpenerNilOnlyInStandalone`'s `StandaloneMode` subtest all reach `standalonestate.Derive` via `wire()` and set only `XDG_STATE_HOME`.
+**Fix:** Add `t.Setenv("LOCALAPPDATA", t.TempDir())` alongside the existing `XDG_STATE_HOME` redirect in every standalone-reaching case in this file, matching what card 12 already does for `cli_integration_test.go`'s two pre-existing tests in the same package and what cards 16/23 do for burlercli/perchcli.
+
+## Verdict
+
+REQUEST_CHANGES
+Card 11 leaves several pre-existing webstercli tests violating the plan's own state-root-redirect decision.
+MILL_REVIEW_END

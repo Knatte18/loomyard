@@ -95,6 +95,12 @@ See the overview's "the refuse case is pinned at the integration tier" shared de
 
   Rename any test function or subtest whose name embeds `HubPresent` (for example `TestWire_HubPresentTrueSelectsHubMode`) so it names the mode rather than the retired probe, and update the file-header comment's "with a told preflight.HubPresent result" clause the same way.
 
+  Add `t.Setenv("LOCALAPPDATA", t.TempDir())` alongside the existing `XDG_STATE_HOME` redirect in every case in this file that reaches `wireStandalone` — as the tree stands those are `TestWire_HubPresentFalseSelectsStandaloneMode`, the three standalone subtests of `TestWire_PlanDirResolution`, `TestWire_StandaloneRootsResolveToTarget`, and `TestWire_MatcherNeverNilOpenerNilOnlyInStandalone`'s `StandaloneMode` subtest.
+  Re-derive that set against the file rather than trusting this list: the rule is every case whose `wire` call passes `preflight.ModeStandalone`, since each reaches `standalonestate.Derive`.
+  Each sets only `XDG_STATE_HOME` today, so on Windows `Derive` still reads the operator's real `LOCALAPPDATA`.
+  This is the overview's "every test reaching `wireStandalone` redirects the state root" decision applied to this file's pre-existing half, matching card 12's treatment of `cli_integration_test.go` in this same package and cards 16 and 23's treatment of their own packages.
+  Update the file header's existing sentence about redirecting `XDG_STATE_HOME` so it names both variables.
+
   Add a comment to the file header recording two structural facts a later reader would otherwise try to "fix":
   first, that no `(loc non-nil, ModeStandalone)` row exists because no caller can produce one — `ResolveMode` returns a nil Location for both standalone causes;
   second, that the refuse case is deliberately absent from this file because `wire` never receives it (the error aborts upstream in `resolvePersistentPreRun`) and manufacturing one would require driving the real pre-run, which spawns git and breaches the Test Tier Purity Invariant — the exact invariant `wire`'s extraction exists to satisfy.
