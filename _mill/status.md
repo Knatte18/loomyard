@@ -56,7 +56,9 @@ batches:
     commit_sha: e9b2c73046e6316a671d74e469a19b3c83ff6eec
     verify_baseline_failures: ["FAIL\t./internal/preflight/... [setup failed]"]
   - name: cli-gate-and-ldflags
-    state: pending
+    state: running
+    implementer_session: d8ccbde8-516a-4a55-8ee7-3674b8b88b3b
+    start_sha: 85cdf298d0ed95a53a824fa2a300bb8aeddfa763
     verify_baseline_failures: []
   - name: docs-and-invariants
     state: pending
