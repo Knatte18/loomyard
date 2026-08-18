@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-preflight-resolvemode
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-review-r6  '2026-08-18T14:31:04Z'
 plan-fix-r6  '2026-08-18T14:31:04Z'
 planned  '2026-08-18T14:31:21Z'
 implementing  '2026-08-18T14:32:10Z'
+approved-preflight-resolvemode  '2026-08-18T14:37:46Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-08-18T14:32:10Z'
 ```yaml
 batches:
   - name: preflight-resolvemode
-    state: running
+    state: approved
     implementer_session: 0162a819-a281-435e-8ab8-8104cb5b3dce
     start_sha: dd41b400c1ee4d1bdf9bf3e28389623311a0172a
+    commit_sha: d6cbec56ad61898fdc77d13fd0396235aa59588a
     verify_baseline_failures: []
   - name: standalonegeom-builders
     state: pending
