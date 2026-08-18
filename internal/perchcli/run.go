@@ -291,7 +291,7 @@ pass a fresh --run-id to run the same profile under different tuning.`,
 			// PersistentPreRunE: its pause seam closes over this call's
 			// concrete scratchDir, which is only known once --profile/--run-id
 			// have been resolved above.
-			engine := perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.layout, perchengine.Options{
+			engine := perchengine.New(c.burlerEngine, c.runner, c.perchCfg, c.perchGeom, perchengine.Options{
 				PauseRequested: func() bool {
 					_, err := os.Stat(perchengine.PauseFlagPath(scratchDir))
 					return err == nil

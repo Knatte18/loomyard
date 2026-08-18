@@ -240,14 +240,14 @@ func TestRunCLI_Run_BusyBlockSkipsFabricSync(t *testing.T) {
 	// the fabric tests above). runDirBase resolves against the WARP cwd, so
 	// hold the run.lock there; the dirty fabric file proves the skipped sync
 	// had real material.
-	warpRunDir := filepath.Join(perchengine.RunsDir(h.Location), "busyblock")
+	warpRunDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "busyblock")
 	if err := os.MkdirAll(warpRunDir, 0o755); err != nil {
 		t.Fatalf("mkdir warp run dir: %v", err)
 	}
 	// run.lock itself now lives in the block's .lyx scratch dir, not its
 	// _lyx run dir — see perchengine.ScratchDir and
 	// treadleengine.Options.ScratchDir.
-	warpScratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "busyblock")
+	warpScratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "busyblock")
 	if err := os.MkdirAll(warpScratchDir, 0o755); err != nil {
 		t.Fatalf("mkdir warp scratch dir: %v", err)
 	}

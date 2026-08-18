@@ -60,7 +60,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 
 	h := seedPerchFixture(t)
 
-	runDir := filepath.Join(perchengine.RunsDir(h.Location), "finishedrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "finishedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	if !strings.Contains(out.String(), "already finished (STUCK)") {
 		t.Errorf(`RunCLI([pause --run-id finishedrun]) output missing "already finished (STUCK)"; got: %q`, out.String())
 	}
-	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "finishedrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "finishedrun")
 	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err == nil {
 		t.Error("pause flag was written for a finished block; want no flag")
 	}
@@ -101,7 +101,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	// on top of a real hub would be asserting against an invented shape again.
 	h := hubforge.NewHub(t, "nested")
 
-	runDir := filepath.Join(perchengine.RunsDir(h.Location), "nestedrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "nestedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf(`RunCLI([pause --run-id nestedrun]) = %d; want 0 — the run dir under <cwd>/_lyx/perch must be found, output: %s`, exitCode, out.String())
 	}
-	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "nestedrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "nestedrun")
 	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err != nil {
 		t.Errorf("pause flag not written under the nested .lyx run dir %q: %v", scratchDir, err)
 	}
@@ -145,7 +145,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 
 	h := seedPerchFixture(t)
 
-	runDir := filepath.Join(perchengine.RunsDir(h.Location), "myrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "myrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 		t.Errorf(`RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out.String())
 	}
 
-	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "myrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "myrun")
 	pauseFile := perchengine.PauseFlagPath(scratchDir)
 	if _, err := os.Stat(pauseFile); err != nil {
 		t.Fatalf("pause flag file %q not written: %v", pauseFile, err)

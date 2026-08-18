@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
@@ -30,8 +29,8 @@ const perchDirName = "perch"
 // RunsDir returns the path to the base directory for perch run artifacts.
 // It lives under _lyx so artifacts are fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func RunsDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, perchDirName)
+func RunsDir(anchorPath string) string {
+	return filepath.Join(anchorPath, lyxdirs.LyxDirName, perchDirName)
 }
 
 // ScratchDir returns the path to the base directory for a perch block's
@@ -40,8 +39,8 @@ func RunsDir(l *lyxcwd.Location) string {
 // block's run-id onto this base exactly as it joins one onto RunsDir.
 // Per the Cwd Resolution Invariant, no other package may construct this
 // path.
-func ScratchDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, perchDirName)
+func ScratchDir(anchorPath string) string {
+	return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, perchDirName)
 }
 
 // ProfileHash returns the sha256 hex digest of p's canonical JSON encoding.

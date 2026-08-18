@@ -47,13 +47,14 @@ type namedPath struct {
 
 // durableSet returns every _lyx-rooted path a module exposes for l.
 //
-// The two planparser rows below share the weakening annotated on
-// cmd/lyx/constructoranchoring_test.go's plan rows: they still pin that no durable plan path resolves
-// as a transient at both AnchorRel fixtures, but because each row builds l.AnchorPath() itself
-// instead of calling a constructor that anchored internally, neither row can catch a production call
-// site that passes the wrong root. That proof lives in the subpath-anchored PlanSpec case in
-// internal/loomengine/plan_test.go and the subpath-anchored PersistentPreRunE case in
-// internal/webstercli/verbs_test.go.
+// The two planparser rows below, plus the two perchengine.RunsDir rows, share the weakening
+// annotated on cmd/lyx/constructoranchoring_test.go's plan rows: they still pin that no durable
+// path resolves as a transient at both AnchorRel fixtures, but because each row builds
+// l.AnchorPath() itself instead of calling a constructor that anchored internally, none of them can
+// catch a production call site that passes the wrong root. That proof lives in the subpath-anchored
+// PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored PersistentPreRunE case in
+// internal/webstercli/verbs_test.go, and TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd in the
+// perchcli integration suite.
 func durableSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"planparser.PlanDir", planparser.PlanDir(l.AnchorPath())},
@@ -62,8 +63,8 @@ func durableSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LoomStatusFile", loomengine.LoomStatusFile(l)},
 		{"websterengine.Dir", websterengine.Dir(l.AnchorPath())},
 		{"websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath())},
-		{"perchengine.RunsDir", perchengine.RunsDir(l)},
-		{"perchengine.RunsDir/blk", filepath.Join(perchengine.RunsDir(l), "blk")},
+		{"perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath())},
+		{"perchengine.RunsDir/blk", filepath.Join(perchengine.RunsDir(l.AnchorPath()), "blk")},
 	}
 }
 
@@ -72,13 +73,13 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 	return []namedPath{
 		{"websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath())},
 		{"websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath())},
-		{"perchengine.ScratchDir", perchengine.ScratchDir(l)},
+		{"perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath())},
 		{"loomengine.LoomStatusLock", loomengine.LoomStatusLock(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
 		{"scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go")},
 		{"scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go")},
-		{"perchengine.PauseFlagPath", perchengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l), "blk"))},
-		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l), "blk"))},
+		{"perchengine.PauseFlagPath", perchengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
+		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
 	}
 }
 
@@ -154,7 +155,7 @@ func TestNoTransientsUnderLyx(t *testing.T) {
 				scratch string
 			}{
 				{"websterengine.Dir/ScratchDir", websterengine.Dir(l.AnchorPath()), websterengine.ScratchDir(l.AnchorPath())},
-				{"perchengine.RunsDir/ScratchDir", perchengine.RunsDir(l), perchengine.ScratchDir(l)},
+				{"perchengine.RunsDir/ScratchDir", perchengine.RunsDir(l.AnchorPath()), perchengine.ScratchDir(l.AnchorPath())},
 			}
 			for _, mp := range mirroredPairs {
 				rewritten := strings.Replace(mp.durable, lyxdirs.LyxDirName, lyxdirs.DotLyxDirName, 1)

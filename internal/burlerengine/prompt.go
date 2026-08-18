@@ -7,9 +7,9 @@
 // resolved.
 // composePrompt itself does no filesystem access beyond the directory check formatFileSet already
 // performs on each Target/Fasit path and the stencilstore.Read calls at its top — it takes the three
-// instruction paths as plain string parameters rather than a *lyxcwd.Location, so it never gains
-// geometry awareness of its own; the caller computes the directive, the stencils directory, and the
-// three paths.
+// instruction paths as plain string parameters rather than the engine's Geometry, so it never gains
+// geometry awareness of its own; the caller (Engine.Run) computes the directive, the stencils
+// directory, and the three paths.
 
 package burlerengine
 

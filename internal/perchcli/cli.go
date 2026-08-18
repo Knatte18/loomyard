@@ -1,10 +1,10 @@
 // cli.go builds the cobra command tree for the perch module and the RunCLI seam that wires it into
 // the standard io.Writer-based call contract.
-// The parent "perch" command carries a PersistentPreRunE that resolves cwd -> layout -> shuttle
-// config -> reed config -> models registry -> perch config -> burler config -> reed engine ->
-// claude engine -> shuttleengine.Runner -> burlerengine.Engine exactly once per invocation, storing
-// the resolved ingredients on perchCLI rather than a constructed *perchengine.Engine: the pause
-// seam (perchengine.Options.
+// The parent "perch" command carries a PersistentPreRunE that resolves cwd -> layout -> perch
+// geometry -> shuttle config -> reed config -> models registry -> perch config -> burler config ->
+// reed engine -> claude engine -> shuttleengine.Runner -> burlerengine.Engine exactly once per
+// invocation, storing the resolved ingredients on perchCLI rather than a constructed
+// *perchengine.Engine: the pause seam (perchengine.Options.
 // PauseRequested) closes over a per-run runDir that is only known once the run verb has resolved
 // --profile and --run-id, so the run verb calls perchengine.New itself, per invocation.
 // perchcli is the module's claudeengine wiring point, mirroring the Provider-Seam Invariant.
@@ -37,8 +37,13 @@ type perchCLI struct {
 	// invocation in PersistentPreRunE and reused for both perchCfg's
 	// judge_model resolution and decodeProfile's judge-model/model
 	// resolution — no second models.yaml read anywhere in the same run.
-	modelReg       modelspec.Registry
-	layout         *lyxcwd.Location
+	modelReg modelspec.Registry
+	layout   *lyxcwd.Location
+	// perchGeom is the told perch geometry PersistentPreRunE resolves via
+	// hubgeom.PerchGeometry, alongside layout: layout survives for the three
+	// fabric call sites in run.go, which genuinely need the Location and are
+	// genuinely hub-mode-only.
+	perchGeom      perchengine.Geometry
 	runDirBase     string
 	scratchDirBase string
 }
@@ -144,26 +149,27 @@ Example:
 			reedGeom := hubgeom.ReedGeometry(layout)
 			reedEngine := reedengine.New(reedCfg, reedGeom)
 			runner := shuttleengine.NewRunner(reedEngine, claudeengine.New(), reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
-			c.burlerEngine = burlerengine.New(runner, layout, burlerCfg, fabricengine.StencilsDir(layout.HubPath))
+			c.burlerEngine = burlerengine.New(runner, hubgeom.BurlerGeometry(layout), burlerCfg, fabricengine.StencilsDir(layout.HubPath))
 			c.runner = runner
 			c.perchCfg = perchCfg
 			c.modelReg = modelReg
 			c.layout = layout
-			// Anchored at layout.AnchorPath(), like the config loads above and like
-			// Layout.LyxDir itself: the initialized _lyx (the fabric junction,
-			// mirrored at <fabric>/<RelPath>/_lyx) lives at the directory lyx
-			// init ran in, which is Cwd — not necessarily the git worktree
-			// root. Anchoring at WorktreeRoot would, in a nested-initialized
-			// repo, write run dirs into an un-junctioned _lyx the fabric
-			// commit's RelPath-scoped pathspec never includes, silently
-			// stranding every artifact outside fabric.
-			c.runDirBase = perchengine.RunsDir(layout)
-			// Anchored at the same layout.AnchorPath() as runDirBase — the
+			c.perchGeom = hubgeom.PerchGeometry(layout)
+			// Anchored at perchGeom.AnchorPath, like the config loads above and
+			// like Layout.LyxDir itself: the initialized _lyx (the fabric
+			// junction, mirrored at <fabric>/<RelPath>/_lyx) lives at the
+			// directory lyx init ran in, which is Cwd — not necessarily the git
+			// worktree root. Anchoring at WorktreeRoot would, in a
+			// nested-initialized repo, write run dirs into an un-junctioned
+			// _lyx the fabric commit's RelPath-scoped pathspec never includes,
+			// silently stranding every artifact outside fabric.
+			c.runDirBase = perchengine.RunsDir(c.perchGeom.AnchorPath)
+			// Anchored at the same perchGeom.AnchorPath as runDirBase — the
 			// never-tracked half of the pair: run.lock, state.json.lock, and
 			// the pause flag live here instead of inside _lyx, so a block's
 			// two directories can never disagree about which anchor they
 			// belong to.
-			c.scratchDirBase = perchengine.ScratchDir(layout)
+			c.scratchDirBase = perchengine.ScratchDir(c.perchGeom.AnchorPath)
 			return nil
 		},
 	}
