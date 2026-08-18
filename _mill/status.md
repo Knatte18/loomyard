@@ -49,7 +49,9 @@ batches:
     commit_sha: 7ef3b358fc4a95abcf0100ec06422f9ac2845600
     verify_baseline_failures: ["FAIL\t./internal/standalonestate/... [setup failed]"]
   - name: preflight-lift
-    state: pending
+    state: running
+    implementer_session: 409ad931-50d5-4919-86b7-cef99c32dce6
+    start_sha: 90f2576ba6c99f81ca34af02d795be83cd5fd2e4
     verify_baseline_failures: ["FAIL\t./internal/preflight/... [setup failed]"]
   - name: cli-gate-and-ldflags
     state: pending
