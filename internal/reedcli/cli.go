@@ -1,9 +1,11 @@
 // cli.go builds the cobra command tree for the reed module and the RunCLI seam that wires it into
 // the standard io.Writer-based call contract.
-// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config ->
-// *reedengine.Engine exactly once per invocation, into a receiver every verb (up.go, add.go,
-// remove.go, status.go, resume.go, attach.go, header.go) closes over, so no subcommand re-resolves
-// geometry or config itself.
+// The parent "reed" command carries a PersistentPreRunE that resolves
+// cwd -> layout -> config -> geometry -> *reedengine.Engine exactly once per invocation,
+// into a receiver every verb (up.go, add.go, remove.go, status.go, resume.go, attach.go, header.go)
+// closes over, so no subcommand re-resolves geometry or config itself.
+// The geometry step is hubgeom.ReedGeometry: this file is where the resolved Location becomes the
+// reedengine.Geometry the engine is told, and the engine never sees the Location.
 
 package reedcli
 
@@ -25,7 +27,7 @@ type reedCLI struct {
 
 // Command returns the cobra command tree for the reed module.
 //
-// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config ->
+// The parent "reed" command carries a PersistentPreRunE that resolves cwd -> layout -> config -> geometry ->
 // *reedengine.Engine into c, skipping that resolution entirely when the group command itself is
 // invoked (bare "lyx reed" listing or an unknown-subcommand error via GroupRunE) so neither path
 // requires a git repository.

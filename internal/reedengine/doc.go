@@ -19,9 +19,13 @@
 //
 // reedengine is told its geometry as a Geometry value (geometry.go) and
 // derives none of it. internal/lyxcwd and internal/fabricengine are
-// consequently absent from this package's production imports;
+// consequently absent from this package's DIRECT production imports;
 // hubgeom.ReedGeometry is the hub-mode teller that builds a Geometry from a
-// resolved *lyxcwd.Location for every hub-mode caller.
+// resolved *lyxcwd.Location for every hub-mode caller. Stated honestly, that
+// is a direct-import fact and not a transitive one: internal/lyxcwd is still
+// in `go list -deps ./internal/reedengine`, reached through internal/logger,
+// so what the absence buys is that reed never RESOLVES its own coordinates —
+// not isolation from the package that does.
 //
 // One additional invariant this package enforces: exactly one named tmux
 // server per hub. The server name is derived deterministically from the hub

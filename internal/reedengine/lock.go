@@ -14,8 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 )
 
-// reedLockFileName is the reed operation lock's file name inside a Layout's
-// ephemeral .lyx directory. It is deliberately distinct from reed.json's own
+// reedLockFileName is the reed operation lock's file name inside the ephemeral
+// .lyx directory under the told Geometry.AnchorPath (see stateDir). It is
+// deliberately distinct from reed.json's own
 // lock file (reed.json.lock, owned by internal/state): reed.lock guards the
 // whole engine-op cycle (read -> mutate -> persist -> render -> apply),
 // while reed.json.lock guards only the JSON file swap inside that cycle.

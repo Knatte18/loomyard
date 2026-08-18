@@ -27,7 +27,8 @@ import (
 
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
 // It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
-// distinct from HubLogsDir's hub anchor above, which stays one deterministic place per hub rather
+// distinct from Geometry.LogsDir, the hub-anchored directory this engine is TOLD (built by
+// fabricengine.HubLogsDir, never derived here), which stays one deterministic place per hub rather
 // than per worktree.
 func (e *Engine) stateDir() string {
 	return filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName)
@@ -171,7 +172,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	// Validate the header template in the same pre-tmux block — it reads
-	// only cfg+layout (HeaderText makes no tmux round trip), so like
+	// only cfg+geometry (HeaderText makes no tmux round trip), so like
 	// debug_log and mouse it must fail the boot before anything is spawned.
 	// An earlier version validated only AFTER the session existed, which
 	// left a half-created session behind on a bad template — and, on the

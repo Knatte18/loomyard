@@ -110,7 +110,7 @@ func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 }
 
 // TestMouseBootIntegration_NoLiveToggleWithoutRestart boots once with Mouse="off", confirms it,
-// then builds a second Engine on the SAME layout with Mouse="on" and calls Up() again without
+// then builds a second Engine on the SAME geometry with Mouse="on" and calls Up() again without
 // tearing the first session down.
 // The already-up session must hit ensureServerAndSessionLocked's early return and never re-apply
 // set-option, so the live value must stay "off" — proving there is no live toggle without a server
@@ -124,9 +124,9 @@ func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 		t.Fatalf("show-options -g mouse after first boot = %q, want %q", got, "off")
 	}
 
-	// Build a second Engine on the identical Config/Layout shape, differing
+	// Build a second Engine on the identical Config/Geometry shape, differing
 	// only in Mouse, and target the SAME socket/session by reusing e1's
-	// layout and cfg (with Mouse overridden) rather than a fresh temp dir.
+	// geometry and cfg (with Mouse overridden) rather than a fresh temp dir.
 	cfg2 := e1.cfg
 	cfg2.Mouse = "on"
 	e2 := New(cfg2, e1.geom)
