@@ -40,7 +40,7 @@ batches:
   - number: 5
     name: perchcli-standalone-entry
     file: 05-perchcli-standalone-entry.md
-    depends-on: [1, 2]
+    depends-on: [1, 2, 4]
     verify: go test ./internal/perchcli/... && go test -tags integration ./internal/perchcli/...
   - number: 6
     name: docs-and-cross-cutting-verification

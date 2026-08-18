@@ -13,7 +13,7 @@ depends-on: [1, 2]
 
 This batch gives `lyx burler` its standalone entry: a new `wiring.go` holding the mode decision and both engine-stack branches, a `cli.go` reduced to cwd plus one `preflight.ResolveMode` probe plus delegation, two new persistent flags, three additive envelope fields, and the two test tiers that pin all of it.
 It is one batch because every card is inside `internal/burlercli` and the receiver-shape change in card 14 is what cards 15, 18 and 19 assert against — splitting it would leave a batch boundary in the middle of one struct's definition.
-Burler is the simpler of the two producer CLIs: it has no fabric relationship at all, which is why this batch lands before perch's in reviewer attention even though the two run in parallel.
+Burler is the simpler of the two producer CLIs: it has no fabric relationship at all, which is why it lands first and why batch 5 depends on it — perch's cards read this batch's `wiring.go`, `cli.go` and test files, and perch's nested `burlerengine.New` must build byte-identical geometry to what this batch ships for the same target.
 
 **Batch-local decision:** `burlerCLI` carries no `*lyxcwd.Location`, no `openFabric`, and no `anchorRel`.
 `internal/burlercli/run.go` references neither `layout` nor `fabricengine` today, so the wiring split must not invent a fabric relationship the module does not have.
@@ -39,6 +39,7 @@ Burler is the simpler of the two producer CLIs: it has no fabric relationship at
   - `contracts/stencils/stencils.go`
   - `internal/fabricengine/junctionnames.go`
   - `internal/reedengine/config.go`
+  - `internal/shuttleengine/config.go`
   - `internal/shuttleengine/run.go`
 - **Edits:** none
 - **Creates:**

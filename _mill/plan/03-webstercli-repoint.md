@@ -126,7 +126,11 @@ See the overview's "the refuse case is pinned at the integration tier" shared de
 
   Document in the test's own doc comment that this is deviation four on the plan's hub byte-identity list: `internal/webstercli/cli.go` discarded `Resolve`'s error class before this task, so this invocation started a silent standalone session and now refuses.
   It is a deliberate correction of shipped behaviour, which is why it is pinned rather than merely allowed.
-  Leave the file's two existing tests unchanged — a temp directory outside any git repository still resolves to standalone under `ResolveMode`, so neither of their outcomes moves.
+  The file's two existing tests keep their outcomes — a temp directory outside any git repository still resolves to standalone under `ResolveMode`, so neither moves — but both need one addition.
+  `TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate` and `TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged` each reach `wireStandalone` today and redirect `XDG_STATE_HOME` only, so on Windows `standalonestate.Derive` still reads the operator's real `LOCALAPPDATA`.
+  Add `t.Setenv("LOCALAPPDATA", t.TempDir())` alongside each one's existing `XDG_STATE_HOME` redirect, so both `Derive` branches land inside the test's own temp tree on every platform.
+  This is the overview's "every test reaching `wireStandalone` redirects the state root" decision applied to its pre-existing half, matching what batch 4 card 16 and batch 5 card 23 do for their own packages; leaving it out would make that decision's "new or pre-existing" wording false in the one package that shipped standalone first.
+  Change nothing else in either test: their assertions, fixtures and doc comments are unaffected by this repoint.
 - **Commit:** `test(webstercli): pin the wrongly-entered-hub refusal end-to-end`
 
 ## Batch Tests

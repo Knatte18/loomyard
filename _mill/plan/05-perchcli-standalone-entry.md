@@ -6,7 +6,7 @@ batch: "perchcli-standalone-entry"
 number: 5
 cards: 7
 verify: go test ./internal/perchcli/... && go test -tags integration ./internal/perchcli/...
-depends-on: [1, 2]
+depends-on: [1, 2, 4]
 ```
 
 ## Batch Scope
@@ -14,6 +14,12 @@ depends-on: [1, 2]
 This batch gives `lyx perch` its standalone entry and, in the same move, removes the `layout *lyxcwd.Location` field from `perchCLI` entirely — the one thing that makes "no `*lyxcwd.Location` survives on the receiver" true rather than nearly true.
 It is one batch because the field removal in card 21 and the three call-site reroutes in card 22 are a single compile unit: neither half builds without the other.
 Perch is the harder of the two producer CLIs, because it carries a real fabric relationship (which becomes nil in standalone) and a second, easily-missed stencils consumer in its nested burler engine.
+
+**Why this batch depends on batch 4 rather than running parallel to it.**
+Cards 20, 21, 24 and 25 each read a file batch 4 creates — `internal/burlercli/wiring.go`, `cli.go`, `wiring_test.go` and `cli_integration_test.go` — and card 20's nested-`burlerengine.New` requirement is stated as byte-identical to what `burlercli` builds for the same target.
+That is a real semantic coupling, not stylistic mirroring: the nested burler engine and a directly-driven `lyx burler run` must produce the same geometry for the same target, and the cheapest way to keep that true is to read the shipped file rather than re-derive it from the plan.
+So the edge is declared rather than left implicit.
+Batches 1, 2 and 3 still parallelise; only 4 → 5 serialises.
 
 **Batch-local decision:** one `stencilsDir` value per invocation reaches **both** consumers — the nested `burlerengine.New` and the `perchengine.Engine.Run` argument — in both modes.
 Two independent resolutions would let `--stencils-dir` reach perch's own rounds but not its nested burler rounds: a half-working flag, and exactly the split a single told value exists to prevent.
@@ -46,6 +52,7 @@ Two independent resolutions would let `--stencils-dir` reach perch's own rounds 
   - `internal/fabricengine/junctionnames.go`
   - `internal/fabricengine/open.go`
   - `internal/reedengine/config.go`
+  - `internal/shuttleengine/config.go`
   - `internal/shuttleengine/run.go`
 - **Edits:** none
 - **Creates:**
