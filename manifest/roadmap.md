@@ -13,14 +13,17 @@ Committed to, in this order, next.
    The final consolidation task for this line of work.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
+1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
+   First slice of `loom`'s producer list — the phase machine that wires it and `lyx loom status` land alongside it.
+   Next up after this slice, in order: **loom: Plan-phase producers** (`Plan-Sweep`, `Plan-Validate`, `Plan-Review` — `Plan-Write` itself already shipped), then **loom: Webster-Review**, then **loom: Finalize** (folding `raddle`'s regeneration into its own contract, per `designs/loom.md`).
+   Each becomes its own Planned item, decomposed the same way, once the slice ahead of it ships.
+   That is the whole remaining path to `loom` running autonomously end to end.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
-
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
-   First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
