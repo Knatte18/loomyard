@@ -97,7 +97,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 		// A genuine success verdict survives cancellation -- the one exception cancelErr never
 		// applies to. The summary is Webster's human-readable account of the whole run and is
 		// guaranteed present on this outcome; the webster dir is already told, never derived.
-		return shedengine.Done, shedengine.OutputPointer{Path: websterengine.SummaryPath(p.deps.WebsterDir)}, nil
+		return shedengine.Done, shedengine.OutputPointer{Path: websterengine.SummaryPath(p.deps.Geom.WebsterDir)}, nil
 
 	case websterOutcomeStuck:
 		if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
