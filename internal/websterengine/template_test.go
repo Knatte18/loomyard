@@ -32,7 +32,6 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -173,29 +172,26 @@ func seedHubStencils(t *testing.T, hub string) {
 	seedHubPatternStencils(t, hub)
 }
 
-// testLayout returns a *lyxcwd.Location rooted at a real t.TempDir() hub,
-// seeded with webster's five stencils at fabricengine.StencilsDir(hub) —
-// every RenderForkPrompt/RenderRecoveryPrompt/RenderMasterPrompt test in
-// this file that does not itself exercise pattern_directive's active branch
-// uses this fixture. Its worktree subdirectory is never created on disk, so
-// pattern.Directive's os.Stat on the never-existing PATTERN.md path always
-// resolves PATTERN inactive, matching every one of these tests'
+// testLayout returns the told anchor root and stencils directory for a real t.TempDir() hub, seeded
+// with webster's five stencils at fabricengine.StencilsDir(hub) — every
+// RenderForkPrompt/RenderRecoveryPrompt/RenderMasterPrompt test in this file that does not itself
+// exercise pattern_directive's active branch uses this fixture. The returned anchor root's worktree
+// subdirectory is never created on disk, so pattern.Directive's os.Stat on the never-existing
+// PATTERN.md path always resolves PATTERN inactive, matching every one of these tests'
 // pre-existing expectation of an empty pattern_directive.
-func testLayout(t *testing.T) *lyxcwd.Location {
+func testLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
-	return &lyxcwd.Location{HubPath: hub, WorktreeName: "worktree", AnchorRel: "."}
+	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
-// patternActiveLayout builds a *lyxcwd.Location rooted at a real
-// t.TempDir() hub that contains a real _lyx/PATTERN.md file under its
-// worktree subdirectory, so pattern.Directive returns non-empty —
-// mirroring pattern.isActive's own told-anchor-path existence check (see
+// patternActiveLayout returns the told anchor root and stencils directory for a real t.TempDir() hub
+// that contains a real _lyx/PATTERN.md file under the returned anchor root, so pattern.Directive
+// returns non-empty — mirroring pattern.isActive's own told-anchor-path existence check (see
 // internal/pattern/pattern_test.go's writePatternFile fixture) —
-// and seeded with webster's five stencils at fabricengine.StencilsDir(hub)
-// like testLayout.
-func patternActiveLayout(t *testing.T) *lyxcwd.Location {
+// and seeded with webster's five stencils at fabricengine.StencilsDir(hub) like testLayout.
+func patternActiveLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubStencils(t, hub)
@@ -206,7 +202,7 @@ func patternActiveLayout(t *testing.T) *lyxcwd.Location {
 	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
 	}
-	return &lyxcwd.Location{HubPath: hub, WorktreeName: "worktree", AnchorRel: "."}
+	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
 // requireContains fails the test, naming the missing needle, if text does
@@ -700,7 +696,8 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 	}}
 
 	t.Run("empty prevDigest renders the first-batch sentinel", func(t *testing.T) {
-		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", testLayout(t), 2)
+		anchorRoot, stencilsDir := testLayout(t)
+		got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-seam-extensions.yaml", anchorRoot, stencilsDir, 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -709,7 +706,8 @@ func TestRenderForkPrompt_InjectsPrevDigestSentinelOnlyWhenEmpty(t *testing.T) {
 
 	t.Run("non-empty prevDigest passes through verbatim", func(t *testing.T) {
 		digest := "01-seam-extensions: done head_sha=abc123"
-		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", testLayout(t), 2)
+		anchorRoot, stencilsDir := testLayout(t)
+		got, err := websterengine.RenderForkPrompt(batch, digest, "/reports/02-webster-foundation.yaml", anchorRoot, stencilsDir, 2)
 		if err != nil {
 			t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 		}
@@ -741,7 +739,8 @@ func TestRenderForkPrompt_OmitsSharedDecisions(t *testing.T) {
 	card := cardWithSourcePath(1, "json-flag", "add the --json flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", testLayout(t), 2)
+	anchorRoot, stencilsDir := testLayout(t)
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/01-json-flag.yaml", anchorRoot, stencilsDir, 2)
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
@@ -760,7 +759,8 @@ func TestRenderForkPrompt_OmitsRenameMechanic(t *testing.T) {
 	card.Moves = []planparser.MovePair{{Old: "internal/boardengine/rows.go", New: "internal/boardengine/rowsjson.go"}}
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
-	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", testLayout(t), 2)
+	anchorRoot, stencilsDir := testLayout(t)
+	got, err := websterengine.RenderForkPrompt(batch, "", "/reports/04-helptree-rename.yaml", anchorRoot, stencilsDir, 2)
 	if err != nil {
 		t.Fatalf("RenderForkPrompt() = _, %v; want nil error", err)
 	}
@@ -780,7 +780,8 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
 
 	t.Run("PATTERN inactive", func(t *testing.T) {
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", testLayout(t), 2)
+		anchorRoot, stencilsDir := testLayout(t)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, anchorRoot, stencilsDir, 2)
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -800,8 +801,8 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	})
 
 	t.Run("PATTERN active", func(t *testing.T) {
-		l := patternActiveLayout(t)
-		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", l, 2)
+		anchorRoot, stencilsDir := patternActiveLayout(t)
+		got, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, anchorRoot, stencilsDir, 2)
 		if err != nil {
 			t.Fatalf("RenderRecoveryPrompt() = _, %v; want nil error", err)
 		}
@@ -812,10 +813,11 @@ func TestRenderRecoveryPrompt_InstructsColdOrientation(t *testing.T) {
 	})
 }
 
-// patternActiveMissingPatternStencilsLayout builds a *lyxcwd.Location like patternActiveLayout —
-// PATTERN active, webster's five stencils seeded via seedHubWebsterStencils — but deliberately omits
-// the three pattern-directive stencils, so a call site's hoisted pattern.Directive read fails.
-func patternActiveMissingPatternStencilsLayout(t *testing.T) *lyxcwd.Location {
+// patternActiveMissingPatternStencilsLayout returns the told anchor root and stencils directory like
+// patternActiveLayout — PATTERN active, webster's five stencils seeded via seedHubWebsterStencils —
+// but deliberately omits the three pattern-directive stencils, so a call site's hoisted
+// pattern.Directive read fails.
+func patternActiveMissingPatternStencilsLayout(t *testing.T) (anchorRoot, stencilsDir string) {
 	t.Helper()
 	hub := t.TempDir()
 	seedHubWebsterStencils(t, hub)
@@ -826,7 +828,7 @@ func patternActiveMissingPatternStencilsLayout(t *testing.T) *lyxcwd.Location {
 	if err := os.WriteFile(filepath.Join(dir, "PATTERN.md"), []byte("# PATTERN\n\nsome constraints\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(PATTERN.md) = %v", err)
 	}
-	return &lyxcwd.Location{HubPath: hub, WorktreeName: "worktree", AnchorRel: "."}
+	return filepath.Join(hub, "worktree"), fabricengine.StencilsDir(hub)
 }
 
 // TestRenderRecoveryPrompt_MissingPatternStencilErrors asserts RenderRecoveryPrompt's hoisted
@@ -836,9 +838,9 @@ func patternActiveMissingPatternStencilsLayout(t *testing.T) *lyxcwd.Location {
 func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
 	card := cardWithSourcePath(1, "alpha", "add the flag")
 	batch := batcher.Batch{Cards: []planparser.Card{card}}
-	l := patternActiveMissingPatternStencilsLayout(t)
+	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
 
-	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", l, 2); err == nil {
+	if _, err := websterengine.RenderRecoveryPrompt(batch, "", "/reports/01-alpha.yaml", anchorRoot, anchorRoot, stencilsDir, 2); err == nil {
 		t.Fatal("RenderRecoveryPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
 	}
 }
@@ -849,9 +851,9 @@ func TestRenderRecoveryPrompt_MissingPatternStencilErrors(t *testing.T) {
 // checkable in the first place.
 func TestRenderMasterPrompt_MissingPatternStencilErrors(t *testing.T) {
 	plan := &planparser.Plan{Cards: []planparser.Card{{Number: 1, Slug: "seam-extensions"}}}
-	l := patternActiveMissingPatternStencilsLayout(t)
+	anchorRoot, stencilsDir := patternActiveMissingPatternStencilsLayout(t)
 
-	if _, err := websterengine.RenderMasterPrompt(plan, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, l); err == nil {
+	if _, err := websterengine.RenderMasterPrompt(plan, nil, "/lyx/webster/outcome.yaml", "/lyx/webster/summary.md", "", 2, 480, anchorRoot, stencilsDir); err == nil {
 		t.Fatal("RenderMasterPrompt() error = nil; want a non-nil error for a missing pattern-directive stencil")
 	}
 }
