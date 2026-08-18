@@ -9,10 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **producers standalone: producer engines** — `burlerengine`+`perchengine` (one task, they do not compile apart) convert to told geometry, and `websterengine`+`webstercli` convert to told geometry *and* gain Webster's own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`) in the same task, not deferred to a follow-up.
-   Two tasks, parallel-safe.
-   See [designs/producers-standalone.md](designs/producers-standalone.md).
-
 1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository.
    The task this whole line of work exists for;
    an optional `scoutengine` uniformity pass runs beside it, and a final consolidation task lands the three-tier invariant in `CONSTRAINTS.md`.
@@ -113,6 +109,9 @@ No build order is implied between these items.
    See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
 
 1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
+   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+
+1. **producers standalone: producer engines** — `burlerengine`+`perchengine` and `websterengine`+`webstercli` convert to told geometry; Webster also gains its own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`).
    See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
