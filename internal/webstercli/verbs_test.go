@@ -830,9 +830,9 @@ func TestPersistentPreRunE_DefaultBatcherResolves(t *testing.T) {
 	}
 }
 
-// TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers cli.go's production
-// plan-path call -- c.planDir = planparser.PlanDir(layout.AnchorPath()) in PersistentPreRunE -- at a
-// nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lyx's anchoring-table guard rows
+// TestPersistentPreRunE_PlanDirAnchoredAtSubpath is the one case that covers wiring.go's production
+// plan-dir resolution -- geom := hubgeom.WebsterGeometry(loc) inside wireHub, whose geom.PlanDir feeds
+// c.geom.PlanDir -- at a nested anchor. Neither newVerbsFixture's AnchorRel flip nor cmd/lyx's anchoring-table guard rows
 // carry that proof: both build their expectations from layout.AnchorPath() themselves, so a
 // production call site that regressed to layout.WorktreePath() would stay self-consistent and pass
 // at either of those. This test drives the real PersistentPreRunE through RunCLIIn and asserts on
