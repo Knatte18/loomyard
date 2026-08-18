@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-preflight-lift
+phase: approved-cli-gate-and-ldflags
 slug: orchestrator-preflight
 branch: orchestrator-preflight
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-18T06:42:59Z'
 approved-buildinfo-and-mode-mapping  '2026-08-18T06:47:18Z'
 approved-standalonestate-leaf  '2026-08-18T06:51:54Z'
 approved-preflight-lift  '2026-08-18T07:00:55Z'
+approved-cli-gate-and-ldflags  '2026-08-18T07:07:34Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     commit_sha: e9b2c73046e6316a671d74e469a19b3c83ff6eec
     verify_baseline_failures: ["FAIL\t./internal/preflight/... [setup failed]"]
   - name: cli-gate-and-ldflags
-    state: running
+    state: approved
     implementer_session: d8ccbde8-516a-4a55-8ee7-3674b8b88b3b
     start_sha: 85cdf298d0ed95a53a824fa2a300bb8aeddfa763
+    commit_sha: 423f595de7894bf9042103fce23f4c96511545c1
     verify_baseline_failures: []
   - name: docs-and-invariants
     state: pending
