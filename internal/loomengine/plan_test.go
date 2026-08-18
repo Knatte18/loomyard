@@ -323,6 +323,69 @@ func TestPlanSpec_AnchoredUnderAnchorPathNotWorktreePath(t *testing.T) {
 	}
 }
 
+// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath proves PlanSpec's pattern.Directive call site
+// passes layout.AnchorPath() and never layout.WorktreePath() — the anchoring signal that card 2's
+// cmd/lyx pattern.File row rewrite would otherwise silently drop, and the transposition detector for
+// the plan.go call site.
+// It uses a non-"." AnchorRel, and a real t.TempDir() hub, since a real temp root is mandatory rather
+// than a preference: the positive direction must actually create files under AnchorPath() and have
+// PlanSpec read them there.
+func TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath(t *testing.T) {
+	cfg := Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120}
+
+	t.Run("PATTERN.md under AnchorPath is read", func(t *testing.T) {
+		hub := t.TempDir()
+		layout := &lyxcwd.Location{HubPath: hub, WorktreeName: "repo", AnchorRel: "backend"}
+
+		patternDir := filepath.Join(layout.AnchorPath(), lyxdirs.LyxDirName)
+		if err := os.MkdirAll(patternDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+		}
+
+		reg, err := modelspec.LoadRegistry(t.TempDir())
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+		}
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+		if err != nil {
+			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
+		}
+
+		if !strings.Contains(spec.Prompt, "## Constraints") {
+			t.Errorf("PlanSpec(...).Prompt does not contain \"## Constraints\"; want the directive read from AnchorPath()")
+		}
+	})
+
+	t.Run("PATTERN.md under WorktreePath alone is not read", func(t *testing.T) {
+		hub := t.TempDir()
+		layout := &lyxcwd.Location{HubPath: hub, WorktreeName: "repo", AnchorRel: "backend"}
+
+		patternDir := filepath.Join(layout.WorktreePath(), lyxdirs.LyxDirName)
+		if err := os.MkdirAll(patternDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", patternDir, err)
+		}
+		if err := os.WriteFile(filepath.Join(patternDir, "PATTERN.md"), []byte("# PATTERN\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
+		}
+
+		reg, err := modelspec.LoadRegistry(t.TempDir())
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+		}
+		spec, err := PlanSpec(layout, newTestStencilsDir(t), cfg, reg)
+		if err != nil {
+			t.Fatalf("PlanSpec(...) = _, %v; want nil error", err)
+		}
+
+		if strings.Contains(spec.Prompt, "## Constraints") {
+			t.Errorf("PlanSpec(...).Prompt contains \"## Constraints\"; want no directive read from a WorktreePath()-only PATTERN.md")
+		}
+	})
+}
+
 // TestPlanSpec_MalformedModelSpec verifies malformed specs are rejected.
 func TestPlanSpec_MalformedModelSpec(t *testing.T) {
 	worktreeRoot := filepath.Join("home", "user", "repo")

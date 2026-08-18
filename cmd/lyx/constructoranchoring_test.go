@@ -74,8 +74,9 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	// _lyx-vs-.lyx group placement, but because they pass l.AnchorPath() in and compare against an
 	// anchor-derived expectation, they are tautological with respect to anchoring and can no longer
 	// catch a production call site that passes the wrong root. That proof now lives in the
-	// subpath-anchored PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored
-	// PersistentPreRunE case in internal/webstercli/verbs_test.go.
+	// subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored
+	// PersistentPreRunE case in internal/webstercli/verbs_test.go, and
+	// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
 	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
 	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
@@ -130,8 +131,9 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// _lyx-vs-.lyx group placement, but because they pass l.AnchorPath() in and compare against an
 	// anchor-derived expectation, they are tautological with respect to anchoring and can no longer
 	// catch a production call site that passes the wrong root. That proof now lives in the
-	// subpath-anchored PlanSpec case in internal/loomengine/plan_test.go and the subpath-anchored
-	// PersistentPreRunE case in internal/webstercli/verbs_test.go.
+	// subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored
+	// PersistentPreRunE case in internal/webstercli/verbs_test.go, and
+	// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go.
 	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
 	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
