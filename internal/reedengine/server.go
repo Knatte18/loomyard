@@ -64,10 +64,28 @@ func SessionName(worktreeRoot string) string {
 // That silence is what makes the ban necessary rather than cosmetic — every other -t target this
 // package issues is an EXACT-match "=<name>" form (see exactSessionTarget), deliberately so, and an
 // exact target can never match a name tmux rewrote behind reed's back.
-// This substitution is only the FIRST of the two rewrite halves tmux's session-name check performs;
-// firstVisEncodedSessionNameByte below covers the second (the vis-encode class), and
-// validateToldTmuxIdentity refuses both.
+// This substitution is only the FIRST of tmux's three session-name rewrite classes;
+// doubledSessionNameChars and firstVisEncodedSessionNameByte below cover the other two, and
+// validateToldTmuxIdentity refuses all three.
 const rewrittenSessionNameChars = ".:"
+
+// doubledSessionNameChars are the characters tmux silently DOUBLES inside a session name, as
+// distinct from the substituted class above.
+// There is exactly one: the backslash. tmux runs the name through a vis(3)-style encoder, and vis
+// doubles '\' to "\\" unless its caller passes VIS_NOSLASH — which tmux's session_check_name does
+// not (verified live, tmux 3.6: a worktree directory named "bs\slash" creates the session
+// "bs\\slash" with exit 0, and the exact target "=bs\slash" then misses it forever, leaving it
+// squatting on the shared per-hub server where no reed verb can address or tear it down; R4 review
+// finding R4-F1).
+// It is kept apart from rewrittenSessionNameChars because the two need different operator-facing
+// text — one is substituted with '_', this one is doubled — and apart from
+// firstVisEncodedSessionNameByte because '\' is a printable, valid-UTF-8 byte that check must keep
+// passing.
+// Together with those two, this constant completes the ban: an exhaustive round-trip sweep of every
+// printable ASCII byte (0x20-0x7E) through new-session and an exact-match has-session on tmux 3.6
+// found exactly three rewritten characters — '.', ':' and '\' — with the control/DEL/invalid-UTF-8
+// class making up the remainder.
+const doubledSessionNameChars = `\`
 
 // socketKeySeparators are the path separators a tmux -L socket key must not contain;
 // see ServerName for what tmux does with one that does.
@@ -75,8 +93,9 @@ const socketKeySeparators = `/\`
 
 // firstVisEncodedSessionNameByte returns a printable description of the first byte or rune in name
 // that tmux would silently vis-encode into a multi-character escape, and whether one exists.
-// This is the SECOND half of tmux's session-name rewrite (the first is the '.'/':' substitution
-// above): after substituting those two characters, tmux passes the name through a
+// This is the THIRD of tmux's session-name rewrite classes (the first is the '.'/':' substitution
+// and the second the backslash doubling, both above): after substituting those two characters, tmux
+// passes the name through a
 // vis(3)-style encoder, which rewrites every ASCII control character (below 0x20), DEL (0x7F), and
 // every byte that is not part of a valid UTF-8 sequence into an escape SEQUENCE — verified live on
 // tmux 3.6: TAB becomes the two literal characters `\t`, ESC becomes `\033`, DEL becomes `\177`,
@@ -135,6 +154,11 @@ func validateToldTmuxIdentity(geom Geometry) error {
 		return fmt.Errorf(
 			"tmux will not create session %q verbatim: it contains %q, which tmux silently rewrites to \"_\" — rename the worktree directory %q so its name carries no %q",
 			geom.SessionName, string(geom.SessionName[i]), geom.WorktreeRoot, rewrittenSessionNameChars)
+	}
+	if i := strings.IndexAny(geom.SessionName, doubledSessionNameChars); i >= 0 {
+		return fmt.Errorf(
+			"tmux will not create session %q verbatim: it contains %q, which tmux silently doubles to %q — rename the worktree directory %q so its name carries no %q",
+			geom.SessionName, string(geom.SessionName[i]), `\\`, geom.WorktreeRoot, doubledSessionNameChars)
 	}
 	if desc, found := firstVisEncodedSessionNameByte(geom.SessionName); found {
 		return fmt.Errorf(

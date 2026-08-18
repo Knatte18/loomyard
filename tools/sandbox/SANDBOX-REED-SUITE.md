@@ -341,10 +341,10 @@ A `split header pane: ... no space for new pane` error from `up` is the wedged-h
 
 **Goal:** "Prove reed refuses, up front and loudly, a worktree whose directory name tmux would silently rewrite -- instead of hanging and stranding a session on the shared hub server."
 
-**Watch:** Rename a worktree directory so its name carries a `.` (e.g. `svc.v2`), or -- the second rewrite class -- a control character (e.g. a literal TAB via `mv svc3 "svc$(printf '\t')3"`, plus `git worktree repair`;
-controlled exception, restore the name afterwards).
+**Watch:** Rename a worktree directory so its name carries one of tmux's three rewrite classes (`git worktree repair` after each;
+controlled exception, restore the name afterwards): a `.` (e.g. `svc.v2`), a `\` (e.g. `mv svc2 'svc\v2'`, POSIX hosts only -- on Windows `\` cannot appear in a directory name), or a control character (e.g. a literal TAB via `mv svc3 "svc$(printf '\t')3"`).
 `lyx reed up` (and every other reed verb) must refuse IMMEDIATELY (sub-second, no 20s hang) with a JSON error naming the offending character and the worktree directory to rename.
-Afterwards `tmux -L <socket> ls` (controlled exception) must show NO new session -- neither the raw name nor a rewritten one (`svc_v2`, `svc\t3`) -- squatting on the shared hub server.
+Afterwards `tmux -L <socket> ls` (controlled exception) must show NO new session -- neither the raw name nor a rewritten one (`svc_v2`, `svc\\v2`, `svc\t3`) -- squatting on the shared hub server.
 A hang, a "did not materialize" timeout, or any leftover session is a `FAIL`.
 
 **Verdict:** `OK` / `WARN` / `FAIL`

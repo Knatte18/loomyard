@@ -154,13 +154,18 @@
 //   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
 //     tmux does not REJECT a session name containing '.' or ':' — it
 //     rewrites each to '_', creates the session under the rewritten name,
-//     and exits 0 (verified live, tmux 3.6). The same silence covers a
-//     second class: every ASCII control character, DEL, and every
+//     and exits 0 (verified live, tmux 3.6). The same silence covers two
+//     further classes: a backslash is DOUBLED (vis(3) doubles '\' unless
+//     VIS_NOSLASH is passed, which tmux does not — "bs\slash" becomes
+//     "bs\\slash"), and every ASCII control character, DEL, and every
 //     invalid-UTF-8 byte is vis-encoded into a multi-character escape (TAB
 //     becomes the two literal characters `\t`, 0xFF becomes `\377` —
-//     verified live, tmux 3.6), also with exit 0; valid multi-byte UTF-8
-//     passes through verbatim. Because every session target this package
-//     issues is the
+//     all verified live, tmux 3.6), also with exit 0; valid multi-byte
+//     UTF-8 passes through verbatim. Those three classes are the whole
+//     rewrite surface: an exhaustive round-trip sweep of every printable
+//     ASCII byte through new-session and an exact-match has-session on
+//     tmux 3.6 finds exactly '.', ':' and '\'. Because every session
+//     target this package issues is the
 //     exact-match "=<name>" form above, the created session is then
 //     unreachable by the very name that created it: the boot loop polls a
 //     target that can never match, and the rewritten session is left

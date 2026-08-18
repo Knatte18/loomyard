@@ -48,7 +48,7 @@ this worktree's session: adding, removing, resuming, and attaching to
 strands, plus rendering their layout on every mutation.
 
 The tmux session is named after this worktree's directory, so that name must
-carry neither "." nor ":" nor any control character or invalid UTF-8 — tmux
+carry none of ".", ":", "\" or any control character or invalid UTF-8 — tmux
 silently rewrites all of these and would then create a session reed can never
 address or tear down. Every reed verb refuses up front, naming the directory,
 rather than booting substrate it cannot reach.`,

@@ -99,10 +99,12 @@ func TestSessionName_IsWorktreeBasename(t *testing.T) {
 }
 
 // TestValidateToldTmuxIdentity_SessionName is the regression guard for the R2 review's BLOCKING
-// finding and the R3 review's R3-F1: a worktree directory whose name carries '.' or ':' produced a
-// session name tmux silently rewrote to '_' — and one carrying an ASCII control character, DEL, or
-// an invalid-UTF-8 byte produces a name tmux silently vis-encodes into a multi-character escape
-// (TAB becomes the two literal characters `\t`; verified live, tmux 3.6) — so the boot loop polled
+// finding, the R3 review's R3-F1, and the R4 review's R4-F1 — tmux's three session-name rewrite
+// classes: a worktree directory whose name carries '.' or ':' produced a session name tmux silently
+// rewrote to '_'; one carrying '\' produces a name tmux silently DOUBLES ("bs\slash" becomes
+// "bs\\slash"); and one carrying an ASCII control character, DEL, or an invalid-UTF-8 byte produces
+// a name tmux silently vis-encodes into a multi-character escape (TAB becomes the two literal
+// characters `\t`; all verified live, tmux 3.6) — so the boot loop polled
 // an exact "=<name>" target that could never match, timed out after 20s with a message naming no
 // cause, and left the rewritten session running on the shared per-hub server where no reed verb
 // could address or tear it down.
@@ -122,9 +124,13 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 		{"valid multi-byte UTF-8 is left alone by tmux", "svc-åäö-⚙", false},
 		{"literal U+FFFD is valid UTF-8 and left alone", "svc-�", false},
 		{"format and target metacharacters are left alone", "a#b%c=d-e", false},
+		{"quote, dollar and backtick are left alone by tmux", "q\"w $e `r", false},
 		{"dot is rewritten by tmux", "svc.v2", true},
 		{"colon is rewritten by tmux", "svc:v2", true},
 		{"dot anywhere, not just the middle", "release-2.", true},
+		{"backslash is doubled by tmux", `bs\slash`, true},
+		{"backslash anywhere, not just the middle", `trailing\`, true},
+		{"backslash beside an already-banned dot", `svc.v2\3`, true},
 		{"tab is vis-encoded by tmux", "svc\tv3", true},
 		{"newline is vis-encoded by tmux", "svc\nv3", true},
 		{"escape is vis-encoded by tmux", "svc\x1bv3", true},
