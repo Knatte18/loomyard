@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-perchcli-standalone-entry
+phase: approved-docs-and-cross-cutting-verification
 slug: standalone-cli-entry
 branch: standalone-cli-entry
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-standalonegeom-builders  '2026-08-18T14:41:13Z'
 approved-webstercli-repoint  '2026-08-18T14:47:05Z'
 approved-burlercli-standalone-entry  '2026-08-18T14:54:41Z'
 approved-perchcli-standalone-entry  '2026-08-18T15:02:49Z'
+approved-docs-and-cross-cutting-verification  '2026-08-18T15:05:04Z'
 ```
 
 ## Batches
@@ -73,8 +74,9 @@ batches:
     commit_sha: 2e46a57210f232971be08e3a76f7a949e9a5f547
     verify_baseline_failures: []
   - name: docs-and-cross-cutting-verification
-    state: running
+    state: approved
     implementer_session: 9a2d2d68-01cf-41ce-b704-4d3c9089641a
     start_sha: 6f6f29ffff6b90a2f74ce806e4e46681a77daf5f
+    commit_sha: 188fbcd2d5586408b51ab3969b2b31f26df3dda0
     verify_baseline_failures: []
 ```
