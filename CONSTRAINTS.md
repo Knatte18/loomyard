@@ -154,7 +154,7 @@ It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the 
 
 ## Pattern Leaf Invariant
 
-`internal/pattern` production code imports only stdlib, `internal/lyxcwd`, `internal/lyxdirs`, `internal/stencilstore`, and `internal/stencil` — never `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
+`internal/pattern` production code imports only stdlib, `internal/lyxdirs`, `internal/stencilstore`, and `internal/stencil` — never `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
 Reverse import never allowed.
 `internal/lyxdirs` is admissible because it is a stdlib-only zero-import leaf (its own Lyxdirs Single-Declarer Invariant), and therefore cannot participate in a cycle by construction.
 `internal/stencil` is admissible for the same reason: it is a zero-import leaf, importing no internal package at all, and so cannot participate in a cycle by construction either.

@@ -191,8 +191,8 @@ func testLayout(t *testing.T) *lyxcwd.Location {
 // patternActiveLayout builds a *lyxcwd.Location rooted at a real
 // t.TempDir() hub that contains a real _lyx/PATTERN.md file under its
 // worktree subdirectory, so pattern.Directive returns non-empty —
-// mirroring pattern.isActive's own PatternFileHere() check (see
-// internal/pattern/pattern_test.go's writePatternFile/layoutAt fixtures) —
+// mirroring pattern.isActive's own told-anchor-path existence check (see
+// internal/pattern/pattern_test.go's writePatternFile fixture) —
 // and seeded with webster's five stencils at fabricengine.StencilsDir(hub)
 // like testLayout.
 func patternActiveLayout(t *testing.T) *lyxcwd.Location {
