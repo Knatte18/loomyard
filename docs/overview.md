@@ -145,6 +145,7 @@ Two state roots with opposite lifecycles:
   Untracked in both the warp and the weft repo (listed in each repo's own `.git/info/exclude`, never a committed `.gitignore` in either), changing constantly while a run is live.
   The live tmux runtime state — `reed`'s (see the `internal/reedengine` package documentation) `.lyx/reed.json` (the socket/session names + the strand table: each managed process, its session, parent, ephemeral pane id, and display spec) — goes here, because a pane ID or the tmux socket is meaningless on another machine.
   It is rebuilt by reconciling against live tmux on startup, never synced.
+  A pane id is meaningless even on the SAME machine once the tmux server has restarted — ids are server-global and restart at `%0` — so `reed.json` also records the *pane generation*, the identity of the session incarnation its pane ids were bound against, and discards every binding minted against a different one.
 
 The test: **would this state mean anything on a different machine?**
 Orchestration progress yes → `_lyx/`.

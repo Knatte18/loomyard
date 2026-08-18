@@ -43,6 +43,49 @@ type ReedState struct {
 	// fresh worktree, or a server rebirth that cleared every binding) and
 	// must be (re)created at the next up/resume boot.
 	HeaderPaneID string `json:"headerPaneId,omitempty"`
+	// PaneGeneration identifies the tmux session incarnation every PaneID
+	// above — the strands' and HeaderPaneID alike — was bound against. It is
+	// the one field in this struct reed reads back semantically rather than
+	// carrying for its caller: without it a persisted pane id cannot be told
+	// apart from a live pane belonging to something else, because tmux pane
+	// ids are server-global and restart at %0 on every server rebirth. See
+	// generation.go for the two guards built on it. A zero value means the
+	// state predates this field (or has no bindings yet) and is adopted
+	// rather than treated as a mismatch.
+	PaneGeneration PaneGeneration `json:"paneGeneration"`
+}
+
+// PaneGeneration identifies one tmux session incarnation, so a persisted pane id can be told apart
+// from a live pane that merely reuses its number.
+// The zero value means "no generation recorded" and is what Recorded reports on.
+type PaneGeneration struct {
+	// SessionName is the tmux session name the bindings were minted under. It is the lookup key for
+	// the still-alive-orphan check, and the only field that can change without the session becoming
+	// a different one (tmux rename-session), which is why SameIncarnation ignores it.
+	SessionName string `json:"sessionName,omitempty"`
+	// TmuxSessionID is tmux's own session id ("$0", "$1", …), unique per session within one server.
+	TmuxSessionID string `json:"tmuxSessionId,omitempty"`
+	// ServerPID is the tmux SERVER process's pid, which distinguishes two servers on one socket.
+	ServerPID string `json:"serverPid,omitempty"`
+	// Created is the session's creation time in epoch seconds, which distinguishes a session id
+	// reused by a later server on the same socket.
+	Created string `json:"created,omitempty"`
+}
+
+// Recorded reports whether this generation carries an identity at all, as opposed to being the zero
+// value a pre-field or freshly initialized state carries.
+func (g PaneGeneration) Recorded() bool {
+	return g != PaneGeneration{}
+}
+
+// SameIncarnation reports whether g and other name the same live tmux session, ignoring SessionName.
+// The name is excluded deliberately: tmux rename-session changes a session's name in place without
+// making it a different session, and treating that as a new generation would discard a healthy
+// worktree's whole binding table.
+func (g PaneGeneration) SameIncarnation(other PaneGeneration) bool {
+	return g.TmuxSessionID == other.TmuxSessionID &&
+		g.ServerPID == other.ServerPID &&
+		g.Created == other.Created
 }
 
 // reedStateFileName is the reed.json file name inside .lyx directory.

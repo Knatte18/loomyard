@@ -191,6 +191,23 @@
 //     zombie that no later add can host a strand in — anyPlacedStrand
 //     refuses to call select-layout at all when no strand would place a
 //     present pane.
+//   - Pane ids are server-global and NOT stable across a server rebirth
+//     (generation.go): tmux hands out %0, %1, … per SERVER, not per session,
+//     and the counter restarts at %0 when the server dies. A persisted pane
+//     id therefore does not identify a pane — it identifies a pane within one
+//     server generation — and a reed.json that outlives its generation names
+//     panes that exist and belong to something else. list-panes cannot tell
+//     the two apart, so reconcile cannot either: "present" is the only
+//     question it can ask. reed.json therefore records the generation its
+//     bindings were minted in (session_id + server pid + session_created,
+//     jointly unique and individually immutable over a session's life) and
+//     discards every binding whose generation is not the live one, which
+//     generalizes Up/Resume's `booted` clear to the tables that arrive
+//     BETWEEN boots (R5 review findings R5-F2/R5-F5). The one disagreement
+//     that is refused rather than cleared is a recorded session still RUNNING
+//     on this socket under a name that is not this worktree's — a renamed
+//     worktree or a copied .lyx — because carrying on there launches a second
+//     copy of every strand and leaves the first unreachable.
 //   - Duplicate-pane-cell session destruction (render/policy.go's
 //     removeDuplicatePaneCells, reconcile.go's clearConflictingPaneBindings):
 //     the twin of the empty-layout hazard above, reached from the opposite
