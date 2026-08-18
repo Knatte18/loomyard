@@ -23,7 +23,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - `perchCLI` keeps its `layout *lyxcwd.Location` field and gains `perchGeom perchengine.Geometry` alongside it.
   `c.layout` survives for the three fabric call sites only, which genuinely need the `Location` and are genuinely hub-mode-only.
   Making the CLI hub-blind is task T8, not this task.
-- The four `perchengine` rows in `cmd/lyx/constructoranchoring_test.go` and the five in `cmd/lyx/notransients_test.go` go tautological with respect to anchoring, deliberately, exactly as the `planparser.PlanDir` and `pattern.File` rows did in waves 1 and 2.
+- The four `perchengine` rows in `cmd/lyx/constructoranchoring_test.go` and the six in `cmd/lyx/notransients_test.go` go tautological with respect to anchoring, deliberately, exactly as the `planparser.PlanDir` and `pattern.File` rows did in waves 1 and 2.
   They are rewritten in place and annotated, never deleted: they still pin the join arithmetic and the `_lyx`-vs-`.lyx` group placement, and `notransients_test.go`'s mirrored-pair equality check is load-bearing for the Durable-vs-Ephemeral State Invariant and has nothing to do with anchoring.
 
 ## Cards
@@ -55,6 +55,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Context:**
   - `internal/lyxdirs/dirs.go`
   - `internal/planparser/parse.go`
+  - `internal/pattern/pattern.go`
 - **Edits:**
   - `internal/perchengine/identity.go`
 - **Creates:** none

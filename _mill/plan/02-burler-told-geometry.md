@@ -32,6 +32,7 @@ Running them is out of scope; they spawn real agents.
   - `internal/burlerengine/profile.go`
   - `internal/burlerengine/doc.go`
   - `internal/pattern/pattern.go`
+  - `internal/hubgeom/hubgeom.go`
 - **Edits:**
   - `internal/burlerengine/engine.go`
 - **Creates:** none

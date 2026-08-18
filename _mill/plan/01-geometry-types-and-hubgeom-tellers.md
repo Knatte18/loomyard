@@ -26,6 +26,7 @@ Batch-local decision beyond `## Shared Decisions`: each `Geometry` type gets its
 - **Context:**
   - `internal/reedengine/geometry.go`
   - `internal/burlerengine/engine.go`
+  - `internal/hubgeom/hubgeom.go`
 - **Edits:** none
 - **Creates:**
   - `internal/burlerengine/geometry.go`
@@ -44,6 +45,7 @@ Batch-local decision beyond `## Shared Decisions`: each `Geometry` type gets its
 - **Context:**
   - `internal/reedengine/geometry.go`
   - `internal/perchengine/engine.go`
+  - `internal/hubgeom/hubgeom.go`
 - **Edits:** none
 - **Creates:**
   - `internal/perchengine/geometry.go`
