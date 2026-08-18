@@ -42,7 +42,9 @@ batches:
     commit_sha: 50eda5d3f32aa11d73d532dfae554fba855880ef
     verify_baseline_failures: ["FAIL\t./internal/buildinfo/... [setup failed]"]
   - name: standalonestate-leaf
-    state: pending
+    state: running
+    implementer_session: a851199e-5f44-487f-b5e7-642dac3312fe
+    start_sha: ca62cf3ae287bcfad712de22065c859633daaedc
     verify_baseline_failures: ["FAIL\t./internal/standalonestate/... [setup failed]"]
   - name: preflight-lift
     state: pending
