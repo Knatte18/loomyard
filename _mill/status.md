@@ -30,5 +30,8 @@ implementing  '2026-08-18T06:16:59Z'
 ```yaml
 batches:
   - name: pattern told geometry
-    state: pending
+    state: running
+    implementer_session: aeac239e-19c4-4654-a255-f4dc6b7fffd3
+    start_sha: 9f0ab609405439628a8737b5b2c57d21cd6fd1ca
+    verify_baseline_failures: []
 ```
