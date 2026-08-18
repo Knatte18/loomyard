@@ -1,6 +1,6 @@
-# `reed` — independent review + fix (round 1)
+# `reed` — independent review + fix (round 2 — safety pass)
 
-> Filled instance of `crucible/review-prompt-template.md` for this crucible campaign's first module.
+> Filled instance of `crucible/review-prompt-template.md` for this crucible campaign's first module, rewritten fresh for round 2 (round 1's version is preserved in git history at commit `c0569063`).
 > See `crucible/README.md` for the loop this prompt runs inside, and `_mill/reed-shuttle-HANDOFF.md` for campaign-wide state.
 
 You are a senior engineer doing a COMPLETE, adversarial, INDEPENDENT review of the `reed` module (`internal/reedengine` + `internal/reedcli`, plus the new `internal/hubgeom` conversion layer it is now constructed through) in the loomyard repo, followed by FIXING what you find.
@@ -16,24 +16,24 @@ Work in the worktree at `/home/knatte/Code/loomyard/wts/reed-shuttle-crucible-ha
 ## Commit per fix (BLOCKING — do not batch fixes into one uncommitted diff)
 As soon as one finding's fix is implemented, green (`go build`/`vet`/hermetic test, plus the live smoke/suite check if the finding needed one), and its doc update (if any) is included, COMMIT it — on the current branch, no push — before starting the next finding.
 Commit message format: `reed: fix <finding-id> — <one-line what/why>`.
-Also commit `_mill/reed-review-r1.md` and `_mill/reed-review-r1-fixer-report.md` as you write or update them — they are NOT gitignored scratch, they are the campaign's durable record.
+Also commit `_mill/reed-review-r2.md` and `_mill/reed-review-r2-fixer-report.md` as you write or update them — they are NOT gitignored scratch, they are the campaign's durable record.
 
 ## Sequencing rule (BLOCKING — do not skip, do not interleave)
-Job 1 must be COMPLETE — and its full review report SAVED to `_mill/reed-review-r1.md` and committed — before you touch (edit, create, or delete) a single production or test file.
+Job 1 must be COMPLETE — and its full review report SAVED to `_mill/reed-review-r2.md` and committed — before you touch (edit, create, or delete) a single production or test file.
 Do not fix findings as you go, even ones that look small and obviously right.
 Write it down as a finding, keep reading, finish the review, save the file, THEN start Job 2.
 
 ## Log as you go during Job 1 (BLOCKING)
-Append your observations to `_mill/reed-review-r1.md`'s "What was tested" section immediately after each command/scenario returns.
+Append your observations to `_mill/reed-review-r2.md`'s "What was tested" section immediately after each command/scenario returns.
 Jot each finding into the file's findings section provisionally as you spot it.
 COMMIT each meaningful append (`reed: review notes — <what you just appended>`).
 
 ## Clean-room review constraint (do this part unprimed)
 Form your OWN findings first.
 Do NOT read any prior review or review-dialogue files before you have your own list.
-Specifically do not open anything under `_mill/` matching `reed-review-*` (a filename pattern, not a content judgment — this is round 1 so nothing should exist yet under that pattern, but if it does, it is off-limits until your own findings list is complete).
+Specifically do not open anything under `_mill/` matching `reed-review-*` — this is a FILENAME PATTERN, not a content judgment, so it covers round 1's review report (`reed-review-r1.md`), round 1's fixer report (`reed-review-r1-fixer-report.md`), AND the orchestrator's own running handoff note (`_mill/reed-shuttle-HANDOFF.md`) even though its name doesn't match the pattern literally — treat it as equally off-limits until your own findings list is complete. Do not open any of these out of curiosity, and do not act on anything you might glimpse in them even by accident.
 Reading the design SPEC and the module docs is expected and required (those are not reviews).
-AFTER your own findings are written, you MAY consult prior `reed-review-*` material (none exists yet for round 1) to confirm previously-fixed behaviors have not regressed.
+AFTER your own findings are written, you MAY consult `_mill/reed-review-r1.md` and `_mill/reed-review-r1-fixer-report.md` (round 1's material, all ten findings F1–F10 CLOSED-AND-VERIFIED — see the "Round context" section below for the exact commit shas) to confirm those previously-fixed behaviors have not regressed, and to re-evaluate anything deferred (nothing was deferred from round 1).
 
 ## What to read
 - Code: `internal/reedengine/**` (especially the new `geometry.go`, and every file `git show b98ee2ba -- internal/reedengine` touched: `lifecycle.go`, `lock.go`, `header.go`, `strand.go`), `internal/reedcli/**`, `internal/hubgeom/**` (new conversion package), `cmd/lyx` integration.
@@ -61,14 +61,27 @@ This campaign exists because wave-1 (commit `b98ee2ba`) changed reed's construct
   - `lyx reed attach` and `header --blocking` (the two registered interactive-handoff exceptions, per `CONSTRAINTS.md`'s CLI/Cobra Invariant) still resolve the right socket/session under the new `Geometry`-based construction.
 
 ## Explicitly OUT of scope for this round
-- `internal/shuttleengine`/`internal/shuttlecli` — that is round 2 of this campaign, a SEPARATE round with its own prompt (`_mill/shuttle-review-prompt.md`), spawned only after this round converges. Do not review or fix shuttle code in this round even though it depends on reed.
+- `internal/shuttleengine`/`internal/shuttlecli` — a SEPARATE, later crucible campaign (its own prompt, its own round numbering), spawned only after reed's campaign converges. Do not review or fix shuttle code in this round even though it depends on reed.
 - `internal/hubgeom`'s future siblings (`BurlerGeometry`, `PerchGeometry`, `WebsterGeometry` — wave 3, T6/T7) do not exist yet; do not review for their absence.
 - Windows-specific tmux/path behavior — this host is Linux; a Windows verification gap is expected and should be named, not driven.
 
 ## Round context seeded from prior-round verification
-This is round 1 of a fresh campaign against reed's current (post wave-1) shape — no prior round exists.
-There is no residual to close and nothing CLOSED-AND-VERIFIED yet.
-Do a full clean-room review + fix, focused on the High-yield focus list above.
+**Safety pass.** Round 1 (`opus-medium-r1`) found and fixed 10 findings (1 BLOCKING, 2 MEDIUM, 2 LOW, 5 NIT) — full details in `_mill/reed-review-r1.md` / `_mill/reed-review-r1-fixer-report.md`, readable only AFTER your own findings list is complete (see "Clean-room review constraint" above). The orchestrator independently re-verified all of it from a cold state afterward — re-ran every hermetic gate, ran the live smoke suite, ran a 3× concurrent smoke sweep (tmux-only tests) with zero corruption markers, and — critically — SABOTAGE-PROVED both of round 1's new regression tests by reverting each fix in turn and confirming the corresponding test actually failed at the intended assertion before restoring (both did; both diffs came back empty on restore). Two of round 1's doc fixes (F5, F9) were also spot-checked against the current file content and are accurate.
+
+**CLOSED-AND-VERIFIED, do NOT re-litigate:**
+- F1 (BLOCKING) — pane-child reaping (`waitProcessExit`) was inert because `os.Process.Wait()` on a non-child pid returns instantly; fixed by polling `proc.IsAlive` on a deadline. Commit `d0bbbc82`. Orchestrator sabotage-proof: reverting to the old `Wait()`-based implementation made `TestSmokeDownForceKillsSighupImmunePaneChildren` fail with a leaked pid, exactly as round 1's fixer report claimed.
+- F2 (MEDIUM) — strand-pane `split-window` was missing `-c AnchorPath`, so a pane's cwd came from the invoking client, not the told anchor; fixed. Commit `a6bcb308`. Orchestrator sabotage-proof: reverting the `-c` flag made `TestSmokeStrandPaneSpawnsAtToldAnchorNotProcessCwd` fail at the expected assertion.
+- F3 (MEDIUM) — `TestSmokeClaudeResumeRecallsCodeword` now pins `--model haiku` on both the launch and `--continue` lines, behind a named `smokeClaudeModel` constant. Commit `61f0407d`. Orchestrator confirmed the constant is genuinely wired into both invocations and re-ran the test (10.09s, haiku).
+- F4, F8 (LOW/NIT — dead `socketName` alias deleted, `server.go`'s stale `Location` comment corrected) — commit `0373f7fd`.
+- F6, F7, F9, F10 (NIT — stale `layout`/`HubLogsDir` vocabulary cleared from comments) — commit `07883759`.
+- F5 (LOW — `manifest/designs/producers-standalone.md`'s stale reed/tokenvocab rows corrected) — commit `ab6f8fdc`.
+
+**Attribution note, for context only (not something to re-litigate):** this campaign was framed around wave-1 commit `b98ee2ba` alone, but wave-1 is actually three commits (`2b21ee57` T1, `5b096ebd` T2, `b98ee2ba` T3). Investigation found T1 touched nothing reed-related; T2 caused one of F5's three stale rows (the `reedengine.LoadConfig` degrade-to-template row); `b98ee2ba` caused the rest of F4–F10. Neither F1, F2, nor F3 — the three findings with real behavioral consequence — trace to ANY wave-1 commit; `git log -S` on each shows they trace back to `93ad5b01` ("mux -> reed rename"), reed's earliest history. Do not read this as license to skip driving the told-geometry invariants below — F2 (a pre-existing bug) was only CAUGHT because wave-1's `geometry.go` doc comment turned an implicit derivation into an explicit contract the code didn't honor. A safety pass exists precisely because a clean first round proves less than it feels like it proves.
+
+**Your mission this round:** a genuinely independent clean-room pass. Do NOT assume round 1 was exhaustive. Specifically:
+- Re-drive the told-geometry field-integrity scenarios in the High-yield focus list below with YOUR OWN fixture choices (different worktree layout, different hub shape) — round 1's fixture was a 3-worktree hub with one subpath-anchored worktree; try something round 1 didn't (e.g. a worktree whose `AnchorRel` is deeper, or a hub mid-`fabric reconcile`).
+- Look specifically for anything in the same SHAPE as F1/F2 (a `Wait`/liveness assumption elsewhere in the package that might share F1's root cause; another spawn/split site that might share F2's missing-`-c` pattern) — `grep` every `tmux.output(...)`/`tmux.run(...)` call site in `internal/reedengine` for a missing `-c` where one of the other three sites has it, and every process-liveness check for the same `os.Process.Wait()`-on-non-child hazard F1 exposed.
+- Honestly confirm merge-readiness if you find nothing — "no new defects, ship it" is the expected, valuable outcome of a safety pass, not a failure to find something.
 
 State the **merge bar** so you calibrate: correctness in the NORMAL single-instance flow is the gate; an N×-concurrent stress suite (if the orchestrator later asks for one) is a diagnostic amplifier, not a merge blocker on its own.
 
@@ -107,7 +120,7 @@ For scope: plan-promised vs shipped; flag deferred-that-should-be-v1 and shipped
 The only legitimate reason to leave a finding unfixed is that fixing it genuinely requires something you cannot do alone this round — say so explicitly in the fixer report's deferred section.
 
 ## Deferred items from the prior round — RE-EVALUATE these
-None — this is round 1.
+None — round 1 deferred nothing (all 10 findings were fixed, per its fixer report's "Deferred: Nothing").
 
 ## Fixing — after the review
 - Fix EVERY finding from your review, all severities including NIT.
@@ -121,8 +134,8 @@ None — this is round 1.
 - Report the changed files and how you verified each fix.
 
 ## Deliverables
-1. Structured review report → `_mill/reed-review-r1.md`, committed incrementally per "Log as you go" above.
-2. Fixer report → `_mill/reed-review-r1-fixer-report.md`, committed (folding into a fix commit is fine).
+1. Structured review report → `_mill/reed-review-r2.md`, committed incrementally per "Log as you go" above.
+2. Fixer report → `_mill/reed-review-r2-fixer-report.md`, committed (folding into a fix commit is fine).
 3. Final chat message: concise executive summary + counts by severity + the two report paths + an explicit merge-readiness verdict. Do not paste the whole reports.
 
 Begin with the clean-room review (read the SPEC + code + docs, then drive the real substrate), produce your independent findings, then implement and verify the fixes.
