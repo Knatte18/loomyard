@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-docgo-audit  '2026-08-19T06:55:06Z'
 approved-overview-docs  '2026-08-19T06:58:12Z'
 approved-roadmap-and-design-doc-deletion  '2026-08-19T07:01:23Z'
 holistic-reviewing  '2026-08-19T07:01:56Z'
+holistic-approved  '2026-08-19T07:06:28Z'
 ```
 
 ## Batches
