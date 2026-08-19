@@ -6,7 +6,7 @@ batch: "docgo-audit"
 number: 3
 cards: 5
 verify: go test ./internal/lyxcwd/...
-depends-on: []
+depends-on: [1]
 ```
 
 ## Batch Scope
@@ -17,7 +17,9 @@ The five remaining packages each get one card.
 
 It is one batch because every card is the same shape — read a package doc, add one sentence naming its tier and whether it is told or resolves — and because a reviewer wants the five sentences side by side to check they do not contradict each other or the prose already in each file.
 
-The batch has no dependency: it touches only Go doc comments, in five packages none of the other batches touch.
+It touches only Go doc comments, in five packages none of the other batches touch, so it conflicts with nothing.
+It still depends on batch 1: every one of its five cards points the reader at `CONSTRAINTS.md`'s Told-Geometry Invariant by name, and that section does not exist until batch 1 lands.
+No machine check would catch the forward reference — a Go doc comment is outside both `docslink_test.go`'s scan sources and the Fabric Vocabulary `.md` walk — so the DAG edge is the only thing preventing five package docs from citing a section that is not in the tree yet.
 
 The `internal/buildinfo` card is the batch's only two-part card — it also rewords the package's prose reference to the design doc batch 5 deletes.
 That reword is here rather than in batch 5 because it is a Go doc comment in a package this batch is already auditing, and because `internal/lyxcwd/docslink_test.go` does not catch a prose mention, so the two edits have no ordering constraint between them.

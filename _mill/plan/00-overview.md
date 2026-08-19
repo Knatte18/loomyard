@@ -30,7 +30,7 @@ batches:
   - number: 3
     name: docgo-audit
     file: 03-docgo-audit.md
-    depends-on: []
+    depends-on: [1]
     verify: go test ./internal/lyxcwd/...
   - number: 4
     name: overview-docs
@@ -96,7 +96,8 @@ _Cross-cutting decisions every batch inherits._
 - **Decision:** the new `CONSTRAINTS.md` heading is exactly `## Told-Geometry Invariant`, which anchors as `#told-geometry-invariant` under `docslink_test.go`'s `docsLinkSlug` rule (strip the leading `#` run and one space, delete backticks, lowercase, delete every rune that is not a letter/digit/`_`/`-`/space, replace spaces with `-`).
   Every cross-link written by batches 4 and 5 uses that exact slug.
 - **Rationale:** a mis-slugged anchor fails `TestEnforcement_MarkdownLinks`, and batch 1 is the only batch that can fix it.
-- **Applies to:** batches 1, 4, 5.
+- **Applies to:** batches 1, 3, 4, 5.
+  Batch 3 references the heading by name in Go doc comments rather than as a markdown link, so no machine check catches a reference written before the heading exists — the DAG edge is what prevents it.
 
 ### Decision: Fabric vocabulary in the three `.md` files is a review obligation
 
