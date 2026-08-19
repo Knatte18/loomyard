@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: session bootstrap'
 slug: loom-session-bootstrap
-approved: false
+approved: true
 started: '20260819-180839'
 parent: standalone-producers
 root: ""
