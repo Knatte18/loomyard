@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-landingshed producers
+phase: approved-loomshed wiring and integration
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-merge-stage-resolved verb  '2026-08-19T18:33:51Z'
 approved-remote and push helpers  '2026-08-19T18:40:56Z'
 approved-mergeresolve engine  '2026-08-19T18:50:27Z'
 approved-landingshed producers  '2026-08-19T19:06:48Z'
+approved-loomshed wiring and integration  '2026-08-19T19:27:33Z'
 ```
 
 ## Batches
@@ -61,9 +62,10 @@ batches:
     commit_sha: 53c6e1358bc63e1ad9b5324c059e21d38f6c92a5
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: loomshed wiring and integration
-    state: running
+    state: approved
     implementer_session: 0af3fbd3-bbc9-4e77-9795-824f5e2d3992
     start_sha: ee4c012540711a1cb7199a3acbc7cd5f37625f8d
+    commit_sha: 6b0303fc69593ae02bebe0285031fe68c89730f2
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: documentation lifecycle
     state: pending
