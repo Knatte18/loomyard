@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r3
+phase: planned
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-fix-r1  '2026-08-19T18:28:10Z'
 plan-review-r2  '2026-08-19T18:38:37Z'
 plan-fix-r2  '2026-08-19T18:38:37Z'
 plan-review-r3  '2026-08-19T18:49:02Z'
+planned  '2026-08-19T18:49:11Z'
 ```
