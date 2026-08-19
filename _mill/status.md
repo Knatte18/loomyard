@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -38,6 +38,7 @@ holistic-fixing  '2026-08-19T11:04:39Z'
 nits-fixed-holistic  '2026-08-19T11:08:52Z'
 holistic-approved  '2026-08-19T11:08:58Z'
 done  '2026-08-19T11:10:12Z'
+pr-pending  '2026-08-19T11:16:05Z'
 ```
 
 ## Batches
