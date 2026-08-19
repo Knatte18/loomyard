@@ -3,7 +3,7 @@
 ```yaml
 task: 'loom: phase-machine scaffolding'
 slug: loom-phase-machine-scaffolding
-approved: false
+approved: true
 started: '20260819-093203'
 parent: standalone-producers
 root: ""
@@ -45,7 +45,7 @@ batches:
 ### Decision: loomshed-takes-told-paths
 
 - **Decision:** every path `internal/loomshed` uses is a told absolute string supplied by its caller. The package has no direct production import of `internal/lyxcwd` and never writes the literals `_lyx` or `.lyx`.
-- **Rationale:** the Told-Geometry Invariant plus the Lyxdirs Single-Declarer Invariant. A `leaf_enforcement_test.go`-style allowlist guard in the package converts the review obligation into a machine check.
+- **Rationale:** the Told-Geometry Invariant plus the Lyxdirs Single-Declarer Invariant. A `seam_enforcement_test.go`-style allowlist guard in the package converts the review obligation into a machine check.
 - **Applies to:** all batches
 
 ### Decision: explicit-deps-struct
@@ -106,7 +106,6 @@ batches:
 - `internal/loomshed/discussionvalidate_test.go`
 - `internal/loomshed/doc.go`
 - `internal/loomshed/fixture_test.go`
-- `internal/loomshed/leaf_enforcement_test.go`
 - `internal/loomshed/loomshed.go`
 - `internal/loomshed/loomshed_test.go`
 - `internal/loomshed/planvalidate.go`
@@ -114,6 +113,7 @@ batches:
 - `internal/loomshed/preflight.go`
 - `internal/loomshed/preflight_integration_test.go`
 - `internal/loomshed/resume_test.go`
+- `internal/loomshed/seam_enforcement_test.go`
 - `internal/loomshed/seed.go`
 - `internal/loomshed/seed_test.go`
 - `internal/loomshed/sequence_test.go`
