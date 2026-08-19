@@ -251,3 +251,226 @@ From inside the mid-merge pair: `commit`, `pull`, `push`, `sync` all refused wit
 A conflicted merge and a hard error are **not** distinguishable by exit status; only the presence
 of the `conflicts` key separates them. That is a deliberate consequence of the shared envelope,
 but it is documented nowhere. See finding **F9**.
+
+## Enumerated class — every mutating `fabricengine` entry point vs. a live merge record
+
+**Enumeration method (reproducible):**
+
+```sh
+FILES=$(ls internal/fabricengine/*.go | grep -v _test.go)
+grep -h "^func (f \*Fabric) [A-Z]\|^func (t \*Topology) [A-Z]\|^func [A-Z][A-Za-z]*(" $FILES | wc -l   # 80
+grep -rn "mergeBlocksMutation\|ErrMergeInProgress" internal/ --include=*.go | grep -v _test.go        # guard sites
+```
+
+80 exported entry points in `fabricengine`. Of those, 27 mutate on-disk or git state; the other
+53 are constructors, path/name derivations, config loads and read-only probes
+(`List`, `Status`, `Diff`, `Healthy`, `Ready`, `Clean`, `MergeInProgress`, `WeftSHAForWarpSHA`,
+`RepoWiredNames`, `WeftBranchName`, …) and cannot corrupt or be corrupted by a merge.
+The delta versus a naive `grep -c mergeBlocksMutation` (which finds 2 sites, in `checkout.go` and
+`remove.go`) is that `commit.go` and `pull.go` call `f.mergeRecordExists()` directly rather than
+the helper, and `commit.go` additionally arms on `foreignMergeStatePresent()`; the guarded set is
+therefore 4 verbs across 5 refusal sites, not 2.
+
+| # | mutating entry point | guarded? | adjudication |
+| --- | --- | --- | --- |
+| 1 | `Fabric.MergeIn` | self (`mergeReasonAlreadyInProgress` + foreign) | correct |
+| 2 | `Fabric.Merge` | self (same) | correct |
+| 3 | `Fabric.MergeContinue` | record-driven | correct — but see **F1** |
+| 4 | `Fabric.MergeAbort` | record-driven | correct |
+| 5 | `Fabric.Commit` | **yes** (record + foreign) | correct; driven in L2/L11 |
+| 6 | `Fabric.Pull` | **yes** (record) | correct; driven in L2/L11 |
+| 7 | `Topology.Checkout` | **yes** (record, current pair) | correct; driven in L2/L11 |
+| 8 | `Topology.Remove` | **yes** (record, pair being removed) | correct for the pair being removed; **does not cover the pair that is the merge's SOURCE — F5** |
+| 9 | `Topology.Add` | no | safe — creates a *new* pair from a branch tip, never touches the mid-merge pair's index or HEAD. Driven from prime mid-merge: refused incidentally by the source-worktree-dirty check; driven from prime while the *pair* is mid-merge (L11): succeeded, correctly. |
+| 10 | `Topology.Cleanup` | no | safe by construction — a weft branch that is checked out at any worktree is unconditionally protected (`cleanup.go` file header), and a mid-merge pair has both worktrees materialized. Driven in L2/L11: no-op. |
+| 11 | `Topology.Prune` | no | safe — only acts on a pair whose warp worktree directory is already gone, or a weft worktree with no warp sibling. A mid-merge pair has both. Driven in L2/L11: no-op. |
+| 12 | `Topology.Reconcile` | no | safe — repairs junction links and creates missing weft worktrees; touches no index, HEAD or ref of a materialized pair. Driven in L2/L11: `already_healthy`. |
+| 13 | `CloneHub` | no | safe — different hub; cannot address an existing pair. |
+| 14 | `Fabric.PushWeft` | no | **deliberate** (spec) — pushes the committed branch tip, which an uncommitted merge has not moved. |
+| 15 | `PushWarpAt` | no | deliberate (spec) — same reason. |
+| 16 | `CoalescePushBothAt` | no | deliberate (spec) — same reason. |
+| 17 | `SpawnDetachedPush` | no | deliberate (spec) — spawns the push half only. |
+| 18 | `Fabric.RebuildIndex` | no | safe — rewrites the correspondence cache only, which `doc.go` already pins as explicitly rebuildable. No git mutation. |
+| 19 | `Fabric.RecordCorrespondence` | no | safe, and *required* to stay unguarded: the merge verbs call it themselves while their own record is still live. |
+| 20 | `Fabric.ResetHard` | no | incidentally safe — `force:false` plus `dirtyScopeTracked()` refuse against a conflicted or staged merge worktree, which is dirty by definition. |
+| 21 | `Fabric.CheckoutDetached` | no | **hazard, accepted this round**: it would abandon a merge in progress. It is a raw primitive, not a verb, driven only by `internal/websterengine/integration.go`. F2's new detached-HEAD merge guard closes the harmful direction (a merge *starting* while detached); guarding the primitive itself belongs to webster's own surface, not the merge primitive's. |
+| 22 | `Fabric.RestoreBranch` | no | same as #21, paired with it. |
+| 23 | `WireJunctions` / `WireJunctionsWith` | no | safe — filesystem links only, no git state. |
+| 24 | `UnwireJunctions` | no | safe — filesystem links only. |
+| 25 | `Unwire` | no | safe — filesystem links only. |
+| 26 | `InstallPostCheckoutHook` | no | safe — writes a hook file. |
+| 27 | `CommitSeededStencils` | no | safe — commits into the board worktree, a different pair from any task pair, and the prime pair's own board branch is not a merge subject. |
+
+Total mutating entry points: **27**. Guarded: **4** (rows 5-8). Self-guarding: **4** (rows 1-4).
+Deliberately unguarded per the spec: **4** (rows 14-17). Adjudicated safe: **13**.
+Accepted hazards outside this surface: **2** (rows 21-22).
+Genuine gap found: **1** (row 8 — finding **F5**).
+
+## Scope assessment — plan vs. shipped
+
+The six plan batches recovered from `3b800bc8` are all present in the tree:
+
+| batch | shipped |
+| --- | --- |
+| 01 gitrepo merge primitives | `internal/gitrepo/merge.go` — `MergeStart` (4-way classification), `MergeConclude`, `ConflictedFiles`, `MergeHeadPresent`, `MergeFFOnly`, `ResolveSHA`. Complete. |
+| 02 merge state, errors, mapping | `mergestate.go`, `mergeerrors.go` (7-member closed reason set + 6 typed errors), `mergepaths.go`. Complete. |
+| 03 mergein + lifecycle | `merge.go` `MergeIn`, `mergelifecycle.go` quartet. Complete, with the F1 recovery gap. |
+| 04 merge target verb | `merge.go` `Merge` + `syncSideBeforeMerge`, squash, `ErrMergeInRequired`. Complete. |
+| 05 sibling guards + vocabulary | 4 guarded verbs + `mergevocab_test.go`. Complete as specified; `doc.go` overstates it (**F6**). |
+| 06 CLI + docs | `merge_verbs.go`, `envelope.go` `errConflictsWithRecord`, `doc.go` "# The merge surface". Complete. |
+
+No silently-dropped requirement and no shipped-beyond-scope surface found. The deferred
+two-sided reset-to-SHA verb for a *landed* merge is correctly recorded as deferred and is
+explicitly out of scope for this campaign.
+
+## Findings
+
+### F1 — BLOCKING — CONFIRMED — `MergeContinue` lands half a merge, then dead-ends forever, when the recorded attempt never reached one side
+
+`internal/fabricengine/mergelifecycle.go:26` (`concludeMergeSides`), reached from
+`mergelifecycle.go:87` (`MergeContinue`); the window is created at
+`internal/fabricengine/merge.go:141-156` and `merge.go:305-320`.
+
+**Scenario** (driven, L3): a crash between the warp `MergeStart` and the weft `MergeStart` leaves
+`fabric-merge.json` with `warp_outcome:"staged"`, `weft_outcome:""` — exactly what `merge.go`
+persists in that window. A resumed `MergeContinue`:
+1. concludes and **commits** the warp side,
+2. then calls `MergeConclude("")` on the weft side, which was never started, so `git commit
+   --no-edit` fails on a clean tree,
+3. returns `ErrMergeIncomplete` — *"run MergeContinue again"* — which can never succeed, since
+   the weft side will still be clean on every retry,
+4. leaves the pair out of correspondence with a warp merge commit and no weft counterpart.
+
+Only `--abort` recovers. This violates the prompt's invariant that `MergeContinue` be idempotent
+across a resumed run: the first call produces an irreversible commit and every later call is a
+no-op failure.
+
+**Fix**: an empty recorded outcome means "the attempt never reached this side"; `MergeContinue`
+must detect that **before** landing anything and refuse the whole call with a reason directing the
+operator at `--abort`, so the pair is never left half-concluded.
+
+### F2 — BLOCKING — CONFIRMED — no merge verb requires the checkouts to be on a branch
+
+`internal/fabricengine/merge.go:78-96` and `merge.go:245-268` (the two guard aggregations);
+`internal/fabricengine/mergeguards.go` has no detached-HEAD predicate at all.
+
+**Scenario** (driven, L7): with the warp checkout on a detached HEAD, `lyx fabric merge-in task1`
+reports full success, lands a warp merge commit reachable from no ref, lands the weft merge commit
+permanently on `main-weft`, records correspondence between the orphan warp SHA and the live weft
+SHA, and deletes the record — so `MergeAbort` is gone. The next branch checkout in the warp
+checkout silently discards the warp half of an already-half-landed merge. `fabricengine` itself
+exposes `CheckoutDetached`, driven by `internal/websterengine/integration.go:133`, so this is a
+reachable production window, not only a hand-made one.
+
+**Fix**: add a `mergeReasonDetachedHead` member to the closed reason set and a
+`detachedHeadReason(f)` guard evaluating **both** sides unconditionally (side-free, aggregated,
+same shape as `pairDirtyReason`), wired into both `MergeIn` and `Merge`. Needs a
+`gitrepo.Repo.HeadDetached()` probe, since `CurrentBranch()` collapses detachment into an error.
+
+### F3 — MEDIUM — CONFIRMED — `MergeResult.Committed` / `AlreadyUpToDate` do not describe what happened
+
+`internal/fabricengine/merge.go:205`, `merge.go:400` (`return MergeResult{Committed: true, …}`),
+`internal/fabricengine/mergelifecycle.go:146` (`MergeContinue`'s own `Committed: true`).
+
+Both verbs hardcode `Committed: true` on the both-sides-clean path regardless of whether
+`concludeMergeSides` actually landed anything, and `AlreadyUpToDate` is decided by a probe taken
+**before** the write lock is acquired.
+
+**Scenarios** (both driven):
+- L1: a merge that fast-forwarded both sides reports `committed:true` with no `merge_committed`
+  entry anywhere in the record — no commit was created.
+- L10: the loser of two concurrent `merge-in` calls reports
+  `{"already_up_to_date":false,"committed":true,"mutations":[]}` for a call that did nothing at
+  all, where the strictly sequential control of the identical command pair honestly reports
+  `{"already_up_to_date":true,"committed":false}`. Reproduced on two independent hubs.
+
+**Fix**: derive both fields from the post-lock reality — `AlreadyUpToDate` when both `MergeStart`
+outcomes are `MergeAlreadyUpToDate`, `Committed` only when a conclude commit actually landed on at
+least one side.
+
+### F4 — MEDIUM — CONFIRMED — an operator's `merge.ff = only` breaks every non-fast-forward fabric merge
+
+`internal/gitrepo/merge.go:57` — `r.runChecked("merge", "--no-commit", ref)`.
+
+**Scenario** (driven, L9): with `merge.ff = only` in the git config, `git merge --no-commit <sha>`
+exits 128 with `fatal: Not possible to fast-forward, aborting.`. `MergeStart` finds no conflicted
+files, so it classifies a genuine error, `selfAbortMergeAttempt` resets both sides, and the verb
+fails with a raw git-hint blob in its message. Every merge into a target that has moved is
+unusable until the operator finds and changes the config.
+
+**Fix**: pass `--ff` explicitly in the non-squash form, exactly the same posture `MergeConclude`
+already takes with `--no-edit` — pin the behaviour fabric depends on rather than inheriting the
+operator's config. (`--squash` is already immune; `MergeFFOnly` intentionally wants `--ff-only`.)
+
+### F5 — LOW — CONFIRMED — `Remove` can delete the pair that is a live merge's source
+
+`internal/fabricengine/remove.go:65` — the guard asks only whether *the pair being removed* has a
+record.
+
+**Scenario** (driven, L2): with the prime pair mid-merge on `merge-in task1`,
+`lyx fabric remove task1` succeeded, removing both `task1` worktrees and deleting branch
+`task1-weft`. The in-flight merge still concluded correctly afterwards (verified), so harm is
+bounded — but if the operator aborts instead, the weft-side source work survives only on
+`origin/task1-weft`, and the operator was given no warning that the branch they deleted was the
+subject of a merge in progress.
+
+**Fix**: before deleting, check whether any pair in the hub holds a merge record whose `Source`
+names this slug, and refuse with `ErrMergeInProgress` if so.
+
+### F6 — LOW — CONFIRMED — `doc.go` overstates the guarded sibling set
+
+`internal/fabricengine/doc.go:884`: *"Every other mutating fabric verb refuses with
+`*ErrMergeInProgress` while a merge record exists"*. Only `Commit`, `Pull`, `Topology.Checkout`
+and `Topology.Remove` do; 13 further mutating entry points are adjudicated safe and 4 are
+deliberately unguarded. A reader takes the sentence as an invariant it is not.
+
+**Fix**: name the exact guarded set and say in one clause why the rest need no guard.
+
+### F7 — NIT — CONFIRMED — `MergeContinue`/`MergeAbort` break the "`Conflicts` is empty, never nil" contract
+
+`internal/fabricengine/mergelifecycle.go:146` and `:189` return `MergeResult{Committed: true}` /
+`MergeResult{}`, leaving `Conflicts` nil. `merge.go:23` declares `mergeNoConflicts` — *"the
+empty-never-nil `Conflicts` value every `MergeResult` that carries no conflicts returns, so a
+caller's JSON never sees a `null` conflicts field"* — and `MergeResult`'s own godoc repeats it.
+A Go consumer marshalling a `MergeContinue` result gets `"conflicts": null`; the CLI happens to
+hide it because it only emits the key when `len(res.Conflicts) > 0`.
+
+**Fix**: return `mergeNoConflicts` on both success paths.
+
+### F8 — NIT — CONFIRMED — `merge --abort -m <msg>` silently accepts and ignores `-m`
+
+`internal/fabriccli/merge_verbs.go:118` rejects `--squash` alongside `--continue`/`--abort` but
+says nothing about `-m`. `-m` is meaningful for `--continue` (it is `MergeContinue`'s message
+override) and meaningless for `--abort`, which discards `message` without a word.
+
+**Fix**: extend the pre-flight to reject `-m` with `--abort`, matching `--squash`'s treatment.
+
+### F9 — NIT — docs — a conflicted merge is not distinguishable from a hard error by exit status
+
+`internal/fabricengine/doc.go` "# The merge surface" and
+`internal/fabriccli/merge_verbs.go`'s `Long` text. Both a conflicted `merge-in` and a genuine
+failure exit 1 with `ok:false`; only the presence of the `conflicts` key separates them, and
+nothing says so. A script author will get this wrong.
+
+**Fix**: state the discrimination rule (`ok:false` + a `conflicts` array = a conflict result, not
+a failure) in `doc.go`'s conflict-reporting paragraph and in the `merge-in` `Long` text.
+
+## Docs & operability
+
+- `doc.go`'s crash-recovery claim — *"there is no window where the record and the checkouts can
+  drift silently out of reach of the quartet"* — is true only because `MergeAbort` still works;
+  `MergeContinue` demonstrably *can* drift out of reach (**F1**). The paragraph needs the
+  qualification once F1's guard exists.
+- `doc.go` says nothing about the checkouts needing to be on a branch (**F2**).
+- `MergeResult.Committed`'s meaning appears in the struct godoc only and is contradicted in
+  practice (**F3**).
+- The guarded-sibling sentence is an overstatement (**F6**).
+- `tools/sandbox/SANDBOX-FABRIC-SUITE.md` carries no merge scenarios at all; the detached-HEAD and
+  crash-resume behaviours F1/F2 cover are exactly what a live suite should exercise.
+
+## What could NOT be verified, and why
+
+- **Windows path behaviour** in `weftPathVisible`/`unifyConflictPaths` (backslash separators,
+  case-insensitive prefix matching). Explicitly out of scope; this host is Linux. Not fixed blind.
+- **A sibling verb slipping through the unlocked guard window.** Reasoned about; never reproduced
+  across repeated attempts, so per the campaign rule it is not recorded as a finding.
