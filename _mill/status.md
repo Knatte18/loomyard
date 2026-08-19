@@ -40,7 +40,9 @@ batches:
     commit_sha: 1d89d1b644eb34411be1c5eef2a045a52e91394d
     verify_baseline_failures: []
   - name: merge state, errors, and path mapping
-    state: pending
+    state: running
+    implementer_session: 428f05ba-030f-4a96-8d26-0be762b893e9
+    start_sha: eeb631b43070239ff2bc096a5cd329ccf5fefed1
     verify_baseline_failures: []
   - name: MergeIn and the lifecycle quartet
     state: pending
