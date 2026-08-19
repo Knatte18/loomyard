@@ -94,7 +94,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Requirements:** Extend `internal/loomshed/loomshed_test.go` so the list-assembly tier proves the swap actually happened rather than merely still compiling.
   Assert that the row named `Publish` and the row named `Finalize` are each backed by the real producer type rather than the stub type, that both rows keep their escalate-on-stuck setting, and that the list's thirteen rows stay in their existing table order with their existing names.
   Assert that a `Deps` whose landing passthrough is missing a required closure makes the constructor return an error rather than yielding a list that panics at call time.
-  Reuse this package's existing test fixture helpers rather than building a second set.
+  Reuse this package's existing test fixture helpers rather than building a second set — and extend whichever helper builds a `Deps` value so its landing passthrough carries every field the two producer constructors now require, including the told session-runner seam, since an under-filled passthrough makes the constructor fail and every existing assertion in this package fail with it.
 - **Commit:** `test(loomshed): assert rows 12 and 13 are backed by the real producers`
 
 ### Card 35: integration coverage for both producers

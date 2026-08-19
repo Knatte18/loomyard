@@ -57,7 +57,11 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `PushSkipped bool` — the told skip decision, so the producer can refuse rather than silently produce a pull request for an unpushed branch;
   - `PushBranch func() error` — the injected push closure. The push verb's own name carries a token this package may not write in any identifier, so the layer that names it is the caller and this package only calls the closure;
   - `OpenFabric func() (*fabricengine.Fabric, error)` and `OpenParentFabric func() (*fabricengine.Fabric, error)` — the two lazy opener closures. Laziness is required, not stylistic: the constructor they wrap stat-checks the paired layout, so opening eagerly would fail before the run's own preflight has confirmed anything is wired;
+  - `Shuttle mergeresolve.Shuttle` — the session-runner seam, told exactly the way every existing session-driving constructor in this tree takes its own. The resolver's constructor rejects a nil value for it, so without this field neither producer could build a resolver at all, and the conflict session could never spawn;
   - `Registry modelspec.Registry` and `Config Config` — the resolved model-spec registry and the loaded configuration.
+
+  Also declare in this file the narrow one-method resolver seam both producers hold their resolver behind: an unexported interface with the single method `Resolve(ctx context.Context, source string) (mergeresolve.Result, error)`, plus a compile-time assertion that the concrete resolver type satisfies it.
+  It is unexported deliberately: production has exactly one way to obtain a resolver — the constructors build it from the told values — and the seam exists so this package's own in-package tests can substitute a fake without a second public construction path anyone outside could reach for by mistake.
 
   Every field's doc comment states it is told and derived by nobody here.
   Document explicitly, on the two opener fields, that nothing in this task fills them: the resolution chain (list the worktrees, match the entry whose branch equals the parent branch, resolve that path, open it) belongs to the layer that legitimately resolves geometry, and the next roadmap item builds it.
@@ -143,6 +147,11 @@ Batch-local decisions beyond `## Shared Decisions`:
 
   `NewPublish` rejects a nil required closure up front with a distinct error naming the field, rather than nil-panicking at call time.
 
+  It builds the resolver **at construction time**, calling `mergeresolve.New` with the told values — the merge surface obtained from the pair-opener closure's own lazily-opened handle, the told session-runner seam, and the told worktree root, scratch directory, stencils directory, model-spec string, registry, and timeout — and stores the result behind the package's own resolver seam.
+  Construction time is correct here and is not in tension with the laziness rule the two pair openers carry: that rule exists because the pair constructor stat-checks a layout that may not be wired yet, whereas the resolver's own constructor performs no I/O at all and only rejects nil or empty told values.
+  Building it eagerly therefore turns a mis-wired resolver into a construction error, which is exactly where it belongs.
+  A construction failure is returned rather than deferred.
+
   Declare the package-level client seam `var NewGitHubClient = githubclient.New`, exactly as `internal/selfreportengine/selfreport.go` does, so tests can swap it without touching production wiring.
   All authentication goes through that package; this package never builds its own credential path and never invokes the GitHub CLI.
 
@@ -186,6 +195,8 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Requirements:** Create `internal/landingshed/finalize.go` declaring the `Finalize` producer type, `NewFinalize(deps Deps) (*Finalize, error)`, and its `Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)`, with a compile-time assertion that the type satisfies the producer seam.
 
   `NewFinalize` rejects a nil parent-pair opener closure up front, along with every other nil required closure, each with its own distinct error.
+  It builds its resolver at construction time from the told values and stores it behind the package's own resolver seam, exactly as the sibling producer's constructor does and for the same reason — the resolver's constructor performs no I/O, so a mis-wired resolver is a construction error rather than a first-call surprise.
+  A construction failure is returned rather than deferred.
 
   `Call`'s flow:
 
@@ -244,6 +255,8 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Moves:** none
 - **Requirements:** Write the unit tier for `Publish` against a faked resolver, a faked push closure recording its call order, and a faked GitHub client swapped in through the package-level seam — exactly the way the reference consumer's own test does it, pointing the client at a local test server rather than the real service.
   No test contacts a real service or a real model.
+  These tests live in the package itself rather than an external test package, which is what lets them substitute the unexported resolver seam directly; on that path the told session-runner value is never driven, since the resolver's own behaviour is covered by its own tier in batch 3.
+  Assert as part of this tier that the constructor rejects a `Deps` whose told session-runner seam is nil, with a distinct error naming that field — a resolver that cannot spawn a session is a construction error, not a first-call surprise.
 
   Cases:
 
@@ -282,6 +295,7 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Write the unit tier for `Finalize` against a faked resolver and a faked parent-pair opener closure returning a scripted merge outcome.
+  This tier lives in the package itself too, for the same reason as its sibling: the resolver seam it substitutes is unexported.
 
   Cases:
 
