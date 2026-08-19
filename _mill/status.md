@@ -74,6 +74,8 @@ batches:
     commit_sha: 67bb209f95cef260afbd5c1a02d1647504b110e5
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: smoke-tests-and-roadmap
-    state: pending
+    state: running
+    implementer_session: f5b064d9-d142-41e0-babe-e1e07467cf29
+    start_sha: 124d9b66f17702d0c3294c0880d0b3251bf5c3b6
     verify_baseline_failures: []
 ```
