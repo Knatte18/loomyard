@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-constraints-invariants
+phase: approved-config-strictness-guard
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r3  '2026-08-19T06:43:44Z'
 planned  '2026-08-19T06:43:54Z'
 implementing  '2026-08-19T06:44:30Z'
 approved-constraints-invariants  '2026-08-19T06:49:07Z'
+approved-config-strictness-guard  '2026-08-19T06:52:24Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     commit_sha: 4a2cc5689a1c4e9f095e52a17029c88542c75bcb
     verify_baseline_failures: []
   - name: config-strictness-guard
-    state: running
+    state: approved
     implementer_session: a5d9f4f2-7fb3-4369-9e3d-069bfd23b38d
     start_sha: 53cf7092f194f42fdd877658fd05fd54790a2430
+    commit_sha: ce72456bcba180e001eee87579fefe02eea301bd
     verify_baseline_failures: []
   - name: docgo-audit
     state: pending
