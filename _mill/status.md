@@ -46,7 +46,9 @@ batches:
     commit_sha: 277cc0b8062f79f536bca101c3e150f8aa76abf6
     verify_baseline_failures: []
   - name: loomcli-core
-    state: pending
+    state: running
+    implementer_session: 2fb644f9-3b5e-444a-953d-d3369850f214
+    start_sha: 5e1142569ffe8f3b947f1258bef42e6d5cb12d57
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: fabric-add-and-launcher
     state: pending
