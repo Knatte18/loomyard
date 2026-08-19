@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: loom-phase-machine-scaffolding
 branch: loom-phase-machine-scaffolding
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-19T08:03:00Z'
+discussed  '2026-08-19T09:27:13Z'
 ```
