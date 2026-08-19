@@ -36,8 +36,8 @@ The phase machine cannot run at all until this task supplies a seeder.
 - Seven stub producers: `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Finalize`.
 - Migration of `_lyx/loom/status.json` onto `shedengine.Status`, including the rewrite of `loomengine.Status`, `loomengine`'s coherence check, and `contracts/specs/loom-status-spec.md`.
 - The `loom.md` row-9 Output-column correction (see the `batchifier-is-a-gate` decision).
-- The `docs/overview.md` updates this forces: the `_lyx/` bullet's description of loom's status ("current phase, review round, verdict history") goes stale the moment `phase` disappears, and the internal-package tree gains `internal/loomshed`.
-- The `internal/shedengine/doc.go` "# Divergence from loom's status schema" paragraph, which becomes false once this task lands (see the `shedengine-doc-carve-out` decision).
+- The doc set the schema change falsifies — `docs/overview.md`, `manifest/designs/shed.md`, `loom.md`'s State-&-contracts bullet and row-10 Input, and `internal/shedengine/doc.go`'s divergence paragraph (see `shedengine-doc-carve-out`).
+  Enumerated by grep, not by memory; the full list and the method are under Constraints → Documentation Lifecycle.
 - Adding `internal/loomshed` to the Told-Geometry Invariant's machine-enforced list in `CONSTRAINTS.md`, alongside the import guard that earns it the listing.
 
 **Out:**
@@ -76,8 +76,41 @@ The phase machine cannot run at all until this task supplies a seeder.
 
 ### explicit-deps-struct
 
-- Decision: `loomshed`'s constructor takes an explicit dependencies struct in which each real producer arrives as an already-constructed `shedengine.ShedProducer`.
-  Production wiring builds the real ones; tests substitute fakes.
+- Decision: `loomshed`'s constructor takes an explicit dependencies struct.
+  **What is injected is exactly the two rows that would otherwise spawn a real substrate; everything else `loomshed` builds itself from told values.**
+
+```go
+type Deps struct {
+    // Shed's own told paths (see the Durable-vs-Ephemeral note below).
+    StatusPath, LockPath, StatusLockPath string
+    MaxBounces                           int
+
+    // Told paths the mechanical rows need. AnchorPath and WorktreeRoot are
+    // deliberately separate fields: planparser.PlanDir takes the anchor path,
+    // planparser.Validate takes the worktree root, and they are not the same value.
+    AnchorPath         string // planparser.PlanDir
+    WorktreeRoot       string // planparser.Validate
+    BaseDir            string // batcher.Active
+    DecisionRecordPath string // Discussion-Validate
+    SupportLogPath     string // Discussion-Validate
+
+    // Row 1, injected pre-constructed: it is the only row that spawns git.
+    Preflight shedengine.ShedProducer
+
+    // Row 10, injected as parts rather than as a ShedProducer, because the lazy
+    // Batcher wrapper is loomshed-owned (see batchifier-is-a-gate).
+    // WebsterDeps.Batcher is left nil; the wrapper fills it per Call.
+    WebsterRun  shedadapters.WebsterRunner
+    WebsterDeps websterengine.RunDeps
+}
+```
+
+- **Rows `loomshed` constructs itself:** `Discussion-Validate`, `Plan-Validate` and `Batchifier` (new code, pure functions over told paths), the `Webster` wrapper, and all seven stubs.
+  **Rows injected:** `Preflight` as a `ShedProducer`, `Webster` as `WebsterRun`+`WebsterDeps`.
+  No other row is injectable, because no other row touches anything a Tier-1 test cannot run for real.
+- The two discussion file paths are told rather than derived because `loomengine.DiscussionDecisionRecord`/`DiscussionSupportLog` take a `*lyxcwd.Location`, and `loomshed` must not import `internal/lyxcwd` directly.
+  The caller resolves them and passes the results as strings.
+  `Preflight`'s own `cwd` argument never appears in `Deps` at all — the caller closes over it when constructing the injected `Preflight` producer.
 - Rationale: it is the only option that keeps the thing under test the *real* producer list.
   It matches `shedadapters`' own told/injected style, and mirrors the fake-`burler` precedent `perch` used to validate its own loop.
   It is also what makes the verify requirement ("the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause") reachable at Tier 1: `Preflight` and `Webster` are the only rows that would otherwise spawn git or LLM sessions, and both are injected.
@@ -117,6 +150,14 @@ The phase machine cannot run at all until this task supplies a seeder.
   Without this the row deadlocks permanently: `run.go:187-200` appends a history entry *before* persisting `StateBlocked`, including on the `OnStuck: ""` path, so a `Stuck` at row 1 leaves `len(History) == 1`; the human-resumed re-run then re-calls `Preflight`, whose old `len(s.History) != 0` test (`coherence.go:92`) fails `CheckHalfFinished` forever.
   Narrowing the test this way preserves exactly what check 4 protects against — a run that got *past* `Preflight` and left work half-finished — while letting a blocked `Preflight` be resumed.
   `start_sha` and `pause_requested` keep their existing fresh-start treatment unchanged.
+- **The non-`history` Shed fields need the same treatment, or the deadlock returns through another field.**
+  A `Preflight` that returned `Stuck` under `OnStuck: ""` persists `state: "blocked"` *and* `error: "stuck with no OnStuck target"` in the same write, and the resumed run re-enters check 4 against exactly that file.
+  So the rewritten check pins:
+  `state` — every valid member tolerated **except** `done`, which is rejected as a finished run.
+  (`done` is in practice unreachable here, since `run.go`'s already-done short-circuit returns before any producer is called; rejecting it is belt-and-braces, not a live path.)
+  `error` — any value tolerated, including non-empty: it is the previous halt's reason, which is precisely what a human resumes *after* reading, never a coherence violation in itself.
+  `activity` — never validated at all. `Shed` composes it mechanically on every persist, so it is derived output; validating it would assert `Shed`'s own arithmetic against itself.
+  `current_producer` — must name `Preflight`, since that is the only way check 4 is reached.
 - **Field-by-field disposition** of everything `loom-status-spec.md` pins today, so nothing is silently dropped:
   `phase` — gone (`current_producer` is the identity; the strand prints `activity.now`).
   `narration` — gone, replaced by Shed's mechanically-composed `activity{now,last,wait}`.
@@ -260,7 +301,21 @@ From `CONSTRAINTS.md`, in force for this task:
   It engages here only through the doc edits (`loom.md` row 9, `loom-status-spec.md`), which must point rather than restate.
 - **Test Tier Purity Invariant** — an untagged test file must not call `gitexec.Run`, `exec.Command`, `gitkit.Copy*`, or `hubforge.NewHub`, by raw substring match including in comments and string literals.
 - **Hermetic Git Test Environment Invariant** — any test package that spawns git needs a `TestMain` calling `gitkit.HermeticGitEnv()`.
-- **Documentation Lifecycle** — the same-commit doc set is `manifest/designs/loom.md` (row-9 Output column), `contracts/specs/loom-status-spec.md` (the whole schema), `docs/overview.md` (the `_lyx/` bullet's "current phase, review round, verdict history" wording, stale once `phase` disappears, plus the internal-package tree, which gains `internal/loomshed`), `internal/shedengine/doc.go`'s divergence paragraph, and `CONSTRAINTS.md`'s Told-Geometry machine-enforced list.
+- **Documentation Lifecycle** — the same-commit doc set, enumerated rather than guessed.
+
+  **Enumeration method**, so the list is reproducible and not incidental: `grep -rn 'loom/status.json\|loom-status-spec\|current phase\|current review stage' --include='*.md' --include='*.go' .`, then keep every hit that asserts something about the file's *shape* and drop every hit that is only a pointer to it.
+
+  Affected, all updated in the same commit:
+
+  - `contracts/specs/loom-status-spec.md` — the whole schema.
+  - `manifest/designs/loom.md` — the State-&-contracts bullet ("current phase, current review stage"), row 9's Output column, and row 10's **Input** column ("batch grouping"), falsified by the same reasoning that corrects row 9.
+  - `manifest/designs/shed.md` — the `product`-carries-no-compatibility-claim paragraph ("`loom-status-spec.md` mandates `phase`, `stage`, and `narration` as top-level fields… reconciling the two is loom's own later rewiring task") and the surrounding seed/external-writer text that depends on it.
+  - `docs/overview.md` — the `_lyx/` bullet's "current phase, review round, verdict history" wording, plus the internal-package tree, which gains `internal/loomshed`.
+  - `internal/shedengine/doc.go` — the divergence paragraph, per `shedengine-doc-carve-out`.
+  - `CONSTRAINTS.md` — `internal/loomshed` joins the Told-Geometry machine-enforced list.
+
+  Checked and **not** affected, recorded so the next reader does not re-derive it: `contracts/specs/webster-spec.md:50` and `manifest/designs/self-report.md:15` are pointers to the status file that assert nothing about its shape, and `docs/overview.md:98` only lists `loom-status-spec.md` among the kept contract docs, which stays true.
+
   `manifest/roadmap.md` moves only on completing the item.
 
 Not engaged: the **CLI/Cobra Invariant** and **Sandbox Suite Coverage**, since this task registers no cobra module.
@@ -324,4 +379,7 @@ All are shipped and independently covered; this task tests only its own wiring a
 - **Q:** (Review r1) Scope excludes `internal/shedengine` but the task falsifies its `doc.go` divergence paragraph. **A:** Carve out the doc comment. A doc edit adds no import, so the Shed Producer-Seam Invariant — an import allowlist — is untouched; the code exclusion stays absolute.
 - **Q:** (Review r1) `batcher.Active` returns an undifferentiated error. **A:** All of them map to `Stuck`, conflation accepted in writing. `Active` already falls back to the embedded template for an absent config, so a remaining error is a broken config far more often than an infra fault.
 - **Q:** (Review r1) The doc set omits `docs/overview.md`. **A:** Added — both the `_lyx/` bullet's status wording and the internal-package tree.
+- **Q:** (Review r2) Which of the 12 rows are injected, and what told values does the constructor take? **A:** Only the two rows that touch a real substrate are injected — `Preflight` as a `ShedProducer`, `Webster` as `WebsterRun`+`WebsterDeps` (as parts, since the lazy `Batcher` wrapper is `loomshed`-owned). Everything else `loomshed` builds from told paths, with `AnchorPath` and `WorktreeRoot` as separate fields because `planparser.PlanDir` and `planparser.Validate` take different values. The two discussion file paths are told because `loomengine`'s accessors take a `*lyxcwd.Location` that `loomshed` may not import.
+- **Q:** (Review r2) The history narrowing fixes the deadlock — what about `state` and `error`, which the same blocked write also sets? **A:** Pinned explicitly: every valid `state` except `done` is tolerated, any `error` is tolerated (it is the halt reason a human resumes after reading), `activity` is never validated because `Shed` composes it, and `current_producer` must name `Preflight`. Without this the deadlock returns through a different field.
+- **Q:** (Review r2) The doc set omits docs the change falsifies. **A:** Extended to `manifest/designs/shed.md`, `loom.md`'s State-&-contracts bullet and row-10 Input, with a stated grep-based enumeration method and an explicit not-affected list so the set is reproducible.
 - **Q:** (Review r1) Two items were deferred to planning. **A:** Both resolved here. The `Plan-never-reads-support-log` assertion does not land in this task at all (a stub declares no input set to assert against); the `loomshed` import guard is built, and `internal/loomshed` joins the Told-Geometry machine-enforced list in the same commit.
