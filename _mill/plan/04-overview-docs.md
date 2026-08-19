@@ -4,15 +4,18 @@
 task: "invariants and docs for the told-geometry rule"
 batch: "overview-docs"
 number: 4
-cards: 3
+cards: 4
 verify: go test ./internal/lyxcwd/...
 depends-on: [1]
 ```
 
 ## Batch Scope
 
-This batch makes the three targeted edits to `docs/overview.md` that the told-geometry work requires: an accuracy sentence plus a pointer in its own Cwd Resolution Invariant section, a new sentence in `## Modules` mapping the three packages absent from the module map, and a standalone-mode paragraph in the Execution stack section.
-It is one batch because all three land in one file and share one guard.
+This batch makes the four edits to `docs/overview.md` that the told-geometry work requires: an accuracy sentence plus a pointer in its own Cwd Resolution Invariant section, a new sentence in `## Modules` mapping the three packages absent from the module map, a standalone-mode paragraph in the Execution stack section, and one missing line in the repo-tree diagram.
+It is one batch because all four land in one file and share one guard.
+
+The fourth edit closes a gap this task's own subject makes conspicuous: the repo-tree diagram already lists `internal/hubgeom` and `internal/preflight`, added by an earlier wave, but never lists `internal/standalonegeom`.
+Shipping the told-geometry consolidation while leaving two of the three sibling packages in the tree and one silently absent would leave the diagram half-updated on exactly the subject this task is about.
 
 It depends on batch 1 because two of the three cards link to `../CONSTRAINTS.md#told-geometry-invariant`, and `internal/lyxcwd/docslink_test.go` fails the build on a link whose anchor does not resolve.
 Batch 1 is what creates that anchor.
@@ -109,6 +112,33 @@ Adding them there would repeat a false-layering error in a second file rather th
   Place it after the fenced ASCII stack diagram and the "The whole stack runs **headless** (auto mode)" line, before the bulleted "**reed is three things, and it is built**" entry.
   Do not edit the fenced diagram itself — its contents are a layer map, not a mode map, and adding a mode column would make it unreadable.
 - **Commit:** `docs(overview): describe the standalone entry mode in the execution stack`
+
+### Card 15: the repo-tree diagram — add the missing `internal/standalonegeom` line
+
+- **Context:**
+  - `internal/standalonegeom`
+  - `internal/standalonegeom/doc.go`
+  - `internal/hubgeom`
+- **Edits:**
+  - `docs/overview.md`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  The fenced repo-tree diagram in the `### Status` subsection of `## Weft overlay model` lists one line per package, each a `├──` (or `└──` for the last) entry with the package path followed by an aligned one-line description.
+  It already carries an `internal/hubgeom/` line describing the hub-mode told-geometry teller and an `internal/preflight/` line describing the tier-1/tier-2 precondition checks, but carries no line for `internal/standalonegeom` at all.
+
+  Add exactly one line for `internal/standalonegeom/`, describing it as the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings — the standalone-mode counterpart to `internal/hubgeom`.
+  Place it immediately after the existing `internal/hubgeom/` line, so the two tellers sit together and the reader meets the pair before `internal/preflight/`.
+
+  Match the diagram's existing mechanics exactly: the same `├── ` prefix, the same column at which every description begins, and a trailing slash on the package path.
+  The description stays on one line — this is a fenced code block, so the semantic-line-break rule does not apply inside it and a wrapped line would break the alignment.
+
+  Change nothing else in the diagram.
+  In particular, do not reorder the existing entries and do not touch the `└──` line that closes it, whose different prefix marks it as last.
+
+  Read `internal/standalonegeom/doc.go` first so the description states what the package does rather than paraphrasing `internal/hubgeom`'s line with one word swapped.
+- **Commit:** `docs(overview): list internal/standalonegeom in the repo-tree diagram`
 
 ## Batch Tests
 

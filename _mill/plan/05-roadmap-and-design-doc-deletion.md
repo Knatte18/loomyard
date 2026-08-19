@@ -25,7 +25,7 @@ Do not touch any other Planned, Someday, or Done entry.
 
 ## Cards
 
-### Card 15: complete the Planned item, repoint four Done entries, delete the design doc
+### Card 16: complete the Planned item, repoint four Done entries, delete the design doc
 
 - **Context:**
   - `CONSTRAINTS.md`
