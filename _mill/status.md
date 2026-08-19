@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: planned
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-fix-r1  '2026-08-19T13:14:41Z'
 plan-review-r2  '2026-08-19T17:37:45Z'
 plan-fix-r2  '2026-08-19T17:37:45Z'
 plan-fix-r3  '2026-08-19T17:46:47Z'
+planned  '2026-08-19T17:46:59Z'
 ```
