@@ -74,6 +74,11 @@ those are each owned by the module that constructs them.
 `Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`.
 Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full per-token ownership map.
 
+`lyxcwd.Resolve` proves that cwd is the root of a git worktree and nothing more.
+It succeeds in any ordinary git repository run from its root, and the `HubPath` and `RepoName` it returns are fiction in that case.
+Proving a worktree is lyx-initialized and Fabric-wired is a different layer's job.
+See [CONSTRAINTS.md's Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for the tier map.
+
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
