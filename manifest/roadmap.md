@@ -13,17 +13,12 @@ Committed to, in this order, next.
    The final consolidation task for this line of work.
    See [designs/producers-standalone.md](designs/producers-standalone.md).
 
-1. **fabric: merge-conflict primitive** — Finalize needs Fabric to attempt a merge and hand back either "clean" or one unified conflict artifact, never exposing which internal side (warp/weft) it came from — see `designs/finalize.md`.
-   Does not exist: no `Merge` function anywhere in `internal/gitrepo`; `Fabric.Diff`/`Fabric.Status` are read-only reporting, not conflict detection.
-   Audit scope, not just this one primitive: check for other gaps `Finalize`/`Hardener` need from Fabric while in there.
-   See [designs/finalize.md](designs/finalize.md#finalize-sees-only-fabric--never-warp-or-weft).
-
 1. **loom: phase-machine scaffolding** — mechanical rows only, every `LLM`/`LLM+perch` row stays a stub.
    - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
    - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
    - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
    - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
-   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold (no finished design yet, see Someday). Depends on `fabric: merge-conflict primitive` above — blocked until that lands.
+   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold (no finished design yet, see Someday). Builds on the Done `fabric: merge-conflict primitive` item's merge/conflict lifecycle.
    - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
    - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review` — each returns `Done` without doing real work.
    - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
@@ -129,7 +124,23 @@ No build order is implied between these items.
 1. **scout: narrow the `"resolution":"complete"` trust-marker promise, or scope out cross-package interface-method noise** — `docs/benchmarks/scout-vs-grep.md` found a case where `refs` on an interface method returned `"resolution":"complete"` while most hits were real but irrelevant cross-package noise.
    Not yet designed.
 
+1. **fabric: ordinary-monorepo verb surface** — against plain git, `fabric` is still missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, and `blame`.
+   None blocks `Finalize`/`Hardener` today; scope by actual need when a consumer needs one, never by completing the list for its own sake.
+   See the `fabric: merge-conflict primitive` item's audit findings.
+
+1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer until a `Fabric`-level reset to a visible (warp) SHA exists, resolving the paired weft SHA through the correspondence index and routing both resets through the destruction gate.
+   See the `internal/fabricengine` package documentation's merge section.
+
+1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
+
+1. **finalize: the discrepancy-document conflict shape** — `finalize.md` originally sketched a second Fabric-to-Finalize conflict artifact, a precomputed "discrepancy document" for a divergence Fabric cannot express as a git conflict.
+   Only the ordinary-git-conflict shape shipped; the document shape is not built.
+   The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
+
 ## Done
+
+1. **fabric: merge-conflict primitive** — Fabric's merge/conflict lifecycle: `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` on `Fabric`, surfaced as `lyx fabric merge-in`/`lyx fabric merge [--squash] [--continue|--abort]`, with git-mirroring exit codes and conflicts reported as unified, worktree-relative paths, never exposing which internal side (warp/weft) produced them.
+   See the `internal/fabricengine` package documentation for the merge surface's own mechanism.
 
 1. **producers standalone: told-geometry foundations** — `planparser` took over the plan-directory path from `loomengine`, `configengine` gained a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
    See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.

@@ -842,4 +842,62 @@
 // re-run clears.
 // `record()`'s side of the race is closed; the reverse direction, against `RebuildIndex`'s own
 // scan-to-write span, is not.
+//
+// # The merge surface
+//
+// **The two verbs, and why there are two.** `MergeIn(source)` (merge.go) merges `source` into the
+// current pair's own warp and weft checkouts, in the task worktree where a conflict is meant to be
+// resolved by hand. `Merge(source, opts)` merges into a target pair the caller opened a separate
+// handle on — squash-capable via `opts.Squash`, and expected conflict-free: any conflict there
+// self-aborts both sides and returns `*ErrMergeInRequired`, since resolving a conflict against an
+// already-checked-out target worktree is not something git permits from another worktree of the same
+// repo. The two are not one verb with a flag, because their guards, failure modes, and worktrees
+// genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge` rejection).
+//
+// **The recorded merge.** A merge in progress is tracked by a JSON record, `fabric-merge.json`, kept
+// beside the correspondence index — never derived from git state, because derivation fails in ways a
+// caller cannot recover from: a fast-forward defeats `--no-commit`'s own conflict window, a squash
+// merge records no `MERGE_HEAD` at all, and a human running plain git against either checkout can
+// leave real merge state fabric never started. That last case is `*ErrForeignMergeState`: every
+// mutating merge verb refuses rather than touch it, while `MergeInProgress` — a read-only probe —
+// reports `false` for it, since fabric genuinely has no merge of its own in progress.
+//
+// **The lifecycle quartet and crash recovery.** `MergeIn`/`Merge` start an attempt; `MergeContinue`
+// concludes one once every conflict is resolved in the worktree; `MergeAbort` discards one,
+// restoring both sides to their pre-merge SHAs unconditionally, including a side that only
+// fast-forwarded or never moved. Every state-changing step re-persists the record before it acts, so
+// a crash mid-attempt leaves a record a resumed `MergeContinue`/`MergeAbort` can still read and act
+// on — there is no window where the record and the checkouts can drift silently out of reach of the
+// quartet.
+//
+// **Conflict reporting.** Conflicted paths surface as one flat, lexically sorted, deduplicated list
+// of unified, worktree-relative paths — never raw per-repo paths, which would leak the warp/weft
+// split, and never absolute paths, which is not what `git merge` hands an operator. A path either
+// side's conflict resolves to something outside the single visible worktree tree is unmappable, and
+// that self-aborts the whole attempt with `*ErrUnmergeableState` rather than reporting a path that
+// would mislead the operator about where to look.
+//
+// **SHA-labelled conflict markers.** Every merge names a SHA, never a branch, in its conflict
+// markers on both sides — resolving the weft side's own SHA independently, rather than reusing the
+// warp source's marker text, so a marker never leaks the fact that a second repo exists underneath.
+//
+// **Sibling refusals and the write lock's scope.** Every other mutating fabric verb refuses with
+// `*ErrMergeInProgress` while a merge record exists, so a pair mid-merge cannot be pulled, committed,
+// or torn down out from under the resolution in progress. The combined `.weft/weft.write.lock`
+// covers only the mutating steps of a merge call — starting the attempt and concluding it — never
+// the resolution window itself: an operator may take arbitrarily long editing conflict markers
+// between `MergeIn`/`Merge` and `MergeContinue` with the lock released, exactly as plain git leaves a
+// conflicted worktree unlocked between `git merge` and `git commit`.
+//
+// **No post-conclude undo, by design.** Once `MergeContinue`/`Merge` lands a conclude-commit,
+// nothing in this layer can undo it: the verify-before-conclude discipline plus `MergeAbort` covers
+// the whole uncommitted attempt window, but a landed merge is final at the Fabric layer until a
+// separate two-sided reset-to-SHA verb exists (see the `fabric: merge-conflict primitive` item's
+// Someday follow-up in `manifest/roadmap.md`). A consumer that needs an undo after concluding must
+// verify before calling `MergeContinue`/`Merge`, or accept that layer's own finality.
+//
+// **Squash leaves no ancestry link.** A squash-merged branch's history carries no merge commit
+// linking it to its target, so "was this branch merged?" cannot be answered from git alone after a
+// squash; a consumer needing that answer (branch cleanup, archive tagging) needs a source outside
+// git — this is a direct consequence of shipping squash as an option, not a defect in it.
 package fabricengine
