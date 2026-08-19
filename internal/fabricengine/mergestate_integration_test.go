@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
@@ -196,4 +197,154 @@ func writeConflictFile(t *testing.T, dir, name, content string) {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", name, err)
 	}
+}
+
+// driveConflictedMergeStart builds a divergent "conflict-branch" in dir off the current HEAD and
+// runs repo.MergeStart against it, leaving dir with conflict markers present and the tracked
+// worktree dirty — the state resetMergeSides' abort exists to discard. It fails the test unless the
+// merge genuinely classified as conflicted, since a non-conflicted outcome would make the resulting
+// reset assertions vacuous.
+func driveConflictedMergeStart(t *testing.T, dir string, repo *gitrepo.Repo) {
+	t.Helper()
+
+	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-b", "conflict-branch")
+	writeConflictFile(t, dir, "conflict-target.txt", "branch content")
+	gitkit.MustRun(t, dir, "git", "add", "conflict-target.txt")
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "branch content commit")
+
+	gitkit.MustRun(t, dir, "git", "checkout", "-q", "-")
+	writeConflictFile(t, dir, "conflict-target.txt", "main content")
+	gitkit.MustRun(t, dir, "git", "add", "conflict-target.txt")
+	gitkit.MustRun(t, dir, "git", "commit", "-q", "-m", "main content commit")
+
+	outcome, err := repo.MergeStart("conflict-branch", false)
+	if err != nil {
+		t.Fatalf("MergeStart(conflict-branch) error = %v", err)
+	}
+	if outcome != gitrepo.MergeConflicted {
+		t.Fatalf("MergeStart(conflict-branch) outcome = %v; want MergeConflicted", outcome)
+	}
+}
+
+// wantWorktreeResetEntries asserts entries is exactly two KindWorktreeReset entries in warp-then-
+// weft target order, per the scenario-symmetric mutation recording rule abort resets follow
+// unconditionally.
+func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wantWarpSHA, wantWeftSHA string) {
+	t.Helper()
+
+	if len(entries) != 2 {
+		t.Fatalf("resetMergeSides record has %d entries; want exactly 2 (warp reset, weft reset): %+v", len(entries), entries)
+	}
+	for i, e := range entries {
+		if e.Kind != fabricengine.KindWorktreeReset {
+			t.Errorf("entries[%d].Kind = %q; want %q", i, e.Kind, fabricengine.KindWorktreeReset)
+		}
+	}
+	if entries[0].Detail != wantWarpSHA {
+		t.Errorf("entries[0] (warp) Detail = %q; want warp pre-merge SHA %q", entries[0].Detail, wantWarpSHA)
+	}
+	if entries[1].Detail != wantWeftSHA {
+		t.Errorf("entries[1] (weft) Detail = %q; want weft pre-merge SHA %q", entries[1].Detail, wantWeftSHA)
+	}
+}
+
+// TestMergeState_ResetMergeSides_WarpSideConflicted covers the abort/self-abort reset with the warp
+// side left dirty by a real conflicted MergeStart: both HEADs restore to the captured pre-merge
+// SHAs, both worktrees end clean, MergeHeadPresent is false on both sides, and the record carries
+// exactly two KindWorktreeReset entries in warp-then-weft order.
+func TestMergeState_ResetMergeSides_WarpSideConflicted(t *testing.T) {
+	f, h := newMergeStateFixture(t)
+	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
+
+	warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	weftStartSHA := fabricengine.CurrentSHAForTest(t, weftPath)
+
+	driveConflictedMergeStart(t, warpPath, fabricengine.WarpForTest(f))
+
+	rec := fabricengine.NewMutations(h.Path)
+	if err := fabricengine.ResetMergeSidesForTest(f, rec, warpStartSHA, weftStartSHA); err != nil {
+		t.Fatalf("ResetMergeSidesForTest() error = %v", err)
+	}
+
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpStartSHA {
+		t.Errorf("warp HEAD after reset = %q; want restored pre-merge SHA %q", got, warpStartSHA)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftStartSHA {
+		t.Errorf("weft HEAD after reset = %q; want restored pre-merge SHA %q", got, weftStartSHA)
+	}
+	if out := gitkit.GitStatusPorcelain(t, warpPath); out != "" {
+		t.Errorf("warp git status --porcelain after reset = %q; want clean", out)
+	}
+	assertMergeStateFileInvisibleToGit(t, "weft", weftPath)
+
+	if present, err := fabricengine.WarpForTest(f).MergeHeadPresent(); err != nil || present {
+		t.Errorf("warp MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+	}
+	if present, err := fabricengine.WeftForTest(f).MergeHeadPresent(); err != nil || present {
+		t.Errorf("weft MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+	}
+
+	wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA, weftStartSHA)
+}
+
+// TestMergeState_ResetMergeSides_WeftSideConflicted covers the same call succeeding when the weft
+// side, rather than the warp side, is the one left dirty by a real conflicted MergeStart.
+func TestMergeState_ResetMergeSides_WeftSideConflicted(t *testing.T) {
+	f, h := newMergeStateFixture(t)
+	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
+
+	warpStartSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	weftStartSHA := fabricengine.CurrentSHAForTest(t, weftPath)
+
+	driveConflictedMergeStart(t, weftPath, fabricengine.WeftForTest(f))
+
+	rec := fabricengine.NewMutations(h.Path)
+	if err := fabricengine.ResetMergeSidesForTest(f, rec, warpStartSHA, weftStartSHA); err != nil {
+		t.Fatalf("ResetMergeSidesForTest() error = %v", err)
+	}
+
+	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != warpStartSHA {
+		t.Errorf("warp HEAD after reset = %q; want restored pre-merge SHA %q", got, warpStartSHA)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, weftPath); got != weftStartSHA {
+		t.Errorf("weft HEAD after reset = %q; want restored pre-merge SHA %q", got, weftStartSHA)
+	}
+	// The weft primary's own untracked scaffolding (e.g. the _lyx junction target) is legitimately
+	// present regardless of the reset, so the assertion is narrowed to the conflict itself rather
+	// than requiring an otherwise-clean status — see assertMergeStateFileInvisibleToGit's own note.
+	if out := gitkit.GitStatusPorcelain(t, weftPath); strings.Contains(out, "conflict-target.txt") {
+		t.Errorf("weft git status --porcelain after reset = %q; want no mention of conflict-target.txt (reset must discard it)", out)
+	}
+
+	if present, err := fabricengine.WarpForTest(f).MergeHeadPresent(); err != nil || present {
+		t.Errorf("warp MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+	}
+	if present, err := fabricengine.WeftForTest(f).MergeHeadPresent(); err != nil || present {
+		t.Errorf("weft MergeHeadPresent() after reset = (%v, %v); want (false, nil)", present, err)
+	}
+
+	wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpStartSHA, weftStartSHA)
+}
+
+// TestMergeState_ResetMergeSides_PrimePairBothSidesAdmitted drives resetMergeSides against the hub's
+// prime warp worktree and the weft primary hubforge.NewHub clones — never an AddPair linked
+// worktree — asserting the ownership gate admits both sides. This is the one fixture shape that can
+// exercise ownedWeftCheckout's reason for existing at all: the weft primary is the sole weft
+// checkout that is a main worktree of its repo, which ownedRegisteredLinkedWorktree's own godoc
+// pins itself to excluding, and an AddPair-only fixture would only ever produce linked weft
+// worktrees that pass the OLD (wrong) ownership kind too, masking the bug this decision exists to
+// avoid.
+func TestMergeState_ResetMergeSides_PrimePairBothSidesAdmitted(t *testing.T) {
+	f, h := newMergeStateFixture(t)
+	warpPath, weftPath := h.PrimeWorktree(), h.PrimeWeft()
+
+	warpSHA := fabricengine.CurrentSHAForTest(t, warpPath)
+	weftSHA := fabricengine.CurrentSHAForTest(t, weftPath)
+
+	rec := fabricengine.NewMutations(h.Path)
+	if err := fabricengine.ResetMergeSidesForTest(f, rec, warpSHA, weftSHA); err != nil {
+		t.Fatalf("ResetMergeSidesForTest() against the prime pair error = %v; want the ownership gate to admit both the prime warp worktree and the weft primary", err)
+	}
+
+	wantWorktreeResetEntries(t, rec.Snapshot().Entries(), warpSHA, weftSHA)
 }

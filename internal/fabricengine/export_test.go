@@ -82,11 +82,13 @@ func TeardownHubForTest(cwd, hubPath string, seed func(hubPath string) error, ca
 // covering the gate's fabric-hub ownership kind.
 var LooksLikeHubForTest = looksLikeHub
 
-// IsWarpCheckoutForTest re-exports isWarpCheckout for package fabricengine_test integration tests
-// covering the gate's warp-checkout ownership kind, which ResetHard's own exported entry point
-// cannot exercise with an arbitrary (repoDir, target) pair since it always calls it with both equal
-// to the same f.warpPath.
-var IsWarpCheckoutForTest = isWarpCheckout
+// IsWarpCheckoutForTest re-exports isAnyWorktreeOf (renamed from isWarpCheckout when
+// ownedWeftCheckout started sharing its repo-agnostic predicate) for package fabricengine_test
+// integration tests covering the gate's warp-checkout ownership kind, which ResetHard's own exported
+// entry point cannot exercise with an arbitrary (repoDir, target) pair since it always calls it with
+// both equal to the same f.warpPath. The exported seam name is unchanged, so
+// destructivegaps_integration_test.go's TestOwnership_WarpCheckoutKind needs no edit.
+var IsWarpCheckoutForTest = isAnyWorktreeOf
 
 // IsRegisteredLinkedWorktreeInForTest re-exports isRegisteredLinkedWorktreeIn for package
 // fabricengine_test integration tests covering the gate's registered-linked-worktree ownership
@@ -534,4 +536,11 @@ func ForeignMergeStatePresentForTest(f *Fabric) (bool, error) {
 // mergestate_integration_test.go's assertion that the record lands at <weft gitdir>/fabric-merge.json.
 func MergeStatePathForTest(f *Fabric) (string, error) {
 	return f.mergeStatePath()
+}
+
+// ResetMergeSidesForTest re-exports f.resetMergeSides (production plumbing: destroy.go), for
+// mergestate_integration_test.go's direct assertion on the gated two-sided merge-abort reset —
+// driven without going through a merge verb, none of which exist yet in this batch.
+func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA, weftSHA string) error {
+	return f.resetMergeSides(rec, warpSHA, weftSHA)
 }
