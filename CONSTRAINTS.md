@@ -12,6 +12,17 @@ Fuller design/how-to lives in godoc and `docs/`.
 - **`root` always means the git worktree/repo root;
   the current working directory is `cwd`.**
   Never name a parameter, field, or local variable `root` for a value that is actually `cwd`, or vice versa.
+- **What `Resolve` validates, in four sub-points.**
+  1. `git rev-parse --show-toplevel` must succeed at `cwd`, else `ErrNotAGitRepo` — the only validation `Resolve` makes of the **repository** itself.
+     Sub-points 2 and 3 below are genuine checks too, but they are checks about the anchor marker and the caller's position, not about whether the repository is a lyx worktree.
+  2. An **absent** anchor marker is not an error — `AnchorRel` falls back to `"."`.
+     Only a stale pre-rename marker hard-errors, with `ErrStaleAnchorMarker`.
+  3. `cwd` must equal `Join(worktreeRoot, AnchorRel)`, else `ErrCwdOutsideAnchor`;
+     with no marker this reduces to "cwd is the git worktree root".
+  4. `HubPath` is `filepath.Dir(worktreeRoot)` **unconditionally** — never verified to be a hub — and `RepoName` is `Base(hubPath)` with a `-HUB` suffix trimmed, with no check the suffix was ever there.
+
+     The consequence is the whole point of this bullet: `Resolve` succeeds in any ordinary git repository run from its root, and `HubPath`/`RepoName` are fiction in that case.
+     Proving a worktree is lyx-initialized and Fabric-wired is [tier 2's and tier 3's](#told-geometry-invariant) job, not tier 1's.
 - All cwd/worktree-root queries go through `lyxcwd.Getwd()`/`Resolve()`.
   Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 - `lyxcwd.Resolve` exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`,
