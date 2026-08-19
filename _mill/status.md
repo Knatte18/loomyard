@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-merge-stage-resolved verb
+phase: approved-remote and push helpers
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
@@ -27,6 +27,7 @@ plan-fix-r3  '2026-08-19T17:46:47Z'
 planned  '2026-08-19T17:46:59Z'
 implementing  '2026-08-19T18:25:51Z'
 approved-merge-stage-resolved verb  '2026-08-19T18:33:51Z'
+approved-remote and push helpers  '2026-08-19T18:40:56Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ batches:
     commit_sha: cb3289108dbbc78280db30deb7d52b4d8e60ea6e
     verify_baseline_failures: []
   - name: remote and push helpers
-    state: running
+    state: approved
     implementer_session: e9046fe0-295d-4c0a-8162-2788f2a8c01e
     start_sha: 978b30b7a76e6a7a0ea34127c35009b0da676212
+    commit_sha: bb63ea3555d815568763941a7a33f65fbbb24fdd
     verify_baseline_failures: []
   - name: mergeresolve engine
     state: pending
