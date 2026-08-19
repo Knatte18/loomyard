@@ -2,7 +2,7 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** after round 1 stalled out mid-F1. Tree state as of commit `a20dc2ca` plus an uncommitted F1 diff.
+**Last refreshed:** after the orchestrator's independent verification of round 1, at commit `a6a88502`.
 
 ## What this campaign is
 
@@ -18,8 +18,8 @@ Up to four rounds in the first instalment, model + effort fixed in advance:
 
 | Round | Model | Effort | Tag | Status |
 |---:|---|---|---|---|
-| r1 | Opus | medium | `opus-medium-r1` | **running** — Job 1 done and committed, Job 2 in progress |
-| r2 | Opus | medium | `opus-medium-r2` | not started |
+| r1 | Opus | medium | `opus-medium-r1` | **done, verified** — 9 findings, 9 fixed; verification left 3 residuals |
+| r2 | Opus | medium | `opus-medium-r2` | **next** — prompt re-seeded with the 3 residuals |
 | r3 | Fable | medium | `fable-medium-r3` | not started |
 | r4 | Opus | high | `opus-high-r4` | not started |
 
@@ -54,75 +54,63 @@ Green baseline is the starting condition, not evidence. The whole point of this 
 Six counted classes, each with its blind spots named. Expect to be corrected by a round; that is the round working.
 **Not yet checked against r1's numbers** — do that during verification, and read r1's enumeration table (report line ~297) against pre-count classes 3 and 6 in particular.
 
-## Round 1 (`opus-medium-r1`) — live, Job 2 in progress
+## Round 1 (`opus-medium-r1`) — COMPLETE, and independently verified
 
-Seed commit `74ef8089` (prompt + pre-count + handoff).
+Seed commit `74ef8089`. Round commits `125757f4` → `a6a88502`.
+It survived one deliberate operator pause/restart and one genuine watchdog stall (recovered by resuming the same agent from its transcript — see the stall note above).
 
-**Job 1 is complete and committed.** Review report at `_mill/fabric-merge-review-opus-medium-r1.md` (~32 KB), built incrementally across five `review notes` commits, `125757f4` → `823bd1d6`, ending with "Job 1 complete". The Sequencing rule was respected — the report was committed before the first production edit.
+Job 1: twelve live scenarios (L1–L12) on ~20 purpose-built scratch hubs, the mutating-entry-point enumeration, and the plan-vs-shipped scope pass. Report committed incrementally, before the first production edit — the Sequencing rule held.
+Job 2: nine findings, nine fixed, nothing deferred. It also repaired four pre-existing integration tests that were pinning F3's defect as correct.
 
-Twelve live scenarios driven (L1–L12): fast-forward merge, merge-in conflict → sibling refusals → `--continue`, crash between the warp and weft `MergeStart`, unmappable weft conflict path, squash, foreign git merge state, merge onto a detached warp HEAD, source-ref resolution edges, hostile git config, concurrency (two interleaved hubs plus a sequential control), sibling verbs against a genuinely mid-merge pair, and CLI arity/flags/exit codes.
-It also produced the enumerated mutating-entry-point table the prompt asked for.
+Self-verdict was READY TO MERGE. That verdict is not the gate; what follows is.
 
-**Nine findings, all self-marked CONFIRMED:**
+### What the orchestrator verified itself
 
-| ID | Sev | Claim |
+**Gates, from cold on the committed tree — all green, tags named:**
+`go build ./...`; `go vet` on the three packages; `go test -count=5` hermetic across `fabricengine`/`fabriccli`/`gitrepo`/`cmd/lyx`; `go test -tags integration -count=1` across the three packages (fabricengine 44.0 s, fabriccli 4.3 s, gitrepo 2.3 s).
+
+**Sabotage proofs — every new test watched to fail at its intended assertion, then the code restored to an empty diff.** Eight new tests, seven mechanisms:
+
+| Mechanism sabotaged | Test | Result |
 |---|---|---|
-| F1 | BLOCKING | `MergeContinue` lands half a merge, then dead-ends forever, when the recorded attempt never reached one side |
-| F2 | BLOCKING | no merge verb requires the checkouts to be on a branch |
-| F3 | MEDIUM | `MergeResult.Committed` / `AlreadyUpToDate` do not describe what happened |
-| F4 | MEDIUM | an operator's `merge.ff = only` breaks every non-fast-forward fabric merge |
-| F5 | LOW | `Remove` can delete the pair that is a live merge's source |
-| F6 | LOW | `doc.go` overstates the guarded sibling set |
-| F7 | NIT | `MergeContinue`/`MergeAbort` break the "`Conflicts` is empty, never nil" contract |
-| F8 | NIT | `merge --abort -m <msg>` silently accepts and ignores `-m` |
-| F9 | NIT | docs — a conflicted merge is not distinguishable from a hard error by exit status |
+| F1 `mergeAttemptIncompleteReason` → never fires | `TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides` | failed correctly |
+| F2 `detachedHeadReason` → returns nil | `TestMergeCrucible_DetachedHeadRefused` (both subtests) | failed correctly |
+| F3 `landedConcludeCommit` → `true` | `TestMergeCrucible_ResultFlagsDescribeWhatHappened` | failed correctly |
+| F3 `bothSidesAlreadyUpToDate` → `false` | — | **STAYED GREEN — see residual 1** |
+| F4 `--ff` pin removed | `TestMergeStart_HostileMergeFFConfig` (both subtests) | failed correctly |
+| F5 `mergeSourceInFlight` → `false` | `TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming` | failed correctly |
+| F7 `Conflicts: mergeNoConflicts` dropped | `TestMergeCrucible_ConflictsIsEmptyNeverNil` | failed correctly |
+| F8 `-m`+`--abort` rejection disabled | `TestRunCLI_MergeRejectsFlagsItWouldOtherwiseIgnore` | failed correctly |
+| F8 rejection broadened to `--continue` | `TestRunCLI_MergeContinueAcceptsMessage` | failed correctly |
 
-Severities and CONFIRMED labels above are **the round's own claims, not verified**. Two of them (L3 crash-between-MergeStarts, L7 detached HEAD) are flagged in the report as CONFIRMED DEFECT from live driving; the rest still need the orchestrator's own reproduction.
+The first sabotage attempt on F2 (`if warpDetached || weftDetached` → `if false`) broke the build on unused variables and was inconclusive; it was redone by neutering the return instead. A build break is not a proof — redo the sabotage rather than counting it.
 
-**Fixes landed so far:** `a20dc2ca` — F2 (refuse a merge while either checkout has a detached HEAD). The round created a new `internal/fabricengine/mergecrucible_integration_test.go` for its regression tests.
+**Both BLOCKING fixes re-driven live**, on a purpose-built hub, against the freshly deployed binary:
+- F2: warp detached, weft detached, and `merge --squash` as the strongest mode — all three refused with `checkout is not on a branch`, empty mutation record, no record written, neither branch moved.
+- F1: the crash window reconstructed by hand (`fabric-merge.json` with `warp_outcome:"staged"`, `weft_outcome:""`). `--continue` refused with `merge attempt did not reach both sides`, zero mutations, nothing landed; `--abort` then restored both sides to the recorded pre-merge SHAs, deleted the record, and left a clean worktree. The reconstruction turned out stricter than intended — git had actually fast-forwarded where the record claimed `staged`, and the guard still fired on the empty weft outcome.
 
-### The stall — round 1 died mid-F1 (harness failure, NOT an operator stop)
+**Pre-count reconciliation:** r1's enumeration reported 27 mutating entry points, 4 guarded, 1 genuine gap. Pre-count class 6 had the spec's 4 guarded verbs and predicted that a round enumerating every entry point would exceed 4 — it did, and F5 is that excess. The round moved in the correct direction and the orchestrator's number needed no correction. Classes 1, 2, 4 and 5 were not contested.
 
-The round agent failed with `Agent stalled: no progress for 600s (stream watchdog did not recover)`.
-This is a different animal from the operator's deliberate pause/restart earlier in the same round: that one is Hard Rule 6 territory and must never be "recovered" from, this one is a genuine harness death and is the orchestrator's to handle.
-Tell them apart by the notification status — `killed` / `stopped by user` is the operator, `failed` with a watchdog reason is not.
+### RESIDUAL — three things verification left standing, now seeded for r2
 
-**Do NOT stash, revert, reset or "tidy" the uncommitted F1 diff.** It is the round's work and it is nearly complete.
+1. **`bothSidesAlreadyUpToDate()` has zero test coverage.** Hardwired to `return false`, the entire suite — hermetic and `-tags integration`, both packages — stays green. And the subtest that looks like it covers the flag (`…/SecondCallReportsAlreadyUpToDateNotCommitted`) is caught by the **pre-lock** probe at `merge.go:122`, a different return site with a hardcoded `true`. Textbook refinement 5: a green run that never entered the code path. The fix itself reads correct; it is the proof that is missing.
+2. **The post-record error-return class was never enumerated.** r1 brushed against it repeatedly (F1 lives in it) but never counted it. Pre-count class 3 has the orchestrator's own hand-read: 27 sites, of which 12 leave the record live *after* a conclude-commit already landed — where `MergeAbort` restores from pre-merge SHAs and would discard committed work. That class is countable and unclosed, which is exactly what refinement 2 says to switch a round to.
+3. **`mergeReasonNoMergeInProgress` is dangling** — declared in the closed reason set at `mergeerrors.go:24`, referenced only by the vocabulary tests that pin the set, produced by no code path. This was noted in pre-count class 4 and deliberately withheld; r1 did not find it.
 
-Uncommitted working tree at the moment of the stall (F1 in flight), and the commit-per-fix discipline is exactly what makes this readable:
+### DEFERRED — carried into r2's prompt for re-evaluation
 
-| File | Change |
-|---|---|
-| `internal/fabricengine/mergelifecycle.go` | +31 — new `mergeAttemptIncompleteReason(st)`, wired into `MergeContinue` and aggregated with the unresolved-conflicts reason; doc comments on `concludeMergeSides` and `MergeContinue` updated |
-| `internal/fabricengine/mergeerrors.go` | +1 — new closed-set member `mergeReasonAttemptIncomplete = "merge attempt did not reach both sides"` |
-| `internal/fabricengine/mergevocab_test.go` | +3 — the pinned closed-set assertion updated in step, as that test's own failure message demands |
-| `internal/fabricengine/mergecrucible_integration_test.go` | +61 — F1's regression test |
-| `internal/fabricengine/doc.go` | +9 — module-doc update for the new refusal |
+- The unlocked guard window between `mergeRecordExists()` and `saveMergeState`. r1 reasoned about it, could not reproduce it, and correctly declined to record it.
+- `CheckoutDetached`/`RestoreBranch` abandoning a merge already in progress. r1 logged it as webster's problem on the argument that F2 closes the harmful direction. r2 is asked to re-examine that argument, since F2 stops a merge *starting* while detached but not a detach *during* a merge.
 
-Read on its own terms the diff is coherent and complete — production change, closed-vocabulary update, regression test, and the same-commit doc update the Documentation Lifecycle requires. What is missing is the commit itself, and any evidence that the gates were run against it. **Nothing here has been verified by the orchestrator, and the F1 test has not been watched to fail.** Treat "looks complete" as a reading of the diff, not as a green light.
+### Honest limits of this verification
 
-**Findings NOT yet started when it died:** F3, F4, F5, F6, F7, F8, F9 — seven of the nine. No fixer report exists yet (`_mill/fabric-merge-review-opus-medium-r1-fixer-report.md` was never created).
-
-**CLOSED-AND-VERIFIED:** nothing yet — no orchestrator verification has run.
-
-**RESIDUAL currently seeded in `_mill/fabric-merge-review-prompt.md`:** none; the prompt still carries the round-1 "first round, no prior residual" seed.
-
-**DEFERRED list:** empty.
+- The two verification hubs under the session scratchpad could not be deleted — `rm -rf` is refused by this session's sandbox. They are outside the repo, in an ephemeral session directory, and `git status` is clean. Not cleaned, and said so rather than worked around.
+- One stray `lyx reed header --blocking` process is running, and it belongs to the **`reed-shuttle-crucible-hardening`** worktree, not this one. Left alone under worktree isolation. Do not reap it.
+- Windows path behaviour in `weftPathVisible`/`unifyConflictPaths` remains unexecuted, by both the round and the orchestrator. Out of scope, Linux host, reasoned about rather than driven — the same named gap the previous fabric campaign carried to the end.
+- The N-way concurrent amplifier was not run. The merge bar is single-instance correctness and the surface is not tmux-shaped; this is a deliberate omission, not an oversight.
 
 ## Next action
 
-**Round 1 is dead and did not finish. The immediate decision is how to close it out — that decision is the operator's and has been put to them.** The options, cheapest first:
-
-1. **Resume the same agent** (its task id is still resumable via a message). It holds the whole review context, so F1's commit and the seven untouched findings are cheap for it. Risk: it stalled once already.
-2. **Spawn a narrow, targeted fixer** — explicitly sanctioned by `orchestrator-prompt.md`'s decision step 5 for exactly this shape: brief it to read the existing review report plus the current diff and log, then finish and commit whatever is left. NOT a fresh full review round (Hard Rule 4).
-3. **Close r1 where it stands**, commit nothing further of its work, and roll the seven open findings into r2's seed as the residual.
-
-Do not pick one of these unilaterally after the operator has answered otherwise.
-
-Once round 1 is closed out one way or the other, verify in this order:
-1. Read r1's "What was tested" section in full before characterising its work at all (fabric-campaign rule 8).
-3. Run the gates from cold on the committed tree: `build`, `vet`, hermetic `-count=5`, and full `-tags integration`. Name the tag in the record.
-4. For every new test r1 added, reproduce the not-false-green proof independently: revert the production hunk, watch the test fail at the intended assertion, restore, confirm an empty diff. Read the neighbouring code while preparing each sabotage — that habit is what found a BLOCKING bug three rounds had missed in the last campaign.
-5. Re-drive both BLOCKING fixes (F1, F2) live, in their strongest mode, on a fresh hub.
-6. Check r1's enumeration total against pre-count classes 3 and 6; expect and welcome a correction of the orchestrator's numbers.
-7. Re-seed the prompt with whatever verification leaves standing — derived from the residue, never "review it again" — and spawn r2 as Opus / medium, tag `opus-medium-r2`.
+Spawn round 2: `Agent` → `subagent_type: crucible-reviewer-medium`, `model: opus`, tag `opus-medium-r2`, prompt = read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.
+The prompt is already re-seeded with the three residuals above, the CLOSED-AND-VERIFIED list, and the two deferred items.
+Then stay off the tree and off `git add`/`git commit`, keep refreshing this file on disk, and verify independently again.
