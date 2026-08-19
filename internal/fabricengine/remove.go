@@ -60,6 +60,16 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
 	}
 
+	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
+	// force answers dirtiness only, never a live merge record.
+	blocked, err := mergeBlocksMutation(target, WeftWorktreePath(l, slug))
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	if blocked {
+		return RemoveResult{}, &ErrMergeInProgress{}
+	}
+
 	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
 	// came from.

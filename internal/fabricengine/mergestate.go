@@ -139,6 +139,26 @@ func (f *Fabric) mergeRecordExists() (bool, error) {
 	return st != nil, nil
 }
 
+// mergeBlocksMutation reports whether a fabric merge-state record exists for the pair at warpPath
+// and weftPath — the single check every sibling mutating verb (card 13) uses to decide whether its
+// own write would corrupt or be corrupted by a live merge.
+// It constructs the pair's state probe from the explicit paths via newPaired internally, rather than
+// requiring an already-open *Fabric, since Topology verbs (Checkout, Remove) act on a *lyxcwd.Location
+// and never open a Fabric handle of their own.
+// An unreadable weft gitdir (e.g. a half-torn-down pair) reports false rather than blocking: no
+// recorded merge can exist without a readable weft gitdir, and refusing here would make an already
+// half-broken pair impossible to finish tearing down.
+func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
+	f, err := newPaired(warpPath, weftPath)
+	if err != nil {
+		return false, err
+	}
+	if _, gitDirErr := f.weftGitDir(); gitDirErr != nil {
+		return false, nil
+	}
+	return f.mergeRecordExists()
+}
+
 // foreignMergeStatePresent reports whether git-level merge state exists on either side that fabric
 // did not itself start: a live MERGE_HEAD or unmerged index entries, checked on both warp and weft.
 // All four probes are evaluated unconditionally before combining, rather than short-circuiting on
