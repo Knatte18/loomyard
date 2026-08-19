@@ -9,23 +9,26 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **fabric: merge-conflict primitive** — Finalize needs Fabric to attempt a merge and hand back either "clean" or one unified conflict artifact, never exposing which internal side (warp/weft) it came from — see `designs/finalize.md`.
+1. **fabric: merge-conflict primitive** — `Publish` and `Finalize` both need Fabric to attempt a merge and hand back either "clean" or one unified conflict artifact, never exposing which internal side (warp/weft) it came from — see `designs/landing.md`.
    Does not exist: no `Merge` function anywhere in `internal/gitrepo`; `Fabric.Diff`/`Fabric.Status` are read-only reporting, not conflict detection.
-   Audit scope, not just this one primitive: check for other gaps `Finalize`/`Hardener` need from Fabric while in there.
-   See [designs/finalize.md](designs/finalize.md#finalize-sees-only-fabric--never-warp-or-weft).
+   Audit scope, not just this one primitive: check for other gaps `landing`/`Hardener` need from Fabric while in there.
+   See [designs/landing.md](designs/landing.md#landing-sees-only-fabric--never-warp-or-weft).
 
-1. **Finalize — merge-back + PR producer** — a general `ShedProducer` (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased.
+1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. Bundled as one task because both wrap the same shared piece — `internal/mergeresolve`, the merge-in + LLM-conflict-resolution engine neither producer owns alone.
    Depends on the Planned `fabric: merge-conflict primitive` item above — blocked until that lands.
-   Own config surface (`finalize.yaml`: `require_pr_to_base` and other safe defaults, overridable per orchestrating profile — same "profiles live in the caller, not the callee" precedent as `loom.yaml`/`hardener.yaml`), PR body sourced verbatim from Webster's summary artifact, Raddle regeneration folded into the merge's own critical section rather than a separate step.
-   See [designs/finalize.md](designs/finalize.md).
+   - `internal/mergeresolve`: `Fabric.MergeIn(parent)`, conflict-shape detection, LLM escalation to a fresh higher-capability session on conflict. Called by both producers below, owned by neither.
+   - `Publish`: mechanical `require_pr_to_base` check. Unset → no-op `Done`. Set → `mergeresolve`'s merge-in, then PR opened mechanically from Webster's summary artifact, no LLM call of its own. Returns `Done` once the PR exists — never waits on review. Progress past an open PR is entirely out-of-band, human-triggered (a separate, not-yet-designed interactive CLI flow, outside `Shed`).
+   - `Finalize`: always calls `mergeresolve`'s merge-in itself (the only merge-in in the no-PR case, a second check-for-drift one in the PR case), `_lyx` teardown, final Fabric merge to parent.
+   - Own config surface (`landing.yaml`: `require_pr_to_base` and other safe defaults, overridable per orchestrating profile — same "profiles live in the caller, not the callee" precedent as `loom.yaml`/`hardener.yaml`), Raddle regeneration folded into `Finalize`'s own merge critical section rather than a separate step.
+   See [designs/landing.md](designs/landing.md).
 
 1. **loom: phase-machine scaffolding** — mechanical rows only, except `Finalize` (own Planned item above, stays a stub here too); every `LLM`/`LLM+perch` row stays a stub.
-   - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
+   - Instantiate `loom` as a `Shed` instance carrying the full 13-row producer list, every row present (stubs included), so sequencing is real from the start.
    - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
    - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
    - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
-   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, and `Finalize` — each returns `Done` without doing real work; `Finalize` swaps in for the real, shared-by-reference producer once its own Planned item above lands. `Plan-Sweep` stays stubbed here: its only consumer, `Plan-Write`, is itself a stub in this task, so a real `Plan-Sweep` has nothing to feed yet — building it now would be premature. Not needed for loom to function.
-   - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
+   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Publish`, and `Finalize` — each returns `Done` without doing real work; `Publish`/`Finalize` swap in for the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands — not loom-specific, so not tied to this task's own build order. `Plan-Sweep` stays stubbed here too: its only consumer, `Plan-Write`, is itself a stub in this task, so a real `Plan-Sweep` has nothing to feed yet — building it now would be premature. Not needed for loom to function.
+   - Verify: the full 13-row sequence runs against the stubs, including resume, crash-recovery, and pause.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine from the item above actually reachable.

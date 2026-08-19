@@ -224,7 +224,7 @@ Read-only verbs the caller can run directly.
 
 - `internal/fabricengine` (doc.go), `internal/lyxcwd` (lyxcwd.go, anchor.go) — the shipped bases slices 7-10 restructured;
   durable parts fold here on landing.
-- [finalize.md](finalize.md) — the document-driven weft-conflict mechanism slice 6's orchestration half will reuse.
+- [landing.md](landing.md) — the document-driven weft-conflict mechanism slice 6's orchestration half will reuse.
 - [raddle.md](raddle.md) — the regenerate-don't-merge property bounding rebase recovery;
   the snapshot-staleness consumer slice 4 serves.
 - [warp-visibility.md](warp-visibility.md) — the narrower sibling illusion (`CLAUDE.local.md`), same junction mechanism slice 1 generalized.

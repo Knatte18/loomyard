@@ -424,7 +424,7 @@ Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` 
   `manifest/` and `docs/` name which files are *scanned* for outgoing links;
   they do not restrict where those links may *point*.
   Every link target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, whether that target sits inside `manifest/`/`docs/` or not.
-  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `finalize.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
+  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `landing.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
 - **A file-layout convenience, not an ownership claim.**
   The enforcing test lives in `internal/lyxcwd` (`docslink_test.go`'s `TestEnforcement_MarkdownLinks`), reusing that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers.
   That placement is a file-layout convenience, not an ownership claim on markdown links by `internal/lyxcwd` — the Cwd Resolution Invariant scopes that package to cwd resolution and nothing else, exactly the caveat the Fabric Vocabulary Invariant above already states for its own test.

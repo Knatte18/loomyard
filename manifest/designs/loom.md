@@ -37,14 +37,16 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
 | 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 12 | `Finalize` | bespoke | mechanical | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+| 12 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [designs/landing.md](landing.md) |
+| 13 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back, teardown; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [designs/landing.md](landing.md) |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
 On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`) or escalates to a human — never "keep fixing symptoms."
 
 **Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
-Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the Finalize merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
+`Finalize` is not `loom`'s own (see rows 12–13 above and [designs/landing.md](landing.md)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
+Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the `Finalize` merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
 Each row's Input and Output, in the normal case, are *pointers* into a format-contract file defining the consumed/produced artifact's shape, never a restated copy of its content.
@@ -53,8 +55,9 @@ The thin-Input carve-out (a chain-head producer, human intent instead of an arti
 Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach `perch` used against a fake `burler`.
-Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
-The concrete breakdown — which rows land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last `loom: write and wire in the real LLM producers`, and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the three tasks' own wiki briefs, not restated here.
+Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
+`Publish` and `Finalize` (rows 12–13) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands, on its own schedule (see [designs/landing.md](landing.md)).
+The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last `loom: write and wire in the real LLM producers`, and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
 `Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 3) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
 
