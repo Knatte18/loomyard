@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: loom-phase-machine-scaffolding
 branch: loom-phase-machine-scaffolding
 plan: _mill/plan
@@ -25,6 +25,7 @@ approved-loomshed-producers  '2026-08-19T10:27:56Z'
 approved-sequence-and-integration  '2026-08-19T10:39:30Z'
 holistic-reviewing  '2026-08-19T10:39:59Z'
 holistic-approved  '2026-08-19T10:44:16Z'
+done  '2026-08-19T10:45:20Z'
 ```
 
 ## Batches
