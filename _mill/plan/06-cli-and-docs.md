@@ -38,25 +38,37 @@ Batch-local decision: the two verbs join the weft-verb family (`weftVerbNames` +
   **`envelope.go`**: add `errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string) int` per the Shared Decision — sets `fields["mutations"] = rec.Entries()`, `fields["partial"] = false` (the literal, never computed: the engine returned a nil error, so the Mutation Record Invariant's `error ≠ nil ∧ record non-empty` rule yields false), `fields["conflicts"] = conflicts` (never null), and delegates to `output.ErrFields` with the fixed, side-free message `"merge produced conflicts; resolve them, then run \"lyx fabric merge --continue\""`.
   Extend the package doc comment's helper enumeration.
 
-  **`merge_verbs.go`**: `addMergeVerbs(cmd *cobra.Command, ...)` following `weft_verbs.go`'s verb shape (raw `RunE`, `clihelp.ShouldAbort` first, `clihelp.SetExit`, always `return nil`), with closures over the `PersistentPreRunE`-resolved `fab *fabricengine.Fabric`:
+  **`merge_verbs.go`**: one registration function with this exact signature:
+
+  ```go
+  func addMergeVerbs(cmd *cobra.Command, fabric func() *fabricengine.Fabric)
+  ```
+
+  The handle must be reached **indirectly**, through that getter closure. `fab` is a local of `addWeftVerbs` that `PersistentPreRunE` assigns at run time (`weft_verbs.go:41,52`), so passing `*fabricengine.Fabric` by value at registration time would capture the nil zero value and every merge verb would nil-panic.
+  `addWeftVerbs` calls `addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab })`, and each `RunE` body reads `fabric()` after `PersistentPreRunE` has run.
+  Both verbs otherwise follow `weft_verbs.go`'s verb shape (raw `RunE`, `clihelp.ShouldAbort` first, `clihelp.SetExit`, always `return nil`):
   - `merge-in`: `Use: "merge-in <branch>"`, `Args: cobra.ExactArgs(1)`, `Short: "merge a branch into this worktree, surfacing conflicts"`.
     `Long` explains: this is the workflow step that runs in the task worktree before `merge`; conflicts are reported for resolution here and concluded with `lyx fabric merge --continue` (or abandoned with `--abort`) — the lifecycle is shared with `merge`, and this asymmetry is stated, not implied.
-    Calls `fab.MergeIn(args[0])`.
+    Calls `fabric().MergeIn(args[0])`.
   - `merge`: `Use: "merge (<branch> | --continue | --abort) [--squash] [-m <message>]"`, `Short: "merge a branch into this worktree, or continue/abort a merge"`.
     Flags: `--squash` (bool), `--continue` (bool), `--abort` (bool), and `StringP("message", "m", "", "commit message for the merge commit")`.
     Mode-dependent arity via a custom `Args` validator (flags are parsed before `Args` runs): with `--continue` or `--abort` exactly zero positionals, otherwise exactly one — rejecting violations with a usage-shaped error.
     `--continue` and `--abort` are mutually exclusive (`MarkFlagsMutuallyExclusive`), and `--squash` with either is rejected in `RunE` as a usage error (bare `output.Err` + `clihelp.Abort`, the pre-flight carve-out — nothing was mutated).
-    Dispatch: `--continue` → `fab.MergeContinue(message)`;
-    `--abort` → `fab.MergeAbort()`;
-    default → `fab.Merge(args[0], fabricengine.MergeOptions{Squash: squash, Message: message})` — the CLI default is git's default (no squash, no message).
+    Dispatch: `--continue` → `fabric().MergeContinue(message)`;
+    `--abort` → `fabric().MergeAbort()`;
+    default → `fabric().Merge(args[0], fabricengine.MergeOptions{Squash: squash, Message: message})` — the CLI default is git's default (no squash, no message).
     `Long` carries an `Example:` block with `lyx fabric merge-in my-task`, `lyx fabric merge my-task --squash`, `lyx fabric merge --continue`.
+
+  Both verbs' `Long` text must additionally spell out the identifier-to-verb mapping, because the engine's pinned error messages name Go identifiers the CLI does not expose: `MergeIn` is `lyx fabric merge-in`, `MergeContinue` is `lyx fabric merge --continue`, and `MergeAbort` is `lyx fabric merge --abort`.
+  Those messages travel to the operator verbatim through the envelope (they are pinned by the discussion and asserted byte-exactly by batch 5's vocabulary test), so the help text is where the mismatch is closed.
 
   Envelope mapping, shared by all modes:
   - engine error non-nil → `clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))` — the typed errors' fixed messages are the envelope's error text.
   - `len(res.Conflicts) > 0` → `clihelp.SetExit(cmd.Context(), errConflictsWithRecord(out, res.Mutated(), res.Conflicts))` — exit 1, mirroring `git merge`'s nonzero conflict exit.
   - otherwise → `okWithRecord(out, res.Mutated(), map[string]any{"committed": res.Committed, "already_up_to_date": res.AlreadyUpToDate})` — exit 0 on clean or already-up-to-date.
 
-  **`weft_verbs.go`**: add `"merge"` and `"merge-in"` to `weftVerbNames` (so `PersistentPreRunE` resolves the pair handle for them) and register both commands via `addMergeVerbs` from `addWeftVerbs`'s registration site.
+  **`weft_verbs.go`**: add `"merge"` and `"merge-in"` to `weftVerbNames` (so `PersistentPreRunE` resolves the pair handle for them) and call `addMergeVerbs(cmd, func() *fabricengine.Fabric { return fab })` from inside `addWeftVerbs`, alongside the existing subcommand registrations — inside the function body, where `fab` is in scope.
+  Update the file's header comment, which enumerates the six weft verbs and says `PersistentPreRunE` is "scoped to these six verb names only".
 - **Commit:** `feat(fabriccli): lyx fabric merge and merge-in verbs`
 
 ### Card 17: CLI invariant tests and end-to-end merge CLI coverage

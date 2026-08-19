@@ -54,8 +54,12 @@ batches:
 ### Decision: public surface is pinned by discussion.md — copy, never invent
 
 - **Decision:** every exported type, method signature, error type, JSON tag, and the closed guard-reason string set come verbatim from `_mill/discussion.md`'s `public-surface-shapes` and `safety-guards-are-aggregated-and-side-free` decisions.
-  Cards restate the signatures they build; where a card and the discussion ever disagree, the discussion wins.
+  Cards restate the signatures they build; where a card and the discussion ever disagree, the discussion wins — **except** where a later Shared Decision in this file explicitly names the discussion clause it supersedes and why.
+  Two such supersessions exist today: the Decision on the post-fetch remote-only weft counterpart (which deliberately widens `discussion.md`'s `weftBranchExists` pin) and the Decision on foreign-state disposition (which picks between two contradictory discussion clauses).
+  An implementer applying this Decision's tie-breaker must check that list first;
+  reverting either supersession fails a test this plan requires.
 - **Rationale:** the discussion pinned the surface precisely to keep it out of plan-time and implementation-time invention.
+  The carve-out exists because a bare "the discussion wins" would silently revert the two places where the discussion is either self-contradictory or contradicted by its own test matrix.
 - **Applies to:** all batches
 
 ### Decision: MergeHeadPresent resolves via runChecked, not go-git, and joins the pinned list
@@ -82,6 +86,26 @@ batches:
   Recording per-side on any observable change (staged, conflicted, fast-forwarded) satisfies both: a conflicted side and a staged side both changed observably, and the outcome never appears in the record.
 - **Applies to:** MergeIn and the lifecycle quartet, Merge target-pair verb
 
+### Decision: the weft abort reset needs its own any-worktree ownership kind
+
+- **Decision:** `resetMergeSides`' weft-side `pathRequest` declares a new ownership kind `ownedWeftCheckout(repoDir string)` — "target is ANY worktree of the weft repo at `repoDir`, prime included" — mirroring `ownedWarpCheckout`'s membership test, not `ownedRegisteredLinkedWorktree`.
+  It is built in card 6 as a new member of the closed `pathOwnershipKind` set with its own constructor, its own `resolvePathOwnership` arm, its own refusal message, and godoc.
+- **Rationale:** `ownedRegisteredLinkedWorktree`'s own godoc pins it to worktrees *other than the main one*, and `clone.go` creates the weft primary with `cloneRepo(opts.WeftURL, weftPath)` — a full clone, i.e. the weft repo's main worktree.
+  The prime pair is exactly the pair `Merge` targets when merging a task branch into the trunk, so declaring `ownedRegisteredLinkedWorktree` would make every abort on the prime pair fail the gate.
+  A `hubforge.NewHub` + `AddPair` fixture only ever produces *linked* weft worktrees, so a test built on it would pass while the real case stayed broken — which is why this is decided here rather than discovered by test.
+  `ownedWarpCheckout` is not reused with a weft path: its refusal message and godoc name the warp repo, and a side-accurate refusal message is what the destruction gate exists to produce.
+- **Applies to:** merge state, errors, and path mapping; MergeIn and the lifecycle quartet; Merge target-pair verb
+
+### Decision: a genuine MergeStart error mid-attempt self-aborts, symmetrically
+
+- **Decision:** during the merge-attempt phase of both `MergeIn` and `Merge` — after the state record was written and possibly after the first side already mutated — a `MergeStart` call that returns a genuine error (any error that is not the `MergeConflicted` classification) on either side aborts the whole attempt: `resetMergeSides(rec, warpStart, weftStart)` to the captured pre-merge SHAs, `deleteMergeState()`, and return the wrapped `MergeStart` error.
+  The disposition is identical whichever side failed, and the returned error value differs between the two sides only in the wrapped git cause, never in shape or in which side it names — the cause goes to the internal log via `logger.Warn`, not into a user-facing message.
+  If the reset itself fails, the record is deliberately retained and that reset error is returned instead: the pair is then in a state only `MergeAbort` can clear, and deleting the record would strand it.
+- **Rationale:** card 1's `MergeStart` classification admits a genuine non-conflict error (a corrupt index, a missing object, a killed git), and neither the conflict path nor the clean path covers it.
+  Leaving it unspecified would let an implementer retain a half-mutated pair with a live record, or delete the record over a mutated pair — both unrecoverable through the public surface.
+  Self-abort matches the `unmappable` path's disposition (`Decision: unified conflict-path mapping`, card 8 step 9), so the two "something went wrong mid-attempt" paths behave alike.
+- **Applies to:** MergeIn and the lifecycle quartet, Merge target-pair verb
+
 ### Decision: conflict envelope never goes through errWithRecordFields
 
 - **Decision:** the CLI maps a non-empty `Conflicts` result to a failure envelope via a new dedicated helper `errConflictsWithRecord(w, rec, conflicts)` in `internal/fabriccli/envelope.go`, which sets `mutations` from the record, `partial` to the literal `false`, a `conflicts` array field, and a fixed error message — never via `errWithRecordFields`, whose `partial = rec.Len() > 0` computation would wrongly report `true`.
@@ -96,6 +120,17 @@ batches:
 - **Rationale:** the discussion pins `weftBranchExists` for the local probe but its own test matrix requires "source existing only remotely → merged";
   a local-only probe would fail that scenario.
   Accepting the post-fetch remote-tracking ref reconciles the two clauses without weakening the refusal for genuinely foreign branches, which exist on neither.
+- **Applies to:** MergeIn and the lifecycle quartet, Merge target-pair verb
+
+### Decision: foreign-state disposition — the four mutating verbs refuse, MergeInProgress reports false
+
+- **Decision:** when git-level merge state exists that fabric did not record (`foreignMergeStatePresent` true, no record on disk), all four *mutating* merge verbs — `MergeIn`, `Merge`, `MergeContinue`, `MergeAbort` — refuse with `*ErrForeignMergeState`, mutating nothing and leaving the foreign state untouched.
+  `MergeInProgress` is not one of the four: it reports `false` and never errors on foreign state, since it answers "does fabric have a merge in progress", which is exactly false here.
+  `*ErrNoMergeInProgress` is reserved for the case where there is neither a record nor foreign git merge state.
+- **Rationale:** `discussion.md`'s `lifecycle-quartet-on-both-verbs` decision says `MergeContinue`/`MergeAbort` refuse with `*ErrNoMergeInProgress` when no record exists, while its Testing section says "`MergeInProgress` false, and all four verbs refuse with `*ErrForeignMergeState`" — a direct contradiction the plan may not leave to the implementer.
+  This pinning satisfies both readings: "all four verbs" is exactly the four mutating verbs (the fifth, `MergeInProgress`, is given its own disposition in that same sentence), `*ErrNoMergeInProgress` keeps its stated meaning for the genuinely-nothing-in-progress case, and "never touch foreign git merge state" is honoured — refusing is not touching.
+  A distinct typed error is also the more useful one: it tells the operator that plain-git state exists and must be concluded or aborted with plain git, which `*ErrNoMergeInProgress` would actively mislead about.
+  This supersedes the `lifecycle-quartet-on-both-verbs` clause read in isolation, per the carve-out in the first Shared Decision.
 - **Applies to:** MergeIn and the lifecycle quartet, Merge target-pair verb
 
 ### Decision: new-file layout in fabricengine
@@ -148,9 +183,9 @@ batches:
 - `internal/fabriccli/merge_verbs.go`
 - `internal/fabriccli/weft_verbs.go`
 - `internal/fabricengine/checkout.go`
-- `internal/fabricengine/cleanup.go`
 - `internal/fabricengine/commit.go`
 - `internal/fabricengine/destroy.go`
+- `internal/fabricengine/destroy_test.go`
 - `internal/fabricengine/doc.go`
 - `internal/fabricengine/export_test.go`
 - `internal/fabricengine/livestate_mutationoracle_selftest_test.go`

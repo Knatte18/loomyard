@@ -11,7 +11,8 @@ depends-on: [4]
 
 ## Batch Scope
 
-Closes the resolution window against corruption: every sibling mutating verb whose write would corrupt or be corrupted by a live merge refuses with the single typed, side-free `ErrMergeInProgress` while a merge record exists — `Commit` (which also refuses foreign git merge state, pre-empting git's raw "cannot do a partial commit during a merge"), `Pull`, `Checkout`, and `Remove`/`Cleanup` for the pair itself.
+Closes the resolution window against corruption: every sibling mutating verb whose write would corrupt or be corrupted by a live merge refuses with the single typed, side-free `ErrMergeInProgress` while a merge record exists — `Commit` (which also refuses foreign git merge state, pre-empting git's raw "cannot do a partial commit during a merge"), `Pull`, `Checkout`, and `Remove` for the pair itself.
+`Cleanup` needs no new guard — it deletes only orphaned weft branches and already skips live pairs — so card 14 pins that existing behaviour rather than adding one.
 `PushWeft`, the push half of `sync`, and every read-only verb stay deliberately unguarded.
 Also lands the explicit vocabulary assertion the enforcement walk cannot provide (it permits side tokens inside the owner set).
 Nothing downstream consumes new interfaces;
@@ -25,14 +26,13 @@ batch 6 depends on this batch only for ordering.
   - `internal/fabricengine/mergeerrors.go`
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/weftwiring.go`
-  - `internal/fabricengine/prune.go`
+  - `internal/fabricengine/cleanup.go`
 - **Edits:**
   - `internal/fabricengine/mergestate.go`
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/pull.go`
   - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/remove.go`
-  - `internal/fabricengine/cleanup.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -48,9 +48,13 @@ batch 6 depends on this batch only for ordering.
     a coordinated branch switch out of a half-merged pair is refused.
   - `Topology.Remove` (`remove.go`): before any teardown for the named slug — probe the pair's paths;
     `force` does not override (force answers dirtiness only, the gate's own rule).
-  - `Topology.Cleanup` (`cleanup.go`): a candidate pair whose record exists is protected from teardown through the verb's existing per-entry protection mechanism (the `prune.go`-style protection strings), carrying `ErrMergeInProgress`'s message text — the pair is skipped, never torn down, and the run continues for other pairs.
+  - `Topology.Cleanup` (`cleanup.go`): **no new guard, and `cleanup.go` is not edited.**
+    `Cleanup` deletes orphaned weft *branches*, never worktrees, and a mid-merge pair is by definition live — a warp worktree sits on the paired warp branch, so `cleanup.go`'s `liveWarpBranches[warpBranch]` arm `continue`s before the branch ever becomes a `CleanupBranchEntry`;
+    a checked-out weft branch is additionally protected unconditionally further down.
+    `CleanupBranchEntry` also has no field that could carry a refusal message (`Branch`/`Deleted`/`Protected`/`Error`, with `Error` documented as deletion-failure-only), so the "protection entry carrying `ErrMergeInProgress`'s text" this card previously described was unimplementable.
+    Card 14 asserts the existing behaviour instead of a new guard.
 
-  Record-only checks for `Pull`/`Checkout`/`Remove`/`Cleanup`;
+  Record-only checks for `Pull`/`Checkout`/`Remove`;
   the foreign-state half applies to `Commit` alone, per the lock decision's consequence table.
   Deliberately untouched: `PushWeft`, the push half of `sync`, `Status`, `Diff`, `List`, `pairs`, and every other read-only verb.
 - **Commit:** `feat(fabricengine): refuse sibling mutations while a merge is in progress`
@@ -83,8 +87,8 @@ batch 6 depends on this batch only for ordering.
   - `Fabric.Pull` → typed refusal, nothing mutated.
   - `Topology.Checkout` on the pair → typed refusal, branches unchanged on both sides.
   - `Topology.Remove` of the pair (with and without `force`) → typed refusal, worktrees intact.
-  - `Topology.Cleanup` → the mid-merge pair is protected (present in the result's protection entries with the fixed message), its worktrees intact;
-    the run itself succeeds.
+  - `Topology.Cleanup` (both dry-run and `apply`, with and without `force`) → succeeds, and the mid-merge pair's weft branch is never deleted and never appears as a deleted entry: it is a live pair, so `cleanup.go` skips it before entry construction.
+    Assert the pair's worktrees and both branches are intact afterwards, and that the merge record still exists — pinning that no new guard is needed here.
   - `PushWeft` succeeds unchanged during the live record (pushing already-committed history is unaffected).
   - Read-only verbs succeed during the live record: `Fabric.Status`, `Fabric.Diff` (against a pre-merge SHA), `Topology.List`, `Topology.Status` (pairs) — exactly what an operator inspecting a stuck merge needs.
   - After `MergeAbort`, every guarded verb works again (spot-check `Commit`).

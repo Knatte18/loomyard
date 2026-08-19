@@ -58,6 +58,10 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   - `ErrUnmergeableState`: `"fabricengine: merge produced conflicts outside the fabric-managed tree; operator intervention required"`.
   - `ErrMergeInProgress`: `"fabricengine: a merge is in progress; run MergeContinue or MergeAbort first"`.
 
+  These strings name Go identifiers (`MergeIn`, `MergeContinue`, `MergeAbort`) while the shipped CLI spells the same operations `lyx fabric merge-in`, `merge --continue`, and `merge --abort`, and batch 6's envelope routes the fixed strings to the operator unchanged.
+  Do not remap or reword them here: they are pinned verbatim by the discussion's `public-surface-shapes` decision, and the vocabulary test in batch 5 asserts them byte-exactly.
+  The mismatch is closed on the CLI side instead — batch 6's card 16 requires each merge verb's `Long` help to state the identifier-to-verb mapping explicitly.
+
   Declare the closed guard-reason set as unexported constants, values verbatim from the discussion's `safety-guards-are-aggregated-and-side-free` decision:
   `mergeReasonAlreadyInProgress = "merge already in progress"`, `mergeReasonUnresolvedConflicts = "unresolved conflicts remain"`, `mergeReasonNoMergeInProgress = "no merge in progress"`, `mergeReasonWorktreeDirty = "worktree dirty"`, `mergeReasonNotSynced = "branch not synced to upstream"`, `mergeReasonSourceNotFound = "source branch not found"`, `mergeReasonNotFabricManaged = "source branch is not fabric-managed"`.
   Add a constructor `newMergeGuardError(reasons []string) *MergeGuardError` that sorts and deduplicates before storing, so the reported list never reveals evaluation order or arity;
@@ -78,6 +82,7 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   - `internal/gitrepo/merge.go`
   - `internal/fabricengine/mergeerrors.go`
   - `internal/hubforge/hub.go`
+  - `internal/gitkit/gitkit.go`
   - `internal/fabricengine/index_integration_test.go`
 - **Edits:**
   - `cmd/lyx/destructiveguard_test.go`
@@ -171,9 +176,13 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   - `internal/fabricengine/dirtiness.go`
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/mergestate.go`
+  - `internal/fabricengine/clone.go`
+  - `internal/gitrepo/merge.go`
   - `internal/hubforge/hub.go`
+  - `internal/gitkit/gitkit.go`
 - **Edits:**
   - `internal/fabricengine/destroy.go`
+  - `internal/fabricengine/destroy_test.go`
   - `internal/fabricengine/mergestate_integration_test.go`
   - `internal/fabricengine/export_test.go`
 - **Creates:** none
@@ -188,18 +197,23 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
 
   It builds two `pathRequest` values, warp first then weft (fixed order), and runs each through the existing `resetHardTo` executor — no new executor:
   - warp: `what: "reset warp checkout for merge abort"`, `container: filepath.Dir(f.warpPath)`, `target: f.warpPath`, `ownership: ownedWarpCheckout(f.warpPath)`, `dirtiness: dirtyScopeTracked()`, `force: true`.
-  - weft: `what: "reset weft checkout for merge abort"`, `container: filepath.Dir(f.weftPath)`, `target: f.weftPath`, `ownership: ownedRegisteredLinkedWorktree(f.weftPath)`, `dirtiness: dirtyScopeTracked()`, `force: true`.
+  - weft: `what: "reset weft checkout for merge abort"`, `container: filepath.Dir(f.weftPath)`, `target: f.weftPath`, `ownership: ownedWeftCheckout(f.weftPath)`, `dirtiness: dirtyScopeTracked()`, `force: true`.
 
   `force: true` is the one deliberate divergence from `Fabric.ResetHard`'s hardcoded `force: false`: an abort's entire purpose is to discard the intentionally dirty state accumulated since the merge started (unresolved conflict markers are tracked-file modifications), and it is safe only because every caller is record-gated — the godoc must state this rationale.
   The first side's failure aborts the call (return the error, do not attempt the second) — a gate refusal is never discarded, matching `surfaceRefusal`'s rule.
   Both resets record through `resetHardTo`'s existing `KindWorktreeReset` append — never any recording outside `destroy.go`.
 
-  Establish, by test rather than assumption, whether `ownedRegisteredLinkedWorktree(f.weftPath)` passes the gate's ownership check for the weft checkout (the weft sibling is a registered linked worktree of the weft repo).
-  Only if the test proves it insufficient, add a narrowly-scoped weft-checkout ownership kind following `ownedWarpCheckout`'s shape, with a constructor, `checkPathOwnership` arm, and godoc — and note it in the commit message.
+  Add the new ownership kind the weft request needs, per the Shared Decision on the weft abort reset's ownership kind — `ownedRegisteredLinkedWorktree` cannot be used, since its own godoc pins it to worktrees other than the main one and `clone.go`'s `cloneRepo(opts.WeftURL, weftPath)` makes the prime pair's weft checkout the weft repo's *main* worktree:
+  - a `pathOwnershipWeftCheckout` member appended to the `pathOwnershipKind` constant block;
+  - a constructor `ownedWeftCheckout(repoDir string) pathOwnership` with godoc mirroring `ownedWarpCheckout`'s — ANY worktree of the weft repo at `repoDir`, prime included — and stating why the registered-linked kind is wrong here;
+  - a `resolvePathOwnership` arm with the refusal message `fmt.Sprintf("%s is not a worktree of the weft repo at %s", target, own.repoDir)`;
+  - the membership predicate itself is `isWarpCheckout`'s body, which is already repo-agnostic (`List(repoDir)` membership with no main-entry exclusion): rename it to the side-free `isAnyWorktreeOf(repoDir, target string) bool`, retarget both arms at it, and retarget `export_test.go`'s `IsWarpCheckoutForTest` seam assignment and `destroy_test.go`'s file-header comment reference at the new name (the seam's own exported name stays `IsWarpCheckoutForTest`, so `destructivegaps_integration_test.go`'s `TestOwnership_WarpCheckoutKind` is untouched) — do not duplicate the loop.
 
   Extend `mergestate_integration_test.go` (and `export_test.go` with a `resetMergeSides` re-export):
   - on a hubforge pair, create divergent commits, drive a real conflicted `MergeStart` on the warp side (conflict markers present, worktree dirty), then `resetMergeSides` to the captured pre-merge SHAs: both HEADs restored exactly, worktrees clean, `MergeHeadPresent` false on both sides, and the mutation record carries exactly two `KindWorktreeReset` entries in warp-then-weft order.
-  - the same call succeeds when the weft side is the dirty one (gate ownership proven for the weft checkout).
+  - the same call succeeds when the weft side is the dirty one.
+  - **the prime pair explicitly**: drive the same reset against the hub's prime warp worktree and the weft primary that `hubforge.NewHub` clones (not an `AddPair` linked worktree), asserting the gate admits both sides.
+    An `AddPair`-only fixture can never exercise this — the weft primary is the one weft checkout that is a main worktree, and it is the pair `Merge` targets in the real workflow.
 - **Commit:** `feat(fabricengine): gated two-sided merge-abort resets`
 
 ## Batch Tests

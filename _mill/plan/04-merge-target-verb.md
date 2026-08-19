@@ -64,6 +64,8 @@ Batch-local decisions: none beyond Shared Decisions.
      `saveMergeState` (`Verb: "merge"`, `Source`, `Squash: opts.Squash`, `Message: opts.Message`, start SHAs, `StartedAt`) before the first merge command.
   8. Attempt both sides unconditionally, warp then weft, `MergeStart(<resolved SHA>, opts.Squash)` — `Squash` applied identically to both sides;
      record outcomes into the state record and `KindMergeStaged` per the scenario-symmetric rule.
+     A genuine (non-`MergeConflicted`) error from `MergeStart` on either side self-aborts identically to `MergeIn`'s step 8, per the Shared Decision on mid-attempt errors: `resetMergeSides(rec, warpStart, weftStart)`, `deleteMergeState()`, return the wrapped error — never `*ErrMergeInRequired`, which is reserved for the conflict case in step 9;
+     a failing reset retains the record and returns the reset error.
   9. Any conflict on either side (mappable or not) → self-abort: `resetMergeSides(rec, warpStart, weftStart)`, `deleteMergeState()`, return `&ErrMergeInRequired{Source: source}` — the target pair is restored exactly, no conflicted state is ever left behind, and the conflicting side is not disclosed (fixed message; the source travels in the field).
   10. Both clean → `concludeMergeSides` (message precedence `opts.Message` → git's prepared `MERGE_MSG`/`SQUASH_MSG`), `RecordCorrespondence` on the post-merge HEADs, `deleteMergeState`, return `MergeResult{Committed: true}`.
      A conclude failure returns `&ErrMergeIncomplete{}` with the record retained — the quartet's crash-recovery role covers `Merge` too, driven by the same record.

@@ -29,6 +29,8 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
   - `internal/fabricengine/mergestate.go`
   - `internal/gitrepo/merge.go`
   - `internal/gitrepo/gitrepo.go`
+  - `internal/gitrepo/pull.go`
+  - `internal/gitrepo/ancestry.go`
   - `internal/gitexec/gitexec.go`
   - `internal/lyxcwd/lyxcwd.go`
 - **Edits:** none
@@ -62,6 +64,7 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
 - **Context:**
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/checkout.go`
+  - `internal/fabricengine/pull.go`
   - `internal/fabricengine/index.go`
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/weftgit.go`
@@ -71,6 +74,8 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
   - `internal/fabricengine/mergeguards.go`
   - `internal/fabricengine/fabric.go`
   - `internal/gitrepo/merge.go`
+  - `internal/gitrepo/ancestry.go`
+  - `internal/lyxcwd/lyxcwd.go`
   - `internal/lock/lock.go`
 - **Edits:**
   - `internal/fabricengine/mutation.go`
@@ -119,6 +124,8 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
   8. Attempt both sides unconditionally, warp first then weft (fixed order), via `MergeStart(<resolved SHA>, false)` — SHAs, never branch names, on both sides (`merges-name-a-sha-never-a-branch`).
      Write each side's outcome into the record and save;
      record `KindMergeStaged` per the Shared Decision's scenario-symmetric rule (per side with outcome ≠ already-up-to-date, `Target` = checkout path, `Detail` = the merged source SHA).
+     A `MergeStart` call that returns a genuine error (anything other than the `MergeConflicted` classification, which card 1 returns with a nil error) on either side self-aborts the whole attempt per the Shared Decision on mid-attempt errors: `resetMergeSides(rec, warpStart, weftStart)`, `deleteMergeState()`, return the wrapped error — identical disposition whichever side failed, git cause to `logger.Warn` only;
+     a failing reset retains the record and returns the reset error instead.
   9. Collect `ConflictedFiles()` from each conflicted side and unify via `unifyConflictPaths`.
      `unmappable` → self-abort: `resetMergeSides(rec, warpStart, weftStart)`, `deleteMergeState()`, log the offending paths via `logger.Warn` (internal log only), return `&ErrUnmergeableState{}`.
   10. Any conflicts → return `MergeResult{Conflicts: unified}, nil` — record retained on disk, lock released, worktree left mid-merge for resolution.
@@ -137,12 +144,15 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
     Message precedence: explicit `msg` → `st.Message` → empty (git's prepared `MERGE_MSG`/`SQUASH_MSG` via `MergeConclude("")`).
     After each side lands, write its new SHA into the record's committed field and save, and record `KindMergeCommitted` (`Target` = checkout path, `Detail` = new SHA).
     If a conclude fails after the other side landed (or first — same handling), nothing is rolled back: keep the record, log the git failure internally, return `&ErrMergeIncomplete{}`.
-  - `MergeContinue`: no record → `&ErrNoMergeInProgress{}` (never touch foreign git merge state).
+  - `MergeContinue`: no record and no foreign git merge state → `&ErrNoMergeInProgress{}`;
+    no record but `foreignMergeStatePresent()` true → `&ErrForeignMergeState{}`, per the Shared Decision on foreign-state disposition, leaving that state untouched.
     Unmerged entries remaining on either side (`ConflictedFiles` both sides, evaluated both) → `newMergeGuardError([]string{mergeReasonUnresolvedConflicts})`.
     Otherwise: acquire the lock, run `concludeMergeSides` with the optional message override, then correspondence + `deleteMergeState`, return `MergeResult{Committed: true}`.
-  - `MergeAbort`: no record → `&ErrNoMergeInProgress{}`.
+  - `MergeAbort`: no record and no foreign git merge state → `&ErrNoMergeInProgress{}`;
+    no record but foreign state present → `&ErrForeignMergeState{}`, same rule as `MergeContinue`.
     Otherwise: acquire the lock, `resetMergeSides(rec, st.WarpStart, st.WeftStart)` — both sides unconditionally, including a fast-forwarded side and a side that never moved (`git reset --hard` also clears `MERGE_HEAD`/merge index as a side effect, covering the `MERGE_HEAD`, squash, and fast-forward cases with one mechanism) — then `deleteMergeState`, return `MergeResult{}` (Committed false).
   - `MergeInProgress`: `mergeRecordExists()` — read-only, returns a bare bool, no `MutationRecord` (stays off the embed table by design).
+    It never consults `foreignMergeStatePresent` and never errors on foreign state: it answers "does fabric have a merge in progress", which foreign plain-git state does not make true (Shared Decision on foreign-state disposition).
 
   **`internal/fabricengine/mutation.go`** — same commit as the recording sites, per the Mutation Record Invariant:
   add `KindMergeStaged Kind = "merge_staged"` ("a merge command observably changed a checkout's state") and `KindMergeCommitted Kind = "merge_committed"` ("a merge conclude-commit landed; Detail is the new SHA"), and correct the header comment's stale member counts.
@@ -211,8 +221,9 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
     separately, a crashed-after-clean-staging state (record present, both sides staged, nothing concluded — build via export seams or by killing the flow at the record: save a record manually over a staged pair) → `MergeContinue` on a fresh handle concludes both.
   - Conclude-phase partial failure: force the weft side's conclude-commit to fail (a `pre-commit` hook in the weft checkout's hooks path that exits 1, installed by the fixture) → `*ErrMergeIncomplete` with the fixed text, record retained, warp's landed SHA recorded;
     removing the sabotage and re-running `MergeContinue` concludes the remaining side only — idempotency pinned by SHA comparison on the already-landed side.
-  - Foreign merge state: a plain-git conflicted merge staged directly in the warp checkout → `MergeInProgress()` false;
-    `MergeIn`, `MergeContinue`, `MergeAbort` refuse (`*ErrForeignMergeState` for `MergeIn`; `*ErrNoMergeInProgress` for the record-driven pair) and the foreign state is left untouched (same `MERGE_HEAD`, same conflicted files after).
+  - Foreign merge state: a plain-git conflicted merge staged directly in the warp checkout → `MergeInProgress()` false and no error;
+    `MergeIn`, `MergeContinue`, and `MergeAbort` all refuse with `*ErrForeignMergeState` (per the Shared Decision on foreign-state disposition), and the foreign state is left untouched (same `MERGE_HEAD`, same conflicted files after).
+    Separately, with neither a record nor foreign state present, `MergeContinue` and `MergeAbort` return `*ErrNoMergeInProgress` — pinning that the two errors are not interchangeable.
   - Freshness: local source behind its remote-tracking ref → the remote-tracking SHA is merged (assert the merged content is the remote tip's);
     source existing only remotely → merged;
     source resolvable nowhere → `*MergeGuardError` with `"source branch not found"`.
