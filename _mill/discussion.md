@@ -162,6 +162,10 @@ Until this lands, none of that work is observable end-to-end.
 - Rationale: `_lyx/fabric/` is a new fabric-owned module subdirectory, so per the Cwd Resolution Invariant its relative-path constant belongs to `fabricengine` alone.
   Giving loom a read accessor rather than a path keeps `loomcli` free of any `_lyx` path construction, which is what the invariant actually requires.
   `WriteOrigin` takes the `*Mutations` recorder so the write records `KindFileWritten` at its own success site, per the Mutation Record Invariant.
+- Decision: on loom's side, `lyx loom run --parent` passes a throwaway `&Mutations{}` and discards it.
+  Loom's envelope gains no `mutations`/`partial` keys.
+  The Mutation Record Invariant binds *fabric verb outcomes* — `AddResult` and its siblings, which embed `MutationRecord` — not every caller of a function that happens to take a recorder, and loom's own result type is not a fabric verb result.
+  `WriteOrigin` keeps the parameter regardless so `Add`, its real recording caller, threads its own `rec` through unchanged.
 - Rejected: routing both sides through `WeftWorktreePath` — uniform, but loom would then need the slug and hub geometry to read its own record, which the junction hands it for free.
   Also rejected: `loomcli` building the path itself — a direct Cwd Resolution Invariant violation.
 
@@ -182,7 +186,8 @@ Until this lands, none of that work is observable end-to-end.
 
 - Decision: `loomcli` builds a full `websterengine.RunDeps` and passes it as `loomshed.Deps.WebsterDeps`, mirroring `internal/webstercli/run.go:34`'s `runDeps()` construction (`Starter`, `Reed`, `Engine`, `ShuttleCfg`, `Roles`, `Config`, `Batcher`, `Geom`, `RefMatcher`, `OpenBisector`).
   `Deps.WebsterRun` stays nil, which `shedadapters.NewWebsterProducer` (`internal/shedadapters/webster.go:48-54`) documents as "defaults to `websterengine.Run`, the production seam".
-- Decision: `RefMatcher` is pinned to `fabricengine.RefScanner`, never `websterengine.NeverMatches`.
+- Decision: `RefMatcher` is pinned to `fabricengine.NewRefScanner(loc)`, built **eagerly** in loom's pre-run from the resolved `*lyxcwd.Location`, exactly as `webstercli/wiring.go:130` does — `RefScanner` is a type, and `NewRefScanner` only compiles a regexp and cannot fail, so eager construction is safe.
+  Never `websterengine.NeverMatches`.
   The Fabric Git Invariant makes `RefScanner` mandatory for hub-mode webster runs and allows `NeverMatches` only in standalone, where there is no weft worktree and no fabric verb for a fork to drive.
   loom is hub-only (see "Mode question"), so `NeverMatches` would silently disable a hard, round-failing guard.
 - Rationale: `Webster` is row 10 and is a **real** producer, not a stub (`loomshed.go:108`).
@@ -196,10 +201,17 @@ Until this lands, none of that work is observable end-to-end.
   `lock.TryAcquireWriteLock(loomengine.LoomRunLock(l))` is the liveness probe: held ⇒ a driver is running, skip step 3; not held ⇒ release immediately and spawn.
   Steps 1, 2 and 4 are idempotent.
 - Decision: the probe-and-spawn sequence is serialised by its own short-lived lock, `.lyx/loom/bootstrap.lock` (a third `loomengine` accessor beside `LoomStatusLock` and `LoomRunLock`), held with `lock.AcquireWriteLock` across steps 1–3 and released before the attach in step 4.
-- Rationale: the run-lock probe alone is a TOCTOU — it acquires, releases, and only then spawns, so two near-simultaneous `lyx loom run`s both observe the lock free and both spawn.
-  The loser then dies inside `shedengine.Run` on `ErrShedBusy` (`run.go:56-62`) with the failure visible only in `driver.log`, which is precisely the invisible-failure mode "always spawning" was rejected for.
-  A bootstrap lock held across the whole probe-and-spawn window makes the second caller observe the run lock as genuinely held and take the skip-and-attach path.
-  It is released before step 4 because attach blocks for the operator's whole session and must not hold a lock.
+- Decision: the bootstrap lock alone is **not** sufficient, and is paired with an explicit **spawn handshake**.
+  After `proc.Detach` + `Start` returns, and still holding `bootstrap.lock`, the spawner polls until it observes `LoomRunLock` as *held* — `lock.TryAcquireWriteLock(LoomRunLock)` reporting `locked == false` — checking `proc.IsAlive(childPid)` on each iteration, at a short interval under a bounded deadline.
+  Only once the run lock is observed held does the spawner release `bootstrap.lock` and proceed to attach.
+- Decision: the two failure exits of that poll are explicit.
+  If `proc.IsAlive` reports the child gone before the run lock is ever observed held, or the deadline expires, the spawner releases `bootstrap.lock`, does **not** attach, and refuses on the envelope naming `.lyx/loom/driver.log` as where the reason is.
+  The result is a clean state — no driver, no held lock, an operator who was told — rather than a silent half-start.
+- Rationale: the bootstrap lock by itself still leaves the window open, because the run lock is taken by the **child**, at the top of `shedengine.Run` (`run.go:56`), only after `lyx loom drive` has parsed flags, resolved cwd, loaded config and built the whole `RunDeps` stack.
+  Caller A's `Start` returns long before that, so A could release `bootstrap.lock` while its child had not yet taken `LoomRunLock`; B would then acquire the bootstrap lock, probe the run lock free, and spawn a second driver — the exact `ErrShedBusy`-into-`driver.log` failure this decision exists to prevent.
+  Holding the bootstrap lock until the run lock is *observed* held is what actually closes it.
+- Rejected: having `lyx loom drive` take `LoomRunLock` itself before its wiring, so the lock is held by the time `Start` returns — `shedengine.Run` acquires that same lock unconditionally and would then deadlock against its own caller.
+- Rationale: `bootstrap.lock` is released before step 4 because attach blocks for the operator's whole session and must not hold a lock.
 - Rationale: makes the double-click launcher safe to hit repeatedly, and gives the operator a way to reattach after closing the terminal — the common case.
 - Rejected: refusing when the lock is held — leaves no reattach path.
   Also rejected: always spawning — the second detached driver would die immediately on `Shed`'s own `LockPath`, and because it is detached with its output going to `.lyx/loom/driver.log` rather than into a pane, the failure would be invisible on screen: the operator sees an apparently-normal attach with nothing new happening, and the only evidence is in the log file.
@@ -229,6 +241,9 @@ Until this lands, none of that work is observable end-to-end.
 ### run-alias-as-registered-command
 
 - Decision: `lyx run` is a second top-level cobra command registered from `loomcli` into `newRoot()`, sharing `loom run`'s RunE builder and pre-run resolution.
+  Its exported constructor is `loomcli.RunAliasCommand() *cobra.Command`, beside the module's own `Command()`.
+- Decision: one module contributing two root children is a **new seam shape**, so the CLI/Cobra Invariant gains a one-line clause covering it in the same commit — a module may register an alias command beside its subtree, via a separately-named exported constructor, and that alias carries no `RunCLI`/`RunCLIIn` of its own because it delegates into the subtree's verb.
+  Without the clause the invariant's "Every lyx CLI module is a cobra subtree assembled under one root" reads as forbidding this.
 - Decision: because it is a root child, two guards see it as a "module" and both get an explicit disposition in this task: it is named in `newRoot()`'s `Long` "Available modules:" list (`cmd/lyx/longlist_test.go:18-26` requires it), and it gets an `excludedModules` entry in `cmd/lyx/sandbox_coverage_test.go` reading "alias of `lyx loom run`; covered by the `loom` scenario" rather than a duplicate `**Covers:** run` scenario.
 - Rationale: staying inside the module `Command()`/`RunCLI` seam keeps the alias inside `helptree_test.go`/`registration_test.go` coverage and discoverable in `--help`.
   A separate sandbox scenario for `run` would exercise byte-identical behaviour to the `loom` one; the allowlist with a truthful reason is what that mechanism is for.
@@ -288,7 +303,8 @@ Until this lands, none of that work is observable end-to-end.
 **The fabric change, concretely:** `internal/fabricengine/add.go` already computes `parentBranch := strings.TrimSpace(headStdout)` at line 132 and uses it only to derive `parentWeftBranch`.
 The new record stores that same value.
 Placement in `Add`'s sequence: after the junction wiring at step 10b (so the pair is fully wired) and before step 11/12's pushes, so the weft-side commit rides step 12's existing `pushWeftBranch` and no new push call is introduced.
-Every failure on that path routes to the existing `rollbackAdd`, which must also unwind the record — through the gated removal path, never a raw `os.Remove`.
+`rollbackAdd` gains **no new step**: it already removes the whole weft worktree via `removeWeftWorktree` (`add.go:238-247`), and deletes the weft branch when this `Add` created it, so the record and its commit go with them.
+A separate record-removal call would be a no-op on the created-branch path and a history-destroying act on the adopted one — see the `origin-record-is-committed-and-is-a-new-class` decision for the adopt-path disposition.
 `WriteOrigin` appends `KindFileWritten` to `rec` **after** the write observably succeeds, per the Mutation Record Invariant.
 `state.WriteJSON` lives in another package, so the raw-write tokens the Fabric Write-Side Containment guard scans for (`os.WriteFile(` etc.) do not appear in `fabricengine` source — the same reason `mergestate.go`'s existing `state.WriteJSON` call passes that guard.
 
@@ -321,7 +337,7 @@ From `CONSTRAINTS.md`, the ones this task is bound by:
 - **Lyxdirs Single-Declarer Invariant** — never write the literals `_lyx` / `.lyx`; use `lyxdirs.LyxDirName` / `lyxdirs.DotLyxDirName`.
 - **Mutation Record Invariant** — `WriteOrigin` appends `KindFileWritten` to `rec` only after it observably succeeded, and `AddResult` already embeds `MutationRecord`.
 - **Fabric Write-Side Containment Invariant** — no `os.`-qualified raw write tokens in `fabricengine` production source.
-- **Fabric Destruction Chokepoint Invariant** — `rollbackAdd`'s cleanup of the new record goes through the existing gated removal path, not a raw `os.Remove`.
+- **Fabric Destruction Chokepoint Invariant** — no new removal site is introduced; the record is cleaned up by `rollbackAdd`'s existing gated weft-worktree/branch removal, so nothing new lands at a chokepoint-guarded site.
 - **Test Tier Purity Invariant** — untagged tests spawn nothing (no `exec.Command`, no `gitexec.Run`, no `hubforge.NewHub`); the tmux/detach work is `//go:build smoke`.
 - **Hermetic Git Test Environment Invariant** — any new git-spawning test package needs a `TestMain` calling `gitkit.HermeticGitEnv()`.
 - **Sandbox Suite Coverage** — `loom` gets a `**Covers:** loom` scenario; the `run` alias gets an `excludedModules` entry with a reason.
@@ -334,10 +350,11 @@ Three layers, deliberately.
 **Tier 1 (untagged, no spawns) — `internal/loomcli`:**
 
 - `loomshed.Deps` assembly from a fake `lyxcwd.Location`: every path field equals the corresponding `loomengine` accessor's output, `LockPath != StatusLockPath`, and `Deps.Preflight` is the `NewPreflightProducer` adapter rather than a bare `Preflight`.
-- `RunDeps` assembly: every field `webstercli.runDeps()` fills is non-zero, `RefMatcher` is `fabricengine.RefScanner` (never `NeverMatches`), and `OpenBisector` is nil exactly when there is no fabric opener.
+- `RunDeps` assembly: every field `webstercli.runDeps()` fills is non-zero, `RefMatcher` is a non-nil `*fabricengine.RefScanner` from `NewRefScanner(loc)` (never `NeverMatches`), and `OpenBisector` is nil exactly when there is no fabric opener.
 - Seed handling: a fresh path seeds; a path whose file exists returns `ErrSeedExists` and `lyx loom run` treats it as success; any other `Seed` error propagates. **TDD candidate.**
 - Seed-input resolution: slug comes from `WorktreeName`; parent comes from `ReadOrigin`; a missing record produces the refusal message naming `--parent`; `--parent` on a recordless worktree writes it; `--parent` matching an existing record is a no-op; `--parent` conflicting with an existing record refuses and names both values. **TDD candidate.**
 - Re-entrancy decision function — a pure predicate over "run lock held?" returning spawn-or-skip, so the branch is testable without a real lock or process. **TDD candidate.**
+- The spawn-handshake poll as a pure function over injected `lockHeld()` / `alive()` / clock seams: returns ready on lock-observed-held, `child-died` when `alive()` goes false first, and `deadline` when neither happens — no real process, no real lock, no wall-clock sleep (Test Tier Purity forbids a constant `time.Sleep` ≥ 1s here). **TDD candidate.**
 - Status-strand lookup: given a `[]StrandStatus`, decide add-or-reuse by fixed name. **TDD candidate.**
 - One-line `Activity` rendering for `status --watch`: given a `shedengine.Status`, produce the exact line. **TDD candidate.**
 - Bare `lyx loom status` envelope shape, and the missing/corrupt status-file error paths.
@@ -368,7 +385,8 @@ This is the chokepoint-guarded part of the diff and gets the extra verification 
 - Driver failure before the first persist: `.lyx/loom/driver.log` is non-empty and names the failure.
 - `run.sh`/`run.cmd` exists in `<hub>/_launchers/<AnchorRel>/<slug>/` after `lyx fabric add`, and is gone after the matching remove.
 - **The cleanliness ordering:** in a freshly-added, never-run pair, `lyx loom run` reaches past `Preflight` rather than blocking — the regression test for the round-2 blocker. `fabricengine.Clean` reports clean immediately after the seed commit, and the weft has exactly one new commit touching only `_lyx/loom/status.json`.
-- **The bootstrap-lock serialisation:** two `lyx loom run` invocations started concurrently produce exactly one driver process and no `ErrShedBusy` line in `driver.log`.
+- **The spawn handshake:** two `lyx loom run` invocations started concurrently produce exactly one driver process and no `ErrShedBusy` line in `driver.log` — the round-4 regression test.
+- **The handshake's failure exit:** a `drive` binary rigged to die immediately makes `lyx loom run` refuse on the envelope naming `driver.log`, hold no lock afterwards, and not attach.
 
 **Sandbox:** one scenario in a `tools/sandbox/*SUITE.md` file tagged `**Covers:** loom`, exercising `lyx loom status` and `lyx loom pause` — the two verbs that need no tmux.
 The scenario reaches a seeded state by **writing `_lyx/loom/status.json` as a hand-written fixture** before invoking either verb.
@@ -406,4 +424,9 @@ The scenario asserts the fixture's own values round-trip through `status`, which
 - **Q (review r3, NIT):** What happens to the record commit when `Add` fails on the adopted-weft-branch path? **A:** It is left in place, deliberately — `rollbackAdd` preserves pre-existing weft history by design, and the record's content is correct provenance either way. The integration test asserts the retained-commit outcome for that path rather than "no stray commit".
 - **Q (review r3, NIT):** Does `loomcli` carry `RunCLIIn`, and what about the pinned seam counts? **A:** Yes — loom resolves cwd throughout, so a seeded cwd is meaningful, which is the criterion `selfreportcli`'s exception rests on. `CONSTRAINTS.md` and `seamsignature_test.go` move to twelve-of-thirteen in the same commit.
 - **Q (review r3, NIT):** What do `SkipGit`/`SkipPush` mean on a helper that never pushes? **A:** `SkipGit` returns `("", false, nil)` with no lock taken, as `commitWeftAt` does; `SkipPush` is accepted and ignored, documented on the function. `SyncOptions` is kept so `Add` threads its own opts through unchanged.
+- **Q (review r4, BLOCKING):** Does the bootstrap lock actually close the double-spawn window? **A:** No — the run lock is taken by the child at the top of `shedengine.Run`, long after `Start` returns. So the spawner now holds `bootstrap.lock` until it *observes* `LoomRunLock` held (bounded poll, checking `proc.IsAlive` each iteration), and refuses on the envelope naming `driver.log` if the child dies or the deadline passes. Pre-taking the lock in `drive` was rejected: `Shed.Run` takes the same lock unconditionally and would deadlock.
+- **Q (review r4, NIT):** Which rollback contract for `origin.json` is the real one? **A:** `rollbackAdd` gains no new step — its existing weft-worktree/branch removal already covers the record. The contradicting "must also unwind the record" sentence is deleted, and no new chokepoint-guarded removal site is introduced.
+- **Q (review r4, NIT):** What does loom pass for `WriteOrigin`'s `*Mutations`? **A:** A throwaway `&Mutations{}`, discarded. The Mutation Record Invariant binds fabric verb outcomes, not every caller of a recorder-taking function, so loom's envelope is unaffected.
+- **Q (review r4, NIT):** Is `fabricengine.RefScanner` callable as written? **A:** No — it is a type. The spelling is `fabricengine.NewRefScanner(loc)`, built eagerly in loom's pre-run as `webstercli` does.
+- **Q (review r4, NIT):** Is one module registering two root children covered by the seam rule? **A:** Not today, so the CLI/Cobra Invariant gains a clause for it in the same commit, and the alias's constructor is named `loomcli.RunAliasCommand()`.
 - **Q (review r3, NIT):** What does `lyx loom drive` do on a never-seeded pair? **A:** Refuses in its own pre-flight, on the envelope, naming `lyx loom run` — it never seeds, because only `run` owns the commit-before-Preflight ordering. The smoke fixture seeds by running `lyx loom run` once and killing the driver.
