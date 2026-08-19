@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-remote and push helpers
+phase: approved-mergeresolve engine
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
@@ -28,6 +28,7 @@ planned  '2026-08-19T17:46:59Z'
 implementing  '2026-08-19T18:25:51Z'
 approved-merge-stage-resolved verb  '2026-08-19T18:33:51Z'
 approved-remote and push helpers  '2026-08-19T18:40:56Z'
+approved-mergeresolve engine  '2026-08-19T18:50:27Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: bb63ea3555d815568763941a7a33f65fbbb24fdd
     verify_baseline_failures: []
   - name: mergeresolve engine
-    state: running
+    state: approved
     implementer_session: 4e2e79a7-bdb0-496f-b941-7ccacbe22167
     start_sha: c7dea943a941ff8f3292b70f2144bcd45aca6ee8
+    commit_sha: a52b6f862cdf78546d60b2ef944a52c1fad4704b
     verify_baseline_failures: ["FAIL\t./internal/mergeresolve/... [setup failed]"]
   - name: landingshed producers
     state: pending
