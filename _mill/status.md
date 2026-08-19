@@ -6,6 +6,7 @@ slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: 'loom: session bootstrap'
 task_description: |
   loom: session bootstrap
@@ -31,17 +32,26 @@ implementing  '2026-08-19T18:49:50Z'
 ```yaml
 batches:
   - name: fabric-origin-record
-    state: pending
+    state: running
+    implementer_session: 696fb8e1-f5dc-4b2f-8d99-f4722fe5857c
+    start_sha: 31274d8ff24f877bd1fceef647e1068fe01553f2
+    verify_baseline_failures: []
   - name: loom-paths-and-seed-sentinel
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-core
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: fabric-add-and-launcher
     state: pending
+    verify_baseline_failures: []
   - name: loomcli-run-bootstrap
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: registration-and-guards
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: smoke-tests-and-roadmap
     state: pending
+    verify_baseline_failures: []
 ```
