@@ -28,7 +28,6 @@ var wantProducerTable = []wantProducerRow{
 	{NameDiscussionWrite, ""},
 	{NameDiscussionValidate, NameDiscussionWrite},
 	{NameDiscussionReview, NameDiscussionWrite},
-	{NamePlanSweep, ""},
 	{NamePlanWrite, ""},
 	{NamePlanValidate, NamePlanWrite},
 	{NamePlanReview, NamePlanWrite},

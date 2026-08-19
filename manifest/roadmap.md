@@ -7,7 +7,9 @@ See Maintenance below for how the numbering works.
 
 ## Planned
 
-Committed to, in this order, next.
+Committed to, in this order, next — grouped into sub-categories below for readability; the order between categories is still the build order, top to bottom.
+
+### In flight
 
 1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. Bundled as one task because both wrap the same shared piece — `internal/mergeresolve`, the merge-in + LLM-conflict-resolution engine neither producer owns alone.
    Depends on the Done `fabric: merge-conflict primitive` item below — unblocked.
@@ -22,20 +24,69 @@ Committed to, in this order, next.
    - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
    See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
 
-1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
-   - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
-   - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
-   - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
-   - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
-   - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
-   - Build `Plan-Sweep` for real, here rather than in scaffolding — it has no consumer until `Plan-Write` is real. Lowest priority within this task too: `scout`-backed work is low-priority project-wide, and `Plan-Sweep` is the only row in this initiative that touches `scout`. Mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-scout-inventory-spec`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
-   - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
-   - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
+Also currently running, wiki-tracked only per the crucible method's own convention (no dedicated roadmap entry, see the Done `fabric: merge-conflict primitive` item's own package doc): a crucible hardening campaign scoped to that item's `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` surface (wiki slug `fabric-merge-crucible-hardening`).
+
+### Perch → Shed flattening
+
+Next up once the in-flight group above lands — `perch`'s own round-loop (`internal/treadleengine`) gets replaced by two ordinary `Shed` rows per review, not rewritten.
+
+1. **shedengine: per-producer bounce budget + segments** — replaces `Run`'s single run-wide `bouncesRemaining` counter with a per-producer budget derived from `Status.History` (count prior `Stuck` entries for the same producer name, no new persisted field needed), and adds two new optional `ProducerDef` fields: `MaxBounces int` (0 = inherit `Shed`'s own default, same convention `Shed.MaxBounces` already uses) and `Segment string` (a grouping label, empty = standalone).
+   `validate()` gains one new rule: a producer's `OnStuck`, if set, must name a producer sharing its own `Segment` — turns "these rows strictly belong together" into an enforced invariant rather than a naming convention. Name uniqueness is already global across the whole list (existing `is a duplicate of an earlier entry` rule), so this rule is unambiguous with no further change.
+   Not loom-specific — `internal/shedengine` is the shared engine both `loom` and the Someday `Hardener` sit on.
+   Motivation: a review round-loop (see the next two items) is expected to iterate several times as normal operation, unlike a mechanical validate gate's rare bounce — sharing one global budget between the two conflates "something is structurally broken" with "this is the Nth normal round."
+
+1. **shedadapters: Burler-round producer** — a new reusable `ShedProducer` in `internal/shedadapters`, alongside the already-shipped `SingleLLMProducer` and `Webster` adapters. The existing `perch` adapter (`shedadapters.NewPerchProducer`) is NOT a third sibling here — this item and the next (`Bouncer`) are what supersede it; the three loom review-producer tasks below stop calling it, and its fate (kept for other callers, or retired alongside `perch`/`treadleengine` themselves) is exactly the open question the Someday `Bouncer → Perch` item defers. Wraps `internal/burlerengine`'s existing one-round (A-review → B-fix) API directly as a single Shed row, bypassing `perch`/`internal/treadleengine`'s outer round-loop entirely — the loop moves to `Shed`'s own per-segment bounce mechanism (previous item) instead.
+   **Open risk to resolve during this task, not before:** `treadleengine`'s own doc states its two-attempt retry-on-death/timeout policy and "asking-triage" are `Engine`-level machinery shared by any `RoundRunner`, not part of `burlerengine` itself. Verify whether that machinery already lives in (or can cleanly move to) `burlerengine`'s own one-round API before treating this adapter as a thin wrapper — if not, this task must either reimplement the relevant slice or extract it from `treadleengine` into something both can share.
+   `burlerengine`-specific, so not reusable by the Someday `Tenter`'s own round producer (a different domain, behavior/sandbox-based, not text review) — but still not loom-specific: any `Shed`-based module reviewing via `burler` (loom's three segments today) shares this one adapter.
+
+1. **Bouncer: the generic review-gate producer** — this task builds the Bouncer itself, not merely an adapter around it: the judge half of a Burler/Bouncer segment, and unlike the Burler-round producer above, genuinely domain-agnostic — parametrized purely by a rubric stencil path and a report/ledger file-path convention, not by which round producer it gates. Reads the round's report plus any prior bouncer report, judges it, writes an updated finding-identity ledger and an optional next-round focus file the round producer reads on its next call, returns `Done` (approved) or `Stuck` (rejected — bounces back to the round producer named in its own `OnStuck`).
+   One constructor, instantiated per segment with its own rubric + paths — same "thin shared seam, not one per producer" shape the already-shipped `SingleLLMProducer`/`Webster` adapters established, and the `perch` adapter also followed before this pair superseded it (see [designs/shed.md](designs/shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer)).
+   Reuse option to resolve during this task: `internal/treadleengine`'s existing exported parsers (`ParseJudgeVerdict`, `ParseHandoff`) are pure functions nothing forbids importing — the Treadle Runner-Seam Invariant only restricts `treadleengine`'s own imports, not who imports its exports. Decide whether to reuse them or write fresh ones.
+   Not loom-specific — this is the second of the two pieces the Someday `Tenter` review-loop is expected to reuse verbatim (see the `Tenter + Hardener` Someday item).
+
+### loom: real LLM producers
+
+What "loom: write and wire in the real LLM producers" split into — one prompt/rubric per task, each independently reviewable. Deliberately last: the only items in this initiative touching LLM-prompt content. The three review-producer tasks depend on the whole "Perch → Shed flattening" group above; `Discussion-Write`/`Plan-Write` don't and could in principle land earlier, but stay grouped here for continuity with the original split.
+
+1. **loom: Discussion-Write producer** — replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
+1. **loom: Discussion-Review producer** — write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists) as the rubric for a new `Discussion-Bouncer` instance (placeholder name — renaming to `Perch` is its own later Someday task, see below), instantiating the `Bouncer` producer above with it.
+   Replace the `Discussion-Review` stub with a `Discussion-Burler`/`Discussion-Bouncer` segment: `Discussion-Burler` (an instance of `shedadapters: Burler-round producer` above) runs one A-review→B-fix round; `Discussion-Bouncer` judges it and returns `Done` (approved) or `Stuck` with `OnStuck: Discussion-Burler` (rejected — another round). Both rows share `Segment: "Discussion-Review"` — the segment's shared name is what the rest of loom's docs/status-display keep referring to as "Discussion-Review," unchanged from today's outward framing even though it is now two rows, not one opaque `perch`-backed row.
+   Depends on the three "Perch → Shed flattening" items above.
+   See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
+
+1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
+   `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no scout inventory available yet," not as an error.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
+1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch (does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria) as the rubric for a new `Plan-Bouncer` instance (placeholder name, see `Discussion-Review producer` above for the pattern).
+   Replace the `Plan-Review` stub with a `Plan-Burler`/`Plan-Bouncer` segment, same shape as `Discussion-Review producer` above: `Segment: "Plan-Review"`, `OnStuck: Plan-Burler` on rejection.
+   Depends on the three "Perch → Shed flattening" items above.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
+1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch (same gap, same reason as `Plan-Review`) as the rubric for a new `Webster-Bouncer` instance (placeholder name, same pattern).
+   Replace the `Webster-Review` stub with a `Webster-Burler`/`Webster-Bouncer` segment, `Segment: "Webster-Review"`, `OnStuck: Webster-Burler` on rejection — same shape as the other two review-producer items above, against the full diff rather than a single artifact.
+   Depends on the three "Perch → Shed flattening" items above.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
+### Loom infrastructure cleanup
+
+1. **preflight: split into two Shed rows — a generic one, and loom's own** — `internal/loomengine.Preflight` today bundles the orchestrator-agnostic tier-1/tier-2 checks (`internal/preflight.Check`, already generic) with a hardcoded check 4 (`_lyx/loom/status.json` presence/readability/coherence, against loom's own `Status`/`Product` shape) into one function, `runCheck4`, inside one `Preflight` Shed row.
+   The row mechanism (`Deps.Preflight shedengine.ShedProducer`) is already generic — any `ShedProducer` can back it — but the concrete producer wired in today is not: `Hardener` cannot reuse `loomengine.Preflight` as-is the way it will reuse `Publish`/`Finalize` (see `designs/landing.md`).
+   Scope: two separate `ShedProducer` rows instead of one. Row 1, `Preflight`, becomes a genuinely content-free wrapper around `internal/preflight.Check` — no loom-specific parameters at all, reusable by `Hardener` verbatim. Row 2, loom's own (name TBD, e.g. `Loom-Preflight`), carries today's check-4 content (`LoomStatusFile`/`LoomStatusLock`, the `Status`/`Product` shape, `checkCoherence`'s rules) as its own independent producer.
+   This is not just code reuse: `shedengine`'s own sequencing already makes today's `check3BlocksSeed` short-circuit unnecessary — a `Stuck` row 1 bounces or blocks and `Shed` never advances to row 2 at all (`internal/shedengine/run.go`'s `Stuck` handling), so row 2 can assume tiers 1–3 already passed rather than re-deriving whether its own failure is a downstream consequence of an earlier one.
+   `loomshed`'s producer list grows from 13 rows to 14; all "13-row" references across `loomshed.go`/`stub.go`/`sequence_test.go`/`loomshed_test.go`/`loom.md`/`docs/overview.md` move to "14-row" in the same commit, per the Documentation Lifecycle.
+   No wiki depends_on beyond the already-Done `loom: phase-machine scaffolding`.
+
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
+
+1. **Bouncer → Perch: rename, and retire `internal/perchengine`/`internal/treadleengine`** — once the `*-Bouncer` producers (see the Planned `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer` items) are built and proven, rename the placeholder `*-Bouncer` producers to whatever the final name is (`Perch` is the leading candidate, per the segment's own outward name already being e.g. "Discussion-Review").
+   Retirement, not indefinite coexistence, is the expected outcome: `internal/treadleengine` was built specifically so a second future consumer could reuse its round-loop machinery without duplicating it (see its own package doc); the Someday `Tenter + Hardener` item now expects `Tenter`'s review-loop to land as the same flat `Shed`-segment pattern (its own round producer + an instance of the shared generic Bouncer adapter) instead of a second `Treadle` consumer — so `Treadle` ends up with zero real consumers, not one. Final call on `internal/perchengine`/`internal/treadleengine` and the standalone `lyx perch run|pause` CLI stays deferred to this task regardless, since it should only be made once the new design is proven in practice on both `loom` and (eventually) `Tenter`, not asserted in advance.
+   Deliberately not done at the same time as the split-out producer tasks above, to avoid "which Perch do you mean" confusion mid-rewrite.
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 
@@ -64,7 +115,8 @@ No build order is implied between these items.
    See [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
 
 1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving real tmux), on-demand and post-loom, off the `shuttle → burler → perch → loom` spine.
-   `Tenter` is the review-loop (`Treadle` configured for behavior-review); `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe-merge-back).
+   `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe-merge-back).
+   `Tenter`'s review-loop is expected to land as a `Shed` segment — a round producer (behavior-review's own equivalent of the Planned `shedadapters: Burler-round producer` item, wrapping whatever Tenter's own round mechanism turns out to be, not `burlerengine`) plus an instance of the Planned `Bouncer: the generic review-gate producer` item — the same flattened pattern `loom`'s own review producers use, not `Treadle`. This is the second data point (after `loom`) for the Someday `Bouncer → Perch` item's retirement question below.
    See [designs/hardener.md](designs/hardener.md) (a DRAFT doc, do not implement from it yet).
 
 1. **warp-visibility: CLAUDE.local.md invisible in the Fabric repo's git history** — `CLAUDE.local.md` via symlink (with a Windows-Developer-Mode note and a copy fallback), so nothing lyx-related shows up in the Fabric repo's own git history.
@@ -125,6 +177,10 @@ No build order is implied between these items.
    See the `internal/fabricengine` package documentation's merge section.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
+
+1. **loom: build `Plan-Sweep` for real** — stays a stub past the split-out `loom: Plan-Write producer` item above; deferred because `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout` — see the Someday `scout` items below, including the open question of whether `scout` stays part of this repo at all.
+   Mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-scout-inventory-spec`.
+   Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
 
 1. **finalize: the discrepancy-document conflict shape** — `finalize.md` originally sketched a second Fabric-to-Finalize conflict artifact, a precomputed "discrepancy document" for a divergence Fabric cannot express as a git conflict.
    Only the ordinary-git-conflict shape shipped; the document shape is not built.
@@ -247,7 +303,7 @@ No build order is implied between these items.
 1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
    See the `internal/pattern` package documentation.
 
-1. **loom: phase-machine scaffolding** — `internal/loomshed` carries loom's full 12-row producer list: `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Preflight` and `Webster` wired in as-is, and the remaining seven rows (`Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Finalize`) stubbed.
+1. **loom: phase-machine scaffolding** — `internal/loomshed` carries loom's full 12-row producer list: `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Preflight` and `Webster` wired in as-is, and the remaining seven rows (`Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Publish`, `Finalize`) stubbed. (`Plan-Sweep` is not a row — see the Someday `loom: build Plan-Sweep for real` item.)
    loom's status file migrated onto `shedengine.Status`, with `loomshed.Seed` as its production seeder.
    See the `internal/loomshed` package documentation and the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
