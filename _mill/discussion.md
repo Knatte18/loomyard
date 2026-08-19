@@ -30,13 +30,14 @@ Until this lands, none of that work is observable end-to-end.
 - `lyx loom status` (envelope) and `lyx loom status --watch` (the 1-line status strand).
 - `lyx loom pause`: sets `pause_requested` in `_lyx/loom/status.json`.
 - `lyx run` as a second top-level cobra command aliasing `lyx loom run`, including its own disposition for the two guards that enumerate every root child.
-- Status-file seeding on `lyx loom run` when `_lyx/loom/status.json` is absent, via `loomshed.Seed` plus a new `loomshed.ErrSeedExists` sentinel so a re-run can tolerate the already-seeded case.
+- Status-file seeding on `lyx loom run` when `_lyx/loom/status.json` is absent, via `loomshed.Seed` plus a new `loomshed.ErrSeedExists` sentinel so a re-run can tolerate the already-seeded case — and an immediate weft-side commit of that seed, before the driver is spawned, so loom's own write does not fail loom's own cleanliness gate.
+- A new narrow weft-commit helper, `fabricengine.CommitWeftPaths` — positive-pathspec, no push — shared by `Add`'s `origin.json` commit and `loomcli`'s seed commit.
 - Full `websterengine.RunDeps` wiring in `loomcli`, so `loomshed.Deps.WebsterDeps` is a real production value rather than a zero struct.
 - A new `parent_branch` provenance record — `_lyx/fabric/origin.json` — written **and committed on the weft branch** by `fabricengine.Topology.Add`, with `fabricengine`-owned path accessor and read/write functions, plus the `--parent` flag that writes it once for worktrees created before it existed.
 - A third launcher script (`run.cmd`/`run.sh`) in the existing `<hub>/_launchers/<AnchorRel>/<slug>/` set.
 - Driver stdout/stderr capture to a machine-local log.
 - Registration/help/seam/sandbox test updates that adding a 13th module and a second root command force.
-- Doc updates: `manifest/designs/loom.md`'s run-launcher paragraph, `docs/overview.md`'s module table and the root `Long` module list, `manifest/roadmap.md` item moved to Done.
+- Doc updates: `manifest/designs/loom.md`'s run-launcher paragraph, `docs/overview.md`'s module table and the root `Long` module list, `manifest/roadmap.md` item moved to Done, and `contracts/specs/loom-status-spec.md`'s spawn-time-seed binding.
 
 **Out:**
 
@@ -75,6 +76,15 @@ Until this lands, none of that work is observable end-to-end.
 - Rationale: `loomengine.Preflight` check-4 hard-fails when the seed is missing, so without this `lyx loom run` can never get past its own first producer.
   A sentinel keeps the decision inside the single lock `Seed` already holds — a stat-then-seed probe in `loomcli` would reintroduce the TOCTOU window `Seed`'s own doc comment says it exists to avoid, and a bare "call and ignore all errors" would swallow real write failures.
   Re-entrancy (`reentrancy-ensure-and-attach`) requires the second `lyx loom run` to succeed, which this delivers.
+- Decision: the seed write is **committed weft-side immediately, before the driver is spawned**, via `fabricengine.CommitWeftPaths` (see `weft-commit-mechanism`).
+  The same applies to a `--parent`-triggered `origin.json` write.
+- Rationale: `fabricengine.Clean` runs `git status --porcelain` against the **weft sibling** as well as the warp (`warpclean.go:26-34`), untracked files included, and `seedWeftArtifactExcludes` covers only `.lyx/`, the `.weft/` lock dir, the push-lock and `*.lock`/`*.swaplock` — not `_lyx/loom/status.json`.
+  So an uncommitted seed leaves the weft dirty, `preflight.Check`'s `CheckWorktreeClean` fails, and row 1 (`Preflight`, `OnStuck: ""`) goes Stuck straight to `StateBlocked` on the very first run — loom blocked by its own write.
+  Committing before the spawn closes it.
+  `Shed` re-dirties `status.json` on its first persist, which is harmless: `Preflight` runs once at row 1, and a resume re-enters at `current_producer`, never back at row 1.
+- Decision: `contracts/specs/loom-status-spec.md` is updated in the same commit.
+  It is a pinned Contract doc that today says the seed is written "before any `lyx loom run` has executed", while also stating that which command the role binds to "is pinned when that command lands".
+  This task is that landing, so the spec's role binding is pinned to `lyx loom run`'s seed-if-absent and the "before any `lyx loom run`" clause is corrected.
 - Rejected: seeding from `lyx fabric spawn` — points the coupling the wrong way (loom may depend on fabric, never the reverse) and leaves every already-spawned worktree unseedable.
   Also rejected: a separate operator-invoked `lyx loom seed` verb — a mandatory manual step defeats the one-double-click entry point this task exists to deliver.
 
@@ -98,8 +108,29 @@ Until this lands, none of that work is observable end-to-end.
 - Correction carried forward: `mergestate.go:72` and `corrindex.go` place their records in the weft **gitdir** via `f.weftGitDir()` — machine-local and never tracked.
   They are precedent for `state.WriteJSON` as a *mechanism*, not for a tracked `_lyx` file.
   An earlier draft of this discussion cited them as a tracking precedent; that citation was wrong.
+- Decision: the commit call is `fabricengine.CommitWeftPaths` (see `weft-commit-mechanism`), not `Fabric.Commit` and not `commitWeftAt`.
 - Rejected: putting the record in the weft gitdir like its two neighbours — machine-local, so `--parent` would become a mandatory one-time step on every new machine and every fresh clone rather than only for legacy worktrees, defeating the zero-argument launcher.
   Also rejected: writing it uncommitted and letting a later ordinary `lyx fabric commit` sweep it up — leaves a window in which the record exists locally but for nobody else, and violates the tracked-only rule for the duration.
+
+### weft-commit-mechanism
+
+- Decision: this task adds one narrow exported helper to `fabricengine`:
+
+  ```
+  CommitWeftPaths(weftPath string, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error)
+  ```
+
+  It stages a **positive-only** file list built via `fabricengine.ScopedPathspec` and commits through `gitrepo.New(weftPath).StageAndCommit(msg, relPaths)`.
+  It performs **no push** and holds no `Fabric`.
+- Decision: two callers, both passing an explicit relative path list.
+  `Add` commits `origin.json` against the **new pair's** `WeftWorktreePath(l, slug)` after junction wiring, so step 12's existing `pushWeftBranch` carries it — no extra push.
+  `loomcli` commits the status seed (and any `--parent` write) against the acting worktree's weft sibling before spawning the driver; the ordinary `lyx fabric sync` carries it later.
+- Rationale: neither existing path works here.
+  `Fabric.Commit` is bound to one `warpPath`/`weftPath` pair and resolves its routing from `f.warpPath`, so it cannot address the *new* pair `Add` just created; it also fires `spawnDetachedPushFn` unconditionally whenever anything lands (`commit.go:109-166`), which contradicts "the existing push carries it with no new push call".
+  `commitWeftAt` is `gitrepo.StageAllAndCommit` (`weftgit.go:337-341`) — a stage-all, which the Fabric Git Invariant's cross-module-exclusions rule forbids for `_lyx` commits: "every weft-commit caller passes a **positive-only** file list ... built via `fabricengine.ScopedPathspec`". `_lyx` is shared by every round-loop module, so a stage-all here would sweep up another module's in-flight state.
+- Rationale: the helper stays inside `fabricengine`, so the Fabric Git Invariant's module-ownership rule holds — `loomcli` never runs git itself.
+- Rejected: widening `Fabric.Commit` with a no-push option or a second pair — a behaviour change to the shared commit verb, for two callers that need neither its routing nor its push.
+  Also rejected: letting `loomcli` shell out or call `gitrepo` directly — a direct Fabric Git Invariant violation.
 
 ### origin-record-ownership-seam
 
@@ -131,6 +162,9 @@ Until this lands, none of that work is observable end-to-end.
 
 - Decision: `loomcli` builds a full `websterengine.RunDeps` and passes it as `loomshed.Deps.WebsterDeps`, mirroring `internal/webstercli/run.go:34`'s `runDeps()` construction (`Starter`, `Reed`, `Engine`, `ShuttleCfg`, `Roles`, `Config`, `Batcher`, `Geom`, `RefMatcher`, `OpenBisector`).
   `Deps.WebsterRun` stays nil, which `shedadapters.NewWebsterProducer` (`internal/shedadapters/webster.go:48-54`) documents as "defaults to `websterengine.Run`, the production seam".
+- Decision: `RefMatcher` is pinned to `fabricengine.RefScanner`, never `websterengine.NeverMatches`.
+  The Fabric Git Invariant makes `RefScanner` mandatory for hub-mode webster runs and allows `NeverMatches` only in standalone, where there is no weft worktree and no fabric verb for a fork to drive.
+  loom is hub-only (see "Mode question"), so `NeverMatches` would silently disable a hard, round-failing guard.
 - Rationale: `Webster` is row 10 and is a **real** producer, not a stub (`loomshed.go:108`).
   Leaving `WebsterDeps` zero would hand `websterengine.Run` a struct with nil `Starter`/`Engine`/`Reed`/`Batcher`/`Geom` and an empty `Roles` map.
   That it is currently unreachable — the stub `Discussion-Write` returns `Done` (`stub.go:31-37`) and the real `Discussion-Validate` then fails and bounces back to it until `MaxBounces` is spent — is a fact about today's stub set, not a property to depend on; it evaporates the moment the real LLM producers land.
@@ -141,6 +175,11 @@ Until this lands, none of that work is observable end-to-end.
 - Decision: a second `lyx loom run` while a driver is alive ensures substrate and attaches, and never spawns a second driver.
   `lock.TryAcquireWriteLock(loomengine.LoomRunLock(l))` is the liveness probe: held ⇒ a driver is running, skip step 3; not held ⇒ release immediately and spawn.
   Steps 1, 2 and 4 are idempotent.
+- Decision: the probe-and-spawn sequence is serialised by its own short-lived lock, `.lyx/loom/bootstrap.lock` (a third `loomengine` accessor beside `LoomStatusLock` and `LoomRunLock`), held with `lock.AcquireWriteLock` across steps 1–3 and released before the attach in step 4.
+- Rationale: the run-lock probe alone is a TOCTOU — it acquires, releases, and only then spawns, so two near-simultaneous `lyx loom run`s both observe the lock free and both spawn.
+  The loser then dies inside `shedengine.Run` on `ErrShedBusy` (`run.go:56-62`) with the failure visible only in `driver.log`, which is precisely the invisible-failure mode "always spawning" was rejected for.
+  A bootstrap lock held across the whole probe-and-spawn window makes the second caller observe the run lock as genuinely held and take the skip-and-attach path.
+  It is released before step 4 because attach blocks for the operator's whole session and must not hold a lock.
 - Rationale: makes the double-click launcher safe to hit repeatedly, and gives the operator a way to reattach after closing the terminal — the common case.
 - Rejected: refusing when the lock is held — leaves no reattach path.
   Also rejected: always spawning — the second detached driver would die immediately on `Shed`'s own `LockPath`, and because it is detached with its output going to `.lyx/loom/driver.log` rather than into a pane, the failure would be invisible on screen: the operator sees an apparently-normal attach with nothing new happening, and the only evidence is in the log file.
@@ -192,7 +231,7 @@ Until this lands, none of that work is observable end-to-end.
 - `internal/loomshed.Seed(statusPath, statusLockPath, slug, parent) error` — **refuses** when the file exists (`seed.go:43-46`); it does not no-op. This task adds the `ErrSeedExists` sentinel described under `self-seeding`.
 - `internal/loomengine` path accessors, all `AnchorPath`-anchored, and per the Cwd Resolution Invariant the **only** legal constructors for these paths: `LoomStatusFile`, `LoomStatusLock` (under `.lyx`), `LoomRunLock` (under `.lyx`), `DiscussionDecisionRecord`, `DiscussionSupportLog`, `DiscussionDir`.
   `LoomRunLock` must never equal `LoomStatusLock` — `Shed.validate()` rejects that outright.
-  The new `.lyx/loom/driver.log` needs its own accessor here, not an inline path.
+  The new `.lyx/loom/driver.log` and `.lyx/loom/bootstrap.lock` each need their own accessor here, not an inline path.
 - `internal/loomengine.LoadConfig(baseDir, module)` — loom's `loom.yaml`; note it maps a `not initialized` error onto `run "lyx fabric reconcile"`.
 - `internal/shedengine.Shed.Run(ctx) (Result, error)` — persists `CurrentProducer`/`State`/`Error`/`Activity`/`History` on every step and consumes `PauseRequested` at the loop head.
 - `internal/shedengine.Activity` — composed mechanically by `composeActivity`; this is what `status --watch` renders as one line.
@@ -204,7 +243,12 @@ Until this lands, none of that work is observable end-to-end.
 - `internal/proc.Detach(cmd)` / `DetachBreakaway(cmd)` / `IsAlive(pid)` / `KillPID(pid)` — cross-OS; `internal/proc` is the sole allowlisted spawn-in-untagged-tests package.
 - `internal/lock.TryAcquireWriteLock(lockPath) (*FileLock, bool, error)` — non-blocking, reports `(nil, false, nil)` when held; not an error.
 - `internal/state.ReadJSON` / `WriteJSON` / `UpdateJSON` — lock-guarded JSON state.
-- `internal/fabricengine.Fabric.Commit(files, msg, snapshotTags, opts)` — the existing side-routing commit path, and the shape `Add`'s new weft-side commit of `origin.json` should follow.
+- `internal/fabricengine.ScopedPathspec(relPath, dirs)` (`fabric.go:158`) and `internal/gitrepo.Repo.StageAndCommit(msg, files)` (`gitrepo.go:96`) — the two pieces the new `CommitWeftPaths` composes.
+  Note `StageAndCommit` returns `("", false, nil)` for an empty file list, so the helper must not treat "nothing staged" as success-with-a-commit.
+- `internal/fabricengine.Fabric.Commit` and `commitWeftAt` — both deliberately **not** used here; see the `weft-commit-mechanism` decision for why (pair binding + unconditional detached push; stage-all barred by the positive-only rule).
+- `internal/fabricengine.Clean(l)` (`warpclean.go:20-47`) — checks warp **and** the weft sibling with `git status --porcelain`, untracked included, and reports weft dirt as "uncommitted state changes under `_lyx`". This is what makes the seed-commit ordering mandatory.
+- `internal/fabricengine.seedWeftArtifactExcludes` (`weftgit.go:83`) — excludes `.weft/`, the push-lock, `.lyx/`, and `*.lock`/`*.swaplock` only. `_lyx/loom/status.json` is **not** excluded and never will be; it is tracked content.
+- `internal/shedengine.ErrShedBusy` (`run.go:56-62`) — `Run` itself takes `LockPath` with `TryAcquireWriteLock` and fails fast when held. This is the backstop the bootstrap lock keeps the operator from ever hitting.
 - `internal/hubgeom` — the hub-mode geometry adapter; `internal/standalonegeom` is its told-mode twin.
 - `internal/clihelp` — `Execute`, `ExecuteIn`, `GroupRunE`, `Abort`, `ShouldAbort`, `SetExit`, `InstallJSONHelp`.
 - `internal/output` — `Ok`/`Err` envelopes.
@@ -267,7 +311,7 @@ Three layers, deliberately.
 **Tier 1 (untagged, no spawns) — `internal/loomcli`:**
 
 - `loomshed.Deps` assembly from a fake `lyxcwd.Location`: every path field equals the corresponding `loomengine` accessor's output, `LockPath != StatusLockPath`, and `Deps.Preflight` is the `NewPreflightProducer` adapter rather than a bare `Preflight`.
-- `RunDeps` assembly: every field `webstercli.runDeps()` fills is non-zero, and `OpenBisector` is nil exactly when there is no fabric opener.
+- `RunDeps` assembly: every field `webstercli.runDeps()` fills is non-zero, `RefMatcher` is `fabricengine.RefScanner` (never `NeverMatches`), and `OpenBisector` is nil exactly when there is no fabric opener.
 - Seed handling: a fresh path seeds; a path whose file exists returns `ErrSeedExists` and `lyx loom run` treats it as success; any other `Seed` error propagates. **TDD candidate.**
 - Seed-input resolution: slug comes from `WorktreeName`; parent comes from `ReadOrigin`; a missing record produces the refusal message naming `--parent`; `--parent` on a recordless worktree writes it; `--parent` matching an existing record is a no-op; `--parent` conflicting with an existing record refuses and names both values. **TDD candidate.**
 - Re-entrancy decision function — a pure predicate over "run lock held?" returning spawn-or-skip, so the branch is testable without a real lock or process. **TDD candidate.**
@@ -278,7 +322,7 @@ Three layers, deliberately.
 - `lyx loom drive` argument/flag validation up to the point of engine construction.
 - `lyx run` and `lyx loom run` resolve to the same RunE behaviour, and both carry a non-empty `Short`.
 
-**Tier 1 — `internal/fabricengine`:** the `Origin` record's encode/decode round-trip and `OriginRecordPath`'s derivation on both anchors (junction-side read path, weft-side write path), kept git-free so the file stays untagged — the same discipline `corrindex.go`'s tests already follow.
+**Tier 1 — `internal/fabricengine`:** the `Origin` record's encode/decode round-trip and `OriginRecordPath`'s derivation on both anchors (junction-side read path, weft-side write path), plus `CommitWeftPaths`'s pathspec construction (positive-only, `ScopedPathspec`-built, empty list is a no-op not a commit) — all kept git-free so the files stay untagged, the same discipline `corrindex.go`'s tests already follow.
 
 **Integration (`//go:build integration`) — `internal/fabricengine`:**
 
@@ -297,8 +341,13 @@ This is the chokepoint-guarded part of the diff and gets the extra verification 
 - `lyx loom drive` standalone with no tmux at all: the machine advances and the status file records it.
 - Driver failure before the first persist: `.lyx/loom/driver.log` is non-empty and names the failure.
 - `run.sh`/`run.cmd` exists in `<hub>/_launchers/<AnchorRel>/<slug>/` after `lyx fabric add`, and is gone after the matching remove.
+- **The cleanliness ordering:** in a freshly-added, never-run pair, `lyx loom run` reaches past `Preflight` rather than blocking — the regression test for the round-2 blocker. `fabricengine.Clean` reports clean immediately after the seed commit, and the weft has exactly one new commit touching only `_lyx/loom/status.json`.
+- **The bootstrap-lock serialisation:** two `lyx loom run` invocations started concurrently produce exactly one driver process and no `ErrShedBusy` line in `driver.log`.
 
-**Sandbox:** one scenario in a `tools/sandbox/*SUITE.md` file tagged `**Covers:** loom`, exercising `lyx loom status` and `lyx loom pause` against a seeded status file — the two verbs that need no tmux.
+**Sandbox:** one scenario in a `tools/sandbox/*SUITE.md` file tagged `**Covers:** loom`, exercising `lyx loom status` and `lyx loom pause` — the two verbs that need no tmux.
+The scenario reaches a seeded state by **writing `_lyx/loom/status.json` as a hand-written fixture** before invoking either verb.
+No shipped verb seeds one without going through `lyx loom run`'s tmux bootstrap, and `pause` on an absent file is specified to error, so the fixture is the only tmux-free route.
+The scenario asserts the fixture's own values round-trip through `status`, which also pins the envelope against `loom-status-spec.md`.
 
 **Scenarios that must be covered somewhere:** missing `origin.json`; `--parent` conflicting with a recorded value; a status file present but incoherent (Preflight check-4's half-finished case); attach failing because tmux is absent; the run lock held by a *dead* process (stale lock).
 
@@ -320,3 +369,9 @@ This is the chokepoint-guarded part of the diff and gets the extra verification 
 - **Q (review r1, BLOCKING):** Does `Add` commit `origin.json`, or does the clone-survival rationale go? **A:** Commit it on the weft branch inside `Add`, after junction wiring and before the existing `pushWeftBranch`, so the record is tracked (as `_lyx` requires) and genuinely survives a fresh clone.
 - **Q (review r1, BLOCKING):** How is the precedent stated, given `mergestate.go` lives in the weft gitdir? **A:** Acknowledge this as a new class — the first tracked fabric-owned record under `_lyx` — and state its commit contract outright. The earlier `mergestate.go` citation was factually wrong and is corrected in place.
 - **Q (review r1, BLOCKING):** Who owns the origin-record path and its read/write functions, and which side does each use? **A:** `fabricengine` owns `OriginRecordPath`/`ReadOrigin`/`WriteOrigin`; loom calls the functions only. Loom reads through the warp junction at `AnchorPath()`; `Add` writes to `WeftWorktreePath(l, slug)`, because during `Add` the new pair is not the acting worktree.
+- **Q (review r2, BLOCKING):** Loom's own seed write dirties the weft, and `Preflight`'s cleanliness check then blocks the run — how is that ordered? **A:** `lyx loom run` commits the seed weft-side before spawning the driver. `Clean` scans the weft including untracked files and `_lyx/loom/status.json` is not excluded, so an uncommitted seed makes row 1 go Stuck to `StateBlocked` on the very first run. `Shed` re-dirtying the file on its first persist is harmless — `Preflight` runs once, and resume re-enters at `current_producer`.
+- **Q (review r2, BLOCKING):** What concrete call makes `Add`'s weft-side commit? **A:** A new `fabricengine.CommitWeftPaths` — positive pathspec via `ScopedPathspec`, `gitrepo.StageAndCommit`, no push. `Fabric.Commit` is bound to one pair and always fires a detached push; `commitWeftAt` is a stage-all the Fabric Git Invariant forbids for `_lyx`.
+- **Q (review r2, NIT):** `loom-status-spec.md` says the seed is written before any `lyx loom run` — what is its disposition? **A:** Updated in the same commit. The spec explicitly defers which command the spawn-time role binds to "when that command lands"; this task is that landing, so the binding is pinned to `lyx loom run` and the contradicting clause corrected.
+- **Q (review r2, NIT):** The run-lock probe releases before spawning — does that not leave a double-spawn window? **A:** It does, so a `.lyx/loom/bootstrap.lock` held across probe-and-spawn serialises it, released before the blocking attach. The window is closed, not accepted.
+- **Q (review r2, NIT):** How does the sandbox scenario obtain a seeded status file? **A:** It writes one as a hand-written fixture; no tmux-free verb seeds one, and `pause` on an absent file errors by design.
+- **Q (review r2, NIT):** What is `RefMatcher` in loom's `RunDeps`? **A:** `fabricengine.RefScanner`. loom is hub-only, and the Fabric Git Invariant permits `NeverMatches` only in standalone.
