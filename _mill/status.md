@@ -47,7 +47,9 @@ batches:
     commit_sha: bb63ea3555d815568763941a7a33f65fbbb24fdd
     verify_baseline_failures: []
   - name: mergeresolve engine
-    state: pending
+    state: running
+    implementer_session: 4e2e79a7-bdb0-496f-b941-7ccacbe22167
+    start_sha: c7dea943a941ff8f3292b70f2144bcd45aca6ee8
     verify_baseline_failures: ["FAIL\t./internal/mergeresolve/... [setup failed]"]
   - name: landingshed producers
     state: pending
