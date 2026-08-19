@@ -69,6 +69,8 @@ batches:
     commit_sha: 358f7b106a8bc616da88c9f140354e8d9775f0e9
     verify_baseline_failures: []
   - name: CLI verbs and docs
-    state: pending
+    state: running
+    implementer_session: 16649a4c-d72c-4fd6-afde-c785e0fe68b8
+    start_sha: 3a499441019664d2281b76e67a62b8c6a979d3a3
     verify_baseline_failures: []
 ```
