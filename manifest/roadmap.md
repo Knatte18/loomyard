@@ -9,14 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. Bundled as one task because both wrap the same shared piece — `internal/mergeresolve`, the merge-in + LLM-conflict-resolution engine neither producer owns alone.
-   Depends on the Done `fabric: merge-conflict primitive` item below — unblocked.
-   - `internal/mergeresolve`: `Fabric.MergeIn(parent)`, conflict-shape detection, LLM escalation to a fresh higher-capability session on conflict. Called by both producers below, owned by neither.
-   - `Publish`: mechanical `require_pr_to_base` check. Unset → no-op `Done`. Set → `mergeresolve`'s merge-in, then PR opened mechanically from Webster's summary artifact, no LLM call of its own. Returns `Done` once the PR exists — never waits on review. Progress past an open PR is entirely out-of-band, human-triggered (a separate, not-yet-designed interactive CLI flow, outside `Shed`).
-   - `Finalize`: always calls `mergeresolve`'s merge-in itself (the only merge-in in the no-PR case, a second check-for-drift one in the PR case), `_lyx` teardown, final Fabric merge to parent.
-   - Own config surface (`landing.yaml`: `require_pr_to_base` and other safe defaults, overridable per orchestrating profile — same "profiles live in the caller, not the callee" precedent as `loom.yaml`/`hardener.yaml`), Raddle regeneration folded into `Finalize`'s own merge critical section rather than a separate step.
-   See [designs/landing.md](designs/landing.md).
-
 1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the Done `loom: phase-machine scaffolding` item's phase machine actually reachable.
    - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
    - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
@@ -131,6 +123,9 @@ No build order is implied between these items.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
 
 ## Done
+
+1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. `Publish` opens a pull request when the parent branch requires one and returns `stuck` (never `done`) while it awaits review, so `Shed` cannot advance past it and merge seconds later; `Finalize` always syncs against the parent through the shared `internal/mergeresolve` engine, then merges the task branch back, with Raddle regeneration folded into that same merge critical section rather than a separate step.
+   See the `internal/landingshed` and `internal/mergeresolve` package documentation.
 
 1. **fabric: merge-conflict primitive** — Fabric's merge/conflict lifecycle: `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` on `Fabric`, surfaced as `lyx fabric merge-in`/`lyx fabric merge [--squash] [--continue|--abort]`, with git-mirroring exit codes and conflicts reported as unified, worktree-relative paths, never exposing which internal side (warp/weft) produced them.
    See the `internal/fabricengine` package documentation for the merge surface's own mechanism.
@@ -247,7 +242,7 @@ No build order is implied between these items.
 1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
    See the `internal/pattern` package documentation.
 
-1. **loom: phase-machine scaffolding** — `internal/loomshed` carries loom's full 12-row producer list: `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Preflight` and `Webster` wired in as-is, and the remaining seven rows (`Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Finalize`) stubbed.
+1. **loom: phase-machine scaffolding** — `internal/loomshed` carries loom's full 13-row producer list: `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Preflight` and `Webster` wired in as-is, `Publish` and `Finalize` since built for real by the `landing` item above, and the remaining six rows (`Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`) stubbed.
    loom's status file migrated onto `shedengine.Status`, with `loomshed.Seed` as its production seeder.
    See the `internal/loomshed` package documentation and the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
