@@ -177,6 +177,9 @@ type Deps struct {
   `history[].bounced_to` — **lost**, accepted deliberately: `shedengine.HistoryEntry` is `{producer, outcome, output, at}` with no bounce-target field, and adding one would edit `shedengine`, which Scope excludes.
   Bounce provenance stays reconstructible from the sequence — a `stuck` entry is followed by an entry for that row's `OnStuck` target — so nothing is unrecoverable, only less direct.
   `slug`, `parent`, `start_sha` — moved into `product` per `shed-schema-wins`.
+- **The two per-entry history rules `loom-status-spec.md` pins are kept, translated to the new field names**, not dropped: every `history[].outcome` must be one of `done | stuck` (Shed's `Outcome` vocabulary, replacing the old `approved | stuck`), and `history[].at` must be RFC3339 UTC (replacing `ts`).
+  The `bounced_to`-only-when-`stuck` rule goes with the field itself.
+  These are kept, unlike `activity`, because the reasoning differs: `activity` is recomposed by `Shed` on every persist, so validating it asserts `Shed` against itself, whereas `history` accumulates across runs and the file has sanctioned external writers — and `Shed`'s own read gate validates only `state`, never per-entry outcome membership or timestamp shape.
 - Rejected: deleting both and moving check 4 into `loomshed` (see above).
   Thinning check 4 to "the file exists and decodes as `shedengine.Status`" — coherence means the content matches reality, not merely that it parses; reducing it to a decode check discards the point of check 4.
   Moving half-finished detection off `history` onto `current_producer`+`state` — more robust against future history-shape changes, but a larger rewrite of what check 4 means than the deadlock actually requires.
@@ -185,7 +188,12 @@ type Deps struct {
 ### preflight-signature-unchanged
 
 - Decision: `loomengine.Preflight(cwd string) (Report, error)` keeps its signature.
-  A small wrapper in `loomshed` adapts it to `ShedProducer`, and `loomshed` receives that wrapper already constructed per `explicit-deps-struct`.
+  **`internal/loomshed` owns and exports the wrapper constructor** — `NewPreflightProducer(cwd string) shedengine.ShedProducer` — and therefore imports `internal/loomengine`.
+  `Deps.Preflight` stays typed as a bare `shedengine.ShedProducer` so a Tier-1 test injects a fake; production wiring passes `loomshed.NewPreflightProducer(cwd)`.
+  The integration-tagged test for the real wrapper lands in `internal/loomshed`, which consequently needs a `TestMain` calling `gitkit.HermeticGitEnv()`.
+- Importing `loomengine` does not compromise `loomshed`'s Told-Geometry position: the invariant's membership predicate is about a **direct** production import of `internal/lyxcwd`, and transitive is explicitly fine.
+  The import guard polices exactly that, so `loomengine` — which does import `lyxcwd` — is a legal dependency.
+  Leaving the wrapper to the not-yet-built caller was the alternative, and it would leave this task with a `Preflight` row nothing can construct until `loom: session bootstrap` lands.
 - Rationale: the roadmap says "wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them".
   Told-Geometry is satisfied at the `loomshed` boundary, and `Preflight` stays the documented tier-3 entry point.
   The only change inside `loomengine` is the one `rewrite-loom-status-in-place` forces.
@@ -295,6 +303,7 @@ The Planparser Sole-Parser Invariant means no plan parsing may be written here �
 The design says this assertion "lands with `Shed`".
 **It does not land in this task.** The assertion is over `Plan-Write`'s *declared input set*, and a stub declares no input set at all — there is nothing to assert against, so writing the test now would either assert a vacuous truth or invent a declaration the real producer has not yet made.
 It lands with the real `Plan-Write` in `loom: write and wire in the real LLM producers`.
+`manifest/designs/loom.md`'s line "This assertion lands with `Shed`" is false as of this task and is corrected in the same commit — it is added to the doc set **manually**, since the status-file-keyed grep enumeration method cannot reach it.
 
 **Preflight's ordering, and the retry deadlock it creates.** `Shed` reads and validates the status file *before* calling row 1, and `Preflight`'s check 4 then re-reads the same file to assert a coherent *fresh* seed.
 The double read is not itself circular — `Preflight` only ever runs when `current_producer` names it, which is a fresh run or a human-resumed halt at row 1, and `OnStuck: ""` everywhere means nothing bounces back to it.
@@ -329,7 +338,7 @@ From `CONSTRAINTS.md`, in force for this task:
   Affected, all updated in the same commit:
 
   - `contracts/specs/loom-status-spec.md` — the whole schema.
-  - `manifest/designs/loom.md` — the State-&-contracts bullet ("current phase, current review stage"), row 9's Output column, and row 10's **Input** column ("batch grouping"), falsified by the same reasoning that corrects row 9.
+  - `manifest/designs/loom.md` — the State-&-contracts bullet ("current phase, current review stage"), row 9's Output column, row 10's **Input** column ("batch grouping"), falsified by the same reasoning that corrects row 9, and — added manually, since the grep above cannot reach it — the `Plan-never-reads-support-log` line "This assertion lands with `Shed`", which this task's decision falsifies.
   - `manifest/designs/shed.md` — the `product`-carries-no-compatibility-claim paragraph ("`loom-status-spec.md` mandates `phase`, `stage`, and `narration` as top-level fields… reconciling the two is loom's own later rewiring task") and the surrounding seed/external-writer text that depends on it.
   - `docs/overview.md` — the `_lyx/` bullet's "current phase, review round, verdict history" wording, plus the internal-package tree, which gains `internal/loomshed`.
   - `internal/shedengine/doc.go` — the divergence paragraph, per `shedengine-doc-carve-out`.
@@ -363,7 +372,7 @@ The whole point of `explicit-deps-struct` is that the 12-row list is exercisable
 - `Discussion-Validate`'s two checks. Table-drive: both files present and all seven sections; each file missing in turn; each of the seven sections missing in turn; `## Notes for the plan writer` present and absent (both pass); sections present but out of order (must pass — deliberately not a check); an extra unexpected H2 (must pass).
 - `Seed`'s output: assert the exact `shedengine.Status` written — `current_producer: "Preflight"`, `state: "running"`, empty history, `pause_requested: false`, and the `product` payload round-tripping through `json.RawMessage`.
   Assert `Seed` returns an error and leaves the file byte-identical when one already exists, and that it succeeds when the lock file's parent directory does not yet exist.
-- The rewritten `loomengine` coherence check against the new schema: table-driven over each mandatory field empty, plus the fresh-start invariants (set `start_sha`, `pause_requested`).
+- The rewritten `loomengine` coherence check against the new schema: table-driven over each mandatory field empty, plus the fresh-start invariants (set `start_sha`, `pause_requested`), the tolerated/rejected `state` members, and the two retained per-entry history rules (`outcome ∈ {done, stuck}`, `at` RFC3339 UTC).
 - **The Preflight retry deadlock, as a named regression test.** A history containing only `Preflight` entries passes the fresh-start check; a history containing any entry naming a later producer fails it.
   This is the one finding round 1 caught that would have shipped as a permanent runtime deadlock, so it gets an explicit test rather than incidental coverage.
 - The `Batchifier` gate and the `Webster` wrapper both resolve `batcher.Active` independently at their own `Call` time — assert neither holds a value resolved at construction, e.g. by mutating `batcher.yaml` between the two calls and observing that the second sees the new config.
@@ -373,9 +382,9 @@ The whole point of `explicit-deps-struct` is that the 12-row list is exercisable
   An absent `_lyx/` or absent `batcher.yaml` maps to `Done`, since `batcher.Active` resolves the embedded `ConfigTemplate()` rather than erroring — assert this, so the fallback is not mistaken for a gate failure.
 - A guard test over `internal/loomshed`'s production import set, excluding `internal/lyxcwd`, modelled on `internal/shedengine/seam_enforcement_test.go`.
 
-**Integration-tagged.**
-One test covering the real `loomengine.Preflight` wrapper against a `hubforge` fixture hub — the only row that needs real git.
-It needs a `TestMain` calling `gitkit.HermeticGitEnv()`.
+**Integration-tagged, in `internal/loomshed`.**
+One test covering `loomshed.NewPreflightProducer`'s real wrapper against a `hubforge` fixture hub — the only row that needs real git.
+The package therefore needs a `TestMain` calling `gitkit.HermeticGitEnv()`.
 Keep it to the wrapper's outcome mapping (`Report{OK:true}` → `Done`, `Report{OK:false}` → `Stuck`, error → error); `Preflight`'s own four checks are already covered by `internal/loomengine`'s existing tests and must not be re-tested here.
 
 **Not tested here:** Webster's own loop, perch's round loop, `batcher`'s implementations, `planparser`'s checks.
@@ -410,4 +419,7 @@ All are shipped and independently covered; this task tests only its own wiring a
 - **Q:** (Review r3) How does `Seed` actually write? **A:** Under the held lock via `state.UpdateJSON`'s `found` guard, not stat-then-`WriteJSON` (a TOCTOU), and it creates the lock file's parent first — `state.WriteJSON` MkdirAlls the status file's parent but not the lock's, the same gap `preflight.go` already works around.
 - **Q:** (Review r3) `shedadapters`' cancellation helpers are unexported and the package is out of scope. **A:** So each `loomshed` producer re-implements the entry/exit check locally. Recorded so a plan writer proposes a small local helper rather than exporting `shedadapters`'.
 - **Q:** (Review r3) What type does check 4 read after the migration? **A:** `state.ReadJSONStrict[shedengine.Status]`, then the `product` payload into the thin `loomengine.Status` — `loomengine` gains a `shedengine` import, which the seam invariant permits since it constrains `shedengine`'s imports, not its importers.
+- **Q:** (Review r4) Which package owns the `Preflight` wrapper, and where does its integration test live? **A:** `internal/loomshed` exports `NewPreflightProducer(cwd)` and imports `internal/loomengine`; the guard only forbids a *direct* `lyxcwd` import, and transitive is explicitly fine. `Deps.Preflight` stays a bare `ShedProducer` so Tier 1 injects a fake. The integration test lands in `internal/loomshed`, which then needs a `TestMain` with `gitkit.HermeticGitEnv()`. Leaving the wrapper to the caller would leave this task with a row nothing can construct until session bootstrap lands.
+- **Q:** (Review r4) What happens to the spec's two per-entry history rules? **A:** Kept, translated: `outcome ∈ {done, stuck}` and `at` RFC3339 UTC. Unlike `activity`, history accumulates across runs and has sanctioned external writers, and Shed's read gate validates only `state` — so the rules still do work.
+- **Q:** (Review r4) `loom.md` still says the support-log assertion "lands with `Shed`". **A:** False as of this task; added to the doc set manually, since the status-file-keyed grep cannot reach it.
 - **Q:** (Review r1) Two items were deferred to planning. **A:** Both resolved here. The `Plan-never-reads-support-log` assertion does not land in this task at all (a stub declares no input set to assert against); the `loomshed` import guard is built, and `internal/loomshed` joins the Told-Geometry machine-enforced list in the same commit.
