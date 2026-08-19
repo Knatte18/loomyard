@@ -27,9 +27,14 @@ implementing  '2026-08-19T10:01:28Z'
 ```yaml
 batches:
   - name: status-schema-migration
-    state: pending
+    state: running
+    implementer_session: c29c550b-e4a9-4b7a-b119-c31593fbef96
+    start_sha: 4f042d9e7261343321446868ca907acdde198294
+    verify_baseline_failures: []
   - name: loomshed-producers
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomshed/... [setup failed]"]
   - name: sequence-and-integration
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/loomshed/... [setup failed]"]
 ```
