@@ -621,3 +621,48 @@ func TestMergeResolveSHA_UnknownRefReturnsError(t *testing.T) {
 		t.Fatal("ResolveSHA(no-such-ref-anywhere) error = nil; want an error")
 	}
 }
+
+// TestMergeStart_HostileMergeFFConfig pins finding F4: an operator's own `merge.ff` setting must not
+// change what MergeStart does.
+// With `merge.ff = only` the plain `git merge --no-commit <ref>` MergeStart used to run aborted every
+// non-fast-forward merge with `fatal: Not possible to fast-forward`, which MergeStart classified as a
+// genuine error, so every fabric merge into a target that had moved self-aborted and failed. With
+// `merge.ff = false` the reverse holds: a fast-forward would fabricate a merge commit and be
+// classified MergeStaged instead of MergeFastForwarded.
+func TestMergeStart_HostileMergeFFConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		mergeFF     string
+		diverge     bool
+		wantOutcome gitrepo.MergeOutcome
+	}{
+		{name: "FFOnlyDoesNotBreakARealMerge", mergeFF: "only", diverge: true, wantOutcome: gitrepo.MergeStaged},
+		{name: "FFFalseDoesNotSuppressAFastForward", mergeFF: "false", diverge: false, wantOutcome: gitrepo.MergeFastForwarded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir, repo := newRepo(t)
+			writeFile(t, dir, "base.txt", "base\n")
+			commitAll(t, dir, "base")
+
+			checkoutNewBranch(t, dir, "feature")
+			writeFile(t, dir, "feature.txt", "feature\n")
+			commitAll(t, dir, "feature edit")
+			checkoutBranch(t, dir, "main")
+			if tt.diverge {
+				writeFile(t, dir, "main.txt", "main\n")
+				commitAll(t, dir, "main edit")
+			}
+
+			gitkit.MustRun(t, dir, "git", "config", "merge.ff", tt.mergeFF)
+
+			outcome, err := repo.MergeStart("feature", false)
+			if err != nil {
+				t.Fatalf("MergeStart(feature, false) with merge.ff=%s error = %v; want nil — fabric pins --ff so the operator's config cannot reach it", tt.mergeFF, err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("MergeStart(feature, false) with merge.ff=%s outcome = %v; want %v", tt.mergeFF, outcome, tt.wantOutcome)
+			}
+		})
+	}
+}

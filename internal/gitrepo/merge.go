@@ -26,8 +26,15 @@ const (
 	MergeAlreadyUpToDate                     // nothing to do
 )
 
-// MergeStart runs `git merge --no-commit <ref>` (squash false) or `git merge --squash <ref>`
+// MergeStart runs `git merge --ff --no-commit <ref>` (squash false) or `git merge --squash <ref>`
 // (squash true) and classifies the result.
+// The `--ff` spelling is mandatory rather than redundant: it is git's default only until an operator
+// sets `merge.ff = only` or `merge.ff = false` in their config, at which point every non-fast-forward
+// merge aborts with `Not possible to fast-forward` (or every fast-forward fabricates a merge commit)
+// and the four-way classification below is reading a repo state fabric never asked for.
+// Pinning it on the command line is the same posture MergeConclude takes with --no-edit: the
+// behaviour fabric depends on is stated, never inherited from whatever config the caller happens to
+// be running under. The squash form needs no such pin — `merge.ff` does not apply to `--squash`.
 // A conflicted merge exits non-zero, so runChecked returns *gitexec.GitError;
 // MergeStart classifies on repo state, never on exit code alone, and adds no raw gitexec site.
 // It captures HEAD before the call, then on any error uses errors.As to recover the GitError and
@@ -53,7 +60,7 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 	if squash {
 		_, mergeErr = r.runChecked("merge", "--squash", ref)
 	} else {
-		_, mergeErr = r.runChecked("merge", "--no-commit", ref)
+		_, mergeErr = r.runChecked("merge", "--ff", "--no-commit", ref)
 	}
 
 	if mergeErr != nil {

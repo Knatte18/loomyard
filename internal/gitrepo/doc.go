@@ -139,7 +139,11 @@
 // gitrepo directly). Merge start/conclude and conflicted-path enumeration
 // (MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached,
 // MergeFFOnly, ResolveSHA) are admitted, used by fabric's two-sided merge
-// coordination.
+// coordination. The two behaviours these depend on are pinned on the command
+// line rather than inherited from the caller's git config: MergeStart passes
+// --ff so merge.ff=only/false cannot change the outcome it classifies, and
+// MergeConclude passes --no-edit so core.editor can never hang a
+// non-interactive caller.
 // Rebase, interactive staging, cherry-pick, conflict *resolution*, and
 // general-purpose branch/checkout management stay explicitly not supported —
 // gitrepo reports conflicts, but resolving them is the caller's job. A human
