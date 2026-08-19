@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-documentation lifecycle
+phase: holistic-reviewing
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-mergeresolve engine  '2026-08-19T18:50:27Z'
 approved-landingshed producers  '2026-08-19T19:06:48Z'
 approved-loomshed wiring and integration  '2026-08-19T19:27:33Z'
 approved-documentation lifecycle  '2026-08-19T19:35:55Z'
+holistic-reviewing  '2026-08-19T19:36:28Z'
 ```
 
 ## Batches
