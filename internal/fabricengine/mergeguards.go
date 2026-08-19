@@ -137,3 +137,65 @@ func mergeInProgressReason(f *Fabric) ([]string, error) {
 	}
 	return nil, nil
 }
+
+// syncedToUpstreamReason reports mergeReasonNotSynced when either side of f is genuinely diverged
+// from its own upstream: a side with no upstream passes vacuously (Fabric.Pull's no-upstream rule),
+// and a side with an upstream passes when its tip is not diverged from it — upstream ancestor of HEAD
+// (in sync or ahead) passes, HEAD ancestor of upstream (behind, since Merge's own pre-merge sync step
+// will advance it) passes, and only neither direction (a genuine divergence) fails.
+// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
+// which side (if either) was out of sync.
+func syncedToUpstreamReason(f *Fabric) ([]string, error) {
+	warpNotSynced, err := sideNotSyncedToUpstream(f.warp, f.warpPath)
+	if err != nil {
+		return nil, err
+	}
+	weftNotSynced, err := sideNotSyncedToUpstream(f.weft, f.weftPath)
+	if err != nil {
+		return nil, err
+	}
+	if warpNotSynced || weftNotSynced {
+		return []string{mergeReasonNotSynced}, nil
+	}
+	return nil, nil
+}
+
+// sideNotSyncedToUpstream implements syncedToUpstreamReason's per-side predicate: false (synced) when
+// dir has no upstream, when its HEAD already equals its upstream, when its upstream is an ancestor of
+// its HEAD (in sync or ahead), or when its HEAD is an ancestor of its upstream (behind); true (a
+// genuine divergence) only when neither direction holds.
+func sideNotSyncedToUpstream(repo *gitrepo.Repo, dir string) (bool, error) {
+	upstreamSHA, hasUpstream, err := upstreamSHAAt(dir)
+	if err != nil {
+		return false, err
+	}
+	if !hasUpstream {
+		return false, nil
+	}
+
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: resolve HEAD in %s: %w", dir, err)
+	}
+	if head == upstreamSHA {
+		return false, nil
+	}
+
+	upstreamAncestorOfHead, err := repo.IsAncestor(upstreamSHA, head)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: classify sync state in %s: %w", dir, err)
+	}
+	if upstreamAncestorOfHead {
+		return false, nil
+	}
+
+	headAncestorOfUpstream, err := repo.IsAncestor(head, upstreamSHA)
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: classify sync state in %s: %w", dir, err)
+	}
+	if headAncestorOfUpstream {
+		return false, nil
+	}
+
+	return true, nil
+}

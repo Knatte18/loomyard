@@ -1,7 +1,10 @@
-// merge.go implements fabric's first public merge surface: MergeOptions/MergeResult and MergeIn,
-// which merges a source branch into the current pair's warp and weft checkouts and surfaces any
-// conflicts for resolution in the worktree.
-// Merge itself — the target-pair verb — is batch 4; this file ships only what MergeIn needs.
+// merge.go implements fabric's public merge surface: MergeOptions/MergeResult, MergeIn, and Merge.
+// MergeIn merges a source branch into the current pair's own warp and weft checkouts and surfaces
+// any conflicts for resolution in that same worktree.
+// Merge merges a source branch into a target pair the caller opened a handle on — squash-capable,
+// expected conflict-free — synchronizing that target to its own upstream first and self-aborting to
+// *ErrMergeInRequired on any conflict, since conflict resolution belongs in the source pair's own
+// worktree, not the target's.
 
 package fabricengine
 
@@ -219,6 +222,242 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 
 	return MergeResult{Committed: true, Conflicts: mergeNoConflicts}, nil
+}
+
+// Merge merges source into f's target pair — the pair whose worktree the caller opened f on, via
+// lyxcwd.ResolveWorktree + fabricengine.Open, never a pair Fabric resolves topology for itself.
+// It is squash-capable (opts.Squash, applied identically to both sides) and expects a conflict-free
+// merge: any conflict on either side self-aborts both sides back to their pre-merge SHAs and returns
+// *ErrMergeInRequired, since conflict resolution belongs in the source pair's own worktree, not the
+// target's — the caller runs MergeIn there instead, then retries Merge.
+// Before merging, Merge synchronizes the target to its own upstream (fetch, then a fast-forward-only
+// advance per side that has one) — see syncSideBeforeMerge — so a target merely behind its upstream
+// merges cleanly rather than guard-refusing.
+func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err error) {
+	rec := NewMutations(filepath.Dir(f.warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
+	}
+
+	// Foreign-state refusal: git-level merge state that fabric did not itself start refuses the
+	// whole call, leaving the foreign state untouched, but only when no fabric record already
+	// covers it — a recorded merge takes the ordinary in-progress guard path below instead.
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	if !recordExists {
+		foreign, err := f.foreignMergeStatePresent()
+		if err != nil {
+			return MergeResult{}, err
+		}
+		if foreign {
+			return MergeResult{}, &ErrForeignMergeState{}
+		}
+	}
+
+	// Aggregate every guard, evaluating each member regardless of an earlier failure, so the
+	// reported reason set never discloses evaluation order. The guard stage is strictly read-only:
+	// nothing mutates here, including the sync step, which runs only after every guard passed.
+	var reasons []string
+	inProgressReasons, err := mergeInProgressReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, inProgressReasons...)
+
+	dirtyReasons, err := pairDirtyReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, dirtyReasons...)
+
+	syncReasons, err := syncedToUpstreamReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, syncReasons...)
+
+	sources, sourceReasons := resolveMergeSources(f, l, source)
+	reasons = append(reasons, sourceReasons...)
+
+	if len(reasons) > 0 {
+		return MergeResult{}, newMergeGuardError(reasons)
+	}
+
+	// Pre-merge sync step: a recorded mutation, not a guard, and the first thing that touches either
+	// checkout — every guard above has already passed.
+	if err := f.syncSideBeforeMerge(rec, f.warp, f.warpPath, "warp"); err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: sync warp before merge: %w", err)
+	}
+	if err := f.syncSideBeforeMerge(rec, f.weft, f.weftPath, "weft"); err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: sync weft before merge: %w", err)
+	}
+
+	// Post-sync already-up-to-date probe: no lock taken, no record written, empty mutation record
+	// beyond whatever the sync step itself just recorded — the sync's own advance is real upstream
+	// catch-up the merge did not cause, so it stays in the record even on this early-return path.
+	warpStart, err := f.warp.CurrentSHA()
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
+	}
+	weftStart, err := f.weft.CurrentSHA()
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve weft HEAD: %w", err)
+	}
+	warpUpToDate, err := f.warp.IsAncestor(sources.warpSHA, warpStart)
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: classify warp merge source: %w", err)
+	}
+	weftUpToDate, err := f.weft.IsAncestor(sources.weftSHA, weftStart)
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: classify weft merge source: %w", err)
+	}
+	if warpUpToDate && weftUpToDate {
+		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
+	}
+
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	fileLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = fileLock.Release() }()
+
+	// Pre-merge SHAs are captured after the sync step, so MergeAbort returns the pair to its synced
+	// state, never undoing a legitimate upstream advance.
+	st := &mergeState{
+		Verb:      "merge",
+		Source:    source,
+		Squash:    opts.Squash,
+		Message:   opts.Message,
+		WarpStart: warpStart,
+		WeftStart: weftStart,
+		StartedAt: time.Now(),
+	}
+	if err := f.saveMergeState(st); err != nil {
+		return MergeResult{}, err
+	}
+
+	warpOutcome, err := f.warp.MergeStart(sources.warpSHA, opts.Squash)
+	if err != nil {
+		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "warp", err)
+	}
+	st.WarpOutcome = mergeOutcomeString(warpOutcome)
+	if err := f.saveMergeState(st); err != nil {
+		return MergeResult{}, err
+	}
+	if warpOutcome != gitrepo.MergeAlreadyUpToDate {
+		rec.Append(KindMergeStaged, f.warpPath, sources.warpSHA)
+	}
+
+	weftOutcome, err := f.weft.MergeStart(sources.weftSHA, opts.Squash)
+	if err != nil {
+		return MergeResult{}, f.selfAbortMergeAttempt(rec, st, "weft", err)
+	}
+	st.WeftOutcome = mergeOutcomeString(weftOutcome)
+	if err := f.saveMergeState(st); err != nil {
+		return MergeResult{}, err
+	}
+	if weftOutcome != gitrepo.MergeAlreadyUpToDate {
+		rec.Append(KindMergeStaged, f.weftPath, sources.weftSHA)
+	}
+
+	// Any conflict on either side (mappable or not — Merge, unlike MergeIn, never reports a
+	// conflicted path, since the target pair is not where the caller resolves it) self-aborts: the
+	// target pair is restored exactly, no conflicted state is ever left behind, and the conflicting
+	// side is not disclosed — a fixed message, with the source traveling in the error's own field.
+	if warpOutcome == gitrepo.MergeConflicted || weftOutcome == gitrepo.MergeConflicted {
+		if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
+			return MergeResult{}, err
+		}
+		if err := f.deleteMergeState(); err != nil {
+			return MergeResult{}, err
+		}
+		return MergeResult{}, &ErrMergeInRequired{Source: source}
+	}
+
+	// Both sides clean: conclude (message precedence opts.Message, already carried in st.Message,
+	// then git's own prepared MERGE_MSG/SQUASH_MSG), record the pair's post-merge correspondence —
+	// even when one side never moved — and clear the record.
+	if err := concludeMergeSides(f, rec, st, ""); err != nil {
+		return MergeResult{}, err
+	}
+
+	newWarpHEAD, err := f.warp.CurrentSHA()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	newWeftHEAD, err := f.weft.CurrentSHA()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	if err := f.RecordCorrespondence(newWarpHEAD, newWeftHEAD); err != nil {
+		return MergeResult{}, err
+	}
+	if err := f.deleteMergeState(); err != nil {
+		return MergeResult{}, err
+	}
+
+	return MergeResult{Committed: true, Conflicts: mergeNoConflicts}, nil
+}
+
+// syncSideBeforeMerge implements Merge's pre-merge sync step for one side: dir/repo with no upstream
+// is a vacuous no-op, mirroring Fabric.Pull's own no-upstream rule.
+// A side with an upstream runs a best-effort Fetch() (failure tolerated and logged via logger.Warn,
+// never fatal), re-resolves the upstream SHA, and — when HEAD is strictly behind it — advances via
+// MergeFFOnly, never ResetHard: MergeFFOnly fails loudly on a raced divergence rather than silently
+// discarding history the way a hard reset would.
+// On an observed advance it records KindRepoAdvanced (Target = checkout path, Detail = the new SHA),
+// the Fabric.Pull precedent (recordWarpAdvance) applied per-side here.
+func (f *Fabric) syncSideBeforeMerge(rec *Mutations, repo *gitrepo.Repo, dir, sideLabel string) error {
+	_, hasUpstream, err := upstreamSHAAt(dir)
+	if err != nil {
+		return err
+	}
+	if !hasUpstream {
+		return nil
+	}
+
+	if err := repo.Fetch(); err != nil {
+		logger.Warn("fabricengine: best-effort fetch before merge sync failed", "side", sideLabel, "error", err)
+	}
+
+	upstreamSHA, hasUpstream, err := upstreamSHAAt(dir)
+	if err != nil {
+		return err
+	}
+	if !hasUpstream {
+		return nil
+	}
+
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return fmt.Errorf("fabricengine: resolve HEAD in %s: %w", dir, err)
+	}
+	if head == upstreamSHA {
+		return nil
+	}
+
+	behind, err := repo.IsAncestor(head, upstreamSHA)
+	if err != nil {
+		return fmt.Errorf("fabricengine: classify sync state in %s: %w", dir, err)
+	}
+	if !behind {
+		return nil
+	}
+
+	if err := repo.MergeFFOnly(upstreamSHA); err != nil {
+		return err
+	}
+	rec.Append(KindRepoAdvanced, dir, upstreamSHA)
+	return nil
 }
 
 // selfAbortMergeAttempt implements the a-genuine-MergeStart-error-mid-attempt-self-aborts-
