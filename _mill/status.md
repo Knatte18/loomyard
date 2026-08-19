@@ -6,6 +6,7 @@ slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: 'fabric: merge-conflict primitive'
 task_description: |
   fabric: merge-conflict primitive
@@ -32,15 +33,23 @@ implementing  '2026-08-19T09:38:23Z'
 ```yaml
 batches:
   - name: gitrepo merge primitives
-    state: pending
+    state: running
+    implementer_session: cdba68c9-ecbb-440d-af0c-1e55d51475fc
+    start_sha: 40d3959e6bd66dd563279aeb11ce18e382942a55
+    verify_baseline_failures: []
   - name: merge state, errors, and path mapping
     state: pending
+    verify_baseline_failures: []
   - name: MergeIn and the lifecycle quartet
     state: pending
+    verify_baseline_failures: []
   - name: Merge target-pair verb
     state: pending
+    verify_baseline_failures: []
   - name: sibling-verb guards and vocabulary assertions
     state: pending
+    verify_baseline_failures: []
   - name: CLI verbs and docs
     state: pending
+    verify_baseline_failures: []
 ```
