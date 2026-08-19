@@ -73,7 +73,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
   otherwise it is a *review obligation*.
   The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
-- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed` (`seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
 - **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
 - **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
   They are bound instead by the adapter-direction rule above, which is itself a review obligation.
@@ -424,7 +424,7 @@ Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` 
   `manifest/` and `docs/` name which files are *scanned* for outgoing links;
   they do not restrict where those links may *point*.
   Every link target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, whether that target sits inside `manifest/`/`docs/` or not.
-  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `landing.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
+  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `docs/shared-libs/configengine.md`'s `../../CONSTRAINTS.md#lyxdirs-single-declarer-invariant` link and the `../../internal/*/doc.go` targets this task creates.
 - **A file-layout convenience, not an ownership claim.**
   The enforcing test lives in `internal/lyxcwd` (`docslink_test.go`'s `TestEnforcement_MarkdownLinks`), reusing that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers.
   That placement is a file-layout convenience, not an ownership claim on markdown links by `internal/lyxcwd` — the Cwd Resolution Invariant scopes that package to cwd resolution and nothing else, exactly the caveat the Fabric Vocabulary Invariant above already states for its own test.
