@@ -145,13 +145,15 @@ func (f *Fabric) mergeRecordExists() (bool, error) {
 // It constructs the pair's state probe from the explicit paths via newPaired internally, rather than
 // requiring an already-open *Fabric, since Topology verbs (Checkout, Remove) act on a *lyxcwd.Location
 // and never open a Fabric handle of their own.
-// An unreadable weft gitdir (e.g. a half-torn-down pair) reports false rather than blocking: no
-// recorded merge can exist without a readable weft gitdir, and refusing here would make an already
-// half-broken pair impossible to finish tearing down.
+// A pair newPaired cannot even open (missing warp or weft directory) or whose weft gitdir cannot be
+// resolved (e.g. a half-torn-down pair) reports false rather than blocking: no recorded merge can
+// exist without a readable weft gitdir, and refusing here would make an already half-broken pair
+// impossible to finish tearing down, or would shadow a caller's own, more specific "this path does
+// not exist" refusal behind an unrelated ErrMissingPath.
 func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 	f, err := newPaired(warpPath, weftPath)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 	if _, gitDirErr := f.weftGitDir(); gitDirErr != nil {
 		return false, nil
