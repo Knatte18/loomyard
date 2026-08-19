@@ -3,7 +3,7 @@
 ```yaml
 task: 'landing: Publish + Finalize producers'
 slug: landing-publish-finalize-producers
-approved: false
+approved: true
 started: '20260819-125210'
 parent: 'standalone-producers'
 root: ""
