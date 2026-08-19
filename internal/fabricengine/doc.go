@@ -909,9 +909,27 @@
 // markers on both sides — resolving the weft side's own SHA independently, rather than reusing the
 // warp source's marker text, so a marker never leaks the fact that a second repo exists underneath.
 //
-// **Sibling refusals and the write lock's scope.** Every other mutating fabric verb refuses with
-// `*ErrMergeInProgress` while a merge record exists, so a pair mid-merge cannot be pulled, committed,
-// or torn down out from under the resolution in progress. The combined `.weft/weft.write.lock`
+// **Sibling refusals and the write lock's scope.** Exactly four sibling verbs carry an explicit
+// refusal, and they are the four whose write would corrupt or be corrupted by a live merge:
+// `Commit`, `Pull`, `Topology.Checkout` and `Topology.Remove` all return `*ErrMergeInProgress` while
+// a merge record exists (`Commit` additionally refuses foreign git-level merge state with no record),
+// so a pair mid-merge cannot be pulled, committed, or torn down out from under the resolution in
+// progress. `Remove` guards two distinct subjects: the pair being removed being mid-merge itself,
+// and — via `mergeSourceInFlight` — some *other* pair in the hub being mid-merge on this pair's
+// branches, which would otherwise delete the weft branch that merge is resolving against.
+// The rest of the mutating surface is deliberately unguarded and safe for stated reasons rather than
+// by omission: the push family (`PushWeft`, `PushWarpAt`, `CoalescePushBothAt`, `SpawnDetachedPush`)
+// pushes a committed branch tip an uncommitted merge has not moved; `Cleanup` cannot touch a
+// checked-out weft branch and a mid-merge pair is materialized by definition; `Prune` only acts on a
+// pair whose warp worktree is already gone; `Reconcile`, the junction verbs and the hook installer
+// touch filesystem links, never an index or a ref; `Add` builds a new pair off a branch tip;
+// `RebuildIndex` rewrites an explicitly rebuildable cache; `RecordCorrespondence` must stay
+// unguarded, since the merge verbs call it themselves while their own record is still live; and
+// `ResetHard`'s `force: false` plus tracked-dirtiness gate already refuses against a merge worktree,
+// which is dirty by definition.
+// `CheckoutDetached`/`RestoreBranch` are the one knowing exception — raw primitives driven only by
+// webster's integration bisect, whose harmful direction is closed instead by the attached-HEAD
+// precondition above. The combined `.weft/weft.write.lock`
 // covers only the mutating steps of a merge call — starting the attempt and concluding it — never
 // the resolution window itself: an operator may take arbitrarily long editing conflict markers
 // between `MergeIn`/`Merge` and `MergeContinue` with the lock released, exactly as plain git leaves a

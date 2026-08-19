@@ -19,6 +19,8 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // assertSoleGuardReason fails unless err is a *fabricengine.MergeGuardError carrying exactly the one
@@ -224,4 +226,74 @@ func fileExistsInWorktree(t *testing.T, dir, name string) bool {
 	}
 	t.Fatalf("stat %s in %s: %v", name, dir, err)
 	return false
+}
+
+// TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming pins finding F5: Topology.Remove
+// must refuse a pair whose branches some OTHER pair's merge is currently resolving against.
+// The pre-existing guard asks only "is the pair being removed itself mid-merge", which is a
+// different subject: with the prime pair mid-merge on merge-in <slug>, removing <slug> succeeded and
+// deleted branch <slug>-weft out from under the live merge, leaving the source work reachable only
+// from the remote if the operator then aborted. Once the merge is aborted the same Remove must
+// succeed again, so the guard closes a window rather than blocking the pair forever.
+func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+	const slug = "merge-crucible-source"
+	hubforge.AddPair(t, h, slug)
+
+	sourceWarpDir := h.PairWarpWorktree(slug)
+	sourceWeftDir := h.PairWeftSibling(slug)
+	sourceBranch, err := readBranchForTest(t, sourceWarpDir)
+	if err != nil {
+		t.Fatalf("readBranchForTest(%s): %v", sourceWarpDir, err)
+	}
+
+	// Conflicting divergence on the warp side only — a weft-root conflict would be unmappable and
+	// self-abort the whole attempt — so MergeIn on the prime leaves a live record naming sourceBranch
+	// rather than concluding immediately.
+	commitOnCurrentBranch(t, sourceWarpDir, "conflict.txt", "source side\n", "source: warp conflict")
+	commitOnCurrentBranch(t, sourceWeftDir, "source-only.txt", "source weft\n", "source: weft advance")
+	commitOnCurrentBranch(t, h.PrimeWorktree(), "conflict.txt", "prime side\n", "prime: warp conflict")
+	commitOnCurrentBranch(t, h.PrimeWeft(), "prime-only.txt", "prime weft\n", "prime: weft advance")
+
+	primeLocation, err := lyxcwd.ResolveWorktree(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree(%s): %v", h.PrimeWorktree(), err)
+	}
+	prime, err := fabricengine.Open(primeLocation)
+	if err != nil {
+		t.Fatalf("fabricengine.Open(prime): %v", err)
+	}
+
+	res, err := prime.MergeIn(sourceBranch)
+	if err != nil {
+		t.Fatalf("MergeIn(%s) on the prime pair error = %v; want a conflict result", sourceBranch, err)
+	}
+	if len(res.Conflicts) == 0 {
+		t.Fatalf("MergeIn(%s).Conflicts is empty; the fixture must leave a live merge record", sourceBranch)
+	}
+
+	_, err = h.Topology.Remove(primeLocation, slug, false)
+	var refused *fabricengine.ErrMergeInProgress
+	if !errors.As(err, &refused) {
+		t.Fatalf("Remove(%s) while the prime pair is mid-merge on its branches: error = %v (%T); want *ErrMergeInProgress", slug, err, err)
+	}
+	if !fileExistsInWorktree(t, sourceWarpDir, "conflict.txt") {
+		t.Errorf("source warp worktree %s was torn down by the refused Remove", sourceWarpDir)
+	}
+	if !branchExistsLocally(t, h.PrimeWeft(), fabricengine.WeftBranchName(sourceBranch)) {
+		t.Errorf("weft branch %q was deleted by the refused Remove; want it intact", fabricengine.WeftBranchName(sourceBranch))
+	}
+
+	// force answers dirtiness only, never a live merge record.
+	if _, err := h.Topology.Remove(primeLocation, slug, true); !errors.As(err, &refused) {
+		t.Fatalf("Remove(%s, force=true): error = %v (%T); want *ErrMergeInProgress even with force", slug, err, err)
+	}
+
+	// Once the merge is aborted the window is closed and the same Remove must succeed.
+	if _, err := prime.MergeAbort(); err != nil {
+		t.Fatalf("MergeAbort: %v", err)
+	}
+	if _, err := h.Topology.Remove(primeLocation, slug, true); err != nil {
+		t.Fatalf("Remove(%s) after MergeAbort: %v; want success — the guard must close a window, not block the pair forever", slug, err)
+	}
 }
