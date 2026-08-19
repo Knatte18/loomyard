@@ -95,13 +95,19 @@ _Cross-cutting decisions every batch inherits._
   Two small duplications are cheaper than that coupling.
 - **Applies to:** batches 4, 5
 
-### Decision: origin-record-carries-one-KindFileWritten-and-no-commit-record
+### Decision: origin-record-records-both-its-write-and-its-commit
 
-- **Decision:** `fabricengine.WriteOrigin` appends exactly one `KindFileWritten` after the write observably succeeds. `CommitWeftPaths` takes no `*Mutations` and records nothing; `Add` adds no `KindCommitCreated` for the origin commit.
-- **Rationale:** the Mutation Record Invariant binds mutating fabric verb *outcomes*, and `AddResult` already embeds `MutationRecord`.
-  The live-state matrix's omission direction is satisfied because the pair's own `KindWorktreeCreated` entries already cover every path under both worktree roots, including the junction-side second path for the same file; the commission direction is satisfied because the `KindFileWritten` target is outside `.git` and does produce a manifest change.
-  Card 9 verifies this claim against the real oracle rather than asserting it here.
-- **Applies to:** batches 1, 2
+- **Decision:** `fabricengine.WriteOrigin` appends exactly one `KindFileWritten` after the write observably succeeds, and `CommitWeftPaths` takes a `*Mutations` recorder and appends exactly one `KindCommitCreated` when — and only when — it actually landed a commit. `Topology.Add` threads its own recorder through both; a caller with no verb outcome of its own passes a throwaway recorder and discards it.
+- **Rationale:** the Mutation Record Invariant exists so a consumer can tell "no error was returned" apart from "something was actually mutated" without parsing prose, and `AddResult` — which embeds `MutationRecord` and is surfaced verbatim in the CLI envelope — would otherwise under-report a real commit this task newly lands on the weft branch.
+  Both existing commit sites in the package already record that kind at their own success sites, so recording here is the established pattern rather than a new one.
+- **Deviation, stated rather than hidden:** the discussion sketches `CommitWeftPaths` with no recorder parameter.
+  This plan adds one.
+  The decision's substance — positive-pathspec only, the weft write lock taken inside the helper, and no push — is unchanged; only the recorder is added, for the invariant reason above.
+- **The oracle cannot check this half, and the plan does not pretend it can:** the live-state mutation oracle classifies the commit kind as a git-state kind and exempts it from the commission direction entirely, so no matrix cell can catch a missing or spurious commit entry.
+  Its only guard is the explicit integration assertion in card 8.
+  What the oracle does cover is the write entry: the omission direction is satisfied because the pair's own worktree-creation entries already cover every path under both worktree roots, including the junction-side second path for the same file, and the commission direction because the write entry's target is outside the git metadata directory and does produce a manifest change.
+  Card 9 verifies that half against the real oracle and states the exemption for this half.
+- **Applies to:** batches 1, 2, 5
 
 ### Decision: hub-only-resolution-for-loom
 
