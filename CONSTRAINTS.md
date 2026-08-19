@@ -12,6 +12,17 @@ Fuller design/how-to lives in godoc and `docs/`.
 - **`root` always means the git worktree/repo root;
   the current working directory is `cwd`.**
   Never name a parameter, field, or local variable `root` for a value that is actually `cwd`, or vice versa.
+- **What `Resolve` validates, in four sub-points.**
+  1. `git rev-parse --show-toplevel` must succeed at `cwd`, else `ErrNotAGitRepo` — the only validation `Resolve` makes of the **repository** itself.
+     Sub-points 2 and 3 below are genuine checks too, but they are checks about the anchor marker and the caller's position, not about whether the repository is a lyx worktree.
+  2. An **absent** anchor marker is not an error — `AnchorRel` falls back to `"."`.
+     Only a stale pre-rename marker hard-errors, with `ErrStaleAnchorMarker`.
+  3. `cwd` must equal `Join(worktreeRoot, AnchorRel)`, else `ErrCwdOutsideAnchor`;
+     with no marker this reduces to "cwd is the git worktree root".
+  4. `HubPath` is `filepath.Dir(worktreeRoot)` **unconditionally** — never verified to be a hub — and `RepoName` is `Base(hubPath)` with a `-HUB` suffix trimmed, with no check the suffix was ever there.
+
+     The consequence is the whole point of this bullet: `Resolve` succeeds in any ordinary git repository run from its root, and `HubPath`/`RepoName` are fiction in that case.
+     Proving a worktree is lyx-initialized and Fabric-wired is [tier 2's and tier 3's](#told-geometry-invariant) job, not tier 1's.
 - All cwd/worktree-root queries go through `lyxcwd.Getwd()`/`Resolve()`.
   Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 - `lyxcwd.Resolve` exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`,
@@ -43,6 +54,31 @@ Fuller design/how-to lives in godoc and `docs/`.
 - **Enforced by** `internal/lyxcwd/enforcement_test.go` (`TestEnforcement_GeometryLiterals`) for the geometry-literal ban,
   `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap,
   and `cmd/lyx/cwdmutation_test.go` (`TestCwdMutation_MigratedFilesStayChdirFree`) for the chdir-mutation regression guard.
+
+## Told-Geometry Invariant
+
+An engine is handed the absolute paths it operates on and derives none of its own, so it runs identically inside a lyx hub and in a bare directory that is not a git repository.
+
+- **Three resolution tiers:** 1) `lyxcwd.Resolve` — cwd is a git worktree root.
+  2) `preflight.Check` (`fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName`) — fabric wired, junctions intact, warp/weft in sync, tree clean.
+  3) `loomengine.Preflight` — tiers 1+2 plus the orchestrator's own status seed.
+- **Producer/orchestrator split:** a producer requires none of the three tiers.
+  An orchestrator requires tier 3 and threads the extracted plain values down its producer list.
+  A standalone CLI invocation requires none of the three, but its pre-run probes tier 1 via `preflight.ResolveMode`, which **degrades** to standalone (no hub lyx directory found, `ErrNotAGitRepo`, or `ErrCwdOutsideAnchor` with no hub geometry) or **refuses** (any other error, including `ErrCwdOutsideAnchor` inside a wired hub worktree's subdirectory).
+- **Adapter direction:** where an engine takes a `Geometry` struct, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors;
+  both depend on the engines, never the reverse.
+  Two packages instead take plain told values with no `Geometry` struct or adapter: `internal/treadleengine` (`runDir`, `Profile.GateDir`) and `internal/shedengine` (`StatusPath`/`LockPath`/`StatusLockPath`).
+- **Mode trigger:** a standalone-capable CLI's pre-run consults `preflight.ResolveMode` only — never `preflight.Wired`, never a bare `HubPresent`.
+- **Membership predicate:** a package is *bound* by this invariant when it takes its absolute paths from its caller and has no **direct** production import of `internal/lyxcwd` (transitive is fine).
+  It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
+  otherwise it is a *review obligation*.
+  The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`).
+- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
+- **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
+  They are bound instead by the adapter-direction rule above, which is itself a review obligation.
+- **Enforced by** the six tests named above, for the machine-enforced half;
+  the review-obligation half and the adapter-direction rule have no machine check.
 
 ## Lyxdirs Single-Declarer Invariant
 
@@ -388,7 +424,7 @@ Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` 
   `manifest/` and `docs/` name which files are *scanned* for outgoing links;
   they do not restrict where those links may *point*.
   Every link target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, whether that target sits inside `manifest/`/`docs/` or not.
-  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `finalize.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
+  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `landing.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
 - **A file-layout convenience, not an ownership claim.**
   The enforcing test lives in `internal/lyxcwd` (`docslink_test.go`'s `TestEnforcement_MarkdownLinks`), reusing that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers.
   That placement is a file-layout convenience, not an ownership claim on markdown links by `internal/lyxcwd` — the Cwd Resolution Invariant scopes that package to cwd resolution and nothing else, exactly the caveat the Fabric Vocabulary Invariant above already states for its own test.
@@ -524,9 +560,7 @@ An instruction file — a producer's own prompt or skill — must never duplicat
   The websterengine + webstercli told-geometry, and Webster standalone entry task gave webster a standalone entry point, so a standalone Webster now reaches `batcher.Active` on every verb outside a hub, where `_lyx/` does not exist;
   that task moved `batcher` to the degrading side and the pinned sets above already reflect the move.
 - **Known guard blind spot:** a substring scan cannot see a call reached through an alias or a function value.
-- **Enforced by** review obligation today, with a set-equality grep guard named as a candidate and T10 named as its home.
-  The guard's shape, recorded here so T10 inherits a specification rather than re-deriving one: following `cmd/lyx/gitrepoboundary_test.go`'s pinned-set style, walk non-test `*.go` files under the module root, collect every package directory containing a `configengine.Load(` call and every one containing a `configengine.LoadOrTemplate(` call, compare each collected set against its pinned set, exclude `internal/configengine` itself as the declaration site, and skip `_test.go` files.
-  Resolving the scan root through `go env GOMOD` spawns a process, so the new guard must be allowlisted in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map alongside the entries already there for that same reason, with a one-line reason in their style.
+- **Enforced by** `cmd/lyx/configstrictness_test.go` (`TestConfigStrictness_PinnedCallSiteSets`).
 
 ## GitHub Auth Invariant
 

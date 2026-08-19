@@ -29,6 +29,11 @@
 // A composing orchestrator reads this doc rather than duplicating the contract in its own package
 // doc: the shared types and checks live here, so the shared contract does too.
 //
+// Told-geometry tier: preflight is the tier-2 layer, and it legitimately resolves geometry rather
+// than being told it — it imports internal/lyxcwd in production and calls lyxcwd.Resolve through
+// ResolveMode, which is exactly its job as the precondition layer above the engines.
+// See CONSTRAINTS.md's Told-Geometry Invariant.
+//
 // # Why there are three functions
 //
 // HubPresent asks "does the hub-level directory this write targets exist", and it remains the

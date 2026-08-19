@@ -9,19 +9,21 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **producers standalone: invariants and docs** — land the cross-cutting told-geometry rule in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reword the Cwd Resolution Invariant to state what `Resolve` actually validates, and close out the design doc per the documentation lifecycle.
-   The final consolidation task for this line of work.
-   See [designs/producers-standalone.md](designs/producers-standalone.md).
+1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. Bundled as one task because both wrap the same shared piece — `internal/mergeresolve`, the merge-in + LLM-conflict-resolution engine neither producer owns alone.
+   Depends on the Done `fabric: merge-conflict primitive` item below — unblocked.
+   - `internal/mergeresolve`: `Fabric.MergeIn(parent)`, conflict-shape detection, LLM escalation to a fresh higher-capability session on conflict. Called by both producers below, owned by neither.
+   - `Publish`: mechanical `require_pr_to_base` check. Unset → no-op `Done`. Set → `mergeresolve`'s merge-in, then PR opened mechanically from Webster's summary artifact, no LLM call of its own. Returns `Done` once the PR exists — never waits on review. Progress past an open PR is entirely out-of-band, human-triggered (a separate, not-yet-designed interactive CLI flow, outside `Shed`).
+   - `Finalize`: always calls `mergeresolve`'s merge-in itself (the only merge-in in the no-PR case, a second check-for-drift one in the PR case), `_lyx` teardown, final Fabric merge to parent.
+   - Own config surface (`landing.yaml`: `require_pr_to_base` and other safe defaults, overridable per orchestrating profile — same "profiles live in the caller, not the callee" precedent as `loom.yaml`/`hardener.yaml`), Raddle regeneration folded into `Finalize`'s own merge critical section rather than a separate step.
+   See [designs/landing.md](designs/landing.md).
 
-1. **loom: phase-machine scaffolding** — mechanical rows only, every `LLM`/`LLM+perch` row stays a stub.
-   - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
+1. **loom: phase-machine scaffolding** — mechanical rows only, except `Finalize` (own Planned item above, stays a stub here too); every `LLM`/`LLM+perch` row stays a stub.
+   - Instantiate `loom` as a `Shed` instance carrying the full 13-row producer list, every row present (stubs included), so sequencing is real from the start.
    - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
-   - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
    - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
-   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold (no finished design yet, see Someday). Builds on the Done `fabric: merge-conflict primitive` item's merge/conflict lifecycle.
    - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
-   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review` — each returns `Done` without doing real work.
-   - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
+   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Publish`, and `Finalize` — each returns `Done` without doing real work; `Publish`/`Finalize` swap in for the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands — not loom-specific, so not tied to this task's own build order. `Plan-Sweep` stays stubbed here too: its only consumer, `Plan-Write`, is itself a stub in this task, so a real `Plan-Sweep` has nothing to feed yet — building it now would be premature. Not needed for loom to function.
+   - Verify: the full 13-row sequence runs against the stubs, including resume, crash-recovery, and pause.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine from the item above actually reachable.
@@ -35,10 +37,10 @@ Committed to, in this order, next.
    - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
    - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
    - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
+   - Build `Plan-Sweep` for real, here rather than in scaffolding — it has no consumer until `Plan-Write` is real. Lowest priority within this task too: `scout`-backed work is low-priority project-wide, and `Plan-Sweep` is the only row in this initiative that touches `scout`. Mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-scout-inventory-spec`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
    - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
    - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -142,17 +144,21 @@ No build order is implied between these items.
 1. **fabric: merge-conflict primitive** — Fabric's merge/conflict lifecycle: `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` on `Fabric`, surfaced as `lyx fabric merge-in`/`lyx fabric merge [--squash] [--continue|--abort]`, with git-mirroring exit codes and conflicts reported as unified, worktree-relative paths, never exposing which internal side (warp/weft) produced them.
    See the `internal/fabricengine` package documentation for the merge surface's own mechanism.
 
+1. **producers standalone: invariants and docs** — landed the cross-cutting Told-Geometry Invariant in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reworded the Cwd Resolution Invariant to state what `Resolve` actually validates, and closed out the design doc per the documentation lifecycle.
+   The final consolidation task for this line of work.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
+
 1. **producers standalone: told-geometry foundations** — `planparser` took over the plan-directory path from `loomengine`, `configengine` gained a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/preflight` package documentation.
 
 1. **producers standalone: producer engines** — `burlerengine`+`perchengine` and `websterengine`+`webstercli` convert to told geometry; Webster also gains its own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`).
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/hubgeom` and `internal/standalonegeom` package documentation.
 
 1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository; the optional `scoutengine` uniformity pass landed alongside it.
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the final consolidation task is still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
    See the `internal/gitkit` and `internal/hubforge` package documentation.

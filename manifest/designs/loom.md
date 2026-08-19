@@ -37,14 +37,16 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
 | 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
 | 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 12 | `Finalize` | bespoke | mechanical | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+| 12 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [designs/landing.md](landing.md) |
+| 13 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back, teardown; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [designs/landing.md](landing.md) |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
 On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`) or escalates to a human — never "keep fixing symptoms."
 
 **Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
-Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the Finalize merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
+`Finalize` is not `loom`'s own (see rows 12–13 above and [designs/landing.md](landing.md)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
+Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the `Finalize` merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
 Each row's Input and Output, in the normal case, are *pointers* into a format-contract file defining the consumed/produced artifact's shape, never a restated copy of its content.
@@ -53,8 +55,9 @@ The thin-Input carve-out (a chain-head producer, human intent instead of an arti
 Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach `perch` used against a fake `burler`.
-Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
-The concrete breakdown — which rows land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last `loom: write and wire in the real LLM producers`, and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the three tasks' own wiki briefs, not restated here.
+Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
+`Publish` and `Finalize` (rows 12–13) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands, on its own schedule (see [designs/landing.md](landing.md)).
+The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last `loom: write and wire in the real LLM producers`, and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
 `Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 3) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
 
@@ -92,6 +95,35 @@ Do not flag any of the following as a finding:
   their absence from `decision-record.md` is by design, not an omission.
 - **Incomplete call-site or cross-reference enumeration.**
   That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
+
+## Plan-Sweep detail — the scout-inventory spec
+
+**Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
+Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
+It goes live in `loom: write and wire in the real LLM producers`, when `Plan-Write` does — and even there it's the lowest-priority row in that task, since `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout`.
+`Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
+
+`Plan-Sweep` (row 5) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
+Its job is grounding, not selection: hand `Plan-Write` real `scout` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
+
+**Deterministic extraction.**
+The repo's own doc convention is the extraction rule: every code identifier, file path, and symbol name in `decision-record.md`'s prose is backtick-quoted, the same convention this doc and every other `manifest/designs/*.md` file already follows.
+`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Validate` already does to check presence) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
+
+**Resolution, not selection.**
+Each collected span is classified mechanically, by shape, not meaning: a span containing `/` or a `.go`/`.md`-style extension is treated as a path and checked for existence on disk;
+anything else is treated as a symbol name and looked up through `scoutengine`'s existing symbol lookup, then enumerated via `scoutengine.References`.
+A span that resolves to nothing — a prose word that happened to be backtick-quoted, a symbol `scout` can't find — is silently dropped, never a failure;
+`Plan-Sweep` has no pass/fail outcome of its own (the table's Output column already marks it "not gated").
+
+**No persisted artifact.**
+Unlike `Discussion-Write`'s output, the inventory is never written to `_lyx/plan/` or anywhere else — it costs nothing to recompute (a handful of `scout` lookups, not an LLM call), so `Shed`'s resume-on-output-files model doesn't apply to it: on resume, `Plan-Sweep` just reruns before `Plan-Write` starts, exactly like the first pass.
+This also means it needs no format-contract doc under `contracts/`; the shape below is `Plan-Write`'s own prompt-assembly concern, not a pinned cross-producer contract.
+
+**Shape handed to `Plan-Write`.**
+A flat list, one entry per resolved span: the original span text, its kind (`path` or `symbol`), and — for a symbol — its definition site(s) plus reference sites from `scoutengine.References`.
+Deduplicated and sorted;
+order carries no meaning `Plan-Write` should read into it.
 
 ## The gate
 
