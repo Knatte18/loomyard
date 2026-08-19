@@ -1,6 +1,6 @@
 // destroy_test.go covers the gate's hermetic logic: everything destroy.go's pipeline and ownership
 // resolvers do that needs no git, per the discussion's Hermetic tier split. isRegisteredLinkedWorktreeIn,
-// isWarpCheckout, primaryWeftBranch, and every dirtiness probe all spawn git and belong to batch 7's
+// isAnyWorktreeOf, primaryWeftBranch, and every dirtiness probe all spawn git and belong to batch 7's
 // integration tier instead.
 //
 // Shape separation is asserted by construction, not by a test: a branchDirtiness value cannot be

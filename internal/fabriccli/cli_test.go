@@ -636,6 +636,85 @@ func TestRunCLI_CloneUnboundWeftErrorNamesTwoArgForm(t *testing.T) {
 	}
 }
 
+// TestRunCLI_MergeHelp asserts "fabric merge --help" names all four of its own flags.
+func TestRunCLI_MergeHelp(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"merge", "--help"})
+	if exitCode != 0 {
+		t.Errorf("RunCLI(merge --help) = %d; want 0", exitCode)
+	}
+
+	got := out.String()
+	for _, flag := range []string{"--squash", "--continue", "--abort", "--message"} {
+		if !strings.Contains(got, flag) {
+			t.Errorf("merge --help output missing %q; got:\n%s", flag, got)
+		}
+	}
+}
+
+// TestRunCLI_MergeInHelp asserts "fabric merge-in --help" has a non-empty Short.
+func TestRunCLI_MergeInHelp(t *testing.T) {
+	t.Parallel()
+
+	root := fabriccli.Command()
+	mergeIn, _, err := root.Find([]string{"merge-in"})
+	if err != nil {
+		t.Fatalf("root.Find([merge-in]) error: %v", err)
+	}
+	if mergeIn.Short == "" {
+		t.Errorf("merge-in.Short is empty; want a non-empty summary")
+	}
+}
+
+// TestRunCLI_MergeContinueRejectsExtraArg asserts "merge --continue extra-arg" fails with a
+// usage-shaped error envelope: the custom Args validator rejects a positional argument in
+// --continue/--abort mode.
+func TestRunCLI_MergeContinueRejectsExtraArg(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLI(&out, []string{"merge", "--continue", "extra-arg"})
+	if exitCode != 1 {
+		t.Fatalf("RunCLI(merge --continue extra-arg) = %d; want 1\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); ok {
+		t.Errorf("RunCLI(merge --continue extra-arg) ok = true; want false")
+	}
+	errMsg, _ := result["error"].(string)
+	if !strings.Contains(errMsg, "usage:") {
+		t.Errorf("RunCLI(merge --continue extra-arg) error = %q; want a usage-shaped message", errMsg)
+	}
+}
+
+// TestRunCLI_MergeContinueAndAbortTogetherFail asserts "merge --continue --abort" fails with a
+// usage-shaped error envelope — the two flags are mutually exclusive. Driven against a real hub
+// (rather than bare RunCLI) so PersistentPreRunE's own cwd resolution succeeds first and
+// MarkFlagsMutuallyExclusive's own ValidateFlagGroups refusal is the only error the run produces —
+// against an unresolvable cwd, PersistentPreRunE would already have written its own error envelope
+// before ValidateFlagGroups ever runs, yielding two JSON lines instead of one.
+func TestRunCLI_MergeContinueAndAbortTogetherFail(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"merge", "--continue", "--abort"})
+	if exitCode != 1 {
+		t.Fatalf("RunCLI(merge --continue --abort) = %d; want 1\noutput: %s", exitCode, out.String())
+	}
+
+	result := decodeResult(t, &out)
+	if ok, _ := result["ok"].(bool); ok {
+		t.Errorf("RunCLI(merge --continue --abort) ok = true; want false")
+	}
+	errMsg, _ := result["error"].(string)
+	if errMsg == "" {
+		t.Errorf("RunCLI(merge --continue --abort) error is empty; want a usage-shaped message naming the mutual exclusion")
+	}
+}
+
 // gitOutputCLI runs a git command in dir and returns its trimmed stdout,
 // failing the test on any error — this package's capture-variant sibling of
 // gitkit.MustRun, which discards output. Named distinctly from

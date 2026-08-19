@@ -9,13 +9,8 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **fabric: merge-conflict primitive** — `Publish` and `Finalize` both need Fabric to attempt a merge and hand back either "clean" or one unified conflict artifact, never exposing which internal side (warp/weft) it came from — see `designs/landing.md`.
-   Does not exist: no `Merge` function anywhere in `internal/gitrepo`; `Fabric.Diff`/`Fabric.Status` are read-only reporting, not conflict detection.
-   Audit scope, not just this one primitive: check for other gaps `landing`/`Hardener` need from Fabric while in there.
-   See [designs/landing.md](designs/landing.md#landing-sees-only-fabric--never-warp-or-weft).
-
 1. **landing: Publish + Finalize producers** — two general `ShedProducer`s (see `designs/shed.md`), not loom-specific: shared by reference with both `loom`'s and the Someday `Hardener`'s producer lists, never `Shed`-special-cased. Bundled as one task because both wrap the same shared piece — `internal/mergeresolve`, the merge-in + LLM-conflict-resolution engine neither producer owns alone.
-   Depends on the Planned `fabric: merge-conflict primitive` item above — blocked until that lands.
+   Depends on the Done `fabric: merge-conflict primitive` item below — unblocked.
    - `internal/mergeresolve`: `Fabric.MergeIn(parent)`, conflict-shape detection, LLM escalation to a fresh higher-capability session on conflict. Called by both producers below, owned by neither.
    - `Publish`: mechanical `require_pr_to_base` check. Unset → no-op `Done`. Set → `mergeresolve`'s merge-in, then PR opened mechanically from Webster's summary artifact, no LLM call of its own. Returns `Done` once the PR exists — never waits on review. Progress past an open PR is entirely out-of-band, human-triggered (a separate, not-yet-designed interactive CLI flow, outside `Shed`).
    - `Finalize`: always calls `mergeresolve`'s merge-in itself (the only merge-in in the no-PR case, a second check-for-drift one in the PR case), `_lyx` teardown, final Fabric merge to parent.
@@ -122,7 +117,23 @@ No build order is implied between these items.
 1. **scout: narrow the `"resolution":"complete"` trust-marker promise, or scope out cross-package interface-method noise** — `docs/benchmarks/scout-vs-grep.md` found a case where `refs` on an interface method returned `"resolution":"complete"` while most hits were real but irrelevant cross-package noise.
    Not yet designed.
 
+1. **fabric: ordinary-monorepo verb surface** — against plain git, `fabric` is still missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, and `blame`.
+   None blocks `Finalize`/`Hardener` today; scope by actual need when a consumer needs one, never by completing the list for its own sake.
+   See the `fabric: merge-conflict primitive` item's audit findings.
+
+1. **fabric: two-sided reset-to-SHA verb** — the post-conclude undo the merge surface deliberately does not ship: `MergeAbort` covers only the uncommitted merge-attempt window, so a landed merge is final at the Fabric layer until a `Fabric`-level reset to a visible (warp) SHA exists, resolving the paired weft SHA through the correspondence index and routing both resets through the destruction gate.
+   See the `internal/fabricengine` package documentation's merge section.
+
+1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
+
+1. **finalize: the discrepancy-document conflict shape** — `finalize.md` originally sketched a second Fabric-to-Finalize conflict artifact, a precomputed "discrepancy document" for a divergence Fabric cannot express as a git conflict.
+   Only the ordinary-git-conflict shape shipped; the document shape is not built.
+   The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
+
 ## Done
+
+1. **fabric: merge-conflict primitive** — Fabric's merge/conflict lifecycle: `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` on `Fabric`, surfaced as `lyx fabric merge-in`/`lyx fabric merge [--squash] [--continue|--abort]`, with git-mirroring exit codes and conflicts reported as unified, worktree-relative paths, never exposing which internal side (warp/weft) produced them.
+   See the `internal/fabricengine` package documentation for the merge surface's own mechanism.
 
 1. **producers standalone: invariants and docs** — landed the cross-cutting Told-Geometry Invariant in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reworded the Cwd Resolution Invariant to state what `Resolve` actually validates, and closed out the design doc per the documentation lifecycle.
    The final consolidation task for this line of work.

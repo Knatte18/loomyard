@@ -237,6 +237,7 @@ const (
 	pathOwnershipFreshlyCreatedWorktree
 	pathOwnershipWiredJunction
 	pathOwnershipDriftedWiredJunction
+	pathOwnershipWeftCheckout
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
@@ -264,6 +265,18 @@ func ownedRegisteredLinkedWorktree(repoDir string) pathOwnership {
 // hub's prime warp worktree, which isRegisteredLinkedWorktreeIn deliberately excludes.
 func ownedWarpCheckout(repoDir string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipWarpCheckout, repoDir: repoDir}
+}
+
+// ownedWeftCheckout declares target as owned when it is ANY worktree of the weft repo at repoDir,
+// prime included — resetMergeSides' weft-side twin of ownedWarpCheckout, needed because
+// ownedRegisteredLinkedWorktree's own godoc pins it to worktrees other than the main one, while
+// clone.go's cloneRepo(opts.WeftURL, weftPath) makes the prime pair's weft checkout the weft repo's
+// own main worktree — exactly the target ownedRegisteredLinkedWorktree would refuse. The membership
+// predicate is isAnyWorktreeOf, shared verbatim with ownedWarpCheckout: it was already repo-agnostic
+// (List(repoDir) membership with no main-entry exclusion), so this kind reuses it rather than
+// duplicating the loop.
+func ownedWeftCheckout(repoDir string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipWeftCheckout, repoDir: repoDir}
 }
 
 // ownedFabricHub declares target as owned when it structurally looks like a fabric hub — a `_board`
@@ -412,8 +425,14 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 		return true, ""
 
 	case pathOwnershipWarpCheckout:
-		if !isWarpCheckout(own.repoDir, target) {
+		if !isAnyWorktreeOf(own.repoDir, target) {
 			return false, fmt.Sprintf("%s is not a worktree of the warp repo at %s", target, own.repoDir)
+		}
+		return true, ""
+
+	case pathOwnershipWeftCheckout:
+		if !isAnyWorktreeOf(own.repoDir, target) {
+			return false, fmt.Sprintf("%s is not a worktree of the weft repo at %s", target, own.repoDir)
 		}
 		return true, ""
 
@@ -492,12 +511,15 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 	}
 }
 
-// isWarpCheckout reports whether target is ANY worktree of the warp repo at repoDir, prime included
-// — List's membership test with no Main-entry exclusion. It is deliberately not
+// isAnyWorktreeOf reports whether target is ANY worktree of the repo at repoDir, prime included —
+// List's membership test with no Main-entry exclusion. It is deliberately not
 // isRegisteredLinkedWorktreeIn, which skips the main entry: the hub's prime warp worktree is
-// resetHardTo's ordinary target and must pass. An unenumerable repo answers false, the conservative
-// direction.
-func isWarpCheckout(repoDir, target string) bool {
+// resetHardTo's ordinary target and must pass, and the weft primary hubforge.NewHub clones is the
+// analogous weft-side case resetMergeSides needs. It is repo-agnostic by construction — repoDir names
+// whichever repo (warp or weft) the caller is checking — which is what lets both
+// ownedWarpCheckout and ownedWeftCheckout share this one predicate rather than each declaring its own
+// copy of the loop. An unenumerable repo answers false, the conservative direction.
+func isAnyWorktreeOf(repoDir, target string) bool {
 	entries, err := List(repoDir)
 	if err != nil {
 		return false
@@ -1147,4 +1169,50 @@ func (f *Fabric) ResetHard(rec *Mutations, sha string) error {
 		force:     false,
 	}
 	return resetHardTo(rec, req, f.warp, sha)
+}
+
+// resetMergeSides is the gated two-sided reset abort and self-abort use to restore both checkouts of
+// a merge to their pre-merge SHAs: warp first, then weft, in that fixed order, each through the
+// existing resetHardTo executor — no new executor is needed, only two new abort-specific pathRequest
+// values.
+//
+// force is true on both sides, the one deliberate divergence from Fabric.ResetHard's hardcoded
+// force: false: an abort's entire purpose is to discard the intentionally dirty state accumulated
+// since the merge started — unresolved conflict markers are tracked-file modifications — and
+// forcing is safe here only because every caller of this method is record-gated: MergeAbort refuses
+// to run without a fabric-written record, so what gets discarded is exactly the dirt the merge in
+// progress produced, the state abort exists to clean up by definition, never an operator's
+// pre-existing work (the pre-merge clean-pair guard already excluded that).
+//
+// The first side's failure aborts the call immediately, returning the error without attempting the
+// second reset — a gate refusal is never discarded, matching surfaceRefusal's own rule. Both resets
+// record through resetHardTo's existing KindWorktreeReset append; this file records nothing outside
+// that.
+//
+// The weft-side request declares ownedWeftCheckout, not ownedRegisteredLinkedWorktree: the prime
+// pair's weft checkout is the weft repo's own MAIN worktree (clone.go's cloneRepo(opts.WeftURL,
+// weftPath)), which ownedRegisteredLinkedWorktree's own godoc pins itself to excluding — see that
+// constructor's doc comment.
+func (f *Fabric) resetMergeSides(rec *Mutations, warpSHA, weftSHA string) error {
+	warpReq := pathRequest{
+		what:      "reset warp checkout for merge abort",
+		container: filepath.Dir(f.warpPath),
+		target:    f.warpPath,
+		ownership: ownedWarpCheckout(f.warpPath),
+		dirtiness: dirtyScopeTracked(),
+		force:     true,
+	}
+	if err := resetHardTo(rec, warpReq, f.warp, warpSHA); err != nil {
+		return err
+	}
+
+	weftReq := pathRequest{
+		what:      "reset weft checkout for merge abort",
+		container: filepath.Dir(f.weftPath),
+		target:    f.weftPath,
+		ownership: ownedWeftCheckout(f.weftPath),
+		dirtiness: dirtyScopeTracked(),
+		force:     true,
+	}
+	return resetHardTo(rec, weftReq, f.weft, weftSHA)
 }

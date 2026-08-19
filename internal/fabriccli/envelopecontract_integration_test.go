@@ -207,3 +207,48 @@ func TestRunCLI_ReconcileDoesNotFailOnAPairThatVanishedMidWalk(t *testing.T) {
 		t.Errorf("no pair reported %q\noutput: %s", fabricengine.ReconcileActionVanishedMidWalk, out.String())
 	}
 }
+
+// TestRunCLI_MergeConflictEnvelopeKeepsPartialFalse asserts the conflict envelope's fixed key
+// contract against real git: exit 1, "ok":false, a "mutations" array present, a "partial" key present
+// and the literal false, and a non-empty "conflicts" array — the property the "conflict envelope
+// never goes through errWithRecordFields" Shared Decision exists to pin.
+func TestRunCLI_MergeConflictEnvelopeKeepsPartialFalse(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	// Diverge warp's "conflict.txt" on both the current branch and a "feature" branch, so merging
+	// "feature" into the current branch conflicts. commitOnBranchCLI/commitOnCurrentBranchCLI are
+	// merge_cli_integration_test.go's own fixture helpers, in the same package.
+	commitOnCurrentBranchCLI(t, h.PrimeWorktree(), "conflict.txt", "seed content\n", "seed conflict.txt")
+	commitOnBranchCLI(t, h.PrimeWorktree(), "feature", "conflict.txt", "branch content\n", "diverge conflict.txt on feature")
+	commitOnCurrentBranchCLI(t, h.PrimeWorktree(), "conflict.txt", "current content\n", "diverge conflict.txt on current")
+	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
+
+	var out bytes.Buffer
+	exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, []string{"merge-in", "feature"})
+	if exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1\noutput: %s", exitCode, out.String())
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode merge-in conflict envelope: %v\noutput: %s", err, out.String())
+	}
+
+	if ok, _ := envelope["ok"].(bool); ok {
+		t.Errorf("envelope ok = true; want false on a conflict\noutput: %s", out.String())
+	}
+	if _, present := envelope["mutations"]; !present {
+		t.Errorf("envelope is missing the always-present \"mutations\" key\noutput: %s", out.String())
+	}
+	partial, present := envelope["partial"]
+	if !present {
+		t.Errorf("envelope is missing the always-present \"partial\" key\noutput: %s", out.String())
+	}
+	if partial != false {
+		t.Errorf("envelope partial = %v; want the literal false\noutput: %s", partial, out.String())
+	}
+	conflicts, ok := envelope["conflicts"].([]any)
+	if !ok || len(conflicts) == 0 {
+		t.Fatalf("envelope has no non-empty \"conflicts\" array\noutput: %s", out.String())
+	}
+}
