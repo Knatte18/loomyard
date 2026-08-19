@@ -117,6 +117,19 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 - Decision: after the LLM session returns, `mergeresolve` verifies mechanically — it re-reads each path from `MergeResult.Conflicts` and checks for remaining conflict markers.
   Clean → stage the resolved paths via the new `MergeStageResolved` verb (see below), then `MergeContinue`.
   Still marked → one retry of the session, then on a second failure `MergeAbort` and report stuck.
+- **An absent path is resolved-by-deletion, not a failure.**
+  `ConflictedFiles()` includes delete/modify conflicts, whose correct resolution is that the file is gone.
+  A path that no longer exists on disk therefore skips the marker scan and counts as resolved;
+  it is still passed to `MergeStageResolved`, which stages the removal.
+  Only a read error that is *not* "does not exist" is a genuine failure.
+- **The marker scan is content-only, line-anchored, and deliberately biased toward refusing.**
+  It matches `<<<<<<< `, `=======`, and `>>>>>>> ` only at the start of a line.
+  Consequence, stated rather than hidden: a resolved file whose own legitimate content carries line-start conflict markers can never pass, and that merge escalates to `Stuck`.
+  That is the safe direction — refusing to conclude an irreversible `MergeContinue` — and such a file is out of scope for automated resolution.
+  The conflict stencil itself must therefore never contain literal line-start markers;
+  it describes them indented or fenced, since the stencil is a file the agent may well copy from.
+- Note the layering: this scan is `mergeresolve`'s own pre-check, and `MergeContinue`'s index guard remains the authoritative gate.
+  The scan can only make `mergeresolve` refuse something Fabric would have accepted, never the reverse.
 - Rationale: `MergeContinue` is irreversible at the Fabric layer — `internal/fabricengine`'s package documentation states there is no post-conclude undo, and `MergeAbort` covers only the uncommitted attempt window.
   Verify-before-conclude with `MergeAbort` as the checkpoint is the discipline the merge primitive itself was designed around.
 - Rejected: trusting the session's `Done` verdict and concluding unconditionally;
@@ -125,7 +138,14 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 ### merge-stage-resolved-verb
 
 - Decision: `internal/fabricengine` gains a narrow verb, `MergeStageResolved` (full signature in the Signature bullet below).
-  It takes unified, worktree-relative paths, routes each to the side that owns it — the inverse of `mergepaths.go`'s `unifyConflictPaths` — and stages it.
+  It takes unified, worktree-relative paths and stages each on the side that actually has it unmerged.
+- **The discriminator is index membership, not a path prefix.**
+  `mergepaths.go`'s `weftPathVisible` is a *total* function — under a wired name ⇒ weft, otherwise ⇒ warp — so "the inverse of `unifyConflictPaths`" has no third outcome and could never produce a "maps to neither side" error.
+  The verb instead reads each side's `ConflictedFiles()` and stages a path on whichever side lists it.
+  A path listed by **neither** side is the error condition: the caller passed something that is not conflicted, which is a caller bug worth failing loudly on rather than silently staging.
+  A path listed by both sides cannot occur — `unifyConflictPaths` already treats that collision as `unmappable` and self-aborts the merge.
+- **Deletions stage too.**
+  A delete/modify conflict is legitimately resolved by the file being gone, so the underlying `gitrepo` call must use a form that stages a removal (`git add -A -- <paths>`), never one that errors on a missing path.
   `mergeresolve` calls it after its own marker scan passes, immediately before `MergeContinue`.
   `MergeContinue`'s existing index guard is left exactly as shipped.
 - Rationale: `MergeContinue` (`mergelifecycle.go:104-113`) refuses with `mergeReasonUnresolvedConflicts` while either side's `ConflictedFiles()` is non-empty, and that is `git diff --name-only --diff-filter=U` — an *index* probe.
@@ -137,7 +157,8 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   Also rejected: an opt-in self-staging flag on `MergeContinue` — added complexity on that same shipped surface for a need that is entirely `mergeresolve`'s.
 - Signature: `MergeStageResolved(paths []string) (StageResult, error)`, where `StageResult` embeds `MutationRecord`.
   Staging mutates the index, so it is a mutating verb, and the Mutation Record Invariant requires every mutating verb's result type to embed the record.
-  A new `Kind` member for the staging primitive lands in `internal/fabricengine/mutation.go` in the **same commit** as its recording site and its `cmd/lyx/destructiveguard_test.go` guard-table entry — never ahead of either.
+  A new `Kind` member for the staging primitive lands in `internal/fabricengine/mutation.go` in the **same commit** as its recording site — a `Kind` with no recording site is caught by review, not by any guard.
+  The guard row that *is* required is `{"StageResult", "internal/fabricengine/<file>.go"}` in `cmd/lyx/destructiveguard_test.go`'s `destructiveGuardMutatingResultTypes` table (line 154), which pins every mutating result type that must embed `MutationRecord`.
   The record is appended only after the primitive observably changed state, never on a no-op.
 - Obligation: the underlying `internal/gitrepo` staging method reaches the git CLI, so it must be added to the gitrepo Client Boundary Invariant's pinned method list in the same commit, or `cmd/lyx/gitrepoboundary_test.go` fails.
   It uses the checked form, so it adds no `//gitexec:raw` site and leaves the gitexec Checked-Call Invariant's pinned counts unchanged.
@@ -215,6 +236,15 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   title and body come verbatim from `websterengine.ParseSummary` (`Summary.Title`, `Summary.Body`), with no LLM call in `Publish`.
 - Mechanism, since none exists today: `internal/gitrepo` gains `RemoteURL(name string) (string, error)`, implemented with **go-git** (`Remote(name).Config().URLs[0]`).
   `internal/githubclient` gains a pure stdlib parser, `ParseOwnerRepo(remoteURL string) (owner, repo string, err error)`, accepting the SSH form (`git@github.com:owner/repo.git`), the HTTPS form (`https://github.com/owner/repo.git`), an optional `.git` suffix, and an optional trailing slash.
+- **`Publish` pushes the warp branch before it creates the PR.**
+  Nothing else does: agents commit per fix on warp and never push (Review Round Invariant), so without this step `<taskBranch>` exists only locally, `PullRequests.Create` fails 422, and the resume query for `head:<taskBranch>` could never match either.
+  The call is `fabricengine.PushWarpAt(warpPath, opts)` (`spawn.go:89`) — path-told, so it needs no `lyxcwd` import.
+  The push happens **after** the merge-in and **before** the existing-PR query, so the branch GitHub is asked about is the branch that exists.
+  A push failure → `Stuck` with the error surfaced, and no PR attempted.
+  On a re-run that finds an open PR, the push still runs first, so a resumed `Publish` also refreshes the PR with any commits added since.
+- **Only warp is pushed.**
+  The PR is a warp-repo artifact and GitHub never sees weft, so `Publish` has no reason to push the weft side.
+  Weft's own remote state is `Finalize`'s merge and fabric's sync path to deal with, not the PR's.
 - Failure mode: an absent `origin`, an unparseable URL, or a non-GitHub host makes `Publish` return `Stuck` with a distinct message — never a silent no-PR `Done`.
   Silently skipping the PR when the base branch demanded one is the one outcome the gate exists to prevent.
 - Rationale: a hardcoded `owner/repo` constant like `selfreportengine.targetRepo` is right for self-reporting (always the loomyard repo) and wrong here — `Publish` runs against whatever repo the hub was cloned from.
@@ -433,7 +463,7 @@ From `CONSTRAINTS.md`, in the order they bind this work:
 - **gitexec Checked-Call Invariant.**
   The staging method uses the checked form, so the per-package pinned raw-site counts stay unchanged and it carries no `//gitexec:raw` marker.
 - **Markdown Link Integrity.**
-  Deleting `manifest/designs/landing.md` breaks twelve inbound references across six files — eleven Markdown links plus one prose reference in a Go comment.
+  Deleting `manifest/designs/landing.md` breaks thirteen inbound references across seven files — eleven Markdown links plus two prose references (one in a Go comment, one in `CONSTRAINTS.md` itself), neither of which any test catches.
   The full inventory is in the `docs-lifecycle-landing-md-deletes` decision above, including the one anchored link (`raddle.md`) and the one non-Markdown prose reference (`internal/loomshed/loomshed.go:19`) the link checker cannot see.
   All must be repointed in the same commit.
 - **Documentation Lifecycle.**
@@ -465,6 +495,9 @@ TDD candidates — write the tests first, the whole package's behaviour is decis
 - `*ErrForeignMergeState` → stuck, and `MergeAbort` never called;
 - `*ErrUnmergeableState` from `MergeIn` (an unmappable conflict path) → stuck with the error surfaced, and `MergeAbort` never called, since `MergeIn` already self-aborted;
 - an unrecognised typed merge error → the same catch-all stuck path, proving the default is escalate rather than fall-through;
+- a conflicted path that no longer exists after the session → treated as resolved-by-deletion, marker scan skipped, still passed to `MergeStageResolved`;
+- a resolved file whose legitimate content carries line-start conflict markers → refused, escalating to stuck rather than concluding;
+- a read error other than not-exist on a conflicted path → a genuine failure, distinct from the deletion case;
 - shuttle outcome `Asking` / `Died` / `Timeout` → each mapped correctly, `MergeContinue` never called;
 - context cancellation surfaced as a non-nil error, never as a stuck verdict;
 - `AlreadyUpToDate` → resolved with no session and no `MergeContinue`.
@@ -479,6 +512,10 @@ TDD candidates:
 - `Publish` re-called, PR closed + not merged → `Stuck`, with a message distinguishable from the open case;
 - `Publish` with an unresolvable token → the `githubclient.ErrTokenUnresolvable` path surfaces distinctly from a network failure;
 - `Publish` with `origin` absent, unparseable, or non-GitHub → `Stuck` with a distinct message, and no PR attempted;
+- `Publish` pushes the warp branch before querying for an existing PR, and before creating one — assert the ordering, not just that the push happened;
+- `Publish` when the push fails → `Stuck`, and `PullRequests.Create` never called;
+- `Publish` on a re-run with an open PR → the push still runs, so later commits reach the PR;
+- `Publish` never pushes the weft side;
 - `ParseOwnerRepo` as a table test: SSH form, HTTPS form, with and without `.git`, with a trailing slash, a non-GitHub host, and garbage input;
 - `Publish` with a missing or malformed `summary.md` → fails loud, no PR created;
 - `Finalize` → merge-in always runs, then the parent-side `Merge`, with `Squash` threaded from config;
@@ -503,7 +540,8 @@ That re-tests `shedengine` itself, which already has its own resume, crash-recov
 
 **`internal/fabricengine` — the new `MergeStageResolved` verb.**
 Integration-tested alongside the existing merge suites (`mergein_integration_test.go` is the model): a real conflicted pair, resolve the files on disk, call `MergeStageResolved`, assert both sides' `ConflictedFiles()` are now empty and a subsequent `MergeContinue` succeeds.
-Also: a path that maps to neither side is an error, not a silent skip;
+Also: a path listed in neither side's `ConflictedFiles()` is an error, not a silent skip;
+a delete/modify conflict resolved by deletion stages successfully rather than erroring on the missing file;
 an empty `paths` slice is a no-op, not an error;
 and `StageResult`'s `MutationRecord` is populated on a real staging call and left empty on the no-op, per the Mutation Record Invariant's "never on a no-op" rule.
 
@@ -549,4 +587,7 @@ and `StageResult`'s `MutationRecord` is populated on a real staging call and lef
 - **Q:** (review round 3) `.lyx/landing/…` as a relative `OutputFiles` entry resolves against `worktreeRoot`, not `AnchorPath` — wrong directory on an anchored hub. **A:** `ScratchDir` becomes a told absolute path in `landingshed.Deps`, resolved by the caller as `<AnchorPath>/.lyx/landing` exactly as `loomengine.LoomRunLock` does. No `_lyx/landing` twin: the report is ephemeral with no durable counterpart.
 - **Q:** (review round 3) Who actually fills the two Fabric opener closures? **A:** Nobody in this task — `loomshed.New` has no production caller at all today. The chain is specified here and built by the next roadmap item, `loom: session bootstrap`. This task's own tests fill the closures directly against `hubforge` fixtures, and a nil required closure is a construction error, not a silent no-op.
 - **Q:** (review round 3) What happens on a typed merge error the design doesn't name, like `*ErrUnmergeableState`? **A:** Catch-all `Stuck` with the error surfaced, and no `MergeAbort` — `MergeIn` already self-aborts on that one, and the guard errors refuse before mutating anything.
+- **Q:** (review round 4) Who pushes the task branch? Without a push there is no `head:<taskBranch>` for GitHub to see. **A:** `Publish` does, via `fabricengine.PushWarpAt` (path-told, no `lyxcwd` import), after the merge-in and before the existing-PR query. Push failure → `Stuck`, no PR attempted. Warp only — GitHub never sees weft.
+- **Q:** (review round 4) `MergeStageResolved`'s "maps to neither side" error is unreachable, since `weftPathVisible` is total. **A:** The discriminator changes to index membership: stage a path on whichever side's `ConflictedFiles()` lists it, and error when neither does. Deletions stage via `git add -A -- <paths>` so a delete/modify resolution doesn't error on the missing file.
+- **Q:** (review round 4) What does the marker scan do with a file that was correctly deleted, or one whose real content contains markers? **A:** Absent file = resolved-by-deletion, scan skipped, still staged; only a non-not-exist read error is a failure. The scan is line-anchored and content-only, and a file with legitimate line-start markers is refused into `Stuck` — the safe direction, since `MergeContinue` is irreversible. The stencil must not contain literal line-start markers.
 - **Q:** (review round 3) `CONSTRAINTS.md:427` cites `landing.md` as a worked example. **A:** Added to the same-commit doc edits; the bullet gets rewritten against a surviving example. It is prose, so no test would catch it.
