@@ -54,7 +54,9 @@ batches:
     commit_sha: 4c9de407fd11a0acc48ff283650c678560d0da3d
     verify_baseline_failures: []
   - name: Merge target-pair verb
-    state: pending
+    state: running
+    implementer_session: 6e228a6c-6c32-4cb7-8c47-221328ee76e6
+    start_sha: ac8bf461c1d71ce9dcee74b4ab46a2ee0a146f65
     verify_baseline_failures: []
   - name: sibling-verb guards and vocabulary assertions
     state: pending
