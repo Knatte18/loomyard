@@ -6,6 +6,7 @@ slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: _mill/plan
 parent: standalone-producers
+module_verify_baseline: clean
 task: 'landing: Publish + Finalize producers'
 task_description: |
   landing: Publish + Finalize producers
@@ -32,15 +33,24 @@ implementing  '2026-08-19T18:25:51Z'
 ```yaml
 batches:
   - name: merge-stage-resolved verb
-    state: pending
+    state: running
+    implementer_session: 5b55eff4-e53b-40d8-959f-41bccd8f2cdf
+    start_sha: 55db31690ef6461c9fd6ee58f620afc369bb0829
+    verify_baseline_failures: []
   - name: remote and push helpers
     state: pending
+    verify_baseline_failures: []
   - name: mergeresolve engine
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mergeresolve/... [setup failed]"]
   - name: landingshed producers
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: loomshed wiring and integration
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: documentation lifecycle
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]", "FAIL\t./internal/mergeresolve/...\
+    \ [setup failed]"]
 ```
