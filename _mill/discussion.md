@@ -39,6 +39,7 @@ The phase machine cannot run at all until this task supplies a seeder.
 - The doc set the schema change falsifies — `docs/overview.md`, `manifest/designs/shed.md`, `loom.md`'s State-&-contracts bullet and row-10 Input, and `internal/shedengine/doc.go`'s divergence paragraph (see `shedengine-doc-carve-out`).
   Enumerated by grep, not by memory; the full list and the method are under Constraints → Documentation Lifecycle.
 - Adding `internal/loomshed` to the Told-Geometry Invariant's machine-enforced list in `CONSTRAINTS.md`, alongside the import guard that earns it the listing.
+- A new `loomengine.LoomRunLock(l)` accessor for `Shed`'s run lock (`.lyx/loom/run.lock`), which has no declarer today, plus its entries in the constructor-anchoring and no-transients test sets.
 
 **Out:**
 
@@ -88,9 +89,8 @@ type Deps struct {
     // Told paths the mechanical rows need. AnchorPath and WorktreeRoot are
     // deliberately separate fields: planparser.PlanDir takes the anchor path,
     // planparser.Validate takes the worktree root, and they are not the same value.
-    AnchorPath         string // planparser.PlanDir
+    AnchorPath         string // planparser.PlanDir, and batcher.Active — see below
     WorktreeRoot       string // planparser.Validate
-    BaseDir            string // batcher.Active
     DecisionRecordPath string // Discussion-Validate
     SupportLogPath     string // Discussion-Validate
 
@@ -108,6 +108,9 @@ type Deps struct {
 - **Rows `loomshed` constructs itself:** `Discussion-Validate`, `Plan-Validate` and `Batchifier` (new code, pure functions over told paths), the `Webster` wrapper, and all seven stubs.
   **Rows injected:** `Preflight` as a `ShedProducer`, `Webster` as `WebsterRun`+`WebsterDeps`.
   No other row is injectable, because no other row touches anything a Tier-1 test cannot run for real.
+- **There is no separate `BaseDir` field.** `batcher.Active(baseDir)` reaches `configengine.FindBaseDir`, which stats `<baseDir>/_lyx` and returns `baseDir` unchanged, while `planparser.PlanDir(anchorPath)` joins `<anchorPath>/_lyx/plan` — the two are the same directory by construction.
+  Two fields would only invite silent divergence, so `AnchorPath` feeds both.
+  `WorktreeRoot` stays separate because `planparser.Validate` genuinely takes a different value.
 - The two discussion file paths are told rather than derived because `loomengine.DiscussionDecisionRecord`/`DiscussionSupportLog` take a `*lyxcwd.Location`, and `loomshed` must not import `internal/lyxcwd` directly.
   The caller resolves them and passes the results as strings.
   `Preflight`'s own `cwd` argument never appears in `Deps` at all — the caller closes over it when constructing the injected `Preflight` producer.
@@ -133,6 +136,10 @@ type Deps struct {
   `StateRunning` is the only member that means "a run may proceed from here"; `paused`, `done`, `blocked` and `failed` all describe a run that has already happened.
 - Refuse-over-overwrite is a production-safety choice, not a style one: overwriting silently destroys an in-flight run's `history`, and the whole resume contract rests on that history.
   A deliberate re-seed is then an explicit operator act (delete the file first), never an accident.
+- **Write mechanics, since the obvious implementation is wrong twice over.**
+  `Seed` makes the refuse-if-exists decision **under the held lock**, via `state.UpdateJSON`'s `found` argument — returning an error when `found` is true — rather than stat-then-`state.WriteJSON`, which is a TOCTOU window between the check and the write.
+  `Seed` also **creates the lock file's parent directory** before acquiring: `state.WriteJSON` MkdirAlls the *status file's* parent but not the *lock file's*, the exact gap `internal/loomengine/preflight.go` already documents and works around at its own lock acquisition.
+  Both are cheap and both are silent failures if missed.
 - Rationale: nothing writes this file today, `Shed` refuses to create one, and `Preflight` fails without it — so the task cannot satisfy its own verify requirement without a real seeder.
   `loom: session bootstrap` calls it later; this task both needs it and is the right owner.
 - Rejected: deferring to session bootstrap and having tests write their own seed inline — the verify requirement would then rest on test code with no production equivalent.
@@ -158,6 +165,10 @@ type Deps struct {
   `error` — any value tolerated, including non-empty: it is the previous halt's reason, which is precisely what a human resumes *after* reading, never a coherence violation in itself.
   `activity` — never validated at all. `Shed` composes it mechanically on every persist, so it is derived output; validating it would assert `Shed`'s own arithmetic against itself.
   `current_producer` — must name `Preflight`, since that is the only way check 4 is reached.
+- **The read itself changes type, and `loomengine` gains an import.**
+  Check 4 reads through `state.ReadJSONStrict[Status]`, which rejects unknown fields, so once `loomengine.Status` becomes the thin `{slug, parent, start_sha}` product struct the existing read would hard-fail on every Shed field in the file.
+  The rewritten check therefore reads `state.ReadJSONStrict[shedengine.Status]` first and decodes the `product` payload into `loomengine.Status` second — meaning `internal/loomengine` gains a production import of `internal/shedengine`.
+  That direction is fine: the Shed Producer-Seam Invariant constrains what `shedengine` may import, never who may import it.
 - **Field-by-field disposition** of everything `loom-status-spec.md` pins today, so nothing is silently dropped:
   `phase` — gone (`current_producer` is the identity; the strand prints `activity.now`).
   `narration` — gone, replaced by Shed's mechanically-composed `activity{now,last,wait}`.
@@ -200,7 +211,10 @@ type Deps struct {
 - **The mid-run-edit consequence, stated explicitly:** if `batcher.yaml` changes between row 9 and row 10, row 10 uses the newer config.
   That is correct behaviour under lazy resolution, not staleness — there is no cached value to go stale.
   Row 9's guarantee is therefore precisely "the config was resolvable at row 9", never "the config Webster will use is the one row 9 saw".
-- **Error mapping:** every error from `batcher.Active` maps to `Stuck`, and the conflation is accepted in writing.
+- **Error mapping, at both call sites.** Every error from `batcher.Active` maps to `Stuck` — in row 9's gate **and** in row 10's wrapper, identically.
+  The wrapper's disposition has to be stated separately because the two outcomes differ materially in `run.go`: a `Stuck` at row 10 (`OnStuck: ""`) persists `StateBlocked` and returns `RunBlocked`, which a human resumes after fixing the config, whereas returning the error instead persists `StateFailed` and aborts `Run` with a hard error.
+  A broken `batcher.yaml` is operator-fixable, so `blocked` is the correct resting state at both rows; making them differ would mean the same fault ends the run one way before Webster and another way at Webster.
+  The conflation below is accepted in writing.
   `Active` returns a bare `error` for unknown-name, malformed YAML, and I/O failure alike, with no sentinel to discriminate on.
   The conflation is cheap here because `Active` already falls back to the embedded `ConfigTemplate()` when `_lyx/` or `batcher.yaml` is absent — so a remaining error is a genuinely broken config far more often than an infra fault, and `blocked` is the right resting state for that.
   A future sentinel in `internal/batcher` could split the two; adding one is out of scope.
@@ -248,14 +262,21 @@ Forward references in `OnStuck` are legal — the whole name set is collected be
 **Two obligations `Shed` cannot enforce**, binding every producer written here:
 `Call` returns exactly `Done` or `Stuck` and nothing else, and `Call` surfaces context cancellation as a non-nil `error`, never as `Stuck`.
 A `Stuck` return under a cancelled context is indistinguishable to `Shed` from a genuine verdict, so it would silently consume bounce budget for what was an operator stop.
+`internal/shedadapters` solves this with `entryErr`/`cancelErr` in its `ctx.go`, but both are **unexported** and Scope forbids changing that package — so every real producer written in `loomshed` re-implements the same entry/exit check locally.
+That duplication is deliberate, recorded here so a plan writer proposes a small local helper in `loomshed` rather than exporting `shedadapters`' own.
 
 **`shedengine.Status`** is `{current_producer, state, error, pause_requested, activity{now,last,wait}, history[]{producer,outcome,output,at}, product json.RawMessage}`.
 `Shed.persist` writes it through `state.UpdateJSON` under `StatusLockPath` and refuses to create the file if it has vanished.
 `composeActivity` fills `Activity` mechanically: `Now` is `current_producer` verbatim, `Last` is `"<producer> → <outcome>"` from the newest history entry, `Wait` is the error text only under `blocked`/`failed`.
 
-**Paths.** `loomengine.LoomStatusFile(l)` and `loomengine.LoomStatusLock(l)` already declare the status file and its lock; both take a `*lyxcwd.Location`, so `loomshed` receives their results as told strings rather than importing `lyxcwd` itself.
-The lock must be a different file from `Shed`'s run lock — `internal/state` acquires its own lock with the blocking form, so one shared path hangs on the first persist.
-Per the Durable-vs-Ephemeral State Invariant the status file is durable under `_lyx` and both locks are never-tracked under `.lyx` at the mirrored subpath.
+**Paths.** `loomengine.LoomStatusFile(l)` (`_lyx/loom/status.json`) and `loomengine.LoomStatusLock(l)` (`.lyx/loom/status.json.lock`) already declare the status file and its status lock; both take a `*lyxcwd.Location`, so `loomshed` receives their results as told strings rather than importing `lyxcwd` itself.
+
+**`Shed`'s *run* lock has no declarer today, and this task adds one.**
+`Deps.LockPath` is a third path, distinct from the status lock — `internal/state` acquires its own lock with the blocking form, so one shared file hangs on the first persist, which is why `Shed.validate()` rejects `LockPath == StatusLockPath` outright.
+No accessor for it exists anywhere in the repo.
+This task adds `loomengine.LoomRunLock(l)` returning `<AnchorPath>/.lyx/loom/run.lock`, beside the two existing accessors and scoped under the same `loom/` subdirectory for the same product-collision reason.
+It is not deferred to `loom: session bootstrap`: the Durable-vs-Ephemeral State Invariant requires a module scratch accessor beside its durable one, and `cmd/lyx/constructoranchoring_test.go` and `notransients_test.go` pin every such accessor — a told path with no declarer would satisfy Tier-1 temp dirs while leaving production wiring with nowhere to get the value from.
+Both locks are never-tracked under `.lyx` at the mirrored subpath; the status file is durable under `_lyx`.
 
 **`Discussion-Validate`'s exact checks**, exhaustively — the design states it "has no judgment, and nothing beyond these two checks is 'its' to look for":
 
@@ -341,11 +362,12 @@ The whole point of `explicit-deps-struct` is that the 12-row list is exercisable
 
 - `Discussion-Validate`'s two checks. Table-drive: both files present and all seven sections; each file missing in turn; each of the seven sections missing in turn; `## Notes for the plan writer` present and absent (both pass); sections present but out of order (must pass — deliberately not a check); an extra unexpected H2 (must pass).
 - `Seed`'s output: assert the exact `shedengine.Status` written — `current_producer: "Preflight"`, `state: "running"`, empty history, `pause_requested: false`, and the `product` payload round-tripping through `json.RawMessage`.
-  Assert `Seed` returns an error and leaves the file byte-identical when one already exists.
+  Assert `Seed` returns an error and leaves the file byte-identical when one already exists, and that it succeeds when the lock file's parent directory does not yet exist.
 - The rewritten `loomengine` coherence check against the new schema: table-driven over each mandatory field empty, plus the fresh-start invariants (set `start_sha`, `pause_requested`).
 - **The Preflight retry deadlock, as a named regression test.** A history containing only `Preflight` entries passes the fresh-start check; a history containing any entry naming a later producer fails it.
   This is the one finding round 1 caught that would have shipped as a permanent runtime deadlock, so it gets an explicit test rather than incidental coverage.
 - The `Batchifier` gate and the `Webster` wrapper both resolve `batcher.Active` independently at their own `Call` time — assert neither holds a value resolved at construction, e.g. by mutating `batcher.yaml` between the two calls and observing that the second sees the new config.
+  Assert the wrapper maps a `batcher.Active` error to `Stuck`, not to a returned error — the two produce `blocked` and `failed` respectively, and only the first is resumable.
 - `Plan-Validate`'s mapping: a `planparser.Validate` result with zero errors maps to `Done`, non-zero to `Stuck`, and a parse failure maps to a non-nil error rather than `Stuck`.
 - `Batchifier`'s gate: a valid `batcher.yaml` maps to `Done` with an empty `OutputPointer`; an unknown batchifier name and a malformed file each map to `Stuck`.
   An absent `_lyx/` or absent `batcher.yaml` maps to `Done`, since `batcher.Active` resolves the embedded `ConfigTemplate()` rather than erroring — assert this, so the fallback is not mistaken for a gate failure.
@@ -382,4 +404,10 @@ All are shipped and independently covered; this task tests only its own wiring a
 - **Q:** (Review r2) Which of the 12 rows are injected, and what told values does the constructor take? **A:** Only the two rows that touch a real substrate are injected — `Preflight` as a `ShedProducer`, `Webster` as `WebsterRun`+`WebsterDeps` (as parts, since the lazy `Batcher` wrapper is `loomshed`-owned). Everything else `loomshed` builds from told paths, with `AnchorPath` and `WorktreeRoot` as separate fields because `planparser.PlanDir` and `planparser.Validate` take different values. The two discussion file paths are told because `loomengine`'s accessors take a `*lyxcwd.Location` that `loomshed` may not import.
 - **Q:** (Review r2) The history narrowing fixes the deadlock — what about `state` and `error`, which the same blocked write also sets? **A:** Pinned explicitly: every valid `state` except `done` is tolerated, any `error` is tolerated (it is the halt reason a human resumes after reading), `activity` is never validated because `Shed` composes it, and `current_producer` must name `Preflight`. Without this the deadlock returns through a different field.
 - **Q:** (Review r2) The doc set omits docs the change falsifies. **A:** Extended to `manifest/designs/shed.md`, `loom.md`'s State-&-contracts bullet and row-10 Input, with a stated grep-based enumeration method and an explicit not-affected list so the set is reproducible.
+- **Q:** (Review r3) Row 9's `batcher.Active` error maps to `Stuck` — what about row 10's wrapper, which resolves the same call lazily? **A:** Identically to `Stuck`. Stated separately because the alternative (returning the error) persists `failed` and aborts `Run`, while `Stuck` persists `blocked`, which a human resumes after fixing the config — the same fault must not end the run one way before Webster and another way at Webster.
+- **Q:** (Review r3) Who declares `Shed`'s run-lock path? **A:** Nobody today — this task adds `loomengine.LoomRunLock(l)` at `.lyx/loom/run.lock`, plus its constructor-anchoring and no-transients test entries. Deferring it would leave production wiring with no source for a path the Durable-vs-Ephemeral Invariant requires an accessor for.
+- **Q:** (Review r3) `BaseDir` and `AnchorPath` are the same directory. **A:** Correct — `configengine.FindBaseDir` stats `<baseDir>/_lyx` and returns it unchanged, exactly what `planparser.PlanDir` anchors on. `BaseDir` dropped; `AnchorPath` feeds both. `WorktreeRoot` stays separate because `planparser.Validate` takes a genuinely different value.
+- **Q:** (Review r3) How does `Seed` actually write? **A:** Under the held lock via `state.UpdateJSON`'s `found` guard, not stat-then-`WriteJSON` (a TOCTOU), and it creates the lock file's parent first — `state.WriteJSON` MkdirAlls the status file's parent but not the lock's, the same gap `preflight.go` already works around.
+- **Q:** (Review r3) `shedadapters`' cancellation helpers are unexported and the package is out of scope. **A:** So each `loomshed` producer re-implements the entry/exit check locally. Recorded so a plan writer proposes a small local helper rather than exporting `shedadapters`'.
+- **Q:** (Review r3) What type does check 4 read after the migration? **A:** `state.ReadJSONStrict[shedengine.Status]`, then the `product` payload into the thin `loomengine.Status` — `loomengine` gains a `shedengine` import, which the seam invariant permits since it constrains `shedengine`'s imports, not its importers.
 - **Q:** (Review r1) Two items were deferred to planning. **A:** Both resolved here. The `Plan-never-reads-support-log` assertion does not land in this task at all (a stub declares no input set to assert against); the `loomshed` import guard is built, and `internal/loomshed` joins the Told-Geometry machine-enforced list in the same commit.
