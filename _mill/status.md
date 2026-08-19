@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r3
+phase: planned
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-fix-r1  '2026-08-19T06:30:20Z'
 plan-review-r2  '2026-08-19T06:39:12Z'
 plan-fix-r2  '2026-08-19T06:39:12Z'
 plan-review-r3  '2026-08-19T06:43:44Z'
+planned  '2026-08-19T06:43:54Z'
 ```
