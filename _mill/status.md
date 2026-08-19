@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-Merge target-pair verb  '2026-08-19T10:35:00Z'
 approved-sibling-verb guards and vocabulary assertions  '2026-08-19T10:46:41Z'
 approved-CLI verbs and docs  '2026-08-19T10:58:14Z'
 holistic-reviewing  '2026-08-19T10:58:44Z'
+holistic-fixing  '2026-08-19T11:04:39Z'
 ```
 
 ## Batches
