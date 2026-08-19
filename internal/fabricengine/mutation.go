@@ -20,7 +20,7 @@ import (
 type Kind string
 
 // The fixed set of mutation kinds fabric records.
-// Seven are auto-recorded by the destruction gate (destroy.go); the remaining eight are
+// Seven are auto-recorded by the destruction gate (destroy.go); the remaining ten are
 // hand-recorded at their success sites, since no chokepoint covers them.
 const (
 	// KindPathRemoved records removePath's deletion of a single path or a directory tree.
@@ -63,6 +63,12 @@ const (
 	// this neither breaks the build nor bends the rule; the comment exists so the reviewer of the
 	// next slice reads it as the decision it is rather than as a warp/weft naming lapse.
 	KindRepoAdvanced Kind = "repo_advanced"
+	// KindMergeStaged records a merge verb's MergeStart call that observably changed a checkout's
+	// state (staged, conflicted, or fast-forwarded) — never an already-up-to-date no-op.
+	KindMergeStaged Kind = "merge_staged"
+	// KindMergeCommitted records a merge verb's conclude-commit landing on one side; Detail is the
+	// new SHA.
+	KindMergeCommitted Kind = "merge_committed"
 )
 
 // Mutation is one flat entry in a Mutations record, naming one primitive that observably changed

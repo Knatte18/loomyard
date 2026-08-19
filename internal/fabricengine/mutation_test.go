@@ -197,6 +197,24 @@ func TestMutations_MarshalJSON(t *testing.T) {
 			}(),
 			want: `[{"kind":"worktree_reset","target":"/hub/one","detail":"deadbeef"}]`,
 		},
+		{
+			name: "merge staged entry",
+			m: func() Mutations {
+				m := NewMutations("")
+				m.Append(KindMergeStaged, "/hub/warp", "deadbeef")
+				return m.Snapshot()
+			}(),
+			want: `[{"kind":"merge_staged","target":"/hub/warp","detail":"deadbeef"}]`,
+		},
+		{
+			name: "merge committed entry",
+			m: func() Mutations {
+				m := NewMutations("")
+				m.Append(KindMergeCommitted, "/hub/warp", "cafebabe")
+				return m.Snapshot()
+			}(),
+			want: `[{"kind":"merge_committed","target":"/hub/warp","detail":"cafebabe"}]`,
+		},
 	}
 
 	for _, tt := range tests {
