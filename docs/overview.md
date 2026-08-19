@@ -74,6 +74,11 @@ those are each owned by the module that constructs them.
 `Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`.
 Every other geometry token (weft paths, junctions, `_lyx/<module>`, portals, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see `CONSTRAINTS.md`'s Cwd Resolution Invariant for the full per-token ownership map.
 
+`lyxcwd.Resolve` proves that cwd is the root of a git worktree and nothing more.
+It succeeds in any ordinary git repository run from its root, and the `HubPath` and `RepoName` it returns are fiction in that case.
+Proving a worktree is lyx-initialized and Fabric-wired is a different layer's job.
+See [CONSTRAINTS.md's Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for the tier map.
+
 **Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned** outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 The ban is enforced at `go test` / CI time by `internal/lyxcwd/enforcement_test.go`, which walks the entire source tree and fails the build if either literal token is found in any non-test `.go` file outside the allowlist.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
@@ -229,6 +234,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, perch, Webster) over shuttle/perch/websterengine
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
+├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
@@ -317,6 +323,7 @@ see the [Execution stack](#execution-stack-orchestration-layers) section below f
 both folded back into reed — see the `internal/reedengine` package documentation. This `shed` is an abandoned earlier `reed` model/view draft, unrelated to [`Shed`](../manifest/designs/shed.md) the outer phase-FSM.)
 
 The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
+Above the engines sits a separate precondition-and-geometry layer, not the shared-infrastructure layer above: `internal/preflight` is the tier-1/tier-2 precondition layer (worktree geometry, worktree-pair cleanliness, Fabric readiness/sync), and `internal/hubgeom` and `internal/standalonegeom` are its hub-mode and told-mode constructors of the `Geometry` struct each engine is handed — see the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 ## Execution stack (orchestration layers)
 
@@ -341,6 +348,11 @@ loom              phase machine: drive each phase through a perch gate         [
 ```
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session requirement), agents run, output files are read, nobody need watch.
+
+The stack now has two entry modes, not one: every layer from `reed` up is **told** its geometry rather than deriving it.
+`internal/hubgeom` and `internal/standalonegeom` are the two constructors that tell it — hub mode and told mode respectively — with `preflight.ResolveMode` selecting between them at a standalone-capable CLI's pre-run.
+The consequence a reader needs: a producer verb therefore runs in a directory that is not a git repository, with no hub, no fabric, and no orchestrator status seed.
+See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for the rule.
 
 - **reed is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and a *generic* display spec),
   and a **render** sub-package (`internal/reedengine/render`, `layout = Rules(strands, box)`).
