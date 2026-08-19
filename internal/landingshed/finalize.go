@@ -30,11 +30,29 @@ import (
 // carry.
 const finalizeName = "Finalize"
 
+// parentMerger is the narrow single-method seam Finalize holds the opened parent pair's handle
+// behind, mirroring the resolver seam's own reasoning: production has exactly one way to obtain it
+// -- deps.OpenParentFabric, adapted by NewFinalize's parentOpener closure -- and the seam exists so
+// this package's own in-package tests can substitute a fake without a second public construction
+// path anyone outside could reach for by mistake.
+type parentMerger interface {
+	// Merge merges source into the parent pair's own worktree. See fabricengine.Fabric.Merge.
+	Merge(source string, opts fabricengine.MergeOptions) (fabricengine.MergeResult, error)
+}
+
+// The compile-time assertion that *fabricengine.Fabric satisfies parentMerger.
+var _ parentMerger = (*fabricengine.Fabric)(nil)
+
 // Finalize is the ShedProducer that merges the task branch into the parent pair's own worktree,
 // after first catching the task worktree up with the parent branch.
 type Finalize struct {
 	deps     Deps
 	resolver resolver
+	// parentOpener adapts deps.OpenParentFabric's concrete *fabricengine.Fabric return type onto
+	// the parentMerger seam. It is called once per Call, never at construction: the pair
+	// constructor it wraps stat-checks a layout that may not be wired yet, so opening eagerly
+	// would fail before the run's own preflight has confirmed anything is wired.
+	parentOpener func() (parentMerger, error)
 }
 
 var _ shedengine.ShedProducer = (*Finalize)(nil)
@@ -75,7 +93,17 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 		return nil, fmt.Errorf("landingshed: NewFinalize: build resolver: %w", err)
 	}
 
-	return &Finalize{deps: deps, resolver: res}, nil
+	return &Finalize{
+		deps:     deps,
+		resolver: res,
+		parentOpener: func() (parentMerger, error) {
+			h, err := deps.OpenParentFabric()
+			if err != nil {
+				return nil, err
+			}
+			return h, nil
+		},
+	}, nil
 }
 
 // Call runs one Finalize iteration.
@@ -91,7 +119,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 
 	// Step 3: obtain the parent pair's handle. This producer never creates a worktree to merge
 	// into; materializing a pair is a separate command's job and a human's decision.
-	parentHandle, err := fz.deps.OpenParentFabric()
+	parentHandle, err := fz.parentOpener()
 	if err != nil {
 		return fz.stuckOrCancelled(ctx, fmt.Sprintf("no live pair for parent branch %q: %v", fz.deps.ParentBranch, err), "error", err)
 	}
