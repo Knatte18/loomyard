@@ -61,7 +61,9 @@ batches:
     commit_sha: 53c6e1358bc63e1ad9b5324c059e21d38f6c92a5
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: loomshed wiring and integration
-    state: pending
+    state: running
+    implementer_session: 0af3fbd3-bbc9-4e77-9795-824f5e2d3992
+    start_sha: ee4c012540711a1cb7199a3acbc7cd5f37625f8d
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: documentation lifecycle
     state: pending
