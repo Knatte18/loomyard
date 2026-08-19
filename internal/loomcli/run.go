@@ -276,3 +276,24 @@ Example:
 
 	return cmd
 }
+
+// RunAliasCommand returns the run verb registered a second time, as a bare root child ("lyx run"),
+// alongside the full "lyx loom run" subtree.
+//
+// It builds a fresh receiver and takes that receiver's own runCmd unchanged -- it carries no seam
+// functions of its own, because it delegates entirely into the subtree's verb -- and attaches that
+// same receiver's resolvePersistentPreRun as the returned command's own PersistentPreRunE. That
+// attachment is necessary here, not optional: a root child gets no parent group's PersistentPreRunE
+// to inherit, so without it the alias would run with location, cwd, and deps all left unresolved.
+// The group short-circuit inside resolvePersistentPreRun (its cmd.Name() == "loom" check) does not
+// fire for this command, since this command's own Name() is "run", never "loom" -- so the alias
+// always resolves the full engine stack exactly as "lyx loom run" does.
+//
+// The alias is not registered inside Command(); the root command registers it as a sibling of the
+// "loom" group, in a later batch.
+func RunAliasCommand() *cobra.Command {
+	c := &loomCLI{}
+	cmd := c.runCmd()
+	cmd.PersistentPreRunE = c.resolvePersistentPreRun
+	return cmd
+}

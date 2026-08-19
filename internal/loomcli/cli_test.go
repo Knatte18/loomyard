@@ -47,6 +47,24 @@ func TestCommand_AllFourVerbsRegistered(t *testing.T) {
 	}
 }
 
+// TestRunAliasCommand_StaysOneCommandWithSubtreeVerb guards RunAliasCommand and the subtree's own
+// runCmd against drifting into two different commands: the alias must carry a non-empty Short, its
+// Use must be the bare verb ("run"), and it must expose the same --parent flag the subtree's own run
+// verb does.
+func TestRunAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
+	alias := RunAliasCommand()
+
+	if alias.Short == "" {
+		t.Error("RunAliasCommand() has empty Short")
+	}
+	if alias.Use != "run" {
+		t.Errorf("RunAliasCommand().Use = %q; want %q", alias.Use, "run")
+	}
+	if alias.Flags().Lookup("parent") == nil {
+		t.Error("RunAliasCommand() is missing the --parent flag the subtree's run verb exposes")
+	}
+}
+
 // TestRunCLI_GroupGuard_NoGitRepoNeeded asserts that a bare "lyx loom" invocation succeeds without
 // needing a git repository, proving the PersistentPreRunE guard for cmd.Name() == "loom" fires before
 // any cwd resolution.
