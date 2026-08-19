@@ -49,7 +49,9 @@ batches:
     commit_sha: ce72456bcba180e001eee87579fefe02eea301bd
     verify_baseline_failures: []
   - name: docgo-audit
-    state: pending
+    state: running
+    implementer_session: ca6c850e-875d-4aee-ad2c-ddd47f005da7
+    start_sha: c2b14cc71164cde54555fc66f787cc4675d77785
     verify_baseline_failures: []
   - name: overview-docs
     state: pending
