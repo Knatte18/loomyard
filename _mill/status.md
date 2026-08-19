@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r1
+phase: planned
 slug: loom-phase-machine-scaffolding
 branch: loom-phase-machine-scaffolding
 plan: _mill/plan
@@ -18,4 +18,5 @@ discussing  '2026-08-19T08:03:00Z'
 discussed  '2026-08-19T09:27:13Z'
 planning  '2026-08-19T09:36:51Z'
 plan-fix-r1  '2026-08-19T09:49:30Z'
+planned  '2026-08-19T09:49:45Z'
 ```
