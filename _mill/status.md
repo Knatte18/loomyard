@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-merge state, errors, and path mapping
+phase: approved-MergeIn and the lifecycle quartet
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -28,6 +28,7 @@ planned  '2026-08-19T09:37:46Z'
 implementing  '2026-08-19T09:38:23Z'
 approved-gitrepo merge primitives  '2026-08-19T09:46:11Z'
 approved-merge state, errors, and path mapping  '2026-08-19T09:57:44Z'
+approved-MergeIn and the lifecycle quartet  '2026-08-19T10:24:59Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: dae49ee04a43b5b98c29d9c9c92c687897635af9
     verify_baseline_failures: []
   - name: MergeIn and the lifecycle quartet
-    state: running
+    state: approved
     implementer_session: 0a9a62cc-74a5-45e3-b6ac-3d7ce37a3fb3
     start_sha: bd09df8a4d1ff9df888c0b2d6b1dd0aee2632ea0
+    commit_sha: 4c9de407fd11a0acc48ff283650c678560d0da3d
     verify_baseline_failures: []
   - name: Merge target-pair verb
     state: pending
