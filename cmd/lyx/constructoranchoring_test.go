@@ -95,6 +95,7 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	// dotLyxBase.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "loom", "status.json.lock"))
+	assertPath(t, "loomengine.LoomRunLock", loomengine.LoomRunLock(l), filepath.Join(dotLyxBase, "loom", "run.lock"))
 	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
@@ -153,6 +154,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// group above.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "loom", "status.json.lock"))
+	assertPath(t, "loomengine.LoomRunLock", loomengine.LoomRunLock(l), filepath.Join(dotLyxBase, "loom", "run.lock"))
 	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
 	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
 	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
@@ -174,6 +176,7 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	wrongRoot := filepath.Join(worktree, ".lyx")
 	dotLyxConstructors := map[string]string{
 		"loomengine.LoomStatusLock":   loomengine.LoomStatusLock(l),
+		"loomengine.LoomRunLock":      loomengine.LoomRunLock(l),
 		"websterengine.PromptsDir":    websterengine.PromptsDir(l.AnchorPath()),
 		"websterengine.ScratchDir":    websterengine.ScratchDir(l.AnchorPath()),
 		"perchengine.ScratchDir":      perchengine.ScratchDir(l.AnchorPath()),

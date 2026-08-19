@@ -34,8 +34,8 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
 | 7 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
 | 8 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
-| 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
 | 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
 | 12 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [designs/landing.md](landing.md) |
 | 13 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back, teardown; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [designs/landing.md](landing.md) |
@@ -79,7 +79,7 @@ This mechanical producer is **exhaustively defined by the checks listed above** 
 **The `Plan-never-reads-support-log` boundary is not a per-run check.**
 The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
 It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
-This assertion lands with `Shed`.
+This assertion lands with the real `Plan-Write`: today `Plan-Write` is a stub declaring no input set at all, so there is nothing to assert against — writing the assertion now would either assert a vacuous truth or invent a declaration the real producer has not yet made.
 
 ### Discussion-Review rubric — what not to flag
 
@@ -170,12 +170,12 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 
 ### State & contracts
 
-- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: current phase, current review stage, and a **per-phase outcome** trail (`history`) — per-round verdicts live in perch's block files, not here.
+- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: `current_producer` names which producer this run is at, and a **per-producer-call outcome** trail (`history`) records every call, including stuck-handler bounce-backs — per-round verdicts live in perch's block files, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
   Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
   `Shed` itself has no opinion on this path at all: it is told its status-file path, never derives it (see `shed.md`'s own producer-contract section) — this scoping is entirely `loom`'s own choice as the caller.
-- **It also carries a human-readable *current-activity* narration** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
+- **It also carries a human-readable *current-activity* `activity`, mechanically composed by `Shed` itself** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
   The driver writes the file;
   the status strand reads and prints it — reed never parses it, it just hosts the pane.

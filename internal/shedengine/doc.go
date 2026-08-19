@@ -43,14 +43,12 @@
 // write merge is safe against a concurrent external writer that takes the same lock, and against no
 // other -- this merge-safety property is never stated unconditionally.
 //
-// # Divergence from loom's status schema
+// # loom's status.json is one instance of this shape
 //
-// internal/loomengine's status type and contracts/specs/loom-status-spec.md pin a different shape
-// (phase/stage/history entries of {phase, outcome, bounced_to, ts}) from this package's
-// (current_producer/state/activity/history entries of {producer, outcome, output, at}), and this
-// package deliberately defines its own rather than reconciling them.
-// The opaque product passthrough field carries no compatibility claim for loom's schema -- a
-// Shed-written file would still fail loom's coherence check, since phase, stage, and narration are
-// top-level fields there.
-// Reconciling the two shapes is loom's own later rewiring work.
+// internal/loomengine's own status type carries only loom's three fields -- slug, parent,
+// start_sha -- inside the opaque Product passthrough field; every other field
+// (current_producer/state/error/pause_requested/activity/history) is this package's own shape,
+// documented above.
+// See contracts/specs/loom-status-spec.md for loom's own half of the schema and the additional
+// coherence rules loom's check 4 layers over this package's shell.
 package shedengine
