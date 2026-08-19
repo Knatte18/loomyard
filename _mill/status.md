@@ -68,7 +68,9 @@ batches:
     commit_sha: 6b0303fc69593ae02bebe0285031fe68c89730f2
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: documentation lifecycle
-    state: pending
+    state: running
+    implementer_session: 8312e9fd-f272-4b04-9b2e-609e0dcc1c2a
+    start_sha: 764001249d85014083a8b5cc2bb386abf450042c
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]", "FAIL\t./internal/mergeresolve/...\
     \ [setup failed]"]
 ```
