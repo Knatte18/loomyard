@@ -48,6 +48,14 @@ that is genuinely mid-merge.
 defects on the recovery paths this surface exists to provide. With F1-F9 fixed and regression
 tests landed, the surface is mergeable.
 
+**Post-fix verdict: READY TO MERGE.** All nine findings are fixed and committed, each with a
+regression test whose false-green proof is recorded in
+`_mill/fabric-merge-review-opus-medium-r1-fixer-report.md`. Nothing is deferred. Four pre-existing
+integration tests turned out to be pinning F3's defect as correct behaviour and were repaired in
+the same commit. The full hermetic and `-tags integration` gates are green, the new tests are green
+ten times over under an eight-way CPU load, and every live scenario was re-driven against a
+freshly deployed binary.
+
 ## What was tested
 
 (appended per command/scenario)
