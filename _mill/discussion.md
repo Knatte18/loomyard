@@ -32,7 +32,8 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 - `fabricengine.MergeStageResolved(paths []string) (StageResult, error)` — a new narrow verb on `Fabric` that stages resolved conflict paths, without which `MergeContinue` can never succeed after an agent resolution.
   Brings with it a `StageResult` type embedding `MutationRecord`, a new `Kind` member in `mutation.go`, and its `internal/gitrepo` staging counterpart, which must be added to the gitrepo Client Boundary Invariant's pinned method list in the same commit.
 - `gitrepo.RemoteURL(name string) (string, error)` — a go-git-backed local config read.
-- `fabricengine.PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (PushResult, error)` — a path-told, rebase-free warp push over `gitrepo.PushRebaseFree`.
+- A path-told, rebase-free push wrapper in `internal/fabricengine` over `gitrepo.PushRebaseFree`.
+  Named in `fabricengine` (an owner package), never in `landingshed` — see `landing-never-names-fabric-vocabulary`.
 - `githubclient.ParseOwnerRepo(remoteURL string) (owner, repo string, err error)` — a pure stdlib parser.
 - Wiring: `internal/loomshed`'s rows 12 and 13 swap their `newStub(...)` backing for the real producers, and `loomshed.Deps` grows a single `Landing landingshed.Deps` passthrough field.
 - Registration sites, without which the listed artifacts are inert:
@@ -107,6 +108,10 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   Absolute matters: `Spec.validate` resolves a *relative* `OutputFiles` entry against `worktreeRoot`, not `AnchorPath()`, so on any anchored hub (`AnchorRel != "."`) a relative `.lyx/…` entry would land at `<worktreeRoot>/.lyx/…` — the wrong directory, and a Durable-vs-Ephemeral violation, since `.lyx` is `_lyx`'s sibling under the anchor.
   Neither package may derive that path itself, per the Told-Geometry Invariant.
   There is deliberately **no** `_lyx/landing` twin: the report is ephemeral debugging output with no durable counterpart, so nothing belongs on the durable side.
+  **Whoever writes into `ScratchDir` `os.MkdirAll`s it first**, on every write path — the conflict report in `mergeresolve`, the stuck-reason files in `landingshed`.
+  Creating a *told* directory is legal under the Told-Geometry Invariant and is exactly what `shedengine` already does for its two lock parents ("the only paths the package constructs are the two lock parents it creates so a told path is usable").
+  Deriving the path would not be legal;
+  making a told one usable is.
   The path is **per-attempt** (`r1`, `r2`), because `validate` rejects a pre-existing entry and the one-retry path would otherwise fail its second `Runner.Start` on the first attempt's own artifact.
   The report is not parsed for control flow — `mergeresolve`'s marker scan over `MergeResult.Conflicts` remains the verification, per `verify-before-conclude`.
   It exists to satisfy the runner contract and to leave a human an audit trail of what the session claims it resolved.
@@ -185,6 +190,25 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   Note `MergeInProgress` (read-only) reports `false` for foreign state, so the crash-recovery probe above does not catch this case — the abort call itself surfaces the typed error.
 - Rejected: aborting it and proceeding.
 
+### landing-never-names-fabric-vocabulary
+
+- Decision: neither `internal/landingshed` nor `internal/mergeresolve` may contain a `warp` or `weft` token in **any** identifier, string literal, or comment — including a selector on a `fabricengine` call.
+  Three consequences follow, and they change `Deps`:
+  1. `Deps` carries **no** warp-path field.
+  2. The rebase-free push is injected as a third closure, `PushBranch func() error`, filled by the CLI layer alongside the two Fabric openers.
+     That layer names the `fabricengine` push verb;
+     `landingshed` only calls `deps.PushBranch()`.
+  3. The `origin` URL is a told string, `OriginURL`, read by the same CLI layer via `gitrepo.RemoteURL`.
+     `landingshed` calls only `githubclient.ParseOwnerRepo(deps.OriginURL)`, which names nothing forbidden.
+- Rationale: this is machine-enforced, not a style rule.
+  `internal/lyxcwd/enforcement_test.go`'s `fabricVocabularyHits` walks the AST and flags a bare vocabulary token inside **any** `*ast.Ident` (line 712-715), plus any string literal or comment, for every non-owner production file.
+  Neither new package is in the owner set, so `fabricengine.PushWarpRebaseFreeAt(...)` written inside `landingshed` fails the build on the identifier alone — the call would not even need to run.
+  The merge verbs `mergeresolve` calls are unaffected: `Open`, `MergeIn`, `Merge`, `MergeContinue`, `MergeAbort`, `MergeInProgress`, and `MergeStageResolved` are all vocabulary-free by construction.
+  The closure injection is not a workaround invented here — it is the same shape already chosen for the two Fabric openers, extended to the one other call whose name is not vocabulary-free.
+- Consequence for docs: both packages' `doc.go` files describe one repo, never two.
+  The design content folded in from `landing.md` must be reworded accordingly, since `landing.md` itself discusses the split freely.
+- Rejected: renaming the `fabricengine` verb to something vocabulary-free — the token is accurate *inside* the owner package, and bending an owner's own naming to suit a consumer inverts the invariant's direction.
+
 ### stuck-reasons-are-logged-and-filed-never-returned
 
 - Decision: every "`Stuck` with a distinct message" in this discussion means two concrete things, because `Shed` has no reason channel of its own:
@@ -261,21 +285,24 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   `fabricengine.PushWarpAt` (`spawn.go:89`) routes to `gitrepo.PushCoalesced` → `pushWithRebaseRetry`, which runs `git pull --rebase` on a rejected push (`push.go:43-83`).
   That rewrites the **warp** task branch's SHAs while the weft side is not rebased, which desynchronizes the pair and invalidates the correspondence index `RecordCorrespondence` maintains.
   `PushCoalesced` additionally writes `gitrepo.PushLockFileName` (`.gitrepo-push.lock`) at the repo root, and unlike the weft side (`seedWeftArtifactExcludes`) the warp repo has no exclude entry for it — `spawn.go`'s own doc comment names this as an undischarged precondition for any future caller.
-- Decision: a new thin, path-told wrapper `fabricengine.PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (PushResult, error)` routes to `gitrepo.PushRebaseFree` (`push.go:90`) instead.
+- Decision: a new thin, path-told wrapper in `internal/fabricengine` routes to `gitrepo.PushRebaseFree` (`push.go:90`) instead.
+  Its name necessarily carries a fabric-vocabulary token, so `landingshed` never names it — see `landing-never-names-fabric-vocabulary` below.
   It never rebases and never takes the push lock, so **both** hazards above are discharged rather than mitigated: no SHA rewrite, and no untracked residue in the operator's own repo.
   `PushWarpAt` keeps its "no production caller" status and its doc comment stays accurate — no edit needed there, and no warp-side exclude seeding enters this task's scope.
   A rejected push surfaces as `gitrepo.ErrPushRejected`, meaning the remote task branch has commits this checkout lacks;
   `Publish` returns `Stuck` on it, since a human has to decide what happened.
   Any other push error → `Stuck` too, with the error surfaced.
   No PR is attempted in either case.
-- **`SyncOptions` is a told value in `landingshed.Deps`, and a skip is refused, not silently honoured.**
-  `PushWarpRebaseFreeAt` mirrors `PushWarpAt`'s gating and returns an empty result with a nil error when `opts.SkipGit || opts.SkipPush`.
+- **The skip flags are refused, not silently honoured.**
+  `SyncOptions` is bound by the CLI layer inside the `PushBranch` closure, not carried in `Deps` — but the skip decision is still `Publish`'s, so `Deps` carries a plain `PushSkipped bool` the same layer sets.
+  The new `fabricengine` wrapper mirrors the existing one's gating and returns an empty result with a nil error when `opts.SkipGit || opts.SkipPush`.
   Relying on that would produce a PR for an unpushed branch — a silent 422, exactly the failure this whole decision exists to prevent.
-  So `Publish` checks the two flags **itself**, before calling, and returns `Stuck` when either is set and the base branch requires a PR.
-  When no PR is required the flags are irrelevant, because that branch no-ops before reaching the push at all.
-- **Only warp is pushed.**
-  The PR is a warp-repo artifact and GitHub never sees weft, so `Publish` has no reason to push the weft side.
-  Weft's own remote state is `Finalize`'s merge and fabric's sync path to deal with, not the PR's.
+  So `Publish` checks `deps.PushSkipped` **itself**, before calling the closure, and returns `Stuck` when it is set and the base branch requires a PR.
+  When no PR is required the flag is irrelevant, because that branch no-ops before reaching the push at all.
+- **Only the GitHub-visible side is pushed.**
+  The PR is an artifact of the repo GitHub can see, and `Fabric`'s other internal side is invisible to it, so `Publish` has no reason to push anything else.
+  That side's own remote state is `Finalize`'s merge and fabric's sync path to deal with, not the PR's.
+  Stated this way deliberately: `landingshed`'s own source may not name the two sides at all (see below).
 - Failure mode: an absent `origin`, an unparseable URL, or a non-GitHub host makes `Publish` return `Stuck` with a distinct message — never a silent no-PR `Done`.
   Silently skipping the PR when the base branch demanded one is the one outcome the gate exists to prevent.
 - Rationale: a hardcoded `owner/repo` constant like `selfreportengine.targetRepo` is right for self-reporting (always the loomyard repo) and wrong here — `Publish` runs against whatever repo the hub was cloned from.
@@ -354,7 +381,8 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 
 ### told-values-via-landingshed-deps
 
-- Decision: `landingshed.Deps` carries every told value — worktree root, warp path, task branch, parent branch, webster dir, stencils dir, modelspec registry, `SyncOptions`, the two Fabric opener closures, and `ScratchDir` (the told absolute `<AnchorPath>/.lyx/landing` path) — with `NewPublish(deps)` / `NewFinalize(deps)` constructors that reject a nil required closure up front rather than nil-panicking at call time.
+- Decision: `landingshed.Deps` carries every told value — worktree root, task branch, parent branch, webster dir, stencils dir, modelspec registry, `OriginURL`, the two Fabric opener closures, the `PushBranch` closure, and `ScratchDir` (the told absolute `<AnchorPath>/.lyx/landing` path) — with `NewPublish(deps)` / `NewFinalize(deps)` constructors that reject a nil required closure up front rather than nil-panicking at call time.
+  No field names a fabric-internal side, per `landing-never-names-fabric-vocabulary`.
 - `Deps` deliberately carries **no** `AnchorPath` field.
   `ScratchDir` is the only thing landing would use an anchor for, and carrying both would be exactly the derived-path near-duplicate `loomshed.Deps`'s own doc comment warns invites silent divergence.
   Told rather than derived is also required, not merely preferred: deriving it would mean joining the `.lyx` literal, which the Lyxdirs Single-Declarer Invariant reserves to `lyxdirs.DotLyxDirName`, and computing geometry, which the Told-Geometry Invariant forbids these packages outright.
@@ -475,7 +503,9 @@ From `CONSTRAINTS.md`, in the order they bind this work:
   Read-only verbs (current SHA, `git status --porcelain`, reading a remote URL) are exempt — that exemption is what makes `Publish`'s `origin`-URL read legal.
   The conflict-resolution agent edits files in the worktree; it must never be instructed to run git.
 - **Fabric Vocabulary Invariant.**
-  Neither `mergeresolve` nor either producer is in the owner set, so none of them may name warp or weft.
+  Neither `mergeresolve` nor either producer is in the owner set, so none of them may name the two fabric-internal sides — in an identifier, a string literal, or a comment.
+  This is machine-enforced by `internal/lyxcwd/enforcement_test.go`'s AST walk over every `*ast.Ident`, so it constrains which `fabricengine` functions these packages may call **by name**, not merely what they say.
+  See `landing-never-names-fabric-vocabulary` for the resulting `Deps` shape.
   The conflict stencil describes one repo, per `templates-describe-one-repo`.
 - **Stencil Ownership Invariant.**
   The conflict prompt is a file under `contracts/stencils/`, resolved from the told stencils directory — never a Go string literal.
@@ -549,8 +579,10 @@ TDD candidates:
 - `Publish` pushes the warp branch before querying for an existing PR, and before creating one — assert the ordering, not just that the push happened;
 - `Publish` when the push fails → `Stuck`, and `PullRequests.Create` never called;
 - `Publish` on `gitrepo.ErrPushRejected` → `Stuck`, with its own reason-file text, distinct from a generic push failure;
-- `Publish` with `SkipGit` or `SkipPush` set and a PR required → `Stuck` before any push or GitHub call, never a PR for an unpushed branch;
-- `Publish` with `SkipGit`/`SkipPush` set and **no** PR required → plain `Done`, since that branch never reaches the push;
+- `Publish` with `PushSkipped` set and a PR required → `Stuck` before the push closure or any GitHub call, never a PR for an unpushed branch;
+- `Publish` with `PushSkipped` set and **no** PR required → plain `Done`, since that branch never reaches the push;
+- an AST-level assertion, or the existing repo-wide vocabulary test, covering that neither new package names a fabric-internal side — this is a build-breaking constraint, not a stylistic one;
+- `ScratchDir` absent on disk → the first write creates it rather than failing;
 - every `Stuck` case writes its reason file, and two different `Stuck` causes produce different file contents — this is what "distinguishable" is asserted against, since `Run` persists the same fixed reason for all of them;
 - `Publish` on a re-run with an open PR → the push still runs, so later commits reach the PR;
 - `Publish` never pushes the weft side;
@@ -625,10 +657,12 @@ and `StageResult`'s `MutationRecord` is populated on a real staging call and lef
 - **Q:** (review round 3) `.lyx/landing/…` as a relative `OutputFiles` entry resolves against `worktreeRoot`, not `AnchorPath` — wrong directory on an anchored hub. **A:** `ScratchDir` becomes a told absolute path in `landingshed.Deps`, resolved by the caller as `<AnchorPath>/.lyx/landing` exactly as `loomengine.LoomRunLock` does. No `_lyx/landing` twin: the report is ephemeral with no durable counterpart.
 - **Q:** (review round 3) Who actually fills the two Fabric opener closures? **A:** Nobody in this task — `loomshed.New` has no production caller at all today. The chain is specified here and built by the next roadmap item, `loom: session bootstrap`. This task's own tests fill the closures directly against `hubforge` fixtures, and a nil required closure is a construction error, not a silent no-op.
 - **Q:** (review round 3) What happens on a typed merge error the design doesn't name, like `*ErrUnmergeableState`? **A:** Catch-all `Stuck` with the error surfaced, and no `MergeAbort` — `MergeIn` already self-aborts on that one, and the guard errors refuse before mutating anything.
-- **Q:** (review round 4) Who pushes the task branch? Without a push there is no `head:<taskBranch>` for GitHub to see. **A:** `Publish` does, via `fabricengine.PushWarpAt` (path-told, no `lyxcwd` import), after the merge-in and before the existing-PR query. Push failure → `Stuck`, no PR attempted. Warp only — GitHub never sees weft.
+- **Q:** (review round 4) Who pushes the task branch? Without a push there is no `head:<taskBranch>` for GitHub to see. **A:** `Publish` does, after the merge-in and before the existing-PR query. Push failure → `Stuck`, no PR attempted. Only the GitHub-visible side is pushed. **Superseded in part by round 5:** this answer originally named `fabricengine.PushWarpAt`, which round 5 rejected for its rebase retry and push-lock residue — the push goes through the new rebase-free wrapper instead, and round 6 moved the call itself behind a `PushBranch` closure. Do not implement `PushWarpAt`.
 - **Q:** (review round 4) `MergeStageResolved`'s "maps to neither side" error is unreachable, since `weftPathVisible` is total. **A:** The discriminator changes to index membership: stage a path on whichever side's `ConflictedFiles()` lists it, and error when neither does. Deletions stage via `git add -A -- <paths>` so a delete/modify resolution doesn't error on the missing file.
 - **Q:** (review round 4) What does the marker scan do with a file that was correctly deleted, or one whose real content contains markers? **A:** Absent file = resolved-by-deletion, scan skipped, still staged; only a non-not-exist read error is a failure. The scan is line-anchored and content-only, and a file with legitimate line-start markers is refused into `Stuck` — the safe direction, since `MergeContinue` is irreversible. The stencil must not contain literal line-start markers.
 - **Q:** (review round 3) `CONSTRAINTS.md:427` cites `landing.md` as a worked example. **A:** Added to the same-commit doc edits; the bullet gets rewritten against a surviving example. It is prose, so no test would catch it.
 - **Q:** (review round 5) Where does a "`Stuck` with a distinct message" actually go? `Shed` persists one fixed reason string and never persists `OutputPointer`. **A:** Two carriers — a structured `logger.Warn` (the precedent `shedadapters/singlellm.go:104` already sets) and a reason file at `<ScratchDir>/<producer>-stuck.md`. The producer returns bare `Stuck`. Every "distinguishable" test asserts on the file, not on a returned reason. Extending the `ShedProducer` contract was rejected; returning an error was rejected because it flips `blocked` into `failed`.
 - **Q:** (review round 5) `PushWarpAt` no-ops on `SkipGit`/`SkipPush` and its rebase retry rewrites warp SHAs while weft isn't rebased. **A:** Don't use it. A new `PushWarpRebaseFreeAt` routes to `gitrepo.PushRebaseFree`, which neither rebases nor writes the push-lock file — discharging both the correspondence-index hazard and the untracked-residue precondition, and leaving `PushWarpAt`'s "no production caller" doc comment true. `SyncOptions` is told in `Deps`, and `Publish` checks the skip flags itself rather than letting a skip silently produce a PR for an unpushed branch.
+- **Q:** (review round 6) Can `landingshed` even name the `fabricengine` push verb? **A:** No — the Fabric Vocabulary Invariant's AST walk flags a forbidden token in any identifier, so the call expression alone fails the build. The push moves behind a `PushBranch` closure filled by the CLI layer, `Deps` drops its path field in favour of a told `OriginURL`, and both packages' docs describe one repo. The merge verbs are unaffected; their names are already vocabulary-free.
+- **Q:** (review round 6) Who creates `ScratchDir`? **A:** Whoever writes into it, on every write path. Creating a told directory is legal under Told-Geometry — `shedengine` does exactly this for its lock parents — whereas deriving the path would not be.
 - **Q:** (review round 5) `Deps` carrying both `AnchorPath` and `ScratchDir` is a derived near-duplicate. **A:** `AnchorPath` is dropped. `ScratchDir` is told, which is also mandatory rather than stylistic: deriving it would name the `.lyx` literal (Lyxdirs Single-Declarer) and compute geometry (Told-Geometry), both forbidden to these packages.

@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: landing-publish-finalize-producers
 branch: landing-publish-finalize-producers
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-19T11:36:08Z'
+discussion-fix-r6  '2026-08-19T12:48:02Z'
+discussed  '2026-08-19T12:48:02Z'
 ```
