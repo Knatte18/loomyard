@@ -56,7 +56,9 @@ batches:
     commit_sha: 17d38badc579b62166bc9de7a10d00dcf52fa1e4
     verify_baseline_failures: []
   - name: overview-docs
-    state: pending
+    state: running
+    implementer_session: 2bee7794-1dce-4254-82b1-32d52db5ba5b
+    start_sha: 7ae7ccd0b57a9298a8431ea2e12448e2781272f1
     verify_baseline_failures: []
   - name: roadmap-and-design-doc-deletion
     state: pending
