@@ -3,7 +3,7 @@
 ```yaml
 task: "invariants and docs for the told-geometry rule"
 slug: "standalone-docs-and-invariants"
-approved: false
+approved: true
 started: "20260819-061409"
 parent: "standalone-producers"
 root: ""
