@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-gitrepo merge primitives
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-fix-r3  '2026-08-19T09:32:43Z'
 plan-fix-r4  '2026-08-19T09:37:38Z'
 planned  '2026-08-19T09:37:46Z'
 implementing  '2026-08-19T09:38:23Z'
+approved-gitrepo merge primitives  '2026-08-19T09:46:11Z'
 ```
 
 ## Batches
@@ -33,9 +34,10 @@ implementing  '2026-08-19T09:38:23Z'
 ```yaml
 batches:
   - name: gitrepo merge primitives
-    state: running
+    state: approved
     implementer_session: cdba68c9-ecbb-440d-af0c-1e55d51475fc
     start_sha: 40d3959e6bd66dd563279aeb11ce18e382942a55
+    commit_sha: 1d89d1b644eb34411be1c5eef2a045a52e91394d
     verify_baseline_failures: []
   - name: merge state, errors, and path mapping
     state: pending
