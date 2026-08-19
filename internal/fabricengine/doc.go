@@ -870,6 +870,15 @@
 // on — there is no window where the record and the checkouts can drift silently out of reach of the
 // quartet.
 //
+// **Not every crash is continuable, and the record says which.** A side's outcome is persisted only
+// once that side's `MergeStart` has returned, so a crash before the first `MergeStart` or between
+// the two leaves an empty outcome for a side the attempt never reached. `MergeContinue` refuses such
+// a record outright with the guard reason `merge attempt did not reach both sides`, *before* landing
+// anything: concluding what it can would commit one side of a merge whose other side was never
+// started, leaving the pair non-corresponding with no way to finish it. `MergeAbort` is the one
+// correct recovery there, and it always works, because it restores from the recorded pre-merge SHAs
+// rather than from how far the attempt got.
+//
 // **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
 // `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
 // asymmetry is what makes this a precondition rather than a curiosity: a conclude-commit landed on a

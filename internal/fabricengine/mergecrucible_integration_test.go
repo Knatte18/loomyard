@@ -13,6 +13,7 @@ package fabricengine_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -81,5 +82,69 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 				t.Error("MergeInProgress() = true after a refused merge; want false — a guard refusal must write no record")
 			}
 		})
+	}
+}
+
+// TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides pins finding F1: a record whose
+// attempt never reached one side must refuse MergeContinue outright, before anything lands.
+// The reconstructed state is byte-for-byte what a kill between the two MergeStart calls leaves —
+// merge.go persists WarpOutcome only after the warp MergeStart returns, so WeftOutcome is still
+// empty at that instant. Without the guard, MergeContinue committed the warp side, then failed
+// concluding a weft side that was never started, returned "run MergeContinue again" (an instruction
+// that could never succeed), and left the pair out of correspondence.
+// MergeAbort must still recover the same record — that is the whole point of refusing.
+func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
+	commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
+	commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+	// Diverge the target branches so the reconstructed attempt STAGES rather than fast-forwards:
+	// a fast-forward moves HEAD, and the crash window this test reconstructs is the staged one.
+	commitOnWarpCurrent("target.txt", "target\n", "target: warp")
+	commitOnWeftCurrent("target.txt", "target\n", "target: weft")
+
+	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	// The warp side of the attempt really ran; the weft side never did.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "merge", "--no-commit", "feature")
+	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{
+		Verb:        "merge-in",
+		Source:      "feature",
+		WarpStart:   warpStart,
+		WeftStart:   weftStart,
+		WarpOutcome: "staged",
+		StartedAt:   time.Now(),
+	}); err != nil {
+		t.Fatalf("SaveMergeStateForTest: %v", err)
+	}
+
+	resumed := openFreshFabric(t, h.PrimeWorktree())
+	_, err := resumed.MergeContinue("")
+	assertSoleGuardReason(t, "MergeContinue on an attempt that never reached both sides", err,
+		"merge attempt did not reach both sides")
+
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStart {
+		t.Errorf("warp HEAD = %q after the refused MergeContinue; want unchanged %q — the refusal must land nothing", got, warpStart)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStart {
+		t.Errorf("weft HEAD = %q after the refused MergeContinue; want unchanged %q", got, weftStart)
+	}
+
+	// The record survives the refusal, and MergeAbort is still the working recovery.
+	if _, err := openFreshFabric(t, h.PrimeWorktree()).MergeAbort(); err != nil {
+		t.Fatalf("MergeAbort after a refused MergeContinue: %v", err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStart {
+		t.Errorf("warp HEAD = %q after MergeAbort; want %q", got, warpStart)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStart {
+		t.Errorf("weft HEAD = %q after MergeAbort; want %q", got, weftStart)
+	}
+	inProgress, err := openFreshFabric(t, h.PrimeWorktree()).MergeInProgress()
+	if err != nil {
+		t.Fatalf("MergeInProgress: %v", err)
+	}
+	if inProgress {
+		t.Error("MergeInProgress() = true after MergeAbort; want false")
 	}
 }
