@@ -181,6 +181,7 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/mergestate.go`
   - `internal/fabricengine/clone.go`
+  - `internal/fabricengine/destructivegaps_integration_test.go`
   - `internal/gitrepo/merge.go`
   - `internal/hubforge/hub.go`
   - `internal/gitkit/gitkit.go`

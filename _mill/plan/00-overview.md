@@ -3,7 +3,7 @@
 ```yaml
 task: 'fabric: merge-conflict primitive'
 slug: fabric-merge-conflict-primitive
-approved: false
+approved: true
 started: '20260819-084655'
 parent: standalone-producers
 root: ""
