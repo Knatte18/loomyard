@@ -35,6 +35,7 @@ var wantProducerTable = []wantProducerRow{
 	{NameBatchifier, ""},
 	{NameWebster, ""},
 	{NameWebsterReview, NameWebster},
+	{NamePublish, ""},
 	{NameFinalize, ""},
 }
 

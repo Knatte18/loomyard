@@ -8,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// wantSequenceOrder is the full 12-row name sequence a clean Run over buildSequenceFixture must
+// wantSequenceOrder is the full 13-row name sequence a clean Run over buildSequenceFixture must
 // produce. Asserted against this literal expected list rather than a computed one, so a reordering
 // in loomshed.go's producer table is a test failure rather than a silently-agreeing derivation.
 var wantSequenceOrder = []string{
@@ -23,10 +23,11 @@ var wantSequenceOrder = []string{
 	NameBatchifier,
 	NameWebster,
 	NameWebsterReview,
+	NamePublish,
 	NameFinalize,
 }
 
-// TestSequence_FullRunReachesDone is the task's own verify requirement: the full 12-row sequence
+// TestSequence_FullRunReachesDone is the task's own verify requirement: the full 13-row sequence
 // running to completion against the real list.
 func TestSequence_FullRunReachesDone(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
