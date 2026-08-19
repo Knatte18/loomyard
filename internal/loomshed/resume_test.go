@@ -42,7 +42,9 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 // OnStuck is empty, per the real Batchifier gate genuinely failing on a malformed config -- never a
 // substituted fake row), fixes the on-disk cause, and asserts that a freshly constructed Shed over
 // the same status file re-calls Batchifier directly rather than restarting the whole list at
-// Preflight.
+// Preflight. The fixed second run blocks again, at Publish (see sequence_test.go's
+// wantSequenceOrder doc comment for why) -- resuming past Batchifier, not reaching Done, is this
+// test's own point.
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
 	writeBatcherConfig(t, deps.AnchorPath, "active: [not valid yaml\n")
@@ -72,8 +74,11 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
 	}
-	if result2.Outcome != shedengine.RunDone {
-		t.Fatalf("second Run() outcome = %q; want %q (reason: %s)", result2.Outcome, shedengine.RunDone, result2.Reason)
+	if result2.Outcome != shedengine.RunBlocked {
+		t.Fatalf("second Run() outcome = %q; want %q (reason: %s)", result2.Outcome, shedengine.RunBlocked, result2.Reason)
+	}
+	if result2.HaltedProducer != NamePublish {
+		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, NamePublish)
 	}
 
 	// result2.History is the full persisted history, including the first run's own appended
@@ -90,9 +95,11 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	}
 }
 
-// TestResume_CrashRecoveryRecallsUnconditionally proves the re-call is unconditional: after a
-// complete run, resetting current_producer back to Preflight -- as if Preflight's output already
-// exists from the first pass -- still makes a fresh Shed call it again, rather than skip it.
+// TestResume_CrashRecoveryRecallsUnconditionally proves the re-call is unconditional: after a run
+// that reaches its terminal row, resetting current_producer back to Preflight -- as if Preflight's
+// output already exists from the first pass -- still makes a fresh Shed call it again, rather than
+// skip it. Both runs end shedengine.RunBlocked at Publish (see sequence_test.go's wantSequenceOrder
+// doc comment for why); this test's own point is the re-call count, not the terminal state.
 func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
 	counting := &countingProducer{}
@@ -106,8 +113,8 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Run() error = %v; want nil", err)
 	}
-	if result1.Outcome != shedengine.RunDone {
-		t.Fatalf("first Run() outcome = %q; want %q", result1.Outcome, shedengine.RunDone)
+	if result1.Outcome != shedengine.RunBlocked {
+		t.Fatalf("first Run() outcome = %q; want %q", result1.Outcome, shedengine.RunBlocked)
 	}
 	if counting.calls != 1 {
 		t.Fatalf("counting.calls after first Run() = %d; want 1", counting.calls)
@@ -123,8 +130,8 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
 	}
-	if result2.Outcome != shedengine.RunDone {
-		t.Fatalf("second Run() outcome = %q; want %q", result2.Outcome, shedengine.RunDone)
+	if result2.Outcome != shedengine.RunBlocked {
+		t.Fatalf("second Run() outcome = %q; want %q", result2.Outcome, shedengine.RunBlocked)
 	}
 	if counting.calls != 2 {
 		t.Errorf("counting.calls after second Run() = %d; want 2 -- Preflight must be re-called even though its output already exists from the first pass", counting.calls)
@@ -182,8 +189,14 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run() error = %v; want nil", err)
 	}
-	if result2.Outcome != shedengine.RunDone {
-		t.Fatalf("second Run() outcome = %q; want %q -- a subsequent run must resume rather than re-pause on the flag it is resuming from", result2.Outcome, shedengine.RunDone)
+	// A subsequent run must resume rather than re-pause on the flag it is resuming from -- it
+	// blocks at Publish (see sequence_test.go's wantSequenceOrder doc comment for why), never
+	// shedengine.RunPaused again.
+	if result2.Outcome != shedengine.RunBlocked {
+		t.Fatalf("second Run() outcome = %q; want %q -- a subsequent run must resume rather than re-pause on the flag it is resuming from", result2.Outcome, shedengine.RunBlocked)
+	}
+	if result2.HaltedProducer != NamePublish {
+		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, NamePublish)
 	}
 }
 

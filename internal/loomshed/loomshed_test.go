@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -53,6 +54,7 @@ func testDeps(t *testing.T) Deps {
 		SupportLogPath:     filepath.Join(dir, "discussion", "support-log.md"),
 		Preflight:          fakeAlwaysDoneProducer{},
 		WebsterRun:         (&fakeWebsterRun{}).run,
+		Landing:            testLandingDeps(dir),
 	}
 }
 
@@ -97,6 +99,80 @@ func TestNew_ToldShedFields(t *testing.T) {
 	}
 	if shed.MaxBounces != deps.MaxBounces {
 		t.Errorf("shed.MaxBounces = %d; want %d", shed.MaxBounces, deps.MaxBounces)
+	}
+}
+
+// TestNew_PublishAndFinalizeAreRealProducers asserts the swap card 31 makes: the row named Publish
+// and the row named Finalize are each backed by the real landingshed producer type, not the stub
+// type, and both keep their escalate-on-stuck setting.
+func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
+	shed, err := New(testDeps(t))
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+
+	var publishRow, finalizeRow *shedengine.ProducerDef
+	for i := range shed.Producers {
+		switch shed.Producers[i].Name {
+		case NamePublish:
+			publishRow = &shed.Producers[i]
+		case NameFinalize:
+			finalizeRow = &shed.Producers[i]
+		}
+	}
+	if publishRow == nil {
+		t.Fatalf("New() producer list has no row named %q", NamePublish)
+	}
+	if finalizeRow == nil {
+		t.Fatalf("New() producer list has no row named %q", NameFinalize)
+	}
+
+	if _, ok := publishRow.Producer.(*landingshed.Publish); !ok {
+		t.Errorf("row %q Producer = %T; want *landingshed.Publish, not the stub", NamePublish, publishRow.Producer)
+	}
+	if _, ok := finalizeRow.Producer.(*landingshed.Finalize); !ok {
+		t.Errorf("row %q Producer = %T; want *landingshed.Finalize, not the stub", NameFinalize, finalizeRow.Producer)
+	}
+	if publishRow.OnStuck != "" {
+		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", NamePublish, publishRow.OnStuck)
+	}
+	if finalizeRow.OnStuck != "" {
+		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", NameFinalize, finalizeRow.OnStuck)
+	}
+}
+
+// TestNew_ProducerTableOrderUnchangedByWiring re-asserts TestNew_ProducerTable's own table-order and
+// name coverage after the swap: the thirteen rows stay in their existing table order with their
+// existing names, regardless of what backs rows 12 and 13.
+func TestNew_ProducerTableOrderUnchangedByWiring(t *testing.T) {
+	shed, err := New(testDeps(t))
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+	if len(shed.Producers) != len(wantProducerTable) {
+		t.Fatalf("New() produced %d rows; want %d", len(shed.Producers), len(wantProducerTable))
+	}
+	for i, want := range wantProducerTable {
+		if got := shed.Producers[i].Name; got != want.name {
+			t.Errorf("row %d name = %q; want %q", i, got, want.name)
+		}
+	}
+}
+
+// TestNew_MissingLandingClosureReturnsError asserts that a Deps whose landing passthrough is
+// missing a required closure makes New return an error rather than a list that panics at call
+// time: New surfaces landingshed.NewPublish's and landingshed.NewFinalize's own construction
+// failure instead of discarding it.
+func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
+	deps := testDeps(t)
+	deps.Landing.OpenFabric = nil
+
+	shed, err := New(deps)
+	if err == nil {
+		t.Fatalf("New() error = nil; want non-nil error for a Deps.Landing missing a required closure")
+	}
+	if shed != nil {
+		t.Errorf("New() shed = %+v; want nil alongside a non-nil error", shed)
 	}
 }
 
