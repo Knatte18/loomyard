@@ -121,7 +121,8 @@ type Deps struct {
 
 ### onstuck-routing
 
-- Decision: every gate and validator bounces back to the producer whose artifact it guards; every other row escalates to a human (`OnStuck: ""`).
+- Decision: every gate and validator bounces back to the producer whose artifact it guards — **and a gate whose guarded artifact is produced by no row in the list escalates instead (`OnStuck: ""`)**; every other row escalates too.
+  The second clause is what makes the rule agree with the table without cross-checking: `Preflight` gates git and filesystem state, and `Batchifier` gates `batcher.yaml`, neither of which any producer in the list writes, so there is nothing to bounce to and a human is the only thing that can fix either.
 - Rationale: `loom.md` already specifies the shape — "`Plan-Review`'s stuck routes back to `Plan-Write`".
   The rest follows the same rule mechanically.
   Building the real table now is cheap and is what "sequencing is real from the start" means; deferring it would leave a table that has to be revisited the moment any gate becomes real.
@@ -130,8 +131,10 @@ type Deps struct {
 
 ### loomshed-owns-seed
 
-- Decision: `internal/loomshed` exports a `Seed(...)` that writes the initial status file via `internal/state`: `current_producer: "Preflight"`, `state: shedengine.StateRunning`, empty `history`, `pause_requested: false`, and loom's payload (`slug`, `parent`, `start_sha: null`) in `product`.
+- Decision: `internal/loomshed` exports `Seed(statusPath, statusLockPath, slug, parent string) error`, which writes the initial status file via `internal/state`: `current_producer: "Preflight"`, `state: shedengine.StateRunning`, empty `history`, `pause_requested: false`, and loom's payload (`slug`, `parent`, `start_sha: null`) in `product`.
   `Seed` **refuses when the file already exists**, returning an error rather than overwriting.
+- It takes bare told paths rather than a `Deps`, and takes `slug`/`parent` from its caller: seeding happens *before* any `Shed` exists, so a `Deps` would couple the seam to a struct whose producer fields are irrelevant to it.
+  `loom: session bootstrap` is the production caller and supplies all four from the worktree it is launching in.
 - The `state` value is pinned rather than left to planning because `State` is a five-member enum whose empty string the read gate hard-rejects (`status.go`'s `valid()`), so an unpinned seed is a hard error at Shed's first read.
   `StateRunning` is the only member that means "a run may proceed from here"; `paused`, `done`, `blocked` and `failed` all describe a run that has already happened.
 - Refuse-over-overwrite is a production-safety choice, not a style one: overwriting silently destroys an in-flight run's `history`, and the whole resume contract rests on that history.
@@ -339,6 +342,7 @@ From `CONSTRAINTS.md`, in force for this task:
 
   - `contracts/specs/loom-status-spec.md` — the whole schema.
   - `manifest/designs/loom.md` — the State-&-contracts bullet ("current phase, current review stage"), row 9's Output column, row 10's **Input** column ("batch grouping"), falsified by the same reasoning that corrects row 9, and — added manually, since the grep above cannot reach it — the `Plan-never-reads-support-log` line "This assertion lands with `Shed`", which this task's decision falsifies.
+    Also in the same bullet group: the "*It also carries a human-readable current-activity narration*" bullet, reworded off the retired `narration` term onto `activity` — its own `now:`/`last:`/`wait:` example survives verbatim as Shed's field, so only the word changes, not the described behaviour.
   - `manifest/designs/shed.md` — the `product`-carries-no-compatibility-claim paragraph ("`loom-status-spec.md` mandates `phase`, `stage`, and `narration` as top-level fields… reconciling the two is loom's own later rewiring task") and the surrounding seed/external-writer text that depends on it.
   - `docs/overview.md` — the `_lyx/` bullet's "current phase, review round, verdict history" wording, plus the internal-package tree, which gains `internal/loomshed`.
   - `internal/shedengine/doc.go` — the divergence paragraph, per `shedengine-doc-carve-out`.
@@ -359,7 +363,13 @@ The whole point of `explicit-deps-struct` is that the 12-row list is exercisable
   Assert against a table so a reordering or rename is a test failure, since both break resume.
 - `Shed.validate()` accepts the constructed list — no empty/duplicate name, no nil producer, every `OnStuck` naming a real row, distinct lock paths.
   This is the cheapest guard against a typo'd `OnStuck` and should be asserted explicitly rather than relied on implicitly.
-- **The full 12-row sequence with every row faked to `Done`** — the verify requirement's core. Assert the terminal `RunDone`, and the `history` order.
+- **The full 12-row sequence run to `RunDone`** — the verify requirement's core. Assert the terminal outcome and the `history` order.
+  **This needs a shared Tier-1 fixture builder, not more injection points.** Only `Preflight` and `Webster` are injectable, so rows 3, 7 and 9 are real code reading real on-disk state and must be made to genuinely pass:
+  `Discussion-Validate` needs `_lyx/discussion/` with both files and all seven H2 sections;
+  `Plan-Validate` needs a `_lyx/plan/` fixture satisfying every one of `planparser.Validate`'s checks, including the ones that stat paths against `WorktreeRoot` (`checkPathMissing`, `checkMoveSourceMissing`), so the fixture creates those files too;
+  `Batchifier` needs either an `_lyx/` with a valid `batcher.yaml` or none at all, since `batcher.Active` falls back to the embedded `ConfigTemplate()`.
+  One builder produces the whole temp anchor and is reused by every sequence test below.
+  Adding injection points for rows 3/7/9 instead would contradict `explicit-deps-struct`'s two-rows-only rule and would stop the sequence test from exercising the three producers this task actually builds — which is most of its value.
 - **Resume:** run to a mid-list producer, construct a fresh `Shed` over the same status file, assert it re-calls `current_producer` and completes.
 - **Crash-recovery:** the unconditional re-call — a producer whose output already exists is still called again; assert `Shed` does not skip it.
 - **Pause:** set `pause_requested`, assert the run stops at the next producer boundary, that the flag is consumed in the same persist, and that a subsequent run resumes rather than re-pausing.
@@ -422,4 +432,8 @@ All are shipped and independently covered; this task tests only its own wiring a
 - **Q:** (Review r4) Which package owns the `Preflight` wrapper, and where does its integration test live? **A:** `internal/loomshed` exports `NewPreflightProducer(cwd)` and imports `internal/loomengine`; the guard only forbids a *direct* `lyxcwd` import, and transitive is explicitly fine. `Deps.Preflight` stays a bare `ShedProducer` so Tier 1 injects a fake. The integration test lands in `internal/loomshed`, which then needs a `TestMain` with `gitkit.HermeticGitEnv()`. Leaving the wrapper to the caller would leave this task with a row nothing can construct until session bootstrap lands.
 - **Q:** (Review r4) What happens to the spec's two per-entry history rules? **A:** Kept, translated: `outcome ∈ {done, stuck}` and `at` RFC3339 UTC. Unlike `activity`, history accumulates across runs and has sanctioned external writers, and Shed's read gate validates only `state` — so the rules still do work.
 - **Q:** (Review r4) `loom.md` still says the support-log assertion "lands with `Shed`". **A:** False as of this task; added to the doc set manually, since the status-file-keyed grep cannot reach it.
+- **Q:** (Review r5) "Every row faked to `Done`" is impossible when only two rows are injectable. **A:** Correct — rows 3, 7 and 9 are real and read real state. Resolved with a shared Tier-1 fixture builder (both discussion files with all seven H2s, a plan fixture satisfying every `planparser.Validate` check including the path-stat ones, and no `batcher.yaml` so `Active` uses its embedded template), not with more injection points, which would contradict `explicit-deps-struct` and stop the sequence test exercising the three producers this task builds.
+- **Q:** (Review r5) The `onstuck-routing` rule as stated does not fit rows 1 and 9. **A:** Missing clause added — a gate whose guarded artifact is produced by no row escalates. `Preflight` gates git state and `Batchifier` gates `batcher.yaml`; no producer writes either, so there is nothing to bounce to.
+- **Q:** (Review r5) What does `Seed` take? **A:** `Seed(statusPath, statusLockPath, slug, parent string) error` — bare told paths, not `Deps`, since seeding happens before any `Shed` exists.
+- **Q:** (Review r5) `loom.md`'s narration bullet is unaddressed. **A:** Reworded onto `activity`; its `now`/`last`/`wait` example survives verbatim, so only the retired term changes.
 - **Q:** (Review r1) Two items were deferred to planning. **A:** Both resolved here. The `Plan-never-reads-support-log` assertion does not land in this task at all (a stub declares no input set to assert against); the `loomshed` import guard is built, and `internal/loomshed` joins the Told-Geometry machine-enforced list in the same commit.
