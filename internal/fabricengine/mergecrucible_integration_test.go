@@ -11,9 +11,11 @@
 package fabricengine_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,4 +298,78 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 	if _, err := h.Topology.Remove(primeLocation, slug, true); err != nil {
 		t.Fatalf("Remove(%s) after MergeAbort: %v; want success — the guard must close a window, not block the pair forever", slug, err)
 	}
+}
+
+// TestMergeCrucible_ConflictsIsEmptyNeverNil pins finding F7: MergeResult.Conflicts is documented as
+// empty-never-nil so a caller's JSON never sees "conflicts": null, and merge.go declares the
+// mergeNoConflicts sentinel for exactly that — but MergeContinue and MergeAbort both returned a bare
+// MergeResult, leaving the field nil on their success paths.
+// The check is on the marshalled JSON, since null-vs-[] is the property that actually matters to a
+// consumer.
+func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
+	assertConflictsMarshalsAsArray := func(t *testing.T, label string, res fabricengine.MergeResult) {
+		t.Helper()
+		if res.Conflicts == nil {
+			t.Errorf("%s.Conflicts is nil; want an empty non-nil slice", label)
+		}
+		data, err := json.Marshal(res)
+		if err != nil {
+			t.Fatalf("json.Marshal(%s): %v", label, err)
+		}
+		if !strings.Contains(string(data), `"conflicts":[]`) {
+			t.Errorf("%s marshalled to %s; want it to carry \"conflicts\":[] rather than null", label, data)
+		}
+	}
+
+	t.Run("MergeContinue", func(t *testing.T) {
+		h, f := mergeCrucibleWarpConflictFixture(t)
+		resolveWarpConflict(t, h.PrimeWorktree(), "conflict.txt")
+		res, err := f.MergeContinue("")
+		if err != nil {
+			t.Fatalf("MergeContinue: %v", err)
+		}
+		assertConflictsMarshalsAsArray(t, "MergeContinue", res)
+	})
+
+	t.Run("MergeAbort", func(t *testing.T) {
+		_, f := mergeCrucibleWarpConflictFixture(t)
+		res, err := f.MergeAbort()
+		if err != nil {
+			t.Fatalf("MergeAbort: %v", err)
+		}
+		assertConflictsMarshalsAsArray(t, "MergeAbort", res)
+	})
+}
+
+// mergeCrucibleWarpConflictFixture builds a pair left mid-merge by a real MergeIn that conflicted on
+// the warp side only — the weft side diverges cleanly, since a weft-root conflict would be
+// unmappable and self-abort the whole attempt before any record survives.
+func mergeCrucibleWarpConflictFixture(t *testing.T) (*hubforge.Hub, *fabricengine.Fabric) {
+	t.Helper()
+
+	hub, fabric, onWarpBranch, onWeftBranch, onWarpCurrent, onWeftCurrent := newMergePairFixture(t, ".")
+	onWarpBranch("feature", "conflict.txt", "feature side\n", "feature: warp conflict")
+	onWeftBranch("feature-weft", "weft-only.txt", "weft feature\n", "feature: weft advance")
+	onWarpCurrent("conflict.txt", "target side\n", "target: warp conflict")
+	onWeftCurrent("target-only.txt", "weft target\n", "target: weft advance")
+
+	res, err := fabric.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature): %v", err)
+	}
+	if len(res.Conflicts) == 0 {
+		t.Fatal("MergeIn(feature).Conflicts is empty; the fixture must leave the pair mid-merge")
+	}
+	return hub, fabric
+}
+
+// resolveWarpConflict writes a resolution for name in the warp worktree at dir and stages it, so
+// MergeContinue's unresolved-conflicts guard passes.
+func resolveWarpConflict(t *testing.T, dir, name string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolution for %s in %s: %v", name, dir, err)
+	}
+	gitkit.MustRun(t, dir, "git", "add", name)
 }

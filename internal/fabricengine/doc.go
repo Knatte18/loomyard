@@ -903,7 +903,15 @@
 // split, and never absolute paths, which is not what `git merge` hands an operator. A path either
 // side's conflict resolves to something outside the single visible worktree tree is unmappable, and
 // that self-aborts the whole attempt with `*ErrUnmergeableState` rather than reporting a path that
-// would mislead the operator about where to look.
+// would mislead the operator about where to look. `MergeResult.Conflicts` is empty, never nil, on
+// every path that carries no conflict, so a consumer's JSON never has to distinguish `[]` from
+// `null`.
+//
+// **A conflict result is not a failure, and a script tells them apart by the envelope.** At the CLI
+// both a conflicted merge and a hard error exit 1 with `"ok": false` — the shared envelope has no
+// third outcome and no distinct exit code. The discriminator is the payload: a conflict result, and
+// only a conflict result, carries a `conflicts` array (`errConflictsWithRecord`), and it reports
+// `partial: false` even with a non-empty mutation record, since the engine returned no error.
 //
 // **SHA-labelled conflict markers.** Every merge names a SHA, never a branch, in its conflict
 // markers on both sides — resolving the weft side's own SHA independently, rather than reusing the

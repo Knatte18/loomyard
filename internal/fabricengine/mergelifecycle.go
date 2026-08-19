@@ -170,7 +170,7 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	return MergeResult{Committed: st.landedConcludeCommit()}, nil
+	return MergeResult{Conflicts: mergeNoConflicts, Committed: st.landedConcludeCommit()}, nil
 }
 
 // MergeAbort discards an in-progress merge, restoring both sides to their pre-merge SHAs: with no
@@ -208,7 +208,7 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	return MergeResult{}, nil
+	return MergeResult{Conflicts: mergeNoConflicts}, nil
 }
 
 // MergeInProgress reports whether fabric has a merge in progress on this pair: mergeRecordExists()'s

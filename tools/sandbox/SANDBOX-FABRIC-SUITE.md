@@ -108,7 +108,7 @@ Confine all free text to the `title`/`body` string fields so the JSON stays well
 **Goal:** "You have `lyx` on PATH and nothing else inside this repo.
 Find out what `lyx fabric` can do and report its full command tree."
 
-**Watch:** Does `lyx fabric` list all 16 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`)?
+**Watch:** Does `lyx fabric` list all 18 verbs (`clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `status`, `commit`, `push`, `pull`, `sync`, `diff`, `unwire`, `merge`, `merge-in`)?
 Does each `--help` explain itself?
 Is each description accurate and useful?
 
@@ -395,6 +395,44 @@ Then three variations, each on its own hub.
 Delete both, then run `lyx fabric reconcile`: it must report `portal_restored` for that pair -- not `already_healthy` -- and both artefacts must be back. A second `reconcile` must report `already_healthy`. (Historical: reconcile reported `already_healthy` and `pairs` reported `junction_healthy: true` for a pair whose portal and launchers were gone, and restored neither, leaving remove-and-re-add as the only recovery.)
 Then ownership: put a file of your own inside `<hub>/_launchers/<slug>/` and run `lyx fabric remove <slug>`. Fabric's two scripts must go, your file must survive, and the pair must still be torn down. Do the same with `<hub>/_portals/<slug>` replaced by a real directory holding a file -- it too must survive.
 Finally confirm the hub's prime worktree is left alone throughout: it never had a portal or a launcher directory, and `reconcile` must not start creating them.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F18 -- Merge lifecycle end to end (`merge-in`, `merge --continue`, `merge --abort`)
+
+**Covers:** fabric
+
+**Goal:** "Merge a task pair's branch into the hub's prime pair, resolve the conflict it produces, conclude it -- then do the same merge again and abandon it instead."
+
+**Watch:** Create a pair, diverge it from the prime on **both** sides so the merge is a real merge and not a fast-forward, then run `lyx fabric merge-in <slug>` from the prime worktree.
+A conflict is a *result*, not a failure to re-run differently: the envelope is `ok: false`, exit 1, and carries a `conflicts` array of **worktree-relative** paths -- one flat list covering both repos, never two lists and never an absolute path.
+Note the exit code: a conflict result and a hard error both exit 1, so the only correct discriminator for a script is the presence of the `conflicts` key.
+While the merge is live, confirm the sibling verbs refuse with the single fixed message `a merge is in progress; run MergeContinue or MergeAbort first` -- try `commit`, `pull`, `push`, `sync`, `checkout`, and `remove` of the merge's own source pair.
+Resolve every listed path, `git add` each, then `lyx fabric merge --continue` and confirm both sides carry a merge commit whose subject names a **SHA, never a branch**.
+Repeat the whole scenario and take `lyx fabric merge --abort` instead: both sides must return to their exact pre-merge SHAs, both worktrees must come back clean, and `git status` in each checkout must show no merge in progress.
+Also check `committed`: it is true only when a conclude-commit actually landed, so a merge that fast-forwarded both sides reports `committed: false` while still having advanced the pair.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
+### F19 -- Merge preconditions and hostile local state (`merge`, `merge-in`)
+
+**Covers:** fabric
+
+**Goal:** "Confirm a merge refuses every state it cannot safely act on, and that each refusal leaves the hub exactly as it found it."
+
+**Watch:** Each of the following must refuse with **nothing mutated** (`mutations: []`, both HEADs unmoved) and, where the reason set applies, a `merge preconditions failed: ...` message that names no side and no path:
+
+- A dirty worktree on either side -> `worktree dirty`.
+- A detached HEAD on either checkout (`git checkout --detach`) -> `checkout is not on a branch`. This one matters: without it the merge would land a warp commit reachable from no ref while the weft half landed for good.
+- A source that is a tag, a raw SHA, `HEAD`, or a branch with no `-weft` counterpart -> `source branch is not fabric-managed`; a source that exists nowhere -> that plus `source branch not found`.
+- Real plain-git merge state you leave behind yourself (`git merge <branch>` conflicted, or `git merge --squash <branch>` conflicted -- the latter leaves **no** `MERGE_HEAD`) -> `git merge state exists that fabric did not start`, with the foreign state left untouched for you to finish with plain git.
+
+Then set hostile git config and confirm fabric is immune to it: `merge.ff = only` must not break a non-fast-forward merge (fabric pins `--ff`), and `core.editor` set to something that blocks forever must not hang `merge --continue` (fabric pins `--no-edit`). A hang here is a blocking defect.
+Finally, check the flag pre-flight: `merge --abort --squash` and `merge --abort -m <msg>` are both rejected as usage errors rather than silently ignoring the flag, while `merge --continue -m <msg>` really does name the conclude-commit.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 
