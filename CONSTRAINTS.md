@@ -44,6 +44,44 @@ Fuller design/how-to lives in godoc and `docs/`.
   `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap,
   and `cmd/lyx/cwdmutation_test.go` (`TestCwdMutation_MigratedFilesStayChdirFree`) for the chdir-mutation regression guard.
 
+## Told-Geometry Invariant
+
+An engine is handed the absolute paths it operates on and derives none of its own, so it runs identically inside a lyx hub and in a bare directory that is not a git repository.
+
+- **The three resolution tiers.**
+
+  | Tier | Concern | Entry point | What it establishes |
+  |---|---|---|---|
+  | 1 | geometry | `lyxcwd.Resolve` | cwd is the root of a git worktree; `AnchorRel` is whatever the recorded anchor marker says, or `"."` when absent |
+  | 2 | fabric | `preflight.Check` with `fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName` | fabric is wired here, junctions intact, warp and weft in sync, tree clean |
+  | 3 | orchestrator state | `loomengine.Preflight` | tiers 1 and 2 plus this orchestrator's own status seed |
+
+  This is the one place in this section where warp/weft appear, and they appear because tier 2 is exactly where the two sides must be told apart.
+- **The producer/orchestrator split.**
+  A producer requires none of the three tiers.
+  An orchestrator requires tier 3 and threads the extracted plain values down through its whole producer list.
+  A standalone CLI invocation of a single producer **requires** none of the three, but its pre-run does *attempt* tier 1: `preflight.ResolveMode` calls `lyxcwd.Resolve` unconditionally and treats the result as a mode question rather than a precondition — say "requires none of the three", never "never enters tier 1".
+
+  `ResolveMode`'s outcome is two-way, not a blanket degrade:
+  it **degrades** to standalone on a successful resolve with no board-level lyx directory beside it;
+  it **degrades** on `ErrNotAGitRepo`;
+  it **degrades** on `ErrCwdOutsideAnchor` when the re-probe finds no hub geometry;
+  it **refuses**, surfacing the original gated error verbatim, on `ErrCwdOutsideAnchor` inside a wired hub worktree's subdirectory, and on any other error class.
+  A non-nil error means refuse, never a degrade to standalone.
+- **The adapter direction.**
+  Where an engine takes a `Geometry` **struct**, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors.
+  Both depend on the engines;
+  no engine imports either back.
+  An engine that gains a `Geometry` struct adds a sibling constructor in each rather than deriving geometry inline at a call site or spawning a per-engine geometry package.
+
+  This scopes to `Geometry` structs deliberately: two shipped packages use the other permitted shape, plain told values, with neither a geometry struct nor a `hubgeom`/`standalonegeom` constructor — `internal/treadleengine` is told `runDir` and `Profile.GateDir`, and `internal/shedengine` is told `StatusPath`/`LockPath`/`StatusLockPath`.
+  The pair is not symmetric: `standalonegeom.StencilsDir` has no `hubgeom` sibling, because hub mode resolves that directory through `fabricengine` instead.
+- **The mode trigger.**
+  `preflight.ResolveMode` is what a standalone-capable CLI's pre-run consults — never `preflight.Wired`, and never a bare `HubPresent`.
+  See `internal/preflight/doc.go` for why each alternative is wrong.
+- **See also:** the Cwd Resolution Invariant above says who may resolve;
+  this invariant says who must be told instead.
+
 ## Lyxdirs Single-Declarer Invariant
 
 `internal/lyxdirs` is the sole declarer of the two lyx directory-name tokens, `_lyx` (`LyxDirName`) and `.lyx` (`DotLyxDirName`).
