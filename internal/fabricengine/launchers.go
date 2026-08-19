@@ -261,7 +261,11 @@ func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	}
 
 	ext := launcherExt(runtime.GOOS)
-	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
+	// This slice is a mandatory edit point, not a leak-prone list: the directory removal that
+	// follows is non-recursive, so any script writeLaunchers writes that is missing here leaves the
+	// directory non-empty and fails Remove/rollbackAdd outright, rather than merely orphaning a
+	// stray file.
+	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext, "run" + ext} {
 		target := filepath.Join(launcherDir, name)
 		req := pathRequest{
 			what:      "remove launcher script",
