@@ -54,7 +54,9 @@ batches:
     commit_sha: a52b6f862cdf78546d60b2ef944a52c1fad4704b
     verify_baseline_failures: ["FAIL\t./internal/mergeresolve/... [setup failed]"]
   - name: landingshed producers
-    state: pending
+    state: running
+    implementer_session: 65b22a31-1543-438d-9e2c-ed7a61e1b395
+    start_sha: 52c2080a6a8ac1df80d1cf2047885710a36b7a7e
     verify_baseline_failures: ["FAIL\t./internal/landingshed/... [setup failed]"]
   - name: loomshed wiring and integration
     state: pending
