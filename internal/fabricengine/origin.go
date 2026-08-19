@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // Origin is fabric's provenance record for one worktree pair, written once at pair-creation time
@@ -49,4 +50,54 @@ func OriginRecordPath(l *lyxcwd.Location) string {
 // wrong in any subpath-anchored hub.
 func OriginRecordPathFor(l *lyxcwd.Location, slug string) string {
 	return filepath.Join(WeftWorktreePath(l, slug), l.AnchorRel, OriginRecordRel())
+}
+
+// originLockPath returns the origin record's lock file path within weftPath's .weft lock
+// directory.
+//
+// This is NOT the package's usual path+".lock" idiom: that idiom is safe only for the two records
+// that live in the weft gitdir, and a never-tracked ".lock" file sitting beside a tracked record
+// under the durable lyx directory would violate the Durable-vs-Ephemeral State Invariant.
+// ensureWeftLockDirAt already creates its own directory, which is what supplies the lock's parent
+// without introducing a new raw write that TestNoUncontainedWrite_FabricengineProductionSource
+// would flag.
+func originLockPath(weftPath string) (string, error) {
+	lockDir, err := ensureWeftLockDirAt(weftPath)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(lockDir, originRecordLockFileName), nil
+}
+
+// ReadOrigin reads the origin record for l's worktree pair.
+// A false second return means no record exists for this worktree — the legacy-worktree case — and
+// is not an error.
+func ReadOrigin(l *lyxcwd.Location) (Origin, bool, error) {
+	lockPath, err := originLockPath(WeftWorktree(l))
+	if err != nil {
+		return Origin{}, false, err
+	}
+	return state.ReadJSON[Origin](OriginRecordPath(l), lockPath)
+}
+
+// WriteOrigin writes the origin record o for slug's worktree pair, then records KindFileWritten in
+// rec.
+//
+// slug is what lets one function serve both callers: Topology.Add passes the new pair's slug, and
+// a caller repairing its own worktree passes that worktree's own name, which resolves to the same
+// file the read side reaches through the junction.
+func WriteOrigin(rec *Mutations, l *lyxcwd.Location, slug string, o Origin) error {
+	weftPath := WeftWorktreePath(l, slug)
+	lockPath, err := originLockPath(weftPath)
+	if err != nil {
+		return err
+	}
+	path := OriginRecordPathFor(l, slug)
+	if err := state.WriteJSON(path, lockPath, o); err != nil {
+		return err
+	}
+	// Record only after WriteJSON observably succeeded, per the Mutation Record Invariant's
+	// "after the primitive observably changed state" rule.
+	rec.Append(KindFileWritten, path, "")
+	return nil
 }
