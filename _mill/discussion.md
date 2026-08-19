@@ -100,8 +100,12 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 - **The `OutputFiles` requirement is a `Runner` rule, not an adapter rule.**
   `shuttleengine`'s `Spec.validate` (`spec.go:115`, called from `run.go:143` inside `Runner.Start`) hard-errors on an empty `OutputFiles` — "a run's output file IS its return value" — and separately rejects any entry that already exists on disk, because outcome classification tests bare file existence and a stale file would classify the run `done` on its first turn end.
   Bypassing `SingleLLMProducer` does not escape either rule.
-- Decision, therefore: the conflict spec's `OutputFiles` names exactly one **fresh** artifact — a resolution report at `.lyx/landing/conflict-resolution-r<attempt>.md`, which the session writes as its terminal act.
-  `.lyx` is machine-local and never committed, per the Durable-vs-Ephemeral State Invariant, so the report never reaches a weft-commit pathspec and never lands in the parent.
+- Decision, therefore: the conflict spec's `OutputFiles` names exactly one **fresh, absolute** artifact — a resolution report at `<ScratchDir>/conflict-resolution-r<attempt>.md`, which the session writes as its terminal act.
+  `ScratchDir` is a **told absolute path** carried in `landingshed.Deps` and passed down to `mergeresolve`;
+  the caller resolves it as `<AnchorPath>/.lyx/landing`, exactly as `loomengine.LoomRunLock` resolves its own (`filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", …)`).
+  Absolute matters: `Spec.validate` resolves a *relative* `OutputFiles` entry against `worktreeRoot`, not `AnchorPath()`, so on any anchored hub (`AnchorRel != "."`) a relative `.lyx/…` entry would land at `<worktreeRoot>/.lyx/…` — the wrong directory, and a Durable-vs-Ephemeral violation, since `.lyx` is `_lyx`'s sibling under the anchor.
+  Neither package may derive that path itself, per the Told-Geometry Invariant.
+  There is deliberately **no** `_lyx/landing` twin: the report is ephemeral debugging output with no durable counterpart, so nothing belongs on the durable side.
   The path is **per-attempt** (`r1`, `r2`), because `validate` rejects a pre-existing entry and the one-retry path would otherwise fail its second `Runner.Start` on the first attempt's own artifact.
   The report is not parsed for control flow — `mergeresolve`'s marker scan over `MergeResult.Conflicts` remains the verification, per `verify-before-conclude`.
   It exists to satisfy the runner contract and to leave a human an audit trail of what the session claims it resolved.
@@ -120,7 +124,7 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 
 ### merge-stage-resolved-verb
 
-- Decision: `internal/fabricengine` gains a narrow verb, `MergeStageResolved(paths []string) error`.
+- Decision: `internal/fabricengine` gains a narrow verb, `MergeStageResolved` (full signature in the Signature bullet below).
   It takes unified, worktree-relative paths, routes each to the side that owns it — the inverse of `mergepaths.go`'s `unifyConflictPaths` — and stages it.
   `mergeresolve` calls it after its own marker scan passes, immediately before `MergeContinue`.
   `MergeContinue`'s existing index guard is left exactly as shipped.
@@ -158,6 +162,15 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   Assuming a human's in-flight merge is disposable is exactly the failure mode the refusal exists to prevent.
   Note `MergeInProgress` (read-only) reports `false` for foreign state, so the crash-recovery probe above does not catch this case — the abort call itself surfaces the typed error.
 - Rejected: aborting it and proceeding.
+
+### unlisted-typed-merge-errors-escalate
+
+- Decision: any typed merge error `mergeresolve` does not name explicitly — `*ErrUnmergeableState`, `*ErrMergeIncomplete`, `*MergeGuardError`, `*ErrNoMergeInProgress`, `*ErrMergeInProgress` — is a catch-all `Stuck`, surfaced with the error text, and `mergeresolve` calls no `MergeAbort` of its own.
+- Rationale: `MergeIn` returns `*ErrUnmergeableState` when `unifyConflictPaths` finds a path that maps outside the single visible worktree tree, and it **already self-aborts the whole attempt** before returning — a second abort would hit `*ErrNoMergeInProgress` and turn a clear diagnosis into a confusing one.
+  The guard errors likewise refuse before mutating anything, so there is nothing to unwind.
+  A default of escalate-and-say-why is right for a class of errors whose members are each a genuine human-diagnosable condition, and it means a future `fabricengine` error type does not silently fall into a wrong branch.
+- Rejected: aborting unconditionally on any error (double-abort noise, and it discards state a human may need);
+  treating unlisted errors as retryable.
 
 ### publish-require-pr-is-a-base-list
 
@@ -237,6 +250,11 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   The parent is known only as a branch name (`loomengine.Status.Parent`), so the CLI/orchestrator layer resolves it before building the closure: `fabricengine.List(sourceDir)` returns `[]WorktreeEntry{Path, Head, Branch, Main}`, and the entry whose `Branch` equals the parent branch gives the parent worktree's path.
   That path then goes through `lyxcwd.ResolveWorktree(path)` → `fabricengine.Open(loc)`, all inside the layer that already imports `lyxcwd`.
   `landingshed` sees only the closure.
+- **Nobody fills these closures in this task, and that is deliberate.**
+  `loomshed.New` has no production caller anywhere in the tree today — only `internal/loomshed/*_test.go` reference it, there is no `loomcli`, and this task adds no `lyx` command.
+  The resolution chain above is therefore **specified here but not built here**: `landingshed.Deps` declares both closure fields, `loomshed.Deps` passes them through, and the roadmap's next item, `loom: session bootstrap` (which builds `lyx loom run`), is what fills them with the `List` → branch-match → `ResolveWorktree` → `Open` chain.
+  Until then both closures are exercised only by this task's own tests, which fill them directly against `hubforge` fixtures — legitimate, since test files are not bound by the Told-Geometry Invariant's import rule.
+  A nil closure is a construction error, not a silent no-op: `NewFinalize` rejects a nil `OpenParentFabric` up front, the same way `loomshed.New` already rejects a nil `deps.Preflight`.
 - **No live pair for the parent branch** → `OpenParentFabric` returns an error and `Finalize` returns `Stuck` with a distinct message naming the branch.
   `Finalize` never creates a worktree to merge into;
   materializing a pair is `lyx fabric add`'s job and a human's decision.
@@ -275,7 +293,7 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 
 ### told-values-via-landingshed-deps
 
-- Decision: `landingshed.Deps` carries every told value, with `NewPublish(deps)` / `NewFinalize(deps)` constructors.
+- Decision: `landingshed.Deps` carries every told value — worktree root, anchor path, task branch, parent branch, webster dir, stencils dir, modelspec registry, the two Fabric opener closures, and `ScratchDir` (the told absolute `<AnchorPath>/.lyx/landing` path) — with `NewPublish(deps)` / `NewFinalize(deps)` constructors that reject a nil required closure up front rather than nil-panicking at call time.
   `loomshed.Deps` grows a single `Landing landingshed.Deps` passthrough field, and `loomshed.New` constructs both producers from it.
 - Rationale: mirrors `loomshed`'s own `Deps` pattern and keeps `loomshed` the place loom's list is assembled.
   A future `hardenershed` fills the same struct from its own geometry with no duplication.
@@ -310,6 +328,10 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   - `manifest/roadmap.md` — the `See [designs/landing.md]` line under item 1.
   - `internal/loomshed/loomshed.go:19` — a prose reference inside a Go comment, not a Markdown link, so the link checker will not catch it;
     repoint it by hand.
+  - `CONSTRAINTS.md:427` — the Markdown Link Integrity bullet cites `landing.md`'s own outgoing `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link as a live worked example of the anchor-resolution rule.
+    Deleting the file makes that example stale.
+    It is prose, so no test catches it;
+    rewrite the bullet against a surviving example in the same commit.
   All of these move in the same commit, or Markdown Link Integrity breaks.
 - Rejected: keeping `landing.md` updated to match what shipped.
 
@@ -441,6 +463,8 @@ TDD candidates — write the tests first, the whole package's behaviour is decis
 - conflict → session returns, markers still present → exactly one retry, then `MergeAbort` and stuck;
 - `MergeInProgress` true at entry → `MergeAbort` called before any new attempt;
 - `*ErrForeignMergeState` → stuck, and `MergeAbort` never called;
+- `*ErrUnmergeableState` from `MergeIn` (an unmappable conflict path) → stuck with the error surfaced, and `MergeAbort` never called, since `MergeIn` already self-aborted;
+- an unrecognised typed merge error → the same catch-all stuck path, proving the default is escalate rather than fall-through;
 - shuttle outcome `Asking` / `Died` / `Timeout` → each mapped correctly, `MergeContinue` never called;
 - context cancellation surfaced as a non-nil error, never as a stuck verdict;
 - `AlreadyUpToDate` → resolved with no session and no `MergeContinue`.
@@ -522,3 +546,7 @@ and `StageResult`'s `MutationRecord` is populated on a real staging call and lef
 - **Q:** (review round 2) The `OutputFiles` requirement lives in `Runner.Start`'s `validate`, not in `SingleLLMProducer` — so bypassing the adapter doesn't escape it. What does the conflict spec name? **A:** One fresh per-attempt resolution report at `.lyx/landing/conflict-resolution-r<attempt>.md`. Per-attempt because `validate` also rejects a pre-existing entry, which would fail the retry. It is never parsed for control flow — the marker scan stays the verification — it satisfies the runner contract and leaves an audit trail. Loosening `shuttleengine`'s guard for one caller was rejected. The decision to bypass `SingleLLMProducer` stands on a different footing: it is itself a `ShedProducer`, and `mergeresolve` is not a producer.
 - **Q:** (review round 2) Where does the parent pair's `*Fabric` actually come from, given the parent is only a branch name? **A:** `fabricengine.List(sourceDir)` already returns `Branch`+`Path` per worktree; the CLI layer matches the parent branch, then `lyxcwd.ResolveWorktree` → `fabricengine.Open`. No live pair → `Stuck`, never auto-create a worktree. Parent dirty → `Merge`'s own `worktree dirty` guard fires and `Finalize` surfaces it as `Stuck`, never stashing or resetting someone else's uncommitted work.
 - **Q:** (review round 2) Does `MergeStageResolved` need a mutation record? **A:** Yes — it mutates the index, so it returns `StageResult` embedding `MutationRecord`, with its new `Kind` member, recording site, and guard-table entry all landing in the same commit.
+- **Q:** (review round 3) `.lyx/landing/…` as a relative `OutputFiles` entry resolves against `worktreeRoot`, not `AnchorPath` — wrong directory on an anchored hub. **A:** `ScratchDir` becomes a told absolute path in `landingshed.Deps`, resolved by the caller as `<AnchorPath>/.lyx/landing` exactly as `loomengine.LoomRunLock` does. No `_lyx/landing` twin: the report is ephemeral with no durable counterpart.
+- **Q:** (review round 3) Who actually fills the two Fabric opener closures? **A:** Nobody in this task — `loomshed.New` has no production caller at all today. The chain is specified here and built by the next roadmap item, `loom: session bootstrap`. This task's own tests fill the closures directly against `hubforge` fixtures, and a nil required closure is a construction error, not a silent no-op.
+- **Q:** (review round 3) What happens on a typed merge error the design doesn't name, like `*ErrUnmergeableState`? **A:** Catch-all `Stuck` with the error surfaced, and no `MergeAbort` — `MergeIn` already self-aborts on that one, and the guard errors refuse before mutating anything.
+- **Q:** (review round 3) `CONSTRAINTS.md:427` cites `landing.md` as a worked example. **A:** Added to the same-commit doc edits; the bullet gets rewritten against a surviving example. It is prose, so no test would catch it.
