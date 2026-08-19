@@ -347,6 +347,11 @@ loom              phase machine: drive each phase through a perch gate         [
 
 The whole stack runs **headless** (auto mode): strands exist (the interactive-session requirement), agents run, output files are read, nobody need watch.
 
+The stack now has two entry modes, not one: every layer from `reed` up is **told** its geometry rather than deriving it.
+`internal/hubgeom` and `internal/standalonegeom` are the two constructors that tell it — hub mode and told mode respectively — with `preflight.ResolveMode` selecting between them at a standalone-capable CLI's pre-run.
+The consequence a reader needs: a producer verb therefore runs in a directory that is not a git repository, with no hub, no fabric, and no orchestrator status seed.
+See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) for the rule.
+
 - **reed is three things, and it is built** — an **overlay** over tmux, **strand bookkeeping** (a strand = one tracked process: a metadata record with a `guid`, `name`, worktree slug, parent, and a *generic* display spec),
   and a **render** sub-package (`internal/reedengine/render`, `layout = Rules(strands, box)`).
   Callers hand reed `{cmd, name, display}` where `display` is generic (anchor / focus / shrinkWhenWaitingOnChild;
