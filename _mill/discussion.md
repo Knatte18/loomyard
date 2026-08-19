@@ -185,7 +185,9 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 
 ### already-up-to-date-is-a-result-not-a-fabrication
 
-- Decision: when *both* sides have nothing to merge (the source ref is already an ancestor of HEAD on each side), `MergeIn` returns `MergeResult{AlreadyUpToDate: true}` without taking the lock, writing a record, or recording a mutation — the degenerate no-op, per `Fabric.Commit`'s no-op precedent and `mill-merge-in`'s step-1 fast path that `mill-merge` depends on.
+- Decision: when *both* sides have nothing to merge, `MergeIn` returns `MergeResult{AlreadyUpToDate: true}` without taking the lock, writing a record, or recording a mutation — the degenerate no-op, per `Fabric.Commit`'s no-op precedent and `mill-merge-in`'s step-1 fast path that `mill-merge` depends on.
+  The both-sides case is decided by a **pre-lock `IsAncestor` probe** on each side (the source ref already an ancestor of that side's HEAD), never by `MergeStart`'s `MergeAlreadyUpToDate` outcome, which is only observable after the lock is taken and the record written.
+  `MergeStart`'s outcome serves the one-side case only.
   When only one side has something to merge, the merge proceeds: the no-op side's outcome is recorded as already-up-to-date, `MergeContinue` concludes only sides whose recorded outcome is staged and uncommitted, and no empty commit is ever fabricated on the no-op side.
   `RecordCorrespondence` then pairs the post-merge HEADs of both sides — pairing a new SHA with an unchanged one is legal and correct, because the index maps corresponding *states*, not deltas.
 - Rationale: an empty commit on the up-to-date side would fabricate history to satisfy symmetry no caller can observe anyway;
@@ -215,7 +217,8 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   A weft-side conflicted path outside that set — repo-root files such as the warp-binding record, a README, pre-fabric legacy content — has no visible-tree address at all;
   a conflict there aborts the merge on both sides (gated resets to the recorded SHAs) and returns `*ErrUnmergeableState` with a fixed, side-free message ("merge produced conflicts outside the fabric-managed tree; operator intervention required"), the offending detail going to the internal log only.
   The same refusal applies to the theoretical collision where both sides report the same unified path.
-  Where the geometry comes from, since `Fabric` holds only `warp`/`weft`/`warpPath`/`weftPath` and `Open` discards the `*lyxcwd.Location` it was given: the merge path re-resolves it, calling `lyxcwd.ResolveWorktree(f.warpPath)` for `AnchorRel` and reading the wired name set via `WiredNames` against the repo-wide fabric config base derived from the hub, `filepath.Dir(f.warpPath)` — the same hub derivation `Fabric.ResetHard` already hardcodes, and the same `LoadConfig(repoWideFabricBase(l))` pair `Fabric.Commit` already performs for its own routing set.
+  Where the geometry comes from, since `Fabric` holds only `warp`/`weft`/`warpPath`/`weftPath` and `Open` discards the `*lyxcwd.Location` it was given: the merge path re-resolves it with `lyxcwd.ResolveWorktree(f.warpPath)`, taking `AnchorRel` from the returned location and the wired name set from `RepoWiredNames(l)` — the one call that derives the config base itself, so no caller re-derives it.
+  `filepath.Dir(f.warpPath)` is **not** the config base: it is the hub, which `Fabric.ResetHard` uses as a containment container only, whereas the fabric config lives at `<hub>/_board`.
   Resolution happens once per merge call, before any mutation, so a failure costs nothing: a resolve or config-read failure is a guard-stage failure returning the wrapped error, with nothing started and no record written.
   It is deliberately not cached on the handle — `Commit` re-reads the same config per call for the same reason, and a merge is rare enough that one extra read is irrelevant beside a wrong answer after a `reconcile`.
 - Rationale: the identity mapping is pure geometry — Fabric's own domain — not content knowledge, and for wired content it is exact by construction.
@@ -277,6 +280,10 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   source resolvable and fabric-managed, with millhouse's freshness rule applied per side — best-effort fetch of the source's remote-tracking ref, then merge the remote-tracking ref when the local branch is behind it or absent, the local branch otherwise;
   a source resolvable on neither local nor remote is a guard failure.
   A guard failure halts before any mutation, so there is nothing to roll back.
+  The upstream sync is deliberately **not** a guard: fetching and fast-forwarding move refs, and a guard set that mutates could not honour the halt-before-mutation rule while still evaluating every member.
+  It is a pre-merge step that runs only after every guard has passed, on both sides, and it is recorded as a mutation.
+  The guard-stage check is the read-only half — the target tip is not diverged from its upstream — and the sync then performs the advance.
+  Pre-merge SHAs are captured **after** the sync, so `MergeAbort` returns the pair to its synced state rather than undoing a legitimate upstream advance the merge did not cause.
   The closed set is pinned here verbatim, so no plan-time or implementation-time author can phrase one of them into a leak: `"merge already in progress"`, `"unresolved conflicts remain"`, `"no merge in progress"`, `"worktree dirty"`, `"branch not synced to upstream"`, `"source branch not found"`, `"source branch is not fabric-managed"`.
   A reason string never interpolates a branch name or any other value;
   where the offending branch must be reported, it travels in a typed error's own field (`ErrMergeInRequired.Source`), never inside a reason string.
@@ -368,8 +375,12 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   // and adds no raw gitexec site, so no pinned raw-site count moves.
   func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error)
 
-  // MergeConclude commits a staged merge or staged squash: `git commit [-m <msg>]`,
-  // falling back to git's prepared MERGE_MSG/SQUASH_MSG when msg is empty.
+  // MergeConclude commits a staged merge or staged squash. With a message it
+  // runs `git commit -m <msg>`; with an empty message it runs
+  // `git commit --no-edit`, which takes git's prepared MERGE_MSG/SQUASH_MSG
+  // without opening an editor. The --no-edit spelling is mandatory: a bare
+  // `git commit` with no -m launches the configured editor and would hang a
+  // non-interactive caller forever.
   func (r *Repo) MergeConclude(msg string) error
 
   // ConflictedFiles enumerates unmerged paths, repo-root-relative:
