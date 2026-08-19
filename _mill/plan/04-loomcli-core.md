@@ -6,7 +6,7 @@ batch: loomcli-core
 number: 4
 cards: 6
 verify: go test ./internal/loomcli/
-depends-on: [1, 3]
+depends-on: []
 ```
 
 ## Batch Scope
@@ -15,6 +15,9 @@ This batch creates `internal/loomcli`, the thirteenth seam module, with three of
 It carries the cobra tree, the seam functions, the single cwd resolution in `PersistentPreRunE`, and the whole engine-stack wiring that turns a resolved `*lyxcwd.Location` into a `loomshed.Deps` with a real `websterengine.RunDeps` inside it.
 It is one batch because the three verbs are meaningless without the shared receiver and the shared wiring, and because everything here is testable from one package's tier-1 suite.
 `run` is deliberately held back to batch 5, which is where the bootstrap's own machinery — locks, spawn, handshake, terminal handover — lands.
+
+This batch depends on nothing, so it can land alongside batches 1, 2 and 3.
+Everything it touches already exists: the three loom path accessors it wires are the ones shipped before this task, whose values batch 3 leaves byte-identical, and it reaches none of batch 1's new fabric record functions and none of batch 3's new accessors or seed sentinel — every one of those is first used by batch 5, which is where the dependency on both batches genuinely sits.
 
 The external interface batch 5 consumes: the `loomCLI` receiver and its populated fields, `(*loomCLI).runCmd`'s siblings on the same receiver, and `(*loomCLI).resolvePersistentPreRun`.
 The external interface batch 6 consumes: `loomcli.Command`, `loomcli.RunCLI`, and `loomcli.RunCLIIn`.

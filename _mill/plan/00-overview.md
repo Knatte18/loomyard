@@ -35,12 +35,12 @@ batches:
   - number: 4
     name: loomcli-core
     file: 04-loomcli-core.md
-    depends-on: [1, 3]
+    depends-on: []
     verify: go test ./internal/loomcli/
   - number: 5
     name: loomcli-run-bootstrap
     file: 05-loomcli-run-bootstrap.md
-    depends-on: [4]
+    depends-on: [1, 2, 3, 4]
     verify: go test ./internal/loomcli/
   - number: 6
     name: registration-and-guards

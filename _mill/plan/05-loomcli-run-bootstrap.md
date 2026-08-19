@@ -6,7 +6,7 @@ batch: loomcli-run-bootstrap
 number: 5
 cards: 5
 verify: go test ./internal/loomcli/
-depends-on: [4]
+depends-on: [1, 2, 3, 4]
 ```
 
 ## Batch Scope
@@ -15,6 +15,10 @@ This batch delivers the session bootstrap itself: the `run` verb's four steps, t
 It is one batch because the verb is a single composition and every pure piece it composes is testable from the same package suite; splitting it would leave a half-wired verb behind.
 
 Every fallible decision in the verb is factored into a pure function first — the parent-branch resolution, the spawn-or-skip predicate, the handshake poll, the strand lookup, and the two command-string builders — so the verb body is assembly and the judgment is under test without a real lock, a real process, or a real clock.
+
+It depends on batch 4 for the receiver and the wired dependency stacks the verb assembles over, on batch 1 for the provenance record's read and write functions, its anchor-relative form, and the weft-commit helper the seed commit goes through, and on batch 3 for the status file's anchor-relative form, the driver-log and bootstrap-lock accessors, and the seed-exists sentinel the re-entrant seed call keys on.
+Every one of those is first reached here — batch 4 touches none of them.
+It also depends on batch 2, for one reason only: both batches edit the same design doc's bootstrap section, batch 2 its run-launcher paragraph and this batch its step diagram, so they are serialised rather than left to collide in the same file.
 
 The external interface batch 6 consumes: `loomcli.RunAliasCommand`.
 
@@ -102,6 +106,7 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/loomcli/cli.go`
+  - `manifest/designs/loom.md`
 - **Creates:**
   - `internal/loomcli/run.go`
 - **Deletes:** none
@@ -120,6 +125,12 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   Add a comment at step 7 recording that this tail is the CLI/Cobra Invariant's interactive-handoff exception, and that steps 1 through 6 are pre-flight precisely so every fallible thing is reported before stdio is gone.
   Every step that starts a real process must log its spawn through the shared logger, per the Live-Substrate Spawn Observability invariant.
   Do not create the driver log through any path other than the accessor's, and construct no path inline.
+  In the same commit, rewrite the fenced step diagram in the "Entry point — the session bootstrap" section of the design doc so it matches the sequence this card ships.
+  That diagram today lists exactly four steps and mentions neither seeding, nor the weft-side commit, nor the recorded provenance;
+  it must gain the three pre-steps ahead of them — resolve the recorded parent branch, seed the status file when absent, and commit that seed weft-side before the spawn — and its spawn step must gain the handshake, so a reader is not left believing the spawner returns the moment the child starts.
+  Keep the diagram's existing four steps and their parenthetical annotations intact, and keep the prose beneath it about loom going to the background and the terminal belonging to tmux, which this card does not change.
+  Do not touch the run-launcher paragraph in that same section; batch 2 owns it.
+  Write in this repo's markdown style: one sentence per line, no fixed-column hard wrapping.
 - **Commit:** `feat(loomcli): add the run verb, the session bootstrap`
 
 ### Card 24: the root run alias
@@ -153,6 +164,8 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   This task is that landing, so bind it: state that the bootstrap verb seeds the file itself when it is absent, and correct every clause that currently says the seed is written before that verb has ever executed — the seed is now written by that verb's own first invocation, and the file is committed weft-side by it before the driver is spawned.
   Update the worked example's introductory sentence that describes the seed as written before the verb ran, and the sentence in the seed section that names the role without a binding, keeping the JSON examples themselves byte-identical since the schema does not change.
   Update the single-writer sentence so its parenthetical names the same seeder and pause verb this task ships rather than an unbound role.
+  Correct the doc's opening sentence about which command rewrites the status shell on every step: that loop belongs to the driver verb, which the bootstrap verb spawns detached, not to the bootstrap verb itself — leaving it attributed to the bootstrap verb would ship a false statement about which command owns the phase-machine loop.
+  Fix that attribution wherever else in the file the same claim appears, not only at its first occurrence.
   Leave the validation checklist, the parse discipline, and the per-field notes untouched — none of them changes.
   Write in this repo's markdown style: one sentence per line, no fixed-column hard wrapping.
 - **Commit:** `docs(loom): pin the status spec's spawn-time seed role to the bootstrap verb`
