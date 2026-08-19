@@ -6,6 +6,48 @@ Surface under review: the merge primitive as shipped by `a2bf44e2`.
 > Sections below are appended as work proceeds (log-as-you-go).
 > The executive summary and the final severity ordering are written last.
 
+## Executive summary
+
+The merge primitive is well-built where it is pure and well-tested, and the hermetic and
+`integration` gates were green on the committed tree before I touched anything.
+Everything I found is in the composed, stateful, crash-interrupted behaviour those gates do not
+see — exactly where this campaign expected it.
+
+Two BLOCKING defects, both reproduced against real git repositories:
+
+1. **F1 — a resumed `MergeContinue` can land half a merge and then dead-end permanently.**
+   If the process died between the warp and weft `MergeStart`, `MergeContinue` commits the warp
+   side, fails on the weft side that was never started, and returns *"run MergeContinue again"* —
+   an instruction that can never succeed. The pair is left out of correspondence and only
+   `--abort` recovers.
+2. **F2 — no merge verb checks that the checkouts are on a branch.** On a detached warp HEAD a
+   merge reports full success, orphans the warp merge commit, lands the weft one permanently, and
+   deletes its own record so `MergeAbort` is gone. `websterengine` drives
+   `Fabric.CheckoutDetached` in production, so the window is real.
+
+Two MEDIUM: **F3** the `Committed`/`AlreadyUpToDate` result fields do not describe what happened
+(fast-forward reports `committed:true`; the loser of a concurrent merge reports `committed:true`
+for a call that did nothing — reproduced interleaved on two hubs against a sequential control),
+and **F4** an operator's `merge.ff = only` breaks every non-fast-forward fabric merge.
+
+Two LOW (**F5** `Remove` can delete a live merge's source pair; **F6** `doc.go` overstates the
+guarded sibling set) and three NIT (**F7** nil `Conflicts` on the continue/abort paths, **F8**
+`-m` silently ignored with `--abort`, **F9** conflict-vs-error indistinguishable by exit status
+and undocumented).
+
+What held up under adversarial driving, and is worth saying explicitly: the `--no-edit` editor
+footgun does **not** reproduce even under a blocking `core.editor` with a missing
+`commit.template`; foreign plain-git state is detected correctly including the
+`git merge --squash` case with no `MERGE_HEAD`; the unmappable-conflict self-abort genuinely
+restores both sides; squash leaves no `SQUASH_MSG` contamination; every hostile source ref
+(tag, SHA, `HEAD`, `-x`, `..` traversal) is refused before it reaches git; `--continue` racing
+`--abort` is safe; and the four spec-guarded sibling verbs all refuse correctly against a pair
+that is genuinely mid-merge.
+
+**Merge-readiness opinion (pre-fix): NOT READY** — F1 and F2 are both silent-data-divergence
+defects on the recovery paths this surface exists to provide. With F1-F9 fixed and regression
+tests landed, the surface is mergeable.
+
 ## What was tested
 
 (appended per command/scenario)
