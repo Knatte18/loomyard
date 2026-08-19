@@ -9,10 +9,6 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
-1. **producers standalone: invariants and docs** — land the cross-cutting told-geometry rule in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reword the Cwd Resolution Invariant to state what `Resolve` actually validates, and close out the design doc per the documentation lifecycle.
-   The final consolidation task for this line of work.
-   See [designs/producers-standalone.md](designs/producers-standalone.md).
-
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
@@ -104,17 +100,21 @@ No build order is implied between these items.
 
 ## Done
 
+1. **producers standalone: invariants and docs** — landed the cross-cutting Told-Geometry Invariant in `CONSTRAINTS.md` (the three-tier producer/orchestrator split), reworded the Cwd Resolution Invariant to state what `Resolve` actually validates, and closed out the design doc per the documentation lifecycle.
+   The final consolidation task for this line of work.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
+
 1. **producers standalone: told-geometry foundations** — `planparser` took over the plan-directory path from `loomengine`, `configengine` gained a template fallback so the producer config loaders (shuttle, reed, perch, webster) stop hard-failing on an absent file, and `shuttleengine`/`reedengine`/`tokenvocab` take plain path strings instead of a `*lyxcwd.Location`.
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 1. **producers standalone: mid-layer** — `pattern` takes a told anchor path (dropping `internal/lyxcwd` from its leaf allowlist), and the orchestrator preflight lifts out of `loomengine` — alongside the shared `internal/buildinfo`/`internal/standalonestate` foundations and the root-pre-run stencil-seed gate every standalone CLI entry needs — so `Hardener` and future `Shed` products stop having to re-implement any of it.
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/preflight` package documentation.
 
 1. **producers standalone: producer engines** — `burlerengine`+`perchengine` and `websterengine`+`webstercli` convert to told geometry; Webster also gains its own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`).
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the remaining producers-standalone waves are still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/hubgeom` and `internal/standalonegeom` package documentation.
 
 1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository; the optional `scoutengine` uniformity pass landed alongside it.
-   See [designs/producers-standalone.md](designs/producers-standalone.md) — the doc survives this task because the final consolidation task is still open.
+   See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
    See the `internal/gitkit` and `internal/hubforge` package documentation.
