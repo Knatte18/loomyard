@@ -32,6 +32,7 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 - `fabricengine.MergeStageResolved(paths []string) (StageResult, error)` — a new narrow verb on `Fabric` that stages resolved conflict paths, without which `MergeContinue` can never succeed after an agent resolution.
   Brings with it a `StageResult` type embedding `MutationRecord`, a new `Kind` member in `mutation.go`, and its `internal/gitrepo` staging counterpart, which must be added to the gitrepo Client Boundary Invariant's pinned method list in the same commit.
 - `gitrepo.RemoteURL(name string) (string, error)` — a go-git-backed local config read.
+- `fabricengine.PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (PushResult, error)` — a path-told, rebase-free warp push over `gitrepo.PushRebaseFree`.
 - `githubclient.ParseOwnerRepo(remoteURL string) (owner, repo string, err error)` — a pure stdlib parser.
 - Wiring: `internal/loomshed`'s rows 12 and 13 swap their `newStub(...)` backing for the real producers, and `loomshed.Deps` grows a single `Landing landingshed.Deps` passthrough field.
 - Registration sites, without which the listed artifacts are inert:
@@ -184,6 +185,22 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   Note `MergeInProgress` (read-only) reports `false` for foreign state, so the crash-recovery probe above does not catch this case — the abort call itself surfaces the typed error.
 - Rejected: aborting it and proceeding.
 
+### stuck-reasons-are-logged-and-filed-never-returned
+
+- Decision: every "`Stuck` with a distinct message" in this discussion means two concrete things, because `Shed` has no reason channel of its own:
+  1. a `logger.Warn` line with structured key/value fields (`producer`, `reason`, plus the case's own fields — branch, PR number, path, error);
+  2. a one-line reason file written to `<ScratchDir>/<producer>-stuck.md`, overwritten each attempt.
+
+  The producer still returns bare `shedengine.Stuck`.
+- Rationale: `ShedProducer.Call` returns only `(Outcome, OutputPointer, error)` (`producer.go:31`), and on a `Stuck` with `OnStuck: ""` `Run` persists the **fixed** string `"stuck with no OnStuck target"` (`run.go:190-200`) — a producer-supplied reason has nowhere to go.
+  Returning an error instead is not a substitute: that persists `StateFailed` and aborts the run, where these cases want `blocked`, which a human resumes.
+  `OutputPointer` cannot carry it either — `shedengine` never persists that field anywhere.
+  The `logger.Warn` half is established precedent: `shedadapters/singlellm.go:104` already logs exactly this way for its own non-`Done` outcome.
+  The file half exists because a log line scrolls away in an unattended run, and because it gives the tests something to assert on.
+- Consequence for testing: every test in this discussion asserting that two `Stuck` cases are "distinguishable" asserts on the **reason file's contents**, never on a returned reason string and never on `Run`'s persisted reason, which is the same fixed text in all of them.
+- Rejected: adding a reason field to the `ShedProducer` contract — that changes a shipped seam with a machine-enforced import allowlist, for one consumer's benefit;
+  returning an error to smuggle the message out, which flips `blocked` into `failed` and ends the run.
+
 ### unlisted-typed-merge-errors-escalate
 
 - Decision: any typed merge error `mergeresolve` does not name explicitly — `*ErrUnmergeableState`, `*ErrMergeIncomplete`, `*MergeGuardError`, `*ErrNoMergeInProgress`, `*ErrMergeInProgress` — is a catch-all `Stuck`, surfaced with the error text, and `mergeresolve` calls no `MergeAbort` of its own.
@@ -238,10 +255,24 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   `internal/githubclient` gains a pure stdlib parser, `ParseOwnerRepo(remoteURL string) (owner, repo string, err error)`, accepting the SSH form (`git@github.com:owner/repo.git`), the HTTPS form (`https://github.com/owner/repo.git`), an optional `.git` suffix, and an optional trailing slash.
 - **`Publish` pushes the warp branch before it creates the PR.**
   Nothing else does: agents commit per fix on warp and never push (Review Round Invariant), so without this step `<taskBranch>` exists only locally, `PullRequests.Create` fails 422, and the resume query for `head:<taskBranch>` could never match either.
-  The call is `fabricengine.PushWarpAt(warpPath, opts)` (`spawn.go:89`) — path-told, so it needs no `lyxcwd` import.
   The push happens **after** the merge-in and **before** the existing-PR query, so the branch GitHub is asked about is the branch that exists.
-  A push failure → `Stuck` with the error surfaced, and no PR attempted.
   On a re-run that finds an open PR, the push still runs first, so a resumed `Publish` also refreshes the PR with any commits added since.
+- **The push must be rebase-free, and that rules out `PushWarpAt`.**
+  `fabricengine.PushWarpAt` (`spawn.go:89`) routes to `gitrepo.PushCoalesced` → `pushWithRebaseRetry`, which runs `git pull --rebase` on a rejected push (`push.go:43-83`).
+  That rewrites the **warp** task branch's SHAs while the weft side is not rebased, which desynchronizes the pair and invalidates the correspondence index `RecordCorrespondence` maintains.
+  `PushCoalesced` additionally writes `gitrepo.PushLockFileName` (`.gitrepo-push.lock`) at the repo root, and unlike the weft side (`seedWeftArtifactExcludes`) the warp repo has no exclude entry for it — `spawn.go`'s own doc comment names this as an undischarged precondition for any future caller.
+- Decision: a new thin, path-told wrapper `fabricengine.PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (PushResult, error)` routes to `gitrepo.PushRebaseFree` (`push.go:90`) instead.
+  It never rebases and never takes the push lock, so **both** hazards above are discharged rather than mitigated: no SHA rewrite, and no untracked residue in the operator's own repo.
+  `PushWarpAt` keeps its "no production caller" status and its doc comment stays accurate — no edit needed there, and no warp-side exclude seeding enters this task's scope.
+  A rejected push surfaces as `gitrepo.ErrPushRejected`, meaning the remote task branch has commits this checkout lacks;
+  `Publish` returns `Stuck` on it, since a human has to decide what happened.
+  Any other push error → `Stuck` too, with the error surfaced.
+  No PR is attempted in either case.
+- **`SyncOptions` is a told value in `landingshed.Deps`, and a skip is refused, not silently honoured.**
+  `PushWarpRebaseFreeAt` mirrors `PushWarpAt`'s gating and returns an empty result with a nil error when `opts.SkipGit || opts.SkipPush`.
+  Relying on that would produce a PR for an unpushed branch — a silent 422, exactly the failure this whole decision exists to prevent.
+  So `Publish` checks the two flags **itself**, before calling, and returns `Stuck` when either is set and the base branch requires a PR.
+  When no PR is required the flags are irrelevant, because that branch no-ops before reaching the push at all.
 - **Only warp is pushed.**
   The PR is a warp-repo artifact and GitHub never sees weft, so `Publish` has no reason to push the weft side.
   Weft's own remote state is `Finalize`'s merge and fabric's sync path to deal with, not the PR's.
@@ -323,7 +354,10 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 
 ### told-values-via-landingshed-deps
 
-- Decision: `landingshed.Deps` carries every told value — worktree root, anchor path, task branch, parent branch, webster dir, stencils dir, modelspec registry, the two Fabric opener closures, and `ScratchDir` (the told absolute `<AnchorPath>/.lyx/landing` path) — with `NewPublish(deps)` / `NewFinalize(deps)` constructors that reject a nil required closure up front rather than nil-panicking at call time.
+- Decision: `landingshed.Deps` carries every told value — worktree root, warp path, task branch, parent branch, webster dir, stencils dir, modelspec registry, `SyncOptions`, the two Fabric opener closures, and `ScratchDir` (the told absolute `<AnchorPath>/.lyx/landing` path) — with `NewPublish(deps)` / `NewFinalize(deps)` constructors that reject a nil required closure up front rather than nil-panicking at call time.
+- `Deps` deliberately carries **no** `AnchorPath` field.
+  `ScratchDir` is the only thing landing would use an anchor for, and carrying both would be exactly the derived-path near-duplicate `loomshed.Deps`'s own doc comment warns invites silent divergence.
+  Told rather than derived is also required, not merely preferred: deriving it would mean joining the `.lyx` literal, which the Lyxdirs Single-Declarer Invariant reserves to `lyxdirs.DotLyxDirName`, and computing geometry, which the Told-Geometry Invariant forbids these packages outright.
   `loomshed.Deps` grows a single `Landing landingshed.Deps` passthrough field, and `loomshed.New` constructs both producers from it.
 - Rationale: mirrors `loomshed`'s own `Deps` pattern and keeps `loomshed` the place loom's list is assembled.
   A future `hardenershed` fills the same struct from its own geometry with no duplication.
@@ -514,6 +548,10 @@ TDD candidates:
 - `Publish` with `origin` absent, unparseable, or non-GitHub → `Stuck` with a distinct message, and no PR attempted;
 - `Publish` pushes the warp branch before querying for an existing PR, and before creating one — assert the ordering, not just that the push happened;
 - `Publish` when the push fails → `Stuck`, and `PullRequests.Create` never called;
+- `Publish` on `gitrepo.ErrPushRejected` → `Stuck`, with its own reason-file text, distinct from a generic push failure;
+- `Publish` with `SkipGit` or `SkipPush` set and a PR required → `Stuck` before any push or GitHub call, never a PR for an unpushed branch;
+- `Publish` with `SkipGit`/`SkipPush` set and **no** PR required → plain `Done`, since that branch never reaches the push;
+- every `Stuck` case writes its reason file, and two different `Stuck` causes produce different file contents — this is what "distinguishable" is asserted against, since `Run` persists the same fixed reason for all of them;
 - `Publish` on a re-run with an open PR → the push still runs, so later commits reach the PR;
 - `Publish` never pushes the weft side;
 - `ParseOwnerRepo` as a table test: SSH form, HTTPS form, with and without `.git`, with a trailing slash, a non-GitHub host, and garbage input;
@@ -591,3 +629,6 @@ and `StageResult`'s `MutationRecord` is populated on a real staging call and lef
 - **Q:** (review round 4) `MergeStageResolved`'s "maps to neither side" error is unreachable, since `weftPathVisible` is total. **A:** The discriminator changes to index membership: stage a path on whichever side's `ConflictedFiles()` lists it, and error when neither does. Deletions stage via `git add -A -- <paths>` so a delete/modify resolution doesn't error on the missing file.
 - **Q:** (review round 4) What does the marker scan do with a file that was correctly deleted, or one whose real content contains markers? **A:** Absent file = resolved-by-deletion, scan skipped, still staged; only a non-not-exist read error is a failure. The scan is line-anchored and content-only, and a file with legitimate line-start markers is refused into `Stuck` — the safe direction, since `MergeContinue` is irreversible. The stencil must not contain literal line-start markers.
 - **Q:** (review round 3) `CONSTRAINTS.md:427` cites `landing.md` as a worked example. **A:** Added to the same-commit doc edits; the bullet gets rewritten against a surviving example. It is prose, so no test would catch it.
+- **Q:** (review round 5) Where does a "`Stuck` with a distinct message" actually go? `Shed` persists one fixed reason string and never persists `OutputPointer`. **A:** Two carriers — a structured `logger.Warn` (the precedent `shedadapters/singlellm.go:104` already sets) and a reason file at `<ScratchDir>/<producer>-stuck.md`. The producer returns bare `Stuck`. Every "distinguishable" test asserts on the file, not on a returned reason. Extending the `ShedProducer` contract was rejected; returning an error was rejected because it flips `blocked` into `failed`.
+- **Q:** (review round 5) `PushWarpAt` no-ops on `SkipGit`/`SkipPush` and its rebase retry rewrites warp SHAs while weft isn't rebased. **A:** Don't use it. A new `PushWarpRebaseFreeAt` routes to `gitrepo.PushRebaseFree`, which neither rebases nor writes the push-lock file — discharging both the correspondence-index hazard and the untracked-residue precondition, and leaving `PushWarpAt`'s "no production caller" doc comment true. `SyncOptions` is told in `Deps`, and `Publish` checks the skip flags itself rather than letting a skip silently produce a PR for an unpushed branch.
+- **Q:** (review round 5) `Deps` carrying both `AnchorPath` and `ScratchDir` is a derived near-duplicate. **A:** `AnchorPath` is dropped. `ScratchDir` is told, which is also mandatory rather than stylistic: deriving it would name the `.lyx` literal (Lyxdirs Single-Declarer) and compute geometry (Told-Geometry), both forbidden to these packages.
