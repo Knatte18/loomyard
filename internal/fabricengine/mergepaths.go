@@ -13,18 +13,16 @@ import (
 )
 
 // resolveMergeGeometry resolves the geometry a merge call needs to map conflicted paths onto the
-// single visible worktree: warpPath's AnchorRel, and the repo-wide wired junction-name set.
+// single visible worktree: l's AnchorRel, and the repo-wide wired junction-name set.
+// l is the caller's own already-resolved lyxcwd.ResolveWorktree result, so a merge call resolves the
+// worktree once, not twice.
 // It is called once per merge call, before any mutation, and never cached on the Fabric handle —
 // the same re-read-per-call precedent Fabric.Commit's config load follows, since a merge is rare
 // enough that one extra read is irrelevant beside answering against a config a reconcile just
 // changed.
-// filepath.Dir(warpPath) is NOT the config base; RepoWiredNames derives the repo-wide `weft:main`
-// base itself.
-func resolveMergeGeometry(warpPath string) (anchorRel string, wiredNames []string, err error) {
-	l, err := lyxcwd.ResolveWorktree(warpPath)
-	if err != nil {
-		return "", nil, err
-	}
+// l's WorktreePath() is NOT the config base; RepoWiredNames derives the repo-wide `weft:main` base
+// itself.
+func resolveMergeGeometry(l *lyxcwd.Location) (anchorRel string, wiredNames []string, err error) {
 	wiredNames, err = RepoWiredNames(l)
 	if err != nil {
 		return "", nil, err

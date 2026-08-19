@@ -56,7 +56,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)
 	}
-	anchorRel, wiredNames, err := resolveMergeGeometry(f.warpPath)
+	anchorRel, wiredNames, err := resolveMergeGeometry(l)
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve merge geometry for %s: %w", f.warpPath, err)
 	}
