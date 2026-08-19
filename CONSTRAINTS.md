@@ -81,6 +81,43 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   See `internal/preflight/doc.go` for why each alternative is wrong.
 - **See also:** the Cwd Resolution Invariant above says who may resolve;
   this invariant says who must be told instead.
+- **The membership predicate.**
+  A package is *bound* by this invariant when it takes the absolute paths it operates on from its caller and has no **direct** production import of `internal/lyxcwd`.
+  It is *machine-enforced* when that direct non-import is asserted by a test in its own package that polices its production import set — an allowlist that omits `internal/lyxcwd`, or a banned list that names it.
+  Otherwise it is a *review obligation*.
+
+  The direct/transitive qualifier is load-bearing: two of the six machine-enforced packages below reach `internal/lyxcwd` transitively and are still correctly bound — `internal/treadleengine` reaches it through `internal/logger` and `internal/shuttleengine`, and `internal/pattern` reaches it through `internal/stencilstore` then `internal/logger`.
+  Stating the predicate, or the "genuinely excludes `internal/lyxcwd`" claim, without this qualifier would make both entries wrong.
+
+  The predicate is what binds;
+  the two lists below are not exhaustive.
+  They enumerate the packages converted by the producers-standalone waves.
+  `internal/batcher`, `internal/stencilstore`, and `internal/shedadapters` satisfy the predicate today by other routes — bound, unconverted by that line of work, and a review obligation.
+- **The machine-enforced list**, each with its test file and function:
+  `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
+  `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
+  `internal/buildinfo/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
+  `internal/standalonestate/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
+  `internal/shedengine/seam_enforcement_test.go` (`TestProducerSeamInvariant_AllowlistOnly`),
+  `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
+- **The review-obligation list** — no machine guard for the told-geometry property:
+  `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
+
+  Two of these look covered and are not.
+  `internal/shuttleengine/seam_enforcement_test.go` (`TestProviderSeamImportRule`) polices the **provider** seam — Claude specifics confined to `claudeengine` — and references `lyxcwd` nowhere.
+  `internal/scoutengine/seam_enforcement_test.go` (`TestEngineSeamInvariant_BannedImports`) polices a **banned list** that does not name `internal/lyxcwd` either.
+  Both packages' `doc.go` files assert `internal/lyxcwd` is absent from their production imports;
+  that assertion is true today and unguarded.
+- **The two geometry adapters sit in neither list.**
+  `internal/hubgeom` and `internal/standalonegeom` are *tellers*, not told packages — they exist to construct the geometry the engines are handed.
+  The non-import predicate does not bind them and cannot: `internal/hubgeom` imports `internal/lyxcwd` in production, in `internal/hubgeom/hubgeom.go` and `internal/hubgeom/webstergeom.go`, which is precisely its job as the hub-mode adapter, and `internal/standalonegeom` builds from told strings for the same reason in the other mode.
+  What binds both instead is the adapter-direction rule above: they depend on the engines and no engine imports either back.
+  That is a **review obligation** too, and a *different* obligation from the non-import one — conflating the two would make this invariant self-contradictory on its own first example.
+
+  Adding the missing import-allowlist entries to the eight review-obligation packages above is a separate task, each needing its own transitive-closure reasoning;
+  this task adds none.
+- **Enforced by** the six tests named above, for the machine-enforced half;
+  the review-obligation half and the adapter-direction rule have no machine check.
 
 ## Lyxdirs Single-Declarer Invariant
 
