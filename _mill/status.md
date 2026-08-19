@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-19T06:12:22Z'
+discussed  '2026-08-19T08:12:49Z'
 ```
