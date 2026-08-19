@@ -2,7 +2,7 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** after the orchestrator's independent verification of round 1, at commit `a6a88502`.
+**Last refreshed:** during round 2's Job 1, at commit `7e251055`. Written to disk, NOT committed — a round is live, so Hard Rule 3 keeps the orchestrator off `git add`/`git commit`. Commit this refresh once r2 finishes.
 
 ## What this campaign is
 
@@ -19,7 +19,7 @@ Up to four rounds in the first instalment, model + effort fixed in advance:
 | Round | Model | Effort | Tag | Status |
 |---:|---|---|---|---|
 | r1 | Opus | medium | `opus-medium-r1` | **done, verified** — 9 findings, 9 fixed; verification left 3 residuals |
-| r2 | Opus | medium | `opus-medium-r2` | **next** — prompt re-seeded with the 3 residuals |
+| r2 | Opus | medium | `opus-medium-r2` | **running** — Job 1 in progress, 4 findings recorded so far |
 | r3 | Fable | medium | `fable-medium-r3` | not started |
 | r4 | Opus | high | `opus-high-r4` | not started |
 
@@ -109,8 +109,57 @@ The first sabotage attempt on F2 (`if warpDetached || weftDetached` → `if fals
 - Windows path behaviour in `weftPathVisible`/`unifyConflictPaths` remains unexecuted, by both the round and the orchestrator. Out of scope, Linux host, reasoned about rather than driven — the same named gap the previous fabric campaign carried to the end.
 - The N-way concurrent amplifier was not run. The merge bar is single-instance correctness and the surface is not tmux-shaped; this is a deliberate omission, not an oversight.
 
+## Round 2 (`opus-medium-r2`) — Job 1 COMPLETE and committed; Job 2 now live
+
+Re-seed commit `a5700c41`. Round commits: `aa7fcd49` (opened report) -> `7e251055` (findings R1-R4) -> `75b8b6b8` (review COMPLETE: residual-2 enumeration, residual-1 route, race non-repro, R4 withdrawn, R5 added).
+Report: `_mill/fabric-merge-review-opus-medium-r2.md`, 381 lines. Sequencing rule held — the whole review was committed before the first production edit.
+As of now `internal/gitrepo/merge.go` is modified-uncommitted: that is Job 2 starting (R1's classifier probe). Orchestrator stays off the tree.
+
+**Self-verdict: NOT READY as reviewed** — two BLOCKING data-integrity defects, both reproduced live through the deployed binary. That verdict is the round's own and is not the gate.
+
+### R2's findings, as claimed (none independently verified yet)
+
+- **R1 — BLOCKING.** `gitrepo.MergeStart` (`internal/gitrepo/merge.go:99-106`) classifies on two signals only: staged-diff and HEAD-moved. A real non-fast-forward merge whose result tree equals HEAD's tree stages nothing and moves no HEAD, yet git writes `MERGE_HEAD`. That is classified `AlreadyUpToDate`. fabric reports `ok:true, already_up_to_date:true`, deletes its record, and abandons a live `MERGE_HEAD` in **both** checkouts. Consequences reproduced in one run on `hub1`: record and git disagree; the merge is silently lost though `git commit --no-edit` would land it properly; every fabric merge verb — `--abort` included — then returns `ErrForeignMergeState`, telling the operator this is state fabric did not start, which it did; and a plain `git commit` in that checkout silently produces a two-parent merge commit carrying an unrelated staged change. Proposed fix: probe `MergeHeadPresent()` and classify a live `MERGE_HEAD` as `MergeStaged`, ahead of the HEAD-moved test. Squash writes no `MERGE_HEAD`, so the squash arm is untouched.
+- **R2 — BLOCKING.** `MergeAbort` (`mergelifecycle.go:204`) resets both sides to the recorded pre-merge SHAs unconditionally, discarding a conclude-commit the record it is reading says already landed — with `force: true`, `ok:true`, no warning, and the record deleted afterwards so nothing remains to reconstruct from. In the `merge-in`-with-conflicts flow that commit carries the operator's manual conflict resolutions. Reproduced on `hub2` with a refusing weft `pre-commit` hook (same shape as `commit.gpgsign` with no key, or a full disk). Proposed fix: a new closed-set guard reason refusing the abort, leaving `MergeContinue` (already idempotent on a recorded side) as the recovery — the exact mirror of r1's F1.
+- **R3 — NIT.** `mergeReasonNoMergeInProgress` is dangling: declared at `mergeerrors.go:24`, referenced only by the three test pin-lists, produced by nothing. This is the item the pre-count named and deliberately withheld; r2 found it unaided. Its argument for deleting rather than producing it is sound — the closed set is for aggregated precondition reasons, and no-merge-in-progress is a terminal standalone disposition.
+- **R4 — WITHDRAWN on evidence** by the round itself, after re-reading `doc.go:920-923` and finding the doc already states the `Commit` asymmetry it had claimed was undocumented. Recorded rather than deleted, so the trail shows the correction.
+- **R5 — LOW.** `doc.go:938-940` justifies the `CheckoutDetached`/`RestoreBranch` exemption by appealing to F2's attached-HEAD precondition. That is r1's deferred item, and r2 says the conclusion holds but the reason is wrong: F2 closes starting a merge while detached, not detaching during one. What actually closes the long conflicted window is git itself refusing `checkout --detach` with unmerged index entries. The narrow resolved-but-not-concluded window stays open and belongs to webster. Doc-only fix.
+
+### Residual 2 — the enumeration r1 never did
+
+Reproducible method (`enumerate.sh` resolves each function's extent from source rather than hardcoding lines). Counts: 94 raw error-returning statements across the surface, 45 in the post-record region, **41 in class**, of which **17 can have a landed conclude-commit** — 13 visible in the record (`*_committed` set), **4 invisible** (`CurrentSHA`/`saveMergeState` failing immediately after a successful `git commit`).
+
+Against pre-count class 3 (orchestrator's hand-read: 27 sites, 21 excluding `deleteMergeState`, 12 post-conclude): **r2 corrects the orchestrator upward on both numbers, 41 vs 27 and 17 vs 12.** A round correcting the orchestrator is the round working, and the pre-count's own blind spots were written down next to it. The correction still needs checking — specifically whether r2's 41 counts helper-internal sites in a way the hand-read did not (r2 says it attributes `selfAbortMergeAttempt` x4, `concludeMergeSides` x3, `resetMergeSides` x4 call sites to the helper's internal sites once each).
+
+The 4 invisible sites are why r2's R2 fix cannot key on `landedConcludeCommit()` alone. Its field-free predicate: a conclude may have landed on a side iff its recorded committed SHA is non-empty, **or** its recorded outcome is `staged`/`conflicted` and its HEAD is no longer at its recorded start SHA. Verify that reasoning independently — it is the load-bearing claim of the whole fix.
+
+### Residual 1 — the proof gap, and r2's route to it
+
+r2 reproduces the diagnosis exactly (pre-lock probe at `merge.go:132`/`:340` short-circuits every ordinary second call from a different return site with a hardcoded `true`), then finds a **race-free, seam-free, deterministic** route to the derived field: `merge --squash` of a source that is *not* an ancestor of HEAD (so the pre-lock probe cannot early-return) whose squash result tree equals HEAD's tree on both sides (so both post-lock outcomes are `up_to_date`). Confirmed live on `hub3`: `already_up_to_date:true` with neither source an ancestor is only producible by the derived field. It survives R1's fix because squash writes no `MERGE_HEAD`.
+
+That is a better answer than the concurrency seam r1's residual assumed would be needed. It is also the thing to sabotage-prove hardest.
+
+### r1's other deferred item — the unlocked guard window
+
+Attempted and **not reproduced**: 75 attempts across three arms (25 interleaved on `hubA`, 25 strictly-sequential control on `hubA`, 25 interleaved on independent `hubB`), 0/75. Notably r2 discarded two earlier detector versions because they fired on the sequential control, and only trusted the third after the control read 0 while the detector still had a live path to a positive. That is the right shape for a negative result — a clean run from a probe never shown able to detect is worth nothing.
+
 ## Next action
 
-Spawn round 2: `Agent` → `subagent_type: crucible-reviewer-medium`, `model: opus`, tag `opus-medium-r2`, prompt = read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.
-The prompt is already re-seeded with the three residuals above, the CLOSED-AND-VERIFIED list, and the two deferred items.
-Then stay off the tree and off `git add`/`git commit`, keep refreshing this file on disk, and verify independently again.
+**While Job 2 runs:** stay off the tree, no `git add`/`git commit`, keep refreshing this file on disk. Do not read the round's raw transcript.
+
+**When r2 finishes,** verification protocol — the protocol, not the round, is what caught r1's residual:
+
+1. Commit this handoff refresh once the tree is the orchestrator's again.
+2. Read r2's fixer report and its "What was tested" in full before characterising anything.
+3. Gates from cold: `go build ./...`; `go vet` on the three packages; `go test -count=5` hermetic across `fabricengine`/`fabriccli`/`gitrepo`/`cmd/lyx`; `go test -tags integration -count=1 -timeout 40m` across the three. Name the tier in your own record; never accept a green claim that does not name its tag.
+4. **Sabotage-prove every new test.** The three that matter most:
+   - hardwire `bothSidesAlreadyUpToDate` to `return false` — the new squash-route test **must** fail. If it stays green, r2 reproduced r1's mistake and residual 1 is still open. This is the single decisive check of the round.
+   - revert R1's `MergeHeadPresent()` probe in the classifier — the empty-result-merge test must fail at the intended assertion.
+   - revert R2's abort guard — the abort-after-conclude test must fail by observing the discarded commit, not merely by an error-string mismatch.
+   A build break is not a proof; redo the sabotage a different way (r1's F2 needed this).
+5. Re-drive both BLOCKING fixes live on a freshly built hub against a freshly deployed binary. Hub recipe: bare warp + bare weft, exporting `GIT_CONFIG_GLOBAL` with `init.defaultBranch = main` **before** the first `git init` (otherwise the weft defaults to `master` and `lyx fabric add` fails on an invalid `main-weft` reference); seed and push warp `main`; `lyx fabric clone <weft-bare> <warp-bare>`; `lyx fabric add task1`. Use `env -C <dir> <cmd>` — this sandbox refuses `cd <dir> && ...`, and `rm -rf` too, so scratch hubs cannot be cleaned and that must be stated rather than worked around.
+   For R1 specifically, re-drive the *bricking* claim, not just the misclassification: confirm that after the fix `--abort` and `--continue` no longer return `ErrForeignMergeState` on that pair.
+6. Re-check r2's 41/17 against the pre-count's 27/12 by hand on the diff, deciding whether the delta is method or substance.
+7. Re-seed from whatever verification leaves standing — derived from the residue, never "review it again" — and spawn r3 as **Fable / medium**, tag `fable-medium-r3`.
+
+**Convergence bar:** a safety pass that finds nothing, the orchestrator's own gates, and the sabotage proofs all agreeing, across rotated models. State the limits in the verdict rather than claiming more: Windows path behaviour (never executed by any round or the orchestrator), the N-way concurrent amplifier (deliberately not run — the merge bar is single-instance correctness), and any class whose zero came from a method never shown able to detect.
