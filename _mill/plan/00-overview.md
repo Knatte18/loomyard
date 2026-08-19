@@ -190,7 +190,6 @@ batches:
 - `cmd/lyx/destructiveguard_test.go`
 - `cmd/lyx/gitrepoboundary_test.go`
 - `cmd/lyx/helptree_test.go`
-- `cmd/lyx/uncontainedwrite_test.go`
 - `docs/overview.md`
 - `internal/fabriccli/argsarity_test.go`
 - `internal/fabriccli/cli_test.go`

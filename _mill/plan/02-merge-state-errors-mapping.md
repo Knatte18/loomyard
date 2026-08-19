@@ -77,6 +77,8 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
 
 - **Context:**
   - `internal/fabricengine/index.go`
+  - `internal/fabricengine/corrindex.go`
+  - `internal/state/state.go`
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/weftgit.go`
   - `internal/gitrepo/merge.go`
@@ -86,7 +88,6 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   - `internal/fabricengine/index_integration_test.go`
 - **Edits:**
   - `cmd/lyx/destructiveguard_test.go`
-  - `cmd/lyx/uncontainedwrite_test.go`
   - `internal/fabricengine/export_test.go`
 - **Creates:**
   - `internal/fabricengine/mergestate.go`
@@ -115,15 +116,18 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   Outcome strings: `staged`, `conflicted`, `fast_forwarded`, `up_to_date` — add an unexported mapping from `gitrepo.MergeOutcome`.
   Helpers, all on `*Fabric`:
   - `mergeStatePath() (string, error)` — `filepath.Join(gitDir, "fabric-merge.json")` with `gitDir` from the existing `weftGitDir()` (the correspondence index's placement precedent, `index.go`).
-  - `loadMergeState() (*mergeState, error)` — `(nil, nil)` when the file is absent (`os.IsNotExist`), decoded record otherwise; a corrupt file is an error, never silently adopted.
-  - `saveMergeState(st *mergeState) error` — `json.MarshalIndent` + `os.WriteFile` (0o644).
-  - `deleteMergeState() error` — `os.Remove`, tolerating absence.
+  Reads and writes go through `internal/state`'s locked, atomic-replace helpers under `<path>.lock`, exactly as `corrindex.go` does for the correspondence index in this same weft gitdir — never raw `json.Marshal` + `os.WriteFile`.
+  Raw `os.WriteFile` truncates before writing, so a concurrent reader can observe a torn or empty file;
+  card 13's sibling-verb guards read this record from other processes with no shared lock (the combined write lock the merge verbs hold does not cover them), and a torn read would hit `loadMergeState`'s corrupt-file clause and surface a spurious hard error instead of a clean guard answer.
+  - `loadMergeState() (*mergeState, error)` — `state.ReadJSON[mergeState](path, path+".lock")`, returning `(nil, nil)` on the not-found signal and a decoded record otherwise; a corrupt file is an error, never silently adopted.
+  - `saveMergeState(st *mergeState) error` — `state.WriteJSON(path, path+".lock", *st)`.
+  - `deleteMergeState() error` — `os.Remove`, tolerating absence. `internal/state` has no delete primitive, so this one call stays raw, matching `index.go`'s own precedent.
   - `mergeRecordExists() (bool, error)` — thin wrapper over `loadMergeState`.
   - `foreignMergeStatePresent() (bool, error)` — git-level merge state on either side: `f.warp.MergeHeadPresent() || len(f.warp.ConflictedFiles()) > 0 || f.weft.MergeHeadPresent() || len(f.weft.ConflictedFiles()) > 0` (evaluate all four, then combine, so no short-circuit ordering leaks into timing-observable behaviour; errors wrap and return).
 
   Guard-test obligations, same commit:
   - `cmd/lyx/destructiveguard_test.go` `destructiveGuardAllowlist`: add `internal/fabricengine/mergestate.go` with a reason mirroring `index.go`'s entry — the `os.Remove` deletes fabric's own merge-state record inside the weft gitdir, fabric-internal metadata, never operator content.
-  - `cmd/lyx/uncontainedwrite_test.go` allowlist: add `internal/fabricengine/mergestate.go` with the git-owned-path reason class (the write target is resolved by `git rev-parse --git-dir`, the same class as `gitexclude.go`'s entry).
+  Do not add an allowlist entry to `cmd/lyx/uncontainedwrite_test.go` — routing the write through `internal/state.WriteJSON` leaves `mergestate.go` with no `os.WriteFile` call for that guard to see, the same reason `index.go` has no entry there.
 
   Extend `internal/fabricengine/export_test.go` with re-exports the `fabricengine_test` integration tests need: the state helpers (load/save/delete/exists/foreign) and the record type's fields as needed — follow the file's existing seam style.
 
