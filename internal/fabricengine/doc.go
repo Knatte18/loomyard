@@ -870,6 +870,16 @@
 // on — there is no window where the record and the checkouts can drift silently out of reach of the
 // quartet.
 //
+// **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
+// `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
+// asymmetry is what makes this a precondition rather than a curiosity: a conclude-commit landed on a
+// detached HEAD is reachable from no ref and disappears at the next checkout, while the paired
+// repo's half of the same merge — whose own HEAD was on a branch — is already final, and the verb
+// has deleted its own record on the way out, so `MergeAbort` cannot put it back. Refusing before the
+// attempt starts is the only point at which that divergence is still recoverable. This matters in
+// practice because `Fabric.CheckoutDetached`/`RestoreBranch` exist and webster's integration bisect
+// drives them (`internal/websterengine/integration.go`).
+//
 // **Conflict reporting.** Conflicted paths surface as one flat, lexically sorted, deduplicated list
 // of unified, worktree-relative paths — never raw per-repo paths, which would leak the warp/weft
 // split, and never absolute paths, which is not what `git merge` hands an operator. A path either

@@ -100,6 +100,7 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 		mergeReasonNotSynced,
 		mergeReasonSourceNotFound,
 		mergeReasonNotFabricManaged,
+		mergeReasonDetachedHead,
 	}
 	guardErr := newMergeGuardError(reasons)
 	assertSideFree(t, "(*MergeGuardError).Error()", guardErr.Error())
@@ -131,6 +132,7 @@ func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
 		"branch not synced to upstream",
 		"source branch not found",
 		"source branch is not fabric-managed",
+		"checkout is not on a branch",
 	}
 	got := []string{
 		mergeReasonAlreadyInProgress,
@@ -140,6 +142,7 @@ func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
 		mergeReasonNotSynced,
 		mergeReasonSourceNotFound,
 		mergeReasonNotFabricManaged,
+		mergeReasonDetachedHead,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("closed guard-reason set has %d members; want exactly %d -- update this test's pinned list in the same commit as any change to the set", len(got), len(want))

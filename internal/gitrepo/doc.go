@@ -137,8 +137,9 @@
 // scout keep using explicit-list StageAndCommit (called via fabricengine's own
 // board-facing commit wrapper on board's behalf, not boardengine calling
 // gitrepo directly). Merge start/conclude and conflicted-path enumeration
-// (MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, MergeFFOnly,
-// ResolveSHA) are admitted, used by fabric's two-sided merge coordination.
+// (MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached,
+// MergeFFOnly, ResolveSHA) are admitted, used by fabric's two-sided merge
+// coordination.
 // Rebase, interactive staging, cherry-pick, conflict *resolution*, and
 // general-purpose branch/checkout management stay explicitly not supported —
 // gitrepo reports conflicts, but resolving them is the caller's job. A human

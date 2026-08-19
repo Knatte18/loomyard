@@ -1,7 +1,7 @@
 // merge.go implements the single-repo merge primitives fabricengine's two-sided coordination
 // composes: MergeStart (normal and squash) with four-way outcome classification, MergeConclude,
-// ConflictedFiles, MergeHeadPresent, the fast-forward-only MergeFFOnly advance, and the general
-// ref->SHA resolver ResolveSHA.
+// ConflictedFiles, MergeHeadPresent, HeadDetached, the fast-forward-only MergeFFOnly advance, and
+// the general ref->SHA resolver ResolveSHA.
 
 package gitrepo
 
@@ -150,6 +150,30 @@ func (r *Repo) MergeHeadPresent() (bool, error) {
 	default:
 		return false, fmt.Errorf("gitrepo: rev-parse --verify --quiet MERGE_HEAD in %s: %w", r.path, err)
 	}
+}
+
+// HeadDetached reports whether HEAD points straight at a commit instead of at a branch.
+// fabric's merge verbs need this as a precondition: a merge concluded on a detached HEAD lands a
+// commit no ref reaches, so the next checkout discards it silently while the paired repo's half of
+// the same merge stays landed.
+// CurrentBranch cannot answer it — that method collapses detachment into an error indistinguishable
+// from a genuine read failure — so this is a separate, boolean-returning probe.
+// Like ResolveSHA it is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary
+// Invariant's pinned CLI list.
+func (r *Repo) HeadDetached() (bool, error) {
+	repo, err := r.goGit()
+	if err != nil {
+		return false, err
+	}
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	head, err := repo.Reference(plumbing.HEAD, false)
+	if err != nil {
+		return false, fmt.Errorf("gitrepo: read HEAD reference in %s: %w", r.path, err)
+	}
+	return head.Type() != plumbing.SymbolicReference, nil
 }
 
 // MergeFFOnly advances the repo to ref via `git merge --ff-only <ref>`, failing loudly (never

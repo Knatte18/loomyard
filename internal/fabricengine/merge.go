@@ -93,6 +93,12 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 	reasons = append(reasons, dirtyReasons...)
 
+	detachedReasons, err := detachedHeadReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, detachedReasons...)
+
 	sources, sourceReasons := resolveMergeSources(f, l, source)
 	reasons = append(reasons, sourceReasons...)
 
@@ -274,6 +280,12 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, err
 	}
 	reasons = append(reasons, dirtyReasons...)
+
+	detachedReasons, err := detachedHeadReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, detachedReasons...)
 
 	syncReasons, err := syncedToUpstreamReason(f)
 	if err != nil {

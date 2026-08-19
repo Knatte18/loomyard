@@ -26,6 +26,7 @@ const (
 	mergeReasonNotSynced           = "branch not synced to upstream"
 	mergeReasonSourceNotFound      = "source branch not found"
 	mergeReasonNotFabricManaged    = "source branch is not fabric-managed"
+	mergeReasonDetachedHead        = "checkout is not on a branch"
 )
 
 // MergeGuardError aggregates every failed merge precondition as a sorted, deduplicated list of

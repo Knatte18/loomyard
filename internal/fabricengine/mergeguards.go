@@ -1,6 +1,6 @@
 // mergeguards.go implements the shared merge precondition machinery: guard evaluation, per-side
-// merge-source resolution with the freshness rule, and the upstream-sync helper batch 4's Merge
-// guard set builds on.
+// merge-source resolution with the freshness rule, the attached-HEAD precondition, and the
+// upstream-sync helper batch 4's Merge guard set builds on.
 // Every helper here returns reasons for aggregation via newMergeGuardError and mutates nothing — the
 // upstream sync itself (a mutation) is deliberately not here; it is a batch-4 pre-merge step, per
 // the guards decision.
@@ -123,6 +123,30 @@ func upstreamSHAAt(dir string) (sha string, hasUpstream bool, err error) {
 		return "", false, nil
 	}
 	return "", false, fmt.Errorf("fabricengine: resolve upstream in %s: %w", dir, runErr)
+}
+
+// detachedHeadReason reports mergeReasonDetachedHead when either checkout of f has HEAD pointing
+// straight at a commit instead of at a branch.
+// A merge concluded on a detached HEAD lands a commit no ref reaches, so the next checkout discards
+// it silently — while the paired repo's half of the same merge, whose own HEAD was on a branch, is
+// already landed for good and no longer abortable, since the merge verb deleted its record on the
+// way out. Refusing before the attempt starts is the only point at which that is recoverable.
+// Both sides are evaluated unconditionally before combining, so the aggregated reason never reveals
+// which side (if either) was detached.
+func detachedHeadReason(f *Fabric) ([]string, error) {
+	warpDetached, err := f.warp.HeadDetached()
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: check warp head attachment: %w", err)
+	}
+	weftDetached, err := f.weft.HeadDetached()
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: check weft head attachment: %w", err)
+	}
+
+	if warpDetached || weftDetached {
+		return []string{mergeReasonDetachedHead}, nil
+	}
+	return nil, nil
 }
 
 // mergeInProgressReason reports mergeReasonAlreadyInProgress when a fabric-written merge-state
