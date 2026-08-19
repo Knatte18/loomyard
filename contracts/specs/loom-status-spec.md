@@ -6,8 +6,8 @@
 ## What it is
 
 `_lyx/loom/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
-`lyx loom run` (via `Shed.Run`) rewrites the shell on every step;
-its t=0 "seed" — the handoff instant a task is spawned and given to loom, before any `lyx loom run` has executed — is written once at spawn time (see [The seed / handover](#the-seed--handover) below).
+`lyx loom drive` (via `Shed.Run`) rewrites the shell on every step — that loop belongs to the driver verb `lyx loom run` spawns detached, never to `lyx loom run` itself;
+its t=0 "seed" — the handoff instant a task is spawned and given to loom — is written once, by `lyx loom run`'s own first invocation, before that spawn happens (see [The seed / handover](#the-seed--handover) below).
 
 It is durable **fabric-overlay state**: it lives under `_lyx/` (git-synced via fabric, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
 Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
@@ -23,11 +23,10 @@ Reusing `internal/state` gives locking and atomic writes for free and keeps one 
 
 The **seed** is the t=0 contents of `_lyx/loom/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
 
-It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent.
-This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand;
-which one it binds to (`fabric add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands.
+It is written by **`lyx loom run`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
+That binding is now pinned: `lyx loom run` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed weft-side before it spawns the detached driver.
 An optional thin `ly-spawn` skill may wrap it later,
-but the Go command is always the writer.
+but `lyx loom run` is always the writer.
 
 loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, fabric ready, no half-finished prior run).
 
@@ -59,7 +58,7 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
 - **No `schema_version`/`format` field.**
-  This file has a single writer (`Shed`, plus loom's own spawn-time seeder and pause verb writing through the same lock) and no version-compatibility pressure.
+  This file has a single writer (`Shed`, plus `lyx loom run` as the seeder and `lyx loom pause` as the pause verb, both writing through the same lock) and no version-compatibility pressure.
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
 
@@ -86,7 +85,7 @@ Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal
 
 ## Worked example
 
-A realistic **seed** — written by the spawn-time lyx command, before `lyx loom run` has executed:
+A realistic **seed** — written by `lyx loom run`'s own first invocation, before it spawns the detached driver:
 
 ```jsonc
 {
