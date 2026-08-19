@@ -167,12 +167,12 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 
 ### State & contracts
 
-- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: current phase, current review stage, and a **per-phase outcome** trail (`history`) — per-round verdicts live in perch's block files, not here.
+- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: `current_producer` names which producer this run is at, and a **per-producer-call outcome** trail (`history`) records every call, including stuck-handler bounce-backs — per-round verdicts live in perch's block files, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
   Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
   `Shed` itself has no opinion on this path at all: it is told its status-file path, never derives it (see `shed.md`'s own producer-contract section) — this scoping is entirely `loom`'s own choice as the caller.
-- **It also carries a human-readable *current-activity* narration** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
+- **It also carries a human-readable *current-activity* `activity`, mechanically composed by `Shed` itself** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
   The driver writes the file;
   the status strand reads and prints it — reed never parses it, it just hosts the pane.

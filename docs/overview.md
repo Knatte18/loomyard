@@ -145,7 +145,7 @@ Two state roots with opposite lifecycles:
 
 - **`_lyx/`** — **durable, synced, portable.**
   Lives in the weft repo (git-synced), so it survives a machine and transfers to another.
-  Config, raddle, the board, and loom's orchestration **status** (current phase, review round, verdict history) go here — loom resume works across machines *because* its status is fabric-synced.
+  Config, raddle, the board, and loom's orchestration **status** (current producer, run state, per-producer-call history) go here — loom resume works across machines *because* its status is fabric-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.**
   Untracked in both the warp and the weft repo (listed in each repo's own `.git/info/exclude`, never a committed `.gitignore` in either), changing constantly while a run is live.
   The live tmux runtime state — `reed`'s (see the `internal/reedengine` package documentation) `.lyx/reed.json` (the socket/session names + the strand table: each managed process, its session, parent, ephemeral pane id, and display spec) — goes here, because a pane ID or the tmux socket is meaningless on another machine.
