@@ -76,7 +76,7 @@ This mechanical producer is **exhaustively defined by the checks listed above** 
 **The `Plan-never-reads-support-log` boundary is not a per-run check.**
 The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
 It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
-This assertion lands with `Shed`.
+This assertion lands with the real `Plan-Write`: today `Plan-Write` is a stub declaring no input set at all, so there is nothing to assert against — writing the assertion now would either assert a vacuous truth or invent a declaration the real producer has not yet made.
 
 ### Discussion-Review rubric — what not to flag
 
