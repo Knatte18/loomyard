@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -26,4 +26,21 @@ plan-review-r2  '2026-08-19T06:39:12Z'
 plan-fix-r2  '2026-08-19T06:39:12Z'
 plan-review-r3  '2026-08-19T06:43:44Z'
 planned  '2026-08-19T06:43:54Z'
+implementing  '2026-08-19T06:44:30Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: constraints-invariants
+    state: pending
+  - name: config-strictness-guard
+    state: pending
+  - name: docgo-audit
+    state: pending
+  - name: overview-docs
+    state: pending
+  - name: roadmap-and-design-doc-deletion
+    state: pending
 ```
