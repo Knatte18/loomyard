@@ -113,6 +113,15 @@ func loadRunState(runDir string) (RunState, bool, error) {
 // StrandGUID; unreadable/corrupt run.json files along the way are skipped,
 // not fatal, since a partially-written or already-swept dir must not abort
 // the scan for every other run.
+//
+// How many dirs were skipped that way is reported in the not-found error,
+// because the two situations need opposite remedies and the bare "no run
+// found" text conflated them: a guid this package genuinely never ran is a
+// caller mistake, while a guid whose run.json was truncated by a crash or a
+// full disk names a run whose AGENT MAY STILL BE LIVE in its pane — and
+// telling that operator their guid "is not a shuttle strand" (the wrapper
+// Runner.Interrupt/Send add) sends them away from a running agent. Proven
+// live: truncating a live run's run.json produced exactly that message.
 func findRunByStrand(root, guid string) (RunState, string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -122,6 +131,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 		return RunState{}, "", fmt.Errorf("read run dir root: %w", err)
 	}
 
+	unreadable := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -130,7 +140,9 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 		rs, found, err := loadRunState(runDir)
 		if err != nil || !found {
 			// Skip: a corrupt or missing run.json here is not this scan's
-			// concern, only a mismatch on the guid we're looking for.
+			// concern, only a mismatch on the guid we're looking for. Count it
+			// so the not-found error can say the scan was incomplete.
+			unreadable++
 			continue
 		}
 		if rs.StrandGUID == guid {
@@ -138,7 +150,21 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 		}
 	}
 
+	if unreadable > 0 {
+		return RunState{}, "", fmt.Errorf(
+			"shuttle: no run found for strand %q, but %d run director%s under %s could not be read — if this guid names a run that is still live, its run.json is damaged rather than absent, and its agent is still in its pane; inspect those directories before treating the guid as unknown",
+			guid, unreadable, pluralDirectorySuffix(unreadable), root)
+	}
 	return RunState{}, "", fmt.Errorf("shuttle: no run found for strand %q", guid)
+}
+
+// pluralDirectorySuffix returns the suffix that completes "director" for count: "y" for one,
+// "ies" otherwise.
+func pluralDirectorySuffix(count int) string {
+	if count == 1 {
+		return "y"
+	}
+	return "ies"
 }
 
 // FindRun resolves guid to the RunState and run directory of the shuttle run whose strand it names,

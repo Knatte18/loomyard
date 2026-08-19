@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
@@ -359,12 +360,20 @@ func (e *Engine) UpdateStrand(guid string, display render.Display) (Strand, erro
 	return result, err
 }
 
-// alivePanePIDs returns the #{pane_pid} roots of the panes in paneIDs
-// that are currently present AND not dead in live. Pane-destroying ops use
-// this to snapshot reap roots before kill-pane: only a still-running pane's
-// pid is a safe descendant-closure root (a dead pane's recorded pid may
-// already have been reused by an unrelated process — see
-// descendantClosurePIDs).
+// safeReapRoot reports whether p's #{pane_pid} may be used as a descendant-closure root by a
+// pane-destroying op.
+// Only a still-running pane qualifies: tmux keeps reporting a dead pane's recorded #{pane_pid} long
+// after that process exited (remain-on-exit is on for every reed session, so a corpse can sit in the
+// window for hours), and once the OS recycles that pid the closure walk would expand it into an
+// UNRELATED process's whole subtree — which the caller then waits on and finally SIGKILLs.
+// It is the single declaration of that rule so the two reap-root snapshots below cannot drift apart
+// again; they did, and Down was the one missing the filter (R2 review finding R2-F2).
+func safeReapRoot(p LivePane) bool {
+	return !p.Dead && p.PID > 0
+}
+
+// alivePanePIDs returns the safe reap roots (see safeReapRoot) among the panes named by paneIDs.
+// RemoveStrand uses this targeted form to snapshot only the doomed strands' panes.
 func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	wanted := make(map[string]bool, len(paneIDs))
 	for _, id := range paneIDs {
@@ -372,7 +381,45 @@ func alivePanePIDs(paneIDs []string, live []LivePane) []int {
 	}
 	var pids []int
 	for _, p := range live {
-		if wanted[p.ID] && !p.Dead && p.PID > 0 {
+		if wanted[p.ID] && safeReapRoot(p) {
+			pids = append(pids, p.PID)
+		}
+	}
+	return pids
+}
+
+// paneIDsInSession returns the subset of paneIDs that live actually contains — i.e. the ones that
+// are panes of the session live was enumerated from.
+//
+// It exists because a persisted pane id is NOT self-validating as a tmux target. The -L socket is
+// per hub and shared by every worktree in it, and tmux pane ids are server-global, so a pane id a
+// stale or copied reed.json carries is routinely a valid, addressable id belonging to a SIBLING
+// worktree's live session. Reproduced live (R5 review finding R5-F4): with svc-beta's reed.json
+// copied into svc-alpha, a `lyx reed remove` run in svc-alpha killed svc-beta's strand pane and its
+// running process and reported ok:true, while svc-beta was left showing only that its strand had
+// died.
+// Membership, not aliveness, is the filter: a dead-but-present corpse is still this session's pane
+// and killing it is exactly what remove should do.
+func paneIDsInSession(paneIDs []string, live []LivePane) []string {
+	present := liveIDSet(live)
+	inSession := make([]string, 0, len(paneIDs))
+	for _, id := range paneIDs {
+		if present[id] {
+			inSession = append(inSession, id)
+		}
+	}
+	return inSession
+}
+
+// sessionReapRoots returns the safe reap roots (see safeReapRoot) among EVERY pane in live.
+// Down uses this whole-session form, since it tears the session down entirely rather than a named
+// subset of its panes;
+// it shares safeReapRoot with alivePanePIDs so the two forms can never disagree about which pids are
+// safe to expand and kill.
+func sessionReapRoots(live []LivePane) []int {
+	var pids []int
+	for _, p := range live {
+		if safeReapRoot(p) {
 			pids = append(pids, p.PID)
 		}
 	}
@@ -411,10 +458,23 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// Snapshot the doomed panes' process subtrees BEFORE kill-pane, while
 		// the panes still exist to be listed and their pids are guaranteed
 		// un-reused (the processes are still running).
+		// The same enumeration narrows the kill list to panes that really belong to THIS
+		// session, so a stale or copied reed.json can never make this remove destroy a sibling
+		// worktree's pane on the shared per-hub server (paneIDsInSession, R5 review finding
+		// R5-F4). It is free: this call site already had to list panes for the reap snapshot.
+		// A failed enumeration kills nothing rather than falling back to the unchecked list —
+		// list-panes exits non-zero precisely when the session is gone, in which case the panes
+		// are gone with it and there is nothing this remove still needs to destroy.
 		var reapPIDs []int
+		var killPaneIDs []string
 		if len(paneIDs) > 0 {
-			if live, err := e.tmux.listPanes(e.SessionName()); err == nil {
-				reapPIDs = e.descendantClosurePIDs(alivePanePIDs(paneIDs, live))
+			live, err := e.tmux.listPanes(e.SessionName())
+			if err != nil {
+				logger.Warn("reed: could not enumerate panes before removing a strand, killing none",
+					"socket", e.Socket(), "session", e.SessionName(), "err", err)
+			} else {
+				killPaneIDs = paneIDsInSession(paneIDs, live)
+				reapPIDs = e.descendantClosurePIDs(alivePanePIDs(killPaneIDs, live))
 			}
 		}
 
@@ -436,7 +496,7 @@ func (e *Engine) RemoveStrand(guid string, recursive bool) (Removed, error) {
 		// confirmed gone (the tmux case); on psmux the reconcile tail simply
 		// re-enumerates and re-applies, and planPaneTarget never adopts a
 		// corpse.
-		for _, id := range paneIDs {
+		for _, id := range killPaneIDs {
 			_ = e.tmux.run("kill-pane", "-t", id)
 		}
 

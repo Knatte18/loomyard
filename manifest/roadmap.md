@@ -9,14 +9,40 @@ See Maintenance below for how the numbering works.
 
 Committed to, in this order, next.
 
+1. **fabric: merge-conflict primitive** — Finalize needs Fabric to attempt a merge and hand back either "clean" or one unified conflict artifact, never exposing which internal side (warp/weft) it came from — see `designs/finalize.md`.
+   Does not exist: no `Merge` function anywhere in `internal/gitrepo`; `Fabric.Diff`/`Fabric.Status` are read-only reporting, not conflict detection.
+   Audit scope, not just this one primitive: check for other gaps `Finalize`/`Hardener` need from Fabric while in there.
+   See [designs/finalize.md](designs/finalize.md#finalize-sees-only-fabric--never-warp-or-weft).
+
+1. **loom: phase-machine scaffolding** — mechanical rows only, every `LLM`/`LLM+perch` row stays a stub.
+   - Instantiate `loom` as a `Shed` instance carrying the full 12-row producer list, every row present (stubs included), so sequencing is real from the start.
+   - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
+   - Build `Plan-Sweep` for real: mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`. Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
+   - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
+   - Build `Finalize` for real: merge-back + PR, without the `raddle` fold (no finished design yet, see Someday). Depends on `fabric: merge-conflict primitive` above — blocked until that lands.
+   - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
+   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Write`, `Plan-Review`, `Webster-Review` — each returns `Done` without doing real work.
+   - Verify: the full 12-row sequence runs against the stubs, including resume, crash-recovery, and pause.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
+
+1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine from the item above actually reachable.
+   - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
+   - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
+   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
+
+1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
+   - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
+   - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
+   - Write `Webster-Review`'s rubric from scratch — same gap, same reason.
+   - Replace the `Discussion-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-discussion.md`).
+   - Replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
+   - Replace the `Discussion-Review`/`Plan-Review`/`Webster-Review` stubs with real `perch` adapters (`shedadapters.NewPerchProducer`) driven by the rubrics above.
+   - Explicitly untouched by this task: `perch`'s round-loop/gate/milestone-cap/cluster-fan-out machinery, `burler`'s A/B round machinery, `webster`'s own engine — all already-shipped Go infrastructure this task plugs profiles into, not something it builds.
+   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 ## Someday
 
 Committed to eventually — will be done — but not scheduled next.
 No build order is implied between these items.
-
-1. **loom: Discussion-phase producers** — `Discussion-Write` (rewrite its prompt into a `SingleLLMProducer` instance), `Discussion-Validate` (the two-check mechanical producer [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric) already specs), `Discussion-Review` (wired via the shipped `internal/shedadapters` `perch` adapter).
-   First slice of `loom`'s producer list; Plan/Webster/Finalize each become their own later task, decomposed similarly when reached.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **doctor** — diagnostics command (`lyx doctor`): checks `_lyx/` layout, config parse, board reachability, stale locks.
 

@@ -2,9 +2,12 @@
 // into a strand's live pane,
 // and CapturePane reads its current screen contents back.
 // None of these three reconciles, re-renders, or persists — they are pure transport/query wrapped
-// around the same resolveLivePaneID lookup every one of them shares, matching the dumb-carrier
-// contract the rest of the package follows: reed moves bytes in and out of a pane, it never
-// interprets them.
+// around the same resolvePaneInThisSessionLocked lookup every one of them shares, matching the
+// dumb-carrier contract the rest of the package follows: reed moves bytes in and out of a pane, it
+// never interprets them.
+// That shared lookup does make one read-only tmux query, to confirm the persisted pane id names a
+// pane of THIS worktree's session — see resolvePaneInThisSessionLocked for why a pane id alone is
+// not a safe target on a socket every worktree in the hub shares.
 //
 // CapturePane in particular follows Status's read-only discipline: a query must never move input
 // focus or mutate persisted state as a side effect of being asked a question.
@@ -37,6 +40,40 @@ func resolveLivePaneID(st *ReedState, guid string) (string, error) {
 	return strand.PaneID, nil
 }
 
+// resolvePaneInThisSessionLocked resolves guid's bound pane id and refuses one that is not present
+// in THIS worktree's session, which is the only pane set this engine may address.
+//
+// The refusal is not defensive tidiness. The tmux socket is per HUB, shared by every worktree in it,
+// and tmux pane ids are server-global — so a pane id a stale or copied reed.json carries is very
+// often a VALID, addressable id belonging to a sibling worktree's live session, and send-keys /
+// capture-pane against it succeed. R5 review finding R5-F4 reproduced the destructive twin of this
+// at the remove path (a `lyx reed remove` in one worktree killed a sibling's strand pane and its
+// process, reporting ok:true); the transport ops are the same exposure with a quieter symptom —
+// one agent's input typed into another agent's pane.
+//
+// The pane-generation guard (generation.go) already discards such bindings at load, so in practice
+// this check is reached only when that guard failed open (a tmux probe hiccup, or a state file
+// written before the stamp existed). It costs one list-panes round trip per transport op, which is
+// the right price for a target this consequential to be wrong about, and it keeps these ops
+// read-only: it confirms membership, it does not reconcile, re-render, or persist.
+func (e *Engine) resolvePaneInThisSessionLocked(st *ReedState, guid string) (string, error) {
+	paneID, err := resolveLivePaneID(st, guid)
+	if err != nil {
+		return "", err
+	}
+
+	live, err := e.tmux.listPanes(e.SessionName())
+	if err != nil {
+		return "", fmt.Errorf("list panes: %w", err)
+	}
+	if !liveIDSet(live)[paneID] {
+		return "", fmt.Errorf(
+			"strand %q is bound to pane %s, which is not a pane of this worktree's session %q — reed state is stale (pane ids are shared across every worktree on this hub's tmux server); run \"lyx reed resume\" to rebind it",
+			guid, paneID, e.SessionName())
+	}
+	return paneID, nil
+}
+
 // SendText types text into guid's live pane and optionally submits it with Enter.
 // It does not reconcile, re-render, or persist — pure transport.
 func (e *Engine) SendText(guid, text string, submit bool) error {
@@ -50,7 +87,7 @@ func (e *Engine) SendText(guid, text string, submit bool) error {
 			return err
 		}
 
-		paneID, err := resolveLivePaneID(st, guid)
+		paneID, err := e.resolvePaneInThisSessionLocked(st, guid)
 		if err != nil {
 			return err
 		}
@@ -80,7 +117,7 @@ func (e *Engine) SendKey(guid, key string) error {
 			return err
 		}
 
-		paneID, err := resolveLivePaneID(st, guid)
+		paneID, err := e.resolvePaneInThisSessionLocked(st, guid)
 		if err != nil {
 			return err
 		}
@@ -106,7 +143,7 @@ func (e *Engine) CapturePane(guid string) (string, error) {
 			return err
 		}
 
-		paneID, err := resolveLivePaneID(st, guid)
+		paneID, err := e.resolvePaneInThisSessionLocked(st, guid)
 		if err != nil {
 			return err
 		}

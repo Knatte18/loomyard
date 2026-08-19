@@ -6,6 +6,7 @@
 package render
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -301,5 +302,110 @@ func TestRulesPaneOrderUnknownIDsKeepIntendedTailOrder(t *testing.T) {
 	}
 	if withUnknown != intended {
 		t.Errorf("Rules() with unknown-only paneOrder = %q, want intended order %q", withUnknown, intended)
+	}
+}
+
+// paneCellPattern matches one PANE cell of a tmux window_layout string, "<w>x<h>,<x>,<y>,<paneNum>",
+// capturing the pane number. A GROUP header has the same leading "<w>x<h>,<x>,<y>" but is followed
+// by '[' rather than a fourth field, so it never matches — which is exactly the distinction that
+// makes this count cells rather than coordinates.
+var paneCellPattern = regexp.MustCompile(`\d+x\d+,\d+,\d+,(\d+)`)
+
+// paneNumberCounts counts how often each bare pane number appears as a layout cell in layout,
+// keyed by the number tmux reads (the pane id minus its leading '%').
+func paneNumberCounts(layout string) map[string]int {
+	counts := make(map[string]int)
+	for _, match := range paneCellPattern.FindAllStringSubmatch(layout, -1) {
+		counts[match[1]]++
+	}
+	return counts
+}
+
+// TestRules_NeverEmitsOnePaneNumberTwice is the regression guard for the R5 review's R5-F3.
+// tmux does not REJECT a window_layout string naming one pane twice: it accepts it with exit 0,
+// assigns cells positionally, and destroys every pane the short cell list no longer covers
+// (reproduced live, tmux 3.6 — one `lyx reed up` reduced a two-pane session to one, reported
+// ok:true, and then reported the strand live against the header pane).
+// Rules is documented as pure and TOTAL, so it must be structurally incapable of producing that
+// string no matter how corrupt the strand table it is handed.
+func TestRules_NeverEmitsOnePaneNumberTwice(t *testing.T) {
+	box := Box{X: 0, Y: 0, W: 100, H: 40}
+
+	tests := []struct {
+		name         string
+		strands      []Strand
+		headerPaneID string
+	}{
+		{
+			name:         "a strand bound to the header's own pane",
+			strands:      []Strand{{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}}},
+			headerPaneID: "%1",
+		},
+		{
+			name: "a strand bound to the header's pane beside a healthy strand",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%1", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			headerPaneID: "%1",
+		},
+		{
+			name: "two strands bound to one pane",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			headerPaneID: "%1",
+		},
+		{
+			name: "two strands bound to one pane with no header at all",
+			strands: []Strand{
+				{GUID: "a", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+				{GUID: "b", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+			},
+			headerPaneID: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: tt.headerPaneID, HeightRows: 1}}
+			layout, _, err := Rules(tt.strands, box, params, nil)
+			if err != nil {
+				t.Fatalf("Rules() error = %v; want nil", err)
+			}
+			for paneNumber, count := range paneNumberCounts(layout) {
+				if count > 1 {
+					t.Errorf("Rules() = %q; pane number %s appears %d times, want at most 1", layout, paneNumber, count)
+				}
+			}
+		})
+	}
+}
+
+// TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide pins WHICH strand survives a collision, so the
+// repair stays deterministic rather than merely non-destructive: the header always keeps its own
+// pane, and among strands the earlier table entry wins.
+func TestRules_KeepsTheFirstOwnerWhenPaneCellsCollide(t *testing.T) {
+	box := Box{X: 0, Y: 0, W: 100, H: 40}
+	params := Params{CollapsedStripRows: 2, MinFullRows: 3, Header: Header{PaneID: "%1", HeightRows: 1}}
+
+	strands := []Strand{
+		{GUID: "first", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+		{GUID: "second", PaneID: "%2", Live: true, Display: Display{Anchor: AnchorBelowParent}},
+	}
+	_, focus, err := Rules(strands, box, params, nil)
+	if err != nil {
+		t.Fatalf("Rules() error = %v; want nil", err)
+	}
+	// Both duplicates name %2, so focus proves the count rather than the identity: exactly one
+	// entry survived, and focusTarget resolved against a single-entry stack.
+	if focus != "%2" {
+		t.Errorf("Rules() focus = %q; want %q", focus, "%2")
+	}
+
+	kept := removeDuplicatePaneCells(partitionByAnchor(strands), "%1")
+	if len(kept) != 1 || kept[0].GUID != "first" {
+		t.Errorf("removeDuplicatePaneCells kept %+v; want exactly the first owner (GUID %q)", kept, "first")
 	}
 }
