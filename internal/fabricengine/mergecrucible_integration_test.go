@@ -566,3 +566,78 @@ func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
 	}
 	return record.WarpStart
 }
+
+// isAncestorInCheckout reports whether ref is an ancestor of descendant in dir's checkout, probed
+// with plain git so a test can state the precondition the engine's own pre-lock probe reads.
+func isAncestorInCheckout(t *testing.T, dir, ref, descendant string) bool {
+	t.Helper()
+
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", ref, descendant)
+	cmd.Dir = dir
+	return cmd.Run() == nil
+}
+
+// TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord closes crucible round opus-medium-r2's
+// residual 1: mergeState.bothSidesAlreadyUpToDate, which MergeResult.AlreadyUpToDate is derived
+// from, had no test coverage at all. Hardwiring it to false left the entire suite green.
+// The pre-existing subtest that looks like it covers the field does not: a plain second merge call is
+// caught by the pre-lock already-up-to-date probe, which returns a hardcoded AlreadyUpToDate: true
+// from a different return site, so the derived field is never read.
+// Reaching the derived field needs both post-lock MergeStart outcomes to come back up_to_date while
+// the pre-lock probe said otherwise. A real race between two processes gets there, but the route
+// this test uses is deterministic, single-process and needs no seam: a squash merge whose source is
+// NOT an ancestor of HEAD on either side -- so IsAncestor is false and the pre-lock probe cannot
+// early-return -- but whose squash result tree equals HEAD's own tree, so `git merge --squash`
+// stages nothing, moves no HEAD, writes no MERGE_HEAD, and classifies up_to_date on both sides.
+// Reporting AlreadyUpToDate there is the honest answer, and it can only have come from the record.
+func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
+
+	// The same content reaches the branch and the trunk independently, on both sides, so each
+	// source is a real non-ancestor whose merge result is nevertheless empty.
+	commitOnWarpBranch("feature", "shared.txt", "same change\n", "feature: warp same change")
+	commitOnWarpCurrent("shared.txt", "same change\n", "target: warp same change, reached independently")
+	commitOnWeftBranch("feature-weft", "shared-weft.txt", "same change\n", "feature: weft same change")
+	commitOnWeftCurrent("shared-weft.txt", "same change\n", "target: weft same change, reached independently")
+
+	// This is the whole point of the fixture: an ancestor source would be caught by the pre-lock
+	// probe's hardcoded return and the derived field would never be read.
+	if isAncestorInCheckout(t, h.PrimeWorktree(), "feature", "HEAD") {
+		t.Fatal("fixture broken: feature is an ancestor of the warp HEAD, so the pre-lock probe would short-circuit before the derived field is read")
+	}
+	if isAncestorInCheckout(t, h.PrimeWeft(), "feature-weft", "HEAD") {
+		t.Fatal("fixture broken: feature-weft is an ancestor of the weft HEAD, so the pre-lock probe would short-circuit before the derived field is read")
+	}
+
+	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	res, err := f.Merge("feature", fabricengine.MergeOptions{Squash: true})
+	if err != nil {
+		t.Fatalf("Merge(feature, squash): %v", err)
+	}
+
+	if !res.AlreadyUpToDate {
+		t.Error("Merge(feature, squash).AlreadyUpToDate = false; want true — both sides' post-lock MergeStart outcomes are up_to_date, which is what the derived field reads")
+	}
+	if res.Committed {
+		t.Error("Merge(feature, squash).Committed = true; want false — a squash with an empty result has nothing to commit")
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpBefore {
+		t.Errorf("warp HEAD = %q; want unchanged %q", got, warpBefore)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftBefore {
+		t.Errorf("weft HEAD = %q; want unchanged %q", got, weftBefore)
+	}
+	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) || mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
+		t.Error("MERGE_HEAD is live after a squash merge; squash never writes one, so the up_to_date classification must not have left git mid-merge")
+	}
+
+	inProgress, err := f.MergeInProgress()
+	if err != nil {
+		t.Fatalf("MergeInProgress: %v", err)
+	}
+	if inProgress {
+		t.Error("MergeInProgress() = true after the merge returned; want false")
+	}
+}
