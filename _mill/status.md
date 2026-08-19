@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-MergeIn and the lifecycle quartet
+phase: approved-Merge target-pair verb
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-gitrepo merge primitives  '2026-08-19T09:46:11Z'
 approved-merge state, errors, and path mapping  '2026-08-19T09:57:44Z'
 approved-MergeIn and the lifecycle quartet  '2026-08-19T10:24:59Z'
 approved-MergeIn and the lifecycle quartet  '2026-08-19T10:25:21Z'
+approved-Merge target-pair verb  '2026-08-19T10:35:00Z'
 ```
 
 ## Batches
@@ -55,9 +56,10 @@ batches:
     commit_sha: ac8bf461c1d71ce9dcee74b4ab46a2ee0a146f65
     verify_baseline_failures: []
   - name: Merge target-pair verb
-    state: running
+    state: approved
     implementer_session: 6e228a6c-6c32-4cb7-8c47-221328ee76e6
     start_sha: ac8bf461c1d71ce9dcee74b4ab46a2ee0a146f65
+    commit_sha: 387e3599538908aa24372e5bf47dc24a54827fc1
     verify_baseline_failures: []
   - name: sibling-verb guards and vocabulary assertions
     state: pending
