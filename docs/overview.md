@@ -233,7 +233,9 @@ github.com/Knatte18/loomyard/
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, perch, Webster) over shuttle/perch/websterengine
-├── internal/loomshed/            loom's own 12-row producer list over `shedengine`
+├── internal/loomshed/            loom's own 13-row producer list over `shedengine`
+├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
+├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
