@@ -190,6 +190,7 @@ Batch-local decision: unexported helpers throughout — nothing in this batch is
   - `internal/fabricengine/destroy_test.go`
   - `internal/fabricengine/mergestate_integration_test.go`
   - `internal/fabricengine/export_test.go`
+  - `internal/fabricengine/reconcile.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
