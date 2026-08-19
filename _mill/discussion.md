@@ -36,6 +36,7 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - `fabricengine.MergeContinue`, `MergeAbort`, `MergeInProgress` — the conflict lifecycle, attached uniformly to both verbs.
 - A fabric-owned per-pair merge-state record (see the `a-recorded-merge-not-a-derived-one` decision) — pre-merge SHAs, per-side outcomes, commit progress — that makes abort, crash recovery, and foreign-merge refusal possible.
 - A weft-side gated hard-reset request inside `internal/fabricengine/destroy.go`, per the Fabric Destruction Chokepoint Invariant — abort and self-abort need it, and it does not exist today.
+- A merge-in-progress refusal on the sibling mutating verbs (`Commit`, `Pull`, `Checkout`, `Remove`/`Cleanup`), so an open merge cannot be corrupted by an unrelated fabric write — see the lock decision's consequence for the full disposition table.
 - Unified, side-free conflict reporting: one flat, sorted list of paths relative to the single visible worktree root, with a defined mapping rule and a defined refusal for paths the mapping cannot express.
 - Two-sided indivisibility: no *new commit* is created on either side until both sides are conflict-free (a fast-forward moves a ref without creating a commit and is reversible from the recorded pre-merge SHA — see the `no-new-commit-until-both-sides-are-clean` decision).
 - Aggregated, deterministic precondition guards on both verbs — dirty state, upstream sync, source resolution, foreign merge state — reported as one side-free error, never as a first-failure that reveals evaluation order.
@@ -214,6 +215,9 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   A weft-side conflicted path outside that set — repo-root files such as the warp-binding record, a README, pre-fabric legacy content — has no visible-tree address at all;
   a conflict there aborts the merge on both sides (gated resets to the recorded SHAs) and returns `*ErrUnmergeableState` with a fixed, side-free message ("merge produced conflicts outside the fabric-managed tree; operator intervention required"), the offending detail going to the internal log only.
   The same refusal applies to the theoretical collision where both sides report the same unified path.
+  Where the geometry comes from, since `Fabric` holds only `warp`/`weft`/`warpPath`/`weftPath` and `Open` discards the `*lyxcwd.Location` it was given: the merge path re-resolves it, calling `lyxcwd.ResolveWorktree(f.warpPath)` for `AnchorRel` and reading the wired name set via `WiredNames` against the repo-wide fabric config base derived from the hub, `filepath.Dir(f.warpPath)` — the same hub derivation `Fabric.ResetHard` already hardcodes, and the same `LoadConfig(repoWideFabricBase(l))` pair `Fabric.Commit` already performs for its own routing set.
+  Resolution happens once per merge call, before any mutation, so a failure costs nothing: a resolve or config-read failure is a guard-stage failure returning the wrapped error, with nothing started and no record written.
+  It is deliberately not cached on the handle — `Commit` re-reads the same config per call for the same reason, and a merge is rare enough that one extra read is irrelevant beside a wrong answer after a `reconcile`.
 - Rationale: the identity mapping is pure geometry — Fabric's own domain — not content knowledge, and for wired content it is exact by construction.
   The unmappable class cannot arise from fabric-driven history: fabric's own weft write path routes commits through the pathspec/commit-routing set only, so two fabric-managed branches can never diverge on an unmapped weft path;
   such a conflict proves out-of-band writes, which Fabric refuses to half-report rather than inventing a synthetic namespace that would disclose the second repo.
@@ -254,6 +258,10 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Consequence: during the resolution window the pair's clean side holds an in-merge index, so a routine `Fabric.Commit` on the pair would hit git's raw "cannot do a partial commit during a merge".
   `Fabric.Commit` therefore gains a cheap guard: it refuses with a typed, side-free error before touching anything when the merge-state record exists, and equally when git-level merge state exists on either side without a record — the foreign-merge case a human's plain-git merge produces.
   Both refusals exist for the same reason: without them the caller receives git's raw, unowned "cannot do a partial commit during a merge", which is the outcome the guard exists to prevent and is not made less raw by fabric not having started the merge.
+- Consequence: the same refusal is extended to every sibling verb whose mutation would corrupt or be corrupted by a live merge, decided here rather than left to the plan.
+  Refuse while a record exists: `Fabric.Commit` (partial commit during a merge), `Fabric.Pull` (hard-resets and re-anchors, which would discard the in-progress merge), `Checkout` (a coordinated branch switch out of a half-merged pair), and `Remove`/`Cleanup` for the pair itself (tearing down a worktree mid-merge).
+  Deliberately left unguarded: `PushWeft` and the push half of `sync`, because pushing already-committed history is unaffected by an open merge in the working tree, and `Status`/`Diff`/`List`/`pairs` and every other read-only verb, which are exactly what an operator inspecting a stuck merge needs.
+  All refusals reuse one typed, side-free error naming the open merge, never git's raw refusal.
 - Consequence: the lock's misleading name is recorded as an audit finding, not renamed here.
 
 ### safety-guards-are-aggregated-and-side-free
@@ -311,7 +319,9 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 ### weft-source-is-derived-and-must-exist
 
 - Decision: for a caller-supplied source branch `<source>`, the warp side merges `<source>` and the weft side merges `WeftBranchName(source)` — `<source>-weft`, composed solely by `branchname.go`'s existing derivation.
-  When `<source>-weft` does not exist in the weft repo (probed via the existing `weftBranchExists`), the guard fails: `<source>` is not a fabric-managed branch, and the aggregated guard error carries the fixed reason `cannot merge %q: not a fabric-managed branch`.
+  When `<source>-weft` does not exist in the weft repo (probed via the existing `weftBranchExists`), the guard fails: `<source>` is not a fabric-managed branch, and the aggregated guard error carries the closed set's literal reason `"source branch is not fabric-managed"`.
+  The branch name is never interpolated into that string;
+  it travels in `ErrMergeInRequired.Source`-style typed fields where a caller needs it, per the guards decision's rule.
 - Rationale: the derivation is the same sole-composition rule every other fabric surface obeys, and it belongs in a normative decision, not only the Q&A.
   A hard refusal is the only answer consistent with two-sided indivisibility: a silent warp-only merge would let the two sides' histories diverge under fabric's own hands, and forking `<source>-weft` on demand would fabricate weft history for a branch fabric never managed, without the caller asking.
   Every branch `Finalize` merges was created by `fabricengine.Add`, which forks both sides — so the refusal bites only genuinely foreign branches, where refusing is correct.
@@ -347,6 +357,15 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 
   // MergeStart runs `git merge --no-commit <ref>` (squash false) or
   // `git merge --squash <ref>` (squash true) and classifies the result.
+  // A conflicted merge exits non-zero, so runChecked returns *gitexec.GitError;
+  // MergeStart classifies on repo state, never on exit code alone. It captures
+  // HEAD before the call, then on any error uses errors.As to recover the
+  // GitError and probes: unmerged index entries (git ls-files -u) => Conflicted;
+  // otherwise the error is genuine and returned. On success it probes HEAD
+  // movement and the index: HEAD moved with nothing staged => FastForwarded;
+  // nothing staged and HEAD unmoved => AlreadyUpToDate; else Staged.
+  // This keeps the checked form (errors.As + state probe, the ancestry.go idiom)
+  // and adds no raw gitexec site, so no pinned raw-site count moves.
   func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error)
 
   // MergeConclude commits a staged merge or staged squash: `git commit [-m <msg>]`,
@@ -459,7 +478,8 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   The plan must first establish whether the existing `ownedRegisteredLinkedWorktree(repoDir)` ownership kind already covers the weft checkout;
   a new weft-specific kind is added only if it is shown insufficient, not assumed.
 - Rationale: an abort's entire purpose is to discard an intentionally dirty worktree — unresolved conflict markers are tracked-file modifications, so a `force: false` request would refuse exactly the state the verb exists to clean up.
-  Forcing is safe here and only here because the abort is record-gated: `MergeAbort` refuses to run without a fabric-written record, so the dirt being discarded is provably merge-produced (the guards required a clean pair before the merge began), never an operator's unrelated work.
+  Forcing is safe here and only here because the abort is record-gated: `MergeAbort` refuses to run without a fabric-written record, so what it discards is exactly the dirt accumulated since the merge started — which abort exists to discard by definition — rather than an operator's pre-existing work, which the pre-merge clean-pair guard had already excluded.
+  The claim is deliberately not "provably merge-produced": `verify-before-conclude-not-post-commit-rollback` puts build- and test-fixing inside the same window, so tracked edits unrelated to conflict resolution can legitimately exist at abort time, and abort discards those too.
 - Rejected: `dirtinessNA` (the dirtiness is real and known, not inapplicable — declaring it NA would be false);
   routing around the gate (banned tokens, and the recorder threading exists precisely to prevent it).
 
@@ -670,7 +690,10 @@ The scenario matrix that must be covered, each asserting the *pair's* end state 
 - `Merge` that would conflict → self-aborts, target pair unchanged, `*ErrMergeInRequired` returned, no record left, and the conflicting side is not disclosed.
 - Unmappable-path conflict: a weft-side conflict manufactured outside the wired name-set → merge aborted on both sides, `*ErrUnmergeableState`, pair restored.
 - Path mapping: a conflict in a junctioned path is reported at its unified worktree-root-relative path on a subpath-anchored hub (the `<AnchorRel>/…` case), and the reported file is reachable at that path through the junction.
-- `Fabric.Commit` during a recorded merge → typed refusal, nothing mutated.
+- `Fabric.Commit` during a recorded merge → typed refusal, nothing mutated;
+  and during foreign git merge state with no record → the same typed refusal, not git's raw message.
+- Sibling-verb dispositions during a live record: `Pull`, `Checkout`, and `Remove`/`Cleanup` on the pair refuse with the same typed error and mutate nothing;
+  `PushWeft` and every read-only verb (`Status`, `Diff`, `List`, `pairs`) succeed unchanged.
 
 **Vocabulary enforcement.**
 The existing `TestEnforcement_FabricVocabulary` walk covers production Go and the `internal/**/*.md`/`contracts/stencils/**/*.md`/template surfaces automatically.
