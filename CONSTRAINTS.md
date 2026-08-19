@@ -237,8 +237,12 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 
 - **Seam.**
   Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out, args)`.
-  Eleven of the twelve seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
+  Twelve of the thirteen seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
   `internal/selfreportcli` is the one seam module without `RunCLIIn`: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
+- **Alias shape.**
+  A module may register an alias command beside its own subtree, as a second root child, via a separately-named exported constructor.
+  That alias carries no seam function of its own — no `RunCLI`/`RunCLIIn` — because it delegates entirely into the subtree's own verb.
+  `internal/loomcli`'s `RunAliasCommand()`, registered in `cmd/lyx/main.go` as `lyx run` alongside the `lyx loom` subtree, is the first instance of this shape.
 - **Registration.**
   A new module is wired into `newRoot()`: import, `root.AddCommand(...)`, and appended to the root `Long` module-list.
   Unregistered ⇒ invisible to `--help`.
@@ -254,6 +258,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   A consumer unmarshalling the output as a single object (which the smoke suites do) fails to parse two, and the second envelope names the secondary problem while the first names the one to fix.
 - **Interactive-handoff exception (narrow, per-command).**
   A subcommand that hands stdio to another interactive program and blocks, or self-displays and then blocks forever, is exempt from the envelope only on that terminal-handover/keepalive tail — everything that can fail stays pre-flight, on the envelope.
+  `lyx loom status --watch` and `lyx loom run` (alias `lyx run`) are two more registered holders of this exception, in the same shape `internal/reedengine`'s `attach`/`header --blocking` pair already establishes: `status --watch` self-displays the polled status line, then blocks forever as its own keepalive tail, and `run` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
 - **Package naming.**
   A cobra-registered package is `<module>cli`;
   its domain kernel is `<module>engine`. cli imports engine;
@@ -261,7 +266,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine.
   Skip the engine only for trivial wrappers or a throwaway proof-of-concept meant to be deleted.
   **Named deviation:** `stencilcli`'s domain kernel is `internal/stencilstore`, not `stencilengine` — `internal/stencil` already holds the singular name and the top-level `stencils` package holds the plural, so a `stencilengine` would make three packages one character apart, and `stencilstore` says what the package actually is.
-- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all twelve modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the eleven modules that carry it, both at compile time.
+- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all thirteen modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the twelve modules that carry it, both at compile time.
 
 ## Shuttle Provider-Seam Invariant
 
