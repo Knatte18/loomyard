@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-constraints-invariants
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r2  '2026-08-19T06:39:12Z'
 plan-review-r3  '2026-08-19T06:43:44Z'
 planned  '2026-08-19T06:43:54Z'
 implementing  '2026-08-19T06:44:30Z'
+approved-constraints-invariants  '2026-08-19T06:49:07Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-19T06:44:30Z'
 ```yaml
 batches:
   - name: constraints-invariants
-    state: running
+    state: approved
     implementer_session: 64e89011-89ef-4733-8914-ff94763e2121
     start_sha: 22b3526365cf1b0c01a49e2e32def462d39d5a3e
+    commit_sha: 4a2cc5689a1c4e9f095e52a17029c88542c75bcb
     verify_baseline_failures: []
   - name: config-strictness-guard
     state: pending
