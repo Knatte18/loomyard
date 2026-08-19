@@ -5,7 +5,7 @@ task: 'landing: Publish + Finalize producers'
 batch: 'landingshed producers'
 number: 4
 cards: 11
-verify: go test ./internal/landingshed/... ./internal/configreg/... ./cmd/lyx/...
+verify: go test ./internal/landingshed/... ./internal/configreg/... ./internal/fabricengine/... ./cmd/lyx/...
 depends-on: [2, 3]
 ```
 
@@ -186,13 +186,28 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/merge.go`
   - `internal/fabricengine/mergeerrors.go`
   - `internal/fabricengine/mergeguards.go`
+  - `internal/fabricengine/mergevocab_test.go`
+  - `internal/fabricengine/mergeerrors_test.go`
   - `internal/shedengine/producer.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/mergeerrors.go`
 - **Creates:**
   - `internal/landingshed/finalize.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/landingshed/finalize.go` declaring the `Finalize` producer type, `NewFinalize(deps Deps) (*Finalize, error)`, and its `Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)`, with a compile-time assertion that the type satisfies the producer seam.
+- **Requirements:** This card has two halves: a small exported accessor in the engine that owns the guard reasons, and the producer that consumes it.
+
+  **First**, in `internal/fabricengine/mergeerrors.go`, add an exported predicate method on the already-exported guard-error type: `func (e *MergeGuardError) WorktreeDirty() bool`, reporting whether its aggregated reason list contains the package's own dirty-worktree reason constant.
+
+  This exists because the reason strings themselves are a **closed, unexported set**, deliberately pinned verbatim by that file's own comment and by two of this package's tests, while the aggregated list is the only exported surface.
+  Without an accessor, the consumer below could only hardcode the literal reason text, and nothing anywhere would catch that text drifting later — the guard-table decision in `## Shared Decisions` does not track it, and no test ties the two packages together.
+  An accessor keeps the coupling inside the package that owns the constant, where the existing pinning tests already cover it.
+
+  Do not export the reason constant itself and do not rename it: it is a member of a closed set whose own comment makes adding or changing a member a same-commit change to that list and to the vocabulary assertion covering it, and this task needs a predicate rather than a new member.
+  Do not add a reason to that set either.
+  Give the method a godoc comment stating that it is the supported way for a caller outside this package to recognize the condition, and why the constant stays unexported.
+
+  **Second**, create `internal/landingshed/finalize.go` declaring the `Finalize` producer type, `NewFinalize(deps Deps) (*Finalize, error)`, and its `Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)`, with a compile-time assertion that the type satisfies the producer seam.
 
   `NewFinalize` rejects a nil parent-pair opener closure up front, along with every other nil required closure, each with its own distinct error.
   It builds its resolver at construction time from the told values and stores it behind the package's own resolver seam, exactly as the sibling producer's constructor does and for the same reason — the resolver's constructor performs no I/O, so a mis-wired resolver is a construction error rather than a first-call surprise.
@@ -205,7 +220,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   3. Obtain the parent pair's handle through the injected parent opener closure. An error there means no live pair exists for the parent branch → stuck with a reason naming that branch. This producer never creates a worktree to merge into; materializing a pair is a separate command's job and a human's decision.
   4. Call the parent handle's merge verb with the task branch and the squash flag threaded from configuration.
   5. On the merge-in-required error, re-run the resolver in the task worktree and retry the parent-side merge exactly once; a second failure is stuck. One retry rather than zero because no lock spans the window between this producer's own catch-up merge-in and the later parent-side merge, so a competing task can genuinely land in the parent in between — real drift, not an impossible state.
-  6. On a guard error carrying a dirty-worktree reason, surface that reason verbatim and return stuck. Never stash, never reset, never force the merge: someone has uncommitted work in the parent and only they can decide what happens to it.
+  6. On a guard error, recognize the dirty-worktree condition through the accessor added in this card's first half — never by matching a hardcoded reason string — then surface the error's own aggregated reasons verbatim and return stuck. Never stash, never reset, never force the merge: someone has uncommitted work in the parent and only they can decide what happens to it.
   7. Any other error from the parent-side merge is stuck with the error surfaced.
   8. Every non-success exit consults `cancelErr` first and routes its reason through the stuck helper.
 
@@ -289,7 +304,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/landingshed/config.go`
   - `internal/fabricengine/mergeerrors.go`
   - `internal/fabricengine/merge.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/fabricengine/mergeerrors_test.go`
 - **Creates:**
   - `internal/landingshed/finalize_test.go`
 - **Deletes:** none
@@ -302,12 +318,15 @@ Batch-local decisions beyond `## Shared Decisions`:
   - the happy path → merge-in always runs first, then the parent-side merge, with the squash flag threaded from configuration;
   - the merge-in-required error on the parent-side merge → exactly one resolver re-run and exactly one merge retry, then stuck;
   - the parent opener returning an error → stuck with a reason naming the parent branch, and no worktree created;
-  - a guard error carrying the dirty-worktree reason → stuck surfacing that reason, with no stash, no reset, and no retry;
+  - a guard error carrying the dirty-worktree reason → stuck surfacing that reason, with no stash, no reset, and no retry, recognized through the engine's own accessor rather than a matched string;
   - an unrecognized merge error → stuck with the error surfaced;
   - each stuck case writes its reason file, and two different causes produce different contents;
   - cancellation at entry surfaces as a non-nil error, never as a stuck verdict.
 
   A nil parent opener is a construction error rather than a silent no-op — assert the constructor rejects it.
+
+  Also cover the accessor this card added to the engine, in that package's own test tier rather than here: a guard error built with the dirty-worktree reason reports true, one built with any other single reason reports false, and one carrying the dirty reason alongside others still reports true.
+  Placing that coverage in the owner package is what makes the cross-package coupling pinned rather than merely conventional — this producer's own tier asserts it branches on the accessor, and the owner's tier asserts the accessor tracks the constant.
 - **Commit:** `test(landingshed): cover Finalize's merge geometry and refusals`
 
 ### Card 28: config loading under test
@@ -360,11 +379,12 @@ Batch-local decisions beyond `## Shared Decisions`:
 
 ## Batch Tests
 
-`verify:` runs three packages' fast tiers, all untagged.
+`verify:` runs four packages' fast tiers, all untagged.
 Every test this batch writes spawns nothing: the resolver, the push, the two pair openers, and the GitHub client are all injected seams, and the client is pointed at a local test server, so the whole batch stays in tier 1 per the Test Tier Purity Invariant.
 
 - `./internal/landingshed/...` runs both producers' verdict tables (cards 26 and 27), the config tier (card 28), and the import allowlist guard (card 25).
 - `./internal/configreg/...` runs the registry's own want-list check, which card 29 satisfies on both sides at once.
+- `./internal/fabricengine/...` covers card 24's first half: the new guard-error accessor and its own tier (card 27), plus that package's existing reason-string pinning tests, which are what make the accessor's coupling to the unexported constant a checked fact rather than a convention.
 - `./cmd/lyx/...` runs the two set-equality guards this batch must satisfy: the strict-loader pinned set (card 30) and the GitHub shell-out guard, which must stay green now that a second package talks to the service through the authenticated client.
 
 The real two-worktree behaviour of both producers is covered by the integration tier in batch 5, against real pairs rather than fakes; that tier is deliberately not in this batch's verify scope, since none of its files exist yet.

@@ -36,7 +36,7 @@ batches:
     name: landingshed producers
     file: 04-landingshed-producers.md
     depends-on: [2, 3]
-    verify: go test ./internal/landingshed/... ./internal/configreg/... ./cmd/lyx/...
+    verify: go test ./internal/landingshed/... ./internal/configreg/... ./internal/fabricengine/... ./cmd/lyx/...
   - number: 5
     name: loomshed wiring and integration
     file: 05-loomshed-wiring-and-integration.md
@@ -110,6 +110,8 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `docs/overview.md`
 - `internal/configreg/configreg.go`
 - `internal/configreg/configreg_test.go`
+- `internal/fabricengine/mergeerrors.go`
+- `internal/fabricengine/mergeerrors_test.go`
 - `internal/fabricengine/mergestage.go`
 - `internal/fabricengine/mergestage_integration_test.go`
 - `internal/fabricengine/mutation.go`

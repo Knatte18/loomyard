@@ -109,6 +109,11 @@ Batch-local decisions beyond `## Shared Decisions`:
   The rewritten Done entry stays short — a name plus one or two sentences of what and why, per this file's own maintenance rules — and its trailing pointer names the two packages' own documentation rather than the deleted design document, since a Done entry points at the module's package documentation from then on.
   Numbering needs no edit anywhere: every item is written literally as `1.` and each heading starts a fresh list block.
 
+  While in this file, also correct the Done entry for the earlier phase-machine scaffolding item.
+  It states that the producer list carries twelve rows and enumerates seven stubbed rows by name — both already stale before this task, since a thirteenth row was added later, and both made further wrong by this task, which turns two of the rows it describes into real producers.
+  Correct the row count and the stubbed-row list so the entry describes what that package now holds.
+  This is a correction to an entry made wrong in part by this task's own change, in a file this card already edits, not an unrelated cleanup — and leaving it would state a row count that contradicts the module table this plan corrects one card later.
+
   Leave the Someday item about the other conflict shape exactly as it is.
   It already reads that only the ordinary shape shipped and the document shape is not built, which this task confirms rather than changes — an edit there would be churn.
 - **Commit:** `docs(roadmap): move the landing item to Done and correct its body`

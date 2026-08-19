@@ -79,6 +79,7 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/fabricengine/fabric.go`
   - `internal/fabricengine/mergelifecycle.go`
   - `internal/fabricengine/merge.go`
+  - `internal/fabricengine/mergepaths.go`
   - `internal/fabricengine/mergeerrors.go`
   - `internal/fabricengine/mutation.go`
   - `internal/gitrepo/merge.go`
