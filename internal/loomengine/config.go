@@ -71,6 +71,18 @@ func LoomStatusLock(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "status.json.lock")
 }
 
+// LoomRunLock returns the path to the advisory lock file Shed holds for the whole duration of a
+// run, distinct from LoomStatusLock's per-persist status lock.
+// It is AnchorPath-anchored like LoomStatusFile and LoomStatusLock.
+// It must never equal LoomStatusLock(l): internal/state acquires the status lock with the
+// blocking form, so Shed.validate() rejects LockPath == StatusLockPath outright, and a shared file
+// would hang on the first persist rather than fail.
+// Scoped under the same "loom" subdirectory as LoomStatusFile and LoomStatusLock, for the same
+// product-collision reason.
+func LoomRunLock(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "run.lock")
+}
+
 // Config represents the resolved loom.yaml configuration: role model-specs and timeout knobs.
 type Config struct {
 	Discussion           string `yaml:"discussion"`

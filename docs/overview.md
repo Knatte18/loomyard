@@ -145,7 +145,7 @@ Two state roots with opposite lifecycles:
 
 - **`_lyx/`** — **durable, synced, portable.**
   Lives in the weft repo (git-synced), so it survives a machine and transfers to another.
-  Config, raddle, the board, and loom's orchestration **status** (current phase, review round, verdict history) go here — loom resume works across machines *because* its status is fabric-synced.
+  Config, raddle, the board, and loom's orchestration **status** (current producer, run state, per-producer-call history) go here — loom resume works across machines *because* its status is fabric-synced.
 - **`.lyx/`** — **ephemeral, local, machine-bound.**
   Untracked in both the warp and the weft repo (listed in each repo's own `.git/info/exclude`, never a committed `.gitignore` in either), changing constantly while a run is live.
   The live tmux runtime state — `reed`'s (see the `internal/reedengine` package documentation) `.lyx/reed.json` (the socket/session names + the strand table: each managed process, its session, parent, ephemeral pane id, and display spec) — goes here, because a pane ID or the tmux socket is meaningless on another machine.
@@ -233,6 +233,7 @@ github.com/Knatte18/loomyard/
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
 ├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, perch, Webster) over shuttle/perch/websterengine
+├── internal/loomshed/            loom's own 12-row producer list over `shedengine`
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type

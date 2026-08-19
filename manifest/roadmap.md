@@ -17,16 +17,7 @@ Committed to, in this order, next.
    - Own config surface (`landing.yaml`: `require_pr_to_base` and other safe defaults, overridable per orchestrating profile — same "profiles live in the caller, not the callee" precedent as `loom.yaml`/`hardener.yaml`), Raddle regeneration folded into `Finalize`'s own merge critical section rather than a separate step.
    See [designs/landing.md](designs/landing.md).
 
-1. **loom: phase-machine scaffolding** — mechanical rows only, except `Finalize` (own Planned item above, stays a stub here too); every `LLM`/`LLM+perch` row stays a stub.
-   - Instantiate `loom` as a `Shed` instance carrying the full 13-row producer list, every row present (stubs included), so sequencing is real from the start.
-   - Build `Discussion-Validate` for real: both files exist under `_lyx/discussion/`; `decision-record.md` has all seven required sections. Thin — new code, but small (file-exists + section-presence checks only).
-   - Build `Plan-Validate` for real: `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`). Thin wrap, not new logic: `internal/planparser.Validate(plan, worktreeRoot)` already implements every one of these checks — the producer just calls it and maps the result.
-   - Wire in `Preflight`, `Batchifier`, and `Webster` as-is — all three already shipped, no new code in any of them.
-   - Stub `Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Publish`, and `Finalize` — each returns `Done` without doing real work; `Publish`/`Finalize` swap in for the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands — not loom-specific, so not tied to this task's own build order. `Plan-Sweep` stays stubbed here too: its only consumer, `Plan-Write`, is itself a stub in this task, so a real `Plan-Sweep` has nothing to feed yet — building it now would be premature. Not needed for loom to function.
-   - Verify: the full 13-row sequence runs against the stubs, including resume, crash-recovery, and pause.
-   See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-
-1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine from the item above actually reachable.
+1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the Done `loom: phase-machine scaffolding` item's phase machine actually reachable.
    - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
    - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
    See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
@@ -255,6 +246,10 @@ No build order is implied between these items.
 
 1. **PATTERN directives: move from Go constants to stencil files** — `internal/pattern.Directive`'s three role-keyed directive strings now live as real, directly-editable stencil files instead of Go source, read at call time through `stencilstore.Read`, same as every other producer prompt.
    See the `internal/pattern` package documentation.
+
+1. **loom: phase-machine scaffolding** — `internal/loomshed` carries loom's full 12-row producer list: `Discussion-Validate`, `Plan-Validate`, and `Batchifier` built for real, `Preflight` and `Webster` wired in as-is, and the remaining seven rows (`Discussion-Write`, `Discussion-Review`, `Plan-Sweep`, `Plan-Write`, `Plan-Review`, `Webster-Review`, `Finalize`) stubbed.
+   loom's status file migrated onto `shedengine.Status`, with `loomshed.Seed` as its production seeder.
+   See the `internal/loomshed` package documentation and the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 ## Maintenance
 

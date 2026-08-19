@@ -9,6 +9,7 @@
 package loomengine
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -112,7 +114,7 @@ func runCheck4(report Report, l *lyxcwd.Location) (Report, error) {
 		if err := os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755); err != nil {
 			return Report{}, err
 		}
-		s, found, rerr := state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))
+		shed, found, rerr := state.ReadJSONStrict[shedengine.Status](LoomStatusFile(l), LoomStatusLock(l))
 		switch {
 		case rerr != nil:
 			// A decode failure (malformed JSON or an unknown field) is a
@@ -131,8 +133,23 @@ func runCheck4(report Report, l *lyxcwd.Location) (Report, error) {
 			// Report{}, nil.
 			return Report{}, fmt.Errorf("loomengine: seed vanished between stat and read: %s", LoomStatusFile(l))
 		default:
-			for _, f := range checkCoherence(s) {
-				report.AddFailure(f.Check, f.Reason)
+			// An absent or null Product decodes to the zero Status, whose empty
+			// Slug/Parent the mandatory-field rules below then report -- no
+			// special-casing needed. A Product that fails to unmarshal is
+			// itself a determined CheckSeedIncoherent verdict, not an infra
+			// error: an external writer wrote something loom cannot read as
+			// its own product shape.
+			var product Status
+			var uerr error
+			if len(shed.Product) > 0 {
+				uerr = json.Unmarshal(shed.Product, &product)
+			}
+			if uerr != nil {
+				report.AddFailure(CheckSeedIncoherent, fmt.Sprintf("product does not decode as loom's status shape: %s", uerr.Error()))
+			} else {
+				for _, f := range checkCoherence(shed, product) {
+					report.AddFailure(f.Check, f.Reason)
+				}
 			}
 		}
 	}
