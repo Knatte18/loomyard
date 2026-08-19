@@ -42,3 +42,9 @@ batches:
     state: pending
     verify_baseline_failures: ["FAIL\t./internal/loomshed/... [setup failed]"]
 ```
+
+## Inferred-success log
+
+```text
+'2026-08-19T10:27:45Z'  loomshed-producers  round 1
+```
