@@ -29,8 +29,8 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 - `internal/landingshed` — the two `ShedProducer` implementations (`Publish`, `Finalize`), their `Deps` struct, and the `landing.yaml` config surface.
 - `contracts/stencils/landing/landing-template-conflict.md` — the conflict-resolution prompt stencil.
 - `internal/landingshed/template.yaml` — the embedded `landing.yaml` template, reconciled by `lyx config reconcile` like every other module config.
-- `fabricengine.MergeStageResolved(paths []string) error` — a new narrow verb on `Fabric` that stages resolved conflict paths, without which `MergeContinue` can never succeed after an agent resolution.
-  Its `internal/gitrepo` staging counterpart must be added to the gitrepo Client Boundary Invariant's pinned method list in the same commit.
+- `fabricengine.MergeStageResolved(paths []string) (StageResult, error)` — a new narrow verb on `Fabric` that stages resolved conflict paths, without which `MergeContinue` can never succeed after an agent resolution.
+  Brings with it a `StageResult` type embedding `MutationRecord`, a new `Kind` member in `mutation.go`, and its `internal/gitrepo` staging counterpart, which must be added to the gitrepo Client Boundary Invariant's pinned method list in the same commit.
 - `gitrepo.RemoteURL(name string) (string, error)` — a go-git-backed local config read.
 - `githubclient.ParseOwnerRepo(remoteURL string) (owner, repo string, err error)` — a pure stdlib parser.
 - Wiring: `internal/loomshed`'s rows 12 and 13 swap their `newStub(...)` backing for the real producers, and `loomshed.Deps` grows a single `Landing landingshed.Deps` passthrough field.
@@ -94,11 +94,19 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 ### mergeresolve-drives-shuttle-directly
 
 - Decision: `mergeresolve` drives `shuttleengine.Runner` through its own narrow one-method seam (same shape as `shedadapters.Shuttle`: `Run(shuttleengine.Spec) (shuttleengine.Result, error)`), not through `shedadapters.SingleLLMProducer`.
-- Rationale: `SingleLLMProducer` requires a non-empty `spec.OutputFiles` to report `Done` and returns `spec.OutputFiles[0]` as its output pointer.
-  Conflict resolution writes back into already-existing conflicted files, not a fresh artifact, so that contract does not fit.
-  `mergeresolve` also is not a producer at all — it has no `ShedProducer` seam to satisfy.
-- Rejected: passing the conflicted paths as `OutputFiles` (they are inputs being edited in place, and `archiveStaleOutputs` would archive the very files needing resolution);
-  requiring the session to write a separate resolution-report artifact purely to satisfy the adapter.
+- Rationale: `shedadapters.SingleLLMProducer` **is** a `shedengine.ShedProducer`.
+  `mergeresolve` is not a producer and has no `ShedProducer` seam to satisfy, so the adapter is structurally the wrong shape for it regardless of any output-file question.
+  A one-method seam also keeps the package unit-testable against a fake with no `shedengine` import at all.
+- **The `OutputFiles` requirement is a `Runner` rule, not an adapter rule.**
+  `shuttleengine`'s `Spec.validate` (`spec.go:115`, called from `run.go:143` inside `Runner.Start`) hard-errors on an empty `OutputFiles` — "a run's output file IS its return value" — and separately rejects any entry that already exists on disk, because outcome classification tests bare file existence and a stale file would classify the run `done` on its first turn end.
+  Bypassing `SingleLLMProducer` does not escape either rule.
+- Decision, therefore: the conflict spec's `OutputFiles` names exactly one **fresh** artifact — a resolution report at `.lyx/landing/conflict-resolution-r<attempt>.md`, which the session writes as its terminal act.
+  `.lyx` is machine-local and never committed, per the Durable-vs-Ephemeral State Invariant, so the report never reaches a weft-commit pathspec and never lands in the parent.
+  The path is **per-attempt** (`r1`, `r2`), because `validate` rejects a pre-existing entry and the one-retry path would otherwise fail its second `Runner.Start` on the first attempt's own artifact.
+  The report is not parsed for control flow — `mergeresolve`'s marker scan over `MergeResult.Conflicts` remains the verification, per `verify-before-conclude`.
+  It exists to satisfy the runner contract and to leave a human an audit trail of what the session claims it resolved.
+- Rejected: passing the conflicted paths as `OutputFiles` — they exist on disk by definition, so `validate` rejects them outright;
+  changing `shuttleengine` to permit an empty `OutputFiles` (that would remove the fail-loud guard protecting every other shuttle consumer, for one caller's convenience).
 
 ### verify-before-conclude
 
@@ -123,6 +131,10 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
   Keeping `MergeContinue`'s guard untouched gives defence in depth — `mergeresolve`'s marker scan and Fabric's index check are two independent gates, not one relocated one.
 - Rejected: making `MergeContinue` stage every conflicted path itself and scan for markers instead of the index — that changes a shipped, already-reviewed surface and removes precisely the guard a human running `lyx fabric merge --continue` after their own `git add` depends on.
   Also rejected: an opt-in self-staging flag on `MergeContinue` — added complexity on that same shipped surface for a need that is entirely `mergeresolve`'s.
+- Signature: `MergeStageResolved(paths []string) (StageResult, error)`, where `StageResult` embeds `MutationRecord`.
+  Staging mutates the index, so it is a mutating verb, and the Mutation Record Invariant requires every mutating verb's result type to embed the record.
+  A new `Kind` member for the staging primitive lands in `internal/fabricengine/mutation.go` in the **same commit** as its recording site and its `cmd/lyx/destructiveguard_test.go` guard-table entry — never ahead of either.
+  The record is appended only after the primitive observably changed state, never on a no-op.
 - Obligation: the underlying `internal/gitrepo` staging method reaches the git CLI, so it must be added to the gitrepo Client Boundary Invariant's pinned method list in the same commit, or `cmd/lyx/gitrepoboundary_test.go` fails.
   It uses the checked form, so it adds no `//gitexec:raw` site and leaves the gitexec Checked-Call Invariant's pinned counts unchanged.
 
@@ -221,6 +233,16 @@ Each is an ordinary `ShedProducer` any `Shed` producer list may name — `loom`'
 - Rationale: `fabricengine.Open(l *lyxcwd.Location)` is the only exported constructor (`newPaired` is unexported), so opening a handle inside either new package would require a direct `internal/lyxcwd` import — exactly what both packages' `seam_enforcement_test.go` forbids, and what the Told-Geometry Invariant exists to prevent.
   The closure-injection shape is established precedent, not invention: `internal/perchcli` already carries `openFabric func() (*fabricengine.Fabric, error)` (`cli.go:64`), assigns it as a closure over a resolved `Location` in hub mode (`wiring.go:140`), and sets it nil in standalone mode (`wiring.go:225`).
   Laziness matters for the same reason `perchcli` documents: `fabricengine.Open` stat-checks the paired layout, so opening eagerly would fail before `Preflight` has confirmed fabric is wired at all.
+- **Where the parent pair's path comes from.**
+  The parent is known only as a branch name (`loomengine.Status.Parent`), so the CLI/orchestrator layer resolves it before building the closure: `fabricengine.List(sourceDir)` returns `[]WorktreeEntry{Path, Head, Branch, Main}`, and the entry whose `Branch` equals the parent branch gives the parent worktree's path.
+  That path then goes through `lyxcwd.ResolveWorktree(path)` → `fabricengine.Open(loc)`, all inside the layer that already imports `lyxcwd`.
+  `landingshed` sees only the closure.
+- **No live pair for the parent branch** → `OpenParentFabric` returns an error and `Finalize` returns `Stuck` with a distinct message naming the branch.
+  `Finalize` never creates a worktree to merge into;
+  materializing a pair is `lyx fabric add`'s job and a human's decision.
+- **Parent worktree dirty** → `Merge`'s own guard already refuses with `*MergeGuardError{Reasons: ["worktree dirty"]}` (`mergeguards.go`'s `pairDirtyReason`).
+  `Finalize` surfaces that reason verbatim and returns `Stuck`.
+  It never stashes, never resets, and never force-merges — someone has uncommitted work in the parent, and only they can decide what happens to it.
 - Rejected: a path-based `fabricengine.OpenAt(warpPath string)` constructor — `Open`'s `*lyxcwd.Location` argument is what lets `fabricengine` derive weft pairing and junction geometry correctly, so a bare-path constructor would either duplicate that derivation outside the package that owns it or assume simplifications that do not always hold.
   Also rejected: `loomshed` resolving both handles eagerly and passing `*Fabric` values in `Deps` — that reintroduces into `loomshed` the very `lyxcwd` import its own seam test forbids, and opens a handle before `Preflight` has run.
 
@@ -380,13 +402,16 @@ From `CONSTRAINTS.md`, in the order they bind this work:
 - **Mutation Record Invariant.**
   `MergeResult` embeds `MutationRecord`;
   anything surfacing a merge result must carry the record through rather than dropping it.
+  The new `MergeStageResolved` verb mutates the index, so its `StageResult` must embed the record too, and its new `Kind` member lands with its recording site and `cmd/lyx/destructiveguard_test.go` entry in one commit.
+- **Durable-vs-Ephemeral State Invariant.**
+  The conflict session's resolution report lives under `.lyx/`, never `_lyx/` — machine-local, never tracked, never in a weft-commit pathspec.
 - **gitrepo Client Boundary Invariant.**
   The new staging method reaches the git CLI and must be added to that invariant's pinned method list in the same commit — `cmd/lyx/gitrepoboundary_test.go` is set-equality, so an omission fails the build.
   `RemoteURL` is go-git-backed and must **not** be added there.
 - **gitexec Checked-Call Invariant.**
   The staging method uses the checked form, so the per-package pinned raw-site counts stay unchanged and it carries no `//gitexec:raw` marker.
 - **Markdown Link Integrity.**
-  Deleting `manifest/designs/landing.md` breaks eleven inbound references across six files.
+  Deleting `manifest/designs/landing.md` breaks twelve inbound references across six files — eleven Markdown links plus one prose reference in a Go comment.
   The full inventory is in the `docs-lifecycle-landing-md-deletes` decision above, including the one anchored link (`raddle.md`) and the one non-Markdown prose reference (`internal/loomshed/loomshed.go:19`) the link checker cannot see.
   All must be repointed in the same commit.
 - **Documentation Lifecycle.**
@@ -407,7 +432,7 @@ From `CONSTRAINTS.md`, in the order they bind this work:
 Three tiers, no test ever contacting a real model or GitHub.
 
 **`internal/mergeresolve` — unit, against two fakes.**
-Fake the Fabric merge surface behind a narrow interface (`MergeIn`, `MergeContinue`, `MergeAbort`, `MergeInProgress`) and fake the shuttle seam.
+Fake the Fabric merge surface behind a narrow interface (`MergeIn`, `MergeStageResolved`, `MergeContinue`, `MergeAbort`, `MergeInProgress`) and fake the shuttle seam.
 TDD candidates — write the tests first, the whole package's behaviour is decision-table shaped:
 
 - clean merge → no LLM call at all, resolved;
@@ -434,6 +459,9 @@ TDD candidates:
 - `Publish` with a missing or malformed `summary.md` → fails loud, no PR created;
 - `Finalize` → merge-in always runs, then the parent-side `Merge`, with `Squash` threaded from config;
 - `Finalize` with `*ErrMergeInRequired` on the parent-side `Merge` → exactly one `mergeresolve` re-run and one retry, then `Stuck`;
+- `Finalize` when `OpenParentFabric` errors (no live pair for the parent branch) → `Stuck` naming the branch, and no worktree created;
+- `Finalize` when the parent-side `Merge` returns `*MergeGuardError` with `worktree dirty` → `Stuck` surfacing that reason, and no stash, reset, or retry;
+- `mergeresolve`'s second attempt uses a distinct report path from the first, so `Runner.Start`'s already-exists rejection cannot fire on the retry;
 - both producers: cancellation at entry surfaces as an error, never `Stuck`;
 - `landing.yaml` loading: absent config errors (strict);
   a malformed `conflict` model-spec is rejected at load time, not at first use.
@@ -452,7 +480,8 @@ That re-tests `shedengine` itself, which already has its own resume, crash-recov
 **`internal/fabricengine` — the new `MergeStageResolved` verb.**
 Integration-tested alongside the existing merge suites (`mergein_integration_test.go` is the model): a real conflicted pair, resolve the files on disk, call `MergeStageResolved`, assert both sides' `ConflictedFiles()` are now empty and a subsequent `MergeContinue` succeeds.
 Also: a path that maps to neither side is an error, not a silent skip;
-an empty `paths` slice is a no-op, not an error.
+an empty `paths` slice is a no-op, not an error;
+and `StageResult`'s `MutationRecord` is populated on a real staging call and left empty on the no-op, per the Mutation Record Invariant's "never on a no-op" rule.
 
 **Enforcement tests to add or update** (not behaviour tests, but required by the constraints above):
 
@@ -490,3 +519,6 @@ an empty `paths` slice is a no-op, not an error.
 - **Q:** (review round 1) Nothing stages the resolved conflicts, so `MergeContinue`'s index guard can never pass. Who stages? **A:** A new narrow `fabricengine.MergeStageResolved(paths)` verb. Index manipulation is a Fabric primitive's job; `mergeresolve` has no git access and is bound by the Fabric Git Invariant regardless. `MergeContinue`'s guard stays untouched as a second, authoritative check — defence in depth rather than a relocated guard. Modifying the shipped `MergeContinue` was rejected as too risky for an already-reviewed primitive, and it would remove the guard a human relies on after their own `git add`.
 - **Q:** (review round 1) How does either package get a `*Fabric` handle without importing `lyxcwd`? **A:** Injected opener closures in `landingshed.Deps`, filled by the CLI layer — `internal/perchcli`'s existing pattern, including its laziness (`Open` stat-checks the paired layout, so eager opening would fail before `Preflight` runs) and its nil-in-standalone form. A bare-path `OpenAt` constructor was rejected: `Open`'s `*lyxcwd.Location` is what lets `fabricengine` derive weft pairing and junction geometry, and a path-only constructor would duplicate or over-simplify that derivation.
 - **Q:** (review round 1) `origin` → owner/repo has no implementation anywhere. Where does it live? **A:** `gitrepo.RemoteURL` via go-git (a local config read — no new `gitexec` call site, no Client Boundary Invariant list change) plus a stdlib `githubclient.ParseOwnerRepo`. Absent, unparseable, or non-GitHub `origin` → `Stuck`, never a silent no-PR `Done`.
+- **Q:** (review round 2) The `OutputFiles` requirement lives in `Runner.Start`'s `validate`, not in `SingleLLMProducer` — so bypassing the adapter doesn't escape it. What does the conflict spec name? **A:** One fresh per-attempt resolution report at `.lyx/landing/conflict-resolution-r<attempt>.md`. Per-attempt because `validate` also rejects a pre-existing entry, which would fail the retry. It is never parsed for control flow — the marker scan stays the verification — it satisfies the runner contract and leaves an audit trail. Loosening `shuttleengine`'s guard for one caller was rejected. The decision to bypass `SingleLLMProducer` stands on a different footing: it is itself a `ShedProducer`, and `mergeresolve` is not a producer.
+- **Q:** (review round 2) Where does the parent pair's `*Fabric` actually come from, given the parent is only a branch name? **A:** `fabricengine.List(sourceDir)` already returns `Branch`+`Path` per worktree; the CLI layer matches the parent branch, then `lyxcwd.ResolveWorktree` → `fabricengine.Open`. No live pair → `Stuck`, never auto-create a worktree. Parent dirty → `Merge`'s own `worktree dirty` guard fires and `Finalize` surfaces it as `Stuck`, never stashing or resetting someone else's uncommitted work.
+- **Q:** (review round 2) Does `MergeStageResolved` need a mutation record? **A:** Yes — it mutates the index, so it returns `StageResult` embedding `MutationRecord`, with its new `Kind` member, recording site, and guard-table entry all landing in the same commit.
