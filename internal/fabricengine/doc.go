@@ -889,6 +889,15 @@
 // practice because `Fabric.CheckoutDetached`/`RestoreBranch` exist and webster's integration bisect
 // drives them (`internal/websterengine/integration.go`).
 //
+// **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
+// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found both sides already
+// carrying the resolved source. Both are read off the merge-state record's own fields rather than
+// hardcoded per return site, which is what makes them answer honestly in the two cases that used to
+// lie: a merge that fast-forwarded both sides fabricates no commit at all and reports `Committed`
+// false, and a call that finds the work already done *after* taking the write lock — the loser of a
+// race the unlocked pre-lock probe deliberately does not close — reports `AlreadyUpToDate` true,
+// which is what a strictly sequential run of the same two calls reports.
+//
 // **Conflict reporting.** Conflicted paths surface as one flat, lexically sorted, deduplicated list
 // of unified, worktree-relative paths — never raw per-repo paths, which would leak the warp/weft
 // split, and never absolute paths, which is not what `git merge` hands an operator. A path either

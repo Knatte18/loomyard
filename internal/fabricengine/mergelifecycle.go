@@ -108,8 +108,10 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // mergeReasonAttemptIncomplete; both are aggregated into one error, so which precondition failed
 // never discloses evaluation order.
 // Otherwise it acquires the combined write lock, runs concludeMergeSides with msg as the optional
-// message override, records correspondence, deletes the merge-state record, and returns
-// MergeResult{Committed: true}.
+// message override, records correspondence, deletes the merge-state record, and returns a
+// MergeResult whose Committed is read off the record's own conclude-SHA fields — true when the pair
+// carries this merge's conclude-commit, false when both sides only fast-forwarded or never moved
+// and no commit was ever fabricated.
 func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -168,7 +170,7 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	return MergeResult{Committed: true}, nil
+	return MergeResult{Committed: st.landedConcludeCommit()}, nil
 }
 
 // MergeAbort discards an in-progress merge, restoring both sides to their pre-merge SHAs: with no

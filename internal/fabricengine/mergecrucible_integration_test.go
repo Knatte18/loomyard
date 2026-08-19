@@ -12,6 +12,8 @@ package fabricengine_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -147,4 +149,79 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 	if inProgress {
 		t.Error("MergeInProgress() = true after MergeAbort; want false")
 	}
+}
+
+// TestMergeCrucible_ResultFlagsDescribeWhatHappened pins finding F3: MergeResult.Committed and
+// MergeResult.AlreadyUpToDate must describe what the call did to the pair, not which return
+// statement it reached.
+// Both verbs used to hardcode Committed true on the both-sides-clean path, so a merge that
+// fast-forwarded both sides reported committed with no merge_committed entry anywhere in the record,
+// and the loser of two concurrent MergeIn calls reported
+// {already_up_to_date:false, committed:true, mutations:[]} for a call that did nothing — where a
+// strictly sequential run of the same two calls honestly reports {already_up_to_date:true,
+// committed:false}. The second subtest is that sequential control, which is what the interleaved
+// loser now also reports.
+func TestMergeCrucible_ResultFlagsDescribeWhatHappened(t *testing.T) {
+	t.Run("FastForwardBothSidesFabricatesNoCommit", func(t *testing.T) {
+		h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
+		commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
+		commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+
+		res, err := f.MergeIn("feature")
+		if err != nil {
+			t.Fatalf("MergeIn(feature) error = %v", err)
+		}
+		if res.Committed {
+			t.Error("MergeIn(feature).Committed = true; want false — both sides fast-forwarded, so no conclude-commit exists")
+		}
+		if res.AlreadyUpToDate {
+			t.Error("MergeIn(feature).AlreadyUpToDate = true; want false — both sides advanced")
+		}
+		// The pair really did advance, so the flags are reporting "no commit", not "no merge".
+		if !fileExistsInWorktree(t, h.PrimeWorktree(), "feature.txt") {
+			t.Error("feature.txt missing from the warp worktree; want the fast-forward to have landed")
+		}
+	})
+
+	t.Run("SecondCallReportsAlreadyUpToDateNotCommitted", func(t *testing.T) {
+		_, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
+		commitOnWarpBranch("feature", "feature.txt", "feature\n", "feature: warp")
+		commitOnWeftBranch("feature-weft", "feature.txt", "feature\n", "feature: weft")
+		commitOnWarpCurrent("target.txt", "target\n", "target: warp")
+		commitOnWeftCurrent("target.txt", "target\n", "target: weft")
+
+		first, err := f.MergeIn("feature")
+		if err != nil {
+			t.Fatalf("first MergeIn(feature) error = %v", err)
+		}
+		if !first.Committed {
+			t.Error("first MergeIn(feature).Committed = false; want true — both sides needed a conclude-commit")
+		}
+
+		second, err := f.MergeIn("feature")
+		if err != nil {
+			t.Fatalf("second MergeIn(feature) error = %v", err)
+		}
+		if !second.AlreadyUpToDate {
+			t.Error("second MergeIn(feature).AlreadyUpToDate = false; want true")
+		}
+		if second.Committed {
+			t.Error("second MergeIn(feature).Committed = true; want false — nothing was committed")
+		}
+	})
+}
+
+// fileExistsInWorktree reports whether name exists at the root of the worktree at dir.
+func fileExistsInWorktree(t *testing.T, dir, name string) bool {
+	t.Helper()
+
+	_, err := os.Stat(filepath.Join(dir, name))
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	t.Fatalf("stat %s in %s: %v", name, dir, err)
+	return false
 }

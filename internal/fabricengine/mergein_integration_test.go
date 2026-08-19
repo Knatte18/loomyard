@@ -189,13 +189,17 @@ func jsonKeys(t *testing.T, v any) []string {
 
 // TestMergeIn_BothSidesClean covers the both-sides-clean scenario: Committed true, both sides
 // concluded, correspondence recorded, the record deleted, and MergeInProgress false afterward.
+// Both target branches carry a divergent commit of their own, so the merge genuinely needs a
+// conclude-commit on each side rather than fast-forwarding. That divergence is load-bearing: without
+// it neither side commits anything, and the Committed assertion below passes for the wrong reason —
+// which is exactly how this test used to false-green while MergeIn hardcoded Committed true.
 func TestMergeIn_BothSidesClean(t *testing.T) {
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
-	_ = commitOnWarpCurrent
-	_ = commitOnWeftCurrent
 
 	commitOnWarpBranch("feature", "warp-feature.txt", "warp feature\n", "warp: add feature")
 	commitOnWeftBranch("feature-weft", "weft-feature.txt", "weft feature\n", "weft: add feature")
+	commitOnWarpCurrent("warp-target.txt", "warp target\n", "warp: diverge target")
+	commitOnWeftCurrent("weft-target.txt", "weft target\n", "weft: diverge target")
 
 	res, err := f.MergeIn("feature")
 	if err != nil {
@@ -374,6 +378,9 @@ func TestMergeIn_OneSideFastForwardsOtherConflicts_AbortRestoresFastForwardedSid
 // TestMergeIn_OneSideAlreadyUpToDate_OtherMerges covers the mixed already-up-to-date case: the
 // merge concludes, no empty commit is fabricated on the no-op side, and correspondence pairs the
 // new SHA with the unchanged one.
+// The merging side fast-forwards (setupCleanFastForward), so no conclude-commit is fabricated there
+// either and Committed is false — the pair advanced without any merge commit existing. AlreadyUpToDate
+// is likewise false: one side did move.
 func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
 
@@ -386,8 +393,14 @@ func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if !res.Committed {
-		t.Errorf("MergeIn(feature).Committed = false; want true (warp side merged)")
+	if res.Committed {
+		t.Errorf("MergeIn(feature).Committed = true; want false — the merging side fast-forwarded, so no conclude-commit was fabricated on either side")
+	}
+	if res.AlreadyUpToDate {
+		t.Error("MergeIn(feature).AlreadyUpToDate = true; want false — one side did advance")
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got == weftStartSHA {
+		t.Error("warp HEAD did not move; want the fast-forward advance")
 	}
 
 	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftStartSHA {

@@ -317,8 +317,10 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if !res.Committed {
-		t.Fatalf("MergeIn(feature).Committed = false; want true")
+	// Both sides fast-forward onto the remote-tracking tip, so no conclude-commit is fabricated and
+	// Committed is false; the merge landing is asserted by the merged content below, not by the flag.
+	if res.Committed {
+		t.Fatalf("MergeIn(feature).Committed = true; want false — a fast-forward fabricates no commit")
 	}
 
 	if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), "remote-tip.txt")); err != nil {
@@ -342,8 +344,9 @@ func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if !res.Committed {
-		t.Fatalf("MergeIn(feature).Committed = false; want true")
+	// Both sides fast-forward onto the remote-only tip, so no conclude-commit is fabricated.
+	if res.Committed {
+		t.Fatalf("MergeIn(feature).Committed = true; want false — a fast-forward fabricates no commit")
 	}
 	if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), "remote-only.txt")); err != nil {
 		t.Errorf("remote-only.txt not present in warp worktree after merge: %v", err)

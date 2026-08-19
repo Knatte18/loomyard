@@ -66,6 +66,28 @@ func mergeOutcomeString(outcome gitrepo.MergeOutcome) string {
 	}
 }
 
+// landedConcludeCommit reports whether the conclude phase has actually put a commit on either side
+// of this merge — read straight off the record's own conclude-SHA fields, which concludeMergeSides
+// writes as each side lands.
+// It is what MergeResult.Committed is derived from, so the flag answers "does the pair now carry
+// this merge's conclude-commit" rather than "did control reach the end of the happy path". A merge
+// that fast-forwarded both sides fabricates no commit and reports false; a resumed MergeContinue
+// whose sides both landed on an earlier call reports true, since the pair does carry them.
+func (st *mergeState) landedConcludeCommit() bool {
+	return st.WarpCommitted != "" || st.WeftCommitted != ""
+}
+
+// bothSidesAlreadyUpToDate reports whether the attempt found both sides already carrying the
+// resolved source — the degenerate no-op, observed after the write lock was taken rather than by the
+// pre-lock probe.
+// The two answers differ exactly when another process landed the same merge in between, which is a
+// race the lock deliberately does not close (the pre-lock probe is unlocked by design); deriving
+// MergeResult.AlreadyUpToDate from here makes the loser of that race report what a strictly
+// sequential run of the same two calls reports.
+func (st *mergeState) bothSidesAlreadyUpToDate() bool {
+	return st.WarpOutcome == mergeOutcomeAlreadyUpToDate && st.WeftOutcome == mergeOutcomeAlreadyUpToDate
+}
+
 // mergeStatePath returns the merge-state record's on-disk path: the fixed mergeStateFileName
 // inside the weft worktree's gitdir, mirroring the correspondence index's own placement
 // (index.go's corrIndexPath).
