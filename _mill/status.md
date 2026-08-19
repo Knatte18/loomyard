@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-status-schema-migration
 slug: loom-phase-machine-scaffolding
 branch: loom-phase-machine-scaffolding
 plan: _mill/plan
@@ -20,6 +20,7 @@ planning  '2026-08-19T09:36:51Z'
 plan-fix-r1  '2026-08-19T09:49:30Z'
 planned  '2026-08-19T09:49:45Z'
 implementing  '2026-08-19T10:01:28Z'
+approved-status-schema-migration  '2026-08-19T10:13:37Z'
 ```
 
 ## Batches
@@ -27,9 +28,10 @@ implementing  '2026-08-19T10:01:28Z'
 ```yaml
 batches:
   - name: status-schema-migration
-    state: running
+    state: approved
     implementer_session: c29c550b-e4a9-4b7a-b119-c31593fbef96
     start_sha: 4f042d9e7261343321446868ca907acdde198294
+    commit_sha: 59d04dbc01a607ff9051750a0d0baa89ec2b8292
     verify_baseline_failures: []
   - name: loomshed-producers
     state: pending
