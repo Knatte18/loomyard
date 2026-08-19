@@ -8,12 +8,35 @@ package fabriccli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// setMergeExit maps a merge lifecycle verb's (res, err) pair onto the shared envelope shape — error
+// (errWithRecord), conflicts (errConflictsWithRecord), otherwise ok (okWithRecord with committed and
+// already_up_to_date) — and sets it as cmd's exit via clihelp.SetExit.
+// The three RunE bodies for merge-in, merge --continue, and merge --abort/default all funnel through
+// this one dispatch, per the card 16 "one envelope mapping, shared by all modes" requirement.
+// continue and abort never populate res.Conflicts, so the conflicts branch is a no-op for them, not a
+// behavior change.
+func setMergeExit(cmd *cobra.Command, out io.Writer, res fabricengine.MergeResult, err error) {
+	if err != nil {
+		clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
+		return
+	}
+	if len(res.Conflicts) > 0 {
+		clihelp.SetExit(cmd.Context(), errConflictsWithRecord(out, res.Mutated(), res.Conflicts))
+		return
+	}
+	clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
+		"committed":          res.Committed,
+		"already_up_to_date": res.AlreadyUpToDate,
+	}))
+}
 
 // addMergeVerbs registers the "merge" and "merge-in" subcommands on cmd.
 // fabric is a getter closure, not a bound value: weft_verbs.go's PersistentPreRunE assigns the
@@ -45,18 +68,7 @@ Example:
 			}
 			out := cmd.OutOrStdout()
 			res, err := fabric().MergeIn(args[0])
-			if err != nil {
-				clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
-				return nil
-			}
-			if len(res.Conflicts) > 0 {
-				clihelp.SetExit(cmd.Context(), errConflictsWithRecord(out, res.Mutated(), res.Conflicts))
-				return nil
-			}
-			clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
-				"committed":          res.Committed,
-				"already_up_to_date": res.AlreadyUpToDate,
-			}))
+			setMergeExit(cmd, out, res, err)
 			return nil
 		},
 	}
@@ -118,40 +130,15 @@ Example:
 			switch {
 			case continueFlag:
 				res, err := fabric().MergeContinue(message)
-				if err != nil {
-					clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
-					return nil
-				}
-				clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
-					"committed":          res.Committed,
-					"already_up_to_date": res.AlreadyUpToDate,
-				}))
+				setMergeExit(cmd, out, res, err)
 				return nil
 			case abortFlag:
 				res, err := fabric().MergeAbort()
-				if err != nil {
-					clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
-					return nil
-				}
-				clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
-					"committed":          res.Committed,
-					"already_up_to_date": res.AlreadyUpToDate,
-				}))
+				setMergeExit(cmd, out, res, err)
 				return nil
 			default:
 				res, err := fabric().Merge(args[0], fabricengine.MergeOptions{Squash: squash, Message: message})
-				if err != nil {
-					clihelp.SetExit(cmd.Context(), errWithRecord(out, res.Mutated(), err))
-					return nil
-				}
-				if len(res.Conflicts) > 0 {
-					clihelp.SetExit(cmd.Context(), errConflictsWithRecord(out, res.Mutated(), res.Conflicts))
-					return nil
-				}
-				clihelp.SetExit(cmd.Context(), okWithRecord(out, res.Mutated(), map[string]any{
-					"committed":          res.Committed,
-					"already_up_to_date": res.AlreadyUpToDate,
-				}))
+				setMergeExit(cmd, out, res, err)
 				return nil
 			}
 		},
