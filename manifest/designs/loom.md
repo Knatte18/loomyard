@@ -273,8 +273,11 @@ the status strand reads and prints it;
 neither blocks the other.
 
 **The run-launcher.**
-A double-click shortcut makes this one click: `lyx fabric add` drops a small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path) in the worktree that just does `cd <worktree>` then `lyx loom run`.
+A double-click shortcut makes this one click: `lyx fabric add` drops a third script, `run<ext>`, into the pair's existing per-slug hub launcher directory, beside the `ide` and `fabric-checkout` scripts already written there.
+It is written by the same builder and torn down by the same pair as those two, cross-platform by the same GOOS-selected extension (`.cmd` on Windows, `.sh` elsewhere).
+It invokes the explicit two-word verb, `lyx loom run`, rather than the root alias, so it keeps working regardless of what happens to the alias.
 Because everything is [cwd-authoritative](../../docs/overview.md#principles), the launcher needs no arguments — geometry resolves from cwd, so you cannot run it from the wrong place.
+It embeds no absolute path: it climbs relatively to the worktree subpath, so nothing is machine-bound.
 It reuses the [launcher geometry](../../docs/overview.md#hub-geometry-invariants) already in `internal/fabricengine`.
 
 **One terminal per worktree.**
