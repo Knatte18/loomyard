@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docgo-audit
+phase: approved-overview-docs
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-19T06:44:30Z'
 approved-constraints-invariants  '2026-08-19T06:49:07Z'
 approved-config-strictness-guard  '2026-08-19T06:52:24Z'
 approved-docgo-audit  '2026-08-19T06:55:06Z'
+approved-overview-docs  '2026-08-19T06:58:12Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     commit_sha: 17d38badc579b62166bc9de7a10d00dcf52fa1e4
     verify_baseline_failures: []
   - name: overview-docs
-    state: running
+    state: approved
     implementer_session: 2bee7794-1dce-4254-82b1-32d52db5ba5b
     start_sha: 7ae7ccd0b57a9298a8431ea2e12448e2781272f1
+    commit_sha: 6f56ca3514e331b02844979b373830c631470178
     verify_baseline_failures: []
   - name: roadmap-and-design-doc-deletion
     state: pending
