@@ -176,9 +176,14 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 // MergeAbort discards an in-progress merge, restoring both sides to their pre-merge SHAs: with no
 // record and no foreign git merge state it returns *ErrNoMergeInProgress; with no record but foreign
 // state present it returns *ErrForeignMergeState, the same rule as MergeContinue.
-// Otherwise it acquires the combined write lock, resets both sides unconditionally via
-// resetMergeSides — including a fast-forwarded side and a side that never moved — then deletes the
-// merge-state record and returns MergeResult{} (Committed false).
+// An attempt whose conclude may already have landed on either side refuses with a *MergeGuardError
+// carrying mergeReasonConcludeLanded (concludeLandedReason), before anything is reset: restoring
+// from the recorded pre-merge SHAs would discard a commit that really landed, and in the
+// MergeIn-with-conflicts flow that commit carries the operator's own resolutions. MergeContinue is
+// the recovery for that shape, and it is idempotent across the resumed run.
+// Otherwise it acquires the combined write lock, resets both sides via resetMergeSides — including a
+// fast-forwarded side and a side that never moved — then deletes the merge-state record and returns
+// MergeResult{} (Committed false).
 func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -189,6 +194,14 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	}
 	if st == nil {
 		return MergeResult{}, f.mergeStateOrForeignErr()
+	}
+
+	reasons, err := concludeLandedReason(f, st)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	if len(reasons) > 0 {
+		return MergeResult{}, newMergeGuardError(reasons)
 	}
 
 	lockDir, err := f.ensureWeftLockDir()

@@ -1,6 +1,7 @@
 // mergeguards.go implements the shared merge precondition machinery: guard evaluation, per-side
-// merge-source resolution with the freshness rule, the attached-HEAD precondition, and the
-// upstream-sync helper batch 4's Merge guard set builds on.
+// merge-source resolution with the freshness rule, the attached-HEAD precondition, the
+// upstream-sync helper batch 4's Merge guard set builds on, and MergeAbort's own
+// conclude-already-landed precondition.
 // Every helper here returns reasons for aggregation via newMergeGuardError and mutates nothing — the
 // upstream sync itself (a mutation) is deliberately not here; it is a batch-4 pre-merge step, per
 // the guards decision.
@@ -222,4 +223,61 @@ func sideNotSyncedToUpstream(repo *gitrepo.Repo, dir string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// concludeLandedReason reports mergeReasonConcludeLanded when st's attempt may already have put a
+// conclude-commit on either side — the one precondition MergeAbort has, and the mirror of
+// MergeContinue's mergeAttemptIncompleteReason.
+// MergeAbort restores both sides from the recorded pre-merge SHAs, so running it against a
+// half-concluded attempt discards a commit that really landed. In the MergeIn-with-conflicts flow
+// that commit carries the operator's own hand-written conflict resolutions, and resetMergeSides runs
+// with force: true, so nothing else stands in the way. Refusing leaves MergeContinue — which skips a
+// side whose committed SHA is already recorded, and is therefore idempotent across a resumed run —
+// as the one correct recovery, exactly as the incomplete-attempt refusal leaves MergeAbort as the
+// one correct recovery for the opposite shape.
+// Both sides are evaluated unconditionally before combining, so the single aggregated reason never
+// reveals which side (if either) had landed.
+func concludeLandedReason(f *Fabric, st *mergeState) ([]string, error) {
+	warpLanded, err := sideConcludeMayHaveLanded(f.warp, st.WarpCommitted, st.WarpOutcome, st.WarpStart)
+	if err != nil {
+		return nil, err
+	}
+	weftLanded, err := sideConcludeMayHaveLanded(f.weft, st.WeftCommitted, st.WeftOutcome, st.WeftStart)
+	if err != nil {
+		return nil, err
+	}
+
+	if warpLanded || weftLanded {
+		return []string{mergeReasonConcludeLanded}, nil
+	}
+	return nil, nil
+}
+
+// sideConcludeMayHaveLanded implements concludeLandedReason's per-side predicate: true when the
+// record already carries this side's conclude SHA, or when the side's recorded outcome is
+// staged/conflicted and its HEAD has moved off its recorded pre-merge SHA.
+// The second clause is not redundant with the first. concludeMergeSides writes a side's conclude SHA
+// only after `git commit` returned and CurrentSHA resolved and the record was re-saved, so an I/O
+// failure at either of those two steps leaves a landed commit the record does not mention — and
+// keying only on the recorded SHA would let MergeAbort discard exactly the commits that are hardest
+// to notice missing.
+// Reading it off HEAD instead is exact: an up_to_date side is never concluded and cannot move, a
+// fast_forwarded side moved legitimately and MergeAbort is documented to reset it, and a side whose
+// outcome is empty never started. Only a staged or conflicted side can have a commit put on it, and
+// the conclude is the only thing that puts one there.
+// The failure direction is safe: an unreadable HEAD errors out and an unexpected move over-refuses,
+// rather than proceeding into a destructive reset.
+func sideConcludeMayHaveLanded(repo *gitrepo.Repo, committed, outcome, start string) (bool, error) {
+	if committed != "" {
+		return true, nil
+	}
+	if outcome != mergeOutcomeStaged && outcome != mergeOutcomeConflicted {
+		return false, nil
+	}
+
+	head, err := repo.CurrentSHA()
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: resolve HEAD to classify conclude state: %w", err)
+	}
+	return head != start, nil
 }

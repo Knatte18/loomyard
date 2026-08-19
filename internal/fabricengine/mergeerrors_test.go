@@ -118,6 +118,7 @@ func TestMergeErrors_NoVocabularyLeakInReasons(t *testing.T) {
 		mergeReasonNotSynced,
 		mergeReasonSourceNotFound,
 		mergeReasonNotFabricManaged,
+		mergeReasonConcludeLanded,
 	}
 	for _, reason := range reasons {
 		assertNoVocabularyLeak(t, reason, reason)

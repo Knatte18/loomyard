@@ -459,7 +459,7 @@ Squash genuinely has nothing to commit here, so `"already_up_to_date": true` wit
 Finally the half-concluded abort. Build a normal divergent merge on both sides, install a `pre-commit` hook in the weft checkout that just does `exit 1` (`.git/hooks/pre-commit`), and run `lyx fabric merge-in <branch>`.
 The warp conclude lands, the weft conclude fails, and you get *merge conclude did not finish; run MergeContinue again* with a `merge_committed` mutation for the warp side.
 Now run `lyx fabric merge --abort`.
-It must **refuse**, naming `merge conclude already landed on one side`, and the warp conclude-commit must still be there (`git -C <warp> log -1`).
+It must **refuse**, naming `merge conclude already landed`, and the warp conclude-commit must still be there (`git -C <warp> log -1`).
 An abort that reports `"ok": true` here and silently resets the warp past its landed conclude-commit is destroying committed work -- in the conflict flow that commit carries your own hand-written resolutions.
 Remove the hook and confirm `lyx fabric merge --continue` finishes the job, skipping the side that already landed.
 

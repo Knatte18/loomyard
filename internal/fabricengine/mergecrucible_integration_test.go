@@ -450,3 +450,119 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 		t.Errorf("MergeAbort() after a completed MergeIn error = %v (%T); want *fabricengine.ErrNoMergeInProgress — a *ErrForeignMergeState here means fabric left state it will not clean up", err, err)
 	}
 }
+
+// installRefusingPreCommitHook writes a pre-commit hook in dir's checkout that always exits 1, so
+// the next `git commit` there fails the way a policy hook, a missing gpg key, or a full disk would.
+// It returns a function that removes the hook again.
+func installRefusingPreCommitHook(t *testing.T, dir string) (remove func()) {
+	t.Helper()
+
+	hookDir := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "--absolute-git-dir")) + "/hooks"
+	if err := os.MkdirAll(hookDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", hookDir, err)
+	}
+	hook := filepath.Join(hookDir, "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write %s: %v", hook, err)
+	}
+	return func() {
+		if err := os.Remove(hook); err != nil {
+			t.Fatalf("remove %s: %v", hook, err)
+		}
+	}
+}
+
+// TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded pins crucible round opus-medium-r2's
+// finding R2: MergeAbort restores both sides from the recorded pre-merge SHAs, so an abort issued
+// against a half-concluded attempt discarded a conclude-commit that had really landed -- in this
+// flow, one carrying the operator's own hand-written conflict resolutions, reset away under
+// force: true with an "ok" result and no warning.
+// Two arms, because the record is not always honest about what landed:
+//   - Recorded: the weft conclude fails on a refusing hook after the warp conclude landed and was
+//     written into the record, which is the shape the ErrMergeIncomplete path documents as
+//     deliberate retention.
+//   - Invisible: the operator concludes the warp side by hand with plain git, so warp HEAD has moved
+//     past its recorded start while warp_committed is still empty. concludeMergeSides leaves exactly
+//     this shape whenever CurrentSHA or the record re-save fails after `git commit` succeeded, and a
+//     guard keyed only on the recorded SHA would sail straight through it.
+//
+// Both must refuse, and the landed commit must survive; MergeContinue must then still finish.
+func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
+	tests := []struct {
+		name string
+		// landWarpConclude drives the warp side's conclude-commit into place and reports the SHA it
+		// landed, leaving the pair mid-merge with the record still live.
+		landWarpConclude func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string
+	}{
+		{
+			name: "RecordedConcludeSHA",
+			landWarpConclude: func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string {
+				t.Helper()
+				removeHook := installRefusingPreCommitHook(t, h.PrimeWeft())
+				t.Cleanup(removeHook)
+				if _, err := f.MergeContinue(""); !errors.As(err, new(*fabricengine.ErrMergeIncomplete)) {
+					t.Fatalf("MergeContinue(\"\") error = %v (%T); want *fabricengine.ErrMergeIncomplete — the fixture needs the weft conclude to fail after the warp conclude landed", err, err)
+				}
+				return fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+			},
+		},
+		{
+			name: "InvisibleConcludeTheRecordNeverLearnedAbout",
+			landWarpConclude: func(t *testing.T, h *hubforge.Hub, f *fabricengine.Fabric) string {
+				t.Helper()
+				gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+				return fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, f := mergeCrucibleWarpConflictFixture(t)
+			resolveWarpConflict(t, h.PrimeWorktree(), "conflict.txt")
+
+			warpStart := readMergeRecordWarpStart(t, h)
+			landedSHA := tt.landWarpConclude(t, h, f)
+			if landedSHA == warpStart {
+				t.Fatalf("fixture broken: warp HEAD = %q is still its recorded pre-merge SHA; no conclude landed", landedSHA)
+			}
+
+			res, err := f.MergeAbort()
+			assertSoleGuardReason(t, "MergeAbort()", err, "merge conclude already landed")
+			if res.Mutated().Len() != 0 {
+				t.Errorf("MergeAbort() mutations = %v; want none — a refusal must not touch either checkout", res.Mutated().Entries())
+			}
+			if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != landedSHA {
+				t.Errorf("warp HEAD = %q after the refused abort; want the landed conclude-commit %q still in place", got, landedSHA)
+			}
+			inProgress, err := f.MergeInProgress()
+			if err != nil {
+				t.Fatalf("MergeInProgress: %v", err)
+			}
+			if !inProgress {
+				t.Error("MergeInProgress() = false after a refused abort; the record must survive so MergeContinue can still finish")
+			}
+		})
+	}
+}
+
+// readMergeRecordWarpStart reads the pre-merge SHA the live merge-state record holds for the warp
+// side, straight off disk -- the value MergeAbort would reset that side to.
+func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
+	t.Helper()
+
+	path := filepath.Join(strings.TrimSpace(gitOutput(t, h.PrimeWeft(), "rev-parse", "--absolute-git-dir")), "fabric-merge.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read merge record %s: %v", path, err)
+	}
+	var record struct {
+		WarpStart string `json:"warp_start"`
+	}
+	if err := json.Unmarshal(raw, &record); err != nil {
+		t.Fatalf("unmarshal merge record %s: %v", path, err)
+	}
+	if record.WarpStart == "" {
+		t.Fatalf("merge record %s has an empty warp_start", path)
+	}
+	return record.WarpStart
+}

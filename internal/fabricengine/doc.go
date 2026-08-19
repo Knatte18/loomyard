@@ -864,8 +864,9 @@
 //
 // **The lifecycle quartet and crash recovery.** `MergeIn`/`Merge` start an attempt; `MergeContinue`
 // concludes one once every conflict is resolved in the worktree; `MergeAbort` discards one,
-// restoring both sides to their pre-merge SHAs unconditionally, including a side that only
-// fast-forwarded or never moved. Every state-changing step re-persists the record before it acts, so
+// restoring both sides to their pre-merge SHAs — including a side that only fast-forwarded or never
+// moved, but never a side whose conclude already landed (see below). Every state-changing step
+// re-persists the record before it acts, so
 // a crash mid-attempt leaves a record a resumed `MergeContinue`/`MergeAbort` can still read and act
 // on — there is no window where the record and the checkouts can drift silently out of reach of the
 // quartet.
@@ -878,6 +879,27 @@
 // started, leaving the pair non-corresponding with no way to finish it. `MergeAbort` is the one
 // correct recovery there, and it always works, because it restores from the recorded pre-merge SHAs
 // rather than from how far the attempt got.
+//
+// **And not every crash is abortable, for the mirror-image reason.** The conclude phase lands warp
+// first, then weft, so a conclude that fails on the second side — a policy hook, `commit.gpgsign`
+// with no key, a full disk — returns `*ErrMergeIncomplete` and deliberately retains the record with
+// the first side's commit already in it. Restoring from the recorded pre-merge SHAs there would
+// discard a commit that really landed, and in the `MergeIn`-with-conflicts flow that commit carries
+// the operator's own hand-written resolutions, reset away under `force: true`. So `MergeAbort`
+// refuses such a record with the guard reason `merge conclude already landed`, and `MergeContinue`
+// is the one correct recovery — it skips a side whose committed SHA is recorded, so a resumed run is
+// idempotent. The two refusals are exact mirrors: whichever way an attempt is half-finished, exactly
+// one verb of the pair will finish it and neither will destroy anything.
+// The precondition is deliberately wider than the recorded conclude SHA. A side counts as possibly
+// concluded when its recorded SHA is set **or** its recorded outcome is `staged`/`conflicted` and its
+// HEAD has moved off its recorded pre-merge SHA — because the record learns a conclude SHA only after
+// the commit, the `CurrentSHA` read, and the record re-save have all succeeded, so a failure at
+// either of the last two leaves a landed commit the record never mentions. Reading HEAD closes that:
+// an `up_to_date` side is never concluded and cannot move, a `fast_forwarded` side moved legitimately
+// and is still reset, an empty-outcome side never started, and only a `staged`/`conflicted` side can
+// have had a commit put on it by anything but the conclude.
+// If the underlying git failure cannot be fixed and neither verb will finish, plain git in the two
+// checkouts is the last resort — the same escape hatch foreign merge state already has.
 //
 // **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
 // `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
