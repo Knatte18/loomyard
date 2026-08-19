@@ -62,7 +62,9 @@ batches:
     commit_sha: 387e3599538908aa24372e5bf47dc24a54827fc1
     verify_baseline_failures: []
   - name: sibling-verb guards and vocabulary assertions
-    state: pending
+    state: running
+    implementer_session: 327d2276-b14d-4f0c-9a09-1dd2ae8fcee5
+    start_sha: 4d7dacc925226d0f4b3e4f4b7ae9d8281937418e
     verify_baseline_failures: []
   - name: CLI verbs and docs
     state: pending
