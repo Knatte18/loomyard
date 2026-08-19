@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-add-and-launcher
+phase: approved-loomcli-run-bootstrap
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-fabric-origin-record  '2026-08-19T18:55:43Z'
 approved-loom-paths-and-seed-sentinel  '2026-08-19T19:00:41Z'
 approved-loomcli-core  '2026-08-19T19:10:00Z'
 approved-fabric-add-and-launcher  '2026-08-19T19:22:06Z'
+approved-loomcli-run-bootstrap  '2026-08-19T19:31:22Z'
 ```
 
 ## Batches
@@ -60,9 +61,10 @@ batches:
     commit_sha: 5eeaeb9b2fe681b210f39d97a30f0a7bf70a01e7
     verify_baseline_failures: []
   - name: loomcli-run-bootstrap
-    state: running
+    state: approved
     implementer_session: 059a31bc-ec3b-40b2-9880-42b3fb387784
     start_sha: 1a3eb43f0211ea1ac8cce805bb52f8a7f8c16dd2
+    commit_sha: 0ca1ee07376a9b61b19610b3cd141632c61c26a3
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: registration-and-guards
     state: pending
