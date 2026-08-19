@@ -66,7 +66,7 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	return nil
 }
 
-// mergeStartOrForeign resolves the disposition shared by MergeContinue and MergeAbort when no
+// mergeStateOrForeignErr resolves the disposition shared by MergeContinue and MergeAbort when no
 // fabric merge record exists: *ErrForeignMergeState when git-level merge state exists that fabric
 // did not start, *ErrNoMergeInProgress otherwise.
 func (f *Fabric) mergeStateOrForeignErr() error {
