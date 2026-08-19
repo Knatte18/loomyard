@@ -63,6 +63,8 @@ batches:
     commit_sha: 6f56ca3514e331b02844979b373830c631470178
     verify_baseline_failures: []
   - name: roadmap-and-design-doc-deletion
-    state: pending
+    state: running
+    implementer_session: 5754c0d3-fd4c-4ea2-9104-c37c8a322f9c
+    start_sha: efc4d29e879d01699cc9b5b8ff17a786030328d7
     verify_baseline_failures: []
 ```
