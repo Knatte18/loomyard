@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-fabric-origin-record
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-19T18:38:37Z'
 plan-review-r3  '2026-08-19T18:49:02Z'
 planned  '2026-08-19T18:49:11Z'
 implementing  '2026-08-19T18:49:50Z'
+approved-fabric-origin-record  '2026-08-19T18:55:43Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-08-19T18:49:50Z'
 ```yaml
 batches:
   - name: fabric-origin-record
-    state: running
+    state: approved
     implementer_session: 696fb8e1-f5dc-4b2f-8d99-f4722fe5857c
     start_sha: 31274d8ff24f877bd1fceef647e1068fe01553f2
+    commit_sha: 500ef4364860c312ab81ea582e265e87f66ed304
     verify_baseline_failures: []
   - name: loom-paths-and-seed-sentinel
     state: pending
