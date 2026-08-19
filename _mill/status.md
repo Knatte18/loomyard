@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomshed-producers
+phase: approved-sequence-and-integration
 slug: loom-phase-machine-scaffolding
 branch: loom-phase-machine-scaffolding
 plan: _mill/plan
@@ -22,6 +22,7 @@ planned  '2026-08-19T09:49:45Z'
 implementing  '2026-08-19T10:01:28Z'
 approved-status-schema-migration  '2026-08-19T10:13:37Z'
 approved-loomshed-producers  '2026-08-19T10:27:56Z'
+approved-sequence-and-integration  '2026-08-19T10:39:30Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     commit_sha: a3e4e18d58f7953311880e82f1d8d80da00e2021
     verify_baseline_failures: ["FAIL\t./internal/loomshed/... [setup failed]"]
   - name: sequence-and-integration
-    state: running
+    state: approved
     implementer_session: 4a945b68-702d-489e-bf05-5f11a16b2ca2
     start_sha: dde9d501e56e0714be8e30778ac2c7e86fc76263
+    commit_sha: 8c36d60054a9e58dec8c1f6cd2f09d59b8c2361e
     verify_baseline_failures: ["FAIL\t./internal/loomshed/... [setup failed]"]
 ```
 ## Inferred-success log
