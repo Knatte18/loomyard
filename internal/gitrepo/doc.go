@@ -143,7 +143,11 @@
 // line rather than inherited from the caller's git config: MergeStart passes
 // --ff so merge.ff=only/false cannot change the outcome it classifies, and
 // MergeConclude passes --no-edit so core.editor can never hang a
-// non-interactive caller.
+// non-interactive caller. MergeStart's four-way classification reads a live
+// MERGE_HEAD as MergeStaged before it reads HEAD movement, because a real
+// merge whose result tree equals HEAD's own tree stages nothing and moves no
+// HEAD while still leaving a merge for someone to conclude; reading only the
+// index diff and HEAD would report that as MergeAlreadyUpToDate and strand it.
 // Rebase, interactive staging, cherry-pick, conflict *resolution*, and
 // general-purpose branch/checkout management stay explicitly not supported —
 // gitrepo reports conflicts, but resolving them is the caller's job. A human

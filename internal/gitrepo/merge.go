@@ -40,10 +40,21 @@ const (
 // It captures HEAD before the call, then on any error uses errors.As to recover the GitError and
 // probes ConflictedFiles: a non-empty result means MergeConflicted;
 // otherwise the error is genuine and returned.
-// On success it probes staged state via `git diff --cached --quiet` and HEAD movement: HEAD moved
-// with nothing staged means MergeFastForwarded;
-// nothing staged and HEAD unmoved means MergeAlreadyUpToDate;
-// otherwise MergeStaged.
+// On success it probes staged state via `git diff --cached --quiet`, live merge state via
+// MergeHeadPresent, and HEAD movement.
+// A live MERGE_HEAD means MergeStaged whatever the index diff says, and that arm is not redundant
+// with the staged one: a real, non-fast-forward merge whose result tree happens to equal HEAD's own
+// tree — the shape produced whenever the same change reached both branches independently, by
+// cherry-pick, backport, or a duplicated hand-edit — stages nothing and moves no HEAD, yet git has
+// genuinely started a merge and `git commit` would land a proper two-parent commit for it.
+// Classifying that as MergeAlreadyUpToDate made fabric report a clean no-op, delete its own
+// merge-state record, and abandon a live MERGE_HEAD in the checkout — a record-versus-git
+// disagreement no fabric verb could then clear.
+// The squash form writes no MERGE_HEAD, so the probe is vacuous there and a squash with an empty
+// result keeps classifying as MergeAlreadyUpToDate, which is the honest answer: nothing to commit.
+// Otherwise HEAD moved with nothing staged means MergeFastForwarded;
+// nothing staged, no MERGE_HEAD and HEAD unmoved means MergeAlreadyUpToDate;
+// anything else means MergeStaged.
 // A ref with a leading '-' is rejected as ErrInvalidSHA before any git spawn, mirroring
 // IsAncestor's argument pre-check.
 func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
@@ -91,13 +102,18 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 		return MergeStaged, fmt.Errorf("gitrepo: diff --cached --quiet in %s: %w", r.path, stagedErr)
 	}
 
+	mergeHeadPresent, err := r.MergeHeadPresent()
+	if err != nil {
+		return MergeStaged, err
+	}
+
 	headAfter, err := r.CurrentSHA()
 	if err != nil {
 		return MergeStaged, err
 	}
 
 	switch {
-	case staged:
+	case staged || mergeHeadPresent:
 		return MergeStaged, nil
 	case headAfter != headBefore:
 		return MergeFastForwarded, nil

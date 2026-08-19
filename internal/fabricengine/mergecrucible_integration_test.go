@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -372,4 +373,80 @@ func resolveWarpConflict(t *testing.T, dir, name string) {
 		t.Fatalf("write resolution for %s in %s: %v", name, dir, err)
 	}
 	gitkit.MustRun(t, dir, "git", "add", name)
+}
+
+// mergeHeadPresentInCheckout reports whether dir's checkout holds a live MERGE_HEAD, probed with
+// plain git rather than through the engine, so a test can assert what git believes independently of
+// what fabric's own record says.
+func mergeHeadPresentInCheckout(t *testing.T, dir string) bool {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD")
+	cmd.Dir = dir
+	return cmd.Run() == nil
+}
+
+// TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned pins crucible round opus-medium-r2's
+// finding R1 at the pair level.
+// Fixture: on both sides the source branch and the current branch reach the same content
+// independently, so neither source is an ancestor of its side's HEAD, yet merging it stages nothing
+// and moves no HEAD. Before the fix, gitrepo.MergeStart classified that as MergeAlreadyUpToDate, so
+// MergeIn reported {ok, already_up_to_date: true, committed: false}, skipped the conclude on both
+// sides, recorded the pre-merge SHAs as the pair's post-merge correspondence, and deleted its own
+// merge-state record -- while git had a live MERGE_HEAD in both checkouts. The merge was silently
+// lost, MergeInProgress() disagreed with git, and every merge verb (including MergeAbort, the
+// recovery verb) then refused the pair with *ErrForeignMergeState, leaving only plain git as a way
+// out.
+// The assertion that catches the regression is the MERGE_HEAD pair: a verb that returns without
+// error must never leave git-level merge state behind on either side.
+func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
+	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
+
+	// The same content reaches the branch and the trunk independently, on both sides.
+	commitOnWarpBranch("feature", "shared.txt", "same change\n", "feature: warp same change")
+	commitOnWarpCurrent("shared.txt", "same change\n", "target: warp same change, reached independently")
+	commitOnWeftBranch("feature-weft", "shared-weft.txt", "same change\n", "feature: weft same change")
+	commitOnWeftCurrent("shared-weft.txt", "same change\n", "target: weft same change, reached independently")
+
+	warpBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature): %v", err)
+	}
+
+	if mergeHeadPresentInCheckout(t, h.PrimeWorktree()) {
+		t.Error("MERGE_HEAD is live in the warp checkout after MergeIn returned without error; fabric abandoned a merge it started")
+	}
+	if mergeHeadPresentInCheckout(t, h.PrimeWeft()) {
+		t.Error("MERGE_HEAD is live in the weft checkout after MergeIn returned without error; fabric abandoned a merge it started")
+	}
+
+	if res.AlreadyUpToDate {
+		t.Error("MergeIn(feature).AlreadyUpToDate = true; neither source is an ancestor of its side's HEAD, so this is a real merge")
+	}
+	if !res.Committed {
+		t.Error("MergeIn(feature).Committed = false; a real merge on both sides must land its conclude-commit")
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got == warpBefore {
+		t.Errorf("warp HEAD = %q, unchanged; want the conclude-commit to have landed", got)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got == weftBefore {
+		t.Errorf("weft HEAD = %q, unchanged; want the conclude-commit to have landed", got)
+	}
+
+	inProgress, err := f.MergeInProgress()
+	if err != nil {
+		t.Fatalf("MergeInProgress: %v", err)
+	}
+	if inProgress {
+		t.Error("MergeInProgress() = true after a completed MergeIn; want false")
+	}
+
+	// The pair must still be usable: before the fix, the abandoned MERGE_HEAD made every subsequent
+	// merge verb refuse with *ErrForeignMergeState.
+	if _, err := f.MergeAbort(); !errors.As(err, new(*fabricengine.ErrNoMergeInProgress)) {
+		t.Errorf("MergeAbort() after a completed MergeIn error = %v (%T); want *fabricengine.ErrNoMergeInProgress — a *ErrForeignMergeState here means fabric left state it will not clean up", err, err)
+	}
 }

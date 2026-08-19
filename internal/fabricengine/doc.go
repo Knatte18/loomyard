@@ -898,6 +898,20 @@
 // race the unlocked pre-lock probe deliberately does not close — reports `AlreadyUpToDate` true,
 // which is what a strictly sequential run of the same two calls reports.
 //
+// **"Already up to date" means git had nothing to do, not that the trees already agreed.** A merge
+// whose source is not an ancestor of HEAD but whose result tree equals HEAD's own tree — the shape
+// a cherry-pick, backport, or duplicated hand-edit produces — is a real merge: git writes
+// `MERGE_HEAD` and `git commit` would land a proper two-parent commit for it. `gitrepo.MergeStart`
+// classifies it `MergeStaged` on the `MERGE_HEAD` probe, so fabric concludes it and reports
+// `Committed` true. Treating it as up-to-date was a defect, not a shortcut: fabric reported a clean
+// no-op, deleted its own record, and left a live `MERGE_HEAD` in both checkouts that no fabric verb
+// would then clear — `MergeAbort` included, since with the record gone the state reads as foreign.
+// The squash form is the one case where an empty result really is nothing to do: `git merge
+// --squash` writes no `MERGE_HEAD` and has no commit to make, so both sides report `up_to_date` and
+// `AlreadyUpToDate` comes back true from the derived field, with the pre-lock probe having said
+// otherwise. That is a single-process, race-free route to the derived flag, and it is what
+// `TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord` exercises.
+//
 // **Conflict reporting.** Conflicted paths surface as one flat, lexically sorted, deduplicated list
 // of unified, worktree-relative paths — never raw per-repo paths, which would leak the warp/weft
 // split, and never absolute paths, which is not what `git merge` hands an operator. A path either

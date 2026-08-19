@@ -438,6 +438,35 @@ Finally, check the flag pre-flight: `merge --abort --squash` and `merge --abort 
 
 ---
 
+### F20 -- A merge that changes nothing, and an abort after half the conclude landed (`merge-in`, `merge --abort`, `merge --squash`)
+
+**Covers:** fabric
+
+**Goal:** "Drive the two merge shapes where fabric's own bookkeeping and git's can come apart: a merge whose result changes nothing, and an abort issued after one side's conclude-commit has already landed."
+
+**Watch:** First the empty-result merge. On the warp side, branch `dup` off the current branch and change a file;
+then go back to the current branch and make the **same** change again, independently, so `dup` is not an ancestor of HEAD but merging it produces no difference.
+Do the same on the weft side for `dup-weft`.
+Run `lyx fabric merge-in dup`.
+It must land a real conclude-commit and report `"committed": true` -- **not** `"already_up_to_date": true`.
+Then check both checkouts with plain `git status`: neither may say "you are still merging".
+A merge fabric reported as a clean no-op while leaving a live `MERGE_HEAD` behind is the failure mode here, and it is a blocking one -- the record and git disagree, and every later merge verb (including `merge --abort`) refuses the pair as carrying state fabric did not start.
+Confirm recovery is unnecessary by running `lyx fabric merge --abort`: it must say *no merge in progress*, never *git merge state exists that fabric did not start*.
+
+Then the squash companion: repeat the same fixture and run `lyx fabric merge dup --squash`.
+Squash genuinely has nothing to commit here, so `"already_up_to_date": true` with `"committed": false` **is** the right answer, and no `MERGE_HEAD` may appear.
+
+Finally the half-concluded abort. Build a normal divergent merge on both sides, install a `pre-commit` hook in the weft checkout that just does `exit 1` (`.git/hooks/pre-commit`), and run `lyx fabric merge-in <branch>`.
+The warp conclude lands, the weft conclude fails, and you get *merge conclude did not finish; run MergeContinue again* with a `merge_committed` mutation for the warp side.
+Now run `lyx fabric merge --abort`.
+It must **refuse**, naming `merge conclude already landed on one side`, and the warp conclude-commit must still be there (`git -C <warp> log -1`).
+An abort that reports `"ok": true` here and silently resets the warp past its landed conclude-commit is destroying committed work -- in the conflict flow that commit carries your own hand-written resolutions.
+Remove the hook and confirm `lyx fabric merge --continue` finishes the job, skipping the side that already landed.
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 ## Session log format
 
 After running all scenarios, record a short session summary:
