@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: planned
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-review-r2  '2026-08-19T09:23:45Z'
 plan-fix-r2  '2026-08-19T09:23:45Z'
 plan-fix-r3  '2026-08-19T09:32:43Z'
 plan-fix-r4  '2026-08-19T09:37:38Z'
+planned  '2026-08-19T09:37:46Z'
 ```
