@@ -60,7 +60,9 @@ batches:
     commit_sha: 5eeaeb9b2fe681b210f39d97a30f0a7bf70a01e7
     verify_baseline_failures: []
   - name: loomcli-run-bootstrap
-    state: pending
+    state: running
+    implementer_session: 059a31bc-ec3b-40b2-9880-42b3fb387784
+    start_sha: 1a3eb43f0211ea1ac8cce805bb52f8a7f8c16dd2
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: registration-and-guards
     state: pending
