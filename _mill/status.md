@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-overview-docs
+phase: approved-roadmap-and-design-doc-deletion
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-constraints-invariants  '2026-08-19T06:49:07Z'
 approved-config-strictness-guard  '2026-08-19T06:52:24Z'
 approved-docgo-audit  '2026-08-19T06:55:06Z'
 approved-overview-docs  '2026-08-19T06:58:12Z'
+approved-roadmap-and-design-doc-deletion  '2026-08-19T07:01:23Z'
 ```
 
 ## Batches
@@ -63,8 +64,9 @@ batches:
     commit_sha: 6f56ca3514e331b02844979b373830c631470178
     verify_baseline_failures: []
   - name: roadmap-and-design-doc-deletion
-    state: running
+    state: approved
     implementer_session: 5754c0d3-fd4c-4ea2-9104-c37c8a322f9c
     start_sha: efc4d29e879d01699cc9b5b8ff17a786030328d7
+    commit_sha: acd1323af17f8877c6bc9c27cf0acc106a61af4e
     verify_baseline_failures: []
 ```
