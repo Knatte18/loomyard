@@ -95,8 +95,10 @@ Do not flag any of the following as a finding:
 
 ## Plan-Sweep detail — the scout-inventory spec
 
-**Build order note:** of the three mechanical rows `loom: phase-machine scaffolding` builds for real, `Plan-Sweep` is deliberately last — `scout`-backed work is low-priority project-wide right now, and this is the only one of the three that touches `scout`.
-`Discussion-Validate` and `Plan-Validate` carry no such dependency and land first.
+**Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
+Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
+It goes live in `loom: write and wire in the real LLM producers`, when `Plan-Write` does — and even there it's the lowest-priority row in that task, since `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout`.
+`Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
 
 `Plan-Sweep` (row 5) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
 Its job is grounding, not selection: hand `Plan-Write` real `scout` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
