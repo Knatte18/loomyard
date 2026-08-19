@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fabric-origin-record
+phase: approved-loom-paths-and-seed-sentinel
 slug: loom-session-bootstrap
 branch: loom-session-bootstrap
 plan: _mill/plan
@@ -26,6 +26,7 @@ plan-review-r3  '2026-08-19T18:49:02Z'
 planned  '2026-08-19T18:49:11Z'
 implementing  '2026-08-19T18:49:50Z'
 approved-fabric-origin-record  '2026-08-19T18:55:43Z'
+approved-loom-paths-and-seed-sentinel  '2026-08-19T19:00:41Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ batches:
     commit_sha: 500ef4364860c312ab81ea582e265e87f66ed304
     verify_baseline_failures: []
   - name: loom-paths-and-seed-sentinel
-    state: running
+    state: approved
     implementer_session: 308646ba-99b7-4645-8f06-9ea70c31001b
     start_sha: d59e354a80479a4fa1af3c55d3397939443a86b2
+    commit_sha: 277cc0b8062f79f536bca101c3e150f8aa76abf6
     verify_baseline_failures: []
   - name: loomcli-core
     state: pending
