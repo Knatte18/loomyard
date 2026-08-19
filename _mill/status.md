@@ -34,7 +34,9 @@ batches:
     commit_sha: 59d04dbc01a607ff9051750a0d0baa89ec2b8292
     verify_baseline_failures: []
   - name: loomshed-producers
-    state: pending
+    state: running
+    implementer_session: 8ab7137f-3124-466c-8505-9072f1d2c3f9
+    start_sha: 77658fad64c1d1a6ba866b359501ae758ad3b38c
     verify_baseline_failures: ["FAIL\t./internal/loomshed/... [setup failed]"]
   - name: sequence-and-integration
     state: pending
