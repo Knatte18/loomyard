@@ -67,7 +67,9 @@ batches:
     commit_sha: 0ca1ee07376a9b61b19610b3cd141632c61c26a3
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: registration-and-guards
-    state: pending
+    state: running
+    implementer_session: d88f9182-1a99-4f52-bd32-92545b09ddb9
+    start_sha: 110a908346b4c81d1328bf64f529dd8417a9ec86
     verify_baseline_failures: ["FAIL\t./internal/loomcli [setup failed]"]
   - name: smoke-tests-and-roadmap
     state: pending
