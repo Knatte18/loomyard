@@ -47,7 +47,9 @@ batches:
     commit_sha: dae49ee04a43b5b98c29d9c9c92c687897635af9
     verify_baseline_failures: []
   - name: MergeIn and the lifecycle quartet
-    state: pending
+    state: running
+    implementer_session: 0a9a62cc-74a5-45e3-b6ac-3d7ce37a3fb3
+    start_sha: bd09df8a4d1ff9df888c0b2d6b1dd0aee2632ea0
     verify_baseline_failures: []
   - name: Merge target-pair verb
     state: pending
