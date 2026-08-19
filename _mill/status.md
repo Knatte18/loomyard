@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-sibling-verb guards and vocabulary assertions
+phase: approved-CLI verbs and docs
 slug: fabric-merge-conflict-primitive
 branch: fabric-merge-conflict-primitive
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-MergeIn and the lifecycle quartet  '2026-08-19T10:24:59Z'
 approved-MergeIn and the lifecycle quartet  '2026-08-19T10:25:21Z'
 approved-Merge target-pair verb  '2026-08-19T10:35:00Z'
 approved-sibling-verb guards and vocabulary assertions  '2026-08-19T10:46:41Z'
+approved-CLI verbs and docs  '2026-08-19T10:58:14Z'
 ```
 
 ## Batches
@@ -69,8 +70,9 @@ batches:
     commit_sha: 358f7b106a8bc616da88c9f140354e8d9775f0e9
     verify_baseline_failures: []
   - name: CLI verbs and docs
-    state: running
+    state: approved
     implementer_session: 16649a4c-d72c-4fd6-afde-c785e0fe68b8
     start_sha: 3a499441019664d2281b76e67a62b8c6a979d3a3
+    commit_sha: 9d0f02914f269baaa3ed492b6d7a638092ee5ca6
     verify_baseline_failures: []
 ```
