@@ -78,9 +78,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   Every "what should cross the merge boundary" question belongs to the caller.
 - Rationale: this is the governing principle the whole design falls out of, restated by the operator repeatedly during discussion.
   Every alternative considered below was rejected the moment it required Fabric to reason about a path's meaning.
-- Rejected: scoping the weft-side merge's content to `_lyx/raddle/` per the current wording of `finalize.md`;
-  filtering task-local artifacts out of the merge;
-  a merge that knows `_lyx` is special.
 
 ### git-primitive-in-gitrepo-coordination-in-fabricengine
 
@@ -89,7 +86,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   No production code calls git except through `internal/gitexec`, which both packages already do.
 - Rationale: `gitrepo` is lyx's own wrapper over git operations, so a git operation belongs there.
   `fabricengine` already calls `gitexec.Run` directly for topology work (`add.go`, `checkout.go`, `destroy.go`, `index.go`), so either placement would have compiled — but putting the raw merge plumbing in `fabricengine` would leave `gitrepo` a wrapper that cannot do the one git operation this task is about.
-- Rejected: `fabricengine`-only, calling `gitexec` directly for merge plumbing.
 - Consequence: `internal/gitrepo/doc.go`'s "Scope boundaries" paragraph currently reads "Rebase, interactive staging, cherry-pick, **conflict resolution**, and general-purpose branch/checkout management are explicitly not supported".
   That sentence must be amended in this task's commit to admit the merge surface, with the same honesty the rest of that paragraph shows — merge is admitted, rebase and cherry-pick stay out.
 - Consequence: every new merge method reaching the git CLI lands on `runChecked` and joins the gitrepo Client Boundary Invariant's pinned method list in the same commit;
@@ -105,9 +101,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   Git itself would permit resolving a `git merge <source>` conflict in the target worktree;
   what git forbids is checking out a branch already checked out in another worktree — which is why the inverse design, pulling the target branch into the task worktree to resolve there, is impossible whenever the target branch is materialized elsewhere.
   `mill-merge-in` and `mill-merge` in millhouse solved exactly this split and are the working precedent.
-- Rejected: one `Merge` verb used in both directions.
-  The two calls have genuinely different guards, different failure modes, and different worktrees;
-  collapsing them hides that.
 
 ### merge-runs-on-a-handle-opened-at-the-target
 
@@ -122,9 +115,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   Requiring the caller to materialize the rare unmaterialized case is far simpler than a second, worktree-free merge mechanism, which would need its own conflict path, its own recovery, and its own guard refusing the *common* case where the target is checked out.
   The Go API is path-anchored, not cwd-gated, so `Finalize` — a Go producer running with the task worktree as its cwd — drives the target-pair merge without violating the Cwd Resolution Invariant or worktree isolation: mutating the target pair through the sanctioned merge verb is the lyx analogue of `mill-merge`'s `git -C <parent-path>`.
   The CLI verb keeps the standard cwd gate (run `lyx fabric merge` from inside the target pair), matching every other fabric verb.
-- Rejected: `Merge(source, target)` with Fabric resolving and checking out the target itself — that is the forbidden "check the target out here" shape in disguise;
-  a worktree-free merge computed in the object database (`merge-tree`/`commit-tree`/`update-ref`) — it removes the target-worktree requirement but refuses whenever the target *is* checked out, because advancing the branch ref would desynchronise that worktree's index and files, and that is the normal case here;
-  Fabric creating and tearing down a temporary target pair (worktree lifecycle is `add`/`cleanup`'s domain).
 - Note: the operator's cross-worktree discipline (never `cd` into another worktree, always `git -C <path>`) is honoured for free, because a `Fabric` handle is already path-anchored — `f.warpPath`/`f.weftPath` — and every `gitexec.Run` call takes its directory explicitly.
 
 ### default-git-merge-semantics-with-a-squash-option
@@ -140,9 +130,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Rationale: squash-merge is the normal case for task branches — without it, parent history accumulates a merge commit plus every task commit, which the operator described as unacceptable clutter.
   But Fabric is a general git operator, not Finalize's helper, so the option is the caller's.
   Deferring to git's prepared messages keeps the surface git-shaped and gives the CLI a working no-`-m` default.
-- Rejected: hard-coded squash (contradicts "nearly always", and contradicts the ordinary-git surface);
-  per-side strategy (forces the caller to know there are two sides);
-  a fabric-composed default message (invents a format git already provides).
 
 ### a-recorded-merge-not-a-derived-one
 
@@ -150,7 +137,7 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   It lives beside the correspondence index, inside the weft checkout's git directory (`weftGitDir()`), as `fabric-merge.json`.
   `MergeInProgress` reports true iff the record exists.
   Git-level merge state (a `MERGE_HEAD`, unmerged index entries) found on either side *without* a record is a foreign merge — one Fabric did not start — and every merge verb refuses it with `*ErrForeignMergeState`, telling the operator to conclude or abort their own merge with plain git first.
-- Rationale: this reverses an earlier decision to derive in-progress state from git alone, and the reversal is forced by four defects of the derived design at once.
+- Rationale: deriving in-progress state from git alone fails on four counts.
   (1) `git merge --no-commit` cannot stop a fast-forward — git's own documentation: "fast-forward updates do not create a merge commit and therefore there is no way to stop those merges with --no-commit" — so one side's ref can move while the other conflicts, and only pre-captured SHAs make that reversible.
   (2) A squash merge records no `MERGE_HEAD`, so a crash between a conflicted `--squash` and the self-abort leaves a state git-derivation reports as "no merge in progress" while the pre-merge SHAs needed for recovery died with the process;
   the record survives the crash and `MergeAbort` completes the recovery, keeping the lifecycle inside the Fabric Git Invariant.
@@ -159,8 +146,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   The record turns exactly that case into a clean refusal.
   (4) The public `MergeAbort` needs pre-merge SHAs from *some* cross-call store in every non-`MERGE_HEAD` case;
   without the record that store does not exist.
-- Rejected: deriving `MergeInProgress` from git state (all four defects above);
-  a worktree-visible state file under `.lyx` — the git-dir placement follows `corrIndexPath`'s precedent, sits in git-metadata space the Durable-vs-Ephemeral State Invariant's `_lyx`/`.lyx` mirroring rule does not govern, and can never itself conflict, be reset away, or appear in any status output.
 - Consequence: the record is fabric-internal;
   its field names may use warp/weft vocabulary (owner set), and nothing of it is ever exported, serialized into a result, or printed.
 
@@ -178,9 +163,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   During the resolution window the visible worktree looks exactly like a mid-merge monorepo: non-conflicted files (including junctioned ones a fast-forward updated) already carry merged content, conflicted files carry ordinary markers.
   Attempting only the first side would be worse: the caller resolves one side's conflicts, continues, and only then discovers the other side's.
   One call, one outcome — merged, or conflicts.
-- Rejected: `--no-ff` on both sides to force stoppable merges (changes history shape, contradicting plain-git semantics);
-  first-side-commit-then-second with rollback (leaves a real rollback window and cannot be described without naming a side);
-  report-not-rollback in the style of `*PartialCommitError`/`*PartialPullError` (necessarily names a side, which is exactly what is forbidden here).
 - Precedent: `checkout.go`'s all-or-nothing coordinated switch for the pre-commit window — not `commit.go`'s partial-report.
 
 ### already-up-to-date-is-a-result-not-a-fabrication
@@ -192,8 +174,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   `RecordCorrespondence` then pairs the post-merge HEADs of both sides — pairing a new SHA with an unchanged one is legal and correct, because the index maps corresponding *states*, not deltas.
 - Rationale: an empty commit on the up-to-date side would fabricate history to satisfy symmetry no caller can observe anyway;
   skipping it requires per-side discrimination, which the record provides internally without exporting it.
-- Rejected: forcing an empty commit on the no-op side;
-  treating one-side-no-op as an error (it is the routine case whenever only one repo changed).
 
 ### commit-phase-concludes-per-side-and-never-rolls-back
 
@@ -205,9 +185,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Rationale: two `git commit` invocations on two repos cannot be atomic, and this is the only genuinely dangerous window.
   Rolling the landed side back would hard-reset away the merge commit *and* the caller's just-resolved content — a materially worse outcome than the branch-switch rollback `checkout.go`'s precedent covers — so the recovery affordance is idempotent completion, not undo.
   `MergeAbort` remains available and honest even here: it returns both sides to the recorded pre-merge SHAs, explicitly discarding the resolution work, which is what abort means.
-- Rejected: `checkout.go`-style rollback of a landed merge commit (destroys resolution work);
-  a partial-report error naming the landed side (forbidden);
-  pretending the window does not exist (the earlier draft's position).
 
 ### conflicts-are-reported-as-unified-worktree-relative-paths
 
@@ -226,10 +203,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   such a conflict proves out-of-band writes, which Fabric refuses to half-report rather than inventing a synthetic namespace that would disclose the second repo.
   Collision for wired names is impossible by construction, too: wired-name paths are excluded from the warp checkout's index (`.git/info/exclude`, plus the Never Force-Add Invariant), so warp-side merges cannot conflict there.
   Sorting the final list removes any per-side ordering information.
-- Rejected: raw repo-relative paths from each side (ambiguous, leaks the two-repo reality);
-  absolute filesystem paths (unambiguous but not what `git merge` hands you);
-  a synthetic prefix for unmapped weft paths (a path meaningful in only one repo is itself a leak);
-  paths relative to `AnchorPath()` (git's own enumeration is repo-root-relative, and on a subpath-anchored hub the wired content sits under `<AnchorRel>/…` in *both* namespaces, so root-relative is the one choice where the identity mapping holds verbatim).
 
 ### merges-name-a-sha-never-a-branch
 
@@ -241,10 +214,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   Merging a SHA makes git label the marker with the SHA instead.
   Resolving on both sides is what keeps it inside the settling test: SHA-labelling only the weft side would make marker *style* an observable tell distinguishing which side conflicted, the same asymmetry `no-new-commit-until-both-sides-are-clean` and `mutation-recording-stays-scenario-symmetric` exist to rule out.
   The cost is one `CurrentSHA`-class resolution per side before the merge starts.
-- Rejected: SHA-resolving the weft side only (leaks through marker style instead of marker text);
-  rewriting markers after the fact (Fabric would be editing content, which the content-blind decision forbids);
-  `merge.conflictStyle`/`-X` tuning (changes marker *format*, never the label);
-  renaming the weft branch scheme (the suffix is load-bearing geometry — `WeftBranchName` is its sole declarer — and the leak is the label, not the name).
 
 ### combined-lock-around-mutating-steps-only
 
@@ -254,10 +223,7 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   Its name says weft;
   its semantics cover both sides.
   So the correct answer is to reuse it, not to invent a second lock.
-  The lock lives at `<weftPath>/.weft/weft.write.lock` — inside the pair's own weft checkout — so it is per-pair: holding it across resolution would block that pair's own writers (not, as an earlier draft claimed, every other worktree), and the resolution window is unbounded when an LLM drives it, which is still reason enough not to hold it.
-- Rejected: a new warp-side lock (duplicates what exists);
-  holding the lock for the entire merge span (`raddle.md` demands that span, but that is `Finalize`'s campaign-level lock, not Fabric's);
-  no lock.
+  The lock lives at `<weftPath>/.weft/weft.write.lock`, inside the pair's own weft checkout, so it is per-pair: holding it across resolution blocks that pair's own writers, and the resolution window is unbounded when an LLM drives it.
 - Consequence: during the resolution window the pair's clean side holds an in-merge index, so a routine `Fabric.Commit` on the pair would hit git's raw "cannot do a partial commit during a merge".
   `Fabric.Commit` therefore gains a cheap guard: it refuses with a typed, side-free error before touching anything when the merge-state record exists, and equally when git-level merge state exists on either side without a record — the foreign-merge case a human's plain-git merge produces.
   Both refusals exist for the same reason: without them the caller receives git's raw, unowned "cannot do a partial commit during a merge", which is the outcome the guard exists to prevent and is not made less raw by fabric not having started the merge.
@@ -295,10 +261,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   `merge --ff-only` fails loudly instead.
   Aggregation is what keeps the guard surface inside the settling test: two scenarios differing only in which side is dirty produce the byte-identical error, and no failure ordering ever discloses that two subjects were checked.
   The dirty-pair guard on `MergeIn` — which millhouse does not have — exists because git's own refusal ("your local changes would be overwritten by merge") arrives as a raw, unowned error naming paths Fabric may have no unified address for.
-- Rejected: leaving the guards to the caller (every caller would reimplement them, and the failure modes are silent);
-  first-failure reporting (reveals evaluation order and therefore arity);
-  passing git's own dirty-worktree refusal through (raw, unowned, potentially side-revealing);
-  a mandatory fetch that fails the merge when offline (the fetch is a freshness aid, not a correctness gate — `--ff-only` against the last-known upstream still catches genuine divergence).
 
 ### merge-conflicts-are-redirected-to-mergein
 
@@ -308,8 +270,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Rationale: by the two-verb decision's policy grounds, conflict resolution belongs in the task pair's worktree;
   leaving conflicts in the target would strand them where no resolving agent is allowed to work.
   Redirecting to `MergeIn` is both the only recovery consistent with that policy and the millhouse workflow.
-- Rejected: leaving `Merge`'s conflicts in place for the caller to resolve — unresolvable where they land, by policy;
-  omitting the lifecycle from `Merge` entirely — `Merge` must still detect and clean up after a conflict, so it needs the machinery either way.
 
 ### lifecycle-quartet-on-both-verbs
 
@@ -319,9 +279,7 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   its optional message overrides the recorded one, and an empty message falls back to the record, then to git's prepared message.
   Both refuse with `*ErrNoMergeInProgress` when no record exists — mirroring git's "There is no merge in progress" — and never touch foreign git merge state.
   On the happy path `Merge` concludes or self-aborts within one call, so for `Merge` the quartet's cross-call role is crash recovery: a `Merge` that died mid-flight leaves its record, `MergeInProgress` reports it, `MergeAbort` restores the target pair, and `MergeContinue` can conclude a merge that crashed after clean staging.
-- Rationale: uniformity keeps the surface git-shaped, and the record is what makes the uniformity real rather than decorative — the earlier git-derived design left public `MergeAbort`'s squash branch with no SHA source at all, and left every crash window unrecoverable without raw git.
-- Rejected: a quartet scoped to `MergeIn` only (leaves `Merge`'s crash windows outside the Fabric Git Invariant);
-  git-derived in-progress state (see the `a-recorded-merge-not-a-derived-one` decision).
+- Rationale: uniformity keeps the surface git-shaped, and the record is what supplies `MergeAbort`'s SHAs in the non-`MERGE_HEAD` cases and makes every crash window recoverable without raw git.
 
 ### weft-source-is-derived-and-must-exist
 
@@ -332,8 +290,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Rationale: the derivation is the same sole-composition rule every other fabric surface obeys, and it belongs in a normative decision, not only the Q&A.
   A hard refusal is the only answer consistent with two-sided indivisibility: a silent warp-only merge would let the two sides' histories diverge under fabric's own hands, and forking `<source>-weft` on demand would fabricate weft history for a branch fabric never managed, without the caller asking.
   Every branch `Finalize` merges was created by `fabricengine.Add`, which forks both sides — so the refusal bites only genuinely foreign branches, where refusing is correct.
-- Rejected: warp-only merge when the weft counterpart is missing;
-  fork-on-demand per `add.go`'s adopt-vs-create precedent (that precedent is for creating a *pair*, where fabricating the weft fork is the caller's explicit intent).
 
 ### verify-before-conclude-not-post-commit-rollback
 
@@ -343,8 +299,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Rationale: this consciously replaces `mill-merge-in`'s checkpoint branch, whose post-`merge --continue` rollback (`git reset --hard "$CHK"`) has no Fabric-level equivalent — undoing a landed merge needs a two-sided reset-to-SHA verb resolving the paired weft SHA through the correspondence index, which does not exist and is real design work of its own.
   Ordering verify before conclude gives `Finalize` the same safety with machinery this task already builds;
   the record *is* the checkpoint for the whole uncommitted window.
-- Rejected: shipping a two-sided reset verb here (scope, and it deserves its own destruction-gate design);
-  silently dropping the millhouse affordance without recording it (the earlier draft's position — the gap is now in Scope Out and Audit findings).
 
 ### public-surface-shapes
 
@@ -468,10 +422,7 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   `partial` stays **false** on that conflict envelope even though the mutation record is non-empty and the envelope reports failure, because the Mutation Record Invariant derives `partial` from exactly one rule — `error ≠ nil ∧ record non-empty` — and a reported conflict returns a nil error.
   This is stated because the mismatch between "failure envelope" and `partial: false` is exactly the place a plan writer would guess the other way.
   Each verb allocates its `*Mutations` recorder internally and embeds it in the result per the Mutation Record Invariant, threading it into `destroy.go`'s executors for the reset primitives.
-- Rationale: the earlier draft described the surface without shaping it, leaving the entire public API to be invented at plan time;
-  every field, error and default above is now decided here.
-- Rejected: conflicts-as-typed-error (the merge did what a merge does — the envelope's `partial` rule and the plain-git surface both read better with conflicts as data);
-  per-verb result types (four shapes to keep side-free instead of one).
+- Rationale: pinning the surface here is what keeps the public API out of plan-time invention.
 
 ### mutation-recording-stays-scenario-symmetric
 
@@ -480,7 +431,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   abort's resets record through the existing `KindWorktreeReset` inside `destroy.go`, which must never be worked around.
 - Rationale: the Mutation Record Invariant fixes the envelope's diagnostic channel and its per-primitive grain — including target paths — as a given;
   the illusion is therefore defended at the level this design controls, by making the recorded shape independent of which internal side did what.
-- Rejected: suppressing or coarsening merge mutations to hide targets (violates the invariant's provably-total recording, and the destruction recorder is threaded into `destroy.go` precisely so it cannot be bypassed).
 
 ### weft-side-gated-reset-in-destroy-dot-go
 
@@ -491,15 +441,12 @@ That binds not just field names but result cardinality, guard-failure ordering, 
 - Rationale: an abort's entire purpose is to discard an intentionally dirty worktree — unresolved conflict markers are tracked-file modifications, so a `force: false` request would refuse exactly the state the verb exists to clean up.
   Forcing is safe here and only here because the abort is record-gated: `MergeAbort` refuses to run without a fabric-written record, so what it discards is exactly the dirt accumulated since the merge started — which abort exists to discard by definition — rather than an operator's pre-existing work, which the pre-merge clean-pair guard had already excluded.
   The claim is deliberately not "provably merge-produced": `verify-before-conclude-not-post-commit-rollback` puts build- and test-fixing inside the same window, so tracked edits unrelated to conflict resolution can legitimately exist at abort time, and abort discards those too.
-- Rejected: `dirtinessNA` (the dirtiness is real and known, not inapplicable — declaring it NA would be false);
-  routing around the gate (banned tokens, and the recorder threading exists precisely to prevent it).
 
 ### correspondence-is-recorded-for-the-pair-a-merge-lands-in
 
 - Decision: after a merge concludes on both sides, Fabric records the new warp↔weft correspondence via `RecordCorrespondence`, in whichever pair the merge landed in — pairing the two post-merge HEADs even when one side's SHA is unchanged (the one-side-no-op case).
 - Rationale: every existing write path maintains the correspondence index;
   a merge that skipped it would leave the target pair's index unable to resolve its own new HEAD, breaking `Diff`, revert-target resolution, and `Pull`'s re-anchor logic.
-- Rejected: leaving it to the caller — the caller is `Finalize`, which does not know weft exists and therefore cannot know correspondence exists.
 
 ### cli-mirrors-git
 
@@ -512,11 +459,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   Exit codes mirror git: 0 on a clean or already-up-to-date merge, 1 with a failure envelope carrying the `conflicts` array when conflicts are reported.
 - Rationale: nothing new to learn, and it is the outward proof of the one-repo illusion.
   `merge-in` is a distinct verb because git has no such concept — it is a workflow step, not a git operation, and naming it as its own verb is honest about that.
-- Rejected: an optional `merge-in` branch defaulting to a fabric-resolved parent (the forbidden topology-resolution shape, and it contradicts the Q&A);
-  bare `merge-in` merging the configured upstream à la no-argument `git merge` (collides with the weft side's routinely absent upstream and buys nothing `Finalize` needs);
-  separate `merge-continue`/`merge-abort` subcommands (flatter help tree, diverges from git);
-  a `--status` flag (in-progress state is reachable through the Go API;
-  surfacing it in `lyx fabric status` is an audit follow-up, not a fourth mode on `merge`).
 
 ### ship-only-what-finalize-and-hardener-need
 
@@ -524,8 +466,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   The remaining gap is inventoried under "Audit findings" and spun out.
 - Rationale: the standing principle is that Fabric must eventually expose everything needed to operate git on a monorepo, but the roadmap's instruction for *this* task is to audit — find and record — not to implement the whole surface.
   Building it all here would block `Finalize` behind work `Finalize` does not need.
-- Rejected: shipping the cheap read-only gaps (`log`, `show`, `branch --list`) alongside merge;
-  shipping the full surface.
 
 ### finalize-doc-must-be-reworded
 
@@ -533,7 +473,6 @@ That binds not just field names but result cardinality, guard-failure ordering, 
   The same section's "The exact commit call this uses is part of the `fabric: merge-conflict primitive` task's scope" is resolved: it is not a scoped commit call at all — `Finalize` deletes or unwires whatever must not cross, then calls an ordinary merge.
 - Rationale: as written, the doc describes a Fabric that filters content by path, which the content-blind decision rules out.
   Leaving it would leave the next reader implementing the wrong thing.
-- Rejected: leaving the doc and having Fabric honour it.
 
 ## Technical context
 
@@ -712,63 +651,3 @@ Add an explicit assertion that the merge result type's exported surface, every n
 
 **CLI.**
 Help-tree and arity tests alongside the existing `cli_test.go`/`argsarity_test.go` (branch argument required on both verbs), plus an envelope-contract test for the new verbs matching `envelopecontract_integration_test.go`, including the conflict path's exit-1 failure envelope carrying the `conflicts` array and the fixed `mutations`/`partial` keys.
-
-## Audit findings
-
-The roadmap asks this task to audit for other gaps `Finalize`/`Hardener` need from Fabric, not only to build the one primitive.
-Recorded here;
-only the merge surface is built.
-
-**Gaps that block nothing today, spun out.**
-Fabric's current verb surface is `clone`, `add`, `list`, `remove`, `checkout`, `pairs`, `reconcile`, `prune`, `cleanup`, `unwire`, `status`, `commit`, `push`, `pull`, `sync`, `diff`.
-Against ordinary monorepo git it is missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick` and `blame`.
-None is needed by `Finalize` or `Hardener` today.
-Worth a follow-up roadmap item scoped by actual need, not by completing the list for its own sake.
-
-**No post-commit rollback: a two-sided reset-to-SHA verb is missing.**
-millhouse's checkpoint lets a failed verify roll back a merge *after* `merge --continue` commits it;
-this design replaces that with verify-before-conclude plus `MergeAbort`, which covers the whole uncommitted window but nothing after.
-Undoing a concluded merge needs a `Fabric`-level reset to a visible (warp) SHA that resolves the paired weft SHA through the correspondence index and routes both resets through the destruction gate — real design work, spun out.
-Until it exists, `Finalize` must run its verification before `MergeContinue`/`Merge` conclude, or accept that a landed merge is final at the Fabric layer.
-
-**Merge-in-progress state is not yet surfaced in `lyx fabric status`.**
-`MergeInProgress` ships as Go API only;
-folding it into the `status` verb's output is a small follow-up.
-
-**`finalize.md`'s second conflict shape is not built.**
-The "discrepancy document" — Fabric precomputing a divergence it cannot express as a git conflict, handing the agent a document to resolve and write back — is out of scope here.
-The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case.
-`fabric-unified-view.md`'s open question "which layer drives pull → conflict-resolve → raddle-regen, and how `PullResult`/`PATTERN` re-alignment is presented to an LLM resolving agent" is the same question and is still open;
-it should be answered once, for both, when `Shed`/`loom` exist to consume it.
-
-**`.weft/weft.write.lock` is misnamed.**
-It is the combined two-sided write lock (`commit.go`: acquired "whenever anything lands, even warp-only"), but its name says weft.
-This task reuses it and does not rename it.
-A rename touches the lock path on disk and needs its own task.
-
-**`cleanup.go`'s `raddleFoldedBack` is content-aware logic inside a content-blind module.**
-`internal/fabricengine/cleanup.go:93-95` is a stub returning `false` unconditionally, gating weft-branch deletion on whether `_lyx/raddle/` has been squash-merged back.
-That question is about content, which by this task's governing decision is not Fabric's to answer.
-Left as-is;
-flagged for whoever builds `Finalize`, who will have to decide whether the gate moves out of Fabric or the stub stays permanent.
-
-**Squash-merge leaves no ancestry link.**
-After a squash merge, git cannot answer "was this branch merged?" — there is no merge commit linking them.
-Anything that needs that answer (`cleanup`'s gate above, archive tagging, branch teardown) needs a source outside git.
-millhouse solves it with an `archive/<slug>` tag plus its own status file.
-Not Fabric's problem, but it is a direct consequence of a decision made here, so it is recorded here.
-
-## Q&A log
-
-- **Q:** Where does the merge primitive live — `gitrepo`, `fabricengine`, or split? **A:** Split. `gitrepo` is our wrapper over git operations, so the git-level primitive belongs there; `fabricengine` coordinates the two repos on top. All git goes through a package, never raw.
-- **Q:** Where does the target branch come from? **A:** The caller supplies it. Fabric's functions must look as much as possible like completely ordinary git operations on a monorepo — that is 100% the concept of Fabric.
-- **Q:** Does the weft side get a real branch merge, or a scoped commit forwarding only raddle output? **A:** A real merge. Merging `<slug>-weft` onto `<parent>-weft` *is* a merge.
-- **Q:** Should the merge exclude `_lyx` or other task-local content? **A:** No. Fabric has no idea what is inside its repos. It knows `_lyx` exists only because it wired that junction from a name list. Deleting or unwiring directories before a merge is Finalize's job, totally outside Fabric's domain.
-- **Q:** Squash, merge commit, or an option? **A:** An option, and squash is nearly always what we use — otherwise history becomes horrible clutter.
-- **Q:** What happens when one side merges cleanly and the other conflicts? **A:** Fabric says "conflicts, fix them before proceeding". Nothing more. Fabric exposes exactly one repo. What is in warp and weft must never be visible from the outside.
-- **Q:** Lock only the weft side? **A:** No — a merge is a joint operation, so it must lock both. (Resolved by reusing `.weft/weft.write.lock`, which despite its name is already the combined two-sided lock.)
-- **Q:** How far does the "all monorepo git functions" mandate reach in this task? **A:** Only what our use needs.
-- **Q:** Which worktree does the merge run in? **A:** Same as millhouse: merge parent into the slug first and resolve all conflicts there, so the agent never disturbs the parent; then squash-merge slug into parent, conflict-free. See `mill-merge`, which runs `mill-merge-in` first.
-- **Q:** Should `Merge` carry the conflict lifecycle if it should never conflict? **A:** Yes, but a conflict there redirects to `MergeIn`. Resolving conflicts in the parent's worktree makes no sense: it would require checking the parent out in the current worktree, which git forbids when the parent is already checked out in another worktree of the same repo.
-- **Q:** Do the dirty-target and fast-forward guards belong inside `Merge`? **A:** Yes. If there are conflicts between parent and slug, a `MergeIn` is required first.
-- **Q:** Why must the target branch be checked out anywhere — could `Merge` compute the result in the object database instead (`merge-tree`/`commit-tree`/`update-ref`), needing no target worktree? **A:** We do not need that. The concept is unfamiliar and unwanted here, so `Merge` stays an ordinary worktree merge against a checked-out target.
