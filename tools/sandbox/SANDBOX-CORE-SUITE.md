@@ -236,6 +236,22 @@ This scenario is deliberately read-only: `promote` and `sync` both mutate the op
 
 ---
 
+### S8 -- Loom status and pause over a seeded fixture
+
+**Goal:** "Inspect and pause a loom task's phase machine without actually bootstrapping one."
+
+**Covers:** loom
+
+**Fixture note:** This scenario hand-writes `_lyx/loom/status.json` as a fixture rather than reaching a seeded state through any shipped verb, because no shipped verb seeds one without going through `lyx loom run`'s tmux bootstrap handover, and `lyx loom pause` on an absent status file is specified to error.
+Write the fixture with a realistic `current_producer`/`state`/`activity`/`history` shell and a `product` carrying a `slug` and `parent` of your choosing, following the shape in `contracts/specs/loom-status-spec.md`'s worked example.
+
+**Watch:** Does `lyx loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
+Does `lyx loom pause` set `pause_requested` true while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
+
+**Verdict:** `OK` / `WARN` / `FAIL`
+
+---
+
 reed has its own dedicated suite, `SANDBOX-REED-SUITE.md` in this same directory, launched via `sandbox/reed-suite.cmd` -- reed needs a live tmux server and visual verification, a different test mode from this suite.
 
 ## Session log format
@@ -254,6 +270,7 @@ S4: <OK|WARN|FAIL> -- <one-line note if not OK>
 S5: <OK|WARN|FAIL> -- <one-line note if not OK>
 S6: <OK|WARN|FAIL> -- <one-line note if not OK>
 S7: <OK|WARN|FAIL> -- <one-line note if not OK>
+S8: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```
