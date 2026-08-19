@@ -95,7 +95,6 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 	reasons := []string{
 		mergeReasonAlreadyInProgress,
 		mergeReasonUnresolvedConflicts,
-		mergeReasonNoMergeInProgress,
 		mergeReasonWorktreeDirty,
 		mergeReasonNotSynced,
 		mergeReasonSourceNotFound,
@@ -128,7 +127,6 @@ func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
 	want := []string{
 		"merge already in progress",
 		"unresolved conflicts remain",
-		"no merge in progress",
 		"worktree dirty",
 		"branch not synced to upstream",
 		"source branch not found",
@@ -139,7 +137,6 @@ func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
 	got := []string{
 		mergeReasonAlreadyInProgress,
 		mergeReasonUnresolvedConflicts,
-		mergeReasonNoMergeInProgress,
 		mergeReasonWorktreeDirty,
 		mergeReasonNotSynced,
 		mergeReasonSourceNotFound,

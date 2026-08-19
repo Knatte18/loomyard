@@ -114,7 +114,6 @@ func TestMergeErrors_NoVocabularyLeakInReasons(t *testing.T) {
 	reasons := []string{
 		mergeReasonAlreadyInProgress,
 		mergeReasonUnresolvedConflicts,
-		mergeReasonNoMergeInProgress,
 		mergeReasonWorktreeDirty,
 		mergeReasonNotSynced,
 		mergeReasonSourceNotFound,
