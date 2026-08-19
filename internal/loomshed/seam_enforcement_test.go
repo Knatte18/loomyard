@@ -34,6 +34,7 @@ var loomshedAllowedImports = map[string]bool{
 	"github.com/Knatte18/loomyard/internal/planparser":    true,
 	"github.com/Knatte18/loomyard/internal/batcher":       true,
 	"github.com/Knatte18/loomyard/internal/state":         true,
+	"github.com/Knatte18/loomyard/internal/landingshed":   true,
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file in this package
