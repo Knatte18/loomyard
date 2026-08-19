@@ -59,74 +59,24 @@ Fuller design/how-to lives in godoc and `docs/`.
 
 An engine is handed the absolute paths it operates on and derives none of its own, so it runs identically inside a lyx hub and in a bare directory that is not a git repository.
 
-- **The three resolution tiers.**
-
-  | Tier | Concern | Entry point | What it establishes |
-  |---|---|---|---|
-  | 1 | geometry | `lyxcwd.Resolve` | cwd is the root of a git worktree; `AnchorRel` is whatever the recorded anchor marker says, or `"."` when absent |
-  | 2 | fabric | `preflight.Check` with `fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName` | fabric is wired here, junctions intact, warp and weft in sync, tree clean |
-  | 3 | orchestrator state | `loomengine.Preflight` | tiers 1 and 2 plus this orchestrator's own status seed |
-
-  This is the one place in this section where warp/weft appear, and they appear because tier 2 is exactly where the two sides must be told apart.
-- **The producer/orchestrator split.**
-  A producer requires none of the three tiers.
-  An orchestrator requires tier 3 and threads the extracted plain values down through its whole producer list.
-  A standalone CLI invocation of a single producer **requires** none of the three, but its pre-run does *attempt* tier 1: `preflight.ResolveMode` calls `lyxcwd.Resolve` unconditionally and treats the result as a mode question rather than a precondition — say "requires none of the three", never "never enters tier 1".
-
-  `ResolveMode`'s outcome is two-way, not a blanket degrade:
-  it **degrades** to standalone on a successful resolve with no board-level lyx directory beside it;
-  it **degrades** on `ErrNotAGitRepo`;
-  it **degrades** on `ErrCwdOutsideAnchor` when the re-probe finds no hub geometry;
-  it **refuses**, surfacing the original gated error verbatim, on `ErrCwdOutsideAnchor` inside a wired hub worktree's subdirectory, and on any other error class.
-  A non-nil error means refuse, never a degrade to standalone.
-- **The adapter direction.**
-  Where an engine takes a `Geometry` **struct**, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors.
-  Both depend on the engines;
-  no engine imports either back.
-  An engine that gains a `Geometry` struct adds a sibling constructor in each rather than deriving geometry inline at a call site or spawning a per-engine geometry package.
-
-  This scopes to `Geometry` structs deliberately: two shipped packages use the other permitted shape, plain told values, with neither a geometry struct nor a `hubgeom`/`standalonegeom` constructor — `internal/treadleengine` is told `runDir` and `Profile.GateDir`, and `internal/shedengine` is told `StatusPath`/`LockPath`/`StatusLockPath`.
-  The pair is not symmetric: `standalonegeom.StencilsDir` has no `hubgeom` sibling, because hub mode resolves that directory through `fabricengine` instead.
-- **The mode trigger.**
-  `preflight.ResolveMode` is what a standalone-capable CLI's pre-run consults — never `preflight.Wired`, and never a bare `HubPresent`.
-  See `internal/preflight/doc.go` for why each alternative is wrong.
-- **See also:** the Cwd Resolution Invariant above says who may resolve;
-  this invariant says who must be told instead.
-- **The membership predicate.**
-  A package is *bound* by this invariant when it takes the absolute paths it operates on from its caller and has no **direct** production import of `internal/lyxcwd`.
-  It is *machine-enforced* when that direct non-import is asserted by a test in its own package that polices its production import set — an allowlist that omits `internal/lyxcwd`, or a banned list that names it.
-  Otherwise it is a *review obligation*.
-
-  The direct/transitive qualifier is load-bearing: two of the six machine-enforced packages below reach `internal/lyxcwd` transitively and are still correctly bound — `internal/treadleengine` reaches it through `internal/logger` and `internal/shuttleengine`, and `internal/pattern` reaches it through `internal/stencilstore` then `internal/logger`.
-  Stating the predicate, or the "genuinely excludes `internal/lyxcwd`" claim, without this qualifier would make both entries wrong.
-
-  The predicate is what binds;
-  the two lists below are not exhaustive.
-  They enumerate the packages converted by the producers-standalone waves.
-  `internal/batcher`, `internal/stencilstore`, and `internal/shedadapters` satisfy the predicate today by other routes — bound, unconverted by that line of work, and a review obligation.
-- **The machine-enforced list**, each with its test file and function:
-  `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
-  `internal/pattern/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
-  `internal/buildinfo/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
-  `internal/standalonestate/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`),
-  `internal/shedengine/seam_enforcement_test.go` (`TestProducerSeamInvariant_AllowlistOnly`),
-  `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
-- **The review-obligation list** — no machine guard for the told-geometry property:
-  `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
-
-  Two of these look covered and are not.
-  `internal/shuttleengine/seam_enforcement_test.go` (`TestProviderSeamImportRule`) polices the **provider** seam — Claude specifics confined to `claudeengine` — and references `lyxcwd` nowhere.
-  `internal/scoutengine/seam_enforcement_test.go` (`TestEngineSeamInvariant_BannedImports`) polices a **banned list** that does not name `internal/lyxcwd` either.
-  Both packages' `doc.go` files assert `internal/lyxcwd` is absent from their production imports;
-  that assertion is true today and unguarded.
-- **The two geometry adapters sit in neither list.**
-  `internal/hubgeom` and `internal/standalonegeom` are *tellers*, not told packages — they exist to construct the geometry the engines are handed.
-  The non-import predicate does not bind them and cannot: `internal/hubgeom` imports `internal/lyxcwd` in production, in `internal/hubgeom/hubgeom.go` and `internal/hubgeom/webstergeom.go`, which is precisely its job as the hub-mode adapter, and `internal/standalonegeom` builds from told strings for the same reason in the other mode.
-  What binds both instead is the adapter-direction rule above: they depend on the engines and no engine imports either back.
-  That is a **review obligation** too, and a *different* obligation from the non-import one — conflating the two would make this invariant self-contradictory on its own first example.
-
-  Adding the missing import-allowlist entries to the eight review-obligation packages above is a separate task, each needing its own transitive-closure reasoning;
-  this task adds none.
+- **Three resolution tiers:** 1) `lyxcwd.Resolve` — cwd is a git worktree root.
+  2) `preflight.Check` (`fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName`) — fabric wired, junctions intact, warp/weft in sync, tree clean.
+  3) `loomengine.Preflight` — tiers 1+2 plus the orchestrator's own status seed.
+- **Producer/orchestrator split:** a producer requires none of the three tiers.
+  An orchestrator requires tier 3 and threads the extracted plain values down its producer list.
+  A standalone CLI invocation requires none of the three, but its pre-run probes tier 1 via `preflight.ResolveMode`, which **degrades** to standalone (no hub lyx directory found, `ErrNotAGitRepo`, or `ErrCwdOutsideAnchor` with no hub geometry) or **refuses** (any other error, including `ErrCwdOutsideAnchor` inside a wired hub worktree's subdirectory).
+- **Adapter direction:** where an engine takes a `Geometry` struct, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors;
+  both depend on the engines, never the reverse.
+  Two packages instead take plain told values with no `Geometry` struct or adapter: `internal/treadleengine` (`runDir`, `Profile.GateDir`) and `internal/shedengine` (`StatusPath`/`LockPath`/`StatusLockPath`).
+- **Mode trigger:** a standalone-capable CLI's pre-run consults `preflight.ResolveMode` only — never `preflight.Wired`, never a bare `HubPresent`.
+- **Membership predicate:** a package is *bound* by this invariant when it takes its absolute paths from its caller and has no **direct** production import of `internal/lyxcwd` (transitive is fine).
+  It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
+  otherwise it is a *review obligation*.
+  The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`).
+- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
+- **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
+  They are bound instead by the adapter-direction rule above, which is itself a review obligation.
 - **Enforced by** the six tests named above, for the machine-enforced half;
   the review-obligation half and the adapter-direction rule have no machine check.
 
