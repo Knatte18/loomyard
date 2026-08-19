@@ -85,9 +85,13 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `internal/loomshed/loomshed_test.go`
   - `internal/loomshed/fixture_test.go`
   - `internal/loomshed/sequence_test.go`
+  - `internal/loomshed/resume_test.go`
   - `internal/landingshed/deps.go`
 - **Edits:**
   - `internal/loomshed/loomshed_test.go`
+  - `internal/loomshed/fixture_test.go`
+  - `internal/loomshed/sequence_test.go`
+  - `internal/loomshed/resume_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -95,6 +99,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   Assert that the row named `Publish` and the row named `Finalize` are each backed by the real producer type rather than the stub type, that both rows keep their escalate-on-stuck setting, and that the list's thirteen rows stay in their existing table order with their existing names.
   Assert that a `Deps` whose landing passthrough is missing a required closure makes the constructor return an error rather than yielding a list that panics at call time.
   Reuse this package's existing test fixture helpers rather than building a second set — and extend whichever helper builds a `Deps` value so its landing passthrough carries every field the two producer constructors now require, including the told session-runner seam, since an under-filled passthrough makes the constructor fail and every existing assertion in this package fail with it.
+
+  `buildSequenceFixture` (fixture_test.go) backs the full-sequence tests in `sequence_test.go` and `resume_test.go`, which now construct the real Publish and Finalize rows too. Both constructors open their fabric pair eagerly at construction time, so its landing passthrough needs the same non-nil closures and non-empty told strings `testDeps` needs, using `(nil, nil)`-returning open closures (legal: the constructors only nil-check the interface, never dereference the handle at construction). Reaching Finalize's own `Call` for real would need a genuine two-worktree pair and therefore git, which this task's own decision already rules out of the untagged tier ("Driving both producers through a real engine run over a short producer list is explicitly not tested"); `buildSequenceFixture`'s landing `Config.RequirePRToBase`/`PushSkipped` are therefore set so Publish's own told-skip gate reports Stuck before ever touching its resolver, and the run blocks there (`OnStuck: ""` on both rows means no bounce), never reaching Finalize's `Call` at all. `sequence_test.go` and `resume_test.go` are updated for this new terminal point wherever they asserted the old stub-backed full-`Done` completion; the tests that already halt earlier (Discussion-Validate, Batchifier) are untouched.
 - **Commit:** `test(loomshed): assert rows 12 and 13 are backed by the real producers`
 
 ### Card 35: integration coverage for both producers
