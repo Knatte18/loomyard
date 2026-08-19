@@ -603,9 +603,7 @@ An instruction file — a producer's own prompt or skill — must never duplicat
   The websterengine + webstercli told-geometry, and Webster standalone entry task gave webster a standalone entry point, so a standalone Webster now reaches `batcher.Active` on every verb outside a hub, where `_lyx/` does not exist;
   that task moved `batcher` to the degrading side and the pinned sets above already reflect the move.
 - **Known guard blind spot:** a substring scan cannot see a call reached through an alias or a function value.
-- **Enforced by** review obligation today, with a set-equality grep guard named as a candidate and T10 named as its home.
-  The guard's shape, recorded here so T10 inherits a specification rather than re-deriving one: following `cmd/lyx/gitrepoboundary_test.go`'s pinned-set style, walk non-test `*.go` files under the module root, collect every package directory containing a `configengine.Load(` call and every one containing a `configengine.LoadOrTemplate(` call, compare each collected set against its pinned set, exclude `internal/configengine` itself as the declaration site, and skip `_test.go` files.
-  Resolving the scan root through `go env GOMOD` spawns a process, so the new guard must be allowlisted in `cmd/lyx/tierpurity_test.go`'s `allowedSpawners` map alongside the entries already there for that same reason, with a one-line reason in their style.
+- **Enforced by** `cmd/lyx/configstrictness_test.go` (`TestConfigStrictness_PinnedCallSiteSets`).
 
 ## GitHub Auth Invariant
 
