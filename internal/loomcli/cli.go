@@ -138,24 +138,6 @@ Example:
 	return parent
 }
 
-// runCmd is a compiling placeholder: batch 5 supplies its whole body (the session bootstrap's own
-// locks, spawn, handshake, and terminal handover), replacing this wholesale. It exists here only so
-// the four-verb tree is complete and Command() compiles before batch 5 lands.
-func (c *loomCLI) runCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "run",
-		Short: "bootstrap this worktree's loom task and hand the terminal to the driver session",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if clihelp.ShouldAbort(cmd.Context()) {
-				return nil
-			}
-			out := cmd.OutOrStdout()
-			clihelp.SetExit(cmd.Context(), output.Err(out, "loom: run is not wired yet (lands in a later batch)"))
-			return nil
-		},
-	}
-}
-
 // RunCLI is the public seam for the loom module CLI.
 //
 // It delegates to clihelp.Execute with the cobra command tree, passing out as the capture writer

@@ -255,6 +255,15 @@ Run in a worktree's pane, it:
 
 ```
 lyx loom run:
+  0a. resolve the recorded parent branch                  (fabricengine.ReadOrigin, plus --parent for a
+                                                           legacy worktree created before the record existed;
+                                                           refused when --parent disagrees with a recorded value)
+  0b. seed the status file when it is absent               (loomshed.Seed; a re-run's already-seeded case is
+                                                           tolerated via its own sentinel, never re-seeded)
+  0c. commit that seed weft-side, before anything below    (fabricengine.CommitWeftPaths; this must land
+                                                           before the driver spawns, or the phase machine's
+                                                           own first precondition row sees an uncommitted
+                                                           status file and fails immediately)
   1. ensure the worktree's tmux session is up           (reed)
   2. add the status strand                                (reed.AddStrand "lyx loom status --watch",
                                                            display: below-parent, shrinkWhenWaitingOnChild:true —
@@ -263,8 +272,11 @@ lyx loom run:
                                                            childless status strand rendering full-height is
                                                            intended, not a bug to re-file (discussion Decision
                                                            childless-full-height-is-acceptable).)
-  3. spawn the loom driver DETACHED                       (internal/proc — it needs no TTY;
-                                                           it reads/writes files, drives strands via reed)
+  3. spawn the loom driver DETACHED, unless one is         (internal/proc — it needs no TTY;
+     already alive, then wait for its handshake            it reads/writes files, drives strands via reed;
+                                                           the handshake polls for the driver taking the run
+                                                           lock, so the spawner never returns before a driver
+                                                           is actually running)
   4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 
