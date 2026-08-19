@@ -5,7 +5,7 @@ task: 'fabric: merge-conflict primitive'
 batch: gitrepo merge primitives
 number: 1
 cards: 2
-verify: go test ./cmd/lyx/ && go test -tags integration ./internal/gitrepo/
+verify: go test ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration ./internal/gitrepo/
 depends-on: []
 ```
 
@@ -64,6 +64,7 @@ Batch-local decisions: none beyond the Shared Decisions (`MergeHeadPresent` via 
   On error, recover `*gitexec.GitError` with `errors.As` (the `ancestry.go` idiom);
   when recovered, probe `ConflictedFiles()` — non-empty means `MergeConflicted, nil`;
   otherwise return the genuine error.
+  The probe is `ConflictedFiles()`, not a second `git ls-files -u` spelling — see the Shared Decision "MergeStart's post-error conflict probe reuses ConflictedFiles", which names the `public-surface-shapes` godoc clause it supersedes and why.
   On success, probe staged state via `runChecked("diff", "--cached", "--quiet")` classified by the existing `errors.As` + `ExitCode == 1` idiom from `StageAndCommit` (exit 1 = something staged), and HEAD movement via `CurrentSHA`:
   HEAD moved with nothing staged → `MergeFastForwarded`;
   HEAD unmoved with nothing staged → `MergeAlreadyUpToDate`;
@@ -88,7 +89,7 @@ Batch-local decisions: none beyond the Shared Decisions (`MergeHeadPresent` via 
 
   Error wrapping throughout follows the package convention: `fmt.Errorf("gitrepo: <args> in %s: %w", r.path, err)`.
 
-  In `cmd/lyx/gitrepoboundary_test.go`: add `"MergeStart"`, `"MergeConclude"`, `"ConflictedFiles"`, `"MergeHeadPresent"`, `"MergeFFOnly"` to `gitrepoPinnedRunBoundMethods`, and update `gitrepoBoundaryMinScannedFiles`' doc comment's file enumeration to include `merge.go` (now 9 non-test files).
+  In `cmd/lyx/gitrepoboundary_test.go`: add `"MergeStart"`, `"MergeConclude"`, `"ConflictedFiles"`, `"MergeHeadPresent"`, `"MergeFFOnly"` to `gitrepoPinnedRunBoundMethods`, and correct `gitrepoBoundaryMinScannedFiles`' doc comment's file enumeration: it is already stale, omitting the existing `blobread.go`, so add **both** `blobread.go` and `merge.go` and state the count as 10 non-test files (`internal/gitrepo` has 9 today).
   Do not touch `cmd/lyx/checkedcall_test.go` — every new call uses `runChecked`, so `internal/gitrepo`'s pinned raw-site count stays 3.
 
   In `internal/gitrepo/doc.go`'s "Scope boundaries" paragraph: amend the sentence "Rebase, interactive staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are explicitly not supported" so merge start/conclude and conflicted-path enumeration are admitted (used by fabric's two-sided merge coordination) while rebase, interactive staging, cherry-pick, and general-purpose branch/checkout management stay out — keeping the paragraph's existing honesty about what is and is not covered.
@@ -130,3 +131,4 @@ Batch-local decisions: none beyond the Shared Decisions (`MergeHeadPresent` via 
 
 `verify` runs the untagged `cmd/lyx` guard suite (pinned-list equality: `gitrepoboundary_test.go`, `checkedcall_test.go`, tier purity for the new tagged test file) plus the full `internal/gitrepo` integration suite, which includes every test card 2 adds alongside the existing regression suite for the package this batch edits.
 The gitrepo suite is small (seconds), so no `-run` scoping is needed here.
+`./internal/lyxcwd/` joins every batch's untagged run (batches 1–5 as well as 6) so `TestEnforcement_FabricVocabulary` and the Markdown Link Integrity walk see each batch's new production files and doc edits in the batch that writes them — `internal/gitrepo` is outside the Fabric Vocabulary owner set, so a stray side token in this batch's `merge.go` or `doc.go` must fail here, not five batches later.

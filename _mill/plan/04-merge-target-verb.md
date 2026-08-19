@@ -5,7 +5,7 @@ task: 'fabric: merge-conflict primitive'
 batch: Merge target-pair verb
 number: 4
 cards: 2
-verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run Merge ./internal/fabricengine/
+verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run Merge ./internal/fabricengine/
 depends-on: [3]
 ```
 
@@ -26,6 +26,7 @@ Batch-local decisions: none beyond Shared Decisions.
   - `internal/fabricengine/mergepaths.go`
   - `internal/fabricengine/mergeerrors.go`
   - `internal/fabricengine/pull.go`
+  - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/commit.go`
   - `internal/fabricengine/destroy.go`
   - `internal/fabricengine/mutation.go`

@@ -99,7 +99,8 @@ Batch-local decision: the two verbs join the weft-verb family (`weftVerbNames` +
   - `internal/fabriccli/cli_test.go`: help assertions in the existing `TestRunCLI_*Help` style — `merge --help` names `--squash`, `--continue`, `--abort`, `--message`;
     `merge-in --help` has a non-empty Short;
     `merge --continue extra-arg` and `merge --continue --abort` fail with usage-shaped error envelopes.
-  - `internal/fabriccli/envelopecontract_integration_test.go`: extend the existing property walk so the conflict envelope is asserted against the fixed key contract (exit 1, `"ok":false`, `mutations` array present, `partial` present and `false`, `conflicts` array non-empty).
+  - `internal/fabriccli/envelopecontract_integration_test.go`: assert the conflict envelope against the fixed key contract (exit 1, `"ok":false`, `mutations` array present, `partial` present and `false`, `conflicts` array non-empty).
+    Add it as a **new test function whose name contains `Merge`** (e.g. `TestRunCLI_MergeConflictEnvelopeKeepsPartialFalse`), following the file's existing property-walk style rather than extending one of its three existing functions — those are named `TestRunCLI_ReconcileReportsAFailedPairAsAFailure`, `TestRunCLI_PruneEmitsAnEmptyArrayNotNull`, and `TestRunCLI_ReconcileDoesNotFailOnAPairThatVanishedMidWalk`, none of which this batch's `-run Merge` integration pattern selects, so assertions added inside them would never execute in-batch.
   - `internal/fabriccli/merge_cli_integration_test.go` (`//go:build integration`, `package fabriccli_test`, hubforge fixture per `cli_test.go`'s `setupCLIRepo` pattern, driven via `fabriccli.RunCLIIn(<pair worktree>, …)`;
     test names containing `Merge`):
     - `merge-in <branch>` with manufactured divergence and a conflict → exit 1, failure envelope with sorted `conflicts`, `partial` false;
@@ -118,6 +119,7 @@ Batch-local decision: the two verbs join the weft-verb family (`weftVerbNames` +
   - `internal/fabricengine/mergelifecycle.go`
   - `internal/fabricengine/mergeerrors.go`
   - `manifest/designs/raddle.md`
+  - `_mill/discussion-meta.md`
   - `CONSTRAINTS.md`
 - **Edits:**
   - `internal/fabricengine/doc.go`
@@ -138,17 +140,33 @@ Batch-local decision: the two verbs join the weft-verb family (`weftVerbNames` +
   unified worktree-relative conflict reporting and the `ErrUnmergeableState` refusal;
   SHA-labelled conflict markers;
   the sibling-verb refusals and the combined write lock's role (mutating steps only, never across the resolution window);
-  no post-conclude undo — verify-before-conclude plus `MergeAbort` is the recovery model.
+  no post-conclude undo — verify-before-conclude plus `MergeAbort` is the recovery model, so a consumer must verify before concluding or accept that a landed merge is final at this layer;
+  and that a squash merge leaves no ancestry link, so "was this branch merged?" needs a source outside git (both carried from `discussion-meta.md`'s audit findings, per card 18's roadmap requirement above).
   This doc explains fabric's own mechanism, so warp/weft vocabulary is permitted (prose-doc split).
 
   **`manifest/designs/finalize.md`** (a consumer doc — side-free wording throughout, per the prose-doc split):
   - Rework the "Only Raddle's output forwards to the parent" section: replace the sentence "Merge-back forwards only Raddle's regenerated output …, via a Fabric commit scoped to `["_lyx"]` …" so it reads as Finalize's own content policy — Finalize deletes or unwires whatever must not cross the merge boundary, then calls an ordinary, content-blind Fabric merge — and delete the sentence "The exact commit call this uses is part of the `fabric: merge-conflict primitive` task's scope, not fixed here", resolving it per the discussion: it is not a scoped commit call at all.
   - Update the status blockquote (line 3) and the "not implemented anywhere today" paragraph (line 21): the merge primitive now exists — name the shipped surface (`MergeIn`, `Merge`, `MergeContinue`, `MergeAbort`, `MergeInProgress` on Fabric; `lyx fabric merge`/`merge-in`) and drop the "blocked on" framing.
+  - Rework the "Finalize sees only Fabric" section's two-shape list (lines 16–19), which currently promises Fabric hands back either an ordinary git conflict **or** a precomputed "discrepancy document".
+    Only the first shape ships: a conflict Fabric cannot express in the unified namespace returns `*ErrUnmergeableState` and refuses, it does not build a document.
+    Reduce the list to the shipped shape plus that refusal, and say the discrepancy-document shape is not built (it is carried as a `## Someday` roadmap entry per the audit-findings disposition below).
+    Leaving lines 16–19 standing would make the file contradict itself the moment line 21 says the primitive exists.
   - Update the Related-list bullet (line 51) that says fabricengine "does not yet include the merge-conflict primitive".
   - Keep the existing anchors and link targets intact (`raddle.md` anchors, the `CONSTRAINTS.md` fragment).
 
-  **`manifest/roadmap.md`**: the planned item "fabric: merge-conflict primitive" is completing — move or remove it per the file's own convention for completed planned items (inspect the file;
-  if no completed section exists, delete the entry, since git history and the module docs carry it), and update the "loom: phase-machine scaffolding" item's Finalize row: "Depends on `fabric: merge-conflict primitive` above — blocked until that lands" becomes a plain dependency-satisfied statement.
+  **`manifest/roadmap.md`**: move the `## Planned` item "fabric: merge-conflict primitive" into the existing `## Done` section (heading at line 132), rewritten in that section's own style — one bold title line naming what shipped, plus the "see the package documentation" pointer line the neighbouring entries use.
+  Update the "loom: phase-machine scaffolding" item's Finalize row: "Depends on `fabric: merge-conflict primitive` above — blocked until that lands" becomes a plain dependency-satisfied statement.
+
+  Also give the roadmap's `## Someday` section the audit findings this task owes it.
+  The roadmap entry and the discussion's Scope both make the audit an in-scope deliverable, and `_mill/discussion-meta.md`'s `## Audit findings` is task-local — it vanishes when the worktree is torn down, so anything worth keeping must land in a versioned file now.
+  Add one `## Someday` entry each, in that section's existing numbered style, for the four findings recorded there as needing their own work:
+  - the missing ordinary-monorepo verb surface (`log`, `show`, `branch`, `tag`, `stash`, non-hard `reset`, `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, `blame`) — scoped by actual need when a consumer needs one, never by completing the list;
+  - a two-sided reset-to-SHA verb, the post-conclude undo this design deliberately does not ship (`MergeAbort` covers only the uncommitted window; a landed merge is final at the Fabric layer until this exists);
+  - surfacing merge-in-progress in `lyx fabric status`, which ships as Go API only here;
+  - `finalize.md`'s discrepancy-document shape, removed from that file by the reword above.
+
+  The remaining audit findings are deliberately not roadmap items: `.weft/weft.write.lock`'s misnaming, `cleanup.go`'s `raddleFoldedBack` content-awareness, and squash-merge's missing ancestry link are each recorded in `discussion-meta.md` as observations for whoever builds `Finalize`, not as work this repo has committed to.
+  Carry the two that constrain the merge surface's own users — no post-conclude undo, and squash leaving no ancestry link — into the `internal/fabricengine/doc.go` merge section instead, where the consumer reads them.
 
   **`docs/overview.md`**: extend the fabric module row's CLI-surface enumeration (`clone|add|…|diff`) with `merge-in|merge`, and mention the merge/conflict lifecycle in the row's prose in one phrase;
   check the `## Status` sub-bullet that re-lists the weft content-sync verbs and extend it only if its list claims completeness.

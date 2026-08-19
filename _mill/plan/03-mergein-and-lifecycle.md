@@ -5,7 +5,7 @@ task: 'fabric: merge-conflict primitive'
 batch: MergeIn and the lifecycle quartet
 number: 3
 cards: 4
-verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run Merge ./internal/fabricengine/
+verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run Merge ./internal/fabricengine/
 depends-on: [2]
 ```
 
@@ -21,6 +21,7 @@ Batch-local decision: the guard/freshness helpers land in card 7 sized for both 
 
 - **Context:**
   - `internal/fabricengine/pull.go`
+  - `internal/fabricengine/checkout.go`
   - `internal/fabricengine/dirtiness.go`
   - `internal/fabricengine/weftwiring.go`
   - `internal/fabricengine/branchname.go`

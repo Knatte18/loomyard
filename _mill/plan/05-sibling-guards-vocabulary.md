@@ -5,7 +5,7 @@ task: 'fabric: merge-conflict primitive'
 batch: sibling-verb guards and vocabulary assertions
 number: 5
 cards: 3
-verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run 'Merge|Commit|Pull|Checkout|Remove|Cleanup' ./internal/fabricengine/
+verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run 'Merge|Commit|Pull|Checkout|Remove|Cleanup' ./internal/fabricengine/
 depends-on: [4]
 ```
 

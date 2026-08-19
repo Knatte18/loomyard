@@ -21,27 +21,27 @@ batches:
     name: gitrepo merge primitives
     file: 01-gitrepo-merge-primitives.md
     depends-on: []
-    verify: go test ./cmd/lyx/ && go test -tags integration ./internal/gitrepo/
+    verify: go test ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration ./internal/gitrepo/
   - number: 2
     name: merge state, errors, and path mapping
     file: 02-merge-state-errors-mapping.md
     depends-on: [1]
-    verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run Merge ./internal/fabricengine/
+    verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run Merge ./internal/fabricengine/
   - number: 3
     name: MergeIn and the lifecycle quartet
     file: 03-mergein-and-lifecycle.md
     depends-on: [2]
-    verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run Merge ./internal/fabricengine/
+    verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run Merge ./internal/fabricengine/
   - number: 4
     name: Merge target-pair verb
     file: 04-merge-target-verb.md
     depends-on: [3]
-    verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run Merge ./internal/fabricengine/
+    verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run Merge ./internal/fabricengine/
   - number: 5
     name: sibling-verb guards and vocabulary assertions
     file: 05-sibling-guards-vocabulary.md
     depends-on: [4]
-    verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run 'Merge|Commit|Pull|Checkout|Remove|Cleanup' ./internal/fabricengine/
+    verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run 'Merge|Commit|Pull|Checkout|Remove|Cleanup' ./internal/fabricengine/
   - number: 6
     name: CLI verbs and docs
     file: 06-cli-and-docs.md
@@ -55,7 +55,7 @@ batches:
 
 - **Decision:** every exported type, method signature, error type, JSON tag, and the closed guard-reason string set come verbatim from `_mill/discussion.md`'s `public-surface-shapes` and `safety-guards-are-aggregated-and-side-free` decisions.
   Cards restate the signatures they build; where a card and the discussion ever disagree, the discussion wins — **except** where a later Shared Decision in this file explicitly names the discussion clause it supersedes and why.
-  Two such supersessions exist today: the Decision on the post-fetch remote-only weft counterpart (which deliberately widens `discussion.md`'s `weftBranchExists` pin) and the Decision on foreign-state disposition (which picks between two contradictory discussion clauses).
+  Four such supersessions exist today: the Decision on the post-fetch remote-only weft counterpart (which widens `discussion.md`'s `weftBranchExists` pin), the Decision on foreign-state disposition (which picks between two contradictory discussion clauses), the Decision that `Cleanup` needs no merge guard (which supersedes the lock decision's own disposition table), and the Decision on `MergeStart`'s conflict probe (which substitutes one already-built probe for the godoc's spelling).
   An implementer applying this Decision's tie-breaker must check that list first;
   reverting either supersession fails a test this plan requires.
 - **Rationale:** the discussion pinned the surface precisely to keep it out of plan-time and implementation-time invention.
@@ -85,6 +85,24 @@ batches:
 - **Rationale:** the Mutation Record Invariant forbids recording no-ops, and the `mutation-recording-stays-scenario-symmetric` decision requires that two scenarios differing only in which side conflicted produce the same kinds against the same target set in the same order, differing only in SHAs.
   Recording per-side on any observable change (staged, conflicted, fast-forwarded) satisfies both: a conflicted side and a staged side both changed observably, and the outcome never appears in the record.
 - **Applies to:** MergeIn and the lifecycle quartet, Merge target-pair verb
+
+### Decision: Cleanup needs no merge guard — its own structure already protects a mid-merge pair
+
+- **Decision:** `Topology.Cleanup` gains no merge-in-progress refusal and `cleanup.go` is not edited.
+  Card 14 asserts the existing behaviour (a mid-merge pair survives `Cleanup` in every flag combination) instead.
+- **Rationale:** this supersedes `discussion.md`'s `combined-lock-around-mutating-steps-only` disposition table and its Testing line, both of which list `Remove`/`Cleanup` together as verbs that must refuse.
+  `Remove` genuinely tears a pair down and does get the refusal;
+  `Cleanup` does not — it deletes only *orphaned weft branches*, and a mid-merge pair is by construction live, so `cleanup.go`'s `liveWarpBranches[warpBranch]` arm `continue`s before the branch ever becomes a `CleanupBranchEntry`, with checked-out weft branches unconditionally protected further down.
+  `CleanupBranchEntry` also has no field a refusal reason could travel in (`Branch`/`Deleted`/`Protected`/`Error`, the last documented as deletion-failure-only), so the disposition table's own remedy is unimplementable there.
+  Adding a guard would be dead code justified only by the discussion's grouping of two verbs that behave differently.
+- **Applies to:** sibling-verb guards and vocabulary assertions
+
+### Decision: MergeStart's post-error conflict probe reuses ConflictedFiles
+
+- **Decision:** `MergeStart`'s post-error probe is `ConflictedFiles()` (`git diff --name-only --diff-filter=U`), not a second `git ls-files -u` call.
+- **Rationale:** this supersedes the spelling in `discussion.md`'s `public-surface-shapes` godoc ("probes: unmerged index entries (`git ls-files -u`)"), which names the *concept* — unmerged index entries — and happens to spell one of the two commands that answer it.
+  Both report exactly the unmerged-stage entries; `ConflictedFiles` is a method this same card ships, so reusing it means one probe, one pinned-list entry, and one behaviour the tests already cover, rather than a second raw spelling that could drift from it.
+- **Applies to:** gitrepo merge primitives
 
 ### Decision: the weft abort reset needs its own any-worktree ownership kind
 

@@ -5,7 +5,7 @@ task: 'fabric: merge-conflict primitive'
 batch: merge state, errors, and path mapping
 number: 2
 cards: 4
-verify: go test ./internal/fabricengine/ ./cmd/lyx/ && go test -tags integration -run Merge ./internal/fabricengine/
+verify: go test ./internal/fabricengine/ ./cmd/lyx/ ./internal/lyxcwd/ && go test -tags integration -run Merge ./internal/fabricengine/
 depends-on: [1]
 ```
 
