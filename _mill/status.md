@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: standalone-docs-and-invariants
 branch: standalone-docs-and-invariants
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-roadmap-and-design-doc-deletion  '2026-08-19T07:01:23Z'
 holistic-reviewing  '2026-08-19T07:01:56Z'
 holistic-approved  '2026-08-19T07:06:28Z'
 done  '2026-08-19T07:07:33Z'
+pr-pending  '2026-08-19T07:13:54Z'
 ```
 
 ## Batches
