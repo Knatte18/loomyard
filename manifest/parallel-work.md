@@ -18,7 +18,7 @@ The real constraint is semantic: does task B need a type, function, or construct
 
 Touch no code any of the three running tasks or each other produce.
 
-- **shedengine: per-producer bounce budget + segments** — `internal/shedengine` only.
+- **shedengine: per-producer bounce budget + explicit `OnDone` routing** — `internal/shedengine` only.
 - **preflight: split into two Shed rows** — no `depends_on` beyond the Done `loom: phase-machine scaffolding`.
 
 Two candidates, on top of the three already running — up to five tasks in flight at once with no forced ordering between them.
@@ -26,7 +26,7 @@ Two candidates, on top of the three already running — up to five tasks in flig
 
 ## Can start in parallel too, with a light caveat
 
-No *hard* dependency, but cleanest if `shedengine: per-producer bounce budget + segments` lands first — it is the smallest of the three "Perch → Shed flattening" items and likely to land fast, so sequencing it just ahead of these two costs little.
+No *hard* dependency, but cleanest if `shedengine: per-producer bounce budget + explicit OnDone routing` lands first — both downstream tasks now read directly on its `OnDone` field (Bouncer's entry-point/exit wiring, Burler's always-`Stuck`-never-`Done` hand-off), not just its `Segment`/`MaxBounces` fields, so the coupling is a little tighter than before, though still not a hard `depends_on`.
 Starting them anyway and reconciling at integration is a legitimate call, not a mistake, if the wait is what's inconvenient.
 
 - **shedadapters: Burler-round producer**
