@@ -379,3 +379,16 @@ go test -tags integration -count=1 -timeout 30m ./internal/fabricengine/... \
 - **Windows path behaviour** — explicitly out of scope; this host is Linux. Nothing in R1/R2/R3/R5 is path-shaped, so I record no Windows-specific concern.
 - **The concurrency-loser route to `bothSidesAlreadyUpToDate`** (route 1) — I did not construct it, because route 2 reaches the same code deterministically and route 1 could only be made reliable with a production test seam. This is a deliberate choice for a better test, not an unverified gap: the code path is the same two lines.
 - Nothing was skipped for cost, operator-assistance, or wall-clock reasons.
+
+## Post-fix status (appended after Job 2)
+
+All five recorded findings were fixed in-round; nothing deferred. See
+`_mill/fabric-merge-review-opus-medium-r2-fixer-report.md` for the implementation, the false-green
+proof behind each new test, the determinism runs, and the live re-drive on the redeployed binary.
+
+The review's "NOT READY as reviewed" verdict above stands as the judgment of the tree at
+`a5700c41`. **As of `1e4f8d3b` the verdict is READY**: R1 and R2 are fixed and each pinned by a
+sabotage-proven integration test, residual 1's proof gap is closed by a test that is the only thing
+in the whole `-tags integration` `fabricengine` tier to fail under the orchestrator's own sabotage,
+residual 3 is deleted with the membership rule written down, and both gates are green including a
+whole-repo `go test ./...` sweep.
