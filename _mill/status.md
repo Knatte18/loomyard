@@ -47,7 +47,9 @@ batches:
     commit_sha: e1a41de84c7e03569966adcd810a08505aec6eb7
     verify_baseline_failures: []
   - name: focus-file contract
-    state: pending
+    state: running
+    implementer_session: 3b059507-dbda-4173-8284-cff9b05c0e58
+    start_sha: 5c5ddeaba7091d4c28b73ba7bb514270994ea785
     verify_baseline_failures: []
   - name: BurlerProducer
     state: pending
