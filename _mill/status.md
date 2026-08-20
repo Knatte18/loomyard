@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -24,4 +24,23 @@ plan-fix-r1  '2026-08-20T10:41:43Z'
 plan-fix-r2  '2026-08-20T11:27:00Z'
 plan-fix-r3  '2026-08-20T11:48:03Z'
 planned  '2026-08-20T11:48:13Z'
+implementing  '2026-08-20T14:50:54Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: quarry-scaffold
+    state: pending
+  - name: quarry-cli-infra
+    state: pending
+  - name: port-engine
+    state: pending
+  - name: port-cli
+    state: pending
+  - name: quarry-live-and-equivalence
+    state: pending
+  - name: lyx-removal
+    state: pending
 ```
