@@ -102,7 +102,7 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
 		Cmd:       buildLaunchCmd(sh, bin, promptPath, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive, spec.ForkSubagents),
-		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, spec.ForkSubagents),
+		ResumeCmd: buildResumeCmd(sh, bin, settingsPath, sessionID, resolvedModel, spec.Effort, spec.Interactive, spec.ForkSubagents),
 		SessionID: sessionID,
 	}, nil
 }

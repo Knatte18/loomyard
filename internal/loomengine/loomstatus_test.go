@@ -42,6 +42,19 @@ func TestLoomStatusLock(t *testing.T) {
 	}
 }
 
+func TestLoomRunLock(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    filepath.Join("sub", "dir"),
+	}
+
+	want := filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, "loom", "run.lock")
+	if got := LoomRunLock(l); got != want {
+		t.Errorf("LoomRunLock() = %q; want %q", got, want)
+	}
+}
+
 func TestLoomStatusFile_UnanchoredEqualsWorktreePath(t *testing.T) {
 	l := &lyxcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-HUB"),
@@ -69,5 +82,21 @@ func TestLoomStatusLock_UnanchoredEqualsWorktreePath(t *testing.T) {
 	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "loom", "status.json.lock")
 	if got := LoomStatusLock(l); got != want {
 		t.Errorf("LoomStatusLock() = %q; want %q", got, want)
+	}
+}
+
+// TestLoomRunLock_UnanchoredEqualsWorktreePath proves LoomRunLock's AnchorPath anchoring
+// coincides with WorktreePath at AnchorRel "." — the same unanchored equivalence
+// TestLoomStatusLock_UnanchoredEqualsWorktreePath pins for the status lock, but for the run lock.
+func TestLoomRunLock_UnanchoredEqualsWorktreePath(t *testing.T) {
+	l := &lyxcwd.Location{
+		HubPath:      filepath.Join("home", "user", "repo-HUB"),
+		WorktreeName: "repo",
+		AnchorRel:    ".",
+	}
+
+	want := filepath.Join(l.WorktreePath(), lyxdirs.DotLyxDirName, "loom", "run.lock")
+	if got := LoomRunLock(l); got != want {
+		t.Errorf("LoomRunLock() = %q; want %q", got, want)
 	}
 }

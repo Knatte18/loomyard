@@ -10,7 +10,9 @@ import (
 )
 
 // Rules computes the tmux window_layout string and focus pane id for strands laid out within box.
-// It rejects any strand declaring AnchorOwnWindow and repairs corrupt cyclic parent chains.
+// It rejects any strand declaring AnchorOwnWindow, repairs corrupt cyclic parent chains, and drops
+// any strand whose PaneID is already spoken for by the header band or by an earlier strand
+// (see removeDuplicatePaneCells for why emitting one pane number twice is destructive).
 // When p.Header.PaneID is non-empty, Rules carves a fixed-height top band for the header before
 // laying out the stack below.
 // paneOrder resequences cells to match physical pane position;
@@ -25,7 +27,7 @@ func Rules(strands []Strand, box Box, p Params, paneOrder []string) (layout stri
 	// Repair any corrupt cyclic parent table before depth-based ordering,
 	// so a bad persisted record can never hang layout.
 	fixed := breakCycles(strands)
-	stack := partitionByAnchor(fixed)
+	stack := removeDuplicatePaneCells(partitionByAnchor(fixed), p.Header.PaneID)
 	ordered := orderStack(stack)
 
 	hasHeader := p.Header.PaneID != ""

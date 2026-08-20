@@ -17,6 +17,16 @@
 // computing a layout; render never imports reedengine, so the import graph
 // stays acyclic (reedcli -> reedengine -> render).
 //
+// reedengine is told its geometry as a Geometry value (geometry.go) and
+// derives none of it. internal/lyxcwd and internal/fabricengine are
+// consequently absent from this package's DIRECT production imports;
+// hubgeom.ReedGeometry is the hub-mode teller that builds a Geometry from a
+// resolved *lyxcwd.Location for every hub-mode caller. Stated honestly, that
+// is a direct-import fact and not a transitive one: internal/lyxcwd is still
+// in `go list -deps ./internal/reedengine`, reached through internal/logger,
+// so what the absence buys is that reed never RESOLVES its own coordinates —
+// not isolation from the package that does.
+//
 // One additional invariant this package enforces: exactly one named tmux
 // server per hub. The server name is derived deterministically from the hub
 // path (ServerName), so every worktree under the same hub locates and shares
@@ -86,6 +96,13 @@
 // semantics for each. The engine may also pass the standard tmux -v/-vv
 // verbose-logging global flags on the server-spawning invocation, opt-in
 // via the debug_log config key; the configured binary must accept them.
+// The capability probe (probe.go) additionally issues -V and
+// list-commands, and those two differ in a way that matters: -V is
+// answered CLIENT-SIDE and contacts no server, while list-commands is
+// answered BY a server and starts one if none is running. Both are
+// therefore issued through TmuxCmd, carrying reed's own -L socket, so the
+// probe can never start a server on the operator's GLOBAL DEFAULT socket
+// — see probeCapabilityLocked for what that cost while it did.
 //
 // Load-bearing behavioral assumptions, each with the rationale that makes it
 // load-bearing:
@@ -134,6 +151,35 @@
 //     (removalEmptiedSession, strand.go) only when the session is
 //     confirmed gone, rather than the fix mispredicting a corpse
 //     universally, as an earlier version of this assumption did.
+//   - Silent session-name rewriting (server.go's validateToldTmuxIdentity):
+//     tmux does not REJECT a session name containing '.' or ':' — it
+//     rewrites each to '_', creates the session under the rewritten name,
+//     and exits 0 (verified live, tmux 3.6). The same silence covers two
+//     further classes: a backslash is DOUBLED (vis(3) doubles '\' unless
+//     VIS_NOSLASH is passed, which tmux does not — "bs\slash" becomes
+//     "bs\\slash"), and every ASCII control character, DEL, and every
+//     invalid-UTF-8 byte is vis-encoded into a multi-character escape (TAB
+//     becomes the two literal characters `\t`, 0xFF becomes `\377` —
+//     all verified live, tmux 3.6), also with exit 0; valid multi-byte
+//     UTF-8 passes through verbatim. Those three classes are the whole
+//     rewrite surface: an exhaustive round-trip sweep of every printable
+//     ASCII byte through new-session and an exact-match has-session on
+//     tmux 3.6 finds exactly '.', ':' and '\'. Because every session
+//     target this package issues is the
+//     exact-match "=<name>" form above, the created session is then
+//     unreachable by the very name that created it: the boot loop polls a
+//     target that can never match, and the rewritten session is left
+//     squatting on the SHARED per-hub server where no reed verb can
+//     address or tear it down. The told identity is therefore validated at
+//     withOpLock — the one chokepoint every public op passes — and a name
+//     tmux would rewrite is REFUSED rather than sanitized: substituting
+//     here would map sibling worktrees "svc.v2" and "svc_v2" onto one
+//     session and have each adopt the other's panes.
+//     contract_integration_test.go's
+//     TestSessionNameRewriteIsSilentAndExactTargetsMissIt pins the wire
+//     behavior; the socket key is the mirror-image case (its readable half
+//     carries no identity, so ServerName substitutes separators out at the
+//     derivation instead of refusing).
 //   - The -l leading-dash send-keys bug (spawn.go): send-keys -l parses a
 //     '-'-prefixed literal argument as flags and silently drops it (a "--"
 //     separator does not stop this parsing), so sendKeysLiteralArg prefixes
@@ -145,6 +191,54 @@
 //     zombie that no later add can host a strand in — anyPlacedStrand
 //     refuses to call select-layout at all when no strand would place a
 //     present pane.
+//   - Pane ids are server-global and NOT stable across a server rebirth
+//     (generation.go): tmux hands out %0, %1, … per SERVER, not per session,
+//     and the counter restarts at %0 when the server dies. A persisted pane
+//     id therefore does not identify a pane — it identifies a pane within one
+//     server generation — and a reed.json that outlives its generation names
+//     panes that exist and belong to something else. list-panes cannot tell
+//     the two apart, so reconcile cannot either: "present" is the only
+//     question it can ask. reed.json therefore records the generation its
+//     bindings were minted in (session_id + server pid + session_created,
+//     jointly unique and individually immutable over a session's life) and
+//     discards every binding whose generation is not the live one, which
+//     generalizes Up/Resume's `booted` clear to the tables that arrive
+//     BETWEEN boots (R5 review findings R5-F2/R5-F5). The one disagreement
+//     that is refused rather than cleared is a recorded session still RUNNING
+//     on this socket under a name that is not this worktree's — a renamed
+//     worktree or a copied .lyx — because carrying on there launches a second
+//     copy of every strand and leaves the first unreachable.
+//   - display-message does NOT exit 1 for an absent session (generation.go):
+//     unlike has-session and list-panes, which exit 1 for a `-t` target that
+//     names no session, display-message exits 0 and expands every
+//     session-scoped format to empty while the server-global #{pid} still
+//     fills — `-t '=nosuch:' '#{session_id}|#{pid}|#{session_created}'`
+//     answers "|2912080|" with exit 0 (verified live, tmux 3.6), and it does
+//     not fall back to a current session when several exist. The generation
+//     probe's absent case therefore surfaces as parsePaneGeneration's
+//     empty-field rejection rather than as a tmux error, and an error from
+//     that probe means the round trip could not be RUN, never that the
+//     session is gone. The still-running-orphan refusal answers existence
+//     with list-sessions for exactly this reason and refuses a listed session
+//     it cannot identify, rather than failing open on it (R6 review finding
+//     R6-F2).
+//   - Duplicate-pane-cell session destruction (render/policy.go's
+//     removeDuplicatePaneCells, reconcile.go's clearConflictingPaneBindings):
+//     the twin of the empty-layout hazard above, reached from the opposite
+//     direction. select-layout likewise does not REJECT a layout string that
+//     names one pane TWICE — it accepts it (exit 0), assigns cells
+//     positionally, and destroys every pane the resulting short cell list no
+//     longer covers (verified live, tmux 3.6: one `up` reduced a two-pane
+//     session to one and reported ok:true). Nothing reed constructs can
+//     produce such a table — planPaneTarget never adopts or splits the header
+//     and validateSplitCreatedNewPane guarantees a fresh id — so the source
+//     is always a CORRUPT persisted table: a restored backup, a hand-edited
+//     or partially-restored reed.json (R5 review finding R5-F3). It is
+//     guarded twice on purpose: the engine clears such bindings at the single
+//     load chokepoint, and render.Rules independently drops a duplicated pane
+//     cell so the destructive string is unreachable from inside that pure,
+//     total function's own contract rather than only by a caller remembering
+//     to sanitize first.
 //   - Async kill-server / probe-always-exits-0 (lifecycle.go): kill-server
 //     returns before the server process (and its "__warm__" helper) have
 //     actually released the -L socket, and no probe — list-sessions,

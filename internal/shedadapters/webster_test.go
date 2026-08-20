@@ -37,7 +37,7 @@ func (f *fakeWebsterRunner) run(deps websterengine.RunDeps, opts websterengine.R
 
 func TestWebsterProducer_OutcomeDone(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -59,7 +59,7 @@ func TestWebsterProducer_OutcomeDone(t *testing.T) {
 
 func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "stuck", StuckReason: "cards ran out", BatchesDone: 3}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -77,7 +77,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 
 func TestWebsterProducer_OutcomePaused(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "paused"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -89,7 +89,7 @@ func TestWebsterProducer_OutcomePaused(t *testing.T) {
 
 func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "WEIRD"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -106,7 +106,7 @@ func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 
 func TestWebsterProducer_MasterAskingError(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	askingErr := &websterengine.MasterAskingError{SessionID: "sess-1", RunDir: "/tmp/run", Message: "which model?"}
 	fake := &fakeWebsterRunner{err: askingErr}
 	p := NewWebsterProducer("loom", fake.run, deps)
@@ -138,7 +138,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			deps := websterengine.RunDeps{WebsterDir: dir}
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 			fake := &fakeWebsterRunner{err: tt.err}
 			p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -155,7 +155,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 
 func TestWebsterProducer_MasterAskingMatchedViaErrorsIs(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	// Wrapped with %w so the adapter must use errors.Is against ErrMasterAsking, not a string match.
 	wrapped := &websterengine.MasterAskingError{SessionID: "sess-1", RunDir: "/tmp/run", Message: "hmm"}
 	fake := &fakeWebsterRunner{err: wrapped}
@@ -177,7 +177,7 @@ func TestWebsterProducer_MasterAskingMatchedViaErrorsIs(t *testing.T) {
 
 func TestWebsterProducer_FreshIsAlwaysFalse(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -193,7 +193,7 @@ func TestWebsterProducer_FreshIsAlwaysFalse(t *testing.T) {
 
 func TestWebsterProducer_AlreadyCancelledContext(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
 	p := NewWebsterProducer("loom", fake.run, deps)
 
@@ -214,7 +214,7 @@ func TestWebsterProducer_AlreadyCancelledContext(t *testing.T) {
 
 func TestWebsterProducer_CancelledDuringRun_OutcomeDoneStillSucceeds(t *testing.T) {
 	dir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: dir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &fakeWebsterRunner{
 		result:    websterengine.RunResult{Outcome: "done"},
@@ -248,7 +248,7 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			deps := websterengine.RunDeps{WebsterDir: dir}
+			deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 			ctx, cancel := context.WithCancel(context.Background())
 			fake := &fakeWebsterRunner{result: tt.result, err: tt.err, duringRun: cancel}
 			p := NewWebsterProducer("loom", fake.run, deps)
@@ -275,7 +275,7 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 func TestWebsterProducer_NoBridgeInstalled(t *testing.T) {
 	scratchDir := t.TempDir()
 	websterDir := t.TempDir()
-	deps := websterengine.RunDeps{WebsterDir: websterDir, ScratchDir: scratchDir}
+	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: websterDir, ScratchDir: scratchDir}}
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &fakeWebsterRunner{
 		result:    websterengine.RunResult{Outcome: "stuck", StuckReason: "x"},

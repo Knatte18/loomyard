@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -81,11 +82,13 @@ func TeardownHubForTest(cwd, hubPath string, seed func(hubPath string) error, ca
 // covering the gate's fabric-hub ownership kind.
 var LooksLikeHubForTest = looksLikeHub
 
-// IsWarpCheckoutForTest re-exports isWarpCheckout for package fabricengine_test integration tests
-// covering the gate's warp-checkout ownership kind, which ResetHard's own exported entry point
-// cannot exercise with an arbitrary (repoDir, target) pair since it always calls it with both equal
-// to the same f.warpPath.
-var IsWarpCheckoutForTest = isWarpCheckout
+// IsWarpCheckoutForTest re-exports isAnyWorktreeOf (renamed from isWarpCheckout when
+// ownedWeftCheckout started sharing its repo-agnostic predicate) for package fabricengine_test
+// integration tests covering the gate's warp-checkout ownership kind, which ResetHard's own exported
+// entry point cannot exercise with an arbitrary (repoDir, target) pair since it always calls it with
+// both equal to the same f.warpPath. The exported seam name is unchanged, so
+// destructivegaps_integration_test.go's TestOwnership_WarpCheckoutKind needs no edit.
+var IsWarpCheckoutForTest = isAnyWorktreeOf
 
 // IsRegisteredLinkedWorktreeInForTest re-exports isRegisteredLinkedWorktreeIn for package
 // fabricengine_test integration tests covering the gate's registered-linked-worktree ownership
@@ -438,3 +441,106 @@ const HookSentinelForTest = hookSentinel
 // warplayout_test.go's direct comparison of its spawn-free hub-sibling fast path against the
 // spawning lyxcwd.ResolveWorktree fallback after its package flip to fabricengine_test.
 var WarpLayoutForForTest = warpLayoutFor
+
+// MergeStateForTest mirrors mergeState's fields (production plumbing: mergestate.go), for
+// mergestate_integration_test.go's roundtrip assertions — the unexported record type itself is
+// never exported, per this batch's owner-set carve-out, so tests build and compare this exported
+// mirror instead.
+type MergeStateForTest struct {
+	Verb          string
+	Source        string
+	Squash        bool
+	Message       string
+	WarpStart     string
+	WeftStart     string
+	WarpOutcome   string
+	WeftOutcome   string
+	WarpCommitted string
+	WeftCommitted string
+	StartedAt     time.Time
+}
+
+// toMergeState converts a MergeStateForTest into the package-private mergeState saveMergeState
+// expects.
+func (m MergeStateForTest) toMergeState() *mergeState {
+	return &mergeState{
+		Verb:          m.Verb,
+		Source:        m.Source,
+		Squash:        m.Squash,
+		Message:       m.Message,
+		WarpStart:     m.WarpStart,
+		WeftStart:     m.WeftStart,
+		WarpOutcome:   m.WarpOutcome,
+		WeftOutcome:   m.WeftOutcome,
+		WarpCommitted: m.WarpCommitted,
+		WeftCommitted: m.WeftCommitted,
+		StartedAt:     m.StartedAt,
+	}
+}
+
+// fromMergeState converts a *mergeState (or nil) into (MergeStateForTest, found).
+func fromMergeState(st *mergeState) (MergeStateForTest, bool) {
+	if st == nil {
+		return MergeStateForTest{}, false
+	}
+	return MergeStateForTest{
+		Verb:          st.Verb,
+		Source:        st.Source,
+		Squash:        st.Squash,
+		Message:       st.Message,
+		WarpStart:     st.WarpStart,
+		WeftStart:     st.WeftStart,
+		WarpOutcome:   st.WarpOutcome,
+		WeftOutcome:   st.WeftOutcome,
+		WarpCommitted: st.WarpCommitted,
+		WeftCommitted: st.WeftCommitted,
+		StartedAt:     st.StartedAt,
+	}, true
+}
+
+// SaveMergeStateForTest re-exports f.saveMergeState (production plumbing: mergestate.go), taking
+// the exported mirror type so callers outside this package never need the unexported mergeState
+// name.
+func SaveMergeStateForTest(f *Fabric, st MergeStateForTest) error {
+	return f.saveMergeState(st.toMergeState())
+}
+
+// LoadMergeStateForTest re-exports f.loadMergeState (production plumbing: mergestate.go), returning
+// the exported mirror type and a found bool in place of a nil-or-populated pointer.
+func LoadMergeStateForTest(f *Fabric) (MergeStateForTest, bool, error) {
+	st, err := f.loadMergeState()
+	if err != nil {
+		return MergeStateForTest{}, false, err
+	}
+	got, found := fromMergeState(st)
+	return got, found, nil
+}
+
+// DeleteMergeStateForTest re-exports f.deleteMergeState (production plumbing: mergestate.go).
+func DeleteMergeStateForTest(f *Fabric) error {
+	return f.deleteMergeState()
+}
+
+// MergeRecordExistsForTest re-exports f.mergeRecordExists (production plumbing: mergestate.go).
+func MergeRecordExistsForTest(f *Fabric) (bool, error) {
+	return f.mergeRecordExists()
+}
+
+// ForeignMergeStatePresentForTest re-exports f.foreignMergeStatePresent (production plumbing:
+// mergestate.go).
+func ForeignMergeStatePresentForTest(f *Fabric) (bool, error) {
+	return f.foreignMergeStatePresent()
+}
+
+// MergeStatePathForTest re-exports f.mergeStatePath (production plumbing: mergestate.go), for
+// mergestate_integration_test.go's assertion that the record lands at <weft gitdir>/fabric-merge.json.
+func MergeStatePathForTest(f *Fabric) (string, error) {
+	return f.mergeStatePath()
+}
+
+// ResetMergeSidesForTest re-exports f.resetMergeSides (production plumbing: destroy.go), for
+// mergestate_integration_test.go's direct assertion on the gated two-sided merge-abort reset —
+// driven without going through a merge verb, none of which exist yet in this batch.
+func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA, weftSHA string) error {
+	return f.resetMergeSides(rec, warpSHA, weftSHA)
+}

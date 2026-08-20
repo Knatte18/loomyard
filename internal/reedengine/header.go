@@ -13,7 +13,7 @@ func (e *Engine) HeaderText() (string, error) {
 		template = HeaderTemplate()
 	}
 
-	ctx := tokenvocab.Ctx{Layout: e.layout}
+	ctx := tokenvocab.Ctx{RepoName: e.geom.RepoName, HubPath: e.geom.HubPath}
 	rendered, err := tokenvocab.Render(template, ctx)
 	if err != nil {
 		return "", err

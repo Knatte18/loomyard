@@ -8,9 +8,9 @@
 // perch never routes a round through its own Shuttle.
 // Engine is fabric-blind and geometry-blind: it never imports fabricengine and never constructs a
 // _lyx path itself;
-// it operates on a caller-supplied absolute runDir (the *lyxcwd.Location it holds is used only to
-// resolve the gate command's working directory, layout.WorktreePath(), which becomes
-// treadleengine.Profile.GateDir).
+// it operates on a caller-supplied absolute runDir (the Geometry it holds carries the gate command's
+// working directory, geom.GateDir, which becomes treadleengine.Profile.GateDir, alongside an
+// AnchorPath the engine itself never reads).
 
 package perchengine
 
@@ -19,7 +19,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
 
@@ -49,18 +48,18 @@ type Engine struct {
 	burler         Burler
 	shuttle        Shuttle
 	cfg            Config
-	layout         *lyxcwd.Location
+	geom           Geometry
 	pauseRequested func() bool
 	runCommand     CommandRunner
 }
 
 // New returns an Engine ready to run one perch block's round loop.
-func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, opts Options) *Engine {
+func New(burler Burler, shuttle Shuttle, cfg Config, geom Geometry, opts Options) *Engine {
 	return &Engine{
 		burler:         burler,
 		shuttle:        shuttle,
 		cfg:            cfg,
-		layout:         layout,
+		geom:           geom,
 		pauseRequested: opts.PauseRequested,
 		runCommand:     opts.RunCommand,
 	}
@@ -71,14 +70,14 @@ func New(burler Burler, shuttle Shuttle, cfg Config, layout *lyxcwd.Location, op
 // It computes the block's identity hash (ProfileHash, identity.go) over p exactly as supplied,
 // validates p against e.cfg (p.validate, profile.go — unchanged), builds the burler adapter
 // (adapter.go) closing over p's content fields, builds a treadleengine.Profile from p's resolved
-// gate/caps/tuning fields (GateDir: e.layout.WorktreePath(); Gate converted field-for-field), and
+// gate/caps/tuning fields (GateDir: e.geom.GateDir; Gate converted field-for-field), and
 // delegates to treadleengine.New("perch", adapter, e.shuttle, ...).Run — then maps the
 // treadleengine.Result back onto perch's own Result/RoundSummary.
 // Run stays fabric-blind and geometry-blind and constructs neither path itself — runDir,
 // scratchDir, and stencilsDir are all caller-supplied absolutes; treadleengine.Engine.Run owns
 // creating runDir and scratchDir, so Run must not duplicate that here. stencilsDir is the absolute
 // stencils directory treadleengine's judge and utility prompts read from at call time, resolved by
-// perchcli (the caller that already holds the *lyxcwd.Location) via fabricengine.StencilsDir.
+// perchcli, the caller that holds the hub path, via fabricengine.StencilsDir.
 func (e *Engine) Run(p Profile, runDir, scratchDir, stencilsDir string) (Result, error) {
 	hash, err := ProfileHash(p)
 	if err != nil {
@@ -98,7 +97,7 @@ func (e *Engine) Run(p Profile, runDir, scratchDir, stencilsDir string) (Result,
 			Command: p.Gate.Command,
 			Timeout: p.Gate.Timeout,
 		},
-		GateDir:     e.layout.WorktreePath(),
+		GateDir:     e.geom.GateDir,
 		RoundCaps:   p.RoundCaps,
 		JudgeModel:  p.JudgeModel,
 		JudgeEffort: p.JudgeEffort,

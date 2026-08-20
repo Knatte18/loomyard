@@ -99,6 +99,8 @@ var destructiveGuardAllowlist = map[string]string{
 		"same function created moments earlier",
 	"internal/fabricengine/index.go": "refreshCorrIndexAfterSwitch's os.Remove(path) deliberately deletes the correspondence-index " +
 		"cache before rebuilding it, so a failed refresh misses honestly rather than answering cross-branch",
+	"internal/fabricengine/mergestate.go": "deleteMergeState's os.Remove(path) deletes fabric's own merge-state record inside the " +
+		"weft gitdir, fabric-internal metadata, never operator content",
 	"internal/fabricengine/junction.go": "two audited sites, both removing a directory the same call just emptied by rename and " +
 		"both using os.Remove rather than RemoveAll, so the OS itself refuses the moment anything is left inside: " +
 		"adoptDotLyxContent's os.Remove(link) for the warp-side `.lyx` root, and mergeAdoptionTree's os.Remove(srcPath) for each " +
@@ -165,6 +167,8 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"PullResult", "internal/fabricengine/pull.go"},
 	{"CloneResult", "internal/fabricengine/clone.go"},
 	{"PushResult", "internal/fabricengine/weftgit.go"},
+	{"MergeResult", "internal/fabricengine/merge.go"},
+	{"StageResult", "internal/fabricengine/mergestage.go"},
 }
 
 // destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types

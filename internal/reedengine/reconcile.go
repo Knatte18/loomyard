@@ -119,6 +119,55 @@ func clearAllPaneBindings(st *ReedState) {
 	}
 }
 
+// clearConflictingPaneBindings clears every strand PaneID that names a pane the strand cannot
+// possibly own — the header pane, or a pane an earlier strand in the table already claims — and
+// returns the GUIDs it cleared, in table order.
+//
+// A pane has exactly one owner. reed's own construction paths already guarantee that
+// (planPaneTarget never adopts or splits the header, validateSplitCreatedNewPane refuses an id that
+// already existed), so a table violating it is a CORRUPT table, not one reed produced: a stale
+// reed.json restored over a newer session, a hand-edited file, a partially restored backup. Every
+// such table reaches this package through LoadState, so the repair belongs at that one load
+// chokepoint rather than at each of the several places a duplicate does damage.
+//
+// The damage is worth naming, because it is neither theoretical nor loud (R5 review finding R5-F3,
+// both shapes reproduced live on tmux 3.6):
+//   - A strand sharing the HEADER's pane id makes planLayout place that pane twice — once as
+//     bandHeader's fixed top cell, once inside the stack body — and tmux answers a layout string
+//     whose cell count exceeds the panes it can name by DESTROYING the panes it has no cell for.
+//     Observed: a single `lyx reed up` reduced a two-pane session to one, reported ok:true, and then
+//     reported the strand live:true against the header pane running `lyx reed header --blocking`.
+//   - Two strands sharing one pane id leave the second strand's REAL pane bound to nobody, so
+//     planReconcile's deterministic untracked reap kills it. Observed: `up` reported ok:true and
+//     strands:2 while destroying the second strand's pane and its running process, after which
+//     status reported both strands live on the one surviving pane.
+//
+// First writer wins, so the repair is deterministic and order-stable rather than dependent on which
+// conflict is noticed first. Clearing (rather than refusing the op) is what makes it self-healing:
+// a cleared strand is simply not-live, which resume already knows how to rebuild, whereas a refusal
+// would wedge the worktree on exactly the corruption this exists to survive.
+func clearConflictingPaneBindings(st *ReedState) []string {
+	claimed := make(map[string]bool, len(st.Strands)+1)
+	if st.HeaderPaneID != "" {
+		claimed[st.HeaderPaneID] = true
+	}
+
+	var clearedGUIDs []string
+	for i := range st.Strands {
+		paneID := st.Strands[i].PaneID
+		if paneID == "" {
+			continue
+		}
+		if claimed[paneID] {
+			st.Strands[i].PaneID = ""
+			clearedGUIDs = append(clearedGUIDs, st.Strands[i].GUID)
+			continue
+		}
+		claimed[paneID] = true
+	}
+	return clearedGUIDs
+}
+
 // reconcileLocked reconciles the persisted table against live panes.
 // Kills panes per planReconcile's schedule; clears bindings for gone panes.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane) (killed []string, err error) {

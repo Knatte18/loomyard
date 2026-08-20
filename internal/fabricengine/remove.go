@@ -60,6 +60,27 @@ func (t *Topology) Remove(l *lyxcwd.Location, slug string, force bool) (res Remo
 		return RemoveResult{}, fmt.Errorf("worktree %q not found", target)
 	}
 
+	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
+	// force answers dirtiness only, never a live merge record.
+	blocked, err := mergeBlocksMutation(target, WeftWorktreePath(l, slug))
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	if blocked {
+		return RemoveResult{}, &ErrMergeInProgress{}
+	}
+
+	// Refuse for the other direction too: this pair may be idle itself while some OTHER pair in the
+	// hub is mid-merge ON its branches. Removing it there deletes the weft branch that merge is
+	// resolving against, so an abort would leave the source work reachable only from the remote.
+	inFlight, err := mergeSourceInFlight(l, warpBranch)
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	if inFlight {
+		return RemoveResult{}, &ErrMergeInProgress{}
+	}
+
 	// removePortal and removeLaunchers are best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
 	// came from.

@@ -283,7 +283,7 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 		t.Fatalf("mkdir launcher dir: %v", err)
 	}
 	ext := launcherExt(runtime.GOOS)
-	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
+	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext, "run" + ext} {
 		if err := os.WriteFile(filepath.Join(launcherDir, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
 			t.Fatalf("seed %s: %v", name, err)
 		}
@@ -304,6 +304,9 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(launcherDir, "ide"+ext)); !os.IsNotExist(err) {
 		t.Errorf("removeLaunchers() left ide%s in place; want fabric's own scripts removed", ext)
+	}
+	if _, err := os.Stat(filepath.Join(launcherDir, "run"+ext)); !os.IsNotExist(err) {
+		t.Errorf("removeLaunchers() left run%s in place; want fabric's own scripts removed", ext)
 	}
 }
 

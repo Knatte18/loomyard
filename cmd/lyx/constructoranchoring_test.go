@@ -1,8 +1,10 @@
 // constructoranchoring_test.go pins every constructor batch 5 relocated out of internal/lyxcwd into
-// its owning module to the anchoring table the overview's Shared Decisions record: there is no
-// single base.
+// its owning module, and every told-anchor path function an owning module declares outright (taking
+// a plain anchor string rather than a *lyxcwd.Location — planparser.PlanDir/PlanOverview,
+// pattern.File, and, as of this batch, perchengine.RunsDir/ScratchDir), to the anchoring table the
+// overview's Shared Decisions record: there is no single base.
 // It lives in cmd/lyx because this is the only package that may import every owning module at once
-// (loomengine, websterengine, perchengine, scoutengine, pattern, logger, reedengine,
+// (loomengine, websterengine, perchengine, scoutengine, pattern, logger, fabricengine,
 // planparser).
 // Every case here is pure filepath.Join arithmetic -- no subprocess is spawned and no fixture tree
 // is copied -- so this file stays untagged, per the Test Tier Purity Invariant.
@@ -14,12 +16,13 @@
 // filepath.Join computed independently in this file.
 // For the subpath-anchored fixture, every worktree-level constructor -- the _lyx-durable group and
 // the .lyx group alike -- moves down by AnchorRel, since this batch re-anchors the whole .lyx group
-// onto AnchorPath; only reedengine.HubLogsDir (hub-anchored through the board, one server per hub)
+// onto AnchorPath; only fabricengine.HubLogsDir (hub-anchored through the board, one server per hub)
 // stays byte-identical.
 //
 // As of this batch there are two groups, not three: the _lyx-durable group, and the .lyx group in
-// full (loomengine.LoomStatusLock, websterengine.PromptsDir/ScratchDir,
-// perchengine.ScratchDir, logger.LogsDir, scoutengine.DaemonStateFile/DaemonLock) -- all
+// full (loomengine.LoomStatusLock, loomengine.LoomDriverLog, loomengine.LoomBootstrapLock,
+// websterengine.PromptsDir/ScratchDir, perchengine.ScratchDir, logger.LogsDir,
+// scoutengine.DaemonStateFile/DaemonLock) -- all
 // AnchorPath-anchored, so every worktree-level .lyx entry sits under exactly one root:
 // filepath.Join(anchor, ".lyx"). A prior slice split this into an already-migrated and a
 // not-yet-migrated subset, each with its own base local; this batch collapses that split, since
@@ -31,6 +34,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -38,7 +42,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -68,32 +71,44 @@ func TestConstructorAnchoring_Unanchored(t *testing.T) {
 	lyxBase := filepath.Join(anchor, lyxdirs.LyxDirName)
 
 	// _lyx-durable group: AnchorPath-anchored.
-	assertPath(t, "loomengine.PlanDir", loomengine.PlanDir(l), filepath.Join(lyxBase, planparser.PlanDirName))
-	assertPath(t, "loomengine.PlanOverview", loomengine.PlanOverview(l), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
+	//
+	// The two planparser rows below, the pattern.File row, and the two perchengine rows, still pin the
+	// join arithmetic and the _lyx-vs-.lyx group placement, but because they pass l.AnchorPath() in and
+	// compare against an anchor-derived expectation, they are tautological with respect to anchoring
+	// and can no longer catch a production call site that passes the wrong root. That proof now lives
+	// in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored
+	// PersistentPreRunE case in internal/webstercli/verbs_test.go,
+	// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go, and
+	// TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd in the perchcli integration suite.
+	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
+	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "loom", "status.json"))
-	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
-	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
-	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
-	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
+	assertPath(t, "websterengine.Dir", websterengine.Dir(l.AnchorPath()), filepath.Join(lyxBase, "webster"))
+	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath()), filepath.Join(lyxBase, "webster", "reports"))
+	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath()), filepath.Join(lyxBase, "perch"))
+	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
 	// .lyx group, now collapsed into one AnchorPath-anchored base: every
 	// worktree-level .lyx entry, ephemeral and never git-tracked, joins onto
 	// dotLyxBase.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "loom", "status.json.lock"))
-	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxBase, "webster", "prompts"))
-	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxBase, "webster"))
-	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l), filepath.Join(dotLyxBase, "perch"))
+	assertPath(t, "loomengine.LoomRunLock", loomengine.LoomRunLock(l), filepath.Join(dotLyxBase, "loom", "run.lock"))
+	assertPath(t, "loomengine.LoomDriverLog", loomengine.LoomDriverLog(l), filepath.Join(dotLyxBase, "loom", "driver.log"))
+	assertPath(t, "loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l), filepath.Join(dotLyxBase, "loom", "bootstrap.lock"))
+	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
+	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
+	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
-	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
-	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
+	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
+	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// HubPath-anchored through the board: HubLogsDir alone, so one reed server per hub
 	// resolves to one deterministic place.
-	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, "_board", ".lyx", "logs"))
+	assertPath(t, "fabricengine.HubLogsDir", fabricengine.HubLogsDir(l.HubPath), filepath.Join(hub, "_board", ".lyx", "logs"))
 }
 
 // TestConstructorAnchoring_SubpathAnchored asserts the anchor-aware move: every worktree-level
@@ -117,31 +132,43 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 
 	// _lyx-durable group: moves down by AnchorRel, exactly like the .lyx
 	// group below -- both groups now share one anchoring rule.
-	assertPath(t, "loomengine.PlanDir", loomengine.PlanDir(l), filepath.Join(lyxBase, planparser.PlanDirName))
-	assertPath(t, "loomengine.PlanOverview", loomengine.PlanOverview(l), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
+	//
+	// The two planparser rows below, the pattern.File row, and the two perchengine rows, still pin the
+	// join arithmetic and the _lyx-vs-.lyx group placement, but because they pass l.AnchorPath() in and
+	// compare against an anchor-derived expectation, they are tautological with respect to anchoring
+	// and can no longer catch a production call site that passes the wrong root. That proof now lives
+	// in the subpath-anchored PlanSpec case in internal/loomengine/plan_test.go, the subpath-anchored
+	// PersistentPreRunE case in internal/webstercli/verbs_test.go,
+	// TestPlanSpec_PatternDirectiveAnchoredUnderAnchorPath in internal/loomengine/plan_test.go, and
+	// TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd in the perchcli integration suite.
+	assertPath(t, "planparser.PlanDir", planparser.PlanDir(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName))
+	assertPath(t, "planparser.PlanOverview", planparser.PlanOverview(l.AnchorPath()), filepath.Join(lyxBase, planparser.PlanDirName, "00-overview.md"))
 	assertPath(t, "loomengine.DiscussionDir", loomengine.DiscussionDir(l), filepath.Join(lyxBase, "discussion"))
 	assertPath(t, "loomengine.DiscussionDecisionRecord", loomengine.DiscussionDecisionRecord(l), filepath.Join(lyxBase, "discussion", "decision-record.md"))
 	assertPath(t, "loomengine.DiscussionSupportLog", loomengine.DiscussionSupportLog(l), filepath.Join(lyxBase, "discussion", "support-log.md"))
 	assertPath(t, "loomengine.LoomStatusFile", loomengine.LoomStatusFile(l), filepath.Join(lyxBase, "loom", "status.json"))
-	assertPath(t, "websterengine.Dir", websterengine.Dir(l), filepath.Join(lyxBase, "webster"))
-	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l), filepath.Join(lyxBase, "webster", "reports"))
-	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l), filepath.Join(lyxBase, "perch"))
-	assertPath(t, "pattern.FileHere", pattern.FileHere(l), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
+	assertPath(t, "websterengine.Dir", websterengine.Dir(l.AnchorPath()), filepath.Join(lyxBase, "webster"))
+	assertPath(t, "websterengine.ReportsDir", websterengine.ReportsDir(l.AnchorPath()), filepath.Join(lyxBase, "webster", "reports"))
+	assertPath(t, "perchengine.RunsDir", perchengine.RunsDir(l.AnchorPath()), filepath.Join(lyxBase, "perch"))
+	assertPath(t, "pattern.File", pattern.File(l.AnchorPath()), filepath.Join(anchor, lyxdirs.LyxDirName, "PATTERN.md"))
 
 	// .lyx group: AnchorPath-anchored in full as of this batch, so every
 	// entry moves down by AnchorRel here too, just like the _lyx-durable
 	// group above.
 	dotLyxBase := filepath.Join(anchor, ".lyx")
 	assertPath(t, "loomengine.LoomStatusLock", loomengine.LoomStatusLock(l), filepath.Join(dotLyxBase, "loom", "status.json.lock"))
-	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l), filepath.Join(dotLyxBase, "webster", "prompts"))
-	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l), filepath.Join(dotLyxBase, "webster"))
-	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l), filepath.Join(dotLyxBase, "perch"))
+	assertPath(t, "loomengine.LoomRunLock", loomengine.LoomRunLock(l), filepath.Join(dotLyxBase, "loom", "run.lock"))
+	assertPath(t, "loomengine.LoomDriverLog", loomengine.LoomDriverLog(l), filepath.Join(dotLyxBase, "loom", "driver.log"))
+	assertPath(t, "loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l), filepath.Join(dotLyxBase, "loom", "bootstrap.lock"))
+	assertPath(t, "websterengine.PromptsDir", websterengine.PromptsDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster", "prompts"))
+	assertPath(t, "websterengine.ScratchDir", websterengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "webster"))
+	assertPath(t, "perchengine.ScratchDir", perchengine.ScratchDir(l.AnchorPath()), filepath.Join(dotLyxBase, "perch"))
 	assertPath(t, "logger.LogsDir", logger.LogsDir(l), filepath.Join(dotLyxBase, "logs"))
-	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
-	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l, "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
+	assertPath(t, "scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.json"))
+	assertPath(t, "scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go"), filepath.Join(dotLyxBase, "scout", "go", "daemon.lock"))
 
 	// Hub-anchored through the board: stays byte-identical, ignoring AnchorRel entirely.
-	assertPath(t, "reedengine.HubLogsDir", reedengine.HubLogsDir(l), filepath.Join(hub, "_board", ".lyx", "logs"))
+	assertPath(t, "fabricengine.HubLogsDir", fabricengine.HubLogsDir(l.HubPath), filepath.Join(hub, "_board", ".lyx", "logs"))
 
 	// Regression guard for the two-roots bug this whole re-anchoring exists
 	// to remove: every worktree-level .lyx constructor's result must have
@@ -153,13 +180,16 @@ func TestConstructorAnchoring_SubpathAnchored(t *testing.T) {
 	// left behind.
 	wrongRoot := filepath.Join(worktree, ".lyx")
 	dotLyxConstructors := map[string]string{
-		"loomengine.LoomStatusLock":   loomengine.LoomStatusLock(l),
-		"websterengine.PromptsDir":    websterengine.PromptsDir(l),
-		"websterengine.ScratchDir":    websterengine.ScratchDir(l),
-		"perchengine.ScratchDir":      perchengine.ScratchDir(l),
-		"logger.LogsDir":              logger.LogsDir(l),
-		"scoutengine.DaemonStateFile": scoutengine.DaemonStateFile(l, "go"),
-		"scoutengine.DaemonLock":      scoutengine.DaemonLock(l, "go"),
+		"loomengine.LoomStatusLock":    loomengine.LoomStatusLock(l),
+		"loomengine.LoomRunLock":       loomengine.LoomRunLock(l),
+		"loomengine.LoomDriverLog":     loomengine.LoomDriverLog(l),
+		"loomengine.LoomBootstrapLock": loomengine.LoomBootstrapLock(l),
+		"websterengine.PromptsDir":     websterengine.PromptsDir(l.AnchorPath()),
+		"websterengine.ScratchDir":     websterengine.ScratchDir(l.AnchorPath()),
+		"perchengine.ScratchDir":       perchengine.ScratchDir(l.AnchorPath()),
+		"logger.LogsDir":               logger.LogsDir(l),
+		"scoutengine.DaemonStateFile":  scoutengine.DaemonStateFile(l.AnchorPath(), "go"),
+		"scoutengine.DaemonLock":       scoutengine.DaemonLock(l.AnchorPath(), "go"),
 	}
 	for name, got := range dotLyxConstructors {
 		if !strings.HasPrefix(got, dotLyxBase) {

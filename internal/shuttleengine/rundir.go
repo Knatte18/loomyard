@@ -1,7 +1,7 @@
 // rundir.go implements the per-run directory lifecycle: minting a run id, resolving the run-dir
-// root from Config/lyxcwd, persisting a run's RunState as run.json, looking a run up by its owning
-// strand guid, and sweeping orphaned run dirs left behind when a strand no longer exists in reed
-// state.
+// root from Config and a told anchor path, persisting a run's RunState as run.json, looking a run up
+// by its owning strand guid, and sweeping orphaned run dirs left behind when a strand no longer
+// exists in reed state.
 // Everything here is pure I/O over a caller-supplied root and caller-injected guids/clock — no
 // tmux, no claude, so it is testable without either.
 
@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -37,23 +36,23 @@ func newRunID() (string, error) {
 
 // runDirRoot resolves the directory under which every run's subdirectory is
 // created. cfg.RunDir wins when non-empty — a relative value is resolved
-// against layout.AnchorPath(), an already-absolute value is used verbatim.
+// against anchorPath, an already-absolute value is used verbatim.
 // When cfg.RunDir is empty, the default is
-// filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle"): the
+// filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle"): the
 // ephemeral, machine-local .lyx tree, built from lyxdirs.DotLyxDirName, never
 // a literal ".lyx" inline.
-// Both branches share layout.AnchorPath() as their base deliberately: one
+// Both branches share anchorPath as their base deliberately: one
 // function must never resolve against two different bases when
-// AnchorRel != ".", or a subpath-anchored repo would end up with two
+// the repo is subpath-anchored, or a subpath-anchored repo would end up with two
 // distinct run-dir roots depending on which branch a given cfg took.
-func runDirRoot(cfg Config, layout *lyxcwd.Location) string {
+func runDirRoot(cfg Config, anchorPath string) string {
 	if cfg.RunDir == "" {
-		return filepath.Join(layout.AnchorPath(), lyxdirs.DotLyxDirName, "shuttle")
+		return filepath.Join(anchorPath, lyxdirs.DotLyxDirName, "shuttle")
 	}
 	if filepath.IsAbs(cfg.RunDir) {
 		return cfg.RunDir
 	}
-	return filepath.Join(layout.AnchorPath(), cfg.RunDir)
+	return filepath.Join(anchorPath, cfg.RunDir)
 }
 
 // RunState is the persisted record for one shuttle run, written as <runDir>/run.json.
@@ -114,6 +113,15 @@ func loadRunState(runDir string) (RunState, bool, error) {
 // StrandGUID; unreadable/corrupt run.json files along the way are skipped,
 // not fatal, since a partially-written or already-swept dir must not abort
 // the scan for every other run.
+//
+// How many dirs were skipped that way is reported in the not-found error,
+// because the two situations need opposite remedies and the bare "no run
+// found" text conflated them: a guid this package genuinely never ran is a
+// caller mistake, while a guid whose run.json was truncated by a crash or a
+// full disk names a run whose AGENT MAY STILL BE LIVE in its pane — and
+// telling that operator their guid "is not a shuttle strand" (the wrapper
+// Runner.Interrupt/Send add) sends them away from a running agent. Proven
+// live: truncating a live run's run.json produced exactly that message.
 func findRunByStrand(root, guid string) (RunState, string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -123,6 +131,7 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 		return RunState{}, "", fmt.Errorf("read run dir root: %w", err)
 	}
 
+	unreadable := 0
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -131,7 +140,9 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 		rs, found, err := loadRunState(runDir)
 		if err != nil || !found {
 			// Skip: a corrupt or missing run.json here is not this scan's
-			// concern, only a mismatch on the guid we're looking for.
+			// concern, only a mismatch on the guid we're looking for. Count it
+			// so the not-found error can say the scan was incomplete.
+			unreadable++
 			continue
 		}
 		if rs.StrandGUID == guid {
@@ -139,16 +150,30 @@ func findRunByStrand(root, guid string) (RunState, string, error) {
 		}
 	}
 
+	if unreadable > 0 {
+		return RunState{}, "", fmt.Errorf(
+			"shuttle: no run found for strand %q, but %d run director%s under %s could not be read — if this guid names a run that is still live, its run.json is damaged rather than absent, and its agent is still in its pane; inspect those directories before treating the guid as unknown",
+			guid, unreadable, pluralDirectorySuffix(unreadable), root)
+	}
 	return RunState{}, "", fmt.Errorf("shuttle: no run found for strand %q", guid)
 }
 
+// pluralDirectorySuffix returns the suffix that completes "director" for count: "y" for one,
+// "ies" otherwise.
+func pluralDirectorySuffix(count int) string {
+	if count == 1 {
+		return "y"
+	}
+	return "ies"
+}
+
 // FindRun resolves guid to the RunState and run directory of the shuttle run whose strand it names,
-// deriving the run directory root from cfg/layout the same way Start does.
+// deriving the run directory root from cfg/anchorPath the same way Start does.
 // This is how the CLI's interrupt/send verbs (and any other out-of-process caller) turn an
 // operator-supplied guid into the run they need to act on, confirming the guid actually names a
 // shuttle run before ever touching reed.
-func FindRun(cfg Config, layout *lyxcwd.Location, guid string) (RunState, string, error) {
-	return findRunByStrand(runDirRoot(cfg, layout), guid)
+func FindRun(cfg Config, anchorPath, guid string) (RunState, string, error) {
+	return findRunByStrand(runDirRoot(cfg, anchorPath), guid)
 }
 
 // sweepOrphans removes every run directory under root whose run.json names

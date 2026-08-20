@@ -12,31 +12,7 @@ the LLM owns the thinking.
 
 The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is the separate, generic **`perch`** module (`lyx perch run|pause` — see the `internal/perchengine` package documentation) — the iterative review loop, independent of loom but used by it between every phase. `perch` composes `burler` (see the `internal/burlerengine` package documentation), the review+fix round worker. The `/ly-*` skill layer shrinks to thin human-facing wrappers over these. The everyday call has a convenience alias: **`lyx run` → `lyx loom run`**. (Naming: `lyx` is the binary, `loom`/`perch`/`burler` are modules, `ly-*` are the skills — see [overview.md](../../docs/overview.md).)
 
-**Naming note (later addition):** the generic outer phase-FSM this doc specifies — sequencing, resume, crash recovery, pause, the status-file contract — is being generalized for reuse by the Someday `Hardener` module under the name **`Shed`** (see [shed.md](shed.md));
-`loom` = `Shed` + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-The extraction has since happened: `shed.md` is now the authoritative description of `Shed`'s own generic mechanism, and this doc is the authoritative description of `loom`'s specific producer list plus the engine-level detail (crash recovery, pause, session bootstrap) `shed.md` does not restate.
-
-## Why — the inversion
-
-Today the LLM **is** the orchestrator: the `mill-start` / `mill-go` skills encode the entire machine in prose (every round, gate, branch, handoff, error path) because the model *executes* it by reading the text.
-That is why those skills are so long — the length is structural, not poor writing, as long as control flow lives in a prompt.
-
-Move the machine into Go and orchestration leaves *every* prompt.
-Each agent collapses to one job over a file contract:
-
-- Plan producer: "read `discussion.md`, write the `plan/` directory."
-  Nothing else.
-  The pinned plan format is [loom-plan-spec.md](../../contracts/specs/loom-plan-spec.md), a flat card list — see that doc for the schema `internal/planparser` implements against, `contracts/stencils/loom/loom-template-plan.md` for the compact spec the Plan producer itself reads, and `internal/websterengine`'s package documentation for the consumer that implements it.
-- Review handler: "read the plan (against `discussion.md`), write review + fixer-report."
-
-No agent knows about rounds, gates, N-caps, finalize,
-or the others.
-Each phase becomes a **pure function over files** — input file in, output file out — runnable and testable in isolation with a fixture.
-That independence is the real prize: it is also what makes resume, swapping, and parallelizing easy, because there is no hidden state in a context window to reconstruct.
-
-**The one discipline that delivers the independence:** the file contract must be the *only* channel between phases.
-The moment a phase needs "something from the conversation" that is not in its input file, the independence is gone and the prompts grow back.
-So the design effort moves from writing long skills to pinning the contracts (`discussion.md` → `plan/` → diff/report).
+`loom` = `Shed` (see [shed.md](shed.md), the generic outer phase-FSM: sequencing, resume, crash recovery, pause, the status-file contract) + `loom`'s own ordered producer list, given in full in [the producer table below](#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 ## The phase machine — a flat producer list, no predefined slots
 
@@ -58,17 +34,19 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
 | 7 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
 | 8 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
-| 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | batch grouping handed to `Webster` — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | batch grouping | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
 | 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 12 | `Finalize` | bespoke | mechanical | approved diff | merge-back, PR; shared by reference with `Hardener`'s own producer list, never by `Shed` special-casing it |
+| 12 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 13 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
 On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`) or escalates to a human — never "keep fixing symptoms."
 
 **Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
-Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the Finalize merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
+`Finalize` is not `loom`'s own (see rows 12–13 above and [internal/landingshed](../../internal/landingshed/doc.go)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
+Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the `Finalize` merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
 Each row's Input and Output, in the normal case, are *pointers* into a format-contract file defining the consumed/produced artifact's shape, never a restated copy of its content.
@@ -76,11 +54,12 @@ This is a producer-*authoring* convention, not a `Shed`-level mechanism — `She
 The thin-Input carve-out (a chain-head producer, human intent instead of an artifact) and thin-Output carve-out (a gate producer's pass/fail signal, or a terminal producer's no-downstream-consumer) apply to specific rows of the table above — see `shed.md`'s own section for both, stated once rather than restated here.
 Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
-**The phase-machine skeleton is testable against fake phases before real producers are wired in** — the same fake-tested approach `perch` used against a fake `burler` (see the `internal/burlerengine` package documentation), applied one level up: sequencing, resume, crash-recovery, and pause can all be verified against stub producers well before Discussion/Plan/Webster are real.
+**The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach `perch` used against a fake `burler`.
+Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
+`Publish` and `Finalize` (rows 12–13) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
+The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last per-producer prompt/rubric tasks (`loom: Discussion-Write producer`, `loom: Discussion-Review producer`, `loom: Plan-Write producer`, `loom: Plan-Review producer`, `loom: Webster-Review producer`), and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
-Open questions: the first — whether `Discussion` has a mechanical pre-gate the way old row 6 mirrored the plan format's `depends-on-order` check — is now resolved, not open.
-The asymmetry was **not** by nature: `Discussion-Validate` (row 3 above) closes it, running the checks the [Discussion producer detail](#discussion-producer-detail--validation-checks-and-review-rubric) section below defines.
-The second question — whether `Preflight`/`Finalize`'s unusually thin Output (pass/fail only, no real artifact) needs its own carve-out in the Output contract's definition — is now resolved too, over all four producers that share some form of thin Output (`Preflight`, `Discussion-Validate`, `Plan-Validate`, `Finalize`): see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the two-case statement, rather than restating either case here.
+`Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 3) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
 
 ## Discussion producer detail — validation checks and review rubric
 
@@ -100,7 +79,7 @@ This mechanical producer is **exhaustively defined by the checks listed above** 
 **The `Plan-never-reads-support-log` boundary is not a per-run check.**
 The boundary itself: `Plan-Write`'s declared input set never names `support-log.md`.
 It is asserted once, at build/test time, over `Plan-Write`'s producer *definition* — never re-evaluated per run — because it is a property of the definition itself, and there is nothing per-run for a mechanical producer to evaluate about it.
-This assertion lands with `Shed`.
+This assertion lands with the real `Plan-Write`: today `Plan-Write` is a stub declaring no input set at all, so there is nothing to assert against — writing the assertion now would either assert a vacuous truth or invent a declaration the real producer has not yet made.
 
 ### Discussion-Review rubric — what not to flag
 
@@ -117,83 +96,34 @@ Do not flag any of the following as a finding:
 - **Incomplete call-site or cross-reference enumeration.**
   That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
 
-### Worked example
+## Plan-Sweep detail — the scout-inventory spec
 
-A minimal `decision-record.md` for a fictional task ("add a `--json` flag to `lyx board list`"):
+**Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
+Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
+Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item), `Plan-Sweep` stays a stub past that point too — deferred to its own Someday roadmap item, since `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout`.
+`Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
 
-```markdown
-# Discussion: add --json to `lyx board list`
+`Plan-Sweep` (row 5) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
+Its job is grounding, not selection: hand `Plan-Write` real `scout` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
 
-## Goal
+**Deterministic extraction.**
+The repo's own doc convention is the extraction rule: every code identifier, file path, and symbol name in `decision-record.md`'s prose is backtick-quoted, the same convention this doc and every other `manifest/designs/*.md` file already follows.
+`Plan-Sweep` reads `decision-record.md`'s Scope section (the same section-parsing `Discussion-Validate` already does to check presence) and collects every backtick-quoted span inside it — nothing outside Scope, and no judgment about which spans "matter."
 
-Let scripts consume `lyx board list` output as JSON instead of parsing the table.
+**Resolution, not selection.**
+Each collected span is classified mechanically, by shape, not meaning: a span containing `/` or a `.go`/`.md`-style extension is treated as a path and checked for existence on disk;
+anything else is treated as a symbol name and looked up through `scoutengine`'s existing symbol lookup, then enumerated via `scoutengine.References`.
+A span that resolves to nothing — a prose word that happened to be backtick-quoted, a symbol `scout` can't find — is silently dropped, never a failure;
+`Plan-Sweep` has no pass/fail outcome of its own (the table's Output column already marks it "not gated").
 
-## Scope
+**No persisted artifact.**
+Unlike `Discussion-Write`'s output, the inventory is never written to `_lyx/plan/` or anywhere else — it costs nothing to recompute (a handful of `scout` lookups, not an LLM call), so `Shed`'s resume-on-output-files model doesn't apply to it: on resume, `Plan-Sweep` just reruns before `Plan-Write` starts, exactly like the first pass.
+This also means it needs no format-contract doc under `contracts/`; the shape below is `Plan-Write`'s own prompt-assembly concern, not a pinned cross-producer contract.
 
-In: a `--json` flag on `lyx board list`, one envelope per row.
-Out: no other `board` subcommand gets the flag in this task.
-
-## Decisions
-
-### json-envelope-reuse
-
-- **Decision:** `--json` marshals each row through the existing `internal/output.Ok`
-  envelope.
-- **Rationale:** one JSON emission path for the whole CLI; a second envelope shape
-  would fork behavior for no gain.
-
-## Constraints
-
-Existing table output must be byte-identical when `--json` is not passed.
-
-## Auto-mode assumptions
-
-None — this task ran with a human present for every question.
-
-## Open risks
-
-None identified.
-
-## Acceptance criteria
-
-- `lyx board list --json` emits one `output.Ok` envelope per row.
-- `lyx board list` (no flag) output is unchanged.
-- Help text documents the new flag.
-
-## Notes for the plan writer
-
-`internal/boardengine/rows.go` already has the row struct; the JSON path can reuse it.
-```
-
-A minimal `support-log.md` for the same task:
-
-```markdown
-# Support log: add --json to `lyx board list`
-
-## Interview
-
-- Operator asked for JSON output on `board list` for scripting.
-- Confirmed scope is `list` only, not every `board` subcommand.
-- Confirmed reuse of `internal/output.Ok` rather than a bespoke envelope.
-
-## Rejected alternatives
-
-- A dedicated `ListJSON` envelope type — rejected: forks emission behavior for no
-  gain over reusing `output.Ok`.
-
-## Review rounds
-
-### Round 1
-
-- **Verdict:** approved.
-- **Findings:** none.
-- **Resolved:** n/a.
-
-## Question ledger
-
-- **Q:** Should `--json` also change exit codes on empty results? **A:** No — exit
-  code behavior is unchanged; only the output format changes.
-```
+**Shape handed to `Plan-Write`.**
+A flat list, one entry per resolved span: the original span text, its kind (`path` or `symbol`), and — for a symbol — its definition site(s) plus reference sites from `scoutengine.References`.
+Deduplicated and sorted;
+order carries no meaning `Plan-Write` should read into it.
 
 ## The gate
 
@@ -240,12 +170,12 @@ The difference is in loom's *yielding*, not in whether anyone is looking.
 
 ### State & contracts
 
-- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: current phase, current review stage, and a **per-phase outcome** trail (`history`) — per-round verdicts live in perch's block files, not here.
+- **The status file (`_lyx/loom/status.json`, JSON via `internal/state` — see [loom-status-spec.md](../../contracts/specs/loom-status-spec.md)) is the single source of truth** for orchestration state: `current_producer` names which producer this run is at, and a **per-producer-call outcome** trail (`history`) records every call, including stuck-handler bounce-backs — per-round verdicts live in perch's block files, not here.
   Nothing orchestration-relevant lives anywhere else.
   The pause flag (`pause_requested`) is also kept **in-status** (see [Graceful pause](#graceful-pause)).
   Product-scoped under `loom/`, not bare `_lyx/status.json`, because `Shed` (see [shed.md](shed.md)) is instantiated by more than one product — the Someday `Hardener` will need its own status file too, and a bare `_lyx/status.json` could not serve both without colliding.
   `Shed` itself has no opinion on this path at all: it is told its status-file path, never derives it (see `shed.md`'s own producer-contract section) — this scoping is entirely `loom`'s own choice as the caller.
-- **It also carries a human-readable *current-activity* narration** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
+- **It also carries a human-readable *current-activity* `activity`, mechanically composed by `Shed` itself** — not just the machine enum, but "*now:* spawned plan-handler round 2, waiting on Stop hook / *last:* round 1 BLOCKING, 3 findings / *wait:* —".
   This is what the `lyx loom status --watch` strand prints (a 1-line pane at the top, per the `internal/reedengine` package documentation on the strand contract) so the operator sees what the Go driver is *doing*, not only what the agents are saying.
   The driver writes the file;
   the status strand reads and prints it — reed never parses it, it just hosts the pane.
@@ -305,7 +235,7 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | `perch` (`lyx perch`) | new Go module | the gate loop: run `burler` rounds → `APPROVED`/`stuck` + progress-judge + cap |
 | `burler` | new Go module | one review+fix round: A-review (+ optional cluster) → B-fix; composed by `perch` |
 | webster | LLM orchestrator (Master session, in-session forks) + Go verbs (`internal/websterengine`/`internal/webstercli`) | a black box from loom's view — see `internal/websterengine`'s package documentation and [webster-spec.md](../../contracts/specs/webster-spec.md), webster's own cross-module contract |
-| producers (discussion / plan) | prompt/profile files | **not** modules — just a prompt + profile fed to `shuttle.Run`. The Discussion producer is ✅ **built**: an interview prompt + `stencil` composer + `DiscussionSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`contracts/stencils/loom/loom-template-discussion.md`, `prompt.go`, `discussion.go`), fed to `shuttle.Run` by the future phase machine; `loom.yaml` supplies its `discussion` model-spec and `discussion_timeout_min` knobs. The Planner producer is ✅ **built**: a `contracts/stencils/loom/loom-template-plan.md` prompt (carrying a compact plan-format spec) + `stencil` composer + `PlanSpec(...) (shuttleengine.Spec, error)` factory in `internal/loomengine` (`contracts/stencils/loom/loom-template-plan.md`, `prompt.go`, `plan.go`); `loom.yaml` supplies its `plan` model-spec and `plan_timeout_min` knobs; it reads `decision-record.md` and writes one `NN-<card>.md` per card plus `_lyx/plan/00-overview.md` (written last, as the done-sentinel, carrying `approved: false` in its frontmatter). |
+| producers (discussion / plan) | prompt/profile files | **not** modules — a prompt + `shuttleengine.Spec` factory in `internal/loomengine` each (`DiscussionSpec`, `PlanSpec`), both ✅ **built** but not yet wired into `Shed` — see `manifest/roadmap.md`'s `loom: Discussion-Write producer` and `loom: Plan-Write producer` items. |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
 | Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/lyxcwd`, `internal/fabricengine`, `internal/state` |
@@ -325,6 +255,15 @@ Run in a worktree's pane, it:
 
 ```
 lyx loom run:
+  0a. resolve the recorded parent branch                  (fabricengine.ReadOrigin, plus --parent for a
+                                                           legacy worktree created before the record existed;
+                                                           refused when --parent disagrees with a recorded value)
+  0b. seed the status file when it is absent               (loomshed.Seed; a re-run's already-seeded case is
+                                                           tolerated via its own sentinel, never re-seeded)
+  0c. commit that seed weft-side, before anything below    (fabricengine.CommitWeftPaths; this must land
+                                                           before the driver spawns, or the phase machine's
+                                                           own first precondition row sees an uncommitted
+                                                           status file and fails immediately)
   1. ensure the worktree's tmux session is up           (reed)
   2. add the status strand                                (reed.AddStrand "lyx loom status --watch",
                                                            display: below-parent, shrinkWhenWaitingOnChild:true —
@@ -333,8 +272,11 @@ lyx loom run:
                                                            childless status strand rendering full-height is
                                                            intended, not a bug to re-file (discussion Decision
                                                            childless-full-height-is-acceptable).)
-  3. spawn the loom driver DETACHED                       (internal/proc — it needs no TTY;
-                                                           it reads/writes files, drives strands via reed)
+  3. spawn the loom driver DETACHED, unless one is         (internal/proc — it needs no TTY;
+     already alive, then wait for its handshake            it reads/writes files, drives strands via reed;
+                                                           the handshake polls for the driver taking the run
+                                                           lock, so the spawner never returns before a driver
+                                                           is actually running)
   4. attach the current terminal to the tmux session     (reed takes the foreground)
 ```
 
@@ -343,8 +285,11 @@ the status strand reads and prints it;
 neither blocks the other.
 
 **The run-launcher.**
-A double-click shortcut makes this one click: `lyx fabric add` drops a small `.lyx/lyxrun.cmd` (machine-local, untracked — it embeds an absolute path) in the worktree that just does `cd <worktree>` then `lyx loom run`.
+A double-click shortcut makes this one click: `lyx fabric add` drops a third script, `run<ext>`, into the pair's existing per-slug hub launcher directory, beside the `ide` and `fabric-checkout` scripts already written there.
+It is written by the same builder and torn down by the same pair as those two, cross-platform by the same GOOS-selected extension (`.cmd` on Windows, `.sh` elsewhere).
+It invokes the explicit two-word verb, `lyx loom run`, rather than the root alias, so it keeps working regardless of what happens to the alias.
 Because everything is [cwd-authoritative](../../docs/overview.md#principles), the launcher needs no arguments — geometry resolves from cwd, so you cannot run it from the wrong place.
+It embeds no absolute path: it climbs relatively to the worktree subpath, so nothing is machine-bound.
 It reuses the [launcher geometry](../../docs/overview.md#hub-geometry-invariants) already in `internal/fabricengine`.
 
 **One terminal per worktree.**
@@ -363,12 +308,3 @@ the strand bookkeeping + render: which pane is which, layout, focus, the cluster
 the swappable provider engine).
 What loom owns is everything in this document: the phase machine, the gate wiring,
 and the status contract.
-
-## Principle alignment
-
-- **One-shot, daemonless, file-coordinated** ([Principle 3](../../docs/overview.md#principles)) — `lyx run` and `lyx perch` are processes that read state, act, and exit;
-  they cooperate through files and the status file, not a server.
-- **cwd-authoritative** ([Principle 4](../../docs/overview.md#principles)) — `lyx run` operates on the current worktree's task.
-- **Correctness by tool-design** ([Principle 6](../../docs/overview.md#principles)) — moving control flow into Go makes the correct sequence the only sequence: the machine cannot forget a phase, skip a gate, or miscount rounds the way a prose-driven LLM orchestrator can.
-
-The through-line: **the more of the orchestration that is Go / lyx, the faster, cheaper, and more resumable it gets** — every step moved out of an LLM context is a step that costs no tokens, cannot drift, and survives a restart.

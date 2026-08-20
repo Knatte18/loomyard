@@ -1,19 +1,23 @@
-// preflight.go implements Preflight, the orchestrator that runs loom's four preconditions —
-// worktree geometry, worktree cleanliness, fabric readiness/sync, and _lyx/loom/status.json coherence —
-// over git and filesystem state, and reports a determined Report rather than erroring on anything
-// short of an infra failure.
-// See the error-vs-Report contract Shared Decision.
+// preflight.go implements Preflight, the orchestrator that composes internal/preflight's
+// orchestrator-agnostic tier-1/tier-2 checks — worktree geometry, worktree cleanliness, fabric
+// readiness/sync — with loom's own check 4, _lyx/loom/status.json coherence, over git and
+// filesystem state, reporting a determined Report rather than erroring on anything short of an
+// infra failure.
+// See internal/preflight/doc.go for the report-not-error contract this file preserves rather than
+// restates.
 
 package loomengine
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -34,92 +38,51 @@ import (
 // Returns (Report{}, err) when Preflight could not determine an answer at all — the caller must
 // escalate, not treat this as "not ready".
 func Preflight(cwd string) (Report, error) {
-	l, err := lyxcwd.Resolve(cwd)
+	report, l, err := preflight.Check(cwd)
 	if err != nil {
-		// ErrNotAGitRepo is a determined verdict (check 1: not inside a git
-		// repository at all), not an infra failure — short-circuit with a single
-		// geometry failure rather than escalating.
-		if errors.Is(err, lyxcwd.ErrNotAGitRepo) {
-			return Report{
-				OK:       false,
-				Failures: []Failure{{Check: CheckGeometry, Reason: "not inside a git repository"}},
-			}, nil
-		}
-		// Any other Resolve error (e.g. the git subprocess itself failed to
-		// spawn) is a genuine "couldn't determine" infra failure.
 		return Report{}, err
 	}
+	if report.Has(CheckGeometry) {
+		// preflight.Check already short-circuited with a single geometry
+		// failure (not a git repository, or no main worktree resolved) —
+		// there is no coherent worktree to run check 4 against.
+		return report, nil
+	}
 
-	return checkResolved(l)
+	// Proceed to check 4 against the Location preflight.Check handed back,
+	// never re-resolving and never re-running the tier-1/tier-2 checks
+	// preflight.Check already ran.
+	return runCheck4(report, l)
 }
 
-// checkResolved runs checks 1b–4 against an already-resolved Layout, allowing
-// tests to exercise preconditions in isolation.
+// checkResolved runs checks 1b–4 against an already-resolved Location, allowing tests to exercise
+// preconditions in isolation.
+// It keeps its unexported name and signature so internal/loomengine/export_test.go's
+// CheckResolvedForTest = checkResolved re-export needs no edit.
 func checkResolved(l *lyxcwd.Location) (Report, error) {
-	// Check 1b: geometry sanity. A PrimeName resolution failure (List found no
-	// main-worktree entry, or the git subprocess itself failed) is treated the
-	// same as "not a git repo" for Preflight's purposes, since there is no
-	// coherent worktree to check — never a hard error, preserving Preflight's
-	// report-not-error contract.
-	if _, err := fabricengine.PrimeName(l); err != nil {
-		return Report{
-			OK:       false,
-			Failures: []Failure{{Check: CheckGeometry, Reason: "no main worktree resolved"}},
-		}, nil
-	}
-	// There is deliberately no at-the-anchor check here. lyxcwd.Resolve applies a strict cwd gate,
-	// so a successful resolve already proves cwd equals AnchorPath() exactly;
-	// a non-"." AnchorRel therefore means "this repo is subpath-anchored", never "the caller stood
-	// in a subdirectory", and rejecting it failed every subpath-anchored hub unconditionally.
-	// Checks 2-4 below are all Location-based and anchor-aware in their own right.
-
-	var report Report
-
-	// Check 2: worktree pair cleanliness. Collected, not short-circuited — a
-	// dirty code or state side does not prevent the remaining checks from
-	// also reporting.
-	clean, reason, err := fabricengine.Clean(l)
+	report, err := preflight.CheckResolved(l)
 	if err != nil {
 		return Report{}, err
 	}
-	if !clean {
-		report.addFailure(CheckWorktreeClean, reason)
+	if report.Has(CheckGeometry) {
+		// Same short-circuit as Preflight, for callers driving checkResolved
+		// directly.
+		return report, nil
 	}
 
-	// Check 3: fabric readiness and sync. check3BlocksSeed tracks whether
-	// check 3 failed in a way that also makes the seed file unreadable
-	// through no fault of its own (fabric not ready, or a broken junction) —
-	// check 4 gates its classification on this, per strict-read-mechanism.
-	check3BlocksSeed := false
-	ready, err := fabricengine.Ready(l)
-	if err != nil {
-		return Report{}, err
-	}
-	if !ready {
-		report.addFailure(CheckFabricReady, "fabric not ready")
-		check3BlocksSeed = true
-	} else {
-		ok, reason, err := fabricengine.Healthy(l)
-		if err != nil {
-			return Report{}, err
-		}
-		if !ok {
-			// Healthy's typed Cause replaces the old substring match: a
-			// branch mismatch classifies as CheckFabricSync, and every other
-			// cause classifies as CheckJunction and also blocks the seed
-			// read, since each of those causes means the junction that would
-			// carry _lyx/loom/status.json is itself broken.
-			var check CheckID
-			switch reason.Cause {
-			case fabricengine.CauseBranchMismatch:
-				check = CheckFabricSync
-			default:
-				check = CheckJunction
-				check3BlocksSeed = true
-			}
-			report.addFailure(check, reason.Detail)
-		}
-	}
+	return runCheck4(report, l)
+}
+
+// runCheck4 appends check 4 (seed presence, readability, and coherence) onto report, which already
+// carries checks 1b–3's verdict from either preflight.Check or preflight.CheckResolved.
+func runCheck4(report Report, l *lyxcwd.Location) (Report, error) {
+	// check3BlocksSeed derives from the tier-1/tier-2 report rather than being
+	// tracked as a local alongside the tier-1/tier-2 checks themselves: fabric
+	// not ready (CheckFabricReady) and every non-branch-mismatch Healthy cause
+	// (CheckJunction) are exactly the two conditions that make the seed file
+	// unreadable through no fault of its own, since each means the junction
+	// that would carry _lyx/loom/status.json is itself unusable or broken.
+	check3BlocksSeed := report.Has(CheckFabricReady) || report.Has(CheckJunction)
 
 	// Check 4: seed presence, readability, and coherence.
 	if _, err := os.Stat(LoomStatusFile(l)); err != nil {
@@ -130,11 +93,11 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			// is genuinely absent — report it as unreadable, never missing,
 			// so an operator fixes fabric first rather than chasing a
 			// phantom missing-seed report.
-			report.addFailure(CheckSeedUnreadable, "unreadable, see check 3")
+			report.AddFailure(CheckSeedUnreadable, "unreadable, see check 3")
 		case os.IsNotExist(err):
-			report.addFailure(CheckSeedMissing, "status.json does not exist")
+			report.AddFailure(CheckSeedMissing, "status.json does not exist")
 		default:
-			report.addFailure(CheckSeedUnreadable, err.Error())
+			report.AddFailure(CheckSeedUnreadable, err.Error())
 		}
 	} else {
 		// LoomStatusLock now lives under .lyx rather than beside LoomStatusFile
@@ -151,14 +114,14 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 		if err := os.MkdirAll(filepath.Dir(LoomStatusLock(l)), 0o755); err != nil {
 			return Report{}, err
 		}
-		s, found, rerr := state.ReadJSONStrict[Status](LoomStatusFile(l), LoomStatusLock(l))
+		shed, found, rerr := state.ReadJSONStrict[shedengine.Status](LoomStatusFile(l), LoomStatusLock(l))
 		switch {
 		case rerr != nil:
 			// A decode failure (malformed JSON or an unknown field) is a
 			// determined incoherent-seed verdict; anything else (a raw read
 			// failure, a lock-acquire failure) is an infra failure to escalate.
 			if errors.Is(rerr, state.ErrDecode) {
-				report.addFailure(CheckSeedIncoherent, rerr.Error())
+				report.AddFailure(CheckSeedIncoherent, rerr.Error())
 			} else {
 				return Report{}, rerr
 			}
@@ -170,8 +133,23 @@ func checkResolved(l *lyxcwd.Location) (Report, error) {
 			// Report{}, nil.
 			return Report{}, fmt.Errorf("loomengine: seed vanished between stat and read: %s", LoomStatusFile(l))
 		default:
-			for _, f := range checkCoherence(s) {
-				report.addFailure(f.Check, f.Reason)
+			// An absent or null Product decodes to the zero Status, whose empty
+			// Slug/Parent the mandatory-field rules below then report -- no
+			// special-casing needed. A Product that fails to unmarshal is
+			// itself a determined CheckSeedIncoherent verdict, not an infra
+			// error: an external writer wrote something loom cannot read as
+			// its own product shape.
+			var product Status
+			var uerr error
+			if len(shed.Product) > 0 {
+				uerr = json.Unmarshal(shed.Product, &product)
+			}
+			if uerr != nil {
+				report.AddFailure(CheckSeedIncoherent, fmt.Sprintf("product does not decode as loom's status shape: %s", uerr.Error()))
+			} else {
+				for _, f := range checkCoherence(shed, product) {
+					report.AddFailure(f.Check, f.Reason)
+				}
 			}
 		}
 	}

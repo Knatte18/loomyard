@@ -7,16 +7,24 @@
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when
 // every output file already exists — the file contract can be satisfied an instant before the
 // process disappears, racing ahead of its own Stop hook.
+// died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not
+// alive; the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks
+// (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) —
+// are mechanism failures, not classifications.
 
 package shuttleengine
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // clock abstracts time for tests.
@@ -46,11 +54,68 @@ func pollInterval(cfg Config) time.Duration {
 // maxEventsReadRetries bounds consecutive event-read failures before reporting a mechanism failure.
 const maxEventsReadRetries = 3
 
-// maxStatusRetries bounds consecutive reed.Status failures.
+// maxStatusRetries bounds consecutive liveness-check failures — a reed.Status that could not be run,
+// a Status that ran but no longer lists this run's strand, and a Status that lists it with no pane
+// bound.
 const maxStatusRetries = 2
+
+// errStrandNotTracked reports that reed answered the liveness check successfully but its strand table
+// no longer holds this run's guid.
+//
+// It exists because that answer says nothing about the agent. A strand reed still tracks whose pane is
+// not alive IS a dead run; a strand reed does not track at all is reed's own bookkeeping going away
+// under a run whose agent very often keeps working — reed's strand table is reset by an ordinary
+// `lyx reed down`/`remove`, by a `git clean -xdf` of .lyx (a sanctioned operator action under the
+// Durable-vs-Ephemeral State Invariant), by reed's own documented remedy for a corrupt reed.json
+// ("delete it by hand to keep the session"), and by a worktree renamed while a run is in flight, which
+// leaves this process's told anchor path pointing at a directory reed then re-creates empty.
+// Classifying any of those OutcomeDied reports a live agent as gone, and an unattended caller answers
+// "died" by respawning — leaving two agents on one worktree, the first unreachable. That is the
+// duplicate-agent hazard reed's own foreign-session refusal exists to prevent, one layer up.
+// Interrupt/Send already draw exactly this distinction (see requireLiveStrand); this is Wait's half.
+var errStrandNotTracked = errors.New(
+	"reed's strand table no longer holds this run's strand — reed's bookkeeping was reset under the run " +
+		"(a reed remove/down, a lost or rebuilt reed.json, or a worktree renamed while the run was in flight), " +
+		`which says nothing about the agent: its process may still be working in its pane. Check "lyx reed status"`)
+
+// errStrandPaneBindingCleared reports that reed answered the liveness check successfully and still
+// lists this run's strand, but holds NO pane id for it.
+//
+// It exists because that is a third answer, and the one the not-live branch below would otherwise
+// swallow: a strand reed tracks with no pane bound is not a strand whose pane died, it is a strand
+// reed can no longer address at all. Reed clears every pane binding in a state file whose recorded
+// pane generation is not the incarnation now running (adoptPaneGenerationLocked — a restored backup,
+// a hand-copied .lyx, or simply a reed.json older than the session), and Status then reports the
+// strand with an empty PaneID, which its liveness lookup answers false for. Reproduced live in round
+// 4 against a real agent: reed logged the clear, shuttle answered ok:true outcome:"died" 4 seconds
+// later, and tmux still reported the pane alive with the agent working inside it — after which
+// restoring the stamp made the same strand report live:true again on the same pane.
+// Classifying that OutcomeDied is the same duplicate-agent hazard errStrandNotTracked exists to
+// avoid: an unattended caller reads "died" as "gone, retry" and puts a second agent on a worktree
+// whose first one is still working, unreachably.
+var errStrandPaneBindingCleared = errors.New(
+	"reed still tracks this run's strand but holds no pane id for it — its pane binding was cleared " +
+		"as stale (reed does that when the persisted pane generation is not the session incarnation now " +
+		"running: a restored backup, a copied .lyx, or a reed.json older than the session), " +
+		`which says nothing about the agent: its process may still be working in a pane reed can no longer address. Check "lyx reed status"`)
 
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
+//
+// An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
+// empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
+// so the run directory is still on disk and the strand may still be registered, and without those
+// three the caller cannot diagnose, resume, or tear down what it started.
+// Reproduced live: tearing the reed session down under an in-flight run returned reed's
+// no-session error and, before this, a wholly zero Result.
+//
+// It is deliberately NOT reclassified as OutcomeDied. reed returns the same untyped error for its
+// foreign-session refusal — a renamed worktree or a copied .lyx, where the run may well be alive
+// under another session — and reed exposes no sentinel that tells the two apart, so guessing "died"
+// would report a live agent as dead.
+// The same reasoning binds the two cases where reed does NOT fail: a Status that succeeds without
+// this run's strand in it, and one that returns the strand with no pane bound, both exit here rather
+// than as OutcomeDied — see errStrandNotTracked and errStrandPaneBindingCleared.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -70,7 +135,7 @@ func (run *Run) Wait() (Result, error) {
 		if err != nil {
 			eventsFailures++
 			if eventsFailures >= maxEventsReadRetries {
-				return Result{}, fmt.Errorf("shuttle: events file unreadable after %d attempts: %w", maxEventsReadRetries, err)
+				return run.identity(), fmt.Errorf("shuttle: events file unreadable after %d attempts: %w", maxEventsReadRetries, err)
 			}
 		} else {
 			eventsFailures = 0
@@ -84,7 +149,14 @@ func (run *Run) Wait() (Result, error) {
 			if err != nil {
 				statusFailures++
 				if statusFailures >= maxStatusRetries {
-					return Result{}, fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
+					switch {
+					case errors.Is(err, errStrandNotTracked):
+						return run.identity(), fmt.Errorf("shuttle: reed did not track strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					case errors.Is(err, errStrandPaneBindingCleared):
+						return run.identity(), fmt.Errorf("shuttle: reed held no pane binding for strand %q on %d consecutive liveness checks: %w", run.state.StrandGUID, maxStatusRetries, err)
+					default:
+						return run.identity(), fmt.Errorf("shuttle: reed status failed %d times consecutively: %w", maxStatusRetries, err)
+					}
 				}
 			} else {
 				statusFailures = 0
@@ -185,6 +257,18 @@ func readEventsFrom(path string, offset int64) ([]byte, int64, error) {
 	return consumed, offset + int64(len(consumed)), nil
 }
 
+// strandStatusByGUID returns the strand reed reports for guid, and whether reed reported one at all.
+// The second return value is what separates "reed tracks this strand and its pane is not alive" from
+// "reed does not track this strand", which a bare liveness bool cannot express — see errStrandNotTracked.
+func strandStatusByGUID(strands []reedengine.StrandStatus, guid string) (reedengine.StrandStatus, bool) {
+	for _, s := range strands {
+		if s.GUID == guid {
+			return s, true
+		}
+	}
+	return reedengine.StrandStatus{}, false
+}
+
 // allOutputFilesExist reports whether every entry in files exists on disk.
 func allOutputFilesExist(files []string) bool {
 	for _, f := range files {
@@ -196,23 +280,38 @@ func allOutputFilesExist(files []string) bool {
 }
 
 // checkLivenessTick checks strand liveness and probes the pane during
-// startup. Returns a non-nil error only for reed.Status failures.
+// startup. Returns a non-nil error for a reed.Status that could not be run, and for the two Status
+// answers that report reed's own bookkeeping rather than the agent's fate: a Status that no longer
+// lists this run's strand (errStrandNotTracked), and one that lists it with no pane bound
+// (errStrandPaneBindingCleared) — see each for why it is a mechanism failure rather than a
+// classification.
+// A satisfied file contract wins over every negative answer: the agent's output files ARE its return
+// value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped
+// tracking or addressing it.
 func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Outcome, error) {
 	status, err := run.runner.reed.Status()
 	if err != nil {
 		return "", fmt.Errorf("reed status: %w", err)
 	}
 
-	live := false
-	for _, s := range status.Strands {
-		if s.GUID == run.state.StrandGUID {
-			live = s.Live
-			break
-		}
-	}
-	if !live {
+	strand, tracked := strandStatusByGUID(status.Strands, run.state.StrandGUID)
+	if !tracked {
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
+		}
+		return "", errStrandNotTracked
+	}
+	if !strand.Live {
+		if allOutputFilesExist(run.spec.OutputFiles) {
+			return OutcomeDone, nil
+		}
+		// Reed reports not-live for a strand it holds no pane id for, exactly as it does for one whose
+		// pane died — but those are different facts, and only the second is a dead run. An
+		// anchor:hidden strand is the one case where an empty pane id is normal rather than a cleared
+		// binding (reed realizes a pane for every other anchor), so it keeps today's classification;
+		// every other run's strand carries a pane id from the moment AddStrand persists it.
+		if strand.PaneID == "" && run.spec.Display.Anchor != render.AnchorHidden {
+			return "", errStrandPaneBindingCleared
 		}
 		return OutcomeDied, nil
 	}
@@ -223,27 +322,62 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time) (Out
 
 	capture, err := run.runner.reed.CapturePane(run.state.StrandGUID)
 	if err != nil {
-		log.Printf("shuttle: capture pane during startup probe (non-fatal, retrying): %v", err)
-		return "", nil
+		logger.Warn("shuttle: capture pane during startup probe (non-fatal, retrying)", "strandGUID", run.state.StrandGUID, "error", err)
+		// A pane that cannot be captured has told us nothing about whether the provider came up,
+		// so it stays inside the startup window and expires with it — see classifyStartupWindow.
+		return run.classifyStartupWindow(startupDeadline), nil
 	}
 
 	switch run.runner.engine.Startup(capture) {
 	case StartupReady:
 		*started = true
+		return "", nil
 	case StartupTrustPrompt:
 		if err := playInputs(run.runner.reed, run.state.StrandGUID, run.runner.engine.TrustDismissSequence()); err != nil {
-			log.Printf("shuttle: dismiss trust prompt (non-fatal): %v", err)
-		}
-	case StartupPending:
-		if run.clock.Now().After(startupDeadline) {
-			return OutcomeDied, nil
+			logger.Warn("shuttle: dismiss trust prompt (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		}
 	}
-	return "", nil
+	// StartupPending and a trust prompt that has not yet cleared are both "still not ready", and
+	// share the one deadline that governs the whole startup window.
+	return run.classifyStartupWindow(startupDeadline), nil
+}
+
+// classifyStartupWindow reports OutcomeDied once startupDeadline has passed on a run whose provider
+// has still not reached StartupReady, and "" while that window is still open.
+//
+// It is called from every not-yet-started exit of checkLivenessTick, not just the still-booting one,
+// because the startup window belongs to the WINDOW rather than to one classification within it.
+// Enforcing it only on StartupPending let the two silent paths — a trust prompt whose dismissal
+// never takes, and a pane that fails every capture — skip the deadline entirely and burn the full
+// run_timeout_min (30 minutes by default) instead of startup_timeout_s (90), and be reported as
+// OutcomeTimeout ("the agent was working") rather than OutcomeDied ("it never started").
+func (run *Run) classifyStartupWindow(startupDeadline time.Time) Outcome {
+	if run.clock.Now().After(startupDeadline) {
+		return OutcomeDied
+	}
+	return ""
+}
+
+// identity returns the run's identifying fields with an empty Outcome: what Wait hands back
+// alongside a mechanism-failure error, so the caller keeps the handles it needs to diagnose,
+// resume, or tear down a run that reached no classification.
+func (run *Run) identity() Result {
+	return Result{
+		SessionID:  run.state.SessionID,
+		StrandGUID: run.state.StrandGUID,
+		RunDir:     run.runDir,
+	}
 }
 
 // finalize builds run's terminal Result and performs cleanup for OutcomeDone.
 // For fork mode, audits fork subagents and attaches the result.
+//
+// It is also the run's teardown observability point, which the Live-Substrate Spawn Observability
+// invariant requires to be as instrumented as the spawn is: Start logs "run started" through
+// internal/logger, so without the logger.Info below the durable Info+ trace file would show every
+// shuttle run beginning and none of them ending. The two cleanup failures go to logger.Warn for the
+// same reason — a teardown that did not confirm clean is exactly what that level is for, and the
+// bare log package they used before never reaches the trace sink at all.
 func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	result := Result{
 		Outcome:              outcome,
@@ -254,21 +388,30 @@ func (run *Run) finalize(outcome Outcome, message string) (Result, error) {
 	}
 
 	if outcome == OutcomeDone && run.spec.ForkSubagents {
-		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.layout.AnchorPath())
+		audit, err := run.runner.engine.AuditForks(run.state.SessionID, run.runner.anchorPath)
 		if err != nil {
-			return Result{}, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
+			// The run itself SUCCEEDED and nothing has been cleaned up yet, so the caller gets the
+			// whole classified Result back — identity AND Outcome — not the bare identity().
+			// identity() is for Wait's mechanism-failure exits, where no outcome was ever reached;
+			// here one was, and blanking it left a caller unable to tell a run that finished and
+			// merely failed its audit from a run that never classified at all. Since this branch
+			// skips cleanup either way, the identity fields alone do not separate them.
+			// ForkAudit stays nil, which already means "not audited".
+			return result, fmt.Errorf("shuttle: audit forks for session %q: %w", run.state.SessionID, err)
 		}
 		result.ForkAudit = &audit
 	}
 
-	if outcome == OutcomeDone && !run.spec.KeepPane {
+	cleaned := outcome == OutcomeDone && !run.spec.KeepPane
+	if cleaned {
 		if _, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); err != nil {
-			log.Printf("shuttle: cleanup: remove strand %s (non-fatal): %v", run.state.StrandGUID, err)
+			logger.Warn("shuttle: cleanup: remove strand failed (non-fatal)", "strandGUID", run.state.StrandGUID, "error", err)
 		}
 		if err := os.RemoveAll(run.runDir); err != nil {
-			log.Printf("shuttle: cleanup: remove run dir %s (non-fatal): %v", run.runDir, err)
+			logger.Warn("shuttle: cleanup: remove run dir failed (non-fatal)", "runDir", run.runDir, "error", err)
 		}
 	}
 
+	logger.Info("shuttle: run finished", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "outcome", string(outcome), "cleanedUp", cleaned)
 	return result, nil
 }

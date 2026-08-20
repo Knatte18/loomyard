@@ -21,9 +21,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -96,8 +94,11 @@ type MasterStarter interface {
 }
 
 // RunDeps carries every seam Run needs for testing.
-// Starter spawns Master; Reed, Engine, ShuttleCfg, and Layout support session resolution and audit;
-// PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir, WorktreeRoot are lyxcwd- resolved paths;
+// Starter spawns Master; Reed, Engine, and ShuttleCfg support session resolution and audit;
+// Geom is the told Geometry every path (PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir,
+// WorktreeRoot, AnchorRoot, StencilsDir) is read from;
+// RefMatcher is the injected fabric-reference class matcher CheckParent/CheckFork consult, never nil
+// in either mode;
 // Config, Roles, and Batcher carry the loaded configuration, pre-flight-resolved role->model-spec
 // map, and CLI-pre-resolved active batchifier.
 type RunDeps struct {
@@ -105,22 +106,14 @@ type RunDeps struct {
 	Reed       shuttleengine.ReedOps
 	Engine     shuttleengine.Engine
 	ShuttleCfg shuttleengine.Config
-	Layout     *lyxcwd.Location
 	Roles      map[Role]modelspec.Resolved
 	Config     Config
 	// Batcher is the CLI-resolved active batchifier (batcher.Active),
 	// populated by webstercli's PersistentPreRunE before Run is called. Run
 	// refuses with ErrNilBatcher when it is nil.
 	Batcher    batcher.Batcher
-	PlanDir    string
-	WebsterDir string
-	ReportsDir string
-	PromptsDir string
-	// ScratchDir is the .lyx/webster tree — the never-tracked base directory
-	// holding the pause flag, the state-mutation lease, and run.lock, at the
-	// mirrored subpath of WebsterDir's _lyx/webster content.
-	ScratchDir   string
-	WorktreeRoot string
+	Geom       Geometry
+	RefMatcher RefMatcher
 
 	// Clock is the integration stage's bounded-wait clock seam: nil selects
 	// the production realClock, and a test injects a fake so the
@@ -128,13 +121,13 @@ type RunDeps struct {
 	// a real DefaultAwaitWaitS window.
 	Clock Clock
 
-	// Bisector is the integration stage's bisect-repo seam: nil (the
-	// production default) makes runIntegrationStage construct a real
-	// *fabricengine.Fabric inline via
-	// fabricengine.Open(deps.Layout),
-	// and a test injects a *gitrepo.Repo fake over its own scratch worktree
-	// so the bisect path never requires a paired fabric fixture.
-	Bisector FabricBisector
+	// OpenBisector is the integration stage's bisect-repo opener: a caller-supplied closure,
+	// never a defaulted construction. It stays lazy so a run that never reaches a failing
+	// integration suite never opens a fabric handle; a test injects a fake by supplying an
+	// opener that returns it. A nil OpenBisector means "no fabric in this mode" — the
+	// integration-failure bypass at the runIntegrationStage call site, not "construct the
+	// production default".
+	OpenBisector func() (FabricBisector, error)
 }
 
 // RunOptions carries one `run` invocation's caller-supplied choices.
@@ -163,6 +156,11 @@ type RunResult struct {
 	// itself missing or malformed, which is not an error on those two
 	// outcomes).
 	SummaryTitle string
+	// Warnings carries every non-fatal observation the integration stage
+	// accumulated this run — never a failure. Mirrors RecordResult.Warnings'
+	// shape and contract: a nil OpenBisector's unlocalized-failure notice is
+	// the one warning this stage currently produces.
+	Warnings []string
 }
 
 // newRunGUID returns a 128-bit random identifier, hex-encoded, generated
@@ -306,28 +304,28 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // ErrRunBusy and ErrFingerprintMismatch are exported sentinels;
 // non-done shuttle outcomes return *Master*Error types.
 func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
-	if err := os.MkdirAll(deps.WebsterDir, 0o755); err != nil {
-		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.WebsterDir, err)
+	if err := os.MkdirAll(deps.Geom.WebsterDir, 0o755); err != nil {
+		return RunResult{}, fmt.Errorf("webster: create webster dir %s: %w", deps.Geom.WebsterDir, err)
 	}
-	if err := os.MkdirAll(deps.ScratchDir, 0o755); err != nil {
-		return RunResult{}, fmt.Errorf("webster: create webster scratch dir %s: %w", deps.ScratchDir, err)
+	if err := os.MkdirAll(deps.Geom.ScratchDir, 0o755); err != nil {
+		return RunResult{}, fmt.Errorf("webster: create webster scratch dir %s: %w", deps.Geom.ScratchDir, err)
 	}
 
-	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(deps.ScratchDir, runLockName))
+	runLock, locked, err := lock.TryAcquireWriteLock(filepath.Join(deps.Geom.ScratchDir, runLockName))
 	if err != nil {
-		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.ScratchDir, err)
+		return RunResult{}, fmt.Errorf("webster: acquire run lock in %s: %w", deps.Geom.ScratchDir, err)
 	}
 	if !locked {
-		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.ScratchDir)
+		return RunResult{}, fmt.Errorf("%w: %q (run.lock held); wait for it to finish, or check `lyx webster status`", ErrRunBusy, deps.Geom.ScratchDir)
 	}
 	defer runLock.Release()
 
-	plan, err := planparser.ParsePlan(deps.PlanDir)
+	plan, err := planparser.ParsePlan(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
 
-	if findings := planparser.Validate(plan, deps.WorktreeRoot); len(findings) > 0 {
+	if findings := planparser.Validate(plan, deps.Geom.WorktreeRoot); len(findings) > 0 {
 		msgs := make([]string, len(findings))
 		for i, f := range findings {
 			msgs[i] = f.Error()
@@ -344,10 +342,10 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// webster's own pre-flight over the batchifier's own output, per
 	// discussion.md's run-verb-shape decision.
 	if len(batches) == 0 {
-		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.PlanDir)
+		return RunResult{}, fmt.Errorf("webster: plan %s produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done", deps.Geom.PlanDir)
 	}
 
-	fingerprint, err := fingerprint(deps.PlanDir)
+	fingerprint, err := fingerprint(deps.Geom.PlanDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -357,7 +355,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// other verb's own state read-modify-write, webster's own
 	// AcquireStateMutation discipline. Released explicitly right after
 	// the strand record lands, never held across Master's own wait.
-	mutateLock, err := AcquireStateMutation(deps.ScratchDir)
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -368,7 +366,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}()
 
-	st, err := LoadState(deps.WebsterDir, deps.ScratchDir)
+	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -393,7 +391,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
 		}
-		if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 
@@ -402,13 +400,13 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			return RunResult{}, fmt.Errorf("%w: on-disk plan fingerprint %s does not match this run's recorded fingerprint %s; the plan changed since state.json was created — re-run with --fresh to archive the stale state and reports and start over", ErrFingerprintMismatch, fingerprint, st.PlanFingerprint)
 		}
 
-		if _, err := archiveStateFile(deps.WebsterDir, time.Now); err != nil {
+		if _, err := archiveStateFile(deps.Geom.WebsterDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		if err := archiveReportsDir(deps.ReportsDir, time.Now); err != nil {
+		if err := archiveReportsDir(deps.Geom.ReportsDir, time.Now); err != nil {
 			return RunResult{}, err
 		}
-		if err := clearRenderedPrompts(deps.PromptsDir); err != nil {
+		if err := clearRenderedPrompts(deps.Geom.PromptsDir); err != nil {
 			return RunResult{}, err
 		}
 
@@ -421,7 +419,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 			PlanFingerprint: fingerprint,
 			Batches:         map[int]*BatchState{},
 		}
-		if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -433,22 +431,22 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// now resuming from. Placing the clear HERE — not at the bare entry —
 	// means a run that refused above leaves the operator's pending pause
 	// intact rather than silently discarding a request it never acted on.
-	if err := ClearPause(deps.ScratchDir); err != nil {
+	if err := ClearPause(deps.Geom.ScratchDir); err != nil {
 		return RunResult{}, err
 	}
 
-	if _, err := archiveStaleOutcome(deps.WebsterDir, time.Now); err != nil {
+	if _, err := archiveStaleOutcome(deps.Geom.WebsterDir, time.Now); err != nil {
 		return RunResult{}, err
 	}
-	if _, err := ArchiveStaleSummary(deps.WebsterDir, time.Now); err != nil {
+	if _, err := ArchiveStaleSummary(deps.Geom.WebsterDir, time.Now); err != nil {
 		return RunResult{}, err
 	}
 
-	outcomePath, err := filepath.Abs(OutcomePath(deps.WebsterDir))
+	outcomePath, err := filepath.Abs(OutcomePath(deps.Geom.WebsterDir))
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve outcome path: %w", err)
 	}
-	summaryPath, err := filepath.Abs(SummaryPath(deps.WebsterDir))
+	summaryPath, err := filepath.Abs(SummaryPath(deps.Geom.WebsterDir))
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve summary path: %w", err)
 	}
@@ -462,18 +460,18 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// one and the stage was unreachable.
 	integrationPromptPath := ""
 	if ShouldRunIntegration(plan) {
-		integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.ReportsDir))
+		integrationReportPath, err := filepath.Abs(IntegrationReportPath(deps.Geom.ReportsDir))
 		if err != nil {
 			return RunResult{}, fmt.Errorf("webster: resolve integration report path: %w", err)
 		}
-		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.WorktreeRoot, fabricengine.StencilsDir(deps.Layout.HubPath))
+		integrationPrompt, err := RenderIntegrationPrompt(plan, integrationReportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir)
 		if err != nil {
 			return RunResult{}, err
 		}
-		if err := os.MkdirAll(deps.PromptsDir, 0o755); err != nil {
-			return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.PromptsDir, err)
+		if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
+			return RunResult{}, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
 		}
-		integrationPromptPath, err = filepath.Abs(filepath.Join(deps.PromptsDir, integrationPromptFileName))
+		integrationPromptPath, err = filepath.Abs(filepath.Join(deps.Geom.PromptsDir, integrationPromptFileName))
 		if err != nil {
 			return RunResult{}, fmt.Errorf("webster: resolve integration prompt path: %w", err)
 		}
@@ -482,7 +480,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		}
 	}
 
-	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Layout)
+	prompt, err := RenderMasterPrompt(plan, st, outcomePath, summaryPath, integrationPromptPath, deps.Config.SelfFixCap, deps.Config.PollWaitS, deps.Geom.AnchorRoot, deps.Geom.StencilsDir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -522,11 +520,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	// reclaim. Two saves, not one, keep the reclaimable record ahead of the
 	// fallible resolve.
 	st.MasterStrand = handle.StrandGUID()
-	if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
+	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}
 
-	runState, _, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Layout, st.MasterStrand)
+	runState, _, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, st.MasterStrand)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("webster: resolve spawned master run: %w", err)
 	}
@@ -538,7 +536,7 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 	st.AssertedModel = resolved.Model
 
 	// Second save: the session ID and launch-model baseline the verbs read.
-	if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
+	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
 		return RunResult{}, err
 	}
 
@@ -565,9 +563,11 @@ func Run(deps RunDeps, opts RunOptions) (RunResult, error) {
 		// whatever Master's own outcome.yaml/summary.md already said, so it
 		// runs the same way regardless of whether Master itself reported done
 		// or stuck for this plan.
-		if err := runIntegrationStage(deps, plan, batches, runResult.Outcome); err != nil {
+		warnings, err := runIntegrationStage(deps, plan, batches, runResult.Outcome)
+		if err != nil {
 			return RunResult{}, err
 		}
+		runResult.Warnings = append(runResult.Warnings, warnings...)
 		return runResult, nil
 
 	case shuttleengine.OutcomeAsking:
@@ -611,7 +611,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 		// batch was begun-but-never-recorded (a fork slipped past
 		// record-batch) is caught here, closing the begin-without-record leg
 		// of the two-layer bracket enforcement at run exit.
-		if err := verifyEveryBatchDone(deps.WebsterDir, deps.ScratchDir, batches); err != nil {
+		if err := verifyEveryBatchDone(deps.Geom.WebsterDir, deps.Geom.ScratchDir, batches); err != nil {
 			return RunResult{}, err
 		}
 
@@ -626,7 +626,7 @@ func mapMasterDone(deps RunDeps, batches []batcher.Batch, outcomePath, summaryPa
 	}
 
 	if outcome.Outcome != outcomePaused {
-		if err := ClearPause(deps.ScratchDir); err != nil {
+		if err := ClearPause(deps.Geom.ScratchDir); err != nil {
 			return RunResult{}, err
 		}
 	}
@@ -712,19 +712,17 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 	// Reload state fresh: begin-batch/record-batch mutated and persisted it
 	// repeatedly across Master's whole run, so the in-memory copy captured
 	// before Master ever spawned is stale by run-exit.
-	st, err := LoadState(deps.WebsterDir, deps.ScratchDir)
+	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
 		return err
 	}
 
-	fabricRef := fabricengine.NewRefScanner(deps.Layout)
-
 	var violations []error
-	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Layout.AnchorPath(), fabricRef) {
+	for _, v := range CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
 		violations = append(violations, v)
 	}
 	for _, f := range result.ForkAudit.Forks {
-		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Layout.AnchorPath(), fabricRef) {
+		for _, v := range CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher) {
 			violations = append(violations, v)
 		}
 	}
@@ -759,26 +757,33 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 // regardless of what Master's own outcome.yaml/summary.md already said,
 // since webster's own localized finding is strictly more precise than
 // Master's own best-effort report.
-func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch, masterOutcome string) error {
+// When deps.OpenBisector is nil, this mode has no fabric repo to bisect against: the localization
+// path (BisectAndEscalate/bisect) is bypassed entirely — never pushed down into those functions —
+// and the escalation records an unlocalized "unknown"/"unknown" failure instead, with the returned
+// warning explaining why. This bypass is deliberate: bisect's own empty-SHA fallback is unreachable
+// here because card SHAs accumulate normally, a single accumulated SHA would make it record a real
+// SHA under a "cannot localize" claim, and two or more reach repo.CurrentBranch(), which nil-pointer
+// panics on a nil bisector.
+func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.Batch, masterOutcome string) ([]string, error) {
 	if !ShouldRunIntegration(plan) {
-		return nil
+		return nil, nil
 	}
 	// A run whose batches are not all terminal-done never reached the
 	// integration stage in the first place (Master's own bracket
 	// instruction only spawns the integration fork after every batch is
 	// done) — this is expected, not a failure, so the error here is
 	// swallowed rather than propagated.
-	if err := verifyEveryBatchDone(deps.WebsterDir, deps.ScratchDir, batches); err != nil {
-		return nil
+	if err := verifyEveryBatchDone(deps.Geom.WebsterDir, deps.Geom.ScratchDir, batches); err != nil {
+		return nil, nil
 	}
 
 	clk := deps.Clock
 	if clk == nil {
 		clk = realClock{}
 	}
-	await, err := AwaitIntegration(deps.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, clk)
+	await, err := AwaitIntegration(deps.Geom.ReportsDir, time.Duration(DefaultAwaitWaitS)*time.Second, clk)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !await.ReportPresent {
 		// A done outcome CLAIMS a passing integration suite, so a missing
@@ -787,59 +792,61 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 		// Master stuck out before the stage) — Master's own graceful judgment
 		// is the run's result, and erroring here would overwrite it.
 		if masterOutcome == outcomeDone {
-			return fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported")
+			return nil, fmt.Errorf("webster: run reached outcome: done on a plan with a \"## verify:\" section but its integration report never landed — the integration fork never ran or never reported")
 		}
-		return nil
+		return nil, nil
 	}
 
-	report, err := ParseReport(IntegrationReportPath(deps.ReportsDir))
+	report, err := ParseReport(IntegrationReportPath(deps.Geom.ReportsDir))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if report.Status == ReportStatusOK {
 		// Master's own "done" outcome already reflects a passing integration
 		// suite correctly; nothing further to escalate.
-		return nil
+		return nil, nil
 	}
 
-	mutateLock, err := AcquireStateMutation(deps.ScratchDir)
+	mutateLock, err := AcquireStateMutation(deps.Geom.ScratchDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = mutateLock.Release() }()
 
 	// Reload state fresh: begin-batch/record-batch mutated and persisted it
 	// repeatedly across Master's whole run, so the in-memory copy captured
 	// before Master ever spawned is stale by the time this stage runs.
-	st, err := LoadState(deps.WebsterDir, deps.ScratchDir)
+	st, err := LoadState(deps.Geom.WebsterDir, deps.Geom.ScratchDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if st == nil {
-		return fmt.Errorf("webster: integration stage: no state.json to escalate against")
+		return nil, fmt.Errorf("webster: integration stage: no state.json to escalate against")
 	}
 
-	shas, labels := accumulatedCardSHAs(batches, st)
-
-	// deps.Bisector is nil in production: construct the real paired-repo
-	// Fabric handle inline, the same way webstercli's fabricSync does from a
-	// *lyxcwd.Location. A test instead injects a fabric-only *gitrepo.Repo
-	// over its own scratch worktree (the FabricBisector seam), so the bisect
-	// path never requires a paired fabric fixture.
-	bisector := deps.Bisector
-	if bisector == nil {
-		f, err := fabricengine.Open(deps.Layout)
-		if err != nil {
-			return err
+	var warnings []string
+	if deps.OpenBisector == nil {
+		// No fabric repo in this mode: bypass BisectAndEscalate/bisect
+		// entirely rather than feeding them a nil bisector — see the func
+		// doc comment for why the bypass must live at this call site.
+		RecordIntegrationFailure(st, "unknown", "unknown")
+		if err := AppendIntegrationFailure(deps.Geom.WebsterDir, "unknown", "unknown"); err != nil {
+			return nil, err
 		}
-		bisector = f
-	}
-	if err := BisectAndEscalate(bisector, shas, labels, plan.Verify, deps.WorktreeRoot, deps.WebsterDir, st); err != nil {
-		return err
+		warnings = append(warnings, "the integration suite failed and the offending card could not be localized because this mode has no fabric repo to bisect against")
+	} else {
+		bisector, err := deps.OpenBisector()
+		if err != nil {
+			return nil, err
+		}
+		shas, labels := accumulatedCardSHAs(batches, st)
+		if err := BisectAndEscalate(bisector, shas, labels, plan.Verify, deps.Geom.WorktreeRoot, deps.Geom.WebsterDir, st); err != nil {
+			return nil, err
+		}
 	}
 
-	if err := SaveState(deps.WebsterDir, deps.ScratchDir, st); err != nil {
-		return err
+	if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+		return nil, err
 	}
 
 	// A Master that claimed outcome: done while the plan-level integration
@@ -855,10 +862,10 @@ func runIntegrationStage(deps RunDeps, plan *planparser.Plan, batches []batcher.
 	// outcome (the template-correct stuck) keeps its own judgment: the
 	// escalation merely sharpened its summary, so it returns nil below.
 	if masterOutcome == outcomeDone {
-		return fmt.Errorf("webster: run reached outcome: done but the plan-level \"## verify:\" suite FAILED and was escalated (see summary.md for the SHA-bisect-localized offending card) — a done outcome requires a passing integration suite")
+		return warnings, fmt.Errorf("webster: run reached outcome: done but the plan-level \"## verify:\" suite FAILED and was escalated (see summary.md for the SHA-bisect-localized offending card) — a done outcome requires a passing integration suite")
 	}
 
-	return nil
+	return warnings, nil
 }
 
 // accumulatedCardSHAs walks batches in plan order and collects every

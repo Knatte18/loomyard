@@ -36,6 +36,15 @@ import (
 // bare "pwsh": the WindowsApps execution alias is a 0-byte ConPTY stub.
 const smokePwshPath = `C:\Code\tools\powershell7\pwsh.exe`
 
+// smokeClaudeModel is the model every real `claude` process this package spawns must run on,
+// matching internal/reedcli/smoke_test.go's constant of the same name.
+// Every test here asserts something mechanical — a file's content, an envelope field, whether a
+// strand is still tracked — and a stronger model buys none of it, so leaving the model unpinned
+// only spent the account default's tokens on each of the four real spawns.
+// A test that genuinely needs model-specific behaviour must say so explicitly rather than silently
+// omitting the pin.
+const smokeClaudeModel = "haiku"
+
 // claudeBinaryPath returns the claude CLI's path from the environment or
 // PATH, skipping the calling test when it is absent so a -tags=smoke run
 // never hard-fails on a machine without a configured claude.
@@ -261,6 +270,7 @@ func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
 		"run",
 		"--prompt", prompt,
 		"--output-file", outputPath,
+		"--model", smokeClaudeModel,
 		"--timeout", "5m",
 	})
 	if code != 0 {

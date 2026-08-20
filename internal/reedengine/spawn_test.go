@@ -1,7 +1,8 @@
 // spawn_test.go table-tests planPaneTarget's adopt-vs-split decision — including the corpse-pane
 // rules tmux forces (never adopt a dead pane; split the tallest alive pane, or the kept corpse when
-// nothing is alive) and the header-pane exclusion (never adopted, never the preferred split target,
-// but the sole-pane fallback) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
+// nothing is alive), the header-pane exclusion (never adopted, never the preferred split target,
+// but the sole-pane fallback), and the sole-candidate narrowing on adoption (never guess which of
+// several untracked panes is idle) — and verifies loadOrInitStateLocked's fresh-worktree bootstrap.
 // Both are pure/hermetic, no live tmux required.
 // launchStrandLocked itself always makes a real tmux round trip (list-panes/split-window +
 // send-keys), so it is exercised only through this decision seam, not invoked directly here;
@@ -95,6 +96,35 @@ func TestPlanPaneTarget(t *testing.T) {
 			wantSplitTarget: "%1",
 		},
 		{
+			name: "SeveralUntrackedAlivePanes_SplitsRatherThanGuessingWhichToAdopt",
+			// R4 review finding R4-F5, reproduced live: after .lyx/reed.json
+			// was scrubbed from a running session, no strand held a binding
+			// and several untracked alive panes remained — one of them the
+			// previous header pane, still running "lyx reed header
+			// --blocking". Adoption picked it, send-keys typed the strand's
+			// command onto a blocked pane's screen where it never executed
+			// (exit 0 throughout), and status then reported the strand live
+			// with no such process on the box. With more than one candidate
+			// there is no way to tell an idle shell from a busy one, so the
+			// planner must split a guaranteed-idle new pane instead — off the
+			// tallest, %2 here.
+			strands:         nil,
+			live:            []LivePane{{ID: "%header", Height: 1}, {ID: "%stale", Height: 12}, {ID: "%2", Height: 37}},
+			headerPaneID:    "%header",
+			wantSplitTarget: "%2",
+		},
+		{
+			name: "SeveralAlivePanesButOnlyOneNonHeaderAlive_StillAdopts",
+			// The narrowing must not reach the case adoption exists for: a
+			// fresh boot's header plus the sole new-session pane, with a dead
+			// corpse also present. Exactly one alive non-header pane, so
+			// adopting it is still unambiguous.
+			strands:      nil,
+			live:         []LivePane{{ID: "%header", Height: 1}, {ID: "%corpse", Dead: true, Height: 12}, {ID: "%1", Height: 37}},
+			headerPaneID: "%header",
+			wantAdoptID:  "%1",
+		},
+		{
 			name: "HeaderIsSolePane_SplitTargetFallsBackToHeader",
 			// Every strand has been removed: only the header remains. The
 			// header must become the split target so a subsequent add still
@@ -147,15 +177,20 @@ func TestLoadOrInitStateLocked_AbsentFileInitializesFromEngineIdentity(t *testin
 	}
 }
 
-func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
+// TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity pins the R3 review's R3-F2
+// contract: strand data loads verbatim from the persisted file, while the Socket/Session identity
+// diagnostic is re-stamped from the engine's told geometry on every load — a renamed worktree
+// carries its .lyx state along, but its session name changes with the directory, and a diagnostic
+// recording an identity reed no longer drives is worse than none.
+func TestLoadOrInitStateLocked_ExistingFileLoadsStrandsAndRestampsIdentity(t *testing.T) {
 	e := newTestEngine(t)
 
-	want := &ReedState{
-		Socket:  "some-other-server",
-		Session: "some-other-session",
+	persisted := &ReedState{
+		Socket:  "stale-server-from-before-a-rename",
+		Session: "stale-session-from-before-a-rename",
 		Strands: []Strand{{GUID: "g1", PaneID: "%1"}},
 	}
-	if err := SaveState(e.stateDir(), want); err != nil {
+	if err := SaveState(e.stateDir(), persisted); err != nil {
 		t.Fatalf("SaveState: %v", err)
 	}
 
@@ -163,8 +198,11 @@ func TestLoadOrInitStateLocked_ExistingFileLoadsVerbatim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadOrInitStateLocked: %v", err)
 	}
-	if st.Socket != want.Socket || st.Session != want.Session {
-		t.Errorf("loadOrInitStateLocked() = %+v, want the persisted state, not a freshly initialized one", st)
+	if st.Socket != e.Socket() {
+		t.Errorf("loadOrInitStateLocked() Socket = %q, want the re-stamped %q, not the stale persisted value", st.Socket, e.Socket())
+	}
+	if st.Session != e.SessionName() {
+		t.Errorf("loadOrInitStateLocked() Session = %q, want the re-stamped %q, not the stale persisted value", st.Session, e.SessionName())
 	}
 	if len(st.Strands) != 1 || st.Strands[0].GUID != "g1" {
 		t.Errorf("loadOrInitStateLocked() Strands = %+v, want the persisted strand", st.Strands)
@@ -217,6 +255,99 @@ func TestValidateSplitCreatedNewPane(t *testing.T) {
 			err := validateSplitCreatedNewPane(tt.paneID, preSplitLive, "%0")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateSplitCreatedNewPane(%q) error = %v, wantErr %v", tt.paneID, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims pins R5-F3's repair at the CALL SITE
+// rather than at the helper.
+//
+// clearConflictingPaneBindings has its own unit coverage (reconcile_test.go) and the render path has
+// an independent second layer (removeDuplicatePaneCells), so deleting the call to it from
+// loadOrInitStateLocked left the whole hermetic and smoke suites green while the reconcile-side layer
+// was gone — the wiring gap the orchestrator's independent verification of round 5 found.
+//
+// Status is the observable that isolates this layer: it reads the loaded table and cross-references
+// it against live panes, and never touches the render path. With the repair wired, a strand whose
+// PaneID names a pane another owner already claims is cleared and reported not-live; without it, that
+// pane IS alive, so status reports live:true against someone else's pane — exactly the false-healthy
+// symptom the R5 review reproduced live ("status reported the strand live:true against the header
+// pane running `lyx reed header --blocking`").
+//
+// The recorded generation deliberately MATCHES the one the probe answers, so the pane-generation
+// guard adopts rather than clears and the only thing that can clear a binding here is the repair
+// under test.
+func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
+	const headerPane = "%1"
+	const firstStrandPane = "%2"
+	const liveAnswer = "$0|4321|1787000000"
+	liveGeneration := PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"}
+
+	tests := []struct {
+		name string
+		// strandPaneIDs are the persisted PaneIDs, in table order, for strands named "first" and
+		// "second".
+		strandPaneIDs []string
+		wantLive      []bool
+	}{
+		{
+			name:          "a strand bound to the header's own pane is not reported live on it",
+			strandPaneIDs: []string{headerPane},
+			wantLive:      []bool{false},
+		},
+		{
+			name:          "of two strands claiming one pane, only the first owner is reported live",
+			strandPaneIDs: []string{firstStrandPane, firstStrandPane},
+			wantLive:      []bool{true, false},
+		},
+		{
+			name:          "a table with no conflict is left alone",
+			strandPaneIDs: []string{firstStrandPane},
+			wantLive:      []bool{true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newTestEngine(t)
+			e.tmux.execHook = func(capture bool, args ...string) (string, error) {
+				switch args[0] {
+				case "display-message":
+					return liveAnswer, nil
+				case "list-sessions":
+					return "worktree\n", nil
+				case "list-panes":
+					// Both panes present and alive, so a binding that survives the repair reads as
+					// live and one that does not reads as not-live.
+					return headerPane + " 0 0 100 3 4322\n" + firstStrandPane + " 0 3 100 20 4323\n", nil
+				default:
+					return "", nil
+				}
+			}
+
+			st := &ReedState{HeaderPaneID: headerPane, PaneGeneration: liveGeneration}
+			names := []string{"first", "second"}
+			for i, paneID := range tt.strandPaneIDs {
+				st.Strands = append(st.Strands, Strand{GUID: names[i], Name: names[i], PaneID: paneID})
+			}
+			if err := SaveState(e.stateDir(), st); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+
+			result, err := e.Status()
+			if err != nil {
+				t.Fatalf("Status: %v", err)
+			}
+			if len(result.Strands) != len(tt.wantLive) {
+				t.Fatalf("Status reported %d strands; want %d", len(result.Strands), len(tt.wantLive))
+			}
+			for i, want := range tt.wantLive {
+				got := result.Strands[i]
+				if got.Live != want {
+					t.Errorf("Status strand %q live = %v on pane %q; want %v — a pane has exactly one owner, and a binding naming a pane another owner claims must be cleared at load",
+						got.GUID, got.Live, got.PaneID, want)
+				}
 			}
 		})
 	}

@@ -210,6 +210,17 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 		return PullResult{}, nil
 	}
 
+	// A pull hard-resets and re-anchors warp, which would discard an in-progress merge — refuse
+	// before any mutation whenever a fabric merge record exists on the pair. Record-only: the
+	// foreign-state disposition is Commit's alone, per the lock decision's consequence table.
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return PullResult{}, err
+	}
+	if recordExists {
+		return PullResult{}, &ErrMergeInProgress{}
+	}
+
 	var result PullResult
 
 	// A weft branch with no upstream has nothing to fast-forward from — the freshly bootstrapped

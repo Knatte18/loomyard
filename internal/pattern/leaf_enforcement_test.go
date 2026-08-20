@@ -1,5 +1,5 @@
 // leaf_enforcement_test.go enforces the Pattern Leaf Invariant: production code in internal/pattern
-// imports ONLY the standard library, internal/lyxcwd, internal/lyxdirs, internal/stencilstore, and
+// imports ONLY the standard library, internal/lyxdirs, internal/stencilstore, and
 // internal/stencil — never a feature package (websterengine, burlerengine, loomengine, or any
 // other).
 // Like modelspec's and tokenvocab's leaf_enforcement_test.go, this check is an ALLOWLIST: any
@@ -21,7 +21,6 @@ import (
 // allowedImports are the only non-stdlib import paths production code in
 // this package may use.
 var allowedImports = map[string]bool{
-	"github.com/Knatte18/loomyard/internal/lyxcwd":       true,
 	"github.com/Knatte18/loomyard/internal/lyxdirs":      true,
 	"github.com/Knatte18/loomyard/internal/stencilstore": true,
 	"github.com/Knatte18/loomyard/internal/stencil":      true,
@@ -86,6 +85,6 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("Pattern Leaf Invariant violated; imports outside the allowlist (stdlib + lyxcwd + lyxdirs + stencilstore + stencil) found: %v", failures)
+		t.Errorf("Pattern Leaf Invariant violated; imports outside the allowlist (stdlib + lyxdirs + stencilstore + stencil) found: %v", failures)
 	}
 }

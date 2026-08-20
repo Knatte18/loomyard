@@ -17,6 +17,15 @@
 // tests use a fake burler returning scripted verdicts, no LLM at all).
 // Keeping them one module would blend those two test regimes.
 //
+// Told-geometry tier: burlerengine is a producer — it is told the absolute paths it operates on
+// through its Geometry struct (WorktreeRoot, AnchorPath), derives none of its own, and requires
+// none of the three resolution tiers, so it runs in a directory that is not a git repository.
+// internal/hubgeom and internal/standalonegeom are Geometry's two sole constructors, in hub mode
+// and told mode respectively.
+// This property is a review obligation here, not machine-enforced — this package has no
+// import-allowlist test policing the absence of internal/lyxcwd.
+// See CONSTRAINTS.md's Told-Geometry Invariant.
+//
 // # The A/B round
 //
 // A-before-B is a hard gate, not advisory: job A must be complete, with

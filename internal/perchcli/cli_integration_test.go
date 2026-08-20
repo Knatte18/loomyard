@@ -1,7 +1,10 @@
 //go:build integration
 
 // cli_integration_test.go holds the perchcli pause tests that build a real hub (hubforge.NewHub) and
-// write run-dir state on disk, so they are integration-tagged per the Test Tier Purity Invariant.
+// write run-dir state on disk, so they are integration-tagged per the Test Tier Purity Invariant. It
+// also holds the standalone entry tests, which build no hub at all -- they drive RunCLIIn from a
+// temporary directory outside any git repository, proving the standalone pre-run reaches a verb's own
+// RunE and touches nothing under the target directory.
 
 package perchcli
 
@@ -60,7 +63,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 
 	h := seedPerchFixture(t)
 
-	runDir := filepath.Join(perchengine.RunsDir(h.Location), "finishedrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "finishedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -78,7 +81,7 @@ func TestRunCLI_Pause_FinishedBlockRefused(t *testing.T) {
 	if !strings.Contains(out.String(), "already finished (STUCK)") {
 		t.Errorf(`RunCLI([pause --run-id finishedrun]) output missing "already finished (STUCK)"; got: %q`, out.String())
 	}
-	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "finishedrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "finishedrun")
 	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err == nil {
 		t.Error("pause flag was written for a finished block; want no flag")
 	}
@@ -101,7 +104,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	// on top of a real hub would be asserting against an invented shape again.
 	h := hubforge.NewHub(t, "nested")
 
-	runDir := filepath.Join(perchengine.RunsDir(h.Location), "nestedrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "nestedrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -111,7 +114,7 @@ func TestRunCLI_Pause_NestedInitAnchorsRunDirsAtCwd(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf(`RunCLI([pause --run-id nestedrun]) = %d; want 0 — the run dir under <cwd>/_lyx/perch must be found, output: %s`, exitCode, out.String())
 	}
-	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "nestedrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "nestedrun")
 	if _, err := os.Stat(perchengine.PauseFlagPath(scratchDir)); err != nil {
 		t.Errorf("pause flag not written under the nested .lyx run dir %q: %v", scratchDir, err)
 	}
@@ -145,7 +148,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 
 	h := seedPerchFixture(t)
 
-	runDir := filepath.Join(perchengine.RunsDir(h.Location), "myrun")
+	runDir := filepath.Join(perchengine.RunsDir(h.Location.AnchorPath()), "myrun")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		t.Fatalf("mkdir run dir: %v", err)
 	}
@@ -159,7 +162,7 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 		t.Errorf(`RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out.String())
 	}
 
-	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location), "myrun")
+	scratchDir := filepath.Join(perchengine.ScratchDir(h.Location.AnchorPath()), "myrun")
 	pauseFile := perchengine.PauseFlagPath(scratchDir)
 	if _, err := os.Stat(pauseFile); err != nil {
 		t.Fatalf("pause flag file %q not written: %v", pauseFile, err)
@@ -179,5 +182,73 @@ func TestRunCLI_Pause_WritesFlagAndIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(out2.String(), `"ok":true`) {
 		t.Errorf(`second RunCLI([pause --run-id myrun]) output missing ok:true envelope; got: %q`, out2.String())
+	}
+}
+
+// TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate drives "run" from a temporary directory
+// that is not a git repository at all -- lyxcwd.Resolve fails there, so preflight.ResolveMode folds
+// it into standalone mode rather than refusing outright. It redirects the standalone state directory
+// to a temporary one via XDG_STATE_HOME/LOCALAPPDATA before calling RunCLIIn, since without that
+// redirect the real Derive would resolve into the operator's actual home directory. The redirect is
+// why this test is not marked t.Parallel(): t.Setenv panics under a parallel test.
+//
+// No --profile is passed, so once the pre-run itself succeeds "run" reaches its own manual flag-shape
+// gate and refuses there with "perch: --profile is required" -- proving the pre-run got all the way
+// through wiring rather than dying earlier with a cwd-resolution error, which would produce a
+// completely different message.
+func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
+	target := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(target, &out, []string{"run"})
+
+	if exitCode != 1 {
+		t.Fatalf(`RunCLIIn(%q, [run]) = %d; want 1, output: %s`, target, exitCode, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "perch: --profile is required") {
+		t.Errorf(`RunCLIIn(%q, [run]) output missing the run verb's own flag-validation error; got: %q`, target, got)
+	}
+	if strings.Contains(got, "not a git repository") {
+		t.Errorf(`RunCLIIn(%q, [run]) output looks like a cwd-resolution failure, not the run verb's own validation gate; got: %q`, target, got)
+	}
+}
+
+// TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged proves the two-roots split's whole point:
+// the target directory itself -- the operator's git repository -- gains no hidden state tree, no lock
+// file, and no rendered prompt from a standalone invocation. Every durable and scratch artifact lives
+// under the derived state directory instead. This is the one property no untagged test in this batch
+// can observe, since it requires a real Derive call and a real filesystem to assert an absence
+// against.
+func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
+	target := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+
+	before, err := os.ReadDir(target)
+	if err != nil {
+		t.Fatalf("ReadDir(%q) before = %v", target, err)
+	}
+	if len(before) != 0 {
+		t.Fatalf("target directory %q is not empty before the invocation; fixture is not clean: %v", target, before)
+	}
+
+	var out bytes.Buffer
+	// "run" without --profile is enough to drive the pre-run's full standalone wiring (including
+	// the stencil seed) even though the verb itself refuses right after.
+	_ = RunCLIIn(target, &out, []string{"run"})
+
+	after, err := os.ReadDir(target)
+	if err != nil {
+		t.Fatalf("ReadDir(%q) after = %v", target, err)
+	}
+	if len(after) != 0 {
+		names := make([]string, len(after))
+		for i, e := range after {
+			names[i] = e.Name()
+		}
+		t.Errorf("target directory %q gained entries from a standalone invocation: %v; want it byte-for-byte unchanged -- no hidden state tree, no lock file, no rendered prompt", target, names)
 	}
 }

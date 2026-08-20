@@ -43,6 +43,16 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 
 	weftWorktree := WeftWorktree(l)
 
+	// A coordinated branch switch out of a half-merged pair is refused: record-only, since the
+	// foreign-state disposition belongs to Commit alone.
+	blocked, err := mergeBlocksMutation(l.WorktreePath(), weftWorktree)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	if blocked {
+		return CheckoutResult{}, &ErrMergeInProgress{}
+	}
+
 	// Refuse if the weft worktree is dirty to prevent half-switched pairs.
 	weftDirty, _, err := worktreeDirty(scopeTracked, weftWorktree)
 	if err != nil {

@@ -136,9 +136,22 @@
 // opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
 // scout keep using explicit-list StageAndCommit (called via fabricengine's own
 // board-facing commit wrapper on board's behalf, not boardengine calling
-// gitrepo directly). Rebase, interactive
-// staging, cherry-pick, conflict resolution, and general-purpose branch/checkout management are
-// explicitly not supported — a human can always use plain git directly in
+// gitrepo directly). Merge start/conclude and conflicted-path enumeration
+// (MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached,
+// MergeFFOnly, ResolveSHA) are admitted, used by fabric's two-sided merge
+// coordination. The two behaviours these depend on are pinned on the command
+// line rather than inherited from the caller's git config: MergeStart passes
+// --ff so merge.ff=only/false cannot change the outcome it classifies, and
+// MergeConclude passes --no-edit so core.editor can never hang a
+// non-interactive caller. MergeStart's four-way classification reads a live
+// MERGE_HEAD as MergeStaged before it reads HEAD movement, because a real
+// merge whose result tree equals HEAD's own tree stages nothing and moves no
+// HEAD while still leaving a merge for someone to conclude; reading only the
+// index diff and HEAD would report that as MergeAlreadyUpToDate and strand it.
+// Rebase, interactive staging, cherry-pick, conflict *resolution*, and
+// general-purpose branch/checkout management stay explicitly not supported —
+// gitrepo reports conflicts, but resolving them is the caller's job. A human
+// can always use plain git directly in
 // the working tree, since it's an ordinary git repo underneath. fabric
 // layers a further, separate set of topology operations — clone, worktree
 // add/remove, general checkout, branch naming — on top of gitrepo; those

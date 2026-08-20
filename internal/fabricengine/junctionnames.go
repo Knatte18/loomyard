@@ -136,6 +136,14 @@ func HubScratchDir(hub string) string {
 	return filepath.Join(BoardDir(hub), lyxdirs.DotLyxDirName)
 }
 
+// HubLogsDir returns the hub-level directory where the shared per-hub reed server writes its
+// runtime log: <hub>/_board/.lyx/logs.
+// It is hub-anchored so one server per hub resolves to one deterministic place, and it lives
+// beside HubScratchDir so the derivation is named once here rather than re-joined at each caller.
+func HubLogsDir(hub string) string {
+	return filepath.Join(HubScratchDir(hub), "logs")
+}
+
 // HubPath returns the absolute path to the hub container directory for the given repo name inside
 // parent.
 func HubPath(parent, name string) string {

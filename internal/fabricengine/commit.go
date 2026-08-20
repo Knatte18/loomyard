@@ -110,6 +110,26 @@ func (f *Fabric) Commit(files []string, msg string, snapshotTags []string, opts 
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
 
+	// Refuse before any classification or locking: a recorded merge blocks the same as it does for
+	// every other sibling mutating verb, and foreign git-level merge state with no record — a plain
+	// git conflicted merge in the warp checkout — is refused here too, pre-empting git's own raw
+	// "cannot do a partial commit during a merge" with the single typed, side-free error every
+	// sibling refusal uses.
+	recordExists, err := f.mergeRecordExists()
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if recordExists {
+		return CommitResult{}, &ErrMergeInProgress{}
+	}
+	foreignState, err := f.foreignMergeStatePresent()
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if foreignState {
+		return CommitResult{}, &ErrMergeInProgress{}
+	}
+
 	l, err := lyxcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
 		return CommitResult{}, fmt.Errorf("fabricengine: resolve layout for %s: %w", f.warpPath, err)

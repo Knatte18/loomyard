@@ -46,6 +46,8 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 		"push":      {"a"},
 		"pull":      {"a"},
 		"sync":      {"a"},
+		"merge":     {"a", "b"},
+		"merge-in":  {"a", "b"},
 	}
 
 	// handRolledArity names the verbs that refuse a wrong argument COUNT in their own handler rather

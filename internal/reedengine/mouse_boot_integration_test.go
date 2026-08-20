@@ -16,8 +16,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // newIntegrationEngine builds an Engine rooted at a fresh t.TempDir() hub, with
@@ -47,8 +45,17 @@ func newIntegrationEngine(t *testing.T, mouse string) *Engine {
 	// wants to exercise, rather than relying on LYX_REED_MOUSE env plumbing.
 	cfg.Mouse = mouse
 
-	layout := &lyxcwd.Location{HubPath: hubDir, WorktreeName: filepath.Base(worktreeDir), AnchorRel: "."}
-	e := New(cfg, layout)
+	geom := Geometry{
+		SocketKey:    ServerName(hubDir),
+		SessionName:  SessionName(worktreeDir),
+		AnchorPath:   worktreeDir,
+		PaneCwd:      worktreeDir,
+		WorktreeRoot: worktreeDir,
+		LogsDir:      filepath.Join(hubDir, "logs"),
+		RepoName:     "test-repo",
+		HubPath:      hubDir,
+	}
+	e := New(cfg, geom)
 
 	t.Cleanup(func() {
 		// Always torn down, success or failure: a leaked scratch server on a
@@ -104,7 +111,7 @@ func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 }
 
 // TestMouseBootIntegration_NoLiveToggleWithoutRestart boots once with Mouse="off", confirms it,
-// then builds a second Engine on the SAME layout with Mouse="on" and calls Up() again without
+// then builds a second Engine on the SAME geometry with Mouse="on" and calls Up() again without
 // tearing the first session down.
 // The already-up session must hit ensureServerAndSessionLocked's early return and never re-apply
 // set-option, so the live value must stay "off" — proving there is no live toggle without a server
@@ -118,12 +125,12 @@ func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
 		t.Fatalf("show-options -g mouse after first boot = %q, want %q", got, "off")
 	}
 
-	// Build a second Engine on the identical Config/Layout shape, differing
+	// Build a second Engine on the identical Config/Geometry shape, differing
 	// only in Mouse, and target the SAME socket/session by reusing e1's
-	// layout and cfg (with Mouse overridden) rather than a fresh temp dir.
+	// geometry and cfg (with Mouse overridden) rather than a fresh temp dir.
 	cfg2 := e1.cfg
 	cfg2.Mouse = "on"
-	e2 := New(cfg2, e1.layout)
+	e2 := New(cfg2, e1.geom)
 	if _, err := e2.Up(); err != nil {
 		t.Fatalf("second Up() against the already-up session: %v", err)
 	}

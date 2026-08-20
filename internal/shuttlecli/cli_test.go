@@ -9,12 +9,14 @@ package shuttlecli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -63,12 +65,12 @@ func TestRunCLI_UnknownSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Run_FlagValidation exercises run's flag-shape validation (missing --output-file, both
-// --prompt and --prompt-file, neither) against an uninitialized (non-git) directory.
-// Config resolution aborts first in that directory,
-// but run's RunE validates flag shape before ever touching c.runner, so each case's flag-specific
-// error still surfaces in the captured output alongside the PersistentPreRunE abort's own error
-// line.
+// TestRunCLI_Run_FlagValidation drives runCmd directly rather than through RunCLI, so no parent
+// PersistentPreRunE runs and no abort is in play — this is the flag-shape check on its own terms,
+// which is what these cases are actually about. Its companion below covers what happens when a
+// pre-run abort and a flag error coincide.
+// Each case asserts the whole buffer parses as EXACTLY ONE JSON object: the module's contract is one
+// envelope per invocation, and a substring check cannot see a second one.
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -77,19 +79,67 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 	}{
 		{
 			name:    "MissingOutputFile",
-			args:    []string{"run", "--prompt", "do the thing"},
+			args:    []string{"--prompt", "do the thing"},
 			wantErr: "--output-file",
 		},
 		{
 			name:    "BothPromptAndPromptFile",
-			args:    []string{"run", "--prompt", "do the thing", "--prompt-file", "task.md", "--output-file", "out.md"},
+			args:    []string{"--prompt", "do the thing", "--prompt-file", "task.md", "--output-file", "out.md"},
 			wantErr: "mutually exclusive",
 		},
 		{
 			name:    "NeitherPromptNorPromptFile",
-			args:    []string{"run", "--output-file", "out.md"},
+			args:    []string{"--output-file", "out.md"},
 			wantErr: "exactly one of --prompt or --prompt-file",
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A nil runner is deliberate: every case here must be refused by the flag-shape checks
+			// before c.runner is ever dereferenced, and a nil runner is what proves it.
+			c := &shuttleCLI{}
+			cmd := c.runCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(tt.args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Errorf("envelope ok = true; want false for a flag error; output: %s", out.String())
+			}
+			if got, _ := envelope["error"].(string); !strings.Contains(got, tt.wantErr) {
+				t.Errorf("envelope error = %q; want substring %q", got, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope is R2-F1's regression guard.
+//
+// runCmd's flag-shape validation used to sit AHEAD of its clihelp.ShouldAbort check, on the
+// reasoning that a bad flag combination should be reported as its own error rather than swallowed by
+// the abort's already-recorded exit code. But clihelp.Abort only records an exit code — cobra still
+// runs RunE — so when geometry resolution failed AND a flag was bad, one invocation emitted TWO JSON
+// objects. That breaks any caller unmarshalling the output as a single object, this package's own
+// smoke tests included (they do json.Unmarshal over the whole buffer), and it reported the secondary
+// problem after the primary one with nothing saying which to fix first.
+//
+// Running from a non-git temp dir makes lyxcwd.Resolve fail, which is the abort this pins. The
+// original intent is untouched and still covered: TestRunCLI_Run_FlagValidation above proves a flag
+// error is reported on its own whenever the pre-run did NOT abort.
+func TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"AbortPlusMissingPrompt", []string{"run", "--output-file", "out.md"}},
+		{"AbortPlusMissingOutputFile", []string{"run", "--prompt", "do the thing"}},
+		{"AbortPlusMutuallyExclusivePrompts", []string{"run", "--prompt", "a", "--prompt-file", "b", "--output-file", "out.md"}},
 	}
 
 	for _, tt := range tests {
@@ -102,11 +152,37 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			if exitCode != 1 {
 				t.Errorf("RunCLI(%v) = %d; want 1", tt.args, exitCode)
 			}
-			if !strings.Contains(out.String(), tt.wantErr) {
-				t.Errorf("RunCLI(%v) output = %q; want substring %q", tt.args, out.String(), tt.wantErr)
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Errorf("envelope ok = true; want false; output: %s", out.String())
+			}
+			// The pre-run failure is the one the operator must fix first, so it is the one reported.
+			if got, _ := envelope["error"].(string); !strings.Contains(got, "not a git repository") {
+				t.Errorf("envelope error = %q; want the pre-run failure (%q), not the secondary flag error", got, "not a git repository")
 			}
 		})
 	}
+}
+
+// parseSingleEnvelope decodes out as exactly one JSON object and fails the test if it holds none,
+// more than one, or trailing junk.
+// json.Unmarshal alone would not do: it rejects a second object with an opaque "invalid character
+// '{' after top-level value", which reads as malformed JSON rather than as the extra envelope it
+// actually is.
+func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
+	t.Helper()
+	decoder := json.NewDecoder(bytes.NewReader(out))
+	var envelope map[string]any
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("parse first envelope: %v; output: %s", err, out)
+	}
+	var extra map[string]any
+	if err := decoder.Decode(&extra); err == nil {
+		t.Fatalf("a second JSON envelope followed the first (%v) — one invocation must emit exactly one; output: %s", extra, out)
+	} else if !errors.Is(err, io.EOF) {
+		t.Fatalf("trailing junk after the envelope: %v; output: %s", err, out)
+	}
+	return envelope
 }
 
 // TestRunCLI_Interrupt_ArgValidation verifies that "lyx shuttle interrupt" enforces exactly one
@@ -233,8 +309,14 @@ func TestRunCmd_EffortFlag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := &specCapturingEngine{}
-			layout := &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
-			runner := shuttleengine.NewRunner(noopReed{}, engine, layout, shuttleengine.Config{RunTimeoutMin: 30})
+			// Distinct, but in the geometric relation NewRunner validates: the
+			// anchor is always the worktree root or a subdirectory of it.
+			worktreeRoot := t.TempDir()
+			anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
+			if err := os.MkdirAll(anchorPath, 0o755); err != nil {
+				t.Fatalf("mkdir anchor path: %v", err)
+			}
+			runner := shuttleengine.NewRunner(noopReed{}, engine, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
 
 			c := &shuttleCLI{runner: runner}
 			cmd := c.runCmd()
@@ -283,5 +365,74 @@ func TestRunCLI_Send_ArgValidation(t *testing.T) {
 				t.Errorf("RunCLI(%v) output missing ok:false envelope; got: %q", tt.args, out.String())
 			}
 		})
+	}
+}
+
+// preparingEngine is a hermetic Engine double that Prepares successfully and never becomes ready,
+// so a Runner built over it reaches Wait — where statusFailingReed's error drives the
+// mechanism-failure path the identity envelope below is about.
+type preparingEngine struct{ specCapturingEngine }
+
+func (e *preparingEngine) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+	e.gotSpec = spec
+	return shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"}, nil
+}
+
+// statusFailingReed registers a strand, then fails every Status the way a torn-down reed session
+// does — the live shape that produced this finding.
+type statusFailingReed struct{ noopReed }
+
+func (statusFailingReed) AddStrand(spec reedengine.AddSpec) (reedengine.Strand, error) {
+	return reedengine.Strand{GUID: "strand-1"}, nil
+}
+
+func (statusFailingReed) Status() (reedengine.StatusResult, error) {
+	return reedengine.StatusResult{}, errors.New(`no reed session; run "lyx reed up"`)
+}
+
+// TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity pins that a run which fails after its
+// strand registered still names the strand, session, and run directory in its error envelope.
+// Reproduced live before this: tearing the reed session down under an in-flight run answered with
+// the bare error and no handle at all, while the run directory was still on disk and the strand
+// possibly still live — nothing left for the operator to attach to or tear down.
+func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
+	anchorPath := t.TempDir()
+	worktreeRoot := filepath.Dir(anchorPath)
+	runner := shuttleengine.NewRunner(statusFailingReed{}, &preparingEngine{}, anchorPath, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30, PollIntervalMS: 1, LivenessEveryNPolls: 1, StartupTimeoutS: 1})
+
+	c := &shuttleCLI{runner: runner}
+	cmd := c.runCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--prompt", "do the thing", "--output-file", filepath.Join(anchorPath, "never-written.md")})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		t.Fatalf("parse envelope: %v; output: %s", err, out.String())
+	}
+	if ok, _ := envelope["ok"].(bool); ok {
+		t.Fatalf("envelope ok = true; want false for a mechanism failure; output: %s", out.String())
+	}
+	if got, _ := envelope["guid"].(string); got != "strand-1" {
+		t.Errorf("envelope guid = %q; want %q; output: %s", got, "strand-1", out.String())
+	}
+	if got, _ := envelope["sessionId"].(string); got != "session-1" {
+		t.Errorf("envelope sessionId = %q; want %q; output: %s", got, "session-1", out.String())
+	}
+	if got, _ := envelope["runDir"].(string); got == "" {
+		t.Errorf("envelope runDir is empty; want the run dir that is still on disk; output: %s", out.String())
+	}
+}
+
+// TestIdentityFields_NilBeforeAnyStrandExists pins the other half: a failure BEFORE a strand
+// existed (a flag, config, or spec-validation error) must not decorate its envelope with three
+// empty strings.
+func TestIdentityFields_NilBeforeAnyStrandExists(t *testing.T) {
+	if got := identityFields(shuttleengine.Result{}); got != nil {
+		t.Errorf("identityFields(zero Result) = %v; want nil", got)
 	}
 }

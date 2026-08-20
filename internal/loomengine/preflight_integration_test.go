@@ -15,6 +15,7 @@
 package loomengine_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -69,27 +71,37 @@ func setupPreflightFixture(t *testing.T) (*hubforge.Hub, string) {
 	return h, slug
 }
 
-// seedValidStatus writes a fresh, coherent status.json seed with handoff fields only.
+// seedValidStatus writes a fresh, coherent status.json seed onto shedengine.Status's shape,
+// current_producer at "Preflight", with loom's own handoff fields carried in Product.
 func seedValidStatus(t *testing.T, l *lyxcwd.Location) {
 	t.Helper()
 
-	s := loomengine.Status{
-		Slug:      "loom-preflight-fixture",
-		Parent:    "main",
-		Phase:     "preflight",
-		Stage:     "produce",
-		Narration: "now: awaiting preflight / last: — / wait: —",
+	writeSeed(t, l, shedengine.Status{
+		CurrentProducer: "Preflight",
+		State:           shedengine.StateRunning,
+	}, loomengine.Status{
+		Slug:   "loom-preflight-fixture",
+		Parent: "main",
+	})
+}
+
+// writeSeed marshals product into shed.Product and writes the composed shedengine.Status to disk,
+// mirroring Preflight's own MkdirAll fix in preflight.go for LoomStatusLock's parent -- .lyx is a
+// sibling tree WireJunctions never creates, and state.WriteJSON only MkdirAlls status.json's own
+// parent, never the lock's.
+func writeSeed(t *testing.T, l *lyxcwd.Location, shed shedengine.Status, product loomengine.Status) {
+	t.Helper()
+
+	raw, err := json.Marshal(product)
+	if err != nil {
+		t.Fatalf("marshal product: %v", err)
 	}
-	// LoomStatusLock now lives under .lyx, a sibling tree WireJunctions never
-	// creates (it only wires _lyx and the caller's configured optional
-	// junctions) -- state.WriteJSON MkdirAlls the
-	// status.json's own parent but not the lock's, so this fixture must
-	// create the lock's parent itself, mirroring Preflight's own MkdirAll
-	// fix in preflight.go.
+	shed.Product = raw
+
 	if err := os.MkdirAll(filepath.Dir(loomengine.LoomStatusLock(l)), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
 	}
-	if err := state.WriteJSON(loomengine.LoomStatusFile(l), loomengine.LoomStatusLock(l), s); err != nil {
+	if err := state.WriteJSON(loomengine.LoomStatusFile(l), loomengine.LoomStatusLock(l), shed); err != nil {
 		t.Fatalf("seed status.json: %v", err)
 	}
 }
@@ -544,15 +556,13 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 	h, _ := setupPreflightFixture(t)
 
 	const raw = `{
-  "slug": "loom-preflight-fixture",
-  "parent": "main",
-  "phase": "preflight",
-  "stage": "produce",
-  "narration": "now: awaiting preflight",
-  "history": [],
-  "start_sha": null,
+  "current_producer": "Preflight",
+  "state": "running",
+  "error": "",
   "pause_requested": false,
-  "next_action": null,
+  "activity": {"now": "", "last": "", "wait": ""},
+  "history": [],
+  "product": {"slug": "loom-preflight-fixture", "parent": "main", "start_sha": null},
   "unknown_field": true
 }`
 	if err := os.WriteFile(loomengine.LoomStatusFile(h.Location), []byte(raw), 0o644); err != nil {
@@ -567,36 +577,41 @@ func TestPreflight_SeedUnknownField(t *testing.T) {
 	assertCheckSet(t, report, loomengine.CheckSeedIncoherent)
 }
 
-// TestPreflight_SeedHalfFinished asserts that a coherent-but-advanced seed (non-empty history, or a
-// stamped start_sha) reports half-finished — the task has already run past the point Preflight is
-// meant to gate.
+// TestPreflight_SeedHalfFinished asserts that a coherent-but-advanced seed (a history entry naming
+// a producer other than "Preflight", or a stamped start_sha) reports half-finished — the task has
+// already run past the point Preflight is meant to gate.
 func TestPreflight_SeedHalfFinished(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		seed func() loomengine.Status
+		shed func() shedengine.Status
+		prod func() loomengine.Status
 	}{
 		{
-			name: "NonEmptyHistory",
-			seed: func() loomengine.Status {
-				return loomengine.Status{
-					Slug: "loom-preflight-fixture", Parent: "main", Phase: "webster", Stage: "gate",
-					Narration: "now: mid-run",
-					History: []loomengine.HistoryEntry{
-						{Phase: "discussion", Outcome: "approved", Ts: "2026-07-17T10:01:30Z"},
+			name: "HistoryNamingLaterProducer",
+			shed: func() shedengine.Status {
+				return shedengine.Status{
+					CurrentProducer: "Preflight",
+					State:           shedengine.StateRunning,
+					History: []shedengine.HistoryEntry{
+						{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
+						{Producer: "Discussion-Write", Outcome: shedengine.Stuck, At: "2026-07-17T10:05:00Z"},
 					},
 				}
+			},
+			prod: func() loomengine.Status {
+				return loomengine.Status{Slug: "loom-preflight-fixture", Parent: "main"}
 			},
 		},
 		{
 			name: "SetStartSha",
-			seed: func() loomengine.Status {
+			shed: func() shedengine.Status {
+				return shedengine.Status{CurrentProducer: "Preflight", State: shedengine.StateRunning}
+			},
+			prod: func() loomengine.Status {
 				sha := "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"
-				return loomengine.Status{
-					Slug: "loom-preflight-fixture", Parent: "main", Phase: "webster", Stage: "produce",
-					Narration: "now: mid-run", StartSha: &sha,
-				}
+				return loomengine.Status{Slug: "loom-preflight-fixture", Parent: "main", StartSha: &sha}
 			},
 		},
 	}
@@ -606,9 +621,7 @@ func TestPreflight_SeedHalfFinished(t *testing.T) {
 			t.Parallel()
 
 			h, _ := setupPreflightFixture(t)
-			if err := state.WriteJSON(loomengine.LoomStatusFile(h.Location), loomengine.LoomStatusLock(h.Location), tt.seed()); err != nil {
-				t.Fatalf("overwrite seed: %v", err)
-			}
+			writeSeed(t, h.Location, tt.shed(), tt.prod())
 			commitFabricStatus(t, h)
 
 			report, err := loomengine.CheckResolvedForTest(h.Location)

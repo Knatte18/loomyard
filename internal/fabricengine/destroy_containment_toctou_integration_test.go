@@ -42,7 +42,7 @@ func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
 	// Build an out-of-hub directory carrying the exact file names removeLaunchers targets, so any
 	// follow-through the removal does would delete them.
 	outside := t.TempDir()
-	canaries := []string{"ide.sh", "fabric-checkout.sh"}
+	canaries := []string{"ide.sh", "fabric-checkout.sh", "run.sh"}
 	for _, name := range canaries {
 		if err := os.WriteFile(filepath.Join(outside, name), []byte("PRECIOUS"), 0o644); err != nil {
 			t.Fatalf("seed outside canary %s: %v", name, err)

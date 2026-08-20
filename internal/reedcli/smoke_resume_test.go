@@ -145,8 +145,15 @@ func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
 
 	codeword := fmt.Sprintf("zebra-%d", time.Now().UnixNano()%1000000)
 	prompt := fmt.Sprintf("Remember the codeword %s. Reply with exactly: STORED %s", codeword, codeword)
-	launch := smokeInvokeLine(claudePath, prompt)
-	resume := smokeInvokeLine(claudePath, "--continue")
+	// --model is pinned to the cheapest model on BOTH lines, launch and resume
+	// alike. Nothing this test asserts is model-specific — it checks that a
+	// transcript persisted and that `--continue` found it again, which is reed's
+	// env-hygiene and opaque-replay contract, not a model capability — while the
+	// cost of NOT pinning is a real subscription session on the operator's
+	// default model every time anyone runs a bare `-run Smoke` sweep, which this
+	// test's name matches.
+	launch := smokeInvokeLine(claudePath, "--model", smokeClaudeModel, prompt)
+	resume := smokeInvokeLine(claudePath, "--continue", "--model", smokeClaudeModel)
 
 	// Scope the transcript watch to THIS test's claude project directory
 	// (derived from the fixture hub — the pane's cwd) and snapshot what is

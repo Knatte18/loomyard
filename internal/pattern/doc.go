@@ -10,8 +10,9 @@
 // # The active check is pure existence
 //
 // PATTERN is active iff `_lyx/PATTERN.md` exists, resolved via this
-// package's own FileHere(l) and nothing else: FileHere is what constructs
-// the path, built from lyxdirs.LyxDirName rather than a literal of its own.
+// package's own File applied to the caller-supplied anchor directory and
+// nothing else: File is what constructs the path, built from
+// lyxdirs.LyxDirName rather than a literal of its own.
 // The Cwd Resolution Invariant's enforcement test polices the "_lyx" token
 // itself, which belongs to internal/lyxdirs, not to this package;
 // TestEnforcement_GeometryLiterals matches whole tokens by exact equality
@@ -52,7 +53,7 @@
 // Each directive injects a pointer to `_lyx/PATTERN.md`, never the
 // constraints inline, so prompt size stays constant however large PATTERN
 // grows. The pointer is a literal relative string in the stencil file's own
-// body, never an interpolated absolute path built from a Location field:
+// body, never an interpolated absolute path built from the caller-supplied anchor path:
 // an absolute path would vary per worktree, which would make the fixed
 // directive strings unable to be compared for equality (or matched by
 // substring) across worktrees the way this package's own tests, and any
@@ -66,7 +67,7 @@
 // producer template's marker value and so never passes through
 // stencil.Fill, and returns an error rather than an empty string when an
 // active PATTERN's stencil cannot be read. The read is lazy: no read is
-// attempted on a nil layout, an inactive PATTERN, or an unknown role.
+// attempted on an empty anchor path, an inactive PATTERN, or an unknown role.
 //
 // # PathspecFile and PathspecDir
 //

@@ -1,15 +1,14 @@
 // config.go — configuration for the shuttle module.
 //
 // Defines the Config type mirroring shuttle.yaml's keys and LoadConfig, which uses
-// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the shuttle
-// config file;
+// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the shuttle config file,
+// degrading to the embedded template on proven absence;
 // shuttle never reads config files or knows their on-disk layout itself.
 
 package shuttleengine
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
@@ -33,14 +32,11 @@ type Config struct {
 
 // LoadConfig loads and unmarshals shuttle module configuration.
 // It validates against the template, resolves environment variables, and unmarshals into Config.
-// If <baseDir>/_lyx/ does not exist, it returns an error with recovery instructions.
+// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
+// a config file that exists but is invalid still errors.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap "not initialized" error with shuttle-specific recovery hint.
-		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
-		}
 		return Config{}, err
 	}
 

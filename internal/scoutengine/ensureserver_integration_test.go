@@ -30,12 +30,9 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // errNoWorkspaceSymbolCandidates reports when workspace/symbol returns no candidates.
@@ -127,7 +124,7 @@ func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 // since Go's registry entry now dispatches to the supervised strategy first, a call through
 // ensureServer (not ensureSupervised directly, which supervised_integration_test.go already covers)
 // must come back with connKindSupervised, must have recorded a live daemon state file, and a second
-// call against the same layout must reuse that same daemon (identical PID, stable Address)
+// call against the same anchorRoot must reuse that same daemon (identical PID, stable Address)
 // rather than spawning a second one — mirroring TestEnsureSupervised_Integration's own reuse
 // assertions, but through the exact entry point production code calls.
 func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
@@ -140,13 +137,12 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	// isolated from any other scout test's own supervised daemon,
 	// matching TestEnsureSupervised_Integration's own isolation.
 	worktreeRoot := t.TempDir()
-	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
-	statePath := DaemonStateFile(l, "go")
+	statePath := DaemonStateFile(worktreeRoot, "go")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, kind, err := ensureServer(ctx, "go", builtins()["go"], root, l, 30*time.Second)
+	client, kind, err := ensureServer(ctx, "go", builtins()["go"], root, worktreeRoot, 30*time.Second)
 	if err != nil {
 		t.Fatalf("ensureServer() returned unexpected error: %v", err)
 	}
@@ -175,9 +171,9 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 		t.Fatalf("os.FindProcess(%d) failed: %v", state.PID, err)
 	}
 
-	// A second call against the same layout/lang must reuse the
+	// A second call against the same anchorRoot/lang must reuse the
 	// existing daemon rather than spawning a second one.
-	if _, _, err := ensureServer(ctx, "go", builtins()["go"], root, l, 30*time.Second); err != nil {
+	if _, _, err := ensureServer(ctx, "go", builtins()["go"], root, worktreeRoot, 30*time.Second); err != nil {
 		t.Fatalf("ensureServer() second call returned unexpected error: %v", err)
 	}
 

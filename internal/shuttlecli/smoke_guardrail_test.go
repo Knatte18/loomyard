@@ -63,6 +63,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 		"run",
 		"--prompt", prompt,
 		"--output-file", outputPath,
+		"--model", smokeClaudeModel,
 		"--timeout", "5m",
 	})
 	if code != 0 {
@@ -120,6 +121,7 @@ func TestSmokeGuardrailAskingSurfacesQuestion(t *testing.T) {
 		"run",
 		"--prompt", prompt,
 		"--output-file", outputPath,
+		"--model", smokeClaudeModel,
 		"--timeout", "5m",
 	})
 	if code != 0 {
