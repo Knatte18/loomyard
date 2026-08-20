@@ -112,7 +112,9 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 
 	// Pre-lock already-up-to-date probe: no lock taken, no record written, empty mutation record —
-	// the degenerate no-op, mirroring Commit's own precedent.
+	// the degenerate no-op, mirroring Commit's own precedent. The two HEAD reads here serve this
+	// probe only; the record's starts are re-read under the lock below, where no concurrent writer
+	// can stale them.
 	warpStart, err := f.warp.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
@@ -142,6 +144,32 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fileLock.Release() }()
+
+	// Re-verify under the lock what the pre-lock guard could only observe racily: a merge record
+	// written by another process between the guard reads above and this acquisition. Without this,
+	// a second MergeIn racing a first one's resolution window overwrote the live record with its own
+	// source — saveMergeState below replaces, never refuses — leaving a record whose conclude would
+	// land the OTHER merge's content under this record's name.
+	recordNow, err := f.mergeRecordExists()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	if recordNow {
+		return MergeResult{}, newMergeGuardError([]string{mergeReasonAlreadyInProgress})
+	}
+
+	// Re-read both starts under the lock, discarding the pre-lock reads: a concurrent writer that
+	// held this lock while this call waited (a Commit landing new tips, most plausibly) makes the
+	// pre-lock SHAs stale, and recording a stale start means MergeAbort would reset THROUGH that
+	// writer's landed commits.
+	warpStart, err = f.warp.CurrentSHA()
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
+	}
+	weftStart, err = f.weft.CurrentSHA()
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: resolve weft HEAD: %w", err)
+	}
 
 	st := &mergeState{
 		Verb:       "merge-in",
@@ -335,6 +363,18 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
 	}
 	defer func() { _ = fileLock.Release() }()
+
+	// Re-verify under the lock what the pre-lock guard could only observe racily: a merge record
+	// written by another process between the guard reads above and this acquisition. The sync step
+	// below mutates both checkouts, so proceeding over a record that appeared mid-wait would write
+	// into a pair some other merge is mid-flight on.
+	recordNow, err := f.mergeRecordExists()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	if recordNow {
+		return MergeResult{}, newMergeGuardError([]string{mergeReasonAlreadyInProgress})
+	}
 
 	// Pre-merge sync step: a recorded mutation, not a guard, and the first thing that touches either
 	// checkout — every guard above has already passed.

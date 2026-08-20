@@ -203,7 +203,10 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // mergeReasonUnresolvedConflicts, and a record whose attempt never reached both sides refuses with
 // mergeReasonAttemptIncomplete; both are aggregated into one error, so which precondition failed
 // never discloses evaluation order.
-// Otherwise it acquires the combined write lock, runs concludeMergeSides with msg as the optional
+// The combined write lock is acquired BEFORE the record is read and the guards run — never after —
+// so no concurrent lifecycle verb can retire or advance the record between what this call checked
+// and what it acts on (see the in-body comment for the raced-MergeContinue shape that ordering
+// closes). It then runs concludeMergeSides with msg as the optional
 // message override, records correspondence, deletes the merge-state record, and returns a
 // MergeResult whose Committed and AlreadyUpToDate are BOTH read off the record's own fields, never
 // hardcoded per return site — Committed true when the pair carries this merge's conclude-commit and
@@ -217,6 +220,24 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
+
+	// The lock comes FIRST, before the record is read and before any guard is evaluated. Evaluating
+	// them ahead of the lock read a state another lock holder could change before this call could
+	// act on it: a concurrent MergeContinue that concluded and deleted the record between this
+	// call's guard reads and its lock acquisition left it concluding from a stale record — adopting
+	// (and thereby resurrecting) a record the winner had already retired, and answering
+	// committed:true where a strictly sequential run of the same two calls answers
+	// *ErrNoMergeInProgress. Everything below the acquisition sees a state no other fabric writer
+	// can be mutating.
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	fl, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = fl.Release() }()
 
 	st, err := f.loadMergeState()
 	if err != nil {
@@ -242,16 +263,6 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	if len(reasons) > 0 {
 		return MergeResult{}, newMergeGuardError(reasons)
 	}
-
-	lockDir, err := f.ensureWeftLockDir()
-	if err != nil {
-		return MergeResult{}, err
-	}
-	fl, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
-	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
-	}
-	defer func() { _ = fl.Release() }()
 
 	if err := concludeMergeSides(f, rec, st, msg); err != nil {
 		return MergeResult{}, err
@@ -287,12 +298,33 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 // from the recorded pre-merge SHAs would discard a commit that really landed, and in the
 // MergeIn-with-conflicts flow that commit carries the operator's own resolutions. MergeContinue is
 // the recovery for that shape, and it is idempotent across the resumed run.
-// Otherwise it acquires the combined write lock, resets both sides via resetMergeSides — including a
+// The combined write lock is acquired BEFORE the record is read and that guard runs — never after —
+// so a conclude landing while this call waits for the lock is seen by the guard instead of being
+// destroyed by the reset (see the in-body comment for the raced shape that ordering closes).
+// It then resets both sides via resetMergeSides — including a
 // fast-forwarded side and a side that never moved — then deletes the merge-state record and returns
 // MergeResult{} (Committed false).
 func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
+
+	// The lock comes FIRST, before the record is read and before the conclude-landed guard is
+	// evaluated. This ordering is what makes the guard able to see a conclude that lands while this
+	// call waits: with the guard ahead of the lock, a concurrent MergeContinue that concluded and
+	// deleted the record between guard-eval and lock-acquire left this call to resetMergeSides
+	// (force: true) the freshly landed conclude commits — precisely the destruction
+	// concludeLandedReason exists to prevent — with deleteMergeState tolerating the record's absence
+	// so nothing ever noticed. Everything below the acquisition sees a state no other fabric writer
+	// can be mutating.
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	fl, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = fl.Release() }()
 
 	st, err := f.loadMergeState()
 	if err != nil {
@@ -309,16 +341,6 @@ func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	if len(reasons) > 0 {
 		return MergeResult{}, newMergeGuardError(reasons)
 	}
-
-	lockDir, err := f.ensureWeftLockDir()
-	if err != nil {
-		return MergeResult{}, err
-	}
-	fl, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
-	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
-	}
-	defer func() { _ = fl.Release() }()
 
 	if err := f.resetMergeSides(rec, st.WarpStart, st.WeftStart); err != nil {
 		return MergeResult{}, err

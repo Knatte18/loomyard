@@ -1004,7 +1004,15 @@
 // instead: `Merge`'s pre-merge sync step mutates both checkouts BEFORE the record is written, so
 // while it runs the four sibling verbs see no record and do not refuse. `Merge` therefore takes the
 // write lock ahead of the sync rather than after it. `MergeIn` has no sync step and mutates nothing
-// before its record, so it is the one verb that can still defer acquisition.
+// before its record, so it is the one verb that can still defer acquisition — though what it (and
+// `Merge`) checked before acquiring is re-verified under the lock: the record's absence is
+// re-checked (a record written by another process mid-wait refuses with the in-progress guard
+// reason instead of being silently overwritten), and the recorded pre-merge SHAs are read under the
+// lock, never before it, so a commit landed by the lock's previous holder becomes the recorded
+// start rather than something `MergeAbort` would reset through. `MergeContinue` and `MergeAbort` go
+// further and acquire the lock before reading the record or evaluating any guard at all — the
+// conclude-landed guard in particular must be able to see a conclude that lands while the abort
+// waits, or the abort would destroy it from a stale answer.
 // The rest of the mutating surface is deliberately unguarded and safe for stated reasons rather than
 // by omission: the push family (`PushWeft`, `PushWarpAt`, `CoalescePushBothAt`, `SpawnDetachedPush`)
 // pushes a committed branch tip an uncommitted merge has not moved; `Cleanup` cannot touch a
