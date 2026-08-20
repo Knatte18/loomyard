@@ -4,10 +4,19 @@
 task: "Extract scout into its own standalone repo"
 batch: "quarry-live-and-equivalence"
 number: 5
-cards: 4
+cards: 5
 verify: go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./... -count=1
 depends-on: [4]
 ```
+
+## Prior failure
+
+- **Round 1:** implementer reported `status: success` (commit `fd69d002f01457da6082a78aae1482ac00dc03af`, cards 34-37 all committed), but mill-go's finalize-stage regression replay of this batch's own `verify:` command failed: `--- FAIL: TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd (0.00s)\n    cli_test.go:164: RunCLIIn(seamCwd, refs --target-dir "sub") error = "cli: resolve user config dir: permission denied"; want it to reference the seam-cwd-resolved dir ...\nFAIL\tgithub.com/Knatte18/quarry/internal/cli\t0.009s`.
+  Root cause (confirmed, not an orchestrator/environment issue -- a retry with a corrected `PATH` reproduced the identical failure): a data race in `internal/cli`'s test suite.
+  `TestResolveConfigPath_UserConfigDirError` (`paths_test.go:81-93`) runs `t.Parallel()` and temporarily mutates the package-level `userConfigDir` seam to return `os.ErrPermission`, restoring it in `t.Cleanup`.
+  `TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd` (`cli_test.go:146`) also runs `t.Parallel()` but, unlike every other test in that file, never calls the file's own `withIsolatedPathSeams(t)` helper -- so under `-count=1` (which disables test-result caching and forces every parallel test to actually race), it can observe the other test's temporarily-injected `os.ErrPermission` value mid-flight instead of the real `userConfigDir`.
+  Card 30's isolation pass (quarry commit `7ac03d1`, "test(cli): isolate cli tests via the userConfigDir and userCacheDir seams") touched this test's surrounding lines but did not add `withIsolatedPathSeams(t)` to it, leaving it as the one test in the file still reading the live (and here, racily-mutated) global seam.
+  This bug pre-dates batch 5 -- it was introduced across batches 2/4 (`paths_test.go`, `cli_test.go`) -- but batch 5's `-tags lsp ./... -count=1` full-suite run is the first verify command in this task to actually force the parallel race.
 
 ## Batch Scope
 
@@ -109,6 +118,22 @@ Feeding stale positions to both binaries returns a not-found error from each, an
   Also record the live tier's wall-clock duration and which language arms skipped, the two quarry issue numbers card 36 filed, and the quarry commit SHAs from cards 34 through 36.
   End the section with an explicit go or no-go line for batch 6: the deletion is authorized only if every verb compared equal on every query and the live tier is green.
 - **Commit:** `docs: record the equivalence proof in the quarry port log`
+
+### Card 38: fix the internal/cli test-isolation race found by finalize's regression replay
+
+- **Context:**
+  - `/home/knatte/Code/quarry/wts/quarry/internal/cli/paths_test.go`
+- **Edits:**
+  - `/home/knatte/Code/quarry/wts/quarry/internal/cli/cli_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** See `## Prior failure` above for the full diagnosis.
+  `TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd` (`cli_test.go:146`) is the one test in the file that does not call the file's own `withIsolatedPathSeams(t)` helper, so under `t.Parallel()` it can observe another test's (`paths_test.go`'s `TestResolveConfigPath_UserConfigDirError`) temporarily-mutated package-level `userConfigDir` seam and fail with a spurious `"cli: resolve user config dir: permission denied"` error instead of exercising the `--target-dir` resolution it actually tests.
+  Add `withIsolatedPathSeams(t)` to this test, exactly as every other test in the file already does, so it resolves against an isolated temp root regardless of what any other parallel test in the package is doing to the shared seam.
+  Do not remove `t.Parallel()` from either test — the fix is isolating this test's seam, not de-parallelizing the suite.
+  After the fix, run `go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./... -count=1` (this batch's `verify:` command) repeatedly (at least 5 times, since a race can pass by chance) to confirm the flake is actually gone, not just not-hit this run.
+- **Commit:** `test(cli): isolate TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd from the userConfigDir seam race`
 
 ## Batch Tests
 

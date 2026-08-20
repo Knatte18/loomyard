@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-port-cli
+phase: self-resolved-verify-logic
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -29,6 +29,7 @@ approved-quarry-scaffold  '2026-08-20T14:58:14Z'
 approved-quarry-cli-infra  '2026-08-20T15:05:26Z'
 approved-port-engine  '2026-08-20T15:25:42Z'
 approved-port-cli  '2026-08-20T15:41:15Z'
+self-resolved-verify-logic  '2026-08-20T16:03:38Z'
 ```
 
 ## Batches
