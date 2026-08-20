@@ -232,13 +232,14 @@ github.com/Knatte18/loomyard/
 ├── internal/selfreportengine/    the selfreport domain kernel
 ├── internal/treadleengine/       generalized round-loop engine (judge/gate/round-spawn/cap/pause/lock)
 ├── internal/shedengine/          generic outer phase-FSM: walks one flat producer list, honoring resume, crash-recovery, and pause at producer granularity
-├── internal/shedadapters/        the three Shed engine adapters (SingleLLMProducer, perch, Webster) over shuttle/perch/websterengine
+├── internal/shedadapters/        the four Shed engine adapters (SingleLLMProducer, perch, Webster, Bouncer) over shuttle/perch/websterengine
 ├── internal/loomcli/             loom's cobra module: the session bootstrap plus the driver, status, and pause verbs
 ├── internal/loomshed/            loom's own 13-row producer list over `shedengine`
 ├── internal/landingshed/         landing's two general ShedProducers, Publish and Finalize, shared by reference across producer lists
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
 ├── internal/standalonegeom/      the told-mode geometry teller that builds each engine's geometry struct from told absolute path strings
+├── internal/preflightshed/       the general `Preflight` `ShedProducer` over `internal/preflight`'s tier-1/tier-2 checks, shared by reference across producer lists
 ├── internal/preflight/           orchestrator-agnostic tier-1/tier-2 precondition checks (geometry, worktree-pair cleanliness, Fabric readiness/sync) + the shared Report result type
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
@@ -311,9 +312,9 @@ User-facing modules each get one `lyx <module>` namespace:
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   See [manifest/designs/loom.md](../manifest/designs/loom.md).
 - **shed** — the generic outer phase-FSM `loom` and the eventual `Hardener` are each built on: a Go engine that walks one flat, ordered producer list, honoring resume, crash-recovery, and pause uniformly at producer granularity, with no predefined slots (`internal/shedengine`).
-  The three shipped engine adapters — `SingleLLMProducer` over `shuttle`, the `perch` adapter, and the `Webster` adapter — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
+  The four shipped members of the package — `SingleLLMProducer` over `shuttle`, the `perch` adapter, the `Webster` adapter, and the Bouncer, the generic review-gate producer rather than a wrapper over an engine — live in one package, `internal/shedadapters`, alongside their shared context and archive helpers.
   No `lyx shed` verb of its own by design — a product's own CLI constructs a `Shed` with its own producer list and calls `Run`, and a bare verb would be a command with no list to walk.
-  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the three engine adapters (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter) are ✅ **implemented** too, shipped as `internal/shedadapters`.
+  The skeleton (the loop, the status file, the `ShedProducer` interface) is ✅ **implemented**; the four (`SingleLLMProducer`, the `perch` adapter, the `Webster` adapter, and the Bouncer, the generic review-gate producer) are ✅ **implemented** too, shipped as `internal/shedadapters`.
   See the `internal/shedengine` and `internal/shedadapters` package documentation and [manifest/designs/shed.md](../manifest/designs/shed.md).
 - **perch** — generic profile-driven gate loop: runs `burler` rounds on one artifact until `APPROVED`/`STUCK` (milestone-capped `round_caps` ladder + a holistic progress judge), plus an operational `PAUSED` exit; independent of `loom` but used by it between every phase, and standalone (`lyx perch run|pause`). The round loop itself (judge, gate, round-spawn, cap, pause, run-dir lock) now lives in the shared `internal/treadleengine` engine; `internal/perchengine` is the thin configuration layer that resolves `perch.yaml`/profile data and adapts `burlerengine` onto treadle's `RoundRunner` seam — perch's own behavior/CLI are unchanged from the outside. ✅ Implemented. See the `internal/perchengine` and `internal/treadleengine` package documentation.
 - **burler** — one review+fix round: A-review → B-fix, one agent, no self-grading, over the shuttle file contract (`internal/burlerengine` + `internal/burlercli`).
@@ -333,6 +334,7 @@ both folded back into reed — see the `internal/reedengine` package documentati
 
 The user-facing modules sit on a thin layer of shared infrastructure (`internal/configengine`, `internal/gitexec`, `internal/gitrepo`, `internal/lock`, `internal/logger`, `internal/output`, `internal/lyxcwd`, `internal/lyxdirs`, `internal/state`, `internal/shell`, `internal/modelspec`, `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate`) — defined in [shared-libs/README.md](shared-libs/README.md). `internal/pattern` is the leaf that computes whether `_lyx/PATTERN.md` is present and returns the role-appropriate constraints directive injected into every code-touching agent prompt (webster fork/Master, burler review+fix, loom plan).
 Above the engines sits a separate precondition-and-geometry layer, not the shared-infrastructure layer above: `internal/preflight` is the tier-1/tier-2 precondition layer (worktree geometry, worktree-pair cleanliness, Fabric readiness/sync), and `internal/hubgeom` and `internal/standalonegeom` are its hub-mode and told-mode constructors of the `Geometry` struct each engine is handed — see the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
+`internal/preflightshed` sits alongside these as the producer-shaped wrapper around that same layer, letting a `Shed` producer list name it as a single row rather than each caller composing `internal/preflight.Check` for itself.
 
 ## Execution stack (orchestration layers)
 

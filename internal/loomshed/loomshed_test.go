@@ -7,7 +7,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // fakeAlwaysDoneProducer is a minimal shedengine.ShedProducer fake that always reports Done -- used
@@ -22,21 +21,23 @@ func (fakeAlwaysDoneProducer) Call(context.Context) (shedengine.Outcome, shedeng
 type wantProducerRow struct {
 	name    string
 	onStuck string
+	onDone  string
 }
 
 var wantProducerTable = []wantProducerRow{
-	{NamePreflight, ""},
-	{NameDiscussionWrite, ""},
-	{NameDiscussionValidate, NameDiscussionWrite},
-	{NameDiscussionReview, NameDiscussionWrite},
-	{NamePlanWrite, ""},
-	{NamePlanValidate, NamePlanWrite},
-	{NamePlanReview, NamePlanWrite},
-	{NameBatchifier, ""},
-	{NameWebster, ""},
-	{NameWebsterReview, NameWebster},
-	{NamePublish, ""},
-	{NameFinalize, ""},
+	{NamePreflight, "", NameLoomPreflight},
+	{NameLoomPreflight, "", NameDiscussionWrite},
+	{NameDiscussionWrite, "", NameDiscussionValidate},
+	{NameDiscussionValidate, NameDiscussionWrite, NameDiscussionReview},
+	{NameDiscussionReview, NameDiscussionWrite, NamePlanWrite},
+	{NamePlanWrite, "", NamePlanValidate},
+	{NamePlanValidate, NamePlanWrite, NamePlanReview},
+	{NamePlanReview, NamePlanWrite, NameBatchifier},
+	{NameBatchifier, "", NameWebster},
+	{NameWebster, "", NameWebsterReview},
+	{NameWebsterReview, NameWebster, NamePublish},
+	{NamePublish, "", NameFinalize},
+	{NameFinalize, "", ""},
 }
 
 func testDeps(t *testing.T) Deps {
@@ -73,6 +74,15 @@ func TestNew_ProducerTable(t *testing.T) {
 		}
 		if got.OnStuck != want.onStuck {
 			t.Errorf("row %d (%s) OnStuck = %q; want %q", i, got.Name, got.OnStuck, want.onStuck)
+		}
+		if got.OnDone != want.onDone {
+			t.Errorf("row %d (%s) OnDone = %q; want %q", i, got.Name, got.OnDone, want.onDone)
+		}
+		if got.Segment != "" {
+			t.Errorf("row %d (%s) Segment = %q; want \"\" -- no row in this migration gains a non-empty Segment", i, got.Name, got.Segment)
+		}
+		if got.MaxBounces != 0 {
+			t.Errorf("row %d (%s) MaxBounces = %d; want 0 -- no row in this migration gains a non-zero MaxBounces", i, got.Name, got.MaxBounces)
 		}
 		if got.Producer == nil {
 			t.Errorf("row %d (%s) Producer = nil; want non-nil", i, got.Name)
@@ -195,26 +205,24 @@ func TestNew_PassesShedValidation(t *testing.T) {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	seed := shedengine.Status{
-		CurrentProducer: NamePreflight,
-		State:           shedengine.StateRunning,
-		History:         []shedengine.HistoryEntry{},
-	}
-	if err := state.WriteJSON(deps.StatusPath, deps.StatusLockPath, seed); err != nil {
-		t.Fatalf("seed status file: %v", err)
+	if err := Seed(deps.StatusPath, deps.StatusLockPath, "validation-slug", "validation-parent"); err != nil {
+		t.Fatalf("Seed(): %v", err)
 	}
 
 	// Drive Run to exercise (*Shed).validate() indirectly, since it is unexported: a validation
 	// error (a typo'd OnStuck, a duplicate name, two lock paths naming one file) surfaces as Run
 	// returning a non-nil error before it ever reads the status file. The discussion-record and
 	// support-log paths in deps do not exist on disk, so Discussion-Validate bounces back to
-	// Discussion-Write until the bounce budget (3) is exhausted and the run blocks -- that is an
-	// ordinary Stuck/blocked outcome, not a validation failure, and is what this test expects.
+	// Discussion-Write repeatedly; Discussion-Validate never returns Done, so its own budget --
+	// inherited from deps.MaxBounces (3), since neither producer sets a MaxBounces of its own --
+	// is spent entirely on this one producer's episode, and the run blocks once it is exhausted.
+	// That is an ordinary Stuck/blocked outcome, not a validation failure, and is what this test
+	// expects.
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil (no shedengine.validate() failure)", err)
 	}
 	if result.Outcome != shedengine.RunBlocked {
-		t.Errorf("Run() outcome = %q; want %q (bounce budget exhausted between Discussion-Write and Discussion-Validate)", result.Outcome, shedengine.RunBlocked)
+		t.Errorf("Run() outcome = %q; want %q (Discussion-Validate's own bounce budget exhausted)", result.Outcome, shedengine.RunBlocked)
 	}
 }

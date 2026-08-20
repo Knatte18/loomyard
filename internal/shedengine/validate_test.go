@@ -99,8 +99,64 @@ func TestShed_Validate(t *testing.T) {
 			wantErr: "OnStuck",
 		},
 		{
+			// Both rows keep the base fixture's default Segment: "", so this
+			// also pins that an OnStuck pairing between two producers that
+			// both carry the empty Segment is legal — the existing loom
+			// shape, preserved as one implicit standalone group.
 			name: "forward OnStuck reference is accepted",
 			mutate: func(s *Shed) {
+				s.Producers[0].OnStuck = s.Producers[1].Name
+			},
+			wantErr: "",
+		},
+		{
+			name: "OnStuck naming its own producer stays legal",
+			mutate: func(s *Shed) {
+				s.Producers[0].OnStuck = s.Producers[0].Name
+			},
+			wantErr: "",
+		},
+		{
+			name: "negative ProducerDef.MaxBounces",
+			mutate: func(s *Shed) {
+				s.Producers[0].MaxBounces = -1
+			},
+			wantErr: "has a negative MaxBounces",
+		},
+		{
+			name: "OnDone names no producer in the list",
+			mutate: func(s *Shed) {
+				s.Producers[0].OnDone = "No-Such-Producer"
+			},
+			wantErr: "OnDone \"No-Such-Producer\" naming no producer in the list",
+		},
+		{
+			name: "OnDone naming a later producer is accepted",
+			mutate: func(s *Shed) {
+				s.Producers[0].OnDone = s.Producers[1].Name
+			},
+			wantErr: "",
+		},
+		{
+			name: "OnDone naming itself",
+			mutate: func(s *Shed) {
+				s.Producers[0].OnDone = s.Producers[0].Name
+			},
+			wantErr: "OnDone naming itself",
+		},
+		{
+			name: "OnStuck names a producer in a different Segment",
+			mutate: func(s *Shed) {
+				s.Producers[0].Segment = "seg-a"
+				s.Producers[0].OnStuck = s.Producers[1].Name
+			},
+			wantErr: "different Segment",
+		},
+		{
+			name: "OnStuck between producers sharing the same non-empty Segment is accepted",
+			mutate: func(s *Shed) {
+				s.Producers[0].Segment = "seg-a"
+				s.Producers[1].Segment = "seg-a"
 				s.Producers[0].OnStuck = s.Producers[1].Name
 			},
 			wantErr: "",

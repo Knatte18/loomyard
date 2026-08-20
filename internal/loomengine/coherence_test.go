@@ -1,7 +1,7 @@
 // coherence_test.go is the TDD driver for checkCoherence: table tests over in-memory
 // shedengine.Status/Status pairs covering every rule check 4 enforces plus the fresh-start
-// invariants. It is untagged (Tier 1): no spawn, no git, no filesystem I/O — checkCoherence is
-// pure.
+// invariants, across the two-row (generic then loom's own) world. It is untagged (Tier 1): no
+// spawn, no git, no filesystem I/O -- checkCoherence is pure.
 
 package loomengine
 
@@ -12,10 +12,11 @@ import (
 )
 
 // validFreshShed returns a valid fresh shedengine.Status baseline for testing: current_producer
-// at "Preflight", running, no history.
+// at "Loom-Preflight" (the post-row-1 shape Shed itself persists once the generic row has run),
+// running, no history.
 func validFreshShed() shedengine.Status {
 	return shedengine.Status{
-		CurrentProducer: "Preflight",
+		CurrentProducer: "Loom-Preflight",
 		State:           shedengine.StateRunning,
 	}
 }
@@ -45,8 +46,12 @@ func TestCheckCoherence(t *testing.T) {
 		name       string
 		mutateShed func(shedengine.Status) shedengine.Status
 		mutateProd func(Status) Status
-		wantEmpty  bool      // when true, checkCoherence must return no failures
-		wantChecks []CheckID // every CheckID that must appear in the result
+		// expectedProducer and toleratedProducers default to loom's own row when left zero:
+		// "Loom-Preflight" and []string{"Preflight", "Loom-Preflight"}.
+		expectedProducer   string
+		toleratedProducers []string
+		wantEmpty          bool      // when true, checkCoherence must return no failures
+		wantChecks         []CheckID // every CheckID that must appear in the result
 	}{
 		{
 			name:      "ValidFreshSeed",
@@ -63,8 +68,21 @@ func TestCheckCoherence(t *testing.T) {
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
-			name:       "CurrentProducerNotPreflight",
+			name:       "CurrentProducerNotToldExpectedName",
 			mutateShed: func(s shedengine.Status) shedengine.Status { s.CurrentProducer = "Discussion-Write"; return s },
+			wantChecks: []CheckID{CheckSeedIncoherent},
+		},
+		{
+			// current_producer equal to the told expected name passes.
+			name:       "CurrentProducerEqualsToldExpectedName",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.CurrentProducer = "Loom-Preflight"; return s },
+			wantEmpty:  true,
+		},
+		{
+			// current_producer equal to the generic row's name is the previous row, not the
+			// expected one, and must fail here.
+			name:       "CurrentProducerEqualsPreviousRowName",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.CurrentProducer = "Preflight"; return s },
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
@@ -100,7 +118,7 @@ func TestCheckCoherence(t *testing.T) {
 		{
 			name: "BadEnum_HistoryOutcome",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
-				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: "bogus", At: "2026-07-17T10:01:30Z"}}
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: "bogus", At: "2026-07-17T10:01:30Z"}}
 				return s
 			},
 			wantChecks: []CheckID{CheckSeedIncoherent},
@@ -108,7 +126,7 @@ func TestCheckCoherence(t *testing.T) {
 		{
 			name: "NonRFC3339Timestamp",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
-				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Stuck, At: "not-a-timestamp"}}
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "not-a-timestamp"}}
 				return s
 			},
 			wantChecks: []CheckID{CheckSeedIncoherent},
@@ -116,7 +134,7 @@ func TestCheckCoherence(t *testing.T) {
 		{
 			name: "NonUTCTimestamp",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
-				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30+02:00"}}
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30+02:00"}}
 				return s
 			},
 			wantChecks: []CheckID{CheckSeedIncoherent},
@@ -124,25 +142,51 @@ func TestCheckCoherence(t *testing.T) {
 		{
 			// The retry-deadlock regression: shedengine.Run appends a history entry before
 			// persisting StateBlocked, including on the OnStuck: "" escalation path, so a Stuck
-			// at row 1 (Preflight itself) leaves one Preflight-named entry behind. That entry
-			// alone must not trip CheckHalfFinished, or a blocked row-1 run could never be
+			// at either the generic row or loom's own row leaves that row's own entry behind.
+			// Both names are therefore in the tolerated set, and that entry alone must not trip
+			// CheckHalfFinished, or a blocked run at either tolerated row could never be
 			// resumed.
-			name: "HistoryOfOnlyPreflightPassesFreshStartCheck",
+			name: "HistoryOfOnlyLoomPreflightPassesFreshStartCheck",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.State = shedengine.StateBlocked
 				s.Error = "bounce budget exhausted"
-				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"}}
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"}}
 				return s
 			},
 			wantEmpty: true,
 		},
 		{
-			// The other side of the same regression guard: a history entry naming a later
-			// producer is the real half-finished signal.
-			name: "HistoryNamingLaterProducerFailsFreshStartCheck",
+			// A history containing only a "Preflight" Done entry -- the finished generic
+			// row -- also passes.
+			name: "HistoryOfOnlyPreflightPasses",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"}}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
+			// A history mixing both tolerated rows passes.
+			name: "HistoryMixingBothTolerated_Passes",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.State = shedengine.StateBlocked
+				s.Error = "bounce budget exhausted"
+				s.History = []shedengine.HistoryEntry{
+					{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
+					{Producer: "Loom-Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:05:00Z"},
+				}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
+			// The other side of the same regression guard: a history entry naming a producer
+			// outside the tolerated set is the real half-finished signal.
+			name: "HistoryNamingThirdProducerFailsFreshStartCheck",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.History = []shedengine.HistoryEntry{
 					{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
+					{Producer: "Loom-Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:03:00Z"},
 					{Producer: "Discussion-Write", Outcome: shedengine.Stuck, At: "2026-07-17T10:05:00Z"},
 				}
 				return s
@@ -172,7 +216,16 @@ func TestCheckCoherence(t *testing.T) {
 				product = tt.mutateProd(product)
 			}
 
-			got := checkCoherence(shed, product)
+			expectedProducer := tt.expectedProducer
+			if expectedProducer == "" {
+				expectedProducer = "Loom-Preflight"
+			}
+			toleratedProducers := tt.toleratedProducers
+			if toleratedProducers == nil {
+				toleratedProducers = []string{"Preflight", "Loom-Preflight"}
+			}
+
+			got := checkCoherence(shed, product, expectedProducer, toleratedProducers)
 
 			if tt.wantEmpty {
 				if len(got) != 0 {
