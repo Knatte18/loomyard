@@ -30,7 +30,7 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 - A writer for the structured focus file, used by exactly two paths: the seed call's fallback, and a `BLOCKING` verdict whose next-round focus file is missing or unparseable.
 - Two new generic stencil templates, `contracts/stencils/bouncer/bouncer-template-seed.md` and `contracts/stencils/bouncer/bouncer-template-judge.md`, registered in `contracts/stencils/stencils.go`.
 - An exported round-resolution helper in `internal/shedadapters` so the later Burler-round producer resolves the same round number from the same on-disk convention.
-- Package-doc updates in `internal/shedadapters/doc.go` (the outcome-mapping table, the shared cancellation rule, and the pointer rule all gain a fourth entry) and a note in `manifest/designs/shed.md`'s engine-adapter section.
+- Package-doc updates in `internal/shedadapters/doc.go` — see "The `doc.go` edit list" under Technical context for the exact headings and what each gains — and a note in `manifest/designs/shed.md`'s engine-adapter section.
 - Tests: table tests over a fake `Shuttle` for every `Call` path and every fail-safe degradation, parser tests for every malformed-file rule, and a registry-completeness case for the two new stencils.
 
 **Out:**
@@ -122,7 +122,7 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
   Numbering the focus file by the round it *targets* (rather than the round that wrote it) means the round producer reads `round-<its own N>-focus.md` with no off-by-one reasoning.
 - Rejected: a `bouncer/` subdirectory under the run dir — an extra directory level for three files, and it splits one segment's artifacts across two places for a human reading them.
 
-### Three modes, told apart by file existence only
+### Four modes, told apart by file existence only
 
 - Decision: `Call` resolves its mode from two file-existence questions and nothing else — no state is threaded through `Call(ctx)`.
   Let `N = ResolveRound(RunDir, ReportName)` (see "An exported round-resolution helper" below), and let **`judged(N)`** be the predicate defined immediately after this list.
@@ -165,14 +165,21 @@ This is the same exception the package's shared cancellation rule already carves
 Without it, every judge that forgot the focus file would pay for a whole extra session to re-decide a round it had already decided.
 
 **Focus-file synthesis — the complete list of paths that write a focus file without a judge.**
-The writer named in Scope is used by exactly three paths, and by nothing else:
+The writer named in Scope is used by exactly two paths:
 
 1. The **seed call's fallback**, when the seed spawn fails at any point: `round-1-focus.md` with `round: 1` and both lists empty.
 2. **After a `BLOCKING` verdict** — reached via harvest or via replay — when `round-<N+1>-focus.md` is absent or does not parse: synthesized with `round: N+1` and both lists empty, plus a `logger.Warn`.
-3. Never anywhere else; in particular, an `APPROVED` verdict synthesizes nothing, because the segment exits and no next round will read it.
+
+And by nothing else; in particular, an `APPROVED` verdict synthesizes nothing, because the segment exits and no next round will read it.
 
 Path 2 exists because a round producer whose focus file is missing has a broken read path on the very round it is about to run, which is the same failure the seed fallback exists to prevent — and because `judged(N)` deliberately excludes the focus file, that gap is now reachable whenever a judge writes two of its three files.
 Losing the judge's targeting guidance costs the round some focus; a missing file costs it the round.
+
+**An unparseable focus file is archived, never overwritten.**
+Both synthesis paths fire on "absent **or** unparseable", and the unparseable case means a real, agent-written file is standing where the synthetic one must go.
+That file is moved aside with the same `archiveStaleOutputs` helper every other stale artifact goes through, and only then is the synthetic file written.
+It is never simply overwritten: this design already rejected deleting stale outputs on the grounds that it destroys the partial artifact an operator needs to diagnose what happened, and a focus file the judge wrote but the parser rejected is exactly such an artifact — it is the evidence of whatever malformed the judge's output, and overwriting it with two empty lists would erase the only record.
+The absent case archives nothing, having nothing to archive.
 
 - Rejected: (a) a mode field on the producer struct mutated across calls — an in-memory flag that a process restart silently resets, which is the exact failure the persisted-bounce-budget decision in `shedengine` overturned.
   (b) Discriminating on report *mtime* versus verdict mtime — works, but makes correctness depend on filesystem timestamp granularity and on nothing ever rewriting a file in place, where plain existence needs neither.
@@ -203,10 +210,13 @@ Losing the judge's targeting guidance costs the round some focus; a missing file
   | `RubricStencil` | stencil *name* of this instance's rubric | non-empty, **and readable** via `stencilstore.Read(StencilsDir, RubricStencil)` |
   | `Model` | model the judge spawn runs as | may be empty (defers to the provider default) |
   | `Effort` | reasoning-effort override for the judge spawn | may be empty (defers to the provider default) |
+  | `Version` | provider version pin for the judge spawn | may be empty (no pin) |
   | `Shuttle` | the seam the two spawns run through | non-nil |
   | `Now` | injected clock, for the archive filename's same-second collision suffix only | nil defaults to `time.Now` |
 
-  `Model` and `Effort` are **told, never resolved here**: the Bouncer receives an already-resolved `(model, effort)` pair and threads it into `shuttleengine.Spec.Model`/`.Effort` verbatim.
+  `Model`, `Effort`, and `Version` are **told, never resolved here**: the Bouncer receives an already-resolved triple and threads it into `shuttleengine.Spec.Model`/`.Effort`/`.Version` verbatim.
+  All three travel together deliberately — `shuttleengine.Spec` carries `Version` beside the other two (`spec.go:55`), and `loom`'s existing spec builders already pass all three out of one resolved model spec (`internal/loomengine/discussion.go:46`, `plan.go:85`).
+  Carrying only two would mean a `version:` pin written into a `loom` review role's model spec is silently dropped by the judge spawn while being honoured by every other producer in the same list — a divergence no error would report.
   It never parses a model-spec string, never loads `models.yaml`, and never consults a config file.
   Resolution happens once, at the caller's own config-load time — which for the three `loom` instances means `loom`'s per-phase config, not any engine-general config file.
 - Rationale: nine inputs with real invariants is past the point where a positional constructor reads well, and two of them (`RunDir`, `StencilsDir`) must be absolute — a rule that has to be enforced *somewhere*, and the only alternative to the constructor is discovering it mid-`Call` inside an unattended run.
@@ -308,6 +318,13 @@ Note also that a re-bounce consumes budget on exactly the same terms, which is w
   Two rules close this: each of the three `loom` review-producer tasks registers its own rubric stencil in `contracts/stencils/stencils.go` alongside the two generic templates this task adds, and `NewBouncer` **probes the rubric eagerly** with a `stencilstore.Read` at construction time, failing loud if it is unreadable.
   The probe is deliberate I/O in a constructor, accepted for the same reason the rest of the constructor validates eagerly: `Reconcile` has already run by the time any producer is constructed (it runs once at `cmd/lyx`'s root pre-run), so the file is genuinely expected to be there, and the alternative is discovering a typo mid-run in an unattended segment.
   Only the rubric is probed, not the two generic templates — those are registry-guaranteed and covered by `registry_test.go`, whereas the rubric name is caller-supplied and therefore the one that can be wrong.
+
+  **The rubric bytes must be stamp-stripped before filling.**
+  Every on-disk stencil begins with a stamp banner — `<!-- lyx-stencil: sha256=... -->`, written by `stencilstore.ApplyStamp` from `StampPrefix`/`StampSuffix` (`stencilstore.go:21-24,103`).
+  `stencil.Fill` strips that banner from the *template* it parses (`stencil.go:27`, via the unexported `stripLeadingComment`), but it never touches a marker *value*.
+  So filling raw `stencilstore.Read` output into the `rubric` marker would inject the rubric's own hash banner verbatim into the middle of the judge prompt — a line of machine bookkeeping presented to the judge as if it were rubric content.
+  The rubric bytes therefore pass through the exported `stencil.StripLeadingComment` (`stencil.go:103`) before being filled in.
+  This is a new pattern with no call site to copy: `burlerengine/prompt.go:65` fills its own `"rubric"` marker from a plain `Profile` string, not from a second stencil, so stencil-into-stencil injection has never happened in this codebase before and its one sharp edge has to be named here rather than discovered later.
   Two templates rather than one because a single prompt trying to be both a focus-setter and a judge reads badly, and because a rubric must be able to speak to the two passes differently.
   Per the Producer Pointer-Rule Invariant, both templates *point at* the three file-format contracts rather than restating them, so editing the format in one place changes what the producer and its consumers both do.
 - Rejected: one template with a mode marker — saves a file, costs prompt clarity in the two places clarity matters most.
@@ -360,8 +377,18 @@ The budget is per-producer and episode-scoped, counted from persisted `history[]
 - `perch.go` — the current review-gate adapter this pair supersedes; read it for the resolve-identity-from-disk-each-`Call` pattern.
 - `ctx.go` — `entryErr(ctx, name, engineLabel)` and `cancelErr(ctx, name, engineLabel)`, the shared cancellation helpers.
 - `archive.go` — `archiveStaleOutputs(paths []string, now func() time.Time)`.
-- `doc.go` — the package doc carries an outcome-mapping table, a "told, never derived" section, a shared-cancellation-rule section, and a limitations section.
-  All four need a Bouncer entry, and the pointer-rule delta versus `PerchProducer` must be called out explicitly.
+- `doc.go` — see the edit list immediately below.
+
+**The `doc.go` edit list.**
+`internal/shedadapters/doc.go` has exactly five headed sections plus its opening sentence, and this task touches four of them:
+
+- **Opening sentence** (`doc.go:1`) — currently "the **three** `shedengine.ShedProducer` adapters", naming `SingleLLMProducer`, `PerchProducer`, and `WebsterProducer`. Becomes four, with the Bouncer named alongside them and described as what it is: the only member that is not a wrapper around an already-shipped engine.
+  The sentence "each is a thin translation layer over an already-shipped engine, never a second implementation of that engine's own loop" must be amended rather than left standing — the Bouncer is new logic over `shuttleengine`, and the sentence as written would be false of it.
+- **`# Outcome mapping`** (`doc.go:7`) — gains a fourth bullet covering all four `Call` modes, the harvest step, and the pointer rule, including the deliberate `OutputPointer` delta versus `PerchProducer`.
+- **`# Told, never derived`** (`doc.go:27`) — gains the Bouncer's told inputs (`RunDir`, `StencilsDir`, the `(model, effort, version)` triple, the report-name convention) and notes that this is the one constructor in the package returning an error, and why.
+- **`# Shared cancellation rule`** (`doc.go:52`) — gains the Bouncer, noting that its genuine-success exception covers a harvested verdict, not only a `shuttleengine` `done`.
+- **`# Limitations`** (`doc.go:65`) — gains the two soft spots this design accepts: prompt-only ledger carry-forward, and no mid-run cancellation bridge (the same limitation `SingleLLMProducer` and `WebsterProducer` already record).
+- **`# The perch run-id scheme`** (`doc.go:39`) — untouched; it is `PerchProducer`-specific.
 
 **The judge spawn pattern** is `internal/treadleengine/judge.go`.
 Read `runJudgeCall` in particular — it is the reference for the whole sequence: `stencilstore.Read` for the template, `stencil.Fill` with a `map[string]string` of marker values, a `shuttleengine.Spec` carrying `Prompt`, `OutputFiles`, `Model`, `Effort`, `Role`, and `Round`, then `sh.Run`, then read and parse the output file, with every step degrading to a `Warn` plus a fallback.
@@ -468,7 +495,8 @@ TDD candidates — write these before the implementation, in this order:
    Also assert both derived readings against one disk state in the same test — "round to judge" is the return value and "round to write" is the return value plus one — so the two consumers' contract is exercised, not just the scan.
 4. **`Call`, against a fake `Shuttle`.**
    The fake records the `Spec` it received and returns a scripted `Result`, with a hook to write the output files the real agent would have written.
-   Assert on the recorded `Spec` — that `OutputFiles` are absolute, that the filled prompt contains the rubric text, and that `Role`/`Round` are set — not only on the returned outcome.
+   Assert on the recorded `Spec` — that `OutputFiles` are absolute, that the filled prompt contains the rubric text, that `Model`/`Effort`/`Version` arrive verbatim from the config, and that `Role`/`Round` are set — not only on the returned outcome.
+   Give the rubric fixture a realistic stamp banner and assert the filled prompt contains **no** `<!-- lyx-stencil:` substring, on both the seed and judge templates — the regression guard for the stamp-leak the stripping step exists to prevent.
 
 Scenarios `Call` must cover:
 
@@ -491,9 +519,13 @@ Scenarios `Call` must cover:
 - **`judged(N)` ignores the focus file** — verdict and ledger both present and parsing, `round-<N+1>-focus.md` absent: this is a replay, not a re-judge; assert the fake `Shuttle` was never called.
 - **Unconditional `OutputFiles`** — assert the recorded judge `Spec.OutputFiles` has exactly three entries on *both* an `APPROVED` and a `BLOCKING` round, and that `round-<N+1>-focus.md` exists after an `APPROVED` round too.
   This is the guard against the conditional-output-file regression that would make `Done` unreachable.
-- **Pointer discipline** — one case per outcome asserting the exists-or-empty rule: `Done` and `BLOCKING`-`Stuck` name a ledger that exists on disk; the seed call and every degraded judge path report an empty pointer; the re-bounce names a ledger that exists.
+- **Pointer discipline** — one case per row of the pointer table under "Cancellation and the output pointer", asserting the exists-or-empty rule end to end: `Done` and `BLOCKING`-`Stuck` (from both a judge call and a replay) name a ledger that exists on disk; the seed call, the re-bounce, every degraded judge path, and every error return report an empty pointer.
+  For each ledger-naming case, `os.Stat` the reported path in the assertion rather than comparing strings — the rule is about the file existing, and `Shed` will never check it.
 - **Previous ledger handling** — a valid prior ledger's path reaches the prompt; a *malformed* prior ledger degrades to the no-prior-ledger marker with a `Warn`, and the judge still runs; the no-prior-ledger case fills the "(none)" literal rather than an empty string.
 - **Stale outputs** — a pre-existing verdict/ledger/focus file at a target path is archived before the spawn, and the spawn then succeeds rather than tripping `Spec.validate`.
+- **Focus synthesis over an unparseable file** — a malformed `round-<N+1>-focus.md` standing where synthesis must write: assert the malformed content survives under an archive name, and that the synthetic file at the original path parses with `round: N+1` and both lists empty.
+  Same assertion for the seed path over a malformed `round-1-focus.md`.
+  This is the guard against the writer quietly overwriting the evidence of whatever malformed the judge's output.
 - **Cancellation** — an already-cancelled context at entry returns an error with nothing started (assert the fake `Shuttle` was never called); a context cancelled during the run returns an error on every path *except* a genuinely parsed verdict, which returns its mapped outcome and pointer regardless.
 - **Constructor validation** — one case per rule in the `BouncerConfig` table: empty `Name`; empty and relative `RunDir`; nil `ReportName`; empty and relative `StencilsDir`; empty `RubricStencil`; nil `Shuttle`.
   Each returns an error naming the offending field.
@@ -533,4 +565,7 @@ The other three adapters have none, and adding one here would cross the Test Tie
 - **Q:** [review r3] What happens when a judge writes its verdict and ledger but not the focus file, so the round classifies non-`done` and degrades before the verdict is ever read? **A:** [auto-pick] two mechanisms — *harvest* (evaluate `judged(N)` after the spawn, before classifying the outcome, and act on a judgment that provably happened) and *replay* (a later `Call` finding `judged(N)` true reads the recorded verdict and acts on it rather than bouncing). **Why:** without them an `APPROVED` round bounces forever and `Done` is unreachable — the same stranding the unconditional-`OutputFiles` rule prevents, reintroduced one layer up; replay also makes a crash between "judge wrote its files" and "Bouncer acted" fully recoverable.
 - **Q:** [review r3] Which non-seed paths synthesise a focus file, and must the ledger parse for a round to count as judged? **A:** [auto-pick] exactly one non-seed path — after a `BLOCKING` verdict whose `round-<N+1>-focus.md` is absent or unparseable — and yes, `judged(N)` requires both verdict *and* ledger to exist and parse. **Why:** a round producer with no focus file has a broken read path on the round it is about to run, which is the failure the seed fallback already exists to prevent; and requiring the ledger to parse stops a truncated artifact from being mistaken for a decision. The focus file is deliberately excluded from `judged(N)` because it is an input to the next round, not evidence about this one.
 - **Q:** [review r3] Must a rubric stencil be registry-registered, and is it validated? **A:** [auto-pick] yes to both — each `loom` task registers its rubric, and `NewBouncer` probes it with `stencilstore.Read` at construction. **Why:** `stencilstore.Read` has no shipped-default fallback and `Reconcile` seeds only registry names, so an unregistered or mistyped name means every judge call degrades to `Stuck` until the whole segment budget is spent — the exact mid-run wiring-typo failure eager constructor validation exists to prevent.
-- **Q:** [review r1] What happens when the round producer bounces back without writing a new report, leaving the highest report already judged? **A:** [auto-pick] a third mode — re-bounce: spawn nothing, log a `Warn`, return `Stuck` with the existing ledger as pointer. **Why:** the roadmap pins the round producer to return `Stuck` unconditionally including on its own degraded paths, so this is reachable in normal operation; a report-file-only discriminator would re-judge a settled round, archive its verdict, and burn the entire bounce budget on paid LLM calls that decide nothing.
+- **Q:** [review r4] Does injecting a rubric stencil into the `rubric` marker leak its stamp banner into the prompt? **A:** [auto-pick] yes it would, so the rubric bytes pass through the exported `stencil.StripLeadingComment` before filling. **Why:** `stencil.Fill` strips the banner from the template it parses but never from a marker value, so raw `stencilstore.Read` output would put a `<!-- lyx-stencil: sha256=... -->` line into the middle of the judge prompt; no existing call site does stencil-into-stencil injection, so there was no precedent to inherit the fix from.
+- **Q:** [review r4] Does `BouncerConfig` carry `Version` alongside `Model` and `Effort`? **A:** [auto-pick] yes — all three are told as one resolved triple. **Why:** `shuttleengine.Spec` carries `Version` beside the other two and `loom`'s existing spec builders already pass all three from one resolved model spec, so carrying only two would silently drop a `version:` pin for the judge spawn while every other producer in the same list honoured it.
+- **Q:** [review r4] When synthesis must write over an *unparseable* focus file, is that file overwritten or archived? **A:** [auto-pick] archived via `archiveStaleOutputs`, then the synthetic file is written. **Why:** this design already rejected deleting stale outputs because it destroys the artifact an operator needs to diagnose the failure, and a focus file the judge wrote but the parser rejected is precisely that evidence — overwriting it with two empty lists would erase the only record of what went wrong.
+- **Q:** [review r1] What happens when the round producer bounces back without writing a new report, leaving the highest report already judged? **A:** [auto-pick] a mode that consults the round's own artifacts instead of spawning. **Why:** the roadmap pins the round producer to return `Stuck` unconditionally including on its own degraded paths, so this is reachable in normal operation; a report-file-only discriminator would re-judge a settled round, archive its verdict, and burn the entire bounce budget on paid LLM calls that decide nothing. **Superseded in r3 on the mechanism:** this answer originally described the branch as a bare re-bounce returning `Stuck` with the existing ledger as pointer, which would strand an `APPROVED` round forever — it is now *replay*, which reads the recorded verdict and returns `Done` on approval. See the r3 entry above and the body's "Four modes" section.
