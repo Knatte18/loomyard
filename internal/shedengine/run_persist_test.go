@@ -70,10 +70,7 @@ func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
 		return Done, OutputPointer{}, nil
 	}
 	p2 := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: p1},
-		{Name: "B", Producer: p2},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{p1, p2})
 	seed := commonSeed("A")
 	seed.Product = json.RawMessage(`{"original":true}`)
 	seedStatus(t, statusPath, statusLockPath, seed)
