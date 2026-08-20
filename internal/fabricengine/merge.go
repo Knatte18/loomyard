@@ -250,6 +250,9 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 // Before merging, Merge synchronizes the target to its own upstream (fetch, then a fast-forward-only
 // advance per side that has one) — see syncSideBeforeMerge — so a target merely behind its upstream
 // merges cleanly rather than guard-refusing.
+// That sync runs INSIDE the weft write lock, not ahead of it: it mutates both checkouts at a point
+// where no merge record exists yet, so the sibling verbs' record guard cannot serialize it and the
+// lock is the only thing that can.
 func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -311,6 +314,24 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, newMergeGuardError(reasons)
 	}
 
+	// The write lock is taken HERE, ahead of the sync step, because the sync step mutates both
+	// checkouts and is therefore the first thing in this call that must be serialized against the
+	// sibling weft-mutating verbs. It cannot rely on the merge record for that: the record does not
+	// exist yet (it is written below), so mergeBlocksMutation reports false and Commit/Pull/Checkout/
+	// Remove do not refuse. Running `git merge --ff-only` in the weft checkout while a concurrent
+	// Commit holds this same lock and writes that same worktree is two uncoordinated writers on one
+	// index. Only MergeIn can defer its acquisition, because MergeIn has no sync step and mutates
+	// nothing before the record.
+	lockDir, err := f.ensureWeftLockDir()
+	if err != nil {
+		return MergeResult{}, err
+	}
+	fileLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
+	if err != nil {
+		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
+	}
+	defer func() { _ = fileLock.Release() }()
+
 	// Pre-merge sync step: a recorded mutation, not a guard, and the first thing that touches either
 	// checkout — every guard above has already passed.
 	if err := f.syncSideBeforeMerge(rec, f.warp, f.warpPath, "warp"); err != nil {
@@ -320,9 +341,9 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, fmt.Errorf("fabricengine: sync weft before merge: %w", err)
 	}
 
-	// Post-sync already-up-to-date probe: no lock taken, no record written, empty mutation record
-	// beyond whatever the sync step itself just recorded — the sync's own advance is real upstream
-	// catch-up the merge did not cause, so it stays in the record even on this early-return path.
+	// Post-sync already-up-to-date probe: no record written, empty mutation record beyond whatever
+	// the sync step itself just recorded — the sync's own advance is real upstream catch-up the merge
+	// did not cause, so it stays in the record even on this early-return path.
 	warpStart, err := f.warp.CurrentSHA()
 	if err != nil {
 		return MergeResult{}, fmt.Errorf("fabricengine: resolve warp HEAD: %w", err)
@@ -342,16 +363,6 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	if warpUpToDate && weftUpToDate {
 		return MergeResult{AlreadyUpToDate: true, Conflicts: mergeNoConflicts}, nil
 	}
-
-	lockDir, err := f.ensureWeftLockDir()
-	if err != nil {
-		return MergeResult{}, err
-	}
-	fileLock, err := lock.AcquireWriteLock(filepath.Join(lockDir, weftWriteLockFile))
-	if err != nil {
-		return MergeResult{}, fmt.Errorf("fabricengine: acquire weft write lock: %w", err)
-	}
-	defer func() { _ = fileLock.Release() }()
 
 	// Pre-merge SHAs are captured after the sync step, so MergeAbort returns the pair to its synced
 	// state, never undoing a legitimate upstream advance.

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
@@ -610,4 +611,68 @@ func TestMerge_CrashRecovery(t *testing.T) {
 			t.Errorf("MergeRecordExistsForTest() after recovery = (%v, %v); want (false, nil)", exists, err)
 		}
 	})
+}
+
+// TestMerge_PreMergeSyncRunsInsideTheWriteLock pins the one mutation Merge performs before its merge
+// record exists: the pre-merge sync step.
+// The sync fast-forwards BOTH checkouts, and it runs at a point where no merge record has been
+// written yet — so mergeBlocksMutation reports false and the sibling weft-mutating verbs
+// (Commit/Pull/Checkout/Remove) do not refuse. The weft write lock is therefore the only thing that
+// can serialize it, and acquiring the lock after the sync left `git merge --ff-only` running in the
+// weft checkout alongside a concurrent Commit writing that same index.
+// The assertion is behavioural rather than structural: with the lock externally held, Merge must not
+// have advanced either side by the time a sibling would have finished its own write, and must
+// complete once the lock is released.
+func TestMerge_PreMergeSyncRunsInsideTheWriteLock(t *testing.T) {
+	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
+	seedSourceAndTarget(t, commitOnSourceWarp, commitOnSourceWeft)
+
+	advanceRemoteBranch(t, h.WarpBare, "target", "remote-warp.txt", "remote content\n", "origin: advance target")
+	advanceRemoteBranch(t, h.WeftBare, "target-weft", "remote-weft.txt", "remote content\n", "origin: advance target-weft")
+
+	syncedWeftFile := filepath.Join(h.PairWeftSibling("target"), "remote-weft.txt")
+	if _, err := os.Stat(syncedWeftFile); !os.IsNotExist(err) {
+		t.Fatalf("Stat(%s) before Merge = %v; want not-exist — the fixture must be genuinely stale for the sync step to have anything to do", syncedWeftFile, err)
+	}
+
+	lockPath := fabricengine.WeftWriteLockPathForTest(t, target)
+	externalLock, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		t.Fatalf("AcquireWriteLock(%q) error = %v", lockPath, err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, mergeErr := target.Merge("feature", fabricengine.MergeOptions{})
+		done <- mergeErr
+	}()
+
+	select {
+	case <-done:
+		_ = externalLock.Release()
+		t.Fatal("Merge() completed while the weft write lock was externally held; want it to block before its pre-merge sync step")
+	case <-time.After(150 * time.Millisecond):
+		// Still blocked, as expected.
+	}
+	if _, err := os.Stat(syncedWeftFile); !os.IsNotExist(err) {
+		_ = externalLock.Release()
+		t.Fatalf("Stat(%s) while the lock was held = %v; want not-exist — the pre-merge sync mutated the weft checkout outside the lock", syncedWeftFile, err)
+	}
+
+	if err := externalLock.Release(); err != nil {
+		t.Fatalf("Release() error = %v", err)
+	}
+
+	select {
+	case mergeErr := <-done:
+		if mergeErr != nil {
+			t.Fatalf("Merge(feature) error = %v", mergeErr)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Merge() did not complete after the external lock was released")
+	}
+
+	if _, err := os.Stat(syncedWeftFile); err != nil {
+		t.Errorf("Stat(%s) after Merge = %v; want the sync step to have landed it once the lock was free", syncedWeftFile, err)
+	}
 }

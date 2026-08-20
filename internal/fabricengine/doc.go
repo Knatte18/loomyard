@@ -997,6 +997,11 @@
 // progress. `Remove` guards two distinct subjects: the pair being removed being mid-merge itself,
 // and — via `mergeSourceInFlight` — some *other* pair in the hub being mid-merge on this pair's
 // branches, which would otherwise delete the weft branch that merge is resolving against.
+// That record-based refusal has one window it cannot cover, and the write lock is what covers it
+// instead: `Merge`'s pre-merge sync step mutates both checkouts BEFORE the record is written, so
+// while it runs the four sibling verbs see no record and do not refuse. `Merge` therefore takes the
+// write lock ahead of the sync rather than after it. `MergeIn` has no sync step and mutates nothing
+// before its record, so it is the one verb that can still defer acquisition.
 // The rest of the mutating surface is deliberately unguarded and safe for stated reasons rather than
 // by omission: the push family (`PushWeft`, `PushWarpAt`, `CoalescePushBothAt`, `SpawnDetachedPush`)
 // pushes a committed branch tip an uncommitted merge has not moved; `Cleanup` cannot touch a
@@ -1018,7 +1023,8 @@
 // clean, `MERGE_HEAD` live, record live), where the detach succeeds and drops `MERGE_HEAD`, stranding
 // the record. That is a known, accepted hazard belonging to the caller that drives the bisect, not to
 // the merge primitive. The combined `.weft/weft.write.lock`
-// covers only the mutating steps of a merge call — starting the attempt and concluding it — never
+// covers only the mutating steps of a merge call — `Merge`'s pre-merge sync step, starting the
+// attempt, and concluding it — never
 // the resolution window itself: an operator may take arbitrarily long editing conflict markers
 // between `MergeIn`/`Merge` and `MergeContinue` with the lock released, exactly as plain git leaves a
 // conflicted worktree unlocked between `git merge` and `git commit`.
