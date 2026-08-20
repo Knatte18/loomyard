@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: fabric-merge-crucible-hardening
 branch: fabric-merge-crucible-hardening
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-19T12:46:28Z'
+done  '2026-08-20T07:25:19Z'
 ```
