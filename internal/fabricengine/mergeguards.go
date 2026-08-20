@@ -73,6 +73,10 @@ func resolveMergeSources(f *Fabric, l *lyxcwd.Location, source string) (mergeSou
 // the local branch is absent, or when it is an ancestor of the remote-tracking SHA and not equal to
 // it (IsAncestor); the local SHA otherwise.
 // It reports found=false only when neither the local branch nor its remote-tracking ref resolved.
+// The ancestry probe is best-effort, matching this file's best-effort Fetch rule: an IsAncestor
+// failure falls back to the local SHA — the pre-freshness-rule answer — and is logged via
+// logger.Warn rather than swallowed silently, so a degraded pick (merging a possibly-stale local
+// tip) always leaves a trace.
 func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, remoteSHA string, remoteFound bool) (sha string, found bool) {
 	switch {
 	case !localFound && !remoteFound:
@@ -87,7 +91,11 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 		return localSHA, true
 	}
 	isAncestor, err := repo.IsAncestor(localSHA, remoteSHA)
-	if err == nil && isAncestor {
+	if err != nil {
+		logger.Warn("fabricengine: freshness-rule ancestry probe failed; merging the local tip", "local", localSHA, "remote", remoteSHA, "error", err)
+		return localSHA, true
+	}
+	if isAncestor {
 		return remoteSHA, true
 	}
 	return localSHA, true
