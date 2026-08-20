@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-quarry-scaffold
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-fix-r2  '2026-08-20T11:27:00Z'
 plan-fix-r3  '2026-08-20T11:48:03Z'
 planned  '2026-08-20T11:48:13Z'
 implementing  '2026-08-20T14:50:54Z'
+approved-quarry-scaffold  '2026-08-20T14:58:14Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-08-20T14:50:54Z'
 ```yaml
 batches:
   - name: quarry-scaffold
-    state: running
+    state: approved
     implementer_session: 9a65255d-f1ea-4cdb-ae3d-474445656a9b
     start_sha: 7cd73c16f733288f0cbddcd4f30275855e59b3ff
+    commit_sha: b0c261b3870e9a1f76553ef0837d5da4169ac381
     verify_baseline_failures: ["FAIL\t./internal/... [setup failed]"]
   - name: quarry-cli-infra
     state: pending
