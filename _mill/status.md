@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -33,6 +33,7 @@ holistic-fixing  '2026-08-20T10:20:26Z'
 holistic-reviewing  '2026-08-20T10:26:53Z'
 holistic-approved  '2026-08-20T10:31:23Z'
 done  '2026-08-20T10:32:46Z'
+pr-pending  '2026-08-20T10:37:44Z'
 ```
 
 ## Batches
