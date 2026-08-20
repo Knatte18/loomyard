@@ -42,3 +42,42 @@ fb35463 feat(cli): port the clihelp exit-state and cobra execution seam
 ```
 
 `go -C /home/knatte/Code/quarry/wts/quarry test ./internal/...` passes: `internal/cli` (new), `internal/lock`, `internal/output`, `internal/proc` all green.
+
+## Batch 3 — port-engine
+
+Landed in `/home/knatte/Code/quarry/wts/quarry` (repo `github.com/Knatte18/quarry`, branch `main`).
+
+- `tools/port/main.go`: a new, single-file, dependency-free Go program that copies a named file list from a source directory to a destination directory and rewrites exactly two closed categories of token — the loomyard import paths this task's packages depend on, and the two package clauses (`scoutengine` -> `quarry`, `scoutcli` -> `cli`) — anchored at the start of a line so a mention inside a comment or string literal is left alone. Refuses to overwrite an existing destination file without an explicit `-overwrite` flag. Deleted from quarry in batch 5 once the port is proven.
+- The port program ran once, over 34 files from Loomyard's `internal/scoutengine` into quarry's `quarry/` package: 32 files landed under their source name; `scoutdaemon_test.go` and `supervised_scout_test.go` landed renamed, as `quarrydaemon_test.go` and `supervised_lsp_test.go`, since "scout" is dead vocabulary in this repo. `template.go` and `template.yaml` were deliberately excluded — their content already landed as `docs/servers.yaml.example` in batch 1, and `ConfigTemplate()` has zero call sites anywhere.
+- `"scoutengine: "` literal count: **59 before, 59 after** — confirmed unchanged by the port program's own post-copy count and independently re-confirmed by `grep -rc 'scoutengine: ' quarry/` after every hand edit in this batch.
+- Final `grep -ric 'lyx' quarry/*.go` count across the ported engine directory: **7**, all seven in `quarrydaemon_test.go`'s own regression-guard test (`TestDaemonStateFile_NoLyxOrScoutSegment`/`TestDaemonLock_NoLyxOrScoutSegment`), which exists specifically to assert neither `DaemonStateFile` nor `DaemonLock` ever introduces a `.lyx` or `scout` path segment. No other file carries a `lyx` occurrence.
+- Hand-edited surface (everything the port program is deliberately restricted from touching):
+  - Seven `internal/logger` call sites (one `logger.Info`, six `logger.Warn`, across `ensureserver.go` and `lspclient.go`) replaced with `log/slog`, message strings and structured fields kept byte-identical. `ensureserver.go` gained a package-level `defaultLogHandler` (stderr, `slog.LevelWarn` default). `lspclient.go` now imports nothing outside the standard library.
+  - Two path-ownership signature changes: `DaemonStateFile`/`DaemonLock` go from `(anchorRoot, lang)` to `(stateDir, lang)`, joining only the language segment and the filename onto a told leaf directory — the `.lyx`/`scout` path segments and the `lyxdirs` import are deleted outright, not relocated. `LoadRegistry` goes from `(baseDir)` to `(path)`, reading the told file directly and dropping the `configengine` import.
+  - The `Options.AnchorRoot` field rename to `Options.StateDir`, threaded through `refs.go`'s `acquireConnection` and `ensureserver.go`'s `ensureServer`/`ensureSupervised` parameter rename (`anchorRoot` -> `stateDir`).
+  - The toolchain cache path segment rename from `lyx` to `quarry` in `goToolchainCacheDir`/`goToolchainInstallLock` (`toolchain.go`).
+  - A full rewrite of `doc.go`, the module's as-built design record, retargeting every Loomyard-specific citation (Cwd Resolution Invariant, `internal/modelspec`, `internal/scoutcli`, `_lyx/config/servers.yaml`, `.lyx/scout/<lang>/`) onto quarry's own three-axis config/state/toolchain-cache model and quarry's own `docs/` research citations.
+  - Five `//go:build scout` files recut to `//go:build lsp`, naming their actual precondition (a real language-server binary on `$PATH`) instead of a tool called scout.
+  - Five test files rewritten rather than ported verbatim, each for a reason a path rewrite alone cannot fix: `daemonstate_test.go`/`quarrydaemon_test.go` (state-path arithmetic onto the told `stateDir`), `load_test.go` (registry loader onto the told config path, plus one new directory-vs-file case), `seam_enforcement_test.go`/`lspclient_guard_test.go` (banned-import lists retargeted to quarry's own packages, `lspclient_guard_test.go` tightened to stdlib-only per the logger removal).
+  - `refs_integration_test.go` additionally retargeted its live-gopls fixture off the absent `internal/lyxcwd/lyxcwd.go` onto quarry's own `quarry/detect.go`'s `DetectLanguage`.
+- One plan extension made mid-batch, both committed in this worktree before the corresponding quarry-side fix: `.gitignore`'s `/quarry` rule collided with the new `quarry/` package directory of the same name (fixed with a `!/quarry/` re-include, keeping the binary ignored); and `go.sum` was missing the content-hash line for `gopkg.in/yaml.v3`, which `load.go` has imported directly since the port (fixed with `go get gopkg.in/yaml.v3@v3.0.1`, no `go.mod` change).
+
+Quarry commit SHAs (from `git -C /home/knatte/Code/quarry/wts/quarry log --oneline`, cards 10 through 22):
+
+```
+bd348aa test(quarry): retarget the engine seam and lspclient guards
+1a247fb test(quarry): retarget the live references test onto Options.StateDir
+f767bf1 test(quarry): retarget the registry loader test onto the told config path
+f28a9db test(quarry): rewrite daemon state-path tests onto the told stateDir
+9002823 test(quarry): collapse the scout build tag onto lsp
+8b9688c docs(quarry): sweep lyx vocabulary out of the ported engine
+2153098 refactor(quarry): rename the toolchain cache segment from lyx to quarry
+09ed797 refactor(quarry): tell LoadRegistry a resolved config path
+45a731a refactor(quarry): rename Options.AnchorRoot to StateDir
+64bd052 refactor(quarry): tell the engine its state directory instead of deriving it
+2d73374 refactor(quarry): replace internal/logger with log/slog
+8fd6f90 feat(quarry): port the scout engine package mechanically
+da39d84 feat(tools): add the mechanical port program
+```
+
+`go -C /home/knatte/Code/quarry/wts/quarry test ./...` passes end to end (`-count=1`): `internal/cli`, `internal/lock`, `internal/output`, `internal/proc`, and the new `quarry` package all green. `go -C /home/knatte/Code/quarry/wts/quarry vet -tags lsp ./quarry/` also type-checks cleanly, ahead of batch 5's own live-tier run.
