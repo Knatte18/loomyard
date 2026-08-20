@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -38,6 +38,8 @@ holistic-reviewing  '2026-08-20T16:50:47Z'
 holistic-fixing  '2026-08-20T16:59:40Z'
 holistic-reviewing  '2026-08-20T17:05:58Z'
 holistic-fixing  '2026-08-20T17:12:21Z'
+nits-fixed-holistic  '2026-08-20T17:17:03Z'
+holistic-approved  '2026-08-20T17:17:10Z'
 ```
 
 ## Batches
