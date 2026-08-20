@@ -165,10 +165,20 @@ func TestRun_StuckWithOnStuckTarget(t *testing.T) {
 
 func TestRun_StuckWithNoTarget(t *testing.T) {
 	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 1 // deliberately tiny, so a budget-exhausted reason would already fire here.
 
 	producer := fixedOutcomeProducer(Stuck, "")
 	shed.Producers = []ProducerDef{{Name: "Plan-Write", Producer: producer}}
-	seedStatus(t, statusPath, statusLockPath, commonSeed("Plan-Write"))
+	// Pre-seed history with a Stuck count already at (and past) any conceivable budget, so
+	// this test pins the ordering: an empty OnStuck blocks with its own reason ahead of the
+	// budget check, never falling through to "bounce budget exhausted" just because the
+	// history already looks exhausted.
+	seed := commonSeed("Plan-Write")
+	seed.History = []HistoryEntry{
+		{Producer: "Plan-Write", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "Plan-Write", Outcome: Stuck, At: "2020-01-01T00:00:01Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
 
 	result, err := shed.Run(context.Background())
 	if err != nil {
@@ -492,5 +502,369 @@ func TestRun_OnDoneRoutesBackward(t *testing.T) {
 	}
 	if got.History[0].Outcome != Done || got.History[1].Outcome != Done || got.History[2].Outcome != Stuck {
 		t.Errorf("History outcomes = %+v; want [done done stuck]", got.History)
+	}
+}
+
+func TestRun_EpisodeBudgetIndependenceAcrossProducers(t *testing.T) {
+	// The property the whole task exists for: one producer's own history does not shrink a
+	// different producer's remaining budget. A already has a history of Stuck entries far
+	// past any plausible budget; B, seeded to run now, must still get its own full budget.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 2
+
+	b := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: fixedOutcomeProducer(Stuck, ""), OnStuck: "A"},
+		{Name: "B", Producer: b, OnStuck: "B"},
+	}
+	seed := commonSeed("B")
+	seed.History = []HistoryEntry{
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:01Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:02Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:03Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:04Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	wantCalls := shed.MaxBounces + 1
+	if b.calls != wantCalls {
+		t.Errorf("b.calls = %d; want %d -- B's own budget, unaffected by A's already-exhausted history", b.calls, wantCalls)
+	}
+}
+
+func TestRun_MaxBouncesInheritance(t *testing.T) {
+	tests := []struct {
+		name           string
+		defMaxBounces  int
+		shedMaxBounces int
+		wantEffective  int
+	}{
+		{"def zero inherits Shed.MaxBounces", 0, 5, 5},
+		{"both zero inherit defaultMaxBounces", 0, 0, defaultMaxBounces},
+		{"non-zero def overrides a different non-zero Shed.MaxBounces", 3, 5, 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shed, statusPath, _, statusLockPath := newTestShed(t)
+			shed.MaxBounces = tt.shedMaxBounces
+
+			a := fixedOutcomeProducer(Stuck, "")
+			shed.Producers = []ProducerDef{
+				{Name: "A", Producer: a, OnStuck: "A", MaxBounces: tt.defMaxBounces},
+			}
+			seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+			result, err := shed.Run(context.Background())
+			if err != nil {
+				t.Fatalf("Run(...) = _, %v; want nil error", err)
+			}
+			if result.Outcome != RunBlocked {
+				t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+			}
+
+			wantCalls := tt.wantEffective + 1
+			if a.calls != wantCalls {
+				t.Errorf("a.calls = %d; want %d (effective MaxBounces = %d)", a.calls, wantCalls, tt.wantEffective)
+			}
+		})
+	}
+}
+
+func TestRun_BudgetDerivedFromPreExistingHistoryAcrossInvocations(t *testing.T) {
+	// This is the direct test of the persisted-count decision: the budget accounts for Stuck
+	// entries that already existed in history before this Run call, not only ones this
+	// invocation appends -- the property that fails under a per-Run-call count.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 3
+
+	a := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+	}
+	seed := commonSeed("A")
+	seed.History = []HistoryEntry{
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:01Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	// Two Stuck entries already exist; only shed.MaxBounces-2 = 1 further bounce is
+	// available before the next Stuck blocks, so this invocation calls A twice: once that
+	// bounces, once that blocks.
+	wantCalls := shed.MaxBounces - len(seed.History) + 1
+	if a.calls != wantCalls {
+		t.Errorf("a.calls = %d; want %d", a.calls, wantCalls)
+	}
+}
+
+func TestRun_EpisodeResetsOnProducersOwnDone(t *testing.T) {
+	// A producer that bounces, later returns Done, and is then re-entered and bounces again
+	// starts from zero on re-entry -- Stuck entries preceding its own last Done do not count.
+	// This is the loom Discussion-Validate shape that decided episode scoping over
+	// all-time counting, so it gets its own named test rather than a table row.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 2
+
+	a := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+	}
+	seed := commonSeed("A")
+	// A's earlier episode: two Stuck entries, then a Done that closed it out. Re-entry into
+	// A (e.g. via some other producer's OnDone naming A again) starts a fresh episode.
+	seed.History = []HistoryEntry{
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:01Z"},
+		{Producer: "A", Outcome: Done, At: "2020-01-01T00:00:02Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	// The pre-Done Stuck entries do not count: this run's episode starts at zero, so
+	// MaxBounces+1 fresh calls are made before it blocks -- the same boundary as an
+	// entirely empty history, not one narrowed by the earlier episode.
+	wantCalls := shed.MaxBounces + 1
+	if a.calls != wantCalls {
+		t.Errorf("a.calls = %d; want %d -- the pre-Done Stuck entries must not count", a.calls, wantCalls)
+	}
+}
+
+func TestRun_EpisodeIgnoresOtherProducersDoneEntry(t *testing.T) {
+	// A Done entry authored by a different producer does not end this producer's episode.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 2
+
+	a := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+		{Name: "B", Producer: fixedOutcomeProducer(Done, ""), OnDone: ""},
+	}
+	seed := commonSeed("A")
+	seed.History = []HistoryEntry{
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "B", Outcome: Done, At: "2020-01-01T00:00:01Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:02Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	// Two A-authored Stuck entries already exist in history, with B's Done sitting between
+	// them without resetting anything -- if it had reset A's count, this first call would
+	// bounce instead of blocking immediately.
+	if a.calls != 1 {
+		t.Errorf("a.calls = %d; want 1 -- B's Done must not reset A's episode count", a.calls)
+	}
+}
+
+func TestRun_NeverPassingGateAccumulatesAllTime(t *testing.T) {
+	// A producer with no Done entry anywhere in history accumulates all-time -- the
+	// anti-crash-loop property episode scoping must not weaken.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 3
+
+	a := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+	}
+	seed := commonSeed("A")
+	seed.History = []HistoryEntry{
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:01Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:02Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:03Z"},
+		{Producer: "A", Outcome: Stuck, At: "2020-01-01T00:00:04Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	// Five pre-existing Stuck entries already exceed a budget of three, so the very first
+	// call this run blocks immediately.
+	if a.calls != 1 {
+		t.Errorf("a.calls = %d; want 1 -- an all-time-exhausted history blocks on the first call", a.calls)
+	}
+}
+
+func TestRun_FailurePathDoneEntryTerminatesEpisode(t *testing.T) {
+	// A seeded history containing a "done" entry for a producer that had returned an error
+	// alongside that verdict still ends that producer's episode: this pins the accepted
+	// behavior so a future reader does not rewrite the scan to ignore it.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 1
+
+	firstCall := true
+	a := &funcProducer{}
+	a.fn = func(ctx context.Context) (Outcome, OutputPointer, error) {
+		if firstCall {
+			firstCall = false
+			// A hard-failure call: a producer returning Done alongside a non-nil error is
+			// still recorded with Outcome: Done, because the engine records the verdict
+			// the producer actually returned.
+			return Done, OutputPointer{}, errors.New("boom")
+		}
+		return Stuck, OutputPointer{}, nil
+	}
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	// First Run: the hard-failure arm persists {Producer: A, Outcome: Done} alongside
+	// StateFailed, and returns the error to the caller.
+	if _, err := shed.Run(context.Background()); err == nil {
+		t.Fatalf("first Run(...) = _, nil; want a non-nil error")
+	}
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.State != StateFailed {
+		t.Fatalf("persisted State after first Run = %q; want %q", got.State, StateFailed)
+	}
+	if len(got.History) != 1 || got.History[0].Outcome != Done {
+		t.Fatalf("persisted History after first Run = %+v; want one Done entry for A", got.History)
+	}
+
+	// Second Run: a human has resolved the failure and re-invokes. The prior Done entry --
+	// even though it was written by the hard-failure arm -- terminates the scan exactly as
+	// any other Done would, so this episode starts fresh at zero.
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("second Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("second Run Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	// a.calls is 1 (the failing call) + MaxBounces+1 (a fresh episode budget of 1: one
+	// bounce, then the next Stuck blocks).
+	wantCalls := 1 + shed.MaxBounces + 1
+	if a.calls != wantCalls {
+		t.Errorf("a.calls = %d; want %d -- the episode must reset at the hard-failure Done entry", a.calls, wantCalls)
+	}
+}
+
+func TestRun_StuckAttributionIgnoresOtherProducersEntries(t *testing.T) {
+	// Stuck entries authored by a different producer do not consume this producer's
+	// budget, even when that other producer's OnStuck targets it.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 1
+
+	a := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+		{Name: "D", Producer: fixedOutcomeProducer(Stuck, ""), OnStuck: "A"},
+	}
+	seed := commonSeed("A")
+	seed.History = []HistoryEntry{
+		{Producer: "D", Outcome: Stuck, At: "2020-01-01T00:00:00Z"},
+		{Producer: "D", Outcome: Stuck, At: "2020-01-01T00:00:01Z"},
+		{Producer: "D", Outcome: Stuck, At: "2020-01-01T00:00:02Z"},
+	}
+	seedStatus(t, statusPath, statusLockPath, seed)
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+
+	// D's three prior Stuck entries, though D's OnStuck names A, must not count toward A's
+	// budget: A gets its own full MaxBounces+1 calls before blocking.
+	wantCalls := shed.MaxBounces + 1
+	if a.calls != wantCalls {
+		t.Errorf("a.calls = %d; want %d -- D's Stuck entries must not count toward A's budget", a.calls, wantCalls)
+	}
+}
+
+func TestRun_BlockPathArithmetic(t *testing.T) {
+	// After a budget-exhausted block, the producer's episode Stuck count is budget+1. A
+	// resumed run whose budget was raised by exactly one blocks again immediately. A
+	// resumed run whose budget was raised above the current count proceeds. This pins the
+	// escape-hatch arithmetic an operator's bug report would otherwise write.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.MaxBounces = 2
+
+	a := fixedOutcomeProducer(Stuck, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnStuck: "A"},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	// Part 1: run to exhaustion. budget+1 calls, then blocked.
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run 1 (...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Run 1 Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	if a.calls != shed.MaxBounces+1 {
+		t.Fatalf("a.calls after Run 1 = %d; want %d (budget+1)", a.calls, shed.MaxBounces+1)
+	}
+	callsAfterRun1 := a.calls
+
+	// Part 2: raise the budget by exactly one and resume. The episode count already equals
+	// the new budget, so the very next call blocks again immediately -- no bounce.
+	shed.MaxBounces++
+	result, err = shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run 2 (...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Run 2 Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	if a.calls != callsAfterRun1+1 {
+		t.Errorf("a.calls after Run 2 = %d; want %d -- a budget raised by exactly one blocks again immediately, with no bounce", a.calls, callsAfterRun1+1)
+	}
+	callsAfterRun2 := a.calls
+
+	// Part 3: raise the budget above the current episode count and resume. The run must
+	// proceed past the immediate-block point: at least one further bounce happens before
+	// (or instead of) another immediate block.
+	shed.MaxBounces += 5
+	result, err = shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run 3 (...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Run 3 Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	if a.calls <= callsAfterRun2+1 {
+		t.Errorf("a.calls after Run 3 = %d; want more than %d -- a budget raised above the current count must proceed past an immediate block", a.calls, callsAfterRun2+1)
 	}
 }
