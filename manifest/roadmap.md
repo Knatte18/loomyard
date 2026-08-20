@@ -17,11 +17,6 @@ Committed to, in this order, next.
    - Own config surface (`landing.yaml`: `require_pr_to_base` and other safe defaults, overridable per orchestrating profile — same "profiles live in the caller, not the callee" precedent as `loom.yaml`/`hardener.yaml`), Raddle regeneration folded into `Finalize`'s own merge critical section rather than a separate step.
    See [designs/landing.md](designs/landing.md).
 
-1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the Done `loom: phase-machine scaffolding` item's phase machine actually reachable.
-   - `lyx loom run`: ensure the worktree's tmux session is up, add the status strand (`lyx loom status --watch`), spawn the `loom` driver detached via `internal/proc`, attach the terminal to the tmux session.
-   - The run-launcher: `.lyx/lyxrun.cmd`, dropped by `lyx fabric add`, so a double-click does `cd <worktree> && lyx loom run`.
-   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap).
-
 1. **loom: write and wire in the real LLM producers** — the only task in this initiative that touches LLM-prompt content, deliberately last.
    - Write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists).
    - Write `Plan-Review`'s rubric from scratch — does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria.
@@ -131,6 +126,11 @@ No build order is implied between these items.
    The existing `PullResult.PatternResidue` is the same shape and already exists for the rewrite case — answer this once, for both, when `Shed`/`loom` exist to consume it.
 
 ## Done
+
+1. **loom: session bootstrap** — `lyx loom run` (alias `lyx run`), the entry point that makes the phase machine actually reachable, shipped with all four verbs: `run` (the bootstrap), `drive` (the no-tmux foreground escape hatch), `status` (one-shot and `--watch`), and `pause`.
+   `run` seeds the status file and commits it weft-side before the driver ever spawns — the ordering that makes loom's own first Preflight precondition row pass immediately rather than blocking on the seed's own dirt — then spawns the detached driver and waits on a handshake for it to take the run lock, so a re-entrant invocation ensures substrate and attaches rather than double-spawning.
+   The pair-creating fabric verb now writes and commits a parent-branch provenance record (`_lyx/fabric/origin.json`) at pair-creation time, which `run` reads rather than infers, and the per-worktree launcher set gained a third script, `run<ext>`, alongside the existing `ide`/`fabric-checkout` scripts.
+   See [designs/loom.md](designs/loom.md#entry-point--the-session-bootstrap) and the `internal/loomcli` package documentation.
 
 1. **fabric: merge-conflict primitive** — Fabric's merge/conflict lifecycle: `MergeIn`/`Merge`/`MergeContinue`/`MergeAbort`/`MergeInProgress` on `Fabric`, surfaced as `lyx fabric merge-in`/`lyx fabric merge [--squash] [--continue|--abort]`, with git-mirroring exit codes and conflicts reported as unified, worktree-relative paths, never exposing which internal side (warp/weft) produced them.
    See the `internal/fabricengine` package documentation for the merge surface's own mechanism.
