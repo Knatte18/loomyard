@@ -51,7 +51,9 @@ batches:
     commit_sha: 39a42c6ad748df25fef68aca9b87661d080e77e9
     verify_baseline_failures: []
   - name: delete-composite
-    state: pending
+    state: running
+    implementer_session: cc984fe6-48d0-43ad-8a45-9a95778d75be
+    start_sha: 070e82e89c9fa7fdfed0325327cc54d80d2d5db1
     verify_baseline_failures: []
   - name: docs
     state: pending
