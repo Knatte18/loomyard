@@ -1,1 +1,0 @@
-- port-equivalence.md's comparison count doesn't match its own table: **Location:** `/home/knatte/Code/quarry/wts/quarry/docs/port-equivalence.md:71, 123`

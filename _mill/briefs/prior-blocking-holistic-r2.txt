@@ -1,5 +1,0 @@
-- go.sum lacks a full hash for cobra's windows-only mousetrap dependency: **Location:** `/home/knatte/Code/quarry/wts/quarry/go.sum:4`, `go.mod:1-14`
-- Loomyard/mill-internal residue survives in ported production comments, uncaught by the "lyx" sweep: **Location:** `quarry/errors.go:1-2`, `quarry/refs.go:9`, `quarry/registry.go:4`, `quarry/ensureserver.go:1-2`, `quarry/detect.go:2`, `quarry/refs_test.go:389`, `quarry/ensureserver_test.go:326`, `quarry/refs_integration_test.go:55`
-- card 38's fix edited a Context-only file and reversed an explicit instruction: **Location:** `/home/knatte/Code/quarry/wts/quarry/internal/cli/paths_test.go:81-95, 143-156`
-- duplicate card number 38 across batch 5 and batch 6: **Location:** `_mill/plan/05-quarry-live-and-equivalence.md:122` (Card 38: fix the test-isolation race) and `_mill/plan/06-lyx-removal.md:30` (Card 38: delete the two scout packages)
-- quarry's slog Warn-level handler governs only 2 of 7 ported log call sites: **Location:** `/home/knatte/Code/quarry/wts/quarry/quarry/ensureserver.go:26-32` vs. `/home/knatte/Code/quarry/wts/quarry/quarry/lspclient.go:575-609`

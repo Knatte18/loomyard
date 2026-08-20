@@ -1,2 +1,0 @@
-- card 32's "grep -ric 'lyx' ... confirm the total is zero" is not actually zero, and the discrepancy is unrecorded: **Location:** `/home/knatte/Code/quarry/wts/quarry/README.md:41-44`, `internal/cli/cli.go:448`, `quarry/quarrydaemon_test.go`, `internal/cli/resolve_test.go`, `docs/scout-*.md`
-- Garbled cross-reference in the equivalence document's intro: **Location:** `/home/knatte/Code/quarry/wts/quarry/docs/port-equivalence.md:7`
