@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-wire-two-rows
+phase: approved-delete-composite
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -26,6 +26,7 @@ implementing  '2026-08-20T09:26:03Z'
 approved-preflightshed-package  '2026-08-20T09:38:47Z'
 approved-loomengine-checkseed  '2026-08-20T09:45:26Z'
 approved-wire-two-rows  '2026-08-20T09:54:31Z'
+approved-delete-composite  '2026-08-20T10:05:49Z'
 ```
 
 ## Batches
@@ -51,9 +52,10 @@ batches:
     commit_sha: 39a42c6ad748df25fef68aca9b87661d080e77e9
     verify_baseline_failures: []
   - name: delete-composite
-    state: running
+    state: approved
     implementer_session: cc984fe6-48d0-43ad-8a45-9a95778d75be
     start_sha: 070e82e89c9fa7fdfed0325327cc54d80d2d5db1
+    commit_sha: b640fb7264f9b7d3830027cac9c3e2f3534833d7
     verify_baseline_failures: []
   - name: docs
     state: pending
