@@ -56,6 +56,8 @@ batches:
     commit_sha: ec01e786112ccb773fc80bac1c0f3c177a144cd3
     verify_baseline_failures: []
   - name: docs-sweep
-    state: pending
+    state: running
+    implementer_session: e9832e99-5ae8-43ad-8864-81dbeb6158f3
+    start_sha: e6e4dbd22957aaff4de07a588e40d08e956e2822
     verify_baseline_failures: []
 ```
