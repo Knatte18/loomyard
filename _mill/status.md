@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-lyx-removal
+phase: holistic-reviewing
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-port-cli  '2026-08-20T15:41:15Z'
 self-resolved-verify-logic  '2026-08-20T16:03:38Z'
 approved-quarry-live-and-equivalence  '2026-08-20T16:07:38Z'
 approved-lyx-removal  '2026-08-20T16:30:20Z'
+holistic-reviewing  '2026-08-20T16:30:49Z'
 ```
 
 ## Batches
