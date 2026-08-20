@@ -1020,7 +1020,11 @@
 // pair whose warp worktree is already gone; `Reconcile`, the junction verbs and the hook installer
 // touch filesystem links, never an index or a ref; `Add` builds a new pair off a branch tip;
 // `RebuildIndex` rewrites an explicitly rebuildable cache; `RecordCorrespondence` must stay
-// unguarded, since the merge verbs call it themselves while their own record is still live; and
+// unguarded, since the merge verbs call it themselves while their own record is still live;
+// `MergeStageResolved` is unguarded and unlocked because it can only ever write DURING a merge
+// (with no merge in progress no path is conflicted and the call errors before staging anything,
+// and while one IS in progress the guarded siblings already keep every other fabric writer out —
+// see its own godoc in mergestage.go for the full argument); and
 // `ResetHard`'s `force: false` plus tracked-dirtiness gate already refuses against a merge worktree,
 // which is dirty by definition.
 // `CheckoutDetached`/`RestoreBranch` are the one knowing exception — raw primitives driven only by
