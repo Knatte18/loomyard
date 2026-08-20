@@ -99,6 +99,10 @@ func TestShed_Validate(t *testing.T) {
 			wantErr: "OnStuck",
 		},
 		{
+			// Both rows keep the base fixture's default Segment: "", so this
+			// also pins that an OnStuck pairing between two producers that
+			// both carry the empty Segment is legal — the existing loom
+			// shape, preserved as one implicit standalone group.
 			name: "forward OnStuck reference is accepted",
 			mutate: func(s *Shed) {
 				s.Producers[0].OnStuck = s.Producers[1].Name
