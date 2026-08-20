@@ -41,7 +41,9 @@ batches:
     commit_sha: 71664f4b1dcc59f5dc0d64108e9699d7cd28179f
     verify_baseline_failures: []
   - name: stencils
-    state: pending
+    state: running
+    implementer_session: 01a496e6-425b-4917-94ea-f107cab2d685
+    start_sha: a9cc0da526d58e5d156b0fdc2279ca47c9aedab9
     verify_baseline_failures: []
   - name: bouncer-producer
     state: pending
