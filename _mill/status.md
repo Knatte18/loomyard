@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
-plan: null
+plan: _mill/plan
 parent: main
 task: 'preflight: split into two Shed rows -- a generic one, and loom''s own'
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r2  '2026-08-20T08:44:34Z'
 discussion-fix-r3  '2026-08-20T08:49:32Z'
 discussion-fix-r5  '2026-08-20T08:59:33Z'
 discussed  '2026-08-20T08:59:33Z'
+planning  '2026-08-20T09:18:50Z'
 ```
