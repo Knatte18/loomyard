@@ -46,7 +46,9 @@ batches:
     commit_sha: af9272b6bdaa8eac47b42b6a9633cf18122692e8
     verify_baseline_failures: ["FAIL\t./internal/... [setup failed]"]
   - name: port-engine
-    state: pending
+    state: running
+    implementer_session: 026b10f3-ca8d-4b6a-9d11-a21e112d6776
+    start_sha: 34f8b39c1ce40f5e8bf258245160bc03471ed4ae
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: port-cli
     state: pending
