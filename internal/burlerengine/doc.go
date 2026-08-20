@@ -136,6 +136,22 @@
 // entries fails validate. There is deliberately no fan named "default":
 // every seeded fan is dormant until a profile names it.
 //
+// ClusterExclude names lenses to drop from the fan ClusterFan resolves to,
+// applied inside validate after ResolveFan, with the survivors stored in
+// clusterLenses — the single value both prompt composition and
+// auditClusterRound's exact-N fork check read, so a trimmed round demands
+// exactly the forks it named and ErrClusterForksMissing's fail-loud posture
+// is untouched. Three edge cases split on who authored the input:
+// ClusterExclude set with an empty ClusterFan is a validate error, because
+// that is a Go caller's mistake; a name not present in the resolved fan is a
+// no-op for that name with a warning, because an exclusion list is an
+// advisory, per-call directive over a config-owned fan an operator may edit
+// between rounds, so a stale name is stale rather than wrong; and an
+// exclusion that would empty the fan drops the whole exclusion and keeps the
+// fan intact, because dropping to zero lenses is never what "these found
+// nothing last round" meant and re-running the full fan costs tokens, never
+// correctness.
+//
 // A cluster round still runs as ONE shuttle session — the handler — inside
 // job A, in three phases: (1) the handler explores the target in full; (2)
 // the handler spawns all N lens forks in a SINGLE message via Claude Code's
