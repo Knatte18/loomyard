@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: shedadapters-generic-bouncer-producer
 branch: shedadapters-generic-bouncer-producer
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Bouncer: the generic review-gate producer'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-20T11:37:34Z'
 discussion-fix-r6  '2026-08-20T15:25:53Z'
 discussed  '2026-08-20T15:25:53Z'
+planning  '2026-08-20T15:36:15Z'
 ```
