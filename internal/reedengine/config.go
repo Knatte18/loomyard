@@ -1,14 +1,14 @@
 // config.go — configuration for the reed module.
 //
 // Defines the Config type mirroring reed.yaml's keys and LoadConfig, which uses
-// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the reed config
-// file; reed never reads config files or knows their on-disk layout itself.
+// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the reed config file,
+// degrading to the embedded template on proven absence; reed never reads config files or knows
+// their on-disk layout itself.
 
 package reedengine
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"gopkg.in/yaml.v3"
@@ -38,12 +38,11 @@ type HeaderConfig struct {
 }
 
 // LoadConfig loads and unmarshals configuration for the reed module.
+// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
+// a config file that exists but is invalid still errors.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
-		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
-		}
 		return Config{}, err
 	}
 

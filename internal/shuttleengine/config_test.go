@@ -1,5 +1,5 @@
 // config_test.go verifies shuttle.yaml's template parses, defaults resolve through LoadConfig, and
-// environment overrides + the not-initialized error path behave the way reedengine's config tests
+// environment overrides + the template-fallback path behave the way reedengine's config tests
 // establish the pattern.
 
 package shuttleengine_test
@@ -87,39 +87,55 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Seed under a non-"shuttle" module name; LoadConfig must resolve the
-	// file at that module's path, not a hardcoded "shuttle.yaml".
-	seedLyxConfig(t, tmpDir, "othershuttle", shuttleengine.ConfigTemplate())
+	// Seed under a non-"shuttle" module name with a config whose
+	// poll_interval_ms differs from the template default, so a hardcoded
+	// module name would be caught either way: this module reads back its
+	// seeded value, and the never-seeded "shuttle" module reads back the
+	// template default instead.
+	seeded := strings.Replace(shuttleengine.ConfigTemplate(), "poll_interval_ms: 500", "poll_interval_ms: 750", 1)
+	seedLyxConfig(t, tmpDir, "othershuttle", seeded)
 
 	cfg, err := shuttleengine.LoadConfig(tmpDir, "othershuttle")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.PollIntervalMS != 500 {
-		t.Errorf("PollIntervalMS = %d, want 500", cfg.PollIntervalMS)
+	if cfg.PollIntervalMS != 750 {
+		t.Errorf("PollIntervalMS = %d, want 750 (seeded value)", cfg.PollIntervalMS)
 	}
 
-	// Loading under the default "shuttle" module name (never seeded) must
-	// fail.
-	if _, err := shuttleengine.LoadConfig(tmpDir, "shuttle"); err == nil {
-		t.Error("LoadConfig(tmpDir, \"shuttle\") = nil error, want error (module name must not be hardcoded)")
+	// The never-seeded "shuttle" module must fall back to the template
+	// default, not the "othershuttle" module's seeded value.
+	defaultCfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultCfg.PollIntervalMS != 500 {
+		t.Errorf("PollIntervalMS = %d, want 500 (template default)", defaultCfg.PollIntervalMS)
 	}
 }
 
-func TestLoadConfig_NotInitialized(t *testing.T) {
+func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
+	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded template.
 
 	cfg, err := shuttleengine.LoadConfig(tmpDir, "shuttle")
-	if err == nil {
-		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	if cfg.PollIntervalMS != 500 {
+		t.Errorf("PollIntervalMS = %d, want 500", cfg.PollIntervalMS)
 	}
-	if !strings.Contains(errMsg, "lyx fabric reconcile") {
-		t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+	if cfg.LivenessEveryNPolls != 10 {
+		t.Errorf("LivenessEveryNPolls = %d, want 10", cfg.LivenessEveryNPolls)
+	}
+	if cfg.RunTimeoutMin != 30 {
+		t.Errorf("RunTimeoutMin = %d, want 30", cfg.RunTimeoutMin)
+	}
+	if cfg.StartupTimeoutS != 90 {
+		t.Errorf("StartupTimeoutS = %d, want 90", cfg.StartupTimeoutS)
+	}
+	if !cfg.ClaudeDenyAgentTool {
+		t.Error("ClaudeDenyAgentTool = false, want true")
 	}
 }

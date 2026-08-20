@@ -18,30 +18,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 )
 
-// HubLogsDir returns the path to the hub-level directory where the shared per-hub reed server
-// writes its runtime log.
-// It is hub-anchored so one server per hub resolves to one deterministic place, and now lives under
-// the hub-wide <hub>/_board/.lyx scratch tree obtained from fabricengine.HubScratchDir — never
-// derived here (the told-never-derives rule fabricengine.HubScratchDir's own comment states).
-func HubLogsDir(l *lyxcwd.Location) string {
-	return filepath.Join(fabricengine.HubScratchDir(l.HubPath), "logs")
-}
-
 // stateDir returns the path to the worktree-level ephemeral tree holding reed.json and reed.lock.
 // It is AnchorPath-anchored so it is a directory sibling of the durable, fabric-synced _lyx tree —
-// distinct from HubLogsDir's hub anchor above, which stays one deterministic place per hub rather
+// distinct from Geometry.LogsDir, the hub-anchored directory this engine is TOLD (built by
+// fabricengine.HubLogsDir, never derived here), which stays one deterministic place per hub rather
 // than per worktree.
 func (e *Engine) stateDir() string {
-	return filepath.Join(e.layout.AnchorPath(), lyxdirs.DotLyxDirName)
+	return filepath.Join(e.geom.AnchorPath, lyxdirs.DotLyxDirName)
 }
 
 // UpResult reports the outcome of Up.
@@ -57,9 +47,16 @@ type ResumeResult struct {
 	Resumed int
 }
 
-// DownResult reports the outcome of Down: the session name that was torn down.
+// DownResult reports the outcome of Down: the session name that was torn down, plus the name of a
+// live session Down knowingly walked away from.
 type DownResult struct {
 	Session string
+	// AbandonedSession names a tmux session this worktree's state file was recorded against, which
+	// is STILL RUNNING on the shared per-hub socket under a name that is not this worktree's, and
+	// which Down did not kill and could not track any further because it deleted the state file
+	// naming it. Empty in every ordinary teardown. See Down for why it is reported rather than
+	// killed.
+	AbandonedSession string
 }
 
 // StrandStatus is one strand's status in StatusResult.
@@ -182,7 +179,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	}
 
 	// Validate the header template in the same pre-tmux block — it reads
-	// only cfg+layout (HeaderText makes no tmux round trip), so like
+	// only cfg+geometry (HeaderText makes no tmux round trip), so like
 	// debug_log and mouse it must fail the boot before anything is spawned.
 	// An earlier version validated only AFTER the session existed, which
 	// left a half-created session behind on a bad template — and, on the
@@ -204,6 +201,15 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// far better than letting an unknown surface surface later as a cryptic
 	// tmux error deep inside the boot loop below.
 	if err := e.probeCapabilityLocked(); err != nil {
+		return false, nil, err
+	}
+
+	// Refuse a recorded-session collision here, ahead of the spawn below, rather than leaving it to
+	// loadOrInitStateLocked after the caller has already booted: a refusal must not deposit a bare
+	// session on the shared per-hub server as its residue. This is the first check needing a tmux
+	// round trip, so it cannot join the pre-tmux block above — but it still precedes everything that
+	// CREATES anything. See refuseRecordedForeignSessionBeforeBootLocked.
+	if err := e.refuseRecordedForeignSessionBeforeBootLocked(); err != nil {
 		return false, nil, err
 	}
 
@@ -253,7 +259,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	// is the only lever. This happens on every boot, regardless of
 	// debug_log, and runs before the boot loop so a fresh server's log always
 	// lands in a directory that already exists and is already pruned.
-	logsDir := HubLogsDir(e.layout)
+	logsDir := e.geom.LogsDir
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		logger.Warn("reed: failed to create hub logs dir", "logsDir", logsDir, "err", err)
 		return false, nil, fmt.Errorf("create %s: %w", logsDir, err)
@@ -296,13 +302,13 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 	spawnSession := func() error {
 		// debugArgs are tmux GLOBAL flags (e.g. -v/-vv) and must precede
 		// -L/new-session on the argv; -c pins new-session's pane default cwd
-		// to the invoking worktree cwd, so panes keep today's behavior even
-		// though the server process's own cwd (cmd.Dir) has moved to logsDir.
+		// to Geometry.PaneCwd, the told pane spawn directory, even though
+		// the server process's own cwd (cmd.Dir) has moved to logsDir.
 		argv := append([]string{}, debugArgs...)
 		argv = append(argv,
 			"-L", e.Socket(),
 			"new-session", "-d", "-s", session,
-			"-c", e.layout.AnchorPath(),
+			"-c", e.geom.PaneCwd,
 			"-x", strconv.Itoa(e.cfg.Width),
 			"-y", strconv.Itoa(e.cfg.Height),
 			e.cfg.Shell,
@@ -422,6 +428,10 @@ func stripTraceID(env []string) []string {
 // ensureHeaderPaneLocked ensures the header pane exists and is alive.
 // (Re)creates it when missing, dead, or gone. The header is separate from
 // strands and must land physically topmost so layout heights stay correct.
+// The (re)creation itself is splitHeaderPaneAtTopLocked's job, including the
+// even-vertical retry that keeps a stale or lost HeaderPaneID from wedging the
+// worktree — see that function for why a split against the top pane can fail
+// at all.
 func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 	session := e.SessionName()
 	live, err := e.tmux.listPanes(session)
@@ -468,49 +478,13 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		}
 	}
 
-	// The topmost pane, so the -b split lands the new header physically
-	// topmost (see the doc comment). When the sole pane is the corpse this
-	// resolves to the corpse itself, by design.
-	target := live[0].ID
-	targetTop := live[0].Top
-	for _, p := range live[1:] {
-		if p.Top < targetTop {
-			target = p.ID
-			targetTop = p.Top
-		}
-	}
-
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve lyx binary path: %w", err)
 	}
 
-	// -b places the NEW pane above target rather than below it (tmux's
-	// default split direction is vertical, new pane below): render.Rules
-	// always emits the header cell FIRST, assuming a fixed top band, and
-	// psmux/tmux apply layout cells POSITIONALLY to the window's actual
-	// top-to-bottom pane order — so the header pane must physically stay
-	// topmost, or the very first select-layout would invert the header and
-	// the first strand's heights (verified live: without -b, a stacked-adds
-	// smoke scenario failed a later split with "no space for new pane"
-	// because the 1-row header cell landed on the STRAND's physically-top
-	// pane instead). Every subsequent strand split (spawn.go) always
-	// targets a non-header pane and inserts below it, so this is the only
-	// split in the whole engine that needs -b.
-	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.layout.AnchorPath(), "-P", "-F", "#{pane_id}")
+	paneID, err := e.splitHeaderPaneAtTopLocked(session, live)
 	if err != nil {
-		logger.Warn("reed: failed to split header pane", "socket", e.Socket(), "target", target, "err", err)
-		return fmt.Errorf("split header pane: %w", err)
-	}
-	paneID := strings.TrimSpace(out)
-	// Same genuinely-new-pane guard launchStrandLocked runs: psmux's silent
-	// too-small-to-split failure prints an EXISTING pane's id with exit 0,
-	// and recording that id as the header would bind the header to a strand's
-	// pane — the next layout string would then carry a duplicate pane number,
-	// destroying the session's panes wholesale (see
-	// validateSplitCreatedNewPane).
-	if err := validateSplitCreatedNewPane(paneID, live, target); err != nil {
-		logger.Warn("reed: header split created no new pane", "socket", e.Socket(), "target", target, "err", err)
 		return fmt.Errorf("split header pane: %w", err)
 	}
 
@@ -552,6 +526,100 @@ func (e *Engine) ensureHeaderPaneLocked(st *ReedState) error {
 		return fmt.Errorf("persist header pane id: %w", err)
 	}
 	return nil
+}
+
+// topmostPaneID returns the id of the pane sitting physically highest in the window — the smallest
+// pane_top — which is the only place a header pane may be split in.
+// live must be non-empty.
+func topmostPaneID(live []LivePane) string {
+	topmost := live[0]
+	for _, p := range live[1:] {
+		if p.Top < topmost.Top {
+			topmost = p
+		}
+	}
+	return topmost.ID
+}
+
+// splitHeaderPaneAtTopLocked splits a new pane in above the physically topmost pane of session and
+// returns its id, retrying once behind an even-vertical re-tile when the first attempt has no room.
+//
+// The retry is what keeps a lost or stale ReedState.HeaderPaneID from wedging a worktree
+// permanently (R4 review finding R4-F4). The header band is one row by default
+// (HeaderConfig.HeightRows), and tmux cannot split a one-row pane at all — so the moment
+// HeaderPaneID stops naming the pane at the top, the topmost split target IS an untracked one-row
+// band and every later up/resume fails with "no space for new pane", forever, while status keeps
+// reporting the session healthy and the only escape ("lyx reed down", then up) is named nowhere.
+// Two ordinary routes reach that state: scrubbing .lyx/reed.json, a never-tracked machine-local
+// tree the Durable-vs-Ephemeral State Invariant makes disposable (a plain `git clean -xdf` in the
+// worktree does it), and a process death in the window between the split above and the SaveState
+// that records its id.
+//
+// select-layout even-vertical evens every pane's height using tmux's own built-in layout — no reed
+// layout string is computed or applied here, so anyPlacedStrand's empty-layout hazard (apply.go) is
+// not in play — after which the same split has room and STILL lands the new pane at pane_top 0
+// (verified live, tmux 3.6). The op's normal reconcileApplyPersistLocked tail then restores reed's
+// real geometry and reaps the untracked band; an op that fails before reaching that tail leaves the
+// window evenly tiled, a cosmetic state the next successful op corrects.
+// Both subcommands are already in requiredSubcommands, so the multiplexer capability contract is
+// unchanged.
+//
+// On a failed retry the FIRST error is returned, not the retry's: it describes the state the
+// operator actually has, and the re-tile is an internal repair attempt rather than something they
+// asked for.
+func (e *Engine) splitHeaderPaneAtTopLocked(session string, live []LivePane) (string, error) {
+	paneID, firstErr := e.splitPaneAboveLocked(topmostPaneID(live), live)
+	if firstErr == nil {
+		return paneID, nil
+	}
+	logger.Warn("reed: failed to split header pane, retrying behind an even-vertical re-tile", "socket", e.Socket(), "session", session, "err", firstErr)
+
+	if err := e.tmux.run("select-layout", "-t", exactSessionWindowTarget(session), "even-vertical"); err != nil {
+		logger.Warn("reed: even-vertical re-tile failed, header split not retried", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	retiled, err := e.tmux.listPanes(session)
+	if err != nil || len(retiled) == 0 {
+		logger.Warn("reed: could not re-enumerate panes after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	paneID, err = e.splitPaneAboveLocked(topmostPaneID(retiled), retiled)
+	if err != nil {
+		logger.Warn("reed: header split still had no room after the even-vertical re-tile", "socket", e.Socket(), "session", session, "err", err)
+		return "", firstErr
+	}
+	logger.Info("reed: header split recovered by an even-vertical re-tile", "socket", e.Socket(), "session", session, "pane", paneID)
+	return paneID, nil
+}
+
+// splitPaneAboveLocked splits a new pane in directly above target and returns its id, refusing an
+// id that was already present in preSplitLive.
+//
+// -b places the NEW pane above target rather than below it (tmux's default split direction is
+// vertical, new pane below): render.Rules always emits the header cell FIRST, assuming a fixed top
+// band, and psmux/tmux apply layout cells POSITIONALLY to the window's actual top-to-bottom pane
+// order — so the header pane must physically stay topmost, or the very first select-layout would
+// invert the header and the first strand's heights (verified live: without -b, a stacked-adds smoke
+// scenario failed a later split with "no space for new pane" because the 1-row header cell landed
+// on the STRAND's physically-top pane instead). Every strand split (spawn.go) always targets a
+// non-header pane and inserts below it, so the header is the only split in the whole engine that
+// needs -b.
+//
+// The genuinely-new-pane guard is the same one launchStrandLocked runs: psmux's silent
+// too-small-to-split failure prints an EXISTING pane's id with exit 0, and recording that id as the
+// header would bind the header to a strand's pane — the next layout string would then carry a
+// duplicate pane number, destroying the session's panes wholesale (see
+// validateSplitCreatedNewPane).
+func (e *Engine) splitPaneAboveLocked(target string, preSplitLive []LivePane) (string, error) {
+	out, err := e.tmux.output("split-window", "-b", "-t", target, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
+	if err != nil {
+		return "", err
+	}
+	paneID := strings.TrimSpace(out)
+	if err := validateSplitCreatedNewPane(paneID, preSplitLive, target); err != nil {
+		return "", err
+	}
+	return paneID, nil
 }
 
 // Up ensures the server and session exist.
@@ -706,6 +774,21 @@ func (e *Engine) Resume() (ResumeResult, error) {
 // Down tears this worktree's session down and waits for async teardown to finish.
 // Only kill-session (not kill-server, which other worktrees share).
 // Waits for server and pane-child processes to actually release resources.
+//
+// Down is also the only lyx-only escape from the foreign-session refusal (generation.go): it loads
+// no state and so never reaches that check, which matters for an operator who can run lyx but not
+// raw tmux — a CI-like environment, a sandboxed agent — since the refusal's own message names only a
+// `tmux kill-session` remedy. That escape used to be silent about its cost: with a worktree renamed
+// while its session was up, `down` reported ok:true, deleted reed.json, and left the recorded session
+// and every strand process in it running on the shared socket, addressable by no reed verb ever
+// again because no worktree of that name exists to derive it from (R6 review finding R6-F3,
+// reproduced live). It now names that session in the result and at Warn.
+//
+// It still does not KILL it, and must not: the recorded name is this worktree's own former session
+// after a rename, but a SIBLING worktree's live session after a hand-copied .lyx (R5-F4), and reed
+// cannot tell those apart. Killing it would re-open R5-F4's damage under a different verb.
+// It still DELETES the state file, so `down` stays the idempotent escape it is — reporting the
+// abandonment is what keeps that from being a silent loss.
 func (e *Engine) Down() (DownResult, error) {
 	var result DownResult
 	err := e.withOpLock(func() error {
@@ -725,6 +808,11 @@ func (e *Engine) Down() (DownResult, error) {
 		// holding the worktree directory is a deeper descendant of the pane
 		// pid). Reaping them is how down keeps its "no stray state" guarantee
 		// at the pane level (see reapPaneChildren).
+		// Roots come from ALIVE panes only (sessionReapRootsLocked): a dead
+		// pane's recorded #{pane_pid} names a process that already exited, and
+		// expanding a recycled pid would make this reap wait on, and then
+		// SIGKILL, an unrelated process tree — the rule RemoveStrand already
+		// followed and this path did not (R2 review finding R2-F2).
 		panePIDs := e.paneProcessTreePIDsLocked()
 
 		// Ignore the error: the session may already be gone, and Down must
@@ -781,12 +869,25 @@ func (e *Engine) Down() (DownResult, error) {
 			return serverErr
 		}
 
+		// Read the state file for the abandonment report BEFORE deleting it: after the delete there
+		// is nothing left that names the orphan. A corrupt or absent file simply reports nothing —
+		// Down must stay idempotent and must never fail over a file it is about to remove.
+		abandoned := ""
+		if st, loadErr := LoadState(e.stateDir()); loadErr == nil && st != nil {
+			if verdict, _ := e.classifyRecordedSessionLocked(st.PaneGeneration); verdict == recordedSessionLive {
+				abandoned = st.PaneGeneration.SessionName
+				logger.Warn("reed: down left a recorded session running on the shared socket and deleted the state naming it",
+					"socket", e.Socket(), "session", e.SessionName(), "abandonedSession", abandoned,
+					"remedy", fmt.Sprintf("%s -L %s kill-session -t '=%s'", e.TmuxPath(), e.Socket(), abandoned))
+			}
+		}
+
 		path := filepath.Join(e.stateDir(), reedStateFileName)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("delete state: %w", err)
 		}
 
-		result = DownResult{Session: e.SessionName()}
+		result = DownResult{Session: e.SessionName(), AbandonedSession: abandoned}
 		return nil
 	})
 	return result, err
@@ -813,8 +914,16 @@ func (e *Engine) sessionlessSocketHolderPersists() bool {
 	}
 }
 
-// serverPIDLocked returns the tmux server's OS pid, or 0 if unknown.
-// Must run before kill-session when the caller intends to wait on server.
+// serverPIDLocked returns the pid of the tmux server holding this engine's socket, or 0 when no
+// server answers.
+// Must run before kill-session when the caller intends to wait on the server.
+//
+// It is the SERVER's pid, not this session's, and it comes back even when this worktree's session
+// does not exist: #{pid} is server-global and display-message exits 0 for a -t target naming no
+// session (see generation.go's paneGenerationLocked). So on a socket a sibling worktree is using,
+// this answers that shared server's pid rather than 0 — which is correct for its one consumer, since
+// Down only spends the value after list-sessions came back empty, but is not what "this session's
+// server, or 0 if unknown" would lead a reader to expect (R6 review finding R6-F4).
 func (e *Engine) serverPIDLocked() int {
 	out, err := e.tmux.output("display-message", "-p", "-t", exactSessionWindowTarget(e.SessionName()), "#{pid}")
 	if err != nil {
@@ -827,26 +936,22 @@ func (e *Engine) serverPIDLocked() int {
 	return pid
 }
 
-// panePIDsLocked returns pane child process pids. Returns nil on failure.
+// sessionReapRootsLocked returns this session's safe descendant-closure reap roots — the
+// #{pane_pid} of every pane that is present AND still running (see safeReapRoot, strand.go).
+// Returns nil on failure.
 // Must run before kill-session while panes exist.
-func (e *Engine) panePIDsLocked() []int {
+func (e *Engine) sessionReapRootsLocked() []int {
 	live, err := e.tmux.listPanes(e.SessionName())
 	if err != nil {
 		return nil
 	}
-	var pids []int
-	for _, p := range live {
-		if p.PID > 0 {
-			pids = append(pids, p.PID)
-		}
-	}
-	return pids
+	return sessionReapRoots(live)
 }
 
-// paneProcessTreePIDsLocked returns pane child pids and their descendants.
+// paneProcessTreePIDsLocked returns this session's safe reap roots and their descendants.
 // Must run before kill-session while panes exist.
 func (e *Engine) paneProcessTreePIDsLocked() []int {
-	return e.descendantClosurePIDs(e.panePIDsLocked())
+	return e.descendantClosurePIDs(e.sessionReapRootsLocked())
 }
 
 // forceKillExitGrace bounds how long to wait for force-kill to land
@@ -856,6 +961,11 @@ const forceKillExitGrace = 5 * time.Second
 // reapExitTimeout bounds pane-child and server reaps before force-killing.
 // Generous for CPU saturation; reaps confirm actual exit, not just timer.
 const reapExitTimeout = 15 * time.Second
+
+// processExitPoll is how often waitProcessExit re-probes a pid's liveness.
+// It polls rather than blocking on the kernel because every pid reed waits on belongs to another
+// process's child tree — see waitProcessExit.
+const processExitPoll = 50 * time.Millisecond
 
 // ensureServerGoneLocked guarantees no tmux process remains on this engine's
 // socket after kill-server. Force-reaps if needed; waits for async teardown.
@@ -878,12 +988,16 @@ func reapPaneChildren(pids []int, timeout time.Duration) {
 		if err := waitProcessExit(pid, time.Until(deadline)); err == nil {
 			continue
 		}
-		p, findErr := os.FindProcess(pid)
-		if findErr != nil {
+		// The graceful window elapsed with the process still up — a pane child
+		// that ignores or is out of reach of tmux's own SIGHUP cascade (a
+		// trapped SIGHUP, a detached session). Force-kill it and confirm.
+		if err := proc.KillPID(pid); err != nil {
+			logger.Warn("reed: failed to force-kill straggling pane child", "pid", pid, "err", err)
 			continue
 		}
-		_ = p.Kill()
-		_ = waitProcessExit(pid, forceKillExitGrace)
+		if err := waitProcessExit(pid, forceKillExitGrace); err != nil {
+			logger.Warn("reed: pane child survived force-kill", "pid", pid, "err", err)
+		}
 	}
 }
 
@@ -909,39 +1023,71 @@ func (e *Engine) waitServerProcessesGone(timeout time.Duration) error {
 func (e *Engine) reapSocketProcesses() error {
 	_ = e.tmux.run("kill-server")
 	for _, pid := range e.serverProcessesOnSocket() {
-		if proc, err := os.FindProcess(pid); err == nil {
-			_ = proc.Kill()
+		// Best-effort per pid: a socket holder that already exited between the
+		// scan and this kill is exactly what the reap wanted, and
+		// waitServerProcessesGone below is what actually decides the outcome.
+		if err := proc.KillPID(pid); err != nil {
+			logger.Debug("reed: best-effort kill of socket holder failed", "socket", e.Socket(), "pid", pid, "err", err)
 		}
 	}
 	return e.waitServerProcessesGone(reapExitTimeout)
 }
 
-// waitProcessExit blocks until the process exits, or errors after timeout.
-// Necessary because tmux's kill-server is asynchronous.
+// waitProcessExit blocks until the process named by pid is no longer running, or errors after
+// timeout.
+// It is necessary because tmux's kill-server and kill-session both terminate their process trees
+// asynchronously.
+//
+// Liveness is POLLED via proc.IsAlive rather than blocked on with os.Process.Wait, and that choice
+// is load-bearing rather than stylistic: every pid reed waits on — the tmux server and each pane's
+// process subtree — is a child of the TMUX server, never of this process. os.Process.Wait on a
+// non-child returns ECHILD ("waitid: no child processes") immediately, measured at ~20µs against a
+// demonstrably live process, so a Wait-based implementation reported EVERY such pid as
+// already-exited and reapPaneChildren's force-kill fallback never ran once.
+//
+// A pid that was recycled by an unrelated process after the caller snapshotted it reads as still
+// alive here, burns the full timeout, and is then force-killed along with its whole subtree by
+// reapPaneChildren — so what bounds this is entirely the CALLER's snapshot discipline: both reap
+// paths take their descendant-closure roots from panes that are present AND not dead at snapshot
+// time (safeReapRoot, strand.go), because tmux keeps reporting a dead pane's #{pane_pid} long after
+// that process exited. Down did not honour that rule until the R2 review; the two snapshots now
+// share one predicate precisely so this comment cannot describe only one of them again.
+//
+// Honest limit: proc.IsAlive is a signal-0 probe, so a not-yet-reaped ZOMBIE reads as alive here.
+// That window is short in practice — every pid reed waits on is a child of the tmux server, which
+// reaps its own children, and once the server itself dies the survivors are reparented to init and
+// reaped there — but a caller must not read this function as proof the process's resources are
+// released, only that its pid no longer answers.
 func waitProcessExit(pid int, timeout time.Duration) error {
 	if pid <= 0 {
 		return nil
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return nil
-	}
-	done := make(chan struct{})
-	go func() {
-		_, _ = proc.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("tmux server (pid %d) still up %s after kill-server", pid, timeout)
+	deadline := time.Now().Add(timeout)
+	for {
+		if !proc.IsAlive(pid) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("process %d still up %s after teardown", pid, timeout)
+		}
+		time.Sleep(processExitPoll)
 	}
 }
 
 // noSessionMessage builds operator-facing text for an absent session,
 // pointing at resume (if strands exist) or up (if empty).
-func noSessionMessage(strandCount int) string {
+//
+// stateReadable distinguishes "reed read the state and it holds no strands" from "reed could not
+// read the state at all", which strandCount alone cannot express: an unreadable file yields a count
+// of zero and would otherwise be reported as an empty worktree, sending the operator to `up` — which
+// then fails with the corrupt-file error (see unreadableStateError). Claiming nothing is persisted
+// when reed simply cannot tell is the one wrong thing this message can say (R5 review finding
+// R5-F8), so an unreadable file gets its own branch and points at the same two remedies the load
+// error names, rather than inventing a third.
+func noSessionMessage(strandCount int, stateReadable bool) string {
+	if !stateReadable {
+		return `no reed session, and reed's persisted state could not be read; run "lyx reed down" to clear it, or "lyx reed up" for the full diagnosis`
+	}
 	if strandCount <= 0 {
 		return `no reed session; run "lyx reed up"`
 	}
@@ -950,6 +1096,19 @@ func noSessionMessage(strandCount int) string {
 
 // requireSessionLocked returns an actionable error when this worktree's
 // session does not exist, including whether resume would have content to rebuild.
+//
+// "Actionable" is why the foreign-session diagnosis is consulted here rather than left to the two
+// booting verbs. Both routes into refuseLiveForeignSessionLocked — a worktree renamed while its
+// session was up, a .lyx copied between worktrees of one hub — leave THIS worktree's session absent,
+// so every non-booting verb lands in this function, and the plain no-session text it used to return
+// names `lyx reed resume` and `lyx reed up` as the remedies. Both of those then refuse, for exactly
+// the reason this text did not mention: the operator's whole diagnostic surface, `status` above all,
+// reported a bare "no session" and routed them into a loop, while the state file naming the orphan
+// was already loaded right here (R6 review finding R6-F1).
+//
+// It costs no tmux round trip on the healthy path: refuseLiveForeignSessionLocked returns
+// immediately when the recorded session name is empty or is this worktree's own, which is every
+// state file reed itself writes.
 func (e *Engine) requireSessionLocked() error {
 	up, err := e.tmux.hasSession(e.SessionName())
 	if err != nil {
@@ -964,10 +1123,16 @@ func (e *Engine) requireSessionLocked() error {
 	// never part of Strands, so this count is already correct by
 	// construction.
 	strandCount := 0
-	if st, err := LoadState(e.stateDir()); err == nil && st != nil {
+	st, loadErr := LoadState(e.stateDir())
+	if st != nil {
 		strandCount = len(st.Strands)
+		if err := e.refuseLiveForeignSessionLocked(st.PaneGeneration); err != nil {
+			return err
+		}
 	}
-	return errors.New(noSessionMessage(strandCount))
+	// An ABSENT file is readable-and-empty, not unreadable: a brand-new worktree has no reed.json
+	// and must still get the plain "run lyx reed up" text.
+	return errors.New(noSessionMessage(strandCount, loadErr == nil))
 }
 
 // Status reports this session's tracked strands and their live/dead state by cross-referencing the

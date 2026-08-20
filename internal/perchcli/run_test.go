@@ -33,11 +33,15 @@ var testModelRegistry = modelspec.Registry{
 // TestRunCLI_Run_MissingProfile verifies that "lyx perch run" without --profile fails with run's
 // own manual flag-shape error (not cobra's MarkFlagRequired) before ever touching
 // PersistentPreRunE's engine wiring.
-// This case runs against an uninitialized (non-git) directory, so PersistentPreRunE's own abort
-// error is also present in the captured output alongside the flag-specific error line — the same
-// documented double-failure shape as burlercli's TestRunCLI_Run_MissingProfile.
+// This case runs against an uninitialized (non-git) directory, which resolves to standalone mode:
+// the pre-run therefore succeeds and only the verb's own flag error is emitted. XDG_STATE_HOME and
+// LOCALAPPDATA are redirected to the test's own temp tree before RunCLI so the standalone wiring's
+// Derive call and stencil seed land there instead of the operator's real state directory. Not
+// t.Parallel(), which t.Setenv requires.
 func TestRunCLI_Run_MissingProfile(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"run"})
@@ -53,11 +57,15 @@ func TestRunCLI_Run_MissingProfile(t *testing.T) {
 // TestRunCLI_Run_InvalidRunID verifies that an explicit --run-id carrying a path separator (the
 // class of value that would escape the perch runs directory via filepath.Join, e.g. "../elsewhere")
 // is rejected loud before run ever reads --profile's decoded content or touches PersistentPreRunE's
-// engine wiring — this case, like MissingProfile above, runs against an uninitialized directory and
-// needs only a --profile flag value that reads as a file path (its content is never reached).
+// engine wiring — this case, like MissingProfile above, runs against an uninitialized directory,
+// which resolves to standalone mode and reaches wireStandalone, so XDG_STATE_HOME and LOCALAPPDATA
+// are redirected the same way, and needs only a --profile flag value that reads as a file path (its
+// content is never reached). Not t.Parallel(), which t.Setenv requires.
 func TestRunCLI_Run_InvalidRunID(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
 	profilePath := filepath.Join(dir, "profile.yaml")
 	if err := os.WriteFile(profilePath, []byte("target:\n  instructions: x\n"), 0o644); err != nil {
 		t.Fatalf("write profile fixture: %v", err)

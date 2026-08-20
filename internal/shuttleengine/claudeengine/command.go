@@ -95,9 +95,25 @@ func buildLaunchCmd(sh shell.Shell, bin, promptPath, settingsPath, sessionID, mo
 
 // buildResumeCmd composes the pane-shell line that reattaches an existing claude session by id.
 // It always uses --resume, never --continue, to avoid ambiguity under concurrent runs.
-// When forkSubagents is true, it wraps the line to keep the fork-subagent capability.
-func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID string, forkSubagents bool) string {
+//
+// It carries the SAME model, effort, and permission mode as buildLaunchCmd, because reed replays
+// this string verbatim when it rebuilds a session (lifecycle.go's resume path) and the resumed
+// process is a fresh claude that inherits none of them from the launch.
+// Dropping them silently downgraded a resumed run: an autonomous run came back permission-gated and
+// stalled at its first tool dialog with no operator present, which shuttle can only classify as a
+// timeout, and it came back on the provider default model rather than the one the caller pinned.
+// When forkSubagents is true, the line is wrapped to keep the fork-subagent capability.
+func buildResumeCmd(sh shell.Shell, bin, settingsPath, sessionID, model, effort string, interactive, forkSubagents bool) string {
 	cmd := sh.Invoke(bin) + " --resume " + sh.Quote(sessionID) + " --settings " + sh.Quote(settingsPath)
+	if model != "" {
+		cmd += " --model " + sh.Quote(model)
+	}
+	if effort != "" {
+		cmd += " --effort " + sh.Quote(effort)
+	}
+	if !interactive {
+		cmd += " --dangerously-skip-permissions"
+	}
 	if forkSubagents {
 		cmd = sh.WithEnv(forkSubagentEnvKey, "1", cmd)
 	}

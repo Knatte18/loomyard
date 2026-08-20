@@ -29,8 +29,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -266,20 +266,24 @@ func newBeginFixture(t *testing.T) *beginFixture {
 	seedHubStencils(t, hubPath)
 
 	deps := websterengine.BeginDeps{
-		Plan:         plan,
-		Batches:      batches,
-		State:        &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
-		Roles:        roles,
-		Config:       websterengine.Config{SelfFixCap: 2},
-		Engine:       &beginFakeEngine{},
-		Injector:     injector,
-		Reed:         reed,
-		WorktreeRoot: worktree,
-		Layout:       &lyxcwd.Location{HubPath: hubPath, WorktreeName: filepath.Base(worktree), AnchorRel: "."},
-		WebsterDir:   t.TempDir(),
-		ScratchDir:   t.TempDir(),
-		ReportsDir:   t.TempDir(),
-		PromptsDir:   promptsDir,
+		Plan:     plan,
+		Batches:  batches,
+		State:    &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
+		Roles:    roles,
+		Config:   websterengine.Config{SelfFixCap: 2},
+		Engine:   &beginFakeEngine{},
+		Injector: injector,
+		Reed:     reed,
+		Geom: websterengine.Geometry{
+			AnchorRoot:   worktree,
+			WorktreeRoot: worktree,
+			WebsterDir:   t.TempDir(),
+			ScratchDir:   t.TempDir(),
+			ReportsDir:   t.TempDir(),
+			PromptsDir:   promptsDir,
+			StencilsDir:  fabricengine.StencilsDir(hubPath),
+			PlanDir:      planDir,
+		},
 	}
 
 	return &beginFixture{Deps: deps, Injector: injector, Reed: reed, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
@@ -291,7 +295,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 func TestBeginBatch_PauseSentinel(t *testing.T) {
 	fx := newBeginFixture(t)
 
-	if err := websterengine.RequestPause(fx.Deps.ScratchDir); err != nil {
+	if err := websterengine.RequestPause(fx.Deps.Geom.ScratchDir); err != nil {
 		t.Fatalf("RequestPause() error = %v; want nil", err)
 	}
 
@@ -383,7 +387,7 @@ func TestBeginBatch_ModelAssertion(t *testing.T) {
 		if err := os.WriteFile(blockedDir, []byte("not a dir"), 0o644); err != nil {
 			t.Fatalf("seed blocking file: %v", err)
 		}
-		fx.Deps.PromptsDir = blockedDir
+		fx.Deps.Geom.PromptsDir = blockedDir
 
 		_, err := websterengine.BeginBatch(fx.Deps, 1)
 		if err == nil {
@@ -490,12 +494,12 @@ func TestBeginBatch_StateUpdated(t *testing.T) {
 // report failed on ENOENT).
 func TestBeginBatch_CreatesReportsDir(t *testing.T) {
 	fx := newBeginFixture(t)
-	fx.Deps.ReportsDir = filepath.Join(t.TempDir(), "reports")
+	fx.Deps.Geom.ReportsDir = filepath.Join(t.TempDir(), "reports")
 
 	if _, err := websterengine.BeginBatch(fx.Deps, 1); err != nil {
 		t.Fatalf("BeginBatch(1) error = %v; want nil", err)
 	}
-	info, err := os.Stat(fx.Deps.ReportsDir)
+	info, err := os.Stat(fx.Deps.Geom.ReportsDir)
 	if err != nil || !info.IsDir() {
 		t.Errorf("stat(reports dir) = %v, %v; want the dir created by BeginBatch", info, err)
 	}
@@ -523,7 +527,7 @@ func TestBeginBatch_UnknownRoleErrors(t *testing.T) {
 // There is no --restart-chain escape under the flat card-list model.
 func TestBeginBatch_PreExistingReportRefused(t *testing.T) {
 	fx := newBeginFixture(t)
-	reportPath := filepath.Join(fx.Deps.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+	reportPath := filepath.Join(fx.Deps.Geom.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
 	if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: deadbeef\n"), 0o644); err != nil {
 		t.Fatalf("seed report: %v", err)
 	}

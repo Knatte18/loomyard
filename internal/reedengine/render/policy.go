@@ -27,6 +27,39 @@ func partitionByAnchor(strands []Strand) (stack []Strand) {
 	return stack
 }
 
+// removeDuplicatePaneCells returns stack with every entry dropped whose PaneID has already been
+// spoken for — by the header band, or by an earlier entry in stack.
+// It is the structural half of the same rule breakCycles enforces for parent chains: a corrupt
+// persisted table must never be able to make Rules emit something the multiplexer answers
+// destructively.
+//
+// A window_layout string names each pane exactly once. Emitting a pane number twice is not rejected
+// by tmux — it accepts the string with exit 0, assigns cells positionally, and DESTROYS every pane
+// the (now short) cell list no longer covers (verified live, tmux 3.6). The header is the case that
+// makes this reachable rather than hypothetical, because bandHeader splices its cell in
+// independently of the stack body and so cannot see a stack entry naming the same pane.
+//
+// The engine clears such bindings at load (clearConflictingPaneBindings), so in a healthy process
+// this filter never removes anything. It exists so that the destructive outcome is impossible from
+// inside this package's own contract rather than only prevented by a caller remembering to sanitize
+// first — Rules is documented as a pure, TOTAL function over whatever strand set it is handed.
+func removeDuplicatePaneCells(stack []Strand, headerPaneID string) []Strand {
+	claimed := make(map[string]bool, len(stack)+1)
+	if headerPaneID != "" {
+		claimed[headerPaneID] = true
+	}
+
+	out := make([]Strand, 0, len(stack))
+	for _, s := range stack {
+		if claimed[s.PaneID] {
+			continue
+		}
+		claimed[s.PaneID] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 // breakCycles returns a copy of strands with any cyclic parent chain broken,
 // so a corrupt persisted table can never hang layout.
 func breakCycles(strands []Strand) []Strand {

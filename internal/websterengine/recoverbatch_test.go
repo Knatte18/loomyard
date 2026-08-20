@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -181,12 +181,12 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 
 	reed := &recoverFakeReed{}
 	engine := &recoverFakeEngine{}
-	layout := &lyxcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree)}
+	hubPath := filepath.Dir(worktree)
 	// webster's prompts are read from disk at call time now, so the fixture's
 	// hub must carry them before RecoverBatch reaches RenderRecoveryPrompt.
-	seedHubStencils(t, layout.HubPath)
+	seedHubStencils(t, hubPath)
 	shuttleCfg := shuttleengine.Config{RunDir: t.TempDir(), RunTimeoutMin: 60, StartupTimeoutS: 30}
-	runner := shuttleengine.NewRunner(reed, engine, layout, shuttleCfg)
+	runner := shuttleengine.NewRunner(reed, engine, worktree, worktree, shuttleCfg)
 
 	roles := map[websterengine.Role]modelspec.Resolved{
 		websterengine.RoleMaster:   {Engine: "claude", Model: "master-model", Params: map[string]string{}},
@@ -196,19 +196,22 @@ func newRecoverFixture(t *testing.T) *recoverFixture {
 	reportsDir := t.TempDir()
 
 	deps := websterengine.RecoverDeps{
-		Starter:      runner,
-		Plan:         plan,
-		Batches:      batches,
-		State:        &websterengine.State{Batches: map[int]*websterengine.BatchState{}},
-		Roles:        roles,
-		Config:       websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
-		Engine:       engine,
-		Reed:         reed,
-		ShuttleCfg:   shuttleCfg,
-		Layout:       layout,
-		WorktreeRoot: worktree,
-		WebsterDir:   t.TempDir(),
-		ReportsDir:   reportsDir,
+		Starter:    runner,
+		Plan:       plan,
+		Batches:    batches,
+		State:      &websterengine.State{Batches: map[int]*websterengine.BatchState{}},
+		Roles:      roles,
+		Config:     websterengine.Config{SelfFixCap: 2, RecoveryTimeoutMin: 30},
+		Engine:     engine,
+		Reed:       reed,
+		ShuttleCfg: shuttleCfg,
+		Geom: websterengine.Geometry{
+			AnchorRoot:   worktree,
+			WorktreeRoot: worktree,
+			WebsterDir:   t.TempDir(),
+			ReportsDir:   reportsDir,
+			StencilsDir:  fabricengine.StencilsDir(hubPath),
+		},
 	}
 
 	return &recoverFixture{Deps: deps, Reed: reed, Engine: engine, Worktree: worktree, ReportsDir: reportsDir}

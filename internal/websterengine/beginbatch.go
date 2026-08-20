@@ -22,13 +22,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// ErrPaused is the sentinel BeginBatch returns when deps.ScratchDir's pause flag is present at the
+// ErrPaused is the sentinel BeginBatch returns when deps.Geom.ScratchDir's pause flag is present at the
 // batch boundary (PauseRequested).
 // Exported so a caller can distinguish the operational "paused" refusal from every other
 // begin-batch failure via errors.Is(err, ErrPaused) — webster's own sentinel, per the
@@ -58,28 +57,20 @@ type Injector interface {
 // Injector is what actually types that choreography into Master's pane; Reed is the live reed query
 // surface the prior-recovery-strand reclaim consults (a dead-but-live recovery record a fork batch
 // is about to overwrite);
-// WorktreeRoot is the repo checkout BeginBatch captures HeadSHA from;
-// Layout is the resolved Location RenderForkPrompt uses for {{.worktree_root}} (filled from
-// Layout.AnchorPath());
-// WebsterDir and ReportsDir are the lyxcwd-resolved _lyx/webster and _lyx/webster/reports
-// directories;
-// PromptsDir and ScratchDir are the lyxcwd-resolved .lyx/webster/prompts and .lyx/webster
-// directories.
+// Geom is the told Geometry BeginBatch reads every path from: WorktreeRoot is the repo checkout
+// HeadSHA is captured from and RenderForkPrompt's promptWorktreeRoot, WebsterDir and ReportsDir are
+// the reports directory, and PromptsDir and StencilsDir feed the prompt write and the fork
+// template's read location.
 type BeginDeps struct {
-	Plan         *planparser.Plan
-	Batches      []batcher.Batch
-	State        *State
-	Roles        map[Role]modelspec.Resolved
-	Config       Config
-	Engine       shuttleengine.Engine
-	Injector     Injector
-	Reed         shuttleengine.ReedOps
-	WorktreeRoot string
-	Layout       *lyxcwd.Location
-	WebsterDir   string
-	ReportsDir   string
-	PromptsDir   string
-	ScratchDir   string
+	Plan     *planparser.Plan
+	Batches  []batcher.Batch
+	State    *State
+	Roles    map[Role]modelspec.Resolved
+	Config   Config
+	Engine   shuttleengine.Engine
+	Injector Injector
+	Reed     shuttleengine.ReedOps
+	Geom     Geometry
 }
 
 // BeginResult is what one successful BeginBatch call returns to its caller.
@@ -126,7 +117,7 @@ func digestSummaryLine(d *Digest) string {
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
 func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
-	if PauseRequested(deps.ScratchDir) {
+	if PauseRequested(deps.Geom.ScratchDir) {
 		return nil, ErrPaused
 	}
 
@@ -149,8 +140,8 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// missing parents. Only the --fresh archive path recreated this dir
 	// before; the ordinary first run left it absent (found live in crucible
 	// round fable-r1).
-	if err := os.MkdirAll(deps.ReportsDir, 0o755); err != nil {
-		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.ReportsDir, err)
+	if err := os.MkdirAll(deps.Geom.ReportsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create reports dir %s: %w", deps.Geom.ReportsDir, err)
 	}
 
 	// webster's own pre-existing-report refusal, applied to the fork path: a
@@ -163,14 +154,14 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	// disk — that report is consumed by record-batch (the audit keys on
 	// the bracket-opening session, see RecordBatch), so the refusal
 	// message names that recourse alongside the stuck-batch one.
-	existingReport := filepath.Join(deps.ReportsDir, ReportFileName(number, slug))
+	existingReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	if _, statErr := os.Stat(existingReport); statErr == nil {
 		return nil, fmt.Errorf("webster: batch %02d-%s already has a report at %s — begin-batch never overwrites finished work; a report left behind by a crashed session is consumed by `lyx webster record-batch %d` (or `lyx webster recover-batch %d` for a recovery batch), and a stuck batch escalates via `lyx webster recover-batch %d` (which archives the report)", number, slug, existingReport, number, number, number)
 	} else if !os.IsNotExist(statErr) {
 		return nil, fmt.Errorf("webster: stat batch report %s: %w", existingReport, statErr)
 	}
 
-	head, err := headSHA(deps.WorktreeRoot)
+	head, err := headSHA(deps.Geom.WorktreeRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -190,20 +181,23 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 
 	batchName := fmt.Sprintf("%02d-%s", number, slug)
-	reportPath, err := filepath.Abs(filepath.Join(deps.ReportsDir, ReportFileName(number, slug)))
+	reportPath, err := filepath.Abs(filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug)))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Layout, deps.Config.SelfFixCap)
+	// WorktreeRoot, not AnchorRoot, is correct in both modes here: hub
+	// mode's WorktreeRoot is the anchor path, the exact value this call
+	// rendered before this Geometry split.
+	prompt, err := RenderForkPrompt(batch, prevDigest, reportPath, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Config.SelfFixCap)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(deps.PromptsDir, 0o755); err != nil {
-		return nil, fmt.Errorf("webster: create prompts dir %s: %w", deps.PromptsDir, err)
+	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
+		return nil, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
 	}
-	promptPath, err := filepath.Abs(filepath.Join(deps.PromptsDir, batchName+".md"))
+	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
 	}

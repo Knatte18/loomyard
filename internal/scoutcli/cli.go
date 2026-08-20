@@ -148,7 +148,7 @@ scoped to one package comes back both complete and precise:
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, layout, err := lookupContext(cwd, dir)
+			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -174,7 +174,7 @@ scoped to one package comes back both complete and precise:
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, layout, lang, query, timeout)
+				opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
 
 				results, err := scoutengine.References(ctx, opts)
 				if err == nil && within != "" {
@@ -189,7 +189,7 @@ scoped to one package comes back both complete and precise:
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := scoutengine.References(ctx, buildOptions(registry, dir, layout, lang, query, timeout))
+				results, err := scoutengine.References(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -283,7 +283,7 @@ structurally-identical interfaces in different packages).`,
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, layout, err := lookupContext(cwd, dir)
+			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -309,7 +309,7 @@ structurally-identical interfaces in different packages).`,
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, layout, lang, query, timeout)
+				opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
 
 				results, err := scoutengine.Definition(ctx, opts)
 				if err == nil && within != "" {
@@ -324,7 +324,7 @@ structurally-identical interfaces in different packages).`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := scoutengine.Definition(ctx, buildOptions(registry, dir, layout, lang, query, timeout))
+				results, err := scoutengine.Definition(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -393,14 +393,14 @@ matches into an ambiguity failure. Example:
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, layout, err := lookupContext(cwd, dir)
+			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
 			if len(args) == 1 {
-				opts := buildOptions(registry, dir, layout, lang, symbolQuery(args[0]), timeout)
+				opts := buildOptions(registry, dir, anchorRoot, lang, symbolQuery(args[0]), timeout)
 
 				results, err := scoutengine.Symbol(ctx, opts)
 				if err != nil {
@@ -423,7 +423,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := scoutengine.Symbol(ctx, buildOptions(registry, dir, layout, lang, scoutengine.Query{Symbol: symbol}, timeout))
+				results, err := scoutengine.Symbol(ctx, buildOptions(registry, dir, anchorRoot, lang, scoutengine.Query{Symbol: symbol}, timeout))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -437,38 +437,8 @@ matches into an ambiguity failure. Example:
 	return symbol
 }
 
-// resolveLocation resolves the scoutengine.Options.Layout value a lookup should
-// use, returning the *lyxcwd.Location lyxcwd.Resolve(cwd) produced inside a lyx
-// hub, or a synthesized Location rooted at the absolute target directory
-// otherwise.
-//
-// The synthesized value is a fiction outside WorktreePath(): HubPath names no
-// real hub (it is merely the parent of the target directory), and RepoName is
-// left zero.
-// AnchorRel is always synthesized as "." here (never read from a
-// .fabric-anchor marker), so AnchorPath() coincides with WorktreePath() byte
-// for byte on this path — DaemonStateFile/DaemonLock's read of AnchorPath()
-// is therefore safe by construction for this synthesized value, exactly as
-// safe as their pre-migration read of WorktreePath() was.
-// It is therefore contractually consumed by DaemonStateFile/DaemonLock alone
-// and must never be widened to feed a caller reading HubPath or RepoName.
-func resolveLocation(cwd, targetDir string) *lyxcwd.Location {
-	if layout, err := lyxcwd.Resolve(cwd); err == nil {
-		return layout
-	}
-
-	abs, err := filepath.Abs(targetDir)
-	if err != nil {
-		// Preserve the pre-refactor fallback exactly: when filepath.Abs itself
-		// fails, synthesize from targetDir rather than abs (which is empty on
-		// this path) so the failure mode does not silently change.
-		return &lyxcwd.Location{HubPath: filepath.Dir(targetDir), WorktreeName: filepath.Base(targetDir), AnchorRel: "."}
-	}
-	return &lyxcwd.Location{HubPath: filepath.Dir(abs), WorktreeName: filepath.Base(abs), AnchorRel: "."}
-}
-
 // lookupContext performs the two pre-flight derivations every lookup command
-// needs — the servers.yaml overlay load and the Location resolution — each
+// needs — the servers.yaml overlay load and the anchor-root derivation — each
 // independently from (cwd, dir).
 //
 // dir is the already-defaulted directory, never the raw --target-dir flag
@@ -478,37 +448,48 @@ func resolveLocation(cwd, targetDir string) *lyxcwd.Location {
 //
 // The returned error carries scoutengine.LoadRegistry failures only; a
 // lyxcwd.Resolve failure is never an error — it is the out-of-hub path and
-// degrades to scoutengine.BuiltinRegistry() plus the synthesized Location,
-// exactly as today.
-func lookupContext(cwd, dir string) (scoutengine.Registry, *lyxcwd.Location, error) {
+// degrades to scoutengine.BuiltinRegistry() plus filepath.Abs(dir), exactly
+// as today.
+func lookupContext(cwd, dir string) (scoutengine.Registry, string, error) {
 	// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-	// load the registry rooted at layout.AnchorPath() (never layout.HubPath — ConfigFile
+	// load the registry rooted at loc.AnchorPath() (never loc.HubPath — ConfigFile
 	// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
 	// silently miss every overlay, exactly as internal/webstercli/cli.go
-	// anchors every config load at layout.AnchorPath()). Outside a lyx hub, degrade
+	// anchors every config load at loc.AnchorPath()). Outside a lyx hub, degrade
 	// to the pinned built-in registry rather than failing the lookup.
 	registry := scoutengine.BuiltinRegistry()
-	if layout, resolveErr := lyxcwd.Resolve(cwd); resolveErr == nil {
-		loaded, loadErr := scoutengine.LoadRegistry(layout.AnchorPath())
+	loc, resolveErr := lyxcwd.Resolve(cwd)
+	if resolveErr == nil {
+		loaded, loadErr := scoutengine.LoadRegistry(loc.AnchorPath())
 		if loadErr != nil {
-			return nil, nil, loadErr
+			return nil, "", loadErr
 		}
 		registry = loaded
+		return registry, loc.AnchorPath(), nil
 	}
 
-	return registry, resolveLocation(cwd, dir), nil
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		// Preserve the pre-refactor fallback exactly: when filepath.Abs itself
+		// fails, the deleted synthesis's AnchorPath() was
+		// filepath.Join(filepath.Dir(dir), filepath.Base(dir)), which
+		// filepath.Clean(dir) reproduces byte for byte, so the failure mode
+		// does not silently change.
+		return registry, filepath.Clean(dir), nil
+	}
+	return registry, abs, nil
 }
 
 // buildOptions constructs a scoutengine.Options value, ensuring all construction
-// sites thread Layout consistently.
-func buildOptions(registry scoutengine.Registry, targetDir string, layout *lyxcwd.Location, lang string, query scoutengine.Query, timeout time.Duration) scoutengine.Options {
+// sites thread AnchorRoot consistently.
+func buildOptions(registry scoutengine.Registry, targetDir string, anchorRoot string, lang string, query scoutengine.Query, timeout time.Duration) scoutengine.Options {
 	return scoutengine.Options{
-		Registry:  registry,
-		TargetDir: targetDir,
-		Layout:    layout,
-		Lang:      lang,
-		Query:     query,
-		Timeout:   timeout,
+		Registry:   registry,
+		TargetDir:  targetDir,
+		AnchorRoot: anchorRoot,
+		Lang:       lang,
+		Query:      query,
+		Timeout:    timeout,
 	}
 }
 
@@ -590,7 +571,7 @@ involved — only interface methods are at risk of this conflation.`,
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, layout, err := lookupContext(cwd, dir)
+			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -602,7 +583,7 @@ involved — only interface methods are at risk of this conflation.`,
 				return nil
 			}
 
-			opts := buildOptions(registry, dir, layout, lang, query, timeout)
+			opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
 
 			// Resolve the declaration site(s) to exclude via Definition,
 			// regardless of whether query is a bare symbol name or an explicit

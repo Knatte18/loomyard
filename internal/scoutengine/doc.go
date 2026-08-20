@@ -136,7 +136,7 @@
 // # The EnsureServer seam
 //
 // ensureserver.go implements ensureServer(ctx, lang, entry, targetDir,
-// layout, timeout) (*lspClient, connKind, error): given a registry
+// anchorRoot, timeout) (*lspClient, connKind, error): given a registry
 // entry whose HasNativeDaemon field is true, it resolves, spawns or dials,
 // and hands back an already-initialized, already-probed connection ready
 // for immediate use. entry.HasNativeDaemon is the gate that decides whether
@@ -215,7 +215,7 @@
 // # Daemon state and concurrency
 //
 // daemonstate.go implements the supervised strategy's runtime state: a JSON
-// state file plus a paired advisory lock per (layout, lang), resolved
+// state file plus a paired advisory lock per (anchorRoot, lang), resolved
 // via this package's own DaemonStateFile/DaemonLock at
 // .lyx/scout/<lang>/ — never _lyx/. That distinction matters: .lyx/ is
 // ephemeral, machine-bound runtime state (per the Cwd Resolution Invariant's
@@ -233,7 +233,7 @@
 // be confused with gopls's own version, which registry.Entry.PinnedVersion
 // pins separately.
 //
-// The daemon's socket path is a deterministic function of (layout,
+// The daemon's socket path is a deterministic function of (anchorRoot,
 // lang), never randomly chosen at spawn time. This is what makes
 // stale-socket cleanup across restarts simple: a fresh spawn can always
 // remove-if-exists the one predictable path before binding, with no

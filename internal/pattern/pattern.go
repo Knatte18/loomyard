@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -34,14 +33,6 @@ const PathspecDir = lyxdirs.LyxDirName + "/pattern"
 // File returns the path to the PATTERN.md file within a baseDir.
 func File(baseDir string) string {
 	return filepath.Join(baseDir, lyxdirs.LyxDirName, patternFileName)
-}
-
-// FileHere returns the path to the PATTERN.md file for the current worktree.
-// It is anchored at WorktreePath()+AnchorRel to correctly handle nested-hub geometry and to stay
-// consistent with the junction endpoints lyxcwd still owns, which are all
-// WorktreePath()+AnchorRel-anchored.
-func FileHere(l *lyxcwd.Location) string {
-	return File(filepath.Join(l.WorktreePath(), l.AnchorRel))
 }
 
 // Role identifies which agent-facing directive variant Directive should render.
@@ -81,14 +72,14 @@ var statFile = os.Stat
 
 // Directive reports whether PATTERN is active and returns the role's directive text to inject into
 // the agent's prompt, read from stencilsDir and stripped of its leading banner.
-// It returns ("", nil) with no read attempted at all for a nil l, an inactive PATTERN, or an unknown
-// or zero role.
+// It returns ("", nil) with no read attempted at all for an empty anchorPath, an inactive PATTERN, or
+// an unknown or zero role.
 // It returns ("", err) when PATTERN is active, role is known, and the stencil read fails.
-func Directive(l *lyxcwd.Location, stencilsDir string, role Role) (string, error) {
-	if l == nil {
+func Directive(anchorPath, stencilsDir string, role Role) (string, error) {
+	if anchorPath == "" {
 		return "", nil
 	}
-	if !isActive(l) {
+	if !isActive(anchorPath) {
 		return "", nil
 	}
 
@@ -117,9 +108,9 @@ func Directive(l *lyxcwd.Location, stencilsDir string, role Role) (string, error
 	return stencil.StripLeadingComment(string(content)), nil
 }
 
-// isActive reports whether PATTERN is active: an absent FileHere(l) means inactive; a directory in its place is also inactive; otherwise active.
-func isActive(l *lyxcwd.Location) bool {
-	info, err := statFile(FileHere(l))
+// isActive reports whether PATTERN is active: an absent File(anchorPath) means inactive; a directory in its place is also inactive; otherwise active.
+func isActive(anchorPath string) bool {
+	info, err := statFile(File(anchorPath))
 	if err != nil {
 		// os.IsNotExist is the normal, common inactive case: PATTERN.md was
 		// never created. Any other error — permission denied, I/O failure —

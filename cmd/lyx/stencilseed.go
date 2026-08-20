@@ -1,7 +1,8 @@
 // stencilseed.go implements the once-per-process stencil seed/refresh pass run from newRoot's
 // PersistentPreRunE: seedStencils resolves geometry and is a deliberate no-op under go test,
-// seedStencilsAt does the work of reconciling the board's stencils against the shipped registry and
-// committing whatever it wrote.
+// stencilSeedTarget decides whether this process should seed at all and against which hub and
+// worktree, and seedStencilsAt does the work of reconciling the board's stencils against the
+// shipped registry and committing whatever it wrote.
 // Neither function references internal/output or any envelope key: the mutation record this pass
 // produces is logged, never surfaced in a command's JSON envelope, per the
 // mutation-record-is-logged-not-enveloped-at-the-pre-run Shared Decision.
@@ -15,21 +16,16 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
+	"github.com/Knatte18/loomyard/internal/buildinfo"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// buildChannel is set by tools/deploy -dev via -ldflags "-X main.buildChannel=dev".
-// An unstamped binary -- a plain `go build`, a `go install`, or a `go test` binary -- leaves it
-// empty, and empty means production.
-// Production is the conservative default because it keeps shipped defaults converging;
-// dev is the exception and must opt in explicitly.
-var buildChannel string
-
 // seedStencils is the thin pre-run wrapper newRoot's PersistentPreRunE calls: it resolves this
-// process' hub and worktree geometry and delegates to seedStencilsAt.
+// process' seed target via stencilSeedTarget and delegates to seedStencilsAt when one is found.
 func seedStencils(ctx context.Context) {
 	// Return immediately under go test, before resolving anything: lyxcwd.Resolve spawns `git
 	// rev-parse --show-toplevel`, and cobra runs this root PersistentPreRunE for every Runnable
@@ -41,19 +37,44 @@ func seedStencils(ctx context.Context) {
 		return
 	}
 
+	hub, worktree, ok := stencilSeedTarget(ctx)
+	if !ok {
+		return
+	}
+	seedStencilsAt(hub, worktree)
+}
+
+// stencilSeedTarget decides whether this process should seed stencils and, when it should, against
+// which hub and worktree.
+// It is a separate value-returning function -- rather than being inlined into seedStencils -- because
+// seedStencils returns immediately under testing.Testing(), so a test can never observe the gate
+// through it; extracting the decision here is what makes the gate directly assertable, the same
+// rationale seedStencilsAt already carries.
+//
+// The gate is preflight.HubPresent, never preflight.Wired: the write this pass performs targets the
+// hub-level stencils directory, so the honest precondition is that the hub-level directory exists.
+// preflight.Wired probes this worktree's own pairing instead, and would stop seeding in three real-hub
+// situations that seed correctly today -- an ordinary worktree at <hub>/_board, an unpaired sibling,
+// and a worktree whose paired sibling has been removed. Narrowing this gate to Wired is a regression,
+// not a tightening.
+func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool) {
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		// No geometry to resolve for this invocation; the root pre-run resolves no hub for
 		// commands that legitimately have none (e.g. lyx fabric clone), so the pass is skipped
 		// rather than failing.
-		return
-	}
-	l, err := lyxcwd.Resolve(cwd)
-	if err != nil {
-		return
+		return "", "", false
 	}
 
-	seedStencilsAt(l.HubPath, l.WorktreePath())
+	// preflight.HubPresent performs the lyxcwd.Resolve this pass needs; calling lyxcwd.Resolve
+	// again here would double the `git rev-parse` spawn this pre-run performs before every single
+	// command.
+	l, present := preflight.HubPresent(cwd)
+	if !present {
+		return "", "", false
+	}
+
+	return l.HubPath, l.WorktreePath(), true
 }
 
 // seedStencilsAt reconciles the board's stencils directory against the shipped registry and commits
@@ -70,10 +91,7 @@ func seedStencilsAt(hub, worktree string) {
 		sourceDir = ""
 	}
 
-	mode := stencilstore.ModeProduction
-	if buildChannel == "dev" {
-		mode = stencilstore.ModeDev
-	}
+	mode := stencilstore.ModeFor(buildinfo.IsDev())
 
 	written, err := stencilstore.Reconcile(baseDir, stencils.Registry(), mode, sourceDir)
 	if err != nil {

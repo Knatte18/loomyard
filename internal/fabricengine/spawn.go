@@ -1,5 +1,5 @@
 // spawn.go — the engine-level detached both-sides push spawn helper and its synchronous warp-push
-// counterpart.
+// counterparts.
 // SpawnDetachedPush mirrors boardengine.spawnSync and the pre-consolidation
 // internal/fabriccli.spawnPush: it launches a detached `lyx fabric --warp-path <abs> --weft-path
 // <abs> push` child (either flag omitted when its path is empty) that re-enters the fabric CLI's
@@ -11,6 +11,9 @@
 // under one absorbing lock rather than calling either per-side primitive.
 // It is retained as pushWeftAt's symmetric counterpart, and the distinction matters — see PushWarpAt's
 // own doc comment for the operational consequence.
+// PushWarpRebaseFreeAt is a second warp-side push primitive, routing to gitrepo.PushRebaseFree
+// instead of PushCoalesced — see its own doc comment for why it exists beside PushWarpAt rather than
+// replacing it.
 
 package fabricengine
 
@@ -97,6 +100,38 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 	repo := gitrepo.New(warpPath)
 	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
 	if err := repo.PushCoalesced(); err != nil {
+		return PushResult{}, err
+	}
+	recordPushIfAdvanced(rec, repo, hadUnpushed, hadUnpushedErr)
+
+	return PushResult{}, nil
+}
+
+// PushWarpRebaseFreeAt pushes unpushed commits at warpPath directly via gitrepo.PushRebaseFree, with
+// no Fabric instance and no weft path involved — a second warp-side push primitive beside PushWarpAt,
+// not a replacement for it.
+//
+// It exists to discharge two hazards PushWarpAt's own doc comment names rather than merely mitigate:
+// PushRebaseFree never runs `git pull --rebase`, so it never rewrites this side's SHAs while the
+// paired side is not rebased and never invalidates the correspondence index the way PushWarpAt's
+// route through gitrepo.PushCoalesced → pushWithRebaseRetry can on a rejected push; and it never
+// takes the push lock, so it leaves no untracked .gitrepo-push.lock residue in the operator's own
+// warp repo — the undischarged precondition PushWarpAt's own doc comment names (the warp repo has no
+// exclude entry for that file, unlike weft).
+//
+// A rejected push surfaces as gitrepo.ErrPushRejected, which the caller is expected to treat as a
+// human-decidable condition rather than retrying.
+func PushWarpRebaseFreeAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
+	rec := NewMutations(filepath.Dir(warpPath))
+	defer func() { res.Mutations = rec.Snapshot() }()
+
+	if opts.SkipGit || opts.SkipPush {
+		return PushResult{}, nil
+	}
+
+	repo := gitrepo.New(warpPath)
+	hadUnpushed, hadUnpushedErr := repo.HasUnpushed()
+	if err := repo.PushRebaseFree(); err != nil {
 		return PushResult{}, err
 	}
 	recordPushIfAdvanced(rec, repo, hadUnpushed, hadUnpushedErr)

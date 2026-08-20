@@ -242,8 +242,10 @@
 //
 // perchengine never imports fabricengine and never constructs a
 // _lyx/... path itself — Engine operates on a caller-supplied absolute
-// runDir; layout is held only to resolve the gate command's working
-// directory (layout.WorktreePath()). Committing the run dir's artifacts to
+// runDir and is told its geometry as a Geometry value, whose GateDir
+// resolves the gate command's working directory and whose AnchorPath is
+// carried for the caller's RunsDir/ScratchDir base but never read by Engine
+// itself. Committing the run dir's artifacts to
 // fabric is the loop OWNER's job — perchcli's standalone CLI today, loom
 // once it exists — exactly once per block, at block exit (APPROVED, STUCK,
 // or PAUSED), via fabricengine directly; see the Fabric Git Invariant in

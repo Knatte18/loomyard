@@ -76,6 +76,35 @@ func TestRefScannerMatches(t *testing.T) {
 	}
 }
 
+// Compile-time assertions that both suppliers satisfy RefMatcher: a later signature drift on either
+// side fails at compile time rather than at the first standalone run.
+var (
+	_ RefMatcher = NeverMatches{}
+	_ RefMatcher = (*fabricengine.RefScanner)(nil)
+)
+
+// TestNeverMatches_AlwaysFalse pins NeverMatches's whole contract: it never matches, not even for a
+// command spelling a real *fabricengine.RefScanner would match.
+func TestNeverMatches_AlwaysFalse(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+	}{
+		{"a real RefScanner would match this fabric command", "lyx fabric sync"},
+		{"empty string", ""},
+		{"ordinary non-fabric command", "git status"},
+	}
+
+	var m NeverMatches
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := m.Matches(tt.cmd); got != false {
+				t.Errorf("NeverMatches{}.Matches(%q) = %v; want false", tt.cmd, got)
+			}
+		})
+	}
+}
+
 // cleanForkReport returns a ForkReport that violates none of CheckFork's
 // rules — tests mutate a copy to trigger exactly one violation at a time.
 func cleanForkReport(path string) shuttleengine.ForkReport {
@@ -293,6 +322,64 @@ func TestCheckParent(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot pins the audit-workdir decision
+// card 25 records: a hub-shaped fixture where the audit workdir equals the anchor-shaped directory
+// cannot distinguish "resolve a relative recorded write path against workdir" from "...against the
+// anchor root", since the two coincide there. This test forces workdir and an anchor-shaped
+// directory apart: the SAME relative write path must be flagged when joined against workdir (it
+// resolves to the contract file) and must NOT be flagged when joined against the anchor-shaped
+// directory instead (it resolves to a different, non-contract path) — the test that fails if the two
+// are ever swapped.
+func TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot(t *testing.T) {
+	const anchorRoot = "/hub/master-builder"
+	const workdir = "/hub/master-builder/_worktrees/fork-w1"
+	const outcomePath = workdir + "/_lyx/webster/outcome.yaml"
+	const summaryPath = workdir + "/_lyx/webster/summary.md"
+
+	fork := shuttleengine.ForkReport{
+		TranscriptPath: "f",
+		ReportReturned: true,
+		WritePaths:     []string{"_lyx/webster/outcome.yaml"},
+	}
+
+	got := CheckFork(fork, outcomePath, summaryPath, workdir, NeverMatches{})
+	if len(got) != 1 || got[0].Class != ClassForkContractWrite {
+		t.Fatalf("CheckFork() joined against workdir = %v; want exactly one %q violation", got, ClassForkContractWrite)
+	}
+
+	gotAnchor := CheckFork(fork, outcomePath, summaryPath, anchorRoot, NeverMatches{})
+	if len(gotAnchor) != 0 {
+		t.Errorf("CheckFork() joined against the anchor-shaped directory = %v; want none — workdir and the anchor root must not be interchangeable", gotAnchor)
+	}
+}
+
+// TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot is
+// TestCheckFork_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot's CheckParent mirror:
+// CheckParent's polarity is the opposite of CheckFork's (a parent write to a contract file is
+// ALLOWED, not a violation), so the pinning case is a relative write to a contract file: joined
+// against workdir it must resolve clean, and joined against the anchor-shaped directory instead it
+// must be wrongly flagged — the test that fails if the two are ever swapped.
+func TestCheckParent_RelativeWritePathResolvesAgainstWorkdirNotAnchorRoot(t *testing.T) {
+	const anchorRoot = "/hub/master-builder"
+	const workdir = "/hub/master-builder/_worktrees/fork-w1"
+	const outcomePath = workdir + "/_lyx/webster/outcome.yaml"
+	const summaryPath = workdir + "/_lyx/webster/summary.md"
+
+	audit := shuttleengine.ForkAudit{
+		ParentWrites: []string{"_lyx/webster/outcome.yaml"},
+	}
+
+	got := CheckParent(audit, outcomePath, summaryPath, workdir, NeverMatches{})
+	if len(got) != 0 {
+		t.Fatalf("CheckParent() for a relative contract-file write joined against workdir = %v; want none", got)
+	}
+
+	gotAnchor := CheckParent(audit, outcomePath, summaryPath, anchorRoot, NeverMatches{})
+	if len(gotAnchor) != 1 || gotAnchor[0].Class != ClassParentWrite {
+		t.Errorf("CheckParent() for the same relative contract-file write joined against the anchor-shaped directory instead = %v; want exactly one %q violation — the anchor-joined path no longer matches the contract file, proving workdir and the anchor root are not interchangeable", gotAnchor, ClassParentWrite)
 	}
 }
 

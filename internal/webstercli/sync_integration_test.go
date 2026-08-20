@@ -162,7 +162,8 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 		t.Fatalf("squat corrindex path: %v", err)
 	}
 
-	committed, err := fabricSync(layout, "corr-fail probe")
+	open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
+	committed, err := fabricSync(open, layout.AnchorRel, "corr-fail probe")
 
 	if err == nil {
 		t.Fatal("fabricSync() error = nil; want the RecordCorrespondence failure propagated")
@@ -209,8 +210,9 @@ func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
 			t.Setenv("WEFT_SKIP_GIT", "")
 			t.Setenv("WEFT_SKIP_PUSH", "1")
 			layout, weft := newWarpWeftPairAt(t, tt.relPath)
+			open := func() (*fabricengine.Fabric, error) { return fabricengine.Open(layout) }
 
-			committed, err := fabricSync(layout, "depth probe")
+			committed, err := fabricSync(open, layout.AnchorRel, "depth probe")
 			if err != nil {
 				t.Fatalf("fabricSync() error = %v; want nil", err)
 			}

@@ -1,31 +1,50 @@
-// report.go defines the CheckID/Failure/Report result types Preflight uses to communicate its
-// determined verdict — which of the four preconditions failed,
-// and why — to a caller, distinct from the error return that signals an undetermined infra failure.
+// report.go re-exposes internal/preflight's CheckID/Failure/Report result types as aliases, and
+// declares the four loom-specific check-ID constants — seed-missing, seed-unreadable,
+// seed-incoherent, half-finished — that check 4 (loom's own precondition, layered over
+// internal/preflight's tier-1/tier-2 checks) reports against.
+// Preflight uses these types to communicate its determined verdict — which of the four preconditions
+// failed, and why — to a caller, distinct from the error return that signals an undetermined infra
+// failure.
 
 package loomengine
 
-// CheckID names one of the closed set of preconditions Preflight validates.
-type CheckID string
+import "github.com/Knatte18/loomyard/internal/preflight"
 
-// The closed set of checks Preflight can report a failure against, per report-shape.
-// Each corresponds to one of the four checks described in Preflight's godoc (geometry is check 1,
-// worktree-clean is check 2, fabric-ready/fabric-sync/junction are check 3, and
-// seed-missing/seed-unreadable/seed-incoherent/half-finished are check 4).
-// There is deliberately no at-the-anchor check: the cwd gate in lyxcwd.Resolve already guarantees
-// the property, so a repo anchored at a subpath is a legal geometry rather than a misinvocation.
+// CheckID names one of the closed set of preconditions Preflight validates.
+// It is a type alias for preflight.CheckID, not a new named type, so loomengine.Report and
+// preflight.Report stay the identical type across the package boundary.
+type CheckID = preflight.CheckID
+
+// Failure is one determined precondition violation: which check failed and why.
+// It is a type alias for preflight.Failure — see CheckID's comment for why.
+type Failure = preflight.Failure
+
+// Report is Preflight's determined verdict: OK reports whether every precondition passed,
+// and Failures lists every violation found.
+// The invariant OK == (len(Failures) == 0) always holds for a Report returned with a nil error.
+// It is a type alias for preflight.Report — see CheckID's comment for why.
+type Report = preflight.Report
+
+// The five tier-1/tier-2 check-ID constants, re-exposed as const aliases of the ones
+// internal/preflight declares, so existing callers of these names keep compiling unchanged.
 const (
 	// CheckGeometry fails when the cwd is not inside a git repository,
 	// or the resolved Layout has no Prime (main worktree).
-	CheckGeometry CheckID = "geometry"
+	CheckGeometry = preflight.CheckGeometry
 	// CheckWorktreeClean fails when the worktree has any dirty (tracked or untracked) paths.
-	CheckWorktreeClean CheckID = "worktree-clean"
+	CheckWorktreeClean = preflight.CheckWorktreeClean
 	// CheckFabricReady fails when fabric is not usable in this worktree.
-	CheckFabricReady CheckID = "fabric-ready"
+	CheckFabricReady = preflight.CheckFabricReady
 	// CheckFabricSync fails when fabric is out of sync with its expected branch.
-	CheckFabricSync CheckID = "fabric-sync"
+	CheckFabricSync = preflight.CheckFabricSync
 	// CheckJunction fails when the _lyx junction is missing or points somewhere other than its
 	// correct target.
-	CheckJunction CheckID = "junction"
+	CheckJunction = preflight.CheckJunction
+)
+
+// The four loom-specific checks (check 4), declared here because internal/preflight has no notion
+// of _lyx/loom/status.json.
+const (
 	// CheckSeedMissing fails when _lyx/loom/status.json does not exist and fabric is otherwise ready and
 	// healthy.
 	CheckSeedMissing CheckID = "seed-missing"
@@ -42,24 +61,3 @@ const (
 	// gate.
 	CheckHalfFinished CheckID = "half-finished"
 )
-
-// Failure is one determined precondition violation: which check failed and why.
-type Failure struct {
-	Check  CheckID
-	Reason string
-}
-
-// Report is Preflight's determined verdict: OK reports whether every precondition passed,
-// and Failures lists every violation found.
-// The invariant OK == (len(Failures) == 0) always holds for a Report returned with a nil error.
-type Report struct {
-	OK       bool
-	Failures []Failure
-}
-
-// addFailure appends a Failure to r.Failures and keeps r.OK consistent with
-// the Failures list.
-func (r *Report) addFailure(check CheckID, reason string) {
-	r.Failures = append(r.Failures, Failure{Check: check, Reason: reason})
-	r.OK = false
-}

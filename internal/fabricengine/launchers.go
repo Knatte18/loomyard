@@ -2,7 +2,8 @@
 // launcher.
 // Launchers are cross-platform: a .cmd script on Windows, an executable .sh script everywhere else,
 // both built from the pure content builder in launcher_content.go.
-// The checkout launcher file (fabric-checkout<ext>) invokes "lyx fabric checkout".
+// The checkout launcher file (fabric-checkout<ext>) invokes "lyx fabric checkout", and the run
+// launcher file (run<ext>) invokes "lyx loom run".
 
 package fabricengine
 
@@ -78,7 +79,7 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 	return rel, nil
 }
 
-// writeLaunchers writes per-worktree launcher scripts (ide and fabric-checkout)
+// writeLaunchers writes per-worktree launcher scripts (ide, fabric-checkout, and run)
 // and ensures the menu launcher exists. The .cmd/.sh extension depends on GOOS;
 // .sh files are written executable.
 //
@@ -98,7 +99,7 @@ func menuLauncherRel(l *lyxcwd.Location, primeName string) (string, error) {
 // claim writes that did not happen on that path.
 //   - The launcher directory: root.MkdirAll succeeds on an already-existing directory, so the path is
 //     stat'd BEFORE the MkdirAll and KindDirCreated is recorded only when it was absent.
-//   - The two scripts: written unconditionally with deterministic content, so a repair-path call
+//   - The three scripts: written unconditionally with deterministic content, so a repair-path call
 //     rewrites them byte-identically. Each is recorded with KindFileWritten only when the write
 //     actually changes its bytes (absent counts as changed) — read-before-write is what decides,
 //     not "did the write succeed".
@@ -152,6 +153,16 @@ func writeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	fabricCheckoutPath := filepath.Join(launcherDir, "fabric-checkout"+ext)
 	if err := writeLauncherScriptIfChanged(rec, root, l.HubPath, fabricCheckoutPath, fabricCheckoutContent, fabricCheckoutMode); err != nil {
 		return fmt.Errorf("write fabric-checkout%s: %w", ext, err)
+	}
+
+	// Write the run launcher — the double-click entry point that hands this pair to loom's
+	// session bootstrap. It reuses spawnRel like the ide launcher, and invokes the explicit
+	// two-word verb rather than any root alias, so it keeps working regardless of what happens
+	// to the alias.
+	runContent, runMode := launcherScript(runtime.GOOS, spawnRel, "loom run")
+	runPath := filepath.Join(launcherDir, "run"+ext)
+	if err := writeLauncherScriptIfChanged(rec, root, l.HubPath, runPath, runContent, runMode); err != nil {
+		return fmt.Errorf("write run%s: %w", ext, err)
 	}
 
 	// Ensure per-subpath menu launcher exists (never clobber)
@@ -250,7 +261,11 @@ func removeLaunchers(rec *Mutations, l *lyxcwd.Location, slug string) error {
 	}
 
 	ext := launcherExt(runtime.GOOS)
-	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext} {
+	// This slice is a mandatory edit point, not a leak-prone list: the directory removal that
+	// follows is non-recursive, so any script writeLaunchers writes that is missing here leaves the
+	// directory non-empty and fails Remove/rollbackAdd outright, rather than merely orphaning a
+	// stray file.
+	for _, name := range []string{"ide" + ext, "fabric-checkout" + ext, "run" + ext} {
 		target := filepath.Join(launcherDir, name)
 		req := pathRequest{
 			what:      "remove launcher script",

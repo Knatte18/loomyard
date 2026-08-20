@@ -566,7 +566,7 @@ func createDormantWeftForRawWarp(rec *Mutations, warpLayout *lyxcwd.Location, sl
 // disk and registered.
 func markVanishedMidWalk(repoDir, warpPath string, pr *ReconcilePairResult) bool {
 	if _, statErr := os.Stat(warpPath); !os.IsNotExist(statErr) {
-		if isWarpCheckout(repoDir, warpPath) {
+		if isAnyWorktreeOf(repoDir, warpPath) {
 			return false
 		}
 	}

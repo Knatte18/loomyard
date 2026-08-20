@@ -1,7 +1,9 @@
-// envelope.go declares the two helpers every mutating verb handler routes its output through:
-// okWithRecord for the success path, errWithRecord for the failure path. Both emit the fixed
-// "mutations"/"partial" key pair the fabric envelope carries on every verb outcome, so the fixed key
-// set is declared once here rather than open-coded at each of fabriccli's mutating call sites.
+// envelope.go declares the helpers every mutating verb handler routes its output through:
+// okWithRecord for the success path, errWithRecord for the failure path, and
+// errConflictsWithRecord for the dedicated conflict-result failure path a merge verb takes when
+// MergeResult.Conflicts is non-empty. All three emit the fixed "mutations"/"partial" key pair the
+// fabric envelope carries on every verb outcome, so the fixed key set is declared once here rather
+// than open-coded at each of fabriccli's mutating call sites.
 //
 // "mutations" is always a JSON array, never null — rec.Entries() never returns nil — and "partial" is
 // always a bool, never absent. A consumer therefore never has to distinguish absent from false, and
@@ -64,4 +66,23 @@ func errWithRecordFields(w io.Writer, rec fabricengine.Mutations, err error, fie
 		}
 	}
 	return output.ErrFields(w, err.Error(), fields)
+}
+
+// errConflictsWithRecord emits the dedicated conflict-result failure envelope a merge verb returns
+// when the engine reports conflicts without an error (a nil engine error, MergeResult.Conflicts
+// non-empty). It sets fields["mutations"] from rec, fields["partial"] to the literal false — never
+// computed, since the Mutation Record Invariant's "error != nil AND record non-empty" rule yields
+// false when the engine returned a nil error — and fields["conflicts"] to conflicts, never null.
+// It never routes through errWithRecordFields, whose partial = rec.Len() > 0 computation would
+// wrongly report true here (the "conflict envelope never goes through errWithRecordFields" Shared
+// Decision).
+// The error text is the fixed, side-free message every conflict envelope carries, pointing the
+// operator at the next lifecycle step.
+func errConflictsWithRecord(w io.Writer, rec fabricengine.Mutations, conflicts []string) int {
+	fields := map[string]any{
+		"mutations": rec.Entries(),
+		"partial":   false,
+		"conflicts": conflicts,
+	}
+	return output.ErrFields(w, `merge produced conflicts; resolve them, then run "lyx fabric merge --continue"`, fields)
 }

@@ -211,3 +211,95 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 		t.Errorf("present strand PaneID = %q, want kept", got)
 	}
 }
+
+// TestClearConflictingPaneBindings is the regression guard for the R5 review's R5-F3: a corrupt
+// reed.json whose strand pane bindings contradict each other (a strand naming the header's pane, or
+// two strands naming one pane) made `up` destroy unrelated live panes and their processes while
+// reporting ok:true, then report the strand live against a pane it does not own.
+// The repair is first-writer-wins, so the table order of the cleared GUIDs is part of the contract,
+// not an implementation detail.
+func TestClearConflictingPaneBindings(t *testing.T) {
+	tests := []struct {
+		name         string
+		state        ReedState
+		wantCleared  []string
+		wantPaneByID map[string]string
+	}{
+		{
+			name: "a healthy table is untouched",
+			state: ReedState{
+				HeaderPaneID: "%1",
+				Strands:      []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%3"}},
+			},
+			wantCleared:  nil,
+			wantPaneByID: map[string]string{"a": "%2", "b": "%3"},
+		},
+		{
+			name: "a strand naming the header pane is cleared",
+			state: ReedState{
+				HeaderPaneID: "%1",
+				Strands:      []Strand{{GUID: "a", PaneID: "%1"}, {GUID: "b", PaneID: "%2"}},
+			},
+			wantCleared:  []string{"a"},
+			wantPaneByID: map[string]string{"a": "", "b": "%2"},
+		},
+		{
+			name: "the later of two strands sharing one pane is cleared",
+			state: ReedState{
+				HeaderPaneID: "%1",
+				Strands:      []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%2"}},
+			},
+			wantCleared:  []string{"b"},
+			wantPaneByID: map[string]string{"a": "%2", "b": ""},
+		},
+		{
+			name: "unbound strands are never reported as conflicting with each other",
+			state: ReedState{
+				HeaderPaneID: "%1",
+				Strands:      []Strand{{GUID: "a", PaneID: ""}, {GUID: "b", PaneID: ""}},
+			},
+			wantCleared:  nil,
+			wantPaneByID: map[string]string{"a": "", "b": ""},
+		},
+		{
+			name: "an absent header claims nothing, so an empty HeaderPaneID clears no strand",
+			state: ReedState{
+				HeaderPaneID: "",
+				Strands:      []Strand{{GUID: "a", PaneID: "%2"}, {GUID: "b", PaneID: "%3"}},
+			},
+			wantCleared:  nil,
+			wantPaneByID: map[string]string{"a": "%2", "b": "%3"},
+		},
+		{
+			name: "three strands on one pane clear all but the first",
+			state: ReedState{
+				HeaderPaneID: "%9",
+				Strands:      []Strand{{GUID: "a", PaneID: "%4"}, {GUID: "b", PaneID: "%4"}, {GUID: "c", PaneID: "%4"}},
+			},
+			wantCleared:  []string{"b", "c"},
+			wantPaneByID: map[string]string{"a": "%4", "b": "", "c": ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Copy the strand slice, not just the struct: clearConflictingPaneBindings mutates
+			// elements in place, and a shared backing array would let one subtest rewrite another
+			// subtest's fixture.
+			st := tt.state
+			st.Strands = append([]Strand(nil), tt.state.Strands...)
+			got := clearConflictingPaneBindings(&st)
+			if !equalStringSlices(got, tt.wantCleared) {
+				t.Errorf("clearConflictingPaneBindings() cleared = %v; want %v", got, tt.wantCleared)
+			}
+			for guid, want := range tt.wantPaneByID {
+				if paneID := findStrandPaneID(st.Strands, guid); paneID != want {
+					t.Errorf("strand %s PaneID = %q; want %q", guid, paneID, want)
+				}
+			}
+			if st.HeaderPaneID != tt.state.HeaderPaneID {
+				t.Errorf("HeaderPaneID = %q; want %q (the header binding is never the one cleared)", st.HeaderPaneID, tt.state.HeaderPaneID)
+			}
+		})
+	}
+}

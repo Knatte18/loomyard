@@ -13,12 +13,29 @@ package reedengine
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // planPaneTarget decides how the next strand realization obtains its pane:
-// adopt an existing alive pane when no strand holds a binding, or split
-// the tallest alive non-header pane otherwise. Exactly one of adoptID or
-// splitTargetID is non-empty on success.
+// adopt the session's sole alive non-header pane when no strand holds a
+// binding, or split the tallest alive non-header pane otherwise. Exactly one
+// of adoptID or splitTargetID is non-empty on success.
+//
+// Adoption is deliberately narrowed to the SOLE-pane case, because that is the
+// only case it was written for: the pane new-session leaves behind on a fresh
+// boot, which would otherwise sit unused beside every strand pane forever.
+// Adopting one of SEVERAL untracked panes is a guess about which of them is an
+// idle shell, and a wrong guess is silent: send-keys into a pane already
+// running a blocking command exits 0, types the strand's command onto that
+// pane's screen where it never executes, and reed then reports the strand
+// live. Reproduced live (R4 review finding R4-F5): after .lyx/reed.json was
+// scrubbed from a running session, the next add adopted the previous header
+// pane — still running "lyx reed header --blocking" — and the strand's command
+// was typed into it and never ran, with status reporting live:true and no such
+// process on the box. Splitting a fresh pane instead is always correct: the new
+// pane's shell is idle by construction, and any leftover untracked pane is
+// reaped by the reconcile tail once a strand is bound.
 func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (adoptID, splitTargetID string, err error) {
 	if len(live) == 0 {
 		return "", "", fmt.Errorf("session has no panes to adopt or split")
@@ -32,13 +49,8 @@ func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (ado
 		}
 	}
 	if !anyBound {
-		for _, p := range live {
-			if p.ID == headerPaneID {
-				continue
-			}
-			if !p.Dead {
-				return p.ID, "", nil
-			}
+		if sole, ok := soleAliveNonHeaderPane(live, headerPaneID); ok {
+			return sole, "", nil
 		}
 	}
 
@@ -71,6 +83,24 @@ func planPaneTarget(strands []Strand, live []LivePane, headerPaneID string) (ado
 		splitTargetID = live[0].ID
 	}
 	return "", splitTargetID, nil
+}
+
+// soleAliveNonHeaderPane returns the id of the session's only alive pane that is not the header,
+// and whether exactly one such pane exists.
+// It reports false both when there is none and when there are several — see planPaneTarget for why
+// "several" must not be adopted from.
+func soleAliveNonHeaderPane(live []LivePane, headerPaneID string) (string, bool) {
+	found := ""
+	for _, p := range live {
+		if p.Dead || p.ID == headerPaneID {
+			continue
+		}
+		if found != "" {
+			return "", false
+		}
+		found = p.ID
+	}
+	return found, found != ""
 }
 
 // validateSplitCreatedNewPane returns an error unless paneID is genuinely
@@ -112,7 +142,17 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 	paneID := adoptID
 	if paneID == "" {
-		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-P", "-F", "#{pane_id}")
+		// -c pins the new pane's cwd to Geometry.PaneCwd, exactly as
+		// new-session and the header split (lifecycle.go) already do. Without
+		// it tmux resolves the cwd from the invoking CLIENT — verified live
+		// (tmux 3.6): a split issued from outside tmux lands in the calling
+		// process's cwd, neither the target pane's cwd nor the session's. That
+		// happens to be PaneCwd whenever lyx runs under lyxcwd.Resolve's
+		// exact-equality cwd gate, and stops being it the moment a
+		// caller injects a cwd through the RunCLIIn seam instead — at which
+		// point every strand command would run against the wrong tree while
+		// reed reported success.
+		out, err := e.tmux.output("split-window", "-t", splitTargetID, "-c", e.geom.PaneCwd, "-P", "-F", "#{pane_id}")
 		if err != nil {
 			return fmt.Errorf("split window: %w", err)
 		}
@@ -138,16 +178,42 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 
 // loadOrInitStateLocked loads or initializes a ReedState stamped with
 // the engine's server/socket/session identity for a fresh worktree.
+// The two identity fields are re-stamped on every load, not only at init: nothing in production
+// reads them back (every consumer uses the told Geometry via Socket()/SessionName()), so they exist
+// purely as an on-disk forensic diagnostic — and a diagnostic recording an identity reed no longer
+// drives (a renamed worktree carries its .lyx state along, but its session name changes with the
+// directory) is worse than none (R3 review finding R3-F2). The caller persists via the op's normal
+// SaveState tail, so no extra write happens here.
 func (e *Engine) loadOrInitStateLocked() (*ReedState, error) {
 	st, err := LoadState(e.stateDir())
 	if err != nil {
-		return nil, fmt.Errorf("load state: %w", err)
+		// Passed through bare: LoadState's corrupt-file error already names the file and both
+		// remedies, and a "load state:" prefix in front of that would only bury the diagnosis.
+		return nil, err
 	}
 	if st == nil {
-		st = &ReedState{
-			Socket:  e.Socket(),
-			Session: e.SessionName(),
-		}
+		st = &ReedState{}
+	}
+	st.Socket = e.Socket()
+	st.Session = e.SessionName()
+
+	// Discard bindings minted against a session incarnation that is no longer the one running, and
+	// refuse outright when the session they were minted against is still alive on this socket under
+	// another name. Every call site reaches here with the told session already up — Up/Resume via
+	// ensureServerAndSessionLocked, every other op via requireSessionLocked — so the generation
+	// probe always has a session to ask about. See generation.go.
+	if err := e.adoptPaneGenerationLocked(st); err != nil {
+		return nil, err
+	}
+
+	// Repair a table whose pane bindings contradict each other before any caller reads it. This runs
+	// on every load, not only after a rebirth, because the corrupt tables it exists for arrive
+	// BETWEEN boots (a restored backup, a hand-edited file) and would otherwise be trusted all the
+	// way into select-layout, where tmux answers the contradiction by destroying panes — see
+	// clearConflictingPaneBindings for both observed shapes.
+	if cleared := clearConflictingPaneBindings(st); len(cleared) > 0 {
+		logger.Warn("reed: cleared strand pane bindings that named a pane another owner already claims",
+			"socket", e.Socket(), "session", e.SessionName(), "strands", cleared)
 	}
 	return st, nil
 }

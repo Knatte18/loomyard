@@ -8,46 +8,44 @@ package perchengine
 import (
 	"path/filepath"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestScratchDir proves ScratchDir is RunsDir's mirrored sibling under
 // .lyx: the same anchor and the same perchDirName segment, differing only
-// in swapping _lyx for .lyx — for both an unanchored and a subpath-anchored
-// synthetic *lyxcwd.Location.
+// in swapping _lyx for .lyx — for both a plain (unnested) anchor path and a
+// nested-subpath anchor path.
 func TestScratchDir(t *testing.T) {
 	tests := []struct {
-		name   string
-		layout *lyxcwd.Location
+		name       string
+		anchorPath string
 	}{
 		{
-			name:   "unanchored (AnchorRel empty defaults to \".\")",
-			layout: &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())},
+			name:       "plain anchor path",
+			anchorPath: t.TempDir(),
 		},
 		{
-			name:   "subpath-anchored",
-			layout: &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir()), AnchorRel: filepath.Join("nested", "sub")},
+			name:       "nested-subpath anchor path",
+			anchorPath: filepath.Join(t.TempDir(), "nested", "sub"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			want := filepath.Join(tt.layout.AnchorPath(), ".lyx", "perch")
-			got := ScratchDir(tt.layout)
+			want := filepath.Join(tt.anchorPath, ".lyx", "perch")
+			got := ScratchDir(tt.anchorPath)
 			if got != want {
-				t.Errorf("ScratchDir(%+v) = %q; want %q", tt.layout, got, want)
+				t.Errorf("ScratchDir(%q) = %q; want %q", tt.anchorPath, got, want)
 			}
 
-			runsDir := RunsDir(tt.layout)
+			runsDir := RunsDir(tt.anchorPath)
 			if got == runsDir {
-				t.Errorf("ScratchDir(%+v) = %q; want it to differ from RunsDir(%+v) = %q", tt.layout, got, tt.layout, runsDir)
+				t.Errorf("ScratchDir(%q) = %q; want it to differ from RunsDir(%q) = %q", tt.anchorPath, got, tt.anchorPath, runsDir)
 			}
 			// The two must differ in exactly the _lyx/.lyx segment: swapping
 			// it in RunsDir's own result must reproduce ScratchDir's.
 			wantFromRunsDir := filepath.Join(filepath.Dir(filepath.Dir(runsDir)), ".lyx", "perch")
 			if got != wantFromRunsDir {
-				t.Errorf("ScratchDir(%+v) = %q; want it to differ from RunsDir(%+v) = %q only in the _lyx/.lyx segment", tt.layout, got, tt.layout, runsDir)
+				t.Errorf("ScratchDir(%q) = %q; want it to differ from RunsDir(%q) = %q only in the _lyx/.lyx segment", tt.anchorPath, got, tt.anchorPath, runsDir)
 			}
 		})
 	}

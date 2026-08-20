@@ -4,12 +4,12 @@
 
 package tokenvocab
 
-import "github.com/Knatte18/loomyard/internal/lyxcwd"
-
 // Ctx carries the context a Token.Resolve needs.
 type Ctx struct {
-	// Layout is the resolved geometry every token reads from.
-	Layout *lyxcwd.Location
+	// RepoName feeds the "repo" token.
+	RepoName string
+	// HubPath feeds the "hub" token.
+	HubPath string
 }
 
 // Token is one named, resolvable entry in the vocabulary.
@@ -22,8 +22,8 @@ type Token struct {
 
 // registry is the single source of truth for the token vocabulary.
 var registry = []Token{
-	{Name: "repo", Resolve: func(c Ctx) string { return c.Layout.RepoName }},
-	{Name: "hub", Resolve: func(c Ctx) string { return c.Layout.HubPath }},
+	{Name: "repo", Resolve: func(c Ctx) string { return c.RepoName }},
+	{Name: "hub", Resolve: func(c Ctx) string { return c.HubPath }},
 }
 
 // Build resolves every token in the registry against c.

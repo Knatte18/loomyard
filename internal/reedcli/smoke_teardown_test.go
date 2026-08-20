@@ -5,6 +5,7 @@ package reedcli
 import (
 	"bytes"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -84,6 +85,63 @@ func TestSmokeDownReapsPaneChildProcesses(t *testing.T) {
 			if !processGone(pid) {
 				t.Fatalf("cycle %d: pane subtree pid %d still running immediately after down returned", cycle, pid)
 			}
+		}
+	}
+}
+
+// TestSmokeDownForceKillsSighupImmunePaneChildren is the regression guard for the reap-is-inert
+// defect this round's R1 review found: reed's force-kill fallback for a straggling pane child was
+// unreachable, because waitProcessExit blocked on os.Process.Wait, which returns ECHILD
+// IMMEDIATELY for any pid that is not a child of the calling process — and every pane pid is a
+// child of the TMUX server, never of lyx. Every existing reap test passed anyway, because their
+// payloads (`sleep 300`, `pwsh -NoExit`) die to tmux's own SIGHUP cascade without reed ever needing
+// to force-kill anything, so they could never distinguish "reed reaped it" from "tmux did".
+//
+// This test's payload is chosen to make exactly that distinction: the pane runs a descendant that
+// TRAPS SIGHUP, so tmux's cascade cannot reap it and only reed's explicit force-kill can. With the
+// defect present, down returned ok while that descendant stayed alive (reproduced live before the
+// fix); with it fixed, down blocks until the descendant is actually gone.
+//
+// POSIX-only: the payload needs a shell-level SIGHUP trap, which has no Windows equivalent.
+func TestSmokeDownForceKillsSighupImmunePaneChildren(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("payload needs a POSIX shell SIGHUP trap to become immune to tmux's own teardown cascade; Windows has no equivalent")
+	}
+	tmuxPath := tmuxBinaryPath(t)
+
+	h := hubforge.NewHub(t, ".")
+	deferHubRelease(t, h.PrimeWorktree())
+	t.Chdir(h.PrimeWorktree())
+	t.Cleanup(func() {
+		var buf bytes.Buffer
+		RunCLI(&buf, []string{"down"})
+	})
+
+	var out bytes.Buffer
+	if code := RunCLI(&out, []string{"up"}); code != 0 {
+		t.Fatalf("up = %d; want 0, output: %s", code, out.String())
+	}
+
+	// `exec` on the outer sleep keeps the immune child's parent pid stable, so
+	// the child stays inside the pane's descendant closure reed snapshots.
+	immune := `bash -c 'bash -c "trap \"\" HUP; exec sleep 300" & exec sleep 300'`
+	addStrand(t, immune, "--name", "immune")
+	socket, session := socketAndSession(t)
+
+	pids := paneProcessTree(t, tmuxPath, socket, session)
+	if len(pids) == 0 {
+		t.Fatalf("session reported no pane process subtree")
+	}
+
+	out.Reset()
+	if code := RunCLI(&out, []string{"down"}); code != 0 {
+		t.Fatalf("down = %d; want 0, output: %s", code, out.String())
+	}
+	// No sleep: down must not return until every snapshotted descendant is
+	// actually gone, force-killed if the graceful window expired.
+	for _, pid := range pids {
+		if !processGone(pid) {
+			t.Errorf("pane subtree pid %d still running immediately after down returned; reed's force-kill fallback did not run", pid)
 		}
 	}
 }

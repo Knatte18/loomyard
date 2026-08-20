@@ -1,8 +1,8 @@
 // config.go — configuration for the perch module.
 //
 // Defines the Config type mirroring perch.yaml's keys and LoadConfig, which uses
-// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve the perch
-// config file;
+// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve the perch config file,
+// degrading to the embedded template on proven absence;
 // perch never reads config files or knows their on-disk layout itself.
 // judge_model is a model-spec string (contracts/specs/llm-model-spec.md);
 // ResolveModelSpec is the ONE shared implementation LoadConfigWithRegistry and perchcli's
@@ -14,7 +14,6 @@ package perchengine
 import (
 	"bytes"
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -54,15 +53,11 @@ func ResolveModelSpec(spec string, reg modelspec.Registry) (model, effort string
 }
 
 // LoadConfigWithRegistry loads and resolves perch.yaml against an already-loaded registry.
+// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
+// a config file that exists but is invalid still errors.
 func LoadConfigWithRegistry(baseDir, module string, reg modelspec.Registry) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap the generic "not initialized" error with the perch-specific
-		// hint, matching reedengine/shuttleengine's shape so every module
-		// surfaces the same recovery instruction.
-		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
-		}
 		return Config{}, err
 	}
 

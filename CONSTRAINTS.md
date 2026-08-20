@@ -12,6 +12,17 @@ Fuller design/how-to lives in godoc and `docs/`.
 - **`root` always means the git worktree/repo root;
   the current working directory is `cwd`.**
   Never name a parameter, field, or local variable `root` for a value that is actually `cwd`, or vice versa.
+- **What `Resolve` validates, in four sub-points.**
+  1. `git rev-parse --show-toplevel` must succeed at `cwd`, else `ErrNotAGitRepo` — the only validation `Resolve` makes of the **repository** itself.
+     Sub-points 2 and 3 below are genuine checks too, but they are checks about the anchor marker and the caller's position, not about whether the repository is a lyx worktree.
+  2. An **absent** anchor marker is not an error — `AnchorRel` falls back to `"."`.
+     Only a stale pre-rename marker hard-errors, with `ErrStaleAnchorMarker`.
+  3. `cwd` must equal `Join(worktreeRoot, AnchorRel)`, else `ErrCwdOutsideAnchor`;
+     with no marker this reduces to "cwd is the git worktree root".
+  4. `HubPath` is `filepath.Dir(worktreeRoot)` **unconditionally** — never verified to be a hub — and `RepoName` is `Base(hubPath)` with a `-HUB` suffix trimmed, with no check the suffix was ever there.
+
+     The consequence is the whole point of this bullet: `Resolve` succeeds in any ordinary git repository run from its root, and `HubPath`/`RepoName` are fiction in that case.
+     Proving a worktree is lyx-initialized and Fabric-wired is [tier 2's and tier 3's](#told-geometry-invariant) job, not tier 1's.
 - All cwd/worktree-root queries go through `lyxcwd.Getwd()`/`Resolve()`.
   Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lyxcwd` and `cmd/lyx/main.go`.
 - `lyxcwd.Resolve` exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`,
@@ -44,6 +55,31 @@ Fuller design/how-to lives in godoc and `docs/`.
   `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) for the import cap,
   and `cmd/lyx/cwdmutation_test.go` (`TestCwdMutation_MigratedFilesStayChdirFree`) for the chdir-mutation regression guard.
 
+## Told-Geometry Invariant
+
+An engine is handed the absolute paths it operates on and derives none of its own, so it runs identically inside a lyx hub and in a bare directory that is not a git repository.
+
+- **Three resolution tiers:** 1) `lyxcwd.Resolve` — cwd is a git worktree root.
+  2) `preflight.Check` (`fabricengine.Ready`/`Healthy`/`Clean`/`PrimeName`) — fabric wired, junctions intact, warp/weft in sync, tree clean.
+  3) `loomengine.Preflight` — tiers 1+2 plus the orchestrator's own status seed.
+- **Producer/orchestrator split:** a producer requires none of the three tiers.
+  An orchestrator requires tier 3 and threads the extracted plain values down its producer list.
+  A standalone CLI invocation requires none of the three, but its pre-run probes tier 1 via `preflight.ResolveMode`, which **degrades** to standalone (no hub lyx directory found, `ErrNotAGitRepo`, or `ErrCwdOutsideAnchor` with no hub geometry) or **refuses** (any other error, including `ErrCwdOutsideAnchor` inside a wired hub worktree's subdirectory).
+- **Adapter direction:** where an engine takes a `Geometry` struct, `internal/hubgeom` (hub mode) and `internal/standalonegeom` (told mode) are its two sole constructors;
+  both depend on the engines, never the reverse.
+  Two packages instead take plain told values with no `Geometry` struct or adapter: `internal/treadleengine` (`runDir`, `Profile.GateDir`) and `internal/shedengine` (`StatusPath`/`LockPath`/`StatusLockPath`).
+- **Mode trigger:** a standalone-capable CLI's pre-run consults `preflight.ResolveMode` only — never `preflight.Wired`, never a bare `HubPresent`.
+- **Membership predicate:** a package is *bound* by this invariant when it takes its absolute paths from its caller and has no **direct** production import of `internal/lyxcwd` (transitive is fine).
+  It is *machine-enforced* when a test in the package polices its production import set to exclude `internal/lyxcwd`;
+  otherwise it is a *review obligation*.
+  The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
+- **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
+- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
+- **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
+  They are bound instead by the adapter-direction rule above, which is itself a review obligation.
+- **Enforced by** the seven tests named above, for the machine-enforced half;
+  the review-obligation half and the adapter-direction rule have no machine check.
+
 ## Lyxdirs Single-Declarer Invariant
 
 `internal/lyxdirs` is the sole declarer of the two lyx directory-name tokens, `_lyx` (`LyxDirName`) and `.lyx` (`DotLyxDirName`).
@@ -57,6 +93,8 @@ Fuller design/how-to lives in godoc and `docs/`.
 Every never-tracked file lives under `.lyx`, at the mirrored subpath of the `_lyx` content it relates to. `_lyx` holds tracked content only.
 
 - `_lyx` and `.lyx` are directory siblings under `AnchorPath()` — sole exception the hub-wide pair under `BoardDir(hub)`.
+- A standalone session's `_lyx` and `.lyx` are ordinary directory siblings too, under the per-OS state directory `internal/standalonestate.Derive` returns rather than under `AnchorPath()` — the mirrored-subpath rule holds at that root exactly as it does at a hub anchor;
+  standalone is a different root, not a deviation from the rule.
 - No engine derives its own `.lyx` path — each module exposes a scratch accessor beside its durable one.
 - `_lyx`/`.lyx` are structural (`fabricengine`'s `structuralCommittedDirs`/`structuralNeverCommittedDirs`), never read from `fabric.yaml`'s `pathspec` key, which is reserved for optional, explicitly-named dirs only.
 - `.lyx` is in the wired name-set (`WiredNames`/`RepoWiredNames`) but never in the pathspec/commit-routing set (`PathspecNames`).
@@ -116,7 +154,7 @@ round runners adapt onto treadle's `RoundRunner` vocabulary in their own package
   What the exclusion enforces is that treadle is *told* its geometry and never derives it — `Engine.Run` takes a caller-supplied absolute `runDir`, a block's `Profile` carries a caller-supplied `GateDir`, and every path this package builds is joined onto one of those.
   `internal/stencilstore` takes a fully resolved absolute stencils directory from its caller and derives no geometry of its own, so treadle is still *told* its stencils directory exactly as it is told `runDir` and `Profile.GateDir` — the exclusion of `internal/lyxcwd` still means what it meant.
   The seed/refresh pass that keeps that directory populated runs once at `cmd/lyx`'s root pre-run rather than lazily inside `stencilstore.Read` — what that buys is that treadle is told its stencils directory and derives none of its own,
-  not a transitive exclusion of `internal/fabricengine` from treadle's stack: `internal/treadleengine` → `internal/shuttleengine` → `internal/reedengine` → `internal/fabricengine` is a real transitive path (`reedengine.HubLogsDir` calls `fabricengine.HubScratchDir`).
+  not a transitive exclusion of `internal/fabricengine` from treadle's stack: `internal/treadleengine` → `internal/shuttleengine` → `internal/reedengine` → `internal/fabricengine` is no longer even a real transitive path — `HubLogsDir` moved to `internal/fabricengine`, and `reedengine.Engine` is now told its logs directory as `Geometry.LogsDir` rather than deriving it by calling in.
 - **Enforced by** `internal/treadleengine/seam_enforcement_test.go` (`TestRunnerSeamInvariant_AllowlistOnly`).
 
 ## Shed Producer-Seam Invariant
@@ -132,10 +170,27 @@ producers adapt onto the package's own `ShedProducer` seam in their own packages
 
 ## Tokenvocab Leaf Invariant
 
-`internal/tokenvocab` production code imports only stdlib, `internal/lyxcwd`, and `internal/stencil`.
+`internal/tokenvocab` production code imports only stdlib and `internal/stencil`.
 
 - Reverse import (`tokenvocab` → `reed`/`loom`/any feature package) is never allowed.
 - **Enforced by** `internal/tokenvocab/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
+
+## Buildinfo Leaf Invariant
+
+`internal/buildinfo` production code imports nothing at all — not even the standard library — so `cmd/lyx` and every standalone CLI package can read the build channel with no cycle risk.
+
+- The package exposes `Channel` and `IsDev()` only, and deliberately does not return a `stencilstore.Mode`, because `internal/stencilstore` imports `internal/logger` and `internal/stencil` and returning its type would destroy the leaf property.
+- The mapping site is `stencilstore.ModeFor`.
+- The ldflags stamp path `github.com/Knatte18/loomyard/internal/buildinfo.Channel` is guarded against silent drift by a test in `tools/deploy/main_test.go`, because Go's linker does not error on an unmatched `-X`.
+- **Enforced by** `internal/buildinfo/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`).
+
+## Standalonestate Leaf Invariant
+
+`internal/standalonestate` production code imports only the standard library, with no permitted non-stdlib import.
+
+- The package never resolves a working directory — no `filepath.Abs`, no `os.Getwd` — and rejects a relative target with an error, keeping cwd resolution wholly with `internal/lyxcwd` per the Cwd Resolution Invariant.
+- `Derive` creates nothing on disk.
+- **Enforced by** `internal/standalonestate/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`); the no-`filepath.Abs` half is a review obligation rather than a machine check.
 
 ## Scout Engine-Seam Invariant
 
@@ -154,7 +209,7 @@ It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the 
 
 ## Pattern Leaf Invariant
 
-`internal/pattern` production code imports only stdlib, `internal/lyxcwd`, `internal/lyxdirs`, `internal/stencilstore`, and `internal/stencil` — never `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
+`internal/pattern` production code imports only stdlib, `internal/lyxdirs`, `internal/stencilstore`, and `internal/stencil` — never `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
 Reverse import never allowed.
 `internal/lyxdirs` is admissible because it is a stdlib-only zero-import leaf (its own Lyxdirs Single-Declarer Invariant), and therefore cannot participate in a cycle by construction.
 `internal/stencil` is admissible for the same reason: it is a zero-import leaf, importing no internal package at all, and so cannot participate in a cycle by construction either.
@@ -164,12 +219,14 @@ Reverse import never allowed.
 
 ## Stencil Ownership Invariant
 
-Every producer prompt is read at call time from `<hub>/_board/_lyx/stencils/`, never from embedded bytes.
+Every producer prompt is read at call time from a told, absolute stencils directory, never from embedded bytes.
+`<hub>/_board/_lyx/stencils/` is what that directory resolves to in hub mode, not the only possibility —
+a standalone-capable CLI's own producer resolves it under the per-OS state directory instead (see the Durable-vs-Ephemeral State Invariant).
 
 - `//go:embed` in the top-level `contracts/stencils` package carries seed defaults only and is never a live read path.
 - `internal/stencilstore` is the sole owner of seeding, hash-stamping, edit detection, reading, and validation, and takes a fully resolved absolute base directory from its caller.
 - A file whose body hash does not match its stamp is never overwritten.
-- The seed/refresh pass runs once per process at `cmd/lyx`'s root pre-run, never lazily inside `stencilstore.Read`.
+- The seed/refresh pass runs once per process, either at `cmd/lyx`'s root pre-run in hub mode or at the producer CLI's own pre-run in standalone mode — never lazily inside `stencilstore.Read`.
 - The seeding commit is a `board.lock`-holding, positive-pathspec commit through `internal/fabricengine`, never `Bolt` and never a stage-all.
 - **Enforced by** `contracts/stencils/registry_test.go` for registry completeness, `internal/stencilstore`'s edit-detection tests, and `internal/lyxcwd/enforcement_test.go` for the vocabulary walk.
   Not reached: `contracts/stencils/stencils.go` is production Go outside `internal/` and `cmd/`, so it falls outside the Go half of the Fabric Vocabulary walk, whose `.md` half does now cover `contracts/stencils/**/*.md`.
@@ -180,8 +237,12 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 
 - **Seam.**
   Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out, args)`.
-  Eleven of the twelve seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
+  Twelve of the thirteen seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
   `internal/selfreportcli` is the one seam module without `RunCLIIn`: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
+- **Alias shape.**
+  A module may register an alias command beside its own subtree, as a second root child, via a separately-named exported constructor.
+  That alias carries no seam function of its own — no `RunCLI`/`RunCLIIn` — because it delegates entirely into the subtree's own verb.
+  `internal/loomcli`'s `RunAliasCommand()`, registered in `cmd/lyx/main.go` as `lyx run` alongside the `lyx loom` subtree, is the first instance of this shape.
 - **Registration.**
   A new module is wired into `newRoot()`: import, `root.AddCommand(...)`, and appended to the root `Long` module-list.
   Unregistered ⇒ invisible to `--help`.
@@ -192,8 +253,12 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 - **Errors are JSON**, via the `internal/output` envelope (`output.Ok`/`output.Err`), one JSON object per line, through `clihelp.Execute`/root seam.
   No bare plain-text error paths.
   Parent groups set `RunE = clihelp.GroupRunE`.
+- **One envelope per invocation**, and `clihelp.ShouldAbort` is what keeps it that way: `clihelp.Abort` records an exit code but does NOT stop cobra from running `RunE`, so a `RunE` that emits before checking `ShouldAbort` writes a second envelope on top of the one `PersistentPreRunE` already wrote.
+  Every `RunE` therefore checks `ShouldAbort` **first**, ahead of its own validation — the placement `clihelp.ShouldAbort`'s own godoc specifies.
+  A consumer unmarshalling the output as a single object (which the smoke suites do) fails to parse two, and the second envelope names the secondary problem while the first names the one to fix.
 - **Interactive-handoff exception (narrow, per-command).**
   A subcommand that hands stdio to another interactive program and blocks, or self-displays and then blocks forever, is exempt from the envelope only on that terminal-handover/keepalive tail — everything that can fail stays pre-flight, on the envelope.
+  `lyx loom status --watch` and `lyx loom run` (alias `lyx run`) are two more registered holders of this exception, in the same shape `internal/reedengine`'s `attach`/`header --blocking` pair already establishes: `status --watch` self-displays the polled status line, then blocks forever as its own keepalive tail, and `run` hands the operator's stdio to a `tmux attach-session` child as its own terminal-handover tail — in both cases every fallible step runs pre-flight, on the envelope, and only the named tail itself is exempt from emitting JSON.
 - **Package naming.**
   A cobra-registered package is `<module>cli`;
   its domain kernel is `<module>engine`. cli imports engine;
@@ -201,7 +266,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine.
   Skip the engine only for trivial wrappers or a throwaway proof-of-concept meant to be deleted.
   **Named deviation:** `stencilcli`'s domain kernel is `internal/stencilstore`, not `stencilengine` — `internal/stencil` already holds the singular name and the top-level `stencils` package holds the plural, so a `stencilengine` would make three packages one character apart, and `stencilstore` says what the package actually is.
-- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all twelve modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the eleven modules that carry it, both at compile time.
+- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all thirteen modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the twelve modules that carry it, both at compile time.
 
 ## Shuttle Provider-Seam Invariant
 
@@ -290,7 +355,9 @@ a human or any tool outside LYX keeps ordinary git in their warp worktree, untou
   Junction exclusion / unwire: `internal/fabricengine/dotlyxjunction_integration_test.go`, `unwire_test.go`.
   Module ownership is machine-checked for `internal/boardengine` (`cmd/lyx/boardguard_test.go`) and for `internal/websterengine` (`cmd/lyx/rawgitmutation_test.go`, `TestNoRawGitMutation_WebsterProductionSource`);
   every other `fabricengine` caller remains a review obligation.
-  The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation).
+  The agent half is machine-checked for webster runs by `fabricengine.RefScanner` (a fork or Master Bash command matching a fabric-driving command spelling or the weft sibling worktree path is a hard, round-failing violation) **in hub-mode runs only** — a standalone run supplies `websterengine.NeverMatches` instead,
+  since standalone has no weft worktree and no fabric verb for a fork to drive, so there is nothing there for the check to catch;
+  a reader must not take the guard as universal across both modes.
 
 ## Fabric Destruction Chokepoint Invariant
 
@@ -362,7 +429,7 @@ Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` 
   `manifest/` and `docs/` name which files are *scanned* for outgoing links;
   they do not restrict where those links may *point*.
   Every link target is resolved wherever it lands in the repo, and any `.md` target gets its `#anchor` resolved too, whether that target sits inside `manifest/`/`docs/` or not.
-  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `finalize.md`'s `../../CONSTRAINTS.md#fabric-git-invariant-warp--weft` link and the `../../internal/*/doc.go` targets this task creates.
+  Reading the root restriction as licence to skip anchor resolution for an out-of-root target would silently un-guard `docs/shared-libs/configengine.md`'s `../../CONSTRAINTS.md#lyxdirs-single-declarer-invariant` link and the `../../internal/*/doc.go` targets this task creates.
 - **A file-layout convenience, not an ownership claim.**
   The enforcing test lives in `internal/lyxcwd` (`docslink_test.go`'s `TestEnforcement_MarkdownLinks`), reusing that package's `repoRootForEnforcement` and `walkEnforcementRoots` helpers.
   That placement is a file-layout convenience, not an ownership claim on markdown links by `internal/lyxcwd` — the Cwd Resolution Invariant scopes that package to cwd resolution and nothing else, exactly the caveat the Fabric Vocabulary Invariant above already states for its own test.
@@ -398,7 +465,11 @@ The durable Info+ trace-file sink captures these regardless of verbosity or env-
 - A spawned pane/child must never re-exec `os.Executable()` while running under `go test`: a Go test binary invoked with positional arguments does not error on them, so the arguments are silently ignored and the full suite runs unfiltered.
   Guarded by `reedengine`'s `headerLaunchLine` (suppresses header re-exec when `testing.Testing()`) and `gitkit.HermeticGitEnv` (`refuseCLIReexec` refuses any test binary invoked with a leading positional argument).
 - A retry loop around a real process spawn must cap attempt COUNT, not only elapsed time — a fast-failing spawn burns a time-only budget in far more attempts than it was sized for. `maxBootAttempts` in `internal/reedengine/lifecycle.go` is the pattern: track an attempt counter, exit on whichever of (time, count) is hit first.
-- Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/burlerengine/engine.go`, `internal/scoutengine/ensureserver.go`.
+- Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/shuttleengine/wait.go`, `internal/burlerengine/engine.go`, `internal/scoutengine/ensureserver.go`.
+- **A live-substrate module's operational messages all belong on `internal/logger`, not only the spawn and teardown lines themselves.**
+  A retry, a probe that could not read the substrate, and a cleanup that skipped are exactly the events an operator goes looking for after the fact, and the stdlib `log` package reaches neither the durable trace file nor a trace correlation id — so a bare `log.Printf` there loses the only record that the unhappy path happened at all.
+  `internal/shuttleengine` pins this for itself with a source scan (`run_test.go`'s `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger`);
+  every other live-substrate module remains a review obligation.
 
 ## Sandbox Suite Coverage
 
@@ -453,7 +524,10 @@ The sandbox tooling resolves the dev binary from the derived `.dev-bin` (falling
 
 - No other package parses `00-overview.md`/`NN-<card-slug>.md`;
   consumers read plan-level sections only from the `planparser.Plan` model a caller hands in.
-- Resolves `_lyx/plan/` via `lyxcwd`, never string literals.
+- `planparser` is the sole declarer of the plan directory's path.
+  `PlanDirName`/`PlanDirRel()` declare the worktree-relative token, and `PlanDir`/`PlanOverview` declare the absolute form.
+  The package never resolves cwd and never imports `internal/lyxcwd`;
+  the caller supplies the anchor path — `AnchorPath()`, never `WorktreePath()`.
 - **Enforced by** review obligation today (candidate future import/grep guard).
 
 ## Batcher Registry+Config Invariant
@@ -470,6 +544,29 @@ An instruction file — a producer's own prompt or skill — must never duplicat
 - Binds **instruction files** (agent prompts and skills) and format-contract docs, not Go source, and not design docs restating the rule for a human reader.
 - **Enforced by** review obligation.
 
+## Config Strictness Invariant
+
+`internal/configengine` offers two loading policies and a caller adopts exactly one.
+`Load` is strict: an absent `_lyx/` directory or an absent config file is an error. `LoadOrTemplate` degrades: either absence resolves the caller's embedded template instead.
+
+- **The membership rule**, stated as a predicate a future caller can apply rather than a bare list: a module belongs on the degrading side when it has, or is slated to have, a **standalone entry point** — a way to be invoked outside a lyx hub — because a config-less invocation is then a supported mode.
+  A module that only ever runs inside a hub stays strict, because there an absent config means the hub is broken.
+- **The two pinned sets** as they stand today: degrading is `{shuttleengine, reedengine, perchengine, websterengine, batcher}`;
+  strict is `{fabricengine, boardengine, loomengine}`.
+- **A third class, explicitly outside this invariant's guard subject: own-loader modules.**
+  These never call either entry point — they resolve the path with `configengine.ConfigFile` and read the file themselves with their own absent-file fallback.
+  `internal/burlerengine` (`burler.yaml`, absent file returns a zero `Config`, bypassing `Load` because `MissingKeys` would misfire on its open-ended lenses/fans key set), `internal/modelspec` (`models.yaml`, absent file returns `builtins()`;
+  it cannot call a logging `Load` at all, being capped by the Modelspec Leaf Invariant), and `internal/scoutengine` (`servers.yaml`, absent file returns `builtins()`) already have the degrading behaviour and are deliberately not repointed.
+  A set-equality grep over the two entry-point tokens is structurally blind to them — without this clause the invariant would read as though the two pinned sets enumerate every module config in the repo, which they do not.
+- **Absence is typed, not textual.** `FindBaseDir` wraps the exported `configengine.ErrNotInitialized` sentinel on its absent-`_lyx/` branch and deliberately does not wrap it on a stat failure, so a degrading caller falls back only on `errors.Is(err, ErrNotInitialized)`.
+  The four strict callers still use the older `strings.Contains(err.Error(), "not initialized")` rewrap;
+  the sentinel makes migrating them possible, but the migration is available rather than done.
+- **A watch item that has fired:** `batcher` used to sit on the strict side because it had no standalone entry of its own, even though its config is read on webster's batching path.
+  The websterengine + webstercli told-geometry, and Webster standalone entry task gave webster a standalone entry point, so a standalone Webster now reaches `batcher.Active` on every verb outside a hub, where `_lyx/` does not exist;
+  that task moved `batcher` to the degrading side and the pinned sets above already reflect the move.
+- **Known guard blind spot:** a substring scan cannot see a call reached through an alias or a function value.
+- **Enforced by** `cmd/lyx/configstrictness_test.go` (`TestConfigStrictness_PinnedCallSiteSets`).
+
 ## GitHub Auth Invariant
 
 All GitHub authentication goes through `internal/githubclient`;
@@ -484,7 +581,7 @@ no other production package shells out to `gh`.
 
 `internal/gitrepo` splits local-vs-remote by client: go-git owns local object and ref access, `gitexec` owns anything that authenticates to a remote or mutates the working tree.
 
-- go-git handles reads that resolve state already on disk — commit/tree/blob lookups and ref reads. `gitexec` is the only path to the git CLI, used for `StageAndCommit`, `CommitEmpty`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `PushRebaseFree`, `Pull`, `Fetch`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `IsAncestor`, `HasUnpushed`.
+- go-git handles reads that resolve state already on disk — commit/tree/blob lookups and ref reads. `gitexec` is the only path to the git CLI, used for `StageAndCommit`, `CommitEmpty`, `StageAllAndCommit`, `Push`, `PushCoalesced`, `PushRebaseFree`, `Pull`, `Fetch`, `ResetHard`, `CheckoutDetached`, `RestoreBranch`, `IsAncestor`, `HasUnpushed`, `MergeStart`, `MergeConclude`, `ConflictedFiles`, `MergeHeadPresent`, `MergeFFOnly`, `StageResolved`.
   Any new `gitexec` call added inside `internal/gitrepo` must update this list in the same commit.
 - The guard's pinned method set is keyed on `r.run` and `r.runChecked` together — whichever chokepoint a method's body calls, it belongs on the same list;
   the raw/checked split within that set is invisible to this guard by design (see the gitexec Checked-Call Invariant below, which is keyed by call site instead).

@@ -6,9 +6,9 @@
 // LoadState/SaveState are state.json's only readers/writers;
 // every other websterengine file mutates the in-memory *State the caller loaded and calls SaveState
 // to persist it back.
-// Callers resolve websterDir via websterengine.Dir — this file also declares
-// Dir/ReportsDir/PromptsDir themselves, the module's own _lyx/webster constructors (Cwd Resolution
-// Invariant).
+// Dir/ReportsDir/ScratchDir/PromptsDir are this file's own _lyx/webster and .lyx/webster
+// constructors (Cwd Resolution Invariant): each takes a told anchor root and joins its own
+// subpath onto it — no other package declares any part of these paths.
 //
 // webster's State is its own schema: no sentinel error or Go type here is shared with any other
 // module's state files, so errors.Is can never conflate a run in one module with a run in another
@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -35,34 +34,38 @@ import (
 // is this segment's sole declarer.
 const websterDirName = "webster"
 
-// Dir returns the path to the webster's durable run state directory (state.json, outcome.yaml).
+// Dir returns the path to the webster's durable run state directory (state.json, outcome.yaml),
+// joined onto the told anchorRoot.
 // It lives under _lyx so it is fabric-synced.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func Dir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.LyxDirName, websterDirName)
+func Dir(anchorRoot string) string {
+	return filepath.Join(anchorRoot, lyxdirs.LyxDirName, websterDirName)
 }
 
-// ReportsDir returns the path to the directory holding webster's per-batch report files.
+// ReportsDir returns the path to the directory holding webster's per-batch report files, joined
+// onto the told anchorRoot.
 // It lives under _lyx so reports are fabric-synced.
-// Per the Hub Geometry Invariant, no other package may construct this path.
-func ReportsDir(l *lyxcwd.Location) string {
-	return filepath.Join(Dir(l), "reports")
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func ReportsDir(anchorRoot string) string {
+	return filepath.Join(Dir(anchorRoot), "reports")
 }
 
 // ScratchDir returns the path to the base directory for webster's never-tracked artifacts —
 // Dir's never-tracked sibling holding the pause flag, the rendered fork prompts, and every
-// *.lock — at the mirrored subpath of the _lyx/webster content each relates to.
+// *.lock — at the mirrored subpath of the _lyx/webster content each relates to, joined onto the
+// told anchorRoot.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func ScratchDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, websterDirName)
+func ScratchDir(anchorRoot string) string {
+	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, websterDirName)
 }
 
-// PromptsDir returns the path to the directory holding webster's rendered fork prompts.
+// PromptsDir returns the path to the directory holding webster's rendered fork prompts, joined
+// onto the told anchorRoot.
 // Prompts are machine-local, re-renderable artifacts, and they live under .lyx rather than being
 // held out of the fabric commit by an exclude pattern.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
-func PromptsDir(l *lyxcwd.Location) string {
-	return filepath.Join(ScratchDir(l), "prompts")
+func PromptsDir(anchorRoot string) string {
+	return filepath.Join(ScratchDir(anchorRoot), "prompts")
 }
 
 // stateFileName is state.json's fixed filename inside a webster dir.

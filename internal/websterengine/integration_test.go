@@ -95,10 +95,10 @@ func TestIntegrationStage_SkipsWhenPlanHasNoVerify(t *testing.T) {
 			},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Shipped batch1\n\nAll good.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped batch1\n\nAll good.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -114,7 +114,7 @@ func TestIntegrationStage_SkipsWhenPlanHasNoVerify(t *testing.T) {
 		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
 	}
 
-	if _, statErr := os.Stat(websterengine.IntegrationReportPath(fx.Deps.ReportsDir)); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)); !os.IsNotExist(statErr) {
 		t.Errorf("integration report present for a plan with no \"## verify:\" section; want the stage to have never looked for one")
 	}
 }
@@ -146,14 +146,14 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 		},
 		onWait: func() {
 			head := strings.TrimSpace(mustGit(t, fx.Worktree, "rev-parse", "HEAD"))
-			reportPath := websterengine.IntegrationReportPath(fx.Deps.ReportsDir)
+			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
 			if err := os.WriteFile(reportPath, []byte("status: OK\nhead_sha: "+head+"\ndeviations: []\n"), 0o644); err != nil {
 				t.Fatalf("write integration report: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Shipped batch1\n\nAll good.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Shipped batch1\n\nAll good.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -169,7 +169,7 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 		t.Errorf("RunResult.Outcome = %q; want %q", result.Outcome, "done")
 	}
 
-	st, err := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -182,7 +182,7 @@ func TestIntegrationStage_PassingForkFinishesNormally(t *testing.T) {
 	// forwards to the integration fork exists only if Go wrote it (crucible
 	// round fable-r1's F18 — a live Master correctly refused to improvise
 	// one and the whole stage was unreachable).
-	if _, statErr := os.Stat(filepath.Join(fx.Deps.PromptsDir, "integration.md")); statErr != nil {
+	if _, statErr := os.Stat(filepath.Join(fx.Deps.Geom.PromptsDir, "integration.md")); statErr != nil {
 		t.Errorf("stat(integration prompt) = %v; want run to have pre-rendered it for a plan with a verify section", statErr)
 	}
 }
@@ -227,14 +227,14 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 			},
 		},
 		onWait: func() {
-			reportPath := websterengine.IntegrationReportPath(fx.Deps.ReportsDir)
+			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
 			if err := os.WriteFile(reportPath, []byte("status: FAILED\nhead_sha: "+sha3+"\ndeviations: []\n"), 0o644); err != nil {
 				t.Fatalf("write integration report: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration suite failed\"\nbatches_done: 3\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration suite failed\"\nbatches_done: 3\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll three batches landed; integration failed.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll three batches landed; integration failed.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -246,7 +246,7 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 		t.Fatalf("Run() error = %v; want nil (a FAILED integration report is escalated, not a Run() error)", err)
 	}
 
-	st, err := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -261,7 +261,7 @@ func TestIntegrationStage_FailingForkTriggersBisectAndEscalates(t *testing.T) {
 		t.Errorf("escalated record digest = %+v; want head_sha %q", escalated.Digest, sha3)
 	}
 
-	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"))
+	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
 	if err != nil {
 		t.Fatalf("read summary.md: %v", err)
 	}
@@ -337,10 +337,10 @@ func TestIntegrationStage_MissingReport_StuckOutcomePreserved(t *testing.T) {
 			ForkAudit: &shuttleengine.ForkAudit{},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration fork died\"\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: stuck\nstuck_reason: \"integration fork died\"\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nIntegration fork died.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nIntegration fork died.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -384,10 +384,10 @@ func TestIntegrationStage_MissingReport_DoneOutcomeFailsLoud(t *testing.T) {
 			},
 		},
 		onWait: func() {
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 1\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll good.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll good.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -446,14 +446,14 @@ func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
 			// The integration report lands FAILED, but Master (wrongly) claims
 			// outcome: done — the exact template-violating contradiction this
 			// test exists to catch.
-			reportPath := websterengine.IntegrationReportPath(fx.Deps.ReportsDir)
+			reportPath := websterengine.IntegrationReportPath(fx.Deps.Geom.ReportsDir)
 			if err := os.WriteFile(reportPath, []byte("status: FAILED\nhead_sha: "+sha3+"\ndeviations: []\n"), 0o644); err != nil {
 				t.Fatalf("write integration report: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 3\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "outcome.yaml"), []byte("outcome: done\nstuck_reason: null\nbatches_done: 3\n"), 0o644); err != nil {
 				t.Fatalf("write outcome.yaml: %v", err)
 			}
-			if err := os.WriteFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll three batches landed.\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"), []byte("# Batches shipped\n\nAll three batches landed.\n"), 0o644); err != nil {
 				t.Fatalf("write summary.md: %v", err)
 			}
 		},
@@ -471,7 +471,7 @@ func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
 
 	// The escalation must persist despite the loud return: the reserved -1
 	// record and summary.md's localized card are written before the error.
-	st, err := websterengine.LoadState(fx.Deps.WebsterDir, fx.Deps.ScratchDir)
+	st, err := websterengine.LoadState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir)
 	if err != nil {
 		t.Fatalf("LoadState() error = %v", err)
 	}
@@ -483,7 +483,7 @@ func TestIntegrationStage_FailedSuite_DoneOutcomeFailsLoud(t *testing.T) {
 		t.Errorf("escalated record Slug = %q; want %q (the localized offending card)", escalated.Slug, "03-batch3")
 	}
 
-	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.WebsterDir, "summary.md"))
+	summaryData, err := os.ReadFile(filepath.Join(fx.Deps.Geom.WebsterDir, "summary.md"))
 	if err != nil {
 		t.Fatalf("read summary.md: %v", err)
 	}

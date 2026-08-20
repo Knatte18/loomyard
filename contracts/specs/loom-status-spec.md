@@ -1,14 +1,13 @@
 # Loom status spec — loom's spawn/handover status file
 
 > **Status: Contract — pinned.** This doc pins the `_lyx/loom/status.json` schema: loom's single source of truth for orchestration state, and the t=0 "seed" a spawn-time lyx command hands off to loom. Durable reference doc — kept, not deleted on landing — the loom analogue of [webster-spec.md](webster-spec.md) and `contracts/stencils/loom/loom-template-plan.md`.
-> **Content flagged stale during the 2026-08-16 contracts/ reorg — see the note at the end of this file.**
 > Product-scoped under `loom/` (renamed 2026-08-15 from a bare `_lyx/status.json`), since `Shed` (see [shed.md](../../manifest/designs/shed.md)) is a generic engine more than one product configures — the Someday `Hardener` product needs its own status file too, and a bare path could not serve both.
 
 ## What it is
 
-`_lyx/loom/status.json` is loom's single source of truth for orchestration state: current phase, current review sub-state, the phase-level outcome trail,
-and the human-readable narration `lyx loom status --watch` prints. `lyx loom run` rewrites it on every step;
-its t=0 "seed" — the handoff instant a task is spawned and given to loom, before any `lyx loom run` has executed — is written once at spawn time (see [The seed / handover](#the-seed--handover) below).
+`_lyx/loom/status.json` is `shedengine.Status` (see `internal/shedengine`'s own package documentation for the shell's field semantics — `current_producer`, `state`, `error`, `pause_requested`, `activity`, `history`) plus loom's own `product` payload: `slug`, `parent`, and `start_sha`.
+`lyx loom drive` (via `Shed.Run`) rewrites the shell on every step — that loop belongs to the driver verb `lyx loom run` spawns detached, never to `lyx loom run` itself;
+its t=0 "seed" — the handoff instant a task is spawned and given to loom — is written once, by `lyx loom run`'s own first invocation, before that spawn happens (see [The seed / handover](#the-seed--handover) below).
 
 It is durable **fabric-overlay state**: it lives under `_lyx/` (git-synced via fabric, not `.lyx/`'s ephemeral machine-local state), which is what makes resume work across machines.
 Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `internal/lyxcwd`'s resolved coordinates — this doc describes the file, it does not construct the path.
@@ -17,125 +16,111 @@ Its path resolves via `internal/loomengine.LoomStatusFile`, joined onto `interna
 
 The file is **JSON via the existing `internal/state` primitive** (`WriteJSON[T]`/ `ReadJSON[T]`: locked, atomic, typed) — the same mechanism `webster` uses for its own `_lyx/webster/state.json`.
 
-This **overrides the board brief's "plain YAML."**
-The brief's real point was "structured, not markdown-with-frontmatter" — and that point stands, unchanged.
-But JSON was chosen over YAML deliberately: `_lyx/loom/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
+`_lyx/loom/status.json` is machine-written, machine-read orchestration state, not something a human is expected to hand-edit, and `lyx loom status --watch` pretty-prints it for humans — so the on-disk file need not be hand-readable.
 Reusing `internal/state` gives locking and atomic writes for free and keeps one state primitive across modules, rather than a second one-off for loom.
 
 ## The seed / handover
 
-The **seed** is the t=0 contents of `_lyx/loom/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting (see [status-single-schema-superset](#the-schema)).
+The **seed** is the t=0 contents of `_lyx/loom/status.json` at the instant a task is spawned and handed to loom — not a separate file or a separate schema, just the initial snapshot of the same file loom then keeps rewriting.
 
-It is written by a **lyx Go command** at spawn time — the mill-spawn analogue, but Go, never an agent.
-This doc names the *role* ("the spawn-time lyx command"), not the exact subcommand;
-which one it binds to (`fabric add` vs a dedicated `lyx loom init`/`spawn`) is pinned when that command lands.
+It is written by **`lyx loom run`**, the session bootstrap, at its own first invocation — the mill-spawn analogue, but Go, never an agent.
+That binding is now pinned: `lyx loom run` seeds the file itself when it is absent, tolerating a re-run's already-seeded case rather than re-seeding it, and commits the seed weft-side before it spawns the detached driver.
 An optional thin `ly-spawn` skill may wrap it later,
-but the Go command is always the writer.
+but `lyx loom run` is always the writer.
 
 loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, fabric ready, no half-finished prior run).
 
-**One schema, a superset — not two.**
-The seed is the same schema as the ongoing status file, with only the handoff fields populated (`slug`, `parent`, `phase: "discussion"`, an initial `narration`) and everything else at its zero/null value (`history: []`, `start_sha: null`, `pause_requested: false`, `next_action: null`). loom fills the rest as it runs;
-there is no seed→full conversion step.
+A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty `history`, and a `product` with only `slug`/`parent` populated (`start_sha: null`) — `Shed` fills the rest as it runs, and `Shed` itself owns `current_producer`/`state`/`error`/`activity`/`history` from the first persist onward.
 
 ## The schema
 
 ```jsonc
 {
-  "slug": "loom-contracts",        // board-task pointer (board owns title/description)
-  "parent": "main",                // parent branch
-  "phase": "webster",              // preflight | discussion | plan | webster | raddle | finalize | done
-  "stage": "gate",                 // "produce" | "gate": producing the artifact vs in its review gate
-  "narration": "now: … / last: … / wait: …",  // human line for `lyx loom status --watch`
-  "history": [                     // per-phase outcome trail (per-round verdicts live in perch's block files)
-    { "phase": "discussion", "outcome": "approved", "ts": "2026-07-17T10:01:30Z" },
-    { "phase": "plan", "outcome": "stuck", "bounced_to": "discussion", "ts": "2026-07-17T11:14:02Z" }
+  "current_producer": "Preflight",             // Shed-owned: which producer this run is at
+  "state": "running",                          // Shed-owned: running | paused | done | blocked | failed
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked halt
+  "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
+  "activity": {"now": "...", "last": "...", "wait": "..."}, // Shed-owned, mechanically composed
+  "history": [                                 // Shed-owned: one entry per producer call
+    {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"}
   ],
-  "start_sha": null,               // repo HEAD stamped when Webster begins (Raddle diff base)
-  "pause_requested": false,        // pause flag kept IN-status (diverges from webster, which uses a separate flag file)
-  "next_action": null              // when loom yields at a human gate: what the human must do next
+  "product": {                                 // loom-owned, opaque to Shed
+    "slug": "loom-contracts",                  // board-task pointer (board owns title/description)
+    "parent": "main",                          // parent branch
+    "start_sha": null                          // repo HEAD stamped when Webster begins (Raddle diff base)
+  }
 }
 ```
 
-Per-field notes:
+Per-field notes — `product`'s three fields are the whole of loom's own half of the schema; every other field is `Shed`'s, documented in `internal/shedengine`'s own package documentation, not restated here:
 
-- **`slug` / `parent`** — the only handoff pointers into the wider task record;
+- **`product.slug` / `product.parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
-- **`phase`** — the phase enum from loom's phase machine, plus the terminal `done`: `preflight | discussion | plan | webster | raddle | finalize | done`.
-- **`stage`** — `produce | gate`: whether the current phase is mid-produce or mid-gate. Kept because this file is loom's single total overview of *where it is* and loom needs produce-vs-gate for resume; the finer per-round detail stays in perch's block files (see [Parse discipline](#parse-discipline) and history below).
-- **`narration`** — one composed human string with `now:`/`last:`/`wait:` segments. loom writes it, the `lyx loom status --watch` strand prints it;
-  reed never parses it.
-- **`history`** — a **per-phase outcome trail**: one entry per phase attempt (`{phase, outcome: approved | stuck, bounced_to?, ts}`), including stuck-handler bounce-backs. Per-*round* verdicts are **not** duplicated here — those live in perch's block files, since the progress-judge that needs them lives inside perch and reads perch's own files directly. `bounced_to` is present only on a `stuck` entry that routes back to an earlier phase.
-- **`start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
-- **`pause_requested`** — the pause flag, kept **in-status**.
-  This diverges from `webster`, which uses a separate pause *flag file* — called out here deliberately so the divergence reads as a decision, not an inconsistency.
-- **`next_action`** — a dedicated, machine-checkable field for "is this blocked on a human, and on what?", set whenever loom yields at a human gate.
-  It is also reflected in `narration`'s `wait:` segment, so a human reading the narration sees the same fact in prose.
+- **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
 - **No `schema_version`/`format` field.**
-  This file has a single writer (loom itself) and no version-compatibility pressure.
+  This file has a single writer (`Shed`, plus `lyx loom run` as the seeder and `lyx loom pause` as the pause verb, both writing through the same lock) and no version-compatibility pressure.
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
-- **Timestamps.**
-  Every timestamp field (currently only `history[].ts`) is **RFC3339 UTC**, e.g. `2026-07-17T10:01:30Z`.
 
 ## Parse discipline
 
-Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` — the JSON analogue of the discipline webster's own strict `outcome.yaml` decode and the burler verdict-parse apply to their own YAML.
+Strict, fail-loud parsing: the `internal/state` read (`state.ReadJSONStrict`) rejects unknown or malformed fields via `json.Decoder.DisallowUnknownFields()` at the shell level — the JSON analogue of the discipline webster's own strict `outcome.yaml` decode and the burler verdict-parse apply to their own YAML.
 An unparseable or malformed status file is a hard error;
 loom never guesses a status.
+`product` is decoded separately, after the strict shell decode succeeds — see [Validation checklist](#validation-checklist) below for how a `product` that fails to decode as loom's own shape is classified.
 
 ## Validation checklist
 
-Spec for a future validator:
+Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal/loomengine.checkCoherence`):
 
-- Required fields: the five mandatory string fields (`slug`, `parent`, `phase`, `stage`, `narration`) are structurally presence-enforced — an empty string is treated as "absent".
-  The remaining nullable/bool/slice fields (`start_sha`, `next_action`, `pause_requested`, `history`) satisfy "present" via their own zero/null semantics: an absent `start_sha`/`next_action` decodes to `null`, an absent `pause_requested` decodes to `false`,
-  and an absent `history` decodes to an empty list — all legitimate values, not violations (matching `loomengine.checkCoherence`).
-- `phase` is one of `preflight | discussion | plan | webster | raddle | finalize | done`.
-- `stage` is one of `produce | gate`.
-- Every `history[].outcome` is one of `approved | stuck`; `bounced_to` is present only when `outcome: stuck`.
-- Every timestamp field is RFC3339 UTC.
-- Strict fail-loud parse: unknown or malformed fields are rejected, never ignored.
+- `product.slug` and `product.parent` are mandatory: an empty string counts as absent.
+- `shed.current_producer` must equal `"Preflight"` — the only way check 4 is ever reached.
+- `shed.state` must be one of `Shed`'s five legal values and must not be `"done"`, a finished run.
+- `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
+- `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
+- Every `shed.history[].outcome` must be `"done"` or `"stuck"`, and every `shed.history[].at` must be RFC3339 UTC.
+- **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` is a half-finished failure; entries naming `"Preflight"` itself are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at row 1 leaves one `Preflight` entry behind and a resumable blocked run must not fail this check forever.
+- A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point Preflight is meant to gate.
+- A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.
 
 ## Worked example
 
-A realistic **seed** — written by the spawn-time lyx command, before `lyx loom run` has executed:
+A realistic **seed** — written by `lyx loom run`'s own first invocation, before it spawns the detached driver:
 
 ```jsonc
 {
-  "slug": "loom-contracts",
-  "parent": "main",
-  "phase": "discussion",
-  "stage": "produce",
-  "narration": "now: awaiting discussion input / last: — / wait: operator to run `lyx run`",
+  "current_producer": "Preflight",
+  "state": "running",
+  "error": "",
+  "pause_requested": false,
+  "activity": {"now": "Preflight", "last": "", "wait": ""},
   "history": [],
-  "start_sha": null,
-  "pause_requested": false,
-  "next_action": null
+  "product": {
+    "slug": "loom-contracts",
+    "parent": "main",
+    "start_sha": null
+  }
 }
 ```
 
-A realistic **mid-run** instance of the same file, later in the same task's life — Discussion and Plan approved, Webster now mid-review-gate:
+A realistic **mid-run** instance of the same file, later in the same task's life — Preflight and Discussion-Write done, Webster-Review now blocked pending a human:
 
 ```jsonc
 {
-  "slug": "loom-contracts",
-  "parent": "main",
-  "phase": "webster",
-  "stage": "gate",
-  "narration": "now: spawned webster-review round 2, waiting on Stop hook / last: round 1 BLOCKING, 3 findings / wait: —",
-  "history": [
-    { "phase": "discussion", "outcome": "approved", "ts": "2026-07-17T10:01:30Z" },
-    { "phase": "plan", "outcome": "approved", "ts": "2026-07-17T10:22:14Z" }
-  ],
-  "start_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+  "current_producer": "Webster-Review",
+  "state": "blocked",
+  "error": "stuck with no OnStuck target",
   "pause_requested": false,
-  "next_action": null
+  "activity": {"now": "Webster-Review", "last": "Webster-Review → stuck", "wait": "stuck with no OnStuck target"},
+  "history": [
+    {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"},
+    {"producer": "Discussion-Write", "outcome": "done", "output": "_lyx/discussion/decision-record.md", "at": "2026-07-17T10:22:14Z"},
+    {"producer": "Webster-Review", "outcome": "stuck", "output": "", "at": "2026-07-17T11:14:02Z"}
+  ],
+  "product": {
+    "slug": "loom-contracts",
+    "parent": "main",
+    "start_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"
+  }
 }
 ```
-
-## Stale-content note (2026-08-16)
-
-This file's schema (`phase`/`stage`/`next_action`) predates the `Shed` extraction and no longer matches what ships.
-`manifest/designs/shed.md`'s own embedded `Status`/`HistoryEntry` Go types are the current, authoritative shape actually written by `internal/shedengine`: `current_producer`, `state` (`running|paused|done|blocked|failed`), `error`, `pause_requested`, `activity{now,last,wait}`, `history[]` (`{producer,outcome,output,at}`), and an opaque `product` passthrough — not the `phase`/`stage`/`next_action`/`history[].outcome` shape documented above.
-This doc was moved and relinked as part of the `contracts/` reorg without a content rewrite; rewriting its schema section against `shed.md`'s current struct is separate follow-up work, not done here.

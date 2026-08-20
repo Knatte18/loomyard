@@ -1,8 +1,9 @@
 // config_test.go verifies batcher.yaml's template parses and Active resolves the configured
-// batchifier through both of its distinct error paths, seeded via plain os.MkdirAll/os.WriteFile
-// against a t.TempDir() rather than gitkit's weft/config fixture-copy helpers: configengine.Load
-// only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays
-// untagged and spawn-free.
+// batchifier, including its two degrading-absence cases (absent _lyx/, absent batcher.yaml) and its
+// unknown-name error path, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather
+// than gitkit's weft/config fixture-copy helpers: configengine.LoadOrTemplate only requires a
+// filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged and
+// spawn-free.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
 package batcher_test
@@ -22,7 +23,7 @@ import (
 // creating the config directory (and its _lyx parent) as needed. It is a
 // plain-filesystem stand-in for gitkit's own git-spawning config-seeding
 // helper, deliberately avoiding that helper's git spawn since
-// configengine.Load never needs a repository.
+// configengine.LoadOrTemplate never needs a repository.
 func seedConfig(t *testing.T, baseDir, module, content string) {
 	t.Helper()
 
@@ -93,43 +94,37 @@ func TestActive_UnknownNameErrors(t *testing.T) {
 	}
 }
 
-// TestActive_AbsentConfigIsHardError asserts that when _lyx/ exists but batcher.yaml does not,
-// Active surfaces configengine.Load's config-reconcile hint rather than silently defaulting.
-func TestActive_AbsentConfigIsHardError(t *testing.T) {
+// TestActive_AbsentConfigResolvesTemplate asserts that when _lyx/ exists but batcher.yaml does not,
+// Active degrades to the embedded template and resolves the identity batchifier ConfigTemplate()
+// selects, rather than erroring.
+func TestActive_AbsentConfigResolvesTemplate(t *testing.T) {
 	baseDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(baseDir, "_lyx"), 0o755); err != nil {
 		t.Fatalf("mkdir _lyx: %v", err)
 	}
 	// Do NOT write _lyx/config/batcher.yaml.
 
-	_, err := batcher.Active(baseDir)
-	if err == nil {
-		t.Fatal("Active(no batcher.yaml) = nil error; want error naming the missing file")
+	got, err := batcher.Active(baseDir)
+	if err != nil {
+		t.Fatalf("Active(no batcher.yaml) = _, %v; want nil error", err)
 	}
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "batcher.yaml") {
-		t.Errorf("Active(no batcher.yaml) error = %q; want it to contain %q", errMsg, "batcher.yaml")
-	}
-	if !strings.Contains(errMsg, "lyx config reconcile") {
-		t.Errorf("Active(no batcher.yaml) error = %q; want it to contain %q", errMsg, "lyx config reconcile")
-	}
-	if strings.Contains(errMsg, "fabric reconcile") {
-		t.Errorf("Active(no batcher.yaml) error = %q; want it NOT to contain %q", errMsg, "fabric reconcile")
+	if got.Name() != batcher.DefaultName {
+		t.Errorf("Active(no batcher.yaml).Name() = %q; want %q", got.Name(), batcher.DefaultName)
 	}
 }
 
-// TestActive_UninitializedTreeNamesFabricReconcile asserts that on a bare tree with no _lyx/
-// directory at all, Active names "lyx fabric reconcile" rather than the config-reconcile hint.
-func TestActive_UninitializedTreeNamesFabricReconcile(t *testing.T) {
+// TestActive_AbsentLyxDirResolvesTemplate asserts that on a bare tree with no _lyx/ directory at
+// all, Active degrades to the embedded template and resolves the identity batchifier
+// ConfigTemplate() selects, rather than the old strict "not initialized here" error.
+func TestActive_AbsentLyxDirResolvesTemplate(t *testing.T) {
 	baseDir := t.TempDir()
 	// Do NOT create _lyx/ at all.
 
-	_, err := batcher.Active(baseDir)
-	if err == nil {
-		t.Fatal("Active(uninitialized tree) = nil error; want error naming fabric reconcile")
+	got, err := batcher.Active(baseDir)
+	if err != nil {
+		t.Fatalf("Active(no _lyx/) = _, %v; want nil error", err)
 	}
-	want := `not initialized here; run "lyx fabric reconcile"`
-	if err.Error() != want {
-		t.Errorf("Active(uninitialized tree) error = %q; want %q", err.Error(), want)
+	if got.Name() != batcher.DefaultName {
+		t.Errorf("Active(no _lyx/).Name() = %q; want %q", got.Name(), batcher.DefaultName)
 	}
 }

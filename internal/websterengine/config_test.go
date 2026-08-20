@@ -1,9 +1,10 @@
 // config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig,
-// overrides round-trip, and a malformed role model-spec fails loud naming the offending key,
+// overrides round-trip, a malformed role model-spec fails loud naming the offending key, and an
+// absent _lyx/ degrades to the embedded template,
 // seeded via plain os.MkdirAll/os.WriteFile against a
-// t.TempDir() rather than gitkit's weft/config fixture-copy helpers: configengine.Load only
-// requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays untagged
-// and spawn-free (Test Tier Purity Invariant).
+// t.TempDir() rather than gitkit's weft/config fixture-copy helpers: configengine.LoadOrTemplate
+// only requires a filesystem _lyx/config/<module>.yaml, no git repository, so this test stays
+// untagged and spawn-free (Test Tier Purity Invariant).
 
 package websterengine_test
 
@@ -147,20 +148,23 @@ poll_wait_s: 480
 	}
 }
 
-func TestLoadConfig_NotInitialized(t *testing.T) {
+func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
+	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded
+	// template.
 
 	cfg, err := websterengine.LoadConfig(tmpDir, "webster")
-	if err == nil {
-		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	if cfg.Master != "sonnet" {
+		t.Errorf("Master = %q, want %q", cfg.Master, "sonnet")
 	}
-	if !strings.Contains(errMsg, "lyx fabric reconcile") {
-		t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+	if cfg.SelfFixCap != 2 {
+		t.Errorf("SelfFixCap = %d, want %d", cfg.SelfFixCap, 2)
+	}
+	if cfg.MasterTimeoutMin != 480 {
+		t.Errorf("MasterTimeoutMin = %d, want %d", cfg.MasterTimeoutMin, 480)
 	}
 }

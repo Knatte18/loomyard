@@ -160,7 +160,7 @@ run-timeout; zero defers to the config default.`,
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(result)))
+			clihelp.SetExit(cmd.Context(), output.Ok(out, resultEnvelope(result, c.mode, c.stateDir, c.stencilsDir)))
 			return nil
 		},
 	}
@@ -179,7 +179,18 @@ run-timeout; zero defers to the config default.`,
 // is directly unit-testable without needing a live c.engine.Run call. result.ForkAudit
 // is nil for a non-cluster round (or one that never reached done) — forkCount guards
 // that nil rather than dereferencing Forks on it.
-func resultEnvelope(result burlerengine.Result) map[string]any {
+//
+// mode, stateDir, and stencilsDir are CLI-level facts about how the stack was wired, taken as
+// parameters rather than read off a receiver so this function stays directly unit-testable without a
+// live c.engine.Run call. They are emitted in BOTH modes deliberately: a mode field that existed only
+// in standalone could not be used to tell the two modes apart, which is its whole purpose, and
+// stencilsDir is equally worth reporting in a hub run pointed at an experimental stencil set via the
+// flag. stateDir is the empty string in hub mode, where no derived state directory exists.
+//
+// This is the third named exception to hub byte-identity: it is an output-shape-only change, no path
+// resolves differently and nothing new is written in hub mode, and the keys are additive so no
+// existing consumer breaks.
+func resultEnvelope(result burlerengine.Result, mode, stateDir, stencilsDir string) map[string]any {
 	forkCount := 0
 	if result.ForkAudit != nil {
 		forkCount = len(result.ForkAudit.Forks)
@@ -195,5 +206,8 @@ func resultEnvelope(result burlerengine.Result) map[string]any {
 		"lastAssistantMessage": result.LastAssistantMessage,
 		"clusterWarnings":      result.ClusterWarnings,
 		"forkCount":            forkCount,
+		"mode":                 mode,
+		"stateDir":             stateDir,
+		"stencilsDir":          stencilsDir,
 	}
 }

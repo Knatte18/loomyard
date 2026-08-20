@@ -76,13 +76,20 @@ var gitrepoPinnedRunBoundMethods = map[string]bool{
 	"pushWithRebaseRetry": true,
 	"PushRebaseFree":      true,
 	"HasUnpushed":         true,
+	"MergeStart":          true,
+	"MergeConclude":       true,
+	"ConflictedFiles":     true,
+	"MergeHeadPresent":    true,
+	"MergeFFOnly":         true,
+	"StageResolved":       true,
 }
 
 // gitrepoBoundaryMinScannedFiles is the vacuous-scan floor for this guard's
-// single-directory walk of internal/gitrepo. The package has 8 non-test .go
-// files today (ancestry.go, doc.go, gitrepo.go, gogit.go, pull.go, push.go,
-// reset.go, worktree.go); fewer than 5 found means the directory resolution
-// is misconfigured rather than the package having genuinely shrunk.
+// single-directory walk of internal/gitrepo. The package has 10 non-test .go
+// files today (ancestry.go, blobread.go, doc.go, gitrepo.go, gogit.go,
+// merge.go, pull.go, push.go, reset.go, worktree.go); fewer than 5 found
+// means the directory resolution is misconfigured rather than the package
+// having genuinely shrunk.
 const gitrepoBoundaryMinScannedFiles = 5
 
 // TestGitrepoBoundary_PinnedRunCallSites walks internal/gitrepo's non-test .go files and asserts

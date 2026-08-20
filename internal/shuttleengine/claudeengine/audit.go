@@ -11,8 +11,11 @@
 package claudeengine
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,41 +140,57 @@ type transcriptLine struct {
 	} `json:"message"`
 }
 
-// readTranscriptLines reads path and leniently decodes it into transcriptLines,
-// skipping blank lines and JSON errors. File open errors are not tolerated (caller's job to classify).
-func readTranscriptLines(path string) ([]transcriptLine, error) {
-	data, err := os.ReadFile(path)
+// forEachTranscriptLine leniently decodes path one JSONL line at a time and calls visit with each
+// decoded line, skipping blank lines and JSON errors.
+// File open and read errors are not tolerated (the caller's job to classify).
+//
+// It STREAMS rather than reading the file whole because a session transcript is unbounded in
+// practice: os.ReadFile plus strings.Split(string(data), "\n") held the raw bytes, a full string
+// copy of them, a per-line slice header, and every decoded line all at once, so a REAL 83 MiB
+// transcript (the largest observed on a development machine) peaked at 178 MiB resident and a
+// 303 MiB one at 931 MiB. Both callers only ever walk the result forward, exactly once, so nothing
+// was buying that. This runs inside finalize, i.e. inside whatever long-lived process owns the
+// run — webster's Master audits once per batch for the whole life of a plan — where a several-
+// hundred-MiB spike is a real availability risk.
+//
+// bufio.Reader.ReadString is deliberate, and bufio.Scanner is deliberately NOT used: Scanner's
+// 64 KiB default token cap would turn a single long transcript line (a large tool result, which is
+// ordinary here) from "handled" into an error, which would be a regression rather than a fix.
+func forEachTranscriptLine(path string, visit func(transcriptLine)) error {
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
+	defer file.Close()
 
-	var lines []transcriptLine
-	for _, raw := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			continue
+	reader := bufio.NewReader(file)
+	for {
+		raw, readErr := reader.ReadString('\n')
+		// A final line with no trailing newline comes back alongside io.EOF and is a real line, so
+		// it must be decoded before the loop exits — an abnormally ended session is exactly the
+		// case that produces one.
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			var line transcriptLine
+			if json.Unmarshal([]byte(trimmed), &line) == nil {
+				visit(line)
+			}
 		}
-		var line transcriptLine
-		if err := json.Unmarshal([]byte(trimmed), &line); err != nil {
-			continue
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return nil
+			}
+			return readErr
 		}
-		lines = append(lines, line)
 	}
-	return lines, nil
 }
 
 // auditParentTranscript reads the parent session's transcript and extracts
 // spawnCalls (Agent tool_use count), namedSpawns (non-empty name fields),
 // writeCalls (Write/Edit/NotebookEdit count), writes (file paths), and bashCommands.
 func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int, writes, bashCommands []string, err error) {
-	lines, err := readTranscriptLines(path)
-	if err != nil {
-		return 0, 0, 0, nil, nil, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
-	}
-
-	for _, line := range lines {
+	err = forEachTranscriptLine(path, func(line transcriptLine) {
 		if line.Type != "assistant" {
-			continue
+			return
 		}
 		for _, block := range line.Message.Content {
 			if block.Type != "tool_use" {
@@ -200,6 +219,9 @@ func auditParentTranscript(path string) (spawnCalls, namedSpawns, writeCalls int
 				}
 			}
 		}
+	})
+	if err != nil {
+		return 0, 0, 0, nil, nil, fmt.Errorf("claudeengine: read parent transcript %q: %w", path, err)
 	}
 	return spawnCalls, namedSpawns, writeCalls, writes, bashCommands, nil
 }
@@ -225,11 +247,6 @@ func forkSpawnToolUseID(transcriptPath string) string {
 // extracting ToolCalls, AgentCalls, WriteCalls, BashCommands, and ReportReturned
 // (whether the final assistant message carried a text block).
 func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
-	lines, err := readTranscriptLines(path)
-	if err != nil {
-		return shuttleengine.ForkReport{}, fmt.Errorf("claudeengine: read fork transcript %q: %w", path, err)
-	}
-
 	// The parent's own spawning Agent call is replayed as the fork
 	// transcript's inherited-context boundary entry; counting it would flag
 	// every legitimate fork as a nested-Agent violation, so it is excluded by
@@ -241,9 +258,9 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 		ToolCalls:      map[string]int{},
 	}
 	reportReturned := false
-	for _, line := range lines {
+	err := forEachTranscriptLine(path, func(line transcriptLine) {
 		if line.Type != "assistant" {
-			continue
+			return
 		}
 		// Overwritten (not OR-ed) on every assistant-type line, so this ends
 		// up holding the LAST such message's hasText value — the "final
@@ -285,6 +302,9 @@ func auditForkTranscript(path string) (shuttleengine.ForkReport, error) {
 			}
 		}
 		reportReturned = hasText
+	})
+	if err != nil {
+		return shuttleengine.ForkReport{}, fmt.Errorf("claudeengine: read fork transcript %q: %w", path, err)
 	}
 	report.ReportReturned = reportReturned
 

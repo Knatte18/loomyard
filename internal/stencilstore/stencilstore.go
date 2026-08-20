@@ -143,6 +143,17 @@ const (
 	ModeDev
 )
 
+// ModeFor is the single mapping site from "is this a dev build" to a Mode: callers pass
+// buildinfo.IsDev() into it, getting ModeDev when dev is true and ModeProduction otherwise.
+// ModeProduction being iota's zero value is what makes an unstamped binary safely classify as
+// production even before this function ever runs.
+func ModeFor(dev bool) Mode {
+	if dev {
+		return ModeDev
+	}
+	return ModeProduction
+}
+
 // Registry supplies the name-to-shipped-default lookup Reconcile and Validate classify and seed
 // against.
 // It is passed in as an argument rather than imported, so this package never depends on its

@@ -19,6 +19,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// runDeps builds the websterengine.RunDeps for this CLI's current wiring.
+// c.openFabric is nil in standalone mode; OpenBisector must stay nil in that case rather than being
+// wrapped in a non-nil closure over a nil c.openFabric, so that runIntegrationStage's own nil check
+// ("no fabric in this mode") fires instead of the closure panicking when invoked.
+func (c *websterCLI) runDeps() websterengine.RunDeps {
+	var openBisector func() (websterengine.FabricBisector, error)
+	if c.openFabric != nil {
+		openBisector = func() (websterengine.FabricBisector, error) {
+			return c.openFabric()
+		}
+	}
+
+	return websterengine.RunDeps{
+		Starter:      c.masterStarter,
+		Reed:         c.reed,
+		Engine:       c.engine,
+		ShuttleCfg:   c.shuttleCfg,
+		Roles:        c.roles,
+		Config:       c.cfg,
+		Batcher:      c.batcher,
+		Geom:         c.geom,
+		RefMatcher:   c.refMatcher,
+		OpenBisector: openBisector,
+	}
+}
+
 // runCmd builds the `run` subcommand.
 func (c *websterCLI) runCmd() *cobra.Command {
 	var fresh bool
@@ -54,24 +80,7 @@ Example:
 				return nil
 			}
 
-			deps := websterengine.RunDeps{
-				Starter:      c.masterStarter,
-				Reed:         c.reed,
-				Engine:       c.engine,
-				ShuttleCfg:   c.shuttleCfg,
-				Layout:       c.layout,
-				Roles:        c.roles,
-				Config:       c.cfg,
-				Batcher:      c.batcher,
-				PlanDir:      c.planDir,
-				WebsterDir:   c.websterDir,
-				ReportsDir:   c.reportsDir,
-				PromptsDir:   c.promptsDir,
-				ScratchDir:   c.websterScratchDir,
-				WorktreeRoot: c.layout.AnchorPath(),
-			}
-
-			result, runErr := websterengine.Run(deps, websterengine.RunOptions{Fresh: fresh})
+			result, runErr := websterengine.Run(c.runDeps(), websterengine.RunOptions{Fresh: fresh})
 
 			if errors.Is(runErr, websterengine.ErrRunBusy) {
 				clihelp.SetExit(cmd.Context(), output.Err(out, runErr.Error()))
@@ -82,7 +91,7 @@ Example:
 			if runErr == nil {
 				outcomeLabel = result.Outcome
 			}
-			committed, syncErr := fabricSync(c.layout, fmt.Sprintf("run %s", outcomeLabel))
+			committed, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("run %s", outcomeLabel))
 
 			if runErr != nil {
 				msg := runErr.Error()
@@ -104,6 +113,7 @@ Example:
 				"batches_done":    result.BatchesDone,
 				"summary_title":   result.SummaryTitle,
 				"fabricCommitted": committed,
+				"warnings":        result.Warnings,
 			}))
 			return nil
 		},

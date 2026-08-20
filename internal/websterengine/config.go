@@ -1,15 +1,15 @@
 // config.go — configuration for the webster module.
 //
 // Defines the Config type mirroring webster.yaml's keys and LoadConfig, which uses
-// internal/configengine.Load with ConfigTemplate() to strictly validate and resolve webster's
-// config file, then validates each role model-spec's grammar via modelspec.Parse so a typo'd spec
-// fails loud at load time rather than hours into a run when that role first spawns.
+// internal/configengine.LoadOrTemplate with ConfigTemplate() to resolve webster's config file,
+// degrading to the embedded template on proven absence, then validates each role model-spec's
+// grammar via modelspec.Parse so a typo'd spec fails loud at load time rather than hours into a run
+// when that role first spawns.
 
 package websterengine
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -47,17 +47,11 @@ type Config struct {
 
 // LoadConfig loads configuration from the webster module's config file, validates role model-spec
 // grammar, and returns a Config struct.
-// If <baseDir>/_lyx/ does not exist, returns an error containing "not initialized here;
-// run \"lyx fabric reconcile\"".
+// An absent <baseDir>/_lyx/ directory or an absent config file resolves the embedded template;
+// a config file that exists but is invalid still errors.
 func LoadConfig(baseDir, module string) (Config, error) {
-	resolved, err := configengine.Load(baseDir, module, []byte(ConfigTemplate()))
+	resolved, err := configengine.LoadOrTemplate(baseDir, module, []byte(ConfigTemplate()))
 	if err != nil {
-		// Wrap the generic "not initialized" error with the webster-specific
-		// hint, matching perchengine/reedengine/shuttleengine's
-		// shape so every module surfaces the same recovery instruction.
-		if strings.Contains(err.Error(), "not initialized") {
-			return Config{}, fmt.Errorf("not initialized here; run \"lyx fabric reconcile\"")
-		}
 		return Config{}, err
 	}
 

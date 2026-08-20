@@ -210,3 +210,75 @@ func TestErrWithRecord_KeysAreAlwaysTheReservedValues(t *testing.T) {
 		t.Errorf("partial = %v; want false for an empty record", partial)
 	}
 }
+
+// TestErrConflictsWithRecord_ConflictEnvelopeShape covers the dedicated conflict-envelope helper's
+// contract: "mutations" from the record and never null, "partial" the literal false even against a
+// non-empty record (the property the Shared Decision exists to pin — a nil engine error with a
+// non-empty record would compute true through errWithRecordFields, which this helper never routes
+// through), "conflicts" never null, reserved keys winning over any collision, and return value 1.
+func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
+	tests := []struct {
+		name      string
+		rec       fabricengine.Mutations
+		conflicts []string
+	}{
+		{name: "EmptyRecord", rec: fabricengine.Mutations{}, conflicts: []string{"conflict.txt"}},
+		{name: "NonEmptyRecord_PartialStaysFalse", rec: populatedMutations("/hub"), conflicts: []string{"_lyx/conflict.txt", "conflict.txt"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			exitCode := errConflictsWithRecord(&out, tt.rec, tt.conflicts)
+			if exitCode != 1 {
+				t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
+			}
+
+			result := decodeEnvelope(t, &out)
+			if ok, _ := result["ok"].(bool); ok {
+				t.Errorf("ok = true; want false")
+			}
+			mutations, present := result["mutations"]
+			if !present {
+				t.Fatalf("result missing 'mutations' key: %v", result)
+			}
+			if mutations == nil {
+				t.Errorf("mutations = nil; want a non-null array")
+			}
+			partial, present := result["partial"]
+			if !present {
+				t.Fatalf("result missing 'partial' key: %v", result)
+			}
+			if partial != false {
+				t.Errorf("partial = %v; want the literal false, even against a non-empty record", partial)
+			}
+			conflicts, present := result["conflicts"]
+			if !present {
+				t.Fatalf("result missing 'conflicts' key: %v", result)
+			}
+			if conflicts == nil {
+				t.Errorf("conflicts = nil; want a non-null array")
+			}
+			gotConflicts, _ := conflicts.([]any)
+			if len(gotConflicts) != len(tt.conflicts) {
+				t.Errorf("conflicts = %v; want %d entries", conflicts, len(tt.conflicts))
+			}
+		})
+	}
+}
+
+// TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues asserts errConflictsWithRecord
+// takes no caller fields map at all, so its four keys — "ok", "error", "mutations", "partial" — plus
+// "conflicts" are always exactly its own derivation.
+func TestErrConflictsWithRecord_ReservedKeysAreAlwaysTheHelperOwnValues(t *testing.T) {
+	var out bytes.Buffer
+	exitCode := errConflictsWithRecord(&out, populatedMutations("/hub"), []string{"conflict.txt"})
+	if exitCode != 1 {
+		t.Errorf("errConflictsWithRecord() = %d; want 1", exitCode)
+	}
+
+	result := decodeEnvelope(t, &out)
+	wantErr := `merge produced conflicts; resolve them, then run "lyx fabric merge --continue"`
+	if errMsg, _ := result["error"].(string); errMsg != wantErr {
+		t.Errorf("error = %q; want %q", errMsg, wantErr)
+	}
+}

@@ -21,7 +21,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/scoutengine"
 )
 
@@ -549,61 +548,59 @@ func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) 
 	}
 }
 
-// TestResolveLocation_OutsideHubFallsBackToAbsoluteTargetDir verifies the fallback outside a
-// lyx hub proves byte-identical behaviour to the pre-refactor resolveWorktreeRoot: the same
-// filepath.Abs(targetDir) expected value, plus AnchorRel == "." since a synthesized non-"."
-// anchor would silently move the daemon state.
-func TestResolveLocation_OutsideHubFallsBackToAbsoluteTargetDir(t *testing.T) {
-	cwd := t.TempDir()
-	targetDir := t.TempDir()
+// TestLookupContext_OutsideHubReturnsAbsoluteAnchorRootAndBuiltinRegistry verifies lookupContext's
+// out-of-hub path: an absolute-path anchor-root string, and the built-in registry (spot-checked on
+// one entry rather than reflect.DeepEqual over the whole map, so the test does not couple to every
+// future built-in entry). This is the test that observes the actual defect assert-no-callers had
+// before this refactor: the equivalent derivation on this exact path used to yield an empty string,
+// and because all four commands now share lookupContext, one test covers all four.
+//
+// It covers both an explicit dir (the anchor root is filepath.Abs(dir)) and a dir defaulted from
+// cwd (the anchor root is filepath.Abs(cwd), not filepath.Abs(""))
+func TestLookupContext_OutsideHubReturnsAbsoluteAnchorRootAndBuiltinRegistry(t *testing.T) {
+	t.Run("explicit dir", func(t *testing.T) {
+		cwd := t.TempDir()
+		dir := t.TempDir()
 
-	got := resolveLocation(cwd, targetDir)
+		registry, anchorRoot, err := lookupContext(cwd, dir)
+		if err != nil {
+			t.Fatalf("lookupContext(%q, %q) error = %v; want nil", cwd, dir, err)
+		}
 
-	if got == nil {
-		t.Fatalf("resolveLocation(%q, %q) = nil; want a non-nil *lyxcwd.Location", cwd, targetDir)
-	}
-	wantAbs, err := filepath.Abs(targetDir)
-	if err != nil {
-		t.Fatalf("filepath.Abs(%q) error = %v", targetDir, err)
-	}
-	if got.WorktreePath() != wantAbs {
-		t.Errorf("resolveLocation(%q, %q).WorktreePath() = %q; want %q", cwd, targetDir, got.WorktreePath(), wantAbs)
-	}
-	if got.AnchorRel != "." {
-		t.Errorf("resolveLocation(%q, %q).AnchorRel = %q; want \".\"", cwd, targetDir, got.AnchorRel)
-	}
-}
+		wantAbs, err := filepath.Abs(dir)
+		if err != nil {
+			t.Fatalf("filepath.Abs(%q) error = %v", dir, err)
+		}
+		if anchorRoot != wantAbs {
+			t.Errorf("lookupContext(%q, %q) anchorRoot = %q; want %q", cwd, dir, anchorRoot, wantAbs)
+		}
 
-// TestLookupContext_OutsideHubReturnsSynthesizedLocationAndBuiltinRegistry verifies lookupContext's
-// out-of-hub path: a non-nil *lyxcwd.Location rooted at filepath.Abs(dir), and the built-in
-// registry (spot-checked on one entry rather than reflect.DeepEqual over the whole map, so the
-// test does not couple to every future built-in entry). This is the test that observes the actual
-// defect assert-no-callers had before this refactor: the equivalent derivation on this exact path
-// used to yield an empty string, and because all four commands now share lookupContext, one test
-// covers all four.
-func TestLookupContext_OutsideHubReturnsSynthesizedLocationAndBuiltinRegistry(t *testing.T) {
-	cwd := t.TempDir()
-	dir := t.TempDir()
+		if got, want := registry["go"], scoutengine.BuiltinRegistry()["go"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("lookupContext(%q, %q) registry[\"go\"] = %+v; want %+v", cwd, dir, got, want)
+		}
+	})
 
-	registry, layout, err := lookupContext(cwd, dir)
-	if err != nil {
-		t.Fatalf("lookupContext(%q, %q) error = %v; want nil", cwd, dir, err)
-	}
+	t.Run("dir defaulted from cwd", func(t *testing.T) {
+		cwd := t.TempDir()
+		dir := cwd
 
-	if layout == nil {
-		t.Fatalf("lookupContext(%q, %q) layout = nil; want a non-nil *lyxcwd.Location", cwd, dir)
-	}
-	wantAbs, err := filepath.Abs(dir)
-	if err != nil {
-		t.Fatalf("filepath.Abs(%q) error = %v", dir, err)
-	}
-	if layout.WorktreePath() != wantAbs {
-		t.Errorf("lookupContext(%q, %q) layout.WorktreePath() = %q; want %q", cwd, dir, layout.WorktreePath(), wantAbs)
-	}
+		registry, anchorRoot, err := lookupContext(cwd, dir)
+		if err != nil {
+			t.Fatalf("lookupContext(%q, %q) error = %v; want nil", cwd, dir, err)
+		}
 
-	if got, want := registry["go"], scoutengine.BuiltinRegistry()["go"]; !reflect.DeepEqual(got, want) {
-		t.Errorf("lookupContext(%q, %q) registry[\"go\"] = %+v; want %+v", cwd, dir, got, want)
-	}
+		wantAbs, err := filepath.Abs(cwd)
+		if err != nil {
+			t.Fatalf("filepath.Abs(%q) error = %v", cwd, err)
+		}
+		if anchorRoot != wantAbs {
+			t.Errorf("lookupContext(%q, %q) anchorRoot = %q; want %q (filepath.Abs(cwd), not filepath.Abs(\"\"))", cwd, dir, anchorRoot, wantAbs)
+		}
+
+		if got, want := registry["go"], scoutengine.BuiltinRegistry()["go"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("lookupContext(%q, %q) registry[\"go\"] = %+v; want %+v", cwd, dir, got, want)
+		}
+	})
 }
 
 // TestBuildOptions_ThreadsEveryFieldFromItsArguments verifies buildOptions threads all fields
@@ -613,15 +610,15 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 
 	registry := scoutengine.BuiltinRegistry()
 	query := scoutengine.Query{Symbol: "Foo"}
-	layout := &lyxcwd.Location{HubPath: "/worktree", WorktreeName: "root", AnchorRel: "."}
+	anchorRoot := "/worktree/root"
 
-	got := buildOptions(registry, "/target", layout, "go", query, 5*time.Second)
+	got := buildOptions(registry, "/target", anchorRoot, "go", query, 5*time.Second)
 
 	if got.TargetDir != "/target" {
 		t.Errorf("buildOptions(...).TargetDir = %q; want %q", got.TargetDir, "/target")
 	}
-	if got.Layout.WorktreePath() != layout.WorktreePath() {
-		t.Errorf("buildOptions(...).Layout.WorktreePath() = %q; want %q", got.Layout.WorktreePath(), layout.WorktreePath())
+	if got.AnchorRoot != anchorRoot {
+		t.Errorf("buildOptions(...).AnchorRoot = %q; want %q", got.AnchorRoot, anchorRoot)
 	}
 	if got.Lang != "go" {
 		t.Errorf("buildOptions(...).Lang = %q; want %q", got.Lang, "go")

@@ -13,6 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
+// LandingTemplateConflict is the landing conflict-resolution producer's shipped-default prompt.
+//
+//go:embed landing/landing-template-conflict.md
+var LandingTemplateConflict []byte
+
 // LoomTemplateDiscussion is the loom Discussion producer's shipped-default interview prompt.
 //
 //go:embed loom/loom-template-discussion.md
@@ -116,6 +121,7 @@ type registryEntry struct {
 // entries is the ordered name-to-default registry: the order stencils are listed here is the order
 // `lyx stencil list` prints them in.
 var entries = []registryEntry{
+	{"landing-template-conflict", &LandingTemplateConflict},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"burler-template-round-orchestrator", &BurlerTemplateRoundOrchestrator},

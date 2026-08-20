@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestFinalizeConnection_SuccessReturnsNil verifies finalizeConnection succeeds with a responsive
@@ -351,8 +350,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	})
 
 	worktreeRoot := t.TempDir()
-	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
-	lockPath := DaemonLock(l, "go")
+	lockPath := DaemonLock(worktreeRoot, "go")
 	// The lock's parent directory does not otherwise exist under a fresh
 	// t.TempDir() worktree root — no daemon state write happens first to
 	// create it as a side effect here, unlike supervised_test.go's own
@@ -379,7 +377,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	// never win the pre-held lock, so it returns ErrServerSpawnTimeout well
 	// within this deadline, and the fallback's ensureNative fails at
 	// exec.LookPath before spawning anything either.
-	client, kind, err := ensureServer(ctx, "go", entry, t.TempDir(), l, 300*time.Millisecond)
+	client, kind, err := ensureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, 300*time.Millisecond)
 	if client != nil {
 		t.Errorf("ensureServer() client = %v; want nil", client)
 	}

@@ -1,5 +1,5 @@
 // config_test.go verifies reed.yaml's template parses, defaults resolve through LoadConfig, and
-// environment overrides + the not-initialized error path behave the way fabricengine's config tests
+// environment overrides + the template-fallback path behave the way shuttleengine's config tests
 // establish the pattern.
 
 package reedengine_test
@@ -91,38 +91,50 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Seed under a non-"reed" module name; LoadConfig must resolve the file
-	// at that module's path, not a hardcoded "reed.yaml".
-	seedLyxConfig(t, tmpDir, "otherreed", reedengine.ConfigTemplate())
+	// Seed under a non-"reed" module name with a config whose width differs
+	// from the template default, so a hardcoded module name would be caught
+	// either way: this module reads back its seeded value, and the
+	// never-seeded "reed" module reads back the template default instead.
+	seeded := strings.Replace(reedengine.ConfigTemplate(), "width: 220", "width: 300", 1)
+	seedLyxConfig(t, tmpDir, "otherreed", seeded)
 
 	cfg, err := reedengine.LoadConfig(tmpDir, "otherreed")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Width != 220 {
-		t.Errorf("Width = %d, want 220", cfg.Width)
+	if cfg.Width != 300 {
+		t.Errorf("Width = %d, want 300 (seeded value)", cfg.Width)
 	}
 
-	// Loading under the default "reed" module name (never seeded) must fail.
-	if _, err := reedengine.LoadConfig(tmpDir, "reed"); err == nil {
-		t.Error("LoadConfig(tmpDir, \"reed\") = nil error, want error (module name must not be hardcoded)")
+	// The never-seeded "reed" module must fall back to the template default,
+	// not the "otherreed" module's seeded value.
+	defaultCfg, err := reedengine.LoadConfig(tmpDir, "reed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defaultCfg.Width != 220 {
+		t.Errorf("Width = %d, want 220 (template default)", defaultCfg.Width)
 	}
 }
 
-func TestLoadConfig_NotInitialized(t *testing.T) {
+func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Do NOT create _lyx/
+	// Do NOT create _lyx/ -- LoadConfig must degrade to the embedded
+	// template. Only assert GOOS-invariant keys: Tmux/Shell differ between
+	// template_posix.yaml and template_windows.yaml.
 
 	cfg, err := reedengine.LoadConfig(tmpDir, "reed")
-	if err == nil {
-		t.Fatalf("expected error for not initialized, got nil; config: %+v", cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "not initialized") {
-		t.Errorf("expected error containing 'not initialized', got: %v", err)
+	if cfg.Width != 220 {
+		t.Errorf("Width = %d, want 220", cfg.Width)
 	}
-	if !strings.Contains(errMsg, "lyx fabric reconcile") {
-		t.Errorf("expected error containing 'lyx fabric reconcile', got: %v", err)
+	if cfg.CollapsedStripRows != 3 {
+		t.Errorf("CollapsedStripRows = %d, want 3", cfg.CollapsedStripRows)
+	}
+	if cfg.Header.HeightRows != 1 {
+		t.Errorf("Header.HeightRows = %d, want 1", cfg.Header.HeightRows)
 	}
 }

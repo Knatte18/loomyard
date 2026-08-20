@@ -69,6 +69,13 @@ when this was the server's last session, the now-empty server is shut down
 too (down waits until the server process has actually exited). down is
 idempotent: calling it again with no session up still succeeds.
 
+When this worktree's state was recorded against a DIFFERENT session that is
+still running on the hub's server — after the worktree directory was renamed,
+or a .lyx directory was copied here from another worktree — down does not kill
+that session (it may be a sibling worktree's live work) but reports it as
+"abandonedSession", because deleting the state file removes the only record
+naming it. Tear it down by hand if it is not one you need.
+
 Example:
   lyx reed down`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,9 +90,13 @@ Example:
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
-				"session": result.Session,
-			}))
+			payload := map[string]any{"session": result.Session}
+			// Emitted only when there IS an abandoned session, so the ordinary teardown envelope is
+			// unchanged and the key's mere presence is the signal.
+			if result.AbandonedSession != "" {
+				payload["abandonedSession"] = result.AbandonedSession
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, payload))
 			return nil
 		},
 	}

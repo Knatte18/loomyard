@@ -45,6 +45,8 @@ var manifestObservableKind = map[fabricengine.Kind]bool{
 	fabricengine.KindWorktreeSwitched: false,
 	fabricengine.KindPushSpawned:      false,
 	fabricengine.KindRepoAdvanced:     false,
+	fabricengine.KindMergeStaged:      false,
+	fabricengine.KindMergeCommitted:   false,
 }
 
 // invertedBy maps a constructive kind to the kinds of a later entry, at the same Target, that undo it
@@ -291,13 +293,16 @@ func assertOmission(tb testing.TB, entries []fabricengine.Mutation, unfiltered [
 }
 
 // worktreeRootedKind is the closed set of kinds whose Target names a worktree root, per the coverage
-// rule: worktree_created, worktree_removed, worktree_reset, worktree_switched, repo_advanced.
+// rule: worktree_created, worktree_removed, worktree_reset, worktree_switched, repo_advanced,
+// merge_staged, merge_committed.
 var worktreeRootedKind = map[fabricengine.Kind]bool{
 	fabricengine.KindWorktreeCreated:  true,
 	fabricengine.KindWorktreeRemoved:  true,
 	fabricengine.KindWorktreeReset:    true,
 	fabricengine.KindWorktreeSwitched: true,
 	fabricengine.KindRepoAdvanced:     true,
+	fabricengine.KindMergeStaged:      true,
+	fabricengine.KindMergeCommitted:   true,
 }
 
 // entryCovers reports whether e's coverage set includes diff change c: segment-wise subtree

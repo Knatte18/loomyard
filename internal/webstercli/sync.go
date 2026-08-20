@@ -6,24 +6,35 @@
 // webster's rendered fork prompts) are never staged in the first place: they live under .lyx and so
 // never reach the pathspec this helper stages against -- this helper passes only a positive pathspec,
 // with no ":(exclude)" magic of its own.
+// fabricSync takes its fabric handle through a lazy opener, never a *lyxcwd.Location, and its
+// pathspec scope through a told anchor-relative path: fabricengine.Fabric exposes no anchor-relative
+// path of its own, so the scope must be told separately from the handle. A nil opener means standalone
+// mode, which has no fabric repo by construction -- fabricSync reports (false, nil) without touching
+// git in that case.
 package webstercli
 
 import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
-// fabricSync stages and commits changes under layout's _lyx pathspec through the fabric repo.
-func fabricSync(layout *lyxcwd.Location, label string) (bool, error) {
+// fabricSync stages and commits changes under anchorRel's _lyx pathspec through the fabric repo
+// obtained by calling open, or reports (false, nil) without touching git when open is nil (standalone
+// mode).
+func fabricSync(open func() (*fabricengine.Fabric, error), anchorRel, label string) (bool, error) {
 	opts := fabricengine.EnvSyncOptions()
-	files := fabricengine.ScopedPathspec(layout.AnchorRel, []string{lyxdirs.LyxDirName})
+
+	if open == nil {
+		return false, nil
+	}
+
+	files := fabricengine.ScopedPathspec(anchorRel, []string{lyxdirs.LyxDirName})
 
 	var committed bool
 	if !opts.SkipGit {
-		f, err := fabricengine.Open(layout)
+		f, err := open()
 		if err != nil {
 			return false, err
 		}

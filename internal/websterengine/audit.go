@@ -21,9 +21,31 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
+
+// RefMatcher is the narrow seam CheckFork and CheckParent consult for the fabric-reference violation
+// class. *fabricengine.RefScanner satisfies it without any adapter, since that type already has the
+// identical method.
+type RefMatcher interface {
+	// Matches reports whether cmd references fabric's two-checkout mechanism.
+	Matches(cmd string) bool
+}
+
+// NeverMatches is the pinned RefMatcher supplier for a mode with no fabric repo at all — standalone
+// mode's answer where hub mode supplies a real *fabricengine.RefScanner.
+// It lives here, beside the interface it implements, rather than in a geometry package that has no
+// business knowing webster's audit vocabulary, and it is a named exported type rather than an inline
+// literal so every Deps-construction site shares one supplier instead of re-inventing it.
+// CheckFork and CheckParent call Matches unguarded, so a nil RefMatcher is a panic on the first
+// standalone record-batch — the field must therefore never be nil in either mode.
+type NeverMatches struct{}
+
+// Matches always returns false: NeverMatches never sees a fabric reference, because a mode that
+// supplies it has no fabric repo to reference.
+func (NeverMatches) Matches(string) bool {
+	return false
+}
 
 // AuditViolationClass discriminates the fail-loud violation classes CheckFork and CheckParent can
 // report.
@@ -83,7 +105,11 @@ func (v AuditViolation) Error() string {
 // and repo-native git are explicitly allowed.
 // It bans three hard violations: any attempted Agent call, any write to the two contract files
 // (outcomePath or summaryPath), and any Bash command referencing the fabric repo.
-func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef *fabricengine.RefScanner) []AuditViolation {
+// fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
+// *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
+// mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
+// exists as the pinned no-fabric supplier.
+func CheckFork(f shuttleengine.ForkReport, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	if f.AgentCalls > 0 {
@@ -154,7 +180,11 @@ func isTranscriptPathAbsolute(path string) bool {
 // Master must NOT write except to the two contract files (outcomePath and summaryPath).
 // It bans three hard violations: any named spawn, any parent write outside contract files, and any
 // Bash command referencing the fabric repo.
-func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef *fabricengine.RefScanner) []AuditViolation {
+// fabricRef is the injected RefMatcher — the caller-supplied fabric-reference class matcher (a real
+// *fabricengine.RefScanner in hub mode, NeverMatches in standalone) — and is never nil in either
+// mode: Matches is called unguarded here, so a nil interface is a panic, which is why NeverMatches
+// exists as the pinned no-fabric supplier.
+func CheckParent(a shuttleengine.ForkAudit, outcomePath, summaryPath, workdir string, fabricRef RefMatcher) []AuditViolation {
 	var violations []AuditViolation
 
 	if a.NamedSpawns > 0 {

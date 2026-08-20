@@ -19,7 +19,6 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -261,19 +260,20 @@ func testProfile(mode GateMode, command []string, caps []int) Profile {
 	}
 }
 
-// newTestLayout returns a *lyxcwd.Location rooted at a fresh temp
-// directory, standing in for the worktree root a command gate's cwd
-// resolves against.
-func newTestLayout(t *testing.T) *lyxcwd.Location {
+// newTestGeometry returns the told geometry standing in for the worktree
+// root a command gate's cwd resolves against. GateDir and AnchorPath are
+// deliberately two distinct fresh temp directories, not one collapsed root,
+// so a swapped constructor argument is observable.
+func newTestGeometry(t *testing.T) Geometry {
 	t.Helper()
-	return &lyxcwd.Location{HubPath: filepath.Dir(t.TempDir()), WorktreeName: filepath.Base(t.TempDir())}
+	return Geometry{GateDir: t.TempDir(), AnchorPath: t.TempDir()}
 }
 
 // TestRun_LoopUntilDry proves the base convergence path under GateLLMVerdict: BLOCKING, BLOCKING,
 // APPROVED reaches OutcomeApproved after exactly 3 rounds, and hydration accumulates — round 3's
 // burler profile lists rounds 1 and 2's review and fixer-report paths.
 func TestRun_LoopUntilDry(t *testing.T) {
-	layout := newTestLayout(t)
+	geom := newTestGeometry(t)
 	runDir := filepath.Join(t.TempDir(), "run")
 
 	fb := &fakeBurler{}
@@ -296,7 +296,7 @@ func TestRun_LoopUntilDry(t *testing.T) {
 		{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving forward")},
 	}
 
-	e := New(fb, qs, Config{}, layout, Options{})
+	e := New(fb, qs, Config{}, geom, Options{})
 	p := testProfile(GateLLMVerdict, nil, []int{10})
 
 	got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -327,7 +327,7 @@ func TestRun_LoopUntilDry(t *testing.T) {
 // TestRun_HardCap proves a block still BLOCKING at the ladder's final rung stops with
 // STUCK/hard-cap unconditionally, issuing NO judge call at all for that final round.
 func TestRun_HardCap(t *testing.T) {
-	layout := newTestLayout(t)
+	geom := newTestGeometry(t)
 	runDir := filepath.Join(t.TempDir(), "run")
 
 	fb := &fakeBurler{}
@@ -340,7 +340,7 @@ func TestRun_HardCap(t *testing.T) {
 	}
 	qs := &queuedShuttle{}
 
-	e := New(fb, qs, Config{}, layout, Options{})
+	e := New(fb, qs, Config{}, geom, Options{})
 	p := testProfile(GateLLMVerdict, nil, []int{2})
 
 	got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -378,7 +378,7 @@ func TestRun_MilestoneGate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := newTestLayout(t)
+			geom := newTestGeometry(t)
 			runDir := filepath.Join(t.TempDir(), "run")
 
 			fb := &fakeBurler{}
@@ -405,7 +405,7 @@ func TestRun_MilestoneGate(t *testing.T) {
 				{verdictContent: verdictFileContent(string(tt.judgeVerdict), "milestone rationale")},
 			}
 
-			e := New(fb, qs, Config{}, layout, Options{})
+			e := New(fb, qs, Config{}, geom, Options{})
 			p := testProfile(GateLLMVerdict, nil, []int{1, 3})
 
 			got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -433,7 +433,7 @@ func TestRun_MilestoneGate(t *testing.T) {
 // round 1, and an APPROVED-verdict round never triggers a judge call at all.
 func TestRun_PerRoundCircling(t *testing.T) {
 	t.Run("circling stops the loop at round 2", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -453,7 +453,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 			{verdictContent: verdictFileContent(string(JudgeCircling), "the same finding recurs")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{})
+		e := New(fb, qs, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -474,7 +474,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 	})
 
 	t.Run("no circling judge on the round immediately after an approved round", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		// Command mode is what makes "a round after an APPROVED round"
@@ -516,7 +516,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "new findings after the approved round")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, qs, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -538,7 +538,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 	})
 
 	t.Run("no judge call on an approved-verdict round", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -550,7 +550,7 @@ func TestRun_PerRoundCircling(t *testing.T) {
 		}
 		qs := &queuedShuttle{}
 
-		e := New(fb, qs, Config{}, layout, Options{})
+		e := New(fb, qs, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -605,7 +605,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := newTestLayout(t)
+			geom := newTestGeometry(t)
 			runDir := filepath.Join(t.TempDir(), "run")
 
 			fb := &fakeBurler{}
@@ -630,7 +630,7 @@ func TestRun_JudgeFailSafe(t *testing.T) {
 				qs = scripted
 			}
 
-			e := New(fb, qs, Config{}, layout, Options{})
+			e := New(fb, qs, Config{}, geom, Options{})
 			p := testProfile(GateLLMVerdict, nil, []int{10})
 
 			got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -673,7 +673,7 @@ func (nonDoneJudgeShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error)
 // GateBoth requires both signals to agree.
 func TestRun_GateModes(t *testing.T) {
 	t.Run("llm-verdict never invokes the command runner", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -685,7 +685,7 @@ func TestRun_GateModes(t *testing.T) {
 		}
 		fcr := &fakeCommandRunner{}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -701,7 +701,7 @@ func TestRun_GateModes(t *testing.T) {
 	})
 
 	t.Run("command mode ignores an approved verdict when the command fails, and feeds the gate file forward", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -722,7 +722,7 @@ func TestRun_GateModes(t *testing.T) {
 			{output: []byte("build ok"), exitZero: true},
 		}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -750,13 +750,13 @@ func TestRun_GateModes(t *testing.T) {
 		if !found {
 			t.Errorf("round 2 PriorReviews = %v; want it to include the failing gate path %q", round2Profile.PriorReviews, wantGatePath)
 		}
-		if fcr.calls[0].dir != layout.WorktreePath() {
-			t.Errorf("gate command dir = %q; want layout.WorktreePath() %q", fcr.calls[0].dir, layout.WorktreePath())
+		if fcr.calls[0].dir != geom.GateDir {
+			t.Errorf("gate command dir = %q; want geom.GateDir %q", fcr.calls[0].dir, geom.GateDir)
 		}
 	})
 
 	t.Run("command mode converges on a blocking verdict when the command passes", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -773,7 +773,7 @@ func TestRun_GateModes(t *testing.T) {
 			err      error
 		}{{output: []byte("ok"), exitZero: true}}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -786,7 +786,7 @@ func TestRun_GateModes(t *testing.T) {
 	})
 
 	t.Run("a could-not-start gate error persists the completed round before failing", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -805,7 +805,7 @@ func TestRun_GateModes(t *testing.T) {
 			{err: errors.New("gate command [nope] failed to start: not found")},
 		}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"nope"}, []int{10})
 
 		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -832,7 +832,7 @@ func TestRun_GateModes(t *testing.T) {
 	})
 
 	t.Run("judge reads reviews only, never gate output files, and the second call's read-set reflects the recorded handoff", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		// Round 1 fails its gate, so round 2's BURLER hydration carries the
@@ -882,7 +882,7 @@ func TestRun_GateModes(t *testing.T) {
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, qs, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateCommand, []string{"make", "test"}, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -952,7 +952,7 @@ func TestRun_GateModes(t *testing.T) {
 	})
 
 	t.Run("both fails when the command fails despite an approved verdict", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -973,7 +973,7 @@ func TestRun_GateModes(t *testing.T) {
 			{output: []byte("build ok"), exitZero: true},
 		}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateBoth, []string{"make", "test"}, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -989,7 +989,7 @@ func TestRun_GateModes(t *testing.T) {
 	})
 
 	t.Run("both fails when the verdict is blocking despite a passing command", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1010,7 +1010,7 @@ func TestRun_GateModes(t *testing.T) {
 			{output: []byte("ok"), exitZero: true},
 		}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		p := testProfile(GateBoth, []string{"make", "test"}, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1034,7 +1034,7 @@ func TestRun_GateModes(t *testing.T) {
 // and a triage infrastructure failure fail-safes to RETRY.
 func TestRun_NonDoneOutcomes(t *testing.T) {
 	t.Run("died then done completes with Attempts 2 and a b-token review path", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1046,7 +1046,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s2"}},
 		}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1065,7 +1065,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 	})
 
 	t.Run("died twice is a hard error naming the session id and kept run dir, never STUCK", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1077,7 +1077,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeTimeout, SessionID: "died-2", RunDir: "/kept/died-2"}},
 		}
 
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1090,7 +1090,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 	})
 
 	t.Run("asking with triage RETRY re-attempts the round", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1110,7 +1110,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{})
+		e := New(fb, qs, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1148,7 +1148,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 	})
 
 	t.Run("a second consecutive asking outcome fails without a second triage spawn", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1168,7 +1168,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageRetry), "plausibly proceeds")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{})
+		e := New(fb, qs, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1184,7 +1184,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 	})
 
 	t.Run("asking with triage GIVE_UP errors carrying the rationale", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1203,7 +1203,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 			{verdictContent: verdictFileContent(string(TriageGiveUp), "the fasit file referenced does not exist")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{})
+		e := New(fb, qs, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		_, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1219,7 +1219,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 	})
 
 	t.Run("triage infrastructure failure fail-safes to RETRY", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		fb := &fakeBurler{}
@@ -1239,7 +1239,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 			{err: errors.New("fake triage shuttle error")},
 		}
 
-		e := New(fb, qs, Config{}, layout, Options{})
+		e := New(fb, qs, Config{}, geom, Options{})
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
@@ -1260,7 +1260,7 @@ func TestRun_NonDoneOutcomes(t *testing.T) {
 // re-runs from scratch.
 func TestRun_Resume(t *testing.T) {
 	t.Run("continues at the recorded next round", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
@@ -1287,7 +1287,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{verdictContent: verdictFileContent(string(JudgeProgressing), "still moving")},
 		}
-		e1 := New(fb1, qs1, Config{}, layout, Options{PauseRequested: pauseAfterTwo})
+		e1 := New(fb1, qs1, Config{}, geom, Options{PauseRequested: pauseAfterTwo})
 
 		first, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
@@ -1305,7 +1305,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s3"}},
 		}
-		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
+		e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{})
 
 		second, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
@@ -1323,7 +1323,7 @@ func TestRun_Resume(t *testing.T) {
 	})
 
 	t.Run("a perch.yaml default change neither invalidates resume nor alters the stamped ladder", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		// The profile leaves RoundCaps unset, so the block's ladder comes
@@ -1343,7 +1343,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 		}
-		e1 := New(fb1, &queuedShuttle{}, Config{RoundCaps: []int{2}}, layout, Options{PauseRequested: pauseAfterOne})
+		e1 := New(fb1, &queuedShuttle{}, Config{RoundCaps: []int{2}}, geom, Options{PauseRequested: pauseAfterOne})
 		first, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
@@ -1364,7 +1364,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s2"}},
 		}
-		e2 := New(fb2, &queuedShuttle{}, Config{RoundCaps: []int{5}}, layout, Options{})
+		e2 := New(fb2, &queuedShuttle{}, Config{RoundCaps: []int{5}}, geom, Options{})
 		second, err := e2.Run(p2, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("second Run() error = %v; want nil — a config default change must not invalidate resume", err)
@@ -1378,7 +1378,7 @@ func TestRun_Resume(t *testing.T) {
 	})
 
 	t.Run("a terminal state refuses to resume", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
@@ -1389,13 +1389,13 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s1"}},
 		}
-		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{})
+		e1 := New(fb1, &queuedShuttle{}, Config{}, geom, Options{})
 		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
 
 		fb2 := &fakeBurler{}
-		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
+		e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{})
 		_, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("second Run() error = nil; want an error refusing to resume a finished block")
@@ -1409,7 +1409,7 @@ func TestRun_Resume(t *testing.T) {
 	})
 
 	t.Run("a profile-hash mismatch fails loud naming a fresh --run-id", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 
 		calls := 0
@@ -1425,7 +1425,7 @@ func TestRun_Resume(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 		}
 		p1 := testProfile(GateLLMVerdict, nil, []int{10})
-		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: pauseAfterOne})
+		e1 := New(fb1, &queuedShuttle{}, Config{}, geom, Options{PauseRequested: pauseAfterOne})
 		first, err := e1.Run(p1, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
@@ -1439,7 +1439,7 @@ func TestRun_Resume(t *testing.T) {
 		p2 := testProfile(GateLLMVerdict, nil, []int{10})
 		p2.Rubric = "a completely different rubric"
 		fb2 := &fakeBurler{}
-		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
+		e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{})
 		_, err = e2.Run(p2, runDir, runDir, newTestStencilsDir(t))
 		if err == nil {
 			t.Fatalf("second Run() error = nil; want a profile-hash mismatch error")
@@ -1453,7 +1453,7 @@ func TestRun_Resume(t *testing.T) {
 	})
 
 	t.Run("a stale half-written review file is moved aside and the round re-runs", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
@@ -1469,7 +1469,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 		}
-		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: pauseAfterOne})
+		e1 := New(fb1, &queuedShuttle{}, Config{}, geom, Options{PauseRequested: pauseAfterOne})
 		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err != nil {
 			t.Fatalf("first Run() error = %v; want nil", err)
 		}
@@ -1489,7 +1489,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s2"}},
 		}
-		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
+		e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{})
 		got, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("second Run() error = %v; want nil", err)
@@ -1521,7 +1521,7 @@ func TestRun_Resume(t *testing.T) {
 	})
 
 	t.Run("a gate error at the hard-cap round finalizes STUCK on resume rather than running past the ladder", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		// A single-element ladder makes round 1 the hard cap, so a gate error
 		// there is a gate error AT the hard cap — the case a multi-round ladder
@@ -1549,7 +1549,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{err: errors.New("gate command [nope] failed to start: not found")},
 		}
-		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e1 := New(fb1, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err == nil {
 			t.Fatalf("first Run() error = nil; want a could-not-start gate error at the hard-cap round")
 		}
@@ -1560,7 +1560,7 @@ func TestRun_Resume(t *testing.T) {
 		// the loop runs round 2 (and onward) beyond the ladder — defeating the
 		// hard cap's guaranteed termination.
 		fb2 := &fakeBurler{}
-		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		got, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
 			t.Fatalf("resume Run() error = %v; want nil (a past-cap resume finalizes STUCK)", err)
@@ -1574,7 +1574,7 @@ func TestRun_Resume(t *testing.T) {
 	})
 
 	t.Run("a past-cap resume finalizes STUCK even with a pending pause request, and clears the flag", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateCommand, []string{"nope"}, []int{1})
 
@@ -1596,7 +1596,7 @@ func TestRun_Resume(t *testing.T) {
 		}{
 			{err: errors.New("gate command [nope] failed to start: not found")},
 		}
-		e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{RunCommand: fcr.run})
+		e1 := New(fb1, &queuedShuttle{}, Config{}, geom, Options{RunCommand: fcr.run})
 		if _, err := e1.Run(p, runDir, runDir, newTestStencilsDir(t)); err == nil {
 			t.Fatalf("first Run() error = nil; want a could-not-start gate error at the hard-cap round")
 		}
@@ -1611,7 +1611,7 @@ func TestRun_Resume(t *testing.T) {
 		// terminal return site.
 		writeFile(t, PauseFlagPath(runDir), "")
 		fb2 := &fakeBurler{}
-		e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{
+		e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{
 			PauseRequested: func() bool { return true },
 			RunCommand:     fcr.run,
 		})
@@ -1633,7 +1633,7 @@ func TestRun_Resume(t *testing.T) {
 // released), fails fast with a named "already running" error rather than silently interleaving
 // rounds into the same state.json/artifact paths.
 func TestRun_ConcurrentSameRunDir(t *testing.T) {
-	layout := newTestLayout(t)
+	geom := newTestGeometry(t)
 	runDir := filepath.Join(t.TempDir(), "run")
 
 	// blockingBurler.Run blocks on a channel until the test releases it,
@@ -1642,7 +1642,7 @@ func TestRun_ConcurrentSameRunDir(t *testing.T) {
 	release := make(chan struct{})
 	fb1 := &blockingBurler{entered: make(chan struct{}), release: release}
 
-	e1 := New(fb1, &queuedShuttle{}, Config{}, layout, Options{})
+	e1 := New(fb1, &queuedShuttle{}, Config{}, geom, Options{})
 	p := testProfile(GateLLMVerdict, nil, []int{10})
 
 	done := make(chan struct{})
@@ -1660,7 +1660,7 @@ func TestRun_ConcurrentSameRunDir(t *testing.T) {
 	}
 
 	fb2 := &fakeBurler{}
-	e2 := New(fb2, &queuedShuttle{}, Config{}, layout, Options{})
+	e2 := New(fb2, &queuedShuttle{}, Config{}, geom, Options{})
 	_, err := e2.Run(p, runDir, runDir, newTestStencilsDir(t))
 	if err == nil {
 		t.Fatal("second Run() error = nil; want an already-running error while the first Run holds the run dir")
@@ -1704,7 +1704,7 @@ func (b *blockingBurler) Run(burlerengine.Profile, burlerengine.RunOpts) (burler
 // and a resumed run clears any leftover pause flag file rather than instantly re-pausing on it.
 func TestRun_Pause(t *testing.T) {
 	t.Run("pauses after round 1 completes, burler called exactly once", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
@@ -1720,7 +1720,7 @@ func TestRun_Pause(t *testing.T) {
 		}{
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 		}
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: pauseAfterOne})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{PauseRequested: pauseAfterOne})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
@@ -1745,7 +1745,7 @@ func TestRun_Pause(t *testing.T) {
 	})
 
 	t.Run("resume clears a leftover pause flag file rather than instantly re-pausing", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
@@ -1769,7 +1769,7 @@ func TestRun_Pause(t *testing.T) {
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictBlocking, Findings: oneBlockingFinding(), SessionID: "s1"}},
 			{result: burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s2"}},
 		}
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{PauseRequested: checkFlag})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{PauseRequested: checkFlag})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {
@@ -1784,7 +1784,7 @@ func TestRun_Pause(t *testing.T) {
 	})
 
 	t.Run("a pause requested during the final in-flight round is cleared once the block reaches a terminal outcome", func(t *testing.T) {
-		layout := newTestLayout(t)
+		geom := newTestGeometry(t)
 		runDir := filepath.Join(t.TempDir(), "run")
 		p := testProfile(GateLLMVerdict, nil, []int{10})
 
@@ -1800,7 +1800,7 @@ func TestRun_Pause(t *testing.T) {
 			flagPath: PauseFlagPath(runDir),
 			result:   burlerengine.Result{Outcome: shuttleengine.OutcomeDone, Verdict: burlerengine.VerdictApproved, SessionID: "s1"},
 		}
-		e := New(fb, &queuedShuttle{}, Config{}, layout, Options{})
+		e := New(fb, &queuedShuttle{}, Config{}, geom, Options{})
 
 		got, err := e.Run(p, runDir, runDir, newTestStencilsDir(t))
 		if err != nil {

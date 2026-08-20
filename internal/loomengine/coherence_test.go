@@ -1,19 +1,30 @@
-// coherence_test.go is the TDD driver for checkCoherence: table tests over in-memory Status values
-// covering every rule in loom-status-spec.md's validation checklist plus the fresh-start invariants.
-// It is untagged (Tier 1): no spawn, no git, no filesystem I/O — checkCoherence is pure.
+// coherence_test.go is the TDD driver for checkCoherence: table tests over in-memory
+// shedengine.Status/Status pairs covering every rule check 4 enforces plus the fresh-start
+// invariants. It is untagged (Tier 1): no spawn, no git, no filesystem I/O — checkCoherence is
+// pure.
 
 package loomengine
 
-import "testing"
+import (
+	"testing"
 
-// validFreshStatus returns a valid fresh Status baseline for testing.
-func validFreshStatus() Status {
+	"github.com/Knatte18/loomyard/internal/shedengine"
+)
+
+// validFreshShed returns a valid fresh shedengine.Status baseline for testing: current_producer
+// at "Preflight", running, no history.
+func validFreshShed() shedengine.Status {
+	return shedengine.Status{
+		CurrentProducer: "Preflight",
+		State:           shedengine.StateRunning,
+	}
+}
+
+// validFreshProduct returns a valid fresh loom Status product baseline for testing.
+func validFreshProduct() Status {
 	return Status{
-		Slug:      "loom-contracts",
-		Parent:    "main",
-		Phase:     "discussion",
-		Stage:     "produce",
-		Narration: "now: awaiting discussion input / last: — / wait: operator to run `lyx run`",
+		Slug:   "loom-contracts",
+		Parent: "main",
 	}
 }
 
@@ -32,119 +43,136 @@ func TestCheckCoherence(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		mutate     func(Status) Status
+		mutateShed func(shedengine.Status) shedengine.Status
+		mutateProd func(Status) Status
 		wantEmpty  bool      // when true, checkCoherence must return no failures
 		wantChecks []CheckID // every CheckID that must appear in the result
 	}{
 		{
 			name:      "ValidFreshSeed",
-			mutate:    func(s Status) Status { return s },
 			wantEmpty: true,
 		},
 		{
 			name:       "EmptyMandatoryString_Slug",
-			mutate:     func(s Status) Status { s.Slug = ""; return s },
+			mutateProd: func(s Status) Status { s.Slug = ""; return s },
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
 			name:       "EmptyMandatoryString_Parent",
-			mutate:     func(s Status) Status { s.Parent = ""; return s },
+			mutateProd: func(s Status) Status { s.Parent = ""; return s },
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
-			name:       "EmptyMandatoryString_Phase",
-			mutate:     func(s Status) Status { s.Phase = ""; return s },
+			name:       "CurrentProducerNotPreflight",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.CurrentProducer = "Discussion-Write"; return s },
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
-			name:       "EmptyMandatoryString_Stage",
-			mutate:     func(s Status) Status { s.Stage = ""; return s },
+			name:       "StateDoneIsRejected",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.State = shedengine.StateDone; return s },
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
-			name:       "EmptyMandatoryString_Narration",
-			mutate:     func(s Status) Status { s.Narration = ""; return s },
+			name:       "StateInvalidIsRejected",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.State = "bogus"; return s },
 			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
-			name:       "BadEnum_Phase",
-			mutate:     func(s Status) Status { s.Phase = "bogus"; return s },
-			wantChecks: []CheckID{CheckSeedIncoherent},
+			name:       "StatePausedTolerated",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.State = shedengine.StatePaused; return s },
+			wantEmpty:  true,
 		},
 		{
-			name:       "BadEnum_Stage",
-			mutate:     func(s Status) Status { s.Stage = "bogus"; return s },
-			wantChecks: []CheckID{CheckSeedIncoherent},
+			name:       "StateBlockedTolerated",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.State = shedengine.StateBlocked; return s },
+			wantEmpty:  true,
+		},
+		{
+			name:       "StateFailedTolerated",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.State = shedengine.StateFailed; return s },
+			wantEmpty:  true,
+		},
+		{
+			name:       "NonEmptyErrorTolerated",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.Error = "bounce budget exhausted"; return s },
+			wantEmpty:  true,
 		},
 		{
 			name: "BadEnum_HistoryOutcome",
-			mutate: func(s Status) Status {
-				s.History = []HistoryEntry{{Phase: "discussion", Outcome: "bogus", Ts: "2026-07-17T10:01:30Z"}}
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: "bogus", At: "2026-07-17T10:01:30Z"}}
 				return s
 			},
-			wantChecks: []CheckID{CheckSeedIncoherent, CheckHalfFinished},
-		},
-		{
-			name: "BouncedToWithoutStuck",
-			mutate: func(s Status) Status {
-				s.History = []HistoryEntry{{Phase: "plan", Outcome: "approved", BouncedTo: strPtr("discussion"), Ts: "2026-07-17T10:01:30Z"}}
-				return s
-			},
-			wantChecks: []CheckID{CheckSeedIncoherent, CheckHalfFinished},
+			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
 			name: "NonRFC3339Timestamp",
-			mutate: func(s Status) Status {
-				s.History = []HistoryEntry{{Phase: "discussion", Outcome: "approved", Ts: "not-a-timestamp"}}
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Stuck, At: "not-a-timestamp"}}
 				return s
 			},
-			wantChecks: []CheckID{CheckSeedIncoherent, CheckHalfFinished},
+			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
 			name: "NonUTCTimestamp",
-			mutate: func(s Status) Status {
-				s.History = []HistoryEntry{{Phase: "discussion", Outcome: "approved", Ts: "2026-07-17T10:01:30+02:00"}}
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30+02:00"}}
 				return s
 			},
-			wantChecks: []CheckID{CheckSeedIncoherent, CheckHalfFinished},
+			wantChecks: []CheckID{CheckSeedIncoherent},
 		},
 		{
-			name: "NonEmptyHistory",
-			mutate: func(s Status) Status {
-				s.History = []HistoryEntry{{Phase: "discussion", Outcome: "approved", Ts: "2026-07-17T10:01:30Z"}}
+			// The retry-deadlock regression: shedengine.Run appends a history entry before
+			// persisting StateBlocked, including on the OnStuck: "" escalation path, so a Stuck
+			// at row 1 (Preflight itself) leaves one Preflight-named entry behind. That entry
+			// alone must not trip CheckHalfFinished, or a blocked row-1 run could never be
+			// resumed.
+			name: "HistoryOfOnlyPreflightPassesFreshStartCheck",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.State = shedengine.StateBlocked
+				s.Error = "bounce budget exhausted"
+				s.History = []shedengine.HistoryEntry{{Producer: "Preflight", Outcome: shedengine.Stuck, At: "2026-07-17T10:01:30Z"}}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
+			// The other side of the same regression guard: a history entry naming a later
+			// producer is the real half-finished signal.
+			name: "HistoryNamingLaterProducerFailsFreshStartCheck",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{
+					{Producer: "Preflight", Outcome: shedengine.Done, At: "2026-07-17T10:01:30Z"},
+					{Producer: "Discussion-Write", Outcome: shedengine.Stuck, At: "2026-07-17T10:05:00Z"},
+				}
 				return s
 			},
 			wantChecks: []CheckID{CheckHalfFinished},
 		},
 		{
-			name: "SetStartSha",
-			mutate: func(s Status) Status {
-				s.StartSha = strPtr("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4")
-				return s
-			},
+			name:       "SetStartSha",
+			mutateProd: func(s Status) Status { s.StartSha = strPtr("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"); return s },
 			wantChecks: []CheckID{CheckHalfFinished},
 		},
 		{
-			name: "SetNextAction",
-			mutate: func(s Status) Status {
-				s.NextAction = strPtr("operator: review plan")
-				return s
-			},
-			wantChecks: []CheckID{CheckHalfFinished},
-		},
-		{
-			name: "PauseRequestedTrue",
-			mutate: func(s Status) Status {
-				s.PauseRequested = true
-				return s
-			},
+			name:       "PauseRequestedTrue",
+			mutateShed: func(s shedengine.Status) shedengine.Status { s.PauseRequested = true; return s },
 			wantChecks: []CheckID{CheckHalfFinished},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := checkCoherence(tt.mutate(validFreshStatus()))
+			shed := validFreshShed()
+			if tt.mutateShed != nil {
+				shed = tt.mutateShed(shed)
+			}
+			product := validFreshProduct()
+			if tt.mutateProd != nil {
+				product = tt.mutateProd(product)
+			}
+
+			got := checkCoherence(shed, product)
 
 			if tt.wantEmpty {
 				if len(got) != 0 {

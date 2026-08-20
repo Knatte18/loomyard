@@ -13,18 +13,10 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
-
-// layoutAt builds a minimal *lyxcwd.Location rooted at worktreeRoot, with
-// the given RelPath, sufficient for PatternFileHere() to resolve — the only
-// accessor this package calls.
-func layoutAt(worktreeRoot, relPath string) *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: relPath}
-}
 
 // writePatternFile creates root/_lyx/PATTERN.md (and the _lyx
 // directory) with the given content, failing the test on any error.
@@ -77,7 +69,6 @@ func newTestStencilsDir(t *testing.T) string {
 func TestDirective_ActiveWithFile(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "# PATTERN\n\nsome constraints\n")
-	l := layoutAt(root, ".")
 	stencilsDir := newTestStencilsDir(t)
 
 	tests := []struct {
@@ -90,7 +81,7 @@ func TestDirective_ActiveWithFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(l, stencilsDir, tt.role)
+			got, err := Directive(root, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
 			}
@@ -127,8 +118,7 @@ func TestDirective_InactiveWithoutFile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			root := t.TempDir()
 			tt.setup(t, root)
-			l := layoutAt(root, ".")
-			got, err := Directive(l, newTestStencilsDir(t), RoleImplementer)
+			got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
 			if err != nil {
 				t.Fatalf("Directive(%s, RoleImplementer) = _, %v; want nil error", tt.name, err)
 			}
@@ -145,9 +135,8 @@ func TestDirective_InactiveWithoutFile(t *testing.T) {
 func TestDirective_EmptyPatternFileIsActive(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "")
-	l := layoutAt(root, ".")
 
-	got, err := Directive(l, newTestStencilsDir(t), RoleImplementer)
+	got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
 	if err != nil {
 		t.Fatalf("Directive(empty PATTERN.md) = _, %v; want nil error", err)
 	}
@@ -164,9 +153,8 @@ func TestDirective_PatternFileAsDirectoryIsInactive(t *testing.T) {
 	if err := os.MkdirAll(patternFileAsDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q) = %v", patternFileAsDir, err)
 	}
-	l := layoutAt(root, ".")
 
-	got, err := Directive(l, newTestStencilsDir(t), RoleImplementer)
+	got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
 	if err != nil {
 		t.Fatalf("Directive(PATTERN.md as directory) = _, %v; want nil error", err)
 	}
@@ -175,16 +163,31 @@ func TestDirective_PatternFileAsDirectoryIsInactive(t *testing.T) {
 	}
 }
 
-// TestDirective_NilLayout pins the nil-Layout guard: several Deps structs are assembled
-// field-by-field by CLI callers that could leave Layout unset,
-// and a nil dereference here would take down all five agent paths for a slip unrelated to PATTERN.
-func TestDirective_NilLayout(t *testing.T) {
-	got, err := Directive(nil, newTestStencilsDir(t), RoleImplementer)
+// TestDirective_EmptyAnchorPath pins the empty-anchorPath guard: several Deps structs are assembled
+// field-by-field by CLI callers that could leave the anchor path unset,
+// and an unguarded resolution here would take down all five agent paths for a slip unrelated to
+// PATTERN.
+// The return-value assertion alone would be insufficient: an inactive PATTERN returns the same
+// ("", nil) pair, so only the absence of the stat distinguishes the guard from a cwd-dependent
+// lookalike.
+func TestDirective_EmptyAnchorPath(t *testing.T) {
+	statAttempted := false
+	original := statFile
+	statFile = func(name string) (os.FileInfo, error) {
+		statAttempted = true
+		return nil, os.ErrNotExist
+	}
+	t.Cleanup(func() { statFile = original })
+
+	got, err := Directive("", newTestStencilsDir(t), RoleImplementer)
 	if err != nil {
-		t.Fatalf("Directive(nil, RoleImplementer) = _, %v; want nil error", err)
+		t.Fatalf("Directive(\"\", RoleImplementer) = _, %v; want nil error", err)
 	}
 	if got != "" {
-		t.Errorf("Directive(nil, RoleImplementer) = %q; want \"\"", got)
+		t.Errorf("Directive(\"\", RoleImplementer) = %q; want \"\"", got)
+	}
+	if statAttempted {
+		t.Error("Directive(\"\", RoleImplementer) attempted a stat; want no read attempted at all")
 	}
 }
 
@@ -193,7 +196,6 @@ func TestDirective_NilLayout(t *testing.T) {
 func TestDirective_UnknownRole(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, ".")
 	stencilsDir := newTestStencilsDir(t)
 
 	tests := []struct {
@@ -205,7 +207,7 @@ func TestDirective_UnknownRole(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(l, stencilsDir, tt.role)
+			got, err := Directive(root, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
 			}
@@ -223,18 +225,17 @@ func TestDirective_UnknownRole(t *testing.T) {
 func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, ".")
 	stencilsDir := newTestStencilsDir(t)
 
-	implementerText, err := Directive(l, stencilsDir, RoleImplementer)
+	implementerText, err := Directive(root, stencilsDir, RoleImplementer)
 	if err != nil {
 		t.Fatalf("Directive(active, RoleImplementer) = _, %v; want nil error", err)
 	}
-	reviewFixText, err := Directive(l, stencilsDir, RoleReviewFix)
+	reviewFixText, err := Directive(root, stencilsDir, RoleReviewFix)
 	if err != nil {
 		t.Fatalf("Directive(active, RoleReviewFix) = _, %v; want nil error", err)
 	}
-	orchestratorText, err := Directive(l, stencilsDir, RoleOrchestrator)
+	orchestratorText, err := Directive(root, stencilsDir, RoleOrchestrator)
 	if err != nil {
 		t.Fatalf("Directive(active, RoleOrchestrator) = _, %v; want nil error", err)
 	}
@@ -272,7 +273,6 @@ func TestDirective_VariantsArePairwiseDistinct(t *testing.T) {
 func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, ".")
 	stencilsDir := newTestStencilsDir(t)
 
 	tests := []struct {
@@ -285,7 +285,7 @@ func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(l, stencilsDir, tt.role)
+			got, err := Directive(root, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(%v) = _, %v; want nil error", tt.role, err)
 			}
@@ -296,39 +296,37 @@ func TestDirective_VariantsBeginWithOwnHeading(t *testing.T) {
 	}
 }
 
-// TestDirective_RelPathNestedSubdirectory is the regression guard for the worst failure mode in
-// this task: a Layout whose RelPath is a nested subdirectory must resolve PATTERN.md at
-// <WorktreeRoot>/<RelPath>/_lyx/PATTERN.md and must NOT be satisfied by one planted at the
+// TestDirective_NestedAnchorSubdirectory is the regression guard for the worst failure mode in
+// this task: an anchor path given as a nested subdirectory must resolve PATTERN.md at
+// <anchorPath>/_lyx/PATTERN.md and must NOT be satisfied by one planted at the
 // worktree root instead.
 // Without this guard, a root-anchored resolution would render PATTERN silently inactive in every
 // agent invoked from a subdirectory, with no error anywhere.
-func TestDirective_RelPathNestedSubdirectory(t *testing.T) {
+func TestDirective_NestedAnchorSubdirectory(t *testing.T) {
 	root := t.TempDir()
-	relPath := filepath.Join("sub", "dir")
+	anchorPath := filepath.Join(root, "sub", "dir")
 	stencilsDir := newTestStencilsDir(t)
 
-	// Plant PATTERN.md only at the (wrong) worktree root; the RelPath-aware
+	// Plant PATTERN.md only at the (wrong) worktree root; the nested-anchor-aware
 	// resolution must still see this worktree as inactive.
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, relPath)
-	got, err := Directive(l, stencilsDir, RoleImplementer)
+	got, err := Directive(anchorPath, stencilsDir, RoleImplementer)
 	if err != nil {
 		t.Fatalf("Directive() = _, %v; want nil error", err)
 	}
 	if got != "" {
-		t.Errorf("Directive() found the root-planted PATTERN.md via a nested RelPath; got %q, want \"\"", got)
+		t.Errorf("Directive() found the root-planted PATTERN.md via a nested anchor path; got %q, want \"\"", got)
 	}
 
 	// Now plant PATTERN.md at the correct nested location; the resolution
 	// must find it there.
-	nestedRoot := filepath.Join(root, relPath)
-	writePatternFile(t, nestedRoot, "content")
-	got, err = Directive(l, stencilsDir, RoleImplementer)
+	writePatternFile(t, anchorPath, "content")
+	got, err = Directive(anchorPath, stencilsDir, RoleImplementer)
 	if err != nil {
 		t.Fatalf("Directive() = _, %v; want nil error", err)
 	}
 	if got == "" {
-		t.Error("Directive() did not find PATTERN.md planted at <WorktreeRoot>/<RelPath>/_lyx/PATTERN.md")
+		t.Error("Directive() did not find PATTERN.md planted at <anchorPath>/_lyx/PATTERN.md")
 	}
 }
 
@@ -341,7 +339,6 @@ func TestDirective_RelPathNestedSubdirectory(t *testing.T) {
 // equivalent lever at all.
 func TestDirective_NonNotExistStatErrorIsActive(t *testing.T) {
 	root := t.TempDir()
-	l := layoutAt(root, ".")
 
 	// PATTERN.md is absent on disk; without the seam this would resolve
 	// inactive via os.IsNotExist. Force a distinct, non-not-exist error to
@@ -352,7 +349,7 @@ func TestDirective_NonNotExistStatErrorIsActive(t *testing.T) {
 	}
 	t.Cleanup(func() { statFile = original })
 
-	got, err := Directive(l, newTestStencilsDir(t), RoleImplementer)
+	got, err := Directive(root, newTestStencilsDir(t), RoleImplementer)
 	if err != nil {
 		t.Fatalf("Directive() = _, %v; want nil error", err)
 	}
@@ -370,8 +367,7 @@ func TestDirective_LazyRead(t *testing.T) {
 
 	t.Run("PATTERN inactive, stencilsDir does not exist", func(t *testing.T) {
 		root := t.TempDir()
-		l := layoutAt(root, ".")
-		got, err := Directive(l, missingStencilsDir, RoleImplementer)
+		got, err := Directive(root, missingStencilsDir, RoleImplementer)
 		if err != nil {
 			t.Fatalf("Directive(inactive, missing stencilsDir) = _, %v; want nil error", err)
 		}
@@ -380,13 +376,13 @@ func TestDirective_LazyRead(t *testing.T) {
 		}
 	})
 
-	t.Run("nil layout, stencilsDir does not exist", func(t *testing.T) {
-		got, err := Directive(nil, missingStencilsDir, RoleImplementer)
+	t.Run("empty anchor path, stencilsDir does not exist", func(t *testing.T) {
+		got, err := Directive("", missingStencilsDir, RoleImplementer)
 		if err != nil {
-			t.Fatalf("Directive(nil, missing stencilsDir) = _, %v; want nil error", err)
+			t.Fatalf("Directive(\"\", missing stencilsDir) = _, %v; want nil error", err)
 		}
 		if got != "" {
-			t.Errorf("Directive(nil, missing stencilsDir) = %q; want \"\"", got)
+			t.Errorf("Directive(\"\", missing stencilsDir) = %q; want \"\"", got)
 		}
 	})
 }
@@ -399,7 +395,6 @@ func TestDirective_LazyRead(t *testing.T) {
 func TestDirective_MissingStencilErrors(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, ".")
 	emptyStencilsDir := t.TempDir()
 
 	tests := []struct {
@@ -413,7 +408,7 @@ func TestDirective_MissingStencilErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(l, emptyStencilsDir, tt.role)
+			got, err := Directive(root, emptyStencilsDir, tt.role)
 			if err == nil {
 				t.Fatalf("Directive(active, %v, empty stencilsDir) = %q, nil; want a non-nil error", tt.role, got)
 			}
@@ -434,7 +429,6 @@ func TestDirective_MissingStencilErrors(t *testing.T) {
 func TestDirective_StripsBanner(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, ".")
 	stencilsDir := newTestStencilsDir(t)
 
 	tests := []struct {
@@ -447,7 +441,7 @@ func TestDirective_StripsBanner(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(l, stencilsDir, tt.role)
+			got, err := Directive(root, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
 			}
@@ -475,7 +469,6 @@ func TestDirective_StripsBanner(t *testing.T) {
 func TestDirective_StrippedBodyMatchesEmbeddedDefault(t *testing.T) {
 	root := t.TempDir()
 	writePatternFile(t, root, "content")
-	l := layoutAt(root, ".")
 	stencilsDir := newTestStencilsDir(t)
 
 	tests := []struct {
@@ -489,7 +482,7 @@ func TestDirective_StrippedBodyMatchesEmbeddedDefault(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := Directive(l, stencilsDir, tt.role)
+			got, err := Directive(root, stencilsDir, tt.role)
 			if err != nil {
 				t.Fatalf("Directive(active, %v) = _, %v; want nil error", tt.role, err)
 			}

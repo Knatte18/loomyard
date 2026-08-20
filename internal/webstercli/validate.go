@@ -64,13 +64,13 @@ Example:
 				return nil
 			}
 
-			plan, err := planparser.ParsePlan(c.planDir)
+			plan, err := planparser.ParsePlan(c.geom.PlanDir)
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 				return nil
 			}
 
-			if findings := planparser.Validate(plan, c.layout.AnchorPath()); len(findings) > 0 {
+			if findings := planparser.Validate(plan, c.geom.WorktreeRoot); len(findings) > 0 {
 				clihelp.SetExit(cmd.Context(), findingsEnvelope(out, findings))
 				return nil
 			}

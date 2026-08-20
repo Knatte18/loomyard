@@ -13,12 +13,20 @@ type Outcome string
 const (
 	// OutcomeDone: agent wrote every OutputFiles entry and file contract is satisfied.
 	OutcomeDone Outcome = "done"
-	// OutcomeAsking: agent ended turn without writing output files, last message reads as a question.
+	// OutcomeAsking: agent ended a turn (or opened a live AskUserQuestion call) without every
+	// OutputFiles entry existing.
+	// The classification tests the FILE CONTRACT only — Wait never inspects the message — so this is
+	// "the agent stopped without finishing", of which a question is the common case rather than the
+	// definition: a blocked agent and a mid-task status report classify identically.
+	// Result.LastAssistantMessage therefore carries whatever the agent last said, not a guaranteed
+	// question.
 	OutcomeAsking Outcome = "asking"
-	// OutcomeDied: pane died (or provider never became ready inside startup window) before output
-	// files written.
+	// OutcomeDied: a strand reed STILL TRACKS has a pane that is not alive (or the provider never
+	// became ready inside the startup window) before output files were written.
 	// Pane death is the only observable process failure;
 	// a provider crash mid-run behind a live pane shell classifies OutcomeTimeout instead.
+	// A strand reed no longer tracks AT ALL is deliberately NOT this outcome — reed's bookkeeping
+	// going away says nothing about the agent, so Wait reports that as a mechanism failure.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
 	// This also covers provider crashes mid-run behind a still-live pane shell (pane tells the

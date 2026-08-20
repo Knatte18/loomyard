@@ -15,17 +15,14 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestEnsureSupervised_StaleSocketCleanupAllowsRebind verifies stale sockets are cleaned up before
 // rebind.
 func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	worktreeRoot := t.TempDir()
-	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
 	const lang = "go"
-	statePath := DaemonStateFile(l, lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
@@ -41,7 +38,7 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, l, 30*time.Second)
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
 	if err != nil {
 		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
 	}
@@ -85,14 +82,13 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 // SIGPIPE-on-a-dead-reader is not something this suite reproduces directly.
 func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
 	worktreeRoot := t.TempDir()
-	l := &lyxcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot), AnchorRel: "."}
 	const lang = "go"
-	statePath := DaemonStateFile(l, lang)
+	statePath := DaemonStateFile(worktreeRoot, lang)
 	logPath := filepath.Join(filepath.Dir(statePath), "daemon.log")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, l, 30*time.Second)
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
 	if err != nil {
 		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
 	}

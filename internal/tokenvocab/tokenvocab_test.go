@@ -1,8 +1,8 @@
 // tokenvocab_test.go is the hermetic unit test suite for tokenvocab: each registry token's Resolve,
 // Build's aggregate output, Render's happy path and its propagated unfilled-marker error, and a
 // demonstration of the "one registry entry per token" extension rule.
-// Every case builds a lyxcwd.Location struct literal directly — never lyxcwd.Resolve — so this
-// suite stays untagged and spawn-free (Test Tier Purity).
+// Every case builds a Ctx struct literal directly with distinct literal values for RepoName and
+// HubPath — never lyxcwd.Resolve — so this suite stays untagged and spawn-free (Test Tier Purity).
 // It is a same-package test so the token-by-token cases can inspect the unexported registry
 // directly, rather than only observing it through Build's aggregated map.
 
@@ -11,8 +11,6 @@ package tokenvocab
 import (
 	"strings"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // tokenByName returns the registry entry named name, failing the test if no such
@@ -30,26 +28,26 @@ func tokenByName(t *testing.T, name string) Token {
 }
 
 // TestTokenResolve covers each registry token's Resolve function, asserting it reads its own
-// matching Layout field and not some other field of the same struct.
+// matching Ctx field and not some other field of the same struct.
 func TestTokenResolve(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name      string
 		tokenName string
-		layout    *lyxcwd.Location
+		ctx       Ctx
 		want      string
 	}{
 		{
-			name:      "repo reads Layout.Repo",
+			name:      "repo reads Ctx.RepoName",
 			tokenName: "repo",
-			layout:    &lyxcwd.Location{RepoName: "loomyard", HubPath: "unrelated-hub-value"},
+			ctx:       Ctx{RepoName: "loomyard", HubPath: "unrelated-hub-value"},
 			want:      "loomyard",
 		},
 		{
-			name:      "hub reads Layout.Hub",
+			name:      "hub reads Ctx.HubPath",
 			tokenName: "hub",
-			layout:    &lyxcwd.Location{RepoName: "unrelated-repo-value", HubPath: "/hub/loomyard-HUB"},
+			ctx:       Ctx{RepoName: "unrelated-repo-value", HubPath: "/hub/loomyard-HUB"},
 			want:      "/hub/loomyard-HUB",
 		},
 	}
@@ -58,7 +56,7 @@ func TestTokenResolve(t *testing.T) {
 			t.Parallel()
 
 			token := tokenByName(t, tt.tokenName)
-			got := token.Resolve(Ctx{Layout: tt.layout})
+			got := token.Resolve(tt.ctx)
 			if got != tt.want {
 				t.Errorf("token %q Resolve() = %q; want %q", tt.tokenName, got, tt.want)
 			}
@@ -66,16 +64,16 @@ func TestTokenResolve(t *testing.T) {
 	}
 }
 
-// TestTokenResolve_RepoReadsFieldVerbatim verifies the repo token reflects Layout.Repo exactly
-// regardless of how Repo was derived (resolveCore's -HUB-trim derivation, a hand-built literal, or
-// any future derivation) — the token has no opinion about Repo's provenance, only that it reads the
-// field verbatim.
+// TestTokenResolve_RepoReadsFieldVerbatim verifies the repo token reflects Ctx.RepoName exactly
+// regardless of how RepoName was derived (resolveCore's -HUB-trim derivation, a hand-built literal,
+// or any future derivation) — the token has no opinion about RepoName's provenance, only that it
+// reads the field verbatim.
 func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 	t.Parallel()
 
-	layout := &lyxcwd.Location{RepoName: "feature-branch"}
+	ctx := Ctx{RepoName: "feature-branch"}
 
-	got := tokenByName(t, "repo").Resolve(Ctx{Layout: layout})
+	got := tokenByName(t, "repo").Resolve(ctx)
 	if got != "feature-branch" {
 		t.Errorf("repo token Resolve() = %q; want %q", got, "feature-branch")
 	}
@@ -86,8 +84,8 @@ func TestTokenResolve_RepoReadsFieldVerbatim(t *testing.T) {
 func TestBuild_ReturnsBothKeys(t *testing.T) {
 	t.Parallel()
 
-	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
-	got := Build(Ctx{Layout: layout})
+	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
+	got := Build(ctx)
 
 	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-HUB"}
 	if len(got) != len(want) {
@@ -105,10 +103,10 @@ func TestBuild_ReturnsBothKeys(t *testing.T) {
 func TestRender_FillsTemplateVerbatim(t *testing.T) {
 	t.Parallel()
 
-	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
+	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	template := []byte("{{.hub}}/{{.repo}}")
 
-	got, err := Render(template, Ctx{Layout: layout})
+	got, err := Render(template, ctx)
 	if err != nil {
 		t.Fatalf("Render() unexpected error: %v", err)
 	}
@@ -126,10 +124,10 @@ func TestRender_FillsTemplateVerbatim(t *testing.T) {
 func TestRender_PropagatesUnknownTokenError(t *testing.T) {
 	t.Parallel()
 
-	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
+	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	template := []byte("{{.slug}}")
 
-	_, err := Render(template, Ctx{Layout: layout})
+	_, err := Render(template, ctx)
 	if err == nil {
 		t.Fatal("Render() got nil error for an unknown top-level token; want an error")
 	}
@@ -152,10 +150,10 @@ func TestRegistry_AddingATokenIsOneEntry(t *testing.T) {
 		Resolve: func(c Ctx) string { return "example-slug" },
 	})
 
-	layout := &lyxcwd.Location{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
+	ctx := Ctx{RepoName: "loomyard", HubPath: "/hub/loomyard-HUB"}
 	got := make(map[string]string, len(hypothetical))
 	for _, token := range hypothetical {
-		got[token.Name] = token.Resolve(Ctx{Layout: layout})
+		got[token.Name] = token.Resolve(ctx)
 	}
 
 	want := map[string]string{"repo": "loomyard", "hub": "/hub/loomyard-HUB", "slug": "example-slug"}
