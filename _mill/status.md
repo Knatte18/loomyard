@@ -6,6 +6,7 @@ slug: shedadapters-burler-producer
 branch: shedadapters-burler-producer
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'shedadapters: Burler-round producer'
 task_description: |
   shedadapters: Burler-round producer
@@ -39,11 +40,17 @@ implementing  '2026-08-20T16:37:51Z'
 ```yaml
 batches:
   - name: burlerengine ClusterExclude
-    state: pending
+    state: running
+    implementer_session: e323bf39-8875-46c4-a88f-1b37944db3b8
+    start_sha: 54703278e5407fa3e70cbf4c48dd018ed120e224
+    verify_baseline_failures: []
   - name: focus-file contract
     state: pending
+    verify_baseline_failures: []
   - name: BurlerProducer
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
