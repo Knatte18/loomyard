@@ -100,10 +100,14 @@ Batch-local decision differing from `## Shared Decisions`: nothing.
   Write the item literally as `1.` per the file's own Maintenance section — numbering is automatic and no renumbering is needed anywhere.
   Second, a correction to the still-Planned **Bouncer: the generic review-gate producer** item, distinct from the lifecycle move above: its seed-vs-judge sentence currently reads "if the round producer's report artifact for the current round does not exist yet", a single-artifact predicate that is exactly the review-only-orphan wedge this task designed out.
   Amend that sentence to the pair predicate — the seed call is the case where the current round's review and fixer-report artifacts are not **both** present — and keep the rest of the sentence, including its `Call(ctx)` parenthetical and its `Stuck`/`OnStuck` conclusion, unchanged.
-  Third, repair the four cross-references the lifecycle move above makes false, in the same commit, because the `### Perch → Shed flattening` subsection holds exactly two items today and drops to one.
-  In the **Bouncer: the generic review-gate producer** item, its opening sentence's "unlike the Burler-round producer above" and its later "an instance of `shedadapters: Burler-round producer` above" both point at an item that is no longer above; reword each to name the now-Done Burler-round producer and point at the `internal/shedadapters` package documentation instead of at a Planned sibling.
-  In each of the three loom review-producer items whose line reads "Depends on the two \"Perch → Shed flattening\" items above", reword so the count is correct and the already-shipped half is named as shipped rather than as a pending dependency.
-  Change no other Planned or Someday item beyond these four cross-references and the two edits above.
+  Third, repair every cross-reference the lifecycle move above makes false, in the same commit, because the `### Perch → Shed flattening` subsection holds exactly two items today and drops to one.
+  There are seven such sites, in three groups.
+  Group one, both inside the **Bouncer: the generic review-gate producer** item: its opening sentence's "unlike the Burler-round producer above", and its cluster-fan sentence's "see `shedadapters: Burler-round producer`'s own cluster-fan-trimming note above".
+  Group two, one site inside the **loom: Discussion-Review producer** item: the parenthetical "an instance of `shedadapters: Burler-round producer` above" — this phrase lives in that item, not in the Bouncer item.
+  Group three, the "Depends on the two \"Perch → Shed flattening\" items above" line that appears once in each of the three loom review-producer items, plus the Someday **Tenter + Hardener** item's phrase "the Planned `shedadapters: Burler-round producer` item".
+  For groups one and two, reword each reference so it names the now-shipped Burler-round producer and points at the `internal/shedadapters` package documentation rather than at a Planned sibling that is no longer above.
+  For group three, reword the three dependency lines so the count is correct and the already-shipped half is named as shipped rather than as a pending dependency, and change the Someday item's "Planned" to reflect that the item has shipped.
+  Change no Planned or Someday item beyond these seven sites and the two edits above.
   Use semantic line breaks and add no new markdown link whose target or anchor does not resolve.
 - **Commit:** `docs(roadmap): ship the Burler-round producer and fix the Bouncer seed predicate`
 
