@@ -28,7 +28,8 @@ That binding is now pinned: `lyx loom run` seeds the file itself when it is abse
 An optional thin `ly-spawn` skill may wrap it later,
 but `lyx loom run` is always the writer.
 
-loom's Preflight **requires the file to exist** and fails loud if it is missing — the file's existence *is* the handoff signal, consistent with Preflight's other precondition checks (clean worktree, fabric ready, no half-finished prior run).
+The file's existence *is* the handoff signal, but it is `Shed`'s own step-1 read gate that **requires the file to exist** and fails loud if it is missing — not loom's own row.
+loom's own row, `Loom-Preflight`, makes a narrower claim: that the file, once it exists, is a *coherent fresh seed* (no half-finished prior run).
 
 A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty `history`, and a `product` with only `slug`/`parent` populated (`start_sha: null`) — `Shed` fills the rest as it runs, and `Shed` itself owns `current_producer`/`state`/`error`/`activity`/`history` from the first persist onward.
 
@@ -57,6 +58,11 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 - **`product.slug` / `product.parent`** — the only handoff pointers into the wider task record;
   the board owns durable title/description, not this file.
 - **`product.start_sha`** — the repo `HEAD` stamped when Webster begins, so Raddle can diff `start_sha..HEAD`. `null` until Webster starts.
+- **`history[]` is budget-bearing, not only a log.**
+  Its one-entry-per-producer-call rule (see the schema block above) is no longer merely an audit trail: it is the sole storage of every producer's per-producer, episode-scoped bounce budget, derived by counting a producer's own `stuck` entries since its own most recent `done` entry.
+  It must never be truncated or compacted — doing so would silently hand every producer a fresh budget with nothing here to warn a future retention task that it just did.
+  The unconditional append this depends on is the same one the fresh-start check below already relies on;
+  see that check for why a `stuck` entry is appended on every `stuck` route, including a budget-exhausted block.
 - **No `schema_version`/`format` field.**
   This file has a single writer (`Shed`, plus `lyx loom run` as the seeder and `lyx loom pause` as the pause verb, both writing through the same lock) and no version-compatibility pressure.
   A version stamp here would be a rarely-exercised guard that goes stale;
@@ -74,14 +80,16 @@ loom never guesses a status.
 Spec for check 4, loom's own precondition layered over `Shed`'s shell (`internal/loomengine.checkCoherence`):
 
 - `product.slug` and `product.parent` are mandatory: an empty string counts as absent.
-- `shed.current_producer` must equal `"Preflight"` — the only way check 4 is ever reached.
+- `shed.current_producer` must equal `"Loom-Preflight"` — that is what `Shed` persists before calling row 2, since `Run` writes the next row's name into `current_producer` and appends the finished row's history entry before making the call.
 - `shed.state` must be one of `Shed`'s five legal values and must not be `"done"`, a finished run.
 - `shed.error` is tolerated at any value, including non-empty — it is the previous halt's reason a human resumes after reading.
 - `shed.activity` is never validated — `Shed` recomposes it mechanically on every persist.
 - Every `shed.history[].outcome` must be `"done"` or `"stuck"`, and every `shed.history[].at` must be RFC3339 UTC.
-- **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` is a half-finished failure; entries naming `"Preflight"` itself are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at row 1 leaves one `Preflight` entry behind and a resumable blocked run must not fail this check forever.
-- A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point Preflight is meant to gate.
+- **Fresh-start check:** a `shed.history[]` entry naming any producer other than `"Preflight"` or `"Loom-Preflight"` is a half-finished failure; entries naming either of those two are tolerated, since `Shed.Run` appends a history entry before persisting `state: "blocked"` on every `Stuck` route including the `OnStuck: ""` escalation, so a `Stuck` at either row 1 or row 2 leaves one matching entry behind and a resumable blocked run must not fail this check forever.
+- A non-null `product.start_sha`, or `shed.pause_requested: true`, is also a half-finished failure — the task has already advanced past the point the two Preflight rows are meant to gate.
 - A `product` that fails to decode as loom's own shape is a `seed-incoherent` verdict, not an infra error.
+- **A fresh seed still carries `current_producer: "Preflight"`** (see [the schema](#the-schema) below), never `"Loom-Preflight"` — `internal/loomshed/seed.go` writes the seed once, at row 1, and `Shed` overwrites `current_producer` to `"Loom-Preflight"` itself as it advances past row 1.
+  That divergence between the seed contract and this checklist's row-2 contract is real and deliberate, not a typo: the seed names the first row a fresh run starts at, the checklist names the row check 4 actually gates.
 
 ## Worked example
 

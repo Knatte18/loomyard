@@ -48,11 +48,7 @@ func TestRun_PauseRequestedMidList(t *testing.T) {
 	}
 	p2 := fixedOutcomeProducer(Done, "")
 	p3 := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: p1},
-		{Name: "B", Producer: p2},
-		{Name: "C", Producer: p3},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B", "C"}, []ShedProducer{p1, p2, p3})
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 	result, err := shed.Run(context.Background())
@@ -89,10 +85,7 @@ func TestRun_ResumeAfterPause(t *testing.T) {
 		setPauseRequested(t, statusPath, statusLockPath)
 		return Done, OutputPointer{}, nil
 	}
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: pausing},
-		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{pausing, fixedOutcomeProducer(Done, "")})
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 	result, err := shed.Run(context.Background())
@@ -117,10 +110,7 @@ func TestRun_ResumeAfterPause(t *testing.T) {
 	// single-Run pause test passes while the task can never restart, because the next
 	// Run's own step 3 would re-read a still-true flag and pause again, forever.
 	resumed := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
-		{Name: "B", Producer: resumed},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{fixedOutcomeProducer(Done, ""), resumed})
 	result2, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run(...) = _, %v; want nil error", err)
@@ -144,10 +134,7 @@ func TestRun_CancelledBetweenProducers(t *testing.T) {
 		return Done, OutputPointer{}, nil
 	}
 	p2 := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: p1},
-		{Name: "B", Producer: p2},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{p1, p2})
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 	result, err := shed.Run(ctx)
@@ -216,11 +203,7 @@ func TestRun_CrashRecovery(t *testing.T) {
 		return "", OutputPointer{}, wantErr
 	}}
 	p3a := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: p1a},
-		{Name: "B", Producer: p2a},
-		{Name: "C", Producer: p3a},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B", "C"}, []ShedProducer{p1a, p2a, p3a})
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 	if _, err := shed.Run(context.Background()); err == nil {
@@ -246,11 +229,7 @@ func TestRun_CrashRecovery(t *testing.T) {
 	p1b := fixedOutcomeProducer(Done, "")
 	p2b := fixedOutcomeProducer(Done, "")
 	p3b := fixedOutcomeProducer(Done, "")
-	freshShed.Producers = []ProducerDef{
-		{Name: "A", Producer: p1b},
-		{Name: "B", Producer: p2b},
-		{Name: "C", Producer: p3b},
-	}
+	freshShed.Producers = linearChain(t, []string{"A", "B", "C"}, []ShedProducer{p1b, p2b, p3b})
 
 	result, err := freshShed.Run(context.Background())
 	if err != nil {
@@ -326,10 +305,7 @@ func TestRun_ResumeAfterHalt(t *testing.T) {
 func TestRun_RerunIdempotence(t *testing.T) {
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
-		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{fixedOutcomeProducer(Done, ""), fixedOutcomeProducer(Done, "")})
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 	if _, err := shed.Run(context.Background()); err != nil {
@@ -345,10 +321,7 @@ func TestRun_RerunIdempotence(t *testing.T) {
 	// which for a merge-shaped terminal producer means re-running a merge.
 	rerunA := fixedOutcomeProducer(Done, "")
 	rerunB := fixedOutcomeProducer(Done, "")
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: rerunA},
-		{Name: "B", Producer: rerunB},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{rerunA, rerunB})
 
 	result, err := shed.Run(context.Background())
 	if err != nil {
@@ -376,10 +349,7 @@ func TestRun_RerunIdempotence(t *testing.T) {
 func TestRun_RerunResultEquality(t *testing.T) {
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
-		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{fixedOutcomeProducer(Done, ""), fixedOutcomeProducer(Done, "")})
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
 
 	first, err := shed.Run(context.Background())
@@ -387,10 +357,7 @@ func TestRun_RerunResultEquality(t *testing.T) {
 		t.Fatalf("first Run(...) = _, %v; want nil error", err)
 	}
 
-	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: fixedOutcomeProducer(Done, "")},
-		{Name: "B", Producer: fixedOutcomeProducer(Done, "")},
-	}
+	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{fixedOutcomeProducer(Done, ""), fixedOutcomeProducer(Done, "")})
 	second, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("second Run(...) = _, %v; want nil error", err)

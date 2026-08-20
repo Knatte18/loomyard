@@ -19,7 +19,8 @@ The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is t
 `Shed` (see [shed.md](shed.md)) has no predefined slots — no Preflight-slot, no Producer-slot, no shared Finalize.
 It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across the whole list;
 atomicity — one mechanical action or LLM session — binds **simple** producers only, per the carve-out in [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
-`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order.
+`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list.
+The list's order is display and enumeration order only, never routing — see [`shed.md`'s bounce-budget and routing sections](shed.md#the-shed-loop--exact-mechanics) for the full argument; this doc does not restate it.
 The table's `Kind` column records each producer's simple/bespoke typology;
 see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the carve-out that defines it.
 Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` instance — see [`shed.md`'s engine-adapters section](shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer) for that generic type — configured here by its own Input pointer, Output pointer, and instruction file, nothing more:
@@ -27,39 +28,43 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | # | Producer | Kind | Type | Input | Output |
 |---|---|---|---|---|---|
 | 1 | `Preflight` | simple | mechanical | git/filesystem state (no format-contract file) | pass/fail — no artifact, a gate signal only |
-| 2 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
-| 3 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail |
-| 4 | `Discussion-Review` | bespoke | LLM/`perch` | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
-| 5 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
-| 6 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
-| 7 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
-| 8 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
-| 9 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
-| 10 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
-| 11 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
-| 12 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
-| 13 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 2 | `Loom-Preflight` | simple | mechanical | loom's own status file → `loom-status-spec.md`'s check-4 validation checklist | pass/fail — no artifact, a gate signal only |
+| 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
+| 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail |
+| 5 | `Discussion-Review` | bespoke | LLM/`perch` | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
+| 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
+| 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
+| 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
+| 9 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
+| 10 | `Batchifier` | simple | mechanical | `_lyx/plan/` (approved) + `batcher.yaml`'s `active:` key | pass/fail — a fail-fast gate confirming the active batchifier resolves cleanly before `Webster` spawns any LLM session, no artifact — already shipped as `internal/batcher`, "never an LLM's decision" per its own package doc |
+| 11 | `Webster` | bespoke | black box (LLM + mechanical internally) | `_lyx/plan/` (approved); resolves the active batchifier itself, lazily, on every call — never a value handed across from `Batchifier`, since that row writes no artifact | committed diff — `internal/websterengine`'s own per-batch loop is a bespoke, multi-spawn producer, exempt from `Shed`'s atomicity rule by design, and stays opaque to `loom`'s flat list, same "black box loom drives, exactly like perch" framing as [below](#webster--a-black-box-loom-drives-the-sibling-of-perch) |
+| 12 | `Webster-Review` | bespoke | LLM/`perch` | full diff → plan's card contract | verdict + review file — the full converge-loop gate over the whole diff |
+| 13 | `Publish` | simple | mechanical | approved diff | PR opened, or no-op; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
+| 14 | `Finalize` | bespoke | mechanical | approved diff (+ open PR, if any) | merge-back; not `loom`'s own — a generic `Shed` producer, shared by reference with `Hardener`'s producer list, see [internal/landingshed](../../internal/landingshed/doc.go) |
 
-`Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
-It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
-On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`) or escalates to a human — never "keep fixing symptoms."
+`Preflight` and `Loom-Preflight` are **built**, together giving `loom` the two-row shape.
+Row 1, `Preflight`, is the generic, product-agnostic gate: built as `internal/preflightshed`'s general producer over `internal/preflight.Check`, it validates worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the worktree pair's cleanliness, and fabric readiness and sync — warp branch == weft branch, via `warp`'s drift detection.
+Row 1 is reusable verbatim by a second product's producer list, and that reuse is what makes `manifest/designs/hardener.md`'s "its own Preflight" possible.
+Row 2, `Loom-Preflight`, is loom's own: built as `internal/loomengine.CheckSeed` over told paths, it validates that `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
+On `stuck`, `Shed` bounces to the producer's own explicit `OnStuck` target (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`), which may sit anywhere in the list, or escalates to a human when none is set — never "keep fixing symptoms."
+The same explicitness now governs the done direction too: `Done` routes via this producer's own `OnDone`, not by list position — see [`shed.md`'s routing and bounce-budget sections](shed.md#the-shed-loop--exact-mechanics) for the full design, not restated here.
 
 **Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
-`Finalize` is not `loom`'s own (see rows 12–13 above and [internal/landingshed](../../internal/landingshed/doc.go)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
+`Finalize` is not `loom`'s own (see rows 13–14 above and [internal/landingshed](../../internal/landingshed/doc.go)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
 Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, building heavily on millhouse's `codeguide-update`, committed into the weft via `lyx fabric sync`) is scoped to run as part of the `Finalize` merge, not before it — updating Raddle before the merge is impractical given merge-conflict risk, so it happens as part of the merge itself.
 `Hardener`'s `Tenter` will need the equivalent fold eventually — not designed here.
 
 Each row's Input and Output, in the normal case, are *pointers* into a format-contract file defining the consumed/produced artifact's shape, never a restated copy of its content.
 This is a producer-*authoring* convention, not a `Shed`-level mechanism — `Shed` itself never reads Input or Output through a pointer at all (see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition)); it is [CONSTRAINTS.md](../../CONSTRAINTS.md)'s Producer Pointer-Rule Invariant that enforces it, by review, over instruction files and format-contract docs.
 The thin-Input carve-out (a chain-head producer, human intent instead of an artifact) and thin-Output carve-out (a gate producer's pass/fail signal, or a terminal producer's no-downstream-consumer) apply to specific rows of the table above — see `shed.md`'s own section for both, stated once rather than restated here.
-Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
+Review is never a property attached to the producer it reviews — it stays a separate producer, reached by explicit routing rather than by position in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach `perch` used against a fake `burler`.
 Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
-`Publish` and `Finalize` (rows 12–13) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
+`Publish` and `Finalize` (rows 13–14) sit outside this ordering entirely — they are not `loom`'s to build; `loom: phase-machine scaffolding` stubs both and swaps in the real, shared-by-reference producers once `landing: Publish + Finalize producers` lands, on its own schedule (see [internal/landingshed](../../internal/landingshed/doc.go)).
 The concrete breakdown of `loom`'s own rows — which land in `loom: phase-machine scaffolding` vs. `loom: session bootstrap` vs. the deliberately-last per-producer prompt/rubric tasks (`loom: Discussion-Write producer`, `loom: Discussion-Review producer`, `loom: Plan-Write producer`, `loom: Plan-Review producer`, `loom: Webster-Review producer`), and exactly which rubrics are missing — lives in `manifest/roadmap.md` and the tasks' own wiki briefs, not restated here.
 
-`Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 3) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
+`Discussion`'s mechanical pre-gate and `Preflight`/`Finalize`'s thin-Output shape are both resolved by `Discussion-Validate` (row 4) and `shed.md`'s producer-contract section respectively — see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
 
 ## Discussion producer detail — validation checks and review rubric
 
@@ -103,7 +108,7 @@ Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to f
 Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item), `Plan-Sweep` stays a stub past that point too — deferred to its own Someday roadmap item, since `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout`.
 `Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
 
-`Plan-Sweep` (row 5) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
+`Plan-Sweep` (row 6) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
 Its job is grounding, not selection: hand `Plan-Write` real `scout` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
 
 **Deterministic extraction.**
@@ -238,7 +243,8 @@ the running orchestration honours it at the next **step boundary**, never mid-op
 | producers (discussion / plan) | prompt/profile files | **not** modules — a prompt + `shuttleengine.Spec` factory in `internal/loomengine` each (`DiscussionSpec`, `PlanSpec`), both ✅ **built** but not yet wired into `Shed` — see `manifest/roadmap.md`'s `loom: Discussion-Write producer` and `loom: Plan-Write producer` items. |
 | `lyx loom status` | a loom subcommand | the 1-line status view; runs as a strand (see `internal/reedengine`; `below-parent` + `ShrinkWhenWaitingOnChild`), not a separate module |
 | execution stack | existing/new infra | `proc` → reed → shuttle — see [overview.md#execution-stack](../../docs/overview.md#execution-stack-orchestration-layers) — built once, used by both modules above |
-| Preflight | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates the four preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync, seed exists & coherent) over git/filesystem state; builds on `internal/lyxcwd`, `internal/fabricengine`, `internal/state` |
+| Preflight (row 1, generic) | new Go package (`internal/preflightshed`) | ✅ **Done**, engine-only (no cobra module yet) — validates the tier-1/tier-2 preconditions (geometry + at-worktree-root, warp worktree clean, weft paired & in sync) over git/filesystem state, over `internal/preflight.Check`; reusable verbatim by a second product's producer list |
+| Loom-Preflight (row 2, loom's own) | new Go package (`internal/loomengine`) | ✅ **Done**, engine-only (no cobra module yet) — validates that loom's own status file exists and is a coherent fresh seed (no half-finished prior run), over told paths; builds on `internal/state` |
 | `/ly-*` skills | thin wrappers | over `lyx loom run` |
 
 The new Go specific to loom is the **three modules** (`loom`, `perch`, `burler`) plus the **webster module** (`internal/websterengine`/`internal/webstercli` — the fat verbs + distillation the Master orchestrator drives) and the `lyx loom status` subcommand;

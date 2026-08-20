@@ -1,4 +1,4 @@
-// loomshed.go implements Deps and New: loom's own 12-row producer list assembled behind a
+// loomshed.go implements Deps and New: loom's own 13-row producer list assembled behind a
 // *shedengine.Shed.
 
 package loomshed
@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// The twelve producer names, verbatim per manifest/designs/loom.md's producer table. The name is
+// The thirteen producer names, verbatim per manifest/designs/loom.md's producer table. The name is
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
@@ -22,6 +22,7 @@ import (
 // loom's own producer table is what New assembles from them.
 const (
 	NamePreflight          = "Preflight"
+	NameLoomPreflight      = "Loom-Preflight"
 	NameDiscussionWrite    = "Discussion-Write"
 	NameDiscussionValidate = "Discussion-Validate"
 	NameDiscussionReview   = "Discussion-Review"
@@ -47,8 +48,10 @@ type Deps struct {
 	StatusPath     string
 	LockPath       string
 	StatusLockPath string
-	// MaxBounces is Shed's own told bounce budget. 0 means "use the internal default", never "no
-	// bounces allowed" -- see shedengine.Shed.MaxBounces.
+	// MaxBounces is the default an unset per-producer ProducerDef.MaxBounces inherits. 0 means
+	// "use the internal default", never "no bounces allowed" -- see shedengine.Shed.MaxBounces.
+	// The budget it seeds is per-producer and episode-scoped, not run-wide -- see
+	// shedengine.Shed.MaxBounces's own field doc for the full inversion this task made.
 	MaxBounces int
 
 	// AnchorPath feeds both the plan directory (planparser.PlanDir) and the batch-config lookup
@@ -79,21 +82,32 @@ type Deps struct {
 	Landing landingshed.Deps
 }
 
-// New builds loom's 12-row producer list in table order and returns a *shedengine.Shed carrying it
+// New builds loom's 13-row producer list in table order and returns a *shedengine.Shed carrying it
 // plus the four told Shed fields.
 //
-// The twelve rows, with their backing and OnStuck target: 1 Preflight (deps.Preflight, ""); 2
-// Discussion-Write (stub, ""); 3 Discussion-Validate (real, bouncing to Discussion-Write); 4
-// Discussion-Review (stub, bouncing to Discussion-Write); 5 Plan-Write (stub, ""); 6 Plan-Validate
-// (real, bouncing to Plan-Write); 7 Plan-Review (stub, bouncing to Plan-Write); 8 Batchifier (real,
-// ""); 9 Webster (the lazy wrapper, ""); 10 Webster-Review (stub, bouncing to Webster); 11 Publish
-// (real, ""); 12 Finalize (real, ""). Every gate and validator bounces back to the producer whose
-// artifact it guards, and a gate whose guarded artifact is produced by no row in the list escalates
-// instead -- Preflight gates git and filesystem state and Batchifier gates the batch config, neither
-// of which any row writes, so there is nothing to bounce to and a human is the only thing that can
-// fix either. Publish and Finalize share that same escalate-only posture: neither bounces, because nothing in the list produces what these two gate
+// The thirteen rows, with their backing, OnStuck target, and OnDone target: 1 Preflight
+// (deps.Preflight, "", -> Loom-Preflight); 2 Loom-Preflight (real, "", -> Discussion-Write); 3
+// Discussion-Write (stub, "", -> Discussion-Validate); 4 Discussion-Validate (real, bouncing to
+// Discussion-Write, -> Discussion-Review); 5 Discussion-Review (stub, bouncing to Discussion-Write,
+// -> Plan-Write); 6 Plan-Write (stub, "", -> Plan-Validate); 7 Plan-Validate (real, bouncing to
+// Plan-Write, -> Plan-Review); 8 Plan-Review (stub, bouncing to Plan-Write, -> Batchifier); 9
+// Batchifier (real, "", -> Webster); 10 Webster (the lazy wrapper, "", -> Webster-Review); 11
+// Webster-Review (stub, bouncing to Webster, -> Publish); 12 Publish (real, "", -> Finalize); 13
+// Finalize (real, "", -> "", the empty OnDone that finishes the whole run). Every gate and
+// validator bounces back to the producer whose artifact it guards, and a gate whose guarded
+// artifact is produced by no row in the list escalates instead -- Preflight gates git and
+// filesystem state and Batchifier gates the batch config, neither of which any row writes, so
+// there is nothing to bounce to and a human is the only thing that can fix either.
+// Loom-Preflight shares that same escalate-only posture for its own reason: no row in the list
+// produces loom's own status file, so there is nothing to bounce to and a human is the only thing
+// that can fix an incoherent or half-finished seed. Publish and Finalize share that same
+// escalate-only posture: neither bounces, because nothing in the list produces what these two gate
 // -- an unresolvable conflict against the parent's current state, an unreachable remote service, a
 // drifting parent, and a pull request awaiting human review are all things only a human fixes.
+//
+// The list's physical order above is preserved as the display and enumeration order this comment
+// and the table below walk in, and each row's own OnDone is what actually routes a Done verdict to
+// its successor, forward or backward, regardless of list position.
 //
 // Plan-Sweep is deliberately not a row here: its scout-inventory work is deferred (see
 // manifest/roadmap.md's Someday "loom: build Plan-Sweep for real" item) and it has no consumer --
@@ -121,18 +135,19 @@ func New(deps Deps) (*shedengine.Shed, error) {
 	}
 
 	producers := []shedengine.ProducerDef{
-		{Name: NamePreflight, Producer: deps.Preflight, OnStuck: ""},
-		{Name: NameDiscussionWrite, Producer: newStub(NameDiscussionWrite), OnStuck: ""},
-		{Name: NameDiscussionValidate, Producer: newDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath), OnStuck: NameDiscussionWrite},
-		{Name: NameDiscussionReview, Producer: newStub(NameDiscussionReview), OnStuck: NameDiscussionWrite},
-		{Name: NamePlanWrite, Producer: newStub(NamePlanWrite), OnStuck: ""},
-		{Name: NamePlanValidate, Producer: newPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot), OnStuck: NamePlanWrite},
-		{Name: NamePlanReview, Producer: newStub(NamePlanReview), OnStuck: NamePlanWrite},
-		{Name: NameBatchifier, Producer: newBatchifier(NameBatchifier, deps.AnchorPath), OnStuck: ""},
-		{Name: NameWebster, Producer: newWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, deps.WebsterDeps), OnStuck: ""},
-		{Name: NameWebsterReview, Producer: newStub(NameWebsterReview), OnStuck: NameWebster},
-		{Name: NamePublish, Producer: publish, OnStuck: ""},
-		{Name: NameFinalize, Producer: finalize, OnStuck: ""},
+		{Name: NamePreflight, Producer: deps.Preflight, OnStuck: "", OnDone: NameLoomPreflight},
+		{Name: NameLoomPreflight, Producer: newLoomPreflight(NameLoomPreflight, deps.StatusPath, deps.StatusLockPath), OnStuck: "", OnDone: NameDiscussionWrite},
+		{Name: NameDiscussionWrite, Producer: newStub(NameDiscussionWrite), OnStuck: "", OnDone: NameDiscussionValidate},
+		{Name: NameDiscussionValidate, Producer: newDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath), OnStuck: NameDiscussionWrite, OnDone: NameDiscussionReview},
+		{Name: NameDiscussionReview, Producer: newStub(NameDiscussionReview), OnStuck: NameDiscussionWrite, OnDone: NamePlanWrite},
+		{Name: NamePlanWrite, Producer: newStub(NamePlanWrite), OnStuck: "", OnDone: NamePlanValidate},
+		{Name: NamePlanValidate, Producer: newPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot), OnStuck: NamePlanWrite, OnDone: NamePlanReview},
+		{Name: NamePlanReview, Producer: newStub(NamePlanReview), OnStuck: NamePlanWrite, OnDone: NameBatchifier},
+		{Name: NameBatchifier, Producer: newBatchifier(NameBatchifier, deps.AnchorPath), OnStuck: "", OnDone: NameWebster},
+		{Name: NameWebster, Producer: newWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, deps.WebsterDeps), OnStuck: "", OnDone: NameWebsterReview},
+		{Name: NameWebsterReview, Producer: newStub(NameWebsterReview), OnStuck: NameWebster, OnDone: NamePublish},
+		{Name: NamePublish, Producer: publish, OnStuck: "", OnDone: NameFinalize},
+		{Name: NameFinalize, Producer: finalize, OnStuck: "", OnDone: ""},
 	}
 
 	return &shedengine.Shed{

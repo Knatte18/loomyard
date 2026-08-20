@@ -127,6 +127,32 @@ func assertRFC3339UTC(t *testing.T, at string) {
 	}
 }
 
+// linearChain builds one ProducerDef per name, in order, pairing each with the matching entry in
+// producers, and wires OnDone to reproduce today's sequential advance: each entry's OnDone names
+// the next entry, and the last entry's OnDone is left empty, which is what finishes the run. It
+// exists so a scenario that only needs "these producers, in this order" does not restate the chain
+// by hand.
+// It fails loud rather than guessing when names and producers differ in length.
+func linearChain(t *testing.T, names []string, producers []ShedProducer) []ProducerDef {
+	t.Helper()
+	if len(names) != len(producers) {
+		t.Fatalf("linearChain: len(names) = %d, len(producers) = %d; want equal", len(names), len(producers))
+	}
+	defs := make([]ProducerDef, len(names))
+	for i, name := range names {
+		onDone := ""
+		if i < len(names)-1 {
+			onDone = names[i+1]
+		}
+		defs[i] = ProducerDef{
+			Name:     name,
+			Producer: producers[i],
+			OnDone:   onDone,
+		}
+	}
+	return defs
+}
+
 // assertHistoryNonDecreasing fails the test unless every entry's At value is parseable RFC3339
 // and the sequence is non-decreasing in time.
 func assertHistoryNonDecreasing(t *testing.T, entries []HistoryEntry) {

@@ -96,7 +96,7 @@ func TestWire_RunLockDiffersFromStatusLock(t *testing.T) {
 }
 
 // TestWire_PreflightIsTheAdapter asserts the Preflight field is non-nil and is the adapter type
-// (loomshed.NewPreflightProducer's own concrete type), never a bare function value.
+// (preflightshed.NewPreflight's own concrete type), never a bare function value.
 func TestWire_PreflightIsTheAdapter(t *testing.T) {
 	t.Parallel()
 
@@ -108,15 +108,15 @@ func TestWire_PreflightIsTheAdapter(t *testing.T) {
 	}
 
 	if c.deps.Preflight == nil {
-		t.Fatal("c.deps.Preflight = nil; want the loomshed adapter")
+		t.Fatal("c.deps.Preflight = nil; want the preflightshed adapter")
 	}
-	// preflightProducer is unexported in package loomshed, so its concrete type is confirmed by its
-	// rendered %T rather than a type assertion -- proving it is a struct value from that package
+	// preflightProducer is unexported in package preflightshed, so its concrete type is confirmed by
+	// its rendered %T rather than a type assertion -- proving it is a struct value from that package
 	// (the adapter), never a bare func value (which %T would render as
 	// "func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)").
 	gotType := fmt.Sprintf("%T", c.deps.Preflight)
-	if gotType != "*loomshed.preflightProducer" {
-		t.Errorf("%%T(c.deps.Preflight) = %q; want %q (the adapter, not a bare function)", gotType, "*loomshed.preflightProducer")
+	if gotType != "*preflightshed.preflightProducer" {
+		t.Errorf("%%T(c.deps.Preflight) = %q; want %q (the adapter, not a bare function)", gotType, "*preflightshed.preflightProducer")
 	}
 }
 
