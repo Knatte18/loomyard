@@ -111,17 +111,12 @@ func TestMergeErrors_NewMergeGuardErrorSortsAndDeduplicates(t *testing.T) {
 var mergeVocabularyLeakTokens = []string{"warp", "weft", "host "}
 
 func TestMergeErrors_NoVocabularyLeakInReasons(t *testing.T) {
-	reasons := []string{
-		mergeReasonAlreadyInProgress,
-		mergeReasonUnresolvedConflicts,
-		mergeReasonNoMergeInProgress,
-		mergeReasonWorktreeDirty,
-		mergeReasonNotSynced,
-		mergeReasonSourceNotFound,
-		mergeReasonNotFabricManaged,
-	}
-	for _, reason := range reasons {
-		assertNoVocabularyLeak(t, reason, reason)
+	// pinnedMergeReasons (mergevocab_test.go) is the whole closed set, proven equal to the real
+	// const block by TestMergeVocabulary_GuardReasonSetMatchesConstBlock -- iterating it here means
+	// a newly added member can never sit outside this leak check, the drift a hand-copied subset
+	// already suffered once (two of nine members were missing).
+	for name, reason := range pinnedMergeReasons {
+		assertNoVocabularyLeak(t, name, reason)
 	}
 }
 

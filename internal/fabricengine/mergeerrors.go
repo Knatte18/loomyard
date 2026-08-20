@@ -16,16 +16,25 @@ import (
 
 // The closed set of guard-reason strings a *MergeGuardError may carry.
 // Pinned verbatim from the discussion's safety-guards-are-aggregated-and-side-free decision:
-// adding a member is a same-commit change to this list and to the vocabulary assertion that covers
-// it, and no member may name a side, carry a path, or imply an order.
+// adding a member is a same-commit change to this list and to pinnedMergeReasons in
+// mergevocab_test.go — enforced mechanically by
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses this const block — and no
+// member may name a side, carry a path, or imply an order.
+// Membership is earned by being an *aggregatable precondition* — one of several reasons a single
+// *MergeGuardError may carry at once. A terminal, standalone disposition with nothing to aggregate
+// alongside it belongs in the typed error surface below instead: "no merge in progress" was once a
+// member here, produced by nothing, while *ErrNoMergeInProgress carried the same words and did the
+// actual work. It was removed rather than given a producer.
 const (
 	mergeReasonAlreadyInProgress   = "merge already in progress"
 	mergeReasonUnresolvedConflicts = "unresolved conflicts remain"
-	mergeReasonNoMergeInProgress   = "no merge in progress"
 	mergeReasonWorktreeDirty       = "worktree dirty"
 	mergeReasonNotSynced           = "branch not synced to upstream"
 	mergeReasonSourceNotFound      = "source branch not found"
 	mergeReasonNotFabricManaged    = "source branch is not fabric-managed"
+	mergeReasonDetachedHead        = "checkout is not on a branch"
+	mergeReasonAttemptIncomplete   = "merge attempt did not reach both sides"
+	mergeReasonConcludeLanded      = "merge conclude already landed"
 )
 
 // MergeGuardError aggregates every failed merge precondition as a sorted, deduplicated list of

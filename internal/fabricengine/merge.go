@@ -33,8 +33,13 @@ type MergeOptions struct {
 // MergeResult reports what a merge verb did on the pair. AlreadyUpToDate reports the degenerate
 // no-op where both sides' resolved source SHA was already an ancestor of that side's HEAD.
 // Conflicts lists the unified, worktree-relative paths a merge attempt left conflicted — empty,
-// never nil, when there are none. Committed reports whether the merge concluded with a landed
-// commit on the sides that needed one.
+// never nil, when there are none. Committed reports whether the pair now carries this merge's
+// conclude-commit.
+// Both flags are derived from the merge-state record's own fields (mergeState.landedConcludeCommit
+// and mergeState.bothSidesAlreadyUpToDate), never hardcoded per return site: a merge that
+// fast-forwarded both sides fabricates no commit and reports Committed false, and a call that finds
+// the work already done after taking the lock reports AlreadyUpToDate true — the same answer a
+// strictly sequential run of the same calls gives.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
 type MergeResult struct {
 	MutationRecord
@@ -92,6 +97,12 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 	reasons = append(reasons, dirtyReasons...)
+
+	detachedReasons, err := detachedHeadReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, detachedReasons...)
 
 	sources, sourceReasons := resolveMergeSources(f, l, source)
 	reasons = append(reasons, sourceReasons...)
@@ -221,7 +232,11 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	return MergeResult{Committed: true, Conflicts: mergeNoConflicts}, nil
+	return MergeResult{
+		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
+		Conflicts:       mergeNoConflicts,
+		Committed:       st.landedConcludeCommit(),
+	}, nil
 }
 
 // Merge merges source into f's target pair — the pair whose worktree the caller opened f on, via
@@ -274,6 +289,12 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, err
 	}
 	reasons = append(reasons, dirtyReasons...)
+
+	detachedReasons, err := detachedHeadReason(f)
+	if err != nil {
+		return MergeResult{}, err
+	}
+	reasons = append(reasons, detachedReasons...)
 
 	syncReasons, err := syncedToUpstreamReason(f)
 	if err != nil {
@@ -405,7 +426,11 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 		return MergeResult{}, err
 	}
 
-	return MergeResult{Committed: true, Conflicts: mergeNoConflicts}, nil
+	return MergeResult{
+		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
+		Conflicts:       mergeNoConflicts,
+		Committed:       st.landedConcludeCommit(),
+	}, nil
 }
 
 // syncSideBeforeMerge implements Merge's pre-merge sync step for one side: dir/repo with no upstream

@@ -1,7 +1,7 @@
 // merge.go implements the single-repo merge primitives fabricengine's two-sided coordination
 // composes: MergeStart (normal and squash) with four-way outcome classification, MergeConclude,
-// ConflictedFiles, MergeHeadPresent, the fast-forward-only MergeFFOnly advance, and the general
-// ref->SHA resolver ResolveSHA.
+// ConflictedFiles, MergeHeadPresent, HeadDetached, the fast-forward-only MergeFFOnly advance, and
+// the general ref->SHA resolver ResolveSHA.
 
 package gitrepo
 
@@ -26,17 +26,35 @@ const (
 	MergeAlreadyUpToDate                     // nothing to do
 )
 
-// MergeStart runs `git merge --no-commit <ref>` (squash false) or `git merge --squash <ref>`
+// MergeStart runs `git merge --ff --no-commit <ref>` (squash false) or `git merge --squash <ref>`
 // (squash true) and classifies the result.
+// The `--ff` spelling is mandatory rather than redundant: it is git's default only until an operator
+// sets `merge.ff = only` or `merge.ff = false` in their config, at which point every non-fast-forward
+// merge aborts with `Not possible to fast-forward` (or every fast-forward fabricates a merge commit)
+// and the four-way classification below is reading a repo state fabric never asked for.
+// Pinning it on the command line is the same posture MergeConclude takes with --no-edit: the
+// behaviour fabric depends on is stated, never inherited from whatever config the caller happens to
+// be running under. The squash form needs no such pin — `merge.ff` does not apply to `--squash`.
 // A conflicted merge exits non-zero, so runChecked returns *gitexec.GitError;
 // MergeStart classifies on repo state, never on exit code alone, and adds no raw gitexec site.
 // It captures HEAD before the call, then on any error uses errors.As to recover the GitError and
 // probes ConflictedFiles: a non-empty result means MergeConflicted;
 // otherwise the error is genuine and returned.
-// On success it probes staged state via `git diff --cached --quiet` and HEAD movement: HEAD moved
-// with nothing staged means MergeFastForwarded;
-// nothing staged and HEAD unmoved means MergeAlreadyUpToDate;
-// otherwise MergeStaged.
+// On success it probes staged state via `git diff --cached --quiet`, live merge state via
+// MergeHeadPresent, and HEAD movement.
+// A live MERGE_HEAD means MergeStaged whatever the index diff says, and that arm is not redundant
+// with the staged one: a real, non-fast-forward merge whose result tree happens to equal HEAD's own
+// tree — the shape produced whenever the same change reached both branches independently, by
+// cherry-pick, backport, or a duplicated hand-edit — stages nothing and moves no HEAD, yet git has
+// genuinely started a merge and `git commit` would land a proper two-parent commit for it.
+// Classifying that as MergeAlreadyUpToDate made fabric report a clean no-op, delete its own
+// merge-state record, and abandon a live MERGE_HEAD in the checkout — a record-versus-git
+// disagreement no fabric verb could then clear.
+// The squash form writes no MERGE_HEAD, so the probe is vacuous there and a squash with an empty
+// result keeps classifying as MergeAlreadyUpToDate, which is the honest answer: nothing to commit.
+// Otherwise HEAD moved with nothing staged means MergeFastForwarded;
+// nothing staged, no MERGE_HEAD and HEAD unmoved means MergeAlreadyUpToDate;
+// anything else means MergeStaged.
 // A ref with a leading '-' is rejected as ErrInvalidSHA before any git spawn, mirroring
 // IsAncestor's argument pre-check.
 func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
@@ -53,7 +71,7 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 	if squash {
 		_, mergeErr = r.runChecked("merge", "--squash", ref)
 	} else {
-		_, mergeErr = r.runChecked("merge", "--no-commit", ref)
+		_, mergeErr = r.runChecked("merge", "--ff", "--no-commit", ref)
 	}
 
 	if mergeErr != nil {
@@ -84,13 +102,18 @@ func (r *Repo) MergeStart(ref string, squash bool) (MergeOutcome, error) {
 		return MergeStaged, fmt.Errorf("gitrepo: diff --cached --quiet in %s: %w", r.path, stagedErr)
 	}
 
+	mergeHeadPresent, err := r.MergeHeadPresent()
+	if err != nil {
+		return MergeStaged, err
+	}
+
 	headAfter, err := r.CurrentSHA()
 	if err != nil {
 		return MergeStaged, err
 	}
 
 	switch {
-	case staged:
+	case staged || mergeHeadPresent:
 		return MergeStaged, nil
 	case headAfter != headBefore:
 		return MergeFastForwarded, nil
@@ -168,6 +191,30 @@ func (r *Repo) MergeHeadPresent() (bool, error) {
 	default:
 		return false, fmt.Errorf("gitrepo: rev-parse --verify --quiet MERGE_HEAD in %s: %w", r.path, err)
 	}
+}
+
+// HeadDetached reports whether HEAD points straight at a commit instead of at a branch.
+// fabric's merge verbs need this as a precondition: a merge concluded on a detached HEAD lands a
+// commit no ref reaches, so the next checkout discards it silently while the paired repo's half of
+// the same merge stays landed.
+// CurrentBranch cannot answer it — that method collapses detachment into an error indistinguishable
+// from a genuine read failure — so this is a separate, boolean-returning probe.
+// Like ResolveSHA it is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary
+// Invariant's pinned CLI list.
+func (r *Repo) HeadDetached() (bool, error) {
+	repo, err := r.goGit()
+	if err != nil {
+		return false, err
+	}
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	head, err := repo.Reference(plumbing.HEAD, false)
+	if err != nil {
+		return false, fmt.Errorf("gitrepo: read HEAD reference in %s: %w", r.path, err)
+	}
+	return head.Type() != plumbing.SymbolicReference, nil
 }
 
 // MergeFFOnly advances the repo to ref via `git merge --ff-only <ref>`, failing loudly (never

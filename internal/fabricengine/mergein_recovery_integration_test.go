@@ -317,8 +317,10 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if !res.Committed {
-		t.Fatalf("MergeIn(feature).Committed = false; want true")
+	// Both sides fast-forward onto the remote-tracking tip, so no conclude-commit is fabricated and
+	// Committed is false; the merge landing is asserted by the merged content below, not by the flag.
+	if res.Committed {
+		t.Fatalf("MergeIn(feature).Committed = true; want false — a fast-forward fabricates no commit")
 	}
 
 	if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), "remote-tip.txt")); err != nil {
@@ -342,8 +344,9 @@ func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeIn(feature) error = %v", err)
 	}
-	if !res.Committed {
-		t.Fatalf("MergeIn(feature).Committed = false; want true")
+	// Both sides fast-forward onto the remote-only tip, so no conclude-commit is fabricated.
+	if res.Committed {
+		t.Fatalf("MergeIn(feature).Committed = true; want false — a fast-forward fabricates no commit")
 	}
 	if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), "remote-only.txt")); err != nil {
 		t.Errorf("remote-only.txt not present in warp worktree after merge: %v", err)
@@ -534,5 +537,91 @@ func TestMergeIn_SubpathAnchoredHub_PathMapping(t *testing.T) {
 	visiblePath := filepath.Join(h.PrimeWorktree(), filepath.FromSlash(want))
 	if _, err := os.Stat(visiblePath); err != nil {
 		t.Errorf("os.Stat(%s) error = %v; want the conflicted file reachable through the junction from the visible worktree root", visiblePath, err)
+	}
+}
+
+// TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking covers the crash shape where a
+// side's conclude-commit landed but the record never learned its SHA — the state a kill between
+// `git commit` and the record re-save leaves behind, simulated exactly by resolving a conflicted
+// MergeIn and committing each side with plain git while the record still says committed:"".
+// Before the adoption arm existed this state was a permanent wedge: MergeContinue re-ran
+// `git commit` on a clean tree and failed forever, MergeAbort refused via concludeLandedReason, and
+// no fabric verb could ever clear the record.
+// The resumed MergeContinue must adopt both landed commits off HEAD — creating no new commit —
+// report Committed true, record one KindMergeCommitted per adopted side carrying the adopted SHA,
+// and delete the record.
+func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 2 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted", res.Conflicts)
+	}
+
+	// Resolve both sides, then land each conclude with plain git — on-disk state now byte-identical
+	// to a crash between concludeMergeSides' `git commit` and its record re-save, on both sides.
+	writeResolved := func(dir, rel string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(rel)), []byte("resolved\n"), 0o644); err != nil {
+			t.Fatalf("write resolved %s: %v", rel, err)
+		}
+	}
+	writeResolved(h.PrimeWorktree(), "clash.txt")
+	writeResolved(h.PrimeWeft(), "_lyx/weft-clash.txt")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "clash.txt")
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "--no-edit")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "add", "_lyx/weft-clash.txt")
+	gitkit.MustRun(t, h.PrimeWeft(), "git", "commit", "--no-edit")
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if st.WarpCommitted != "" || st.WeftCommitted != "" {
+		t.Fatalf("recorded conclude SHAs = (%q, %q); want both empty — the invisible shape", st.WarpCommitted, st.WeftCommitted)
+	}
+
+	// Sanity: MergeAbort must refuse this state (R2's guard), leaving MergeContinue as the recovery.
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	if _, err := fresh.MergeAbort(); err == nil {
+		t.Fatalf("MergeAbort() on invisible landed conclude: error = nil; want conclude-landed guard refusal")
+	}
+
+	warpHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftHEADBefore := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+
+	contRes, err := fresh.MergeContinue("")
+	if err != nil {
+		t.Fatalf("MergeContinue() on invisible landed conclude: error = %v; want adoption to finish the merge", err)
+	}
+	if !contRes.Committed {
+		t.Errorf("MergeContinue().Committed = false; want true — the pair carries this merge's conclude-commits")
+	}
+
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpHEADBefore {
+		t.Errorf("warp HEAD after adoption = %q; want unchanged %q — adoption must not create a commit", got, warpHEADBefore)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != weftHEADBefore {
+		t.Errorf("weft HEAD after adoption = %q; want unchanged %q — adoption must not create a commit", got, weftHEADBefore)
+	}
+
+	adopted := map[string]bool{warpHEADBefore: false, weftHEADBefore: false}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			adopted[entry.Detail] = true
+		}
+	}
+	if !adopted[warpHEADBefore] || !adopted[weftHEADBefore] {
+		t.Errorf("MergeContinue() mutations = %v; want KindMergeCommitted carrying both adopted SHAs %q and %q", contRes.Mutated().Entries(), warpHEADBefore, weftHEADBefore)
+	}
+
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || exists {
+		t.Errorf("MergeRecordExistsForTest() after adoption = (%v, %v); want (false, nil)", exists, err)
 	}
 }

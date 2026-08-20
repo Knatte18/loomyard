@@ -12,10 +12,103 @@
 package fabricengine
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+// pinnedMergeReasons is the single hand-pinned copy of the closed guard-reason set, constant name
+// to verbatim string: every vocabulary and leak assertion over the set iterates this map, and
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock proves it equal to the real const block in
+// mergeerrors.go by parsing the source — so adding, removing, or rewording a member without
+// updating this map in the same commit fails that test, making the guards decision's same-commit
+// rule mechanically real rather than asserted.
+var pinnedMergeReasons = map[string]string{
+	"mergeReasonAlreadyInProgress":   "merge already in progress",
+	"mergeReasonUnresolvedConflicts": "unresolved conflicts remain",
+	"mergeReasonWorktreeDirty":       "worktree dirty",
+	"mergeReasonNotSynced":           "branch not synced to upstream",
+	"mergeReasonSourceNotFound":      "source branch not found",
+	"mergeReasonNotFabricManaged":    "source branch is not fabric-managed",
+	"mergeReasonDetachedHead":        "checkout is not on a branch",
+	"mergeReasonAttemptIncomplete":   "merge attempt did not reach both sides",
+	"mergeReasonConcludeLanded":      "merge conclude already landed",
+}
+
+// mergeReasonConstsFromSource parses mergeerrors.go and returns every package-level constant whose
+// name carries the mergeReason prefix, name to string value — the closed set as the source actually
+// declares it, read with go/ast so no hand-maintained list can drift from it (the
+// cmd/lyx/registration_test.go precedent applied to a const block).
+func mergeReasonConstsFromSource(t *testing.T) map[string]string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "mergeerrors.go", nil, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse mergeerrors.go: %v", err)
+	}
+
+	got := map[string]string{}
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok || genDecl.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			valueSpec, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range valueSpec.Names {
+				if !strings.HasPrefix(name.Name, "mergeReason") {
+					continue
+				}
+				if i >= len(valueSpec.Values) {
+					t.Fatalf("const %s has no value literal; the closed set must pin every member verbatim", name.Name)
+				}
+				lit, ok := valueSpec.Values[i].(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					t.Fatalf("const %s is not a string literal; the closed set must pin every member verbatim", name.Name)
+				}
+				value, unquoteErr := strconv.Unquote(lit.Value)
+				if unquoteErr != nil {
+					t.Fatalf("unquote const %s value %s: %v", name.Name, lit.Value, unquoteErr)
+				}
+				got[name.Name] = value
+			}
+		}
+	}
+	return got
+}
+
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock proves pinnedMergeReasons equal — both
+// directions, names and verbatim values — to the mergeReason* const block mergeerrors.go really
+// declares. This is what makes the same-commit rule detectable: a member added to the source
+// without touching pinnedMergeReasons fails here, which the closure test's former
+// two-hand-maintained-lists comparison could never do.
+func TestMergeVocabulary_GuardReasonSetMatchesConstBlock(t *testing.T) {
+	got := mergeReasonConstsFromSource(t)
+
+	for name, value := range got {
+		pinnedValue, pinned := pinnedMergeReasons[name]
+		if !pinned {
+			t.Errorf("mergeerrors.go declares %s = %q, which pinnedMergeReasons does not pin -- update the pinned map in the same commit as any change to the closed set", name, value)
+			continue
+		}
+		if value != pinnedValue {
+			t.Errorf("mergeerrors.go declares %s = %q; pinnedMergeReasons pins %q -- the two must match verbatim", name, value, pinnedValue)
+		}
+	}
+	for name := range pinnedMergeReasons {
+		if _, declared := got[name]; !declared {
+			t.Errorf("pinnedMergeReasons pins %s, which mergeerrors.go no longer declares -- update the pinned map in the same commit as any change to the closed set", name)
+		}
+	}
+}
 
 // mergeVocabHostPhrases mirrors internal/lyxcwd/enforcement_test.go's hostPhrases list: the
 // fabric-sense "host X" phrases the vocabulary decision polices, checked case-insensitively in both
@@ -92,14 +185,9 @@ func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
 // contain its own Source field's value -- the one detail that error carries outside its fixed
 // message, and which must never leak into the message itself.
 func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
-	reasons := []string{
-		mergeReasonAlreadyInProgress,
-		mergeReasonUnresolvedConflicts,
-		mergeReasonNoMergeInProgress,
-		mergeReasonWorktreeDirty,
-		mergeReasonNotSynced,
-		mergeReasonSourceNotFound,
-		mergeReasonNotFabricManaged,
+	reasons := make([]string, 0, len(pinnedMergeReasons))
+	for _, reason := range pinnedMergeReasons {
+		reasons = append(reasons, reason)
 	}
 	guardErr := newMergeGuardError(reasons)
 	assertSideFree(t, "(*MergeGuardError).Error()", guardErr.Error())
@@ -119,41 +207,14 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 }
 
 // TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree asserts every member of the closed
-// guard-reason set is side-free, path-free (no "/" or "\"), and matches the pinned literal list
-// verbatim -- so adding a member without updating this test fails loudly, per the guards decision's
-// same-commit rule.
+// guard-reason set is side-free and path-free (no "/" or "\"), iterating pinnedMergeReasons --
+// whose equality with the real const block TestMergeVocabulary_GuardReasonSetMatchesConstBlock
+// proves by parsing the source, so a member added to the set cannot escape these assertions.
 func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
-	want := []string{
-		"merge already in progress",
-		"unresolved conflicts remain",
-		"no merge in progress",
-		"worktree dirty",
-		"branch not synced to upstream",
-		"source branch not found",
-		"source branch is not fabric-managed",
-	}
-	got := []string{
-		mergeReasonAlreadyInProgress,
-		mergeReasonUnresolvedConflicts,
-		mergeReasonNoMergeInProgress,
-		mergeReasonWorktreeDirty,
-		mergeReasonNotSynced,
-		mergeReasonSourceNotFound,
-		mergeReasonNotFabricManaged,
-	}
-	if len(got) != len(want) {
-		t.Fatalf("closed guard-reason set has %d members; want exactly %d -- update this test's pinned list in the same commit as any change to the set", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("guard-reason set member[%d] = %q; want %q verbatim", i, got[i], want[i])
-		}
-	}
-
-	for _, reason := range got {
-		assertSideFree(t, "guard reason "+reason, reason)
+	for name, reason := range pinnedMergeReasons {
+		assertSideFree(t, "guard reason "+name, reason)
 		if strings.ContainsAny(reason, `/\`) {
-			t.Errorf("guard reason %q contains a path separator; the closed set must be path-free", reason)
+			t.Errorf("guard reason %s = %q contains a path separator; the closed set must be path-free", name, reason)
 		}
 	}
 }
