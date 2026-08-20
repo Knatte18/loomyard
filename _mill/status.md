@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-loomshed-migration
+phase: approved-docs-sweep
 slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: _mill/plan
@@ -31,6 +31,7 @@ implementing  '2026-08-20T09:52:16Z'
 approved-engine-fields-and-validation  '2026-08-20T09:56:20Z'
 approved-run-routing-and-budget  '2026-08-20T10:06:49Z'
 approved-loomshed-migration  '2026-08-20T10:11:17Z'
+approved-docs-sweep  '2026-08-20T10:18:56Z'
 ```
 
 ## Batches
@@ -56,8 +57,9 @@ batches:
     commit_sha: ec01e786112ccb773fc80bac1c0f3c177a144cd3
     verify_baseline_failures: []
   - name: docs-sweep
-    state: running
+    state: approved
     implementer_session: e9832e99-5ae8-43ad-8864-81dbeb6158f3
     start_sha: e6e4dbd22957aaff4de07a588e40d08e956e2822
+    commit_sha: 755ea02e7d3a1f4a6e02d5fed7b799e95b5a3441
     verify_baseline_failures: []
 ```
