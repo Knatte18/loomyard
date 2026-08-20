@@ -7,6 +7,7 @@
 package shedadapters
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // BurlerRunner is the narrow seam BurlerProducer drives one burler round through.
@@ -199,4 +203,153 @@ func hydrationPaths(runDir string, current int) (reviews []string, fixerReports 
 		fixerReports = append(fixerReports, roundFixerReportPath(runDir, n))
 	}
 	return reviews, fixerReports, nil
+}
+
+// Compile-time proof that *BurlerProducer satisfies shedengine.ShedProducer.
+var _ shedengine.ShedProducer = (*BurlerProducer)(nil)
+
+// Call runs one BurlerProducer round: resolve the round to run from disk, build a fresh per-round
+// copy of the stored template profile, run at most two attempts (a second only on a died/timeout
+// first attempt), and map the outcome onto shedengine's contract.
+//
+// Archive rule: every return in which the round did not produce a usable review archives both
+// round paths first, keyed on that fact rather than on whether the return is an error -- this
+// covers a runner error (regardless of the Result.Outcome it carries), an asking hard error, a
+// second consecutive died/timeout, an unrecognized outcome, and a cancellation detected between
+// attempts. Two carve-outs leave the round's files in place: the success return, and a
+// cancellation detected after the round already completed and parsed -- that return is an error,
+// but its artifacts survive so the next call advances to the following round instead of re-running
+// this one.
+//
+// No mid-run cancellation bridge is installed, because internal/burlerengine exposes no pause
+// seam: a cancel is observed only once the round reaches a terminal outcome or its own
+// RunOpts.Timeout elapses.
+func (p *BurlerProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if err := entryErr(ctx, p.name, burlerEngineLabel); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+
+	if err := os.MkdirAll(p.runDir, 0o755); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): create run dir %q: %w", p.name, burlerEngineLabel, p.runDir, err)
+	}
+
+	highest, err := highestCompleteRound(p.runDir)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): resolve round: %w", p.name, burlerEngineLabel, err)
+	}
+	round := highest + 1
+
+	reviewPath := roundReviewPath(p.runDir, round)
+	fixerReportPath := roundFixerReportPath(p.runDir, round)
+
+	focus := readRoundFocus(p.name, p.runDir, round)
+	priorReviews, priorFixerReports, err := hydrationPaths(p.runDir, round)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): resolve hydration: %w", p.name, burlerEngineLabel, err)
+	}
+
+	// A fresh copy of the stored template, built per round: every round must carry its own
+	// ReviewPath, FixerReportPath, PriorReviews, PriorFixerReports, and ClusterExclude values, and
+	// a reused copy would leak the previous round's values into the next one. The stored template
+	// itself is never mutated -- every slice field set below is a freshly allocated slice, never an
+	// in-place append onto p.profile's own backing array.
+	profile := p.profile
+	profile.ReviewPath = reviewPath
+	profile.FixerReportPath = fixerReportPath
+	profile.PriorReviews = append(append([]string{}, p.profile.PriorReviews...), priorReviews...)
+	profile.PriorReviews = append(profile.PriorReviews, focus.Hydrate...)
+	profile.PriorFixerReports = append(append([]string{}, p.profile.PriorFixerReports...), priorFixerReports...)
+	profile.ClusterExclude = nil
+	if p.profile.ClusterFan != "" {
+		profile.ClusterExclude = focus.ExcludeLenses
+	} else if len(focus.ExcludeLenses) > 0 {
+		// A well-formed but unusable directive must never become a validate hard error
+		// downstream -- the fan is authoritative config, the focus file is an advisory,
+		// LLM-authored directive.
+		logger.Warn("shedadapters: focus directive names cluster excludes but the template profile has no cluster fan; dropping", "producer", p.name, "engine", burlerEngineLabel, "round", round)
+	}
+
+	// archiveRound renames both of this round's own paths to stamped siblings, logging (but never
+	// masking) a failure -- every caller below is on a failure exit whose round did not produce a
+	// usable review.
+	archiveRound := func() {
+		if archErr := archiveStaleOutputs([]string{reviewPath, fixerReportPath}, p.now); archErr != nil {
+			logger.Warn("shedadapters: archive round outputs on exit failed", "producer", p.name, "engine", burlerEngineLabel, "round", round, "error", archErr)
+		}
+	}
+
+	// failureExit is the shared tail of every non-success return: cancelErr is consulted first,
+	// exactly as the other adapters do, then the round's paths are archived before returning
+	// whichever error takes precedence.
+	failureExit := func(primaryErr error) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+			archiveRound()
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		archiveRound()
+		return "", shedengine.OutputPointer{}, primaryErr
+	}
+
+	var priorResult burlerengine.Result
+	var priorToken string
+	for attempt := 1; attempt <= 2; attempt++ {
+		if attempt == 2 {
+			// Re-check ctx.Err() before spawning a fresh, expensive round.
+			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+				archiveRound()
+				return "", shedengine.OutputPointer{}, cerr
+			}
+		}
+
+		// Before every attempt, including attempt 1: a leftover file at the round's own paths is
+		// renamed to a stamped sibling rather than being passed through to a run whose spec
+		// validation rejects a pre-existing output file.
+		if err := archiveStaleOutputs([]string{reviewPath, fixerReportPath}, p.now); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: archive stale outputs before attempt %d: %w", p.name, burlerEngineLabel, round, attempt, err)
+		}
+
+		// The attempt-distinguishing token belongs on RunOpts.Round, which names the shuttle run,
+		// and never on the artifact paths, which stay canonical per round.
+		attemptToken := strconv.Itoa(round)
+		if attempt == 2 {
+			attemptToken += "b"
+		}
+		attemptOpts := p.opts
+		attemptOpts.Round = attemptToken
+
+		result, runErr := p.runner.Run(profile, attemptOpts)
+		if runErr != nil {
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: run: %w", p.name, burlerEngineLabel, round, attemptToken, runErr))
+		}
+
+		switch result.Outcome {
+		case shuttleengine.OutcomeDone:
+			// A genuine success verdict survives cancellation only up to the moment the round
+			// completed and parsed; a cancellation observed after that point still yields an
+			// error (internal/shedengine binds every implementation to surface cancellation as a
+			// non-nil error, never as Stuck), but the already-complete artifacts survive.
+			if cerr := cancelErr(ctx, p.name, burlerEngineLabel); cerr != nil {
+				return "", shedengine.OutputPointer{}, cerr
+			}
+			return shedengine.Stuck, shedengine.OutputPointer{Path: reviewPath}, nil
+
+		case shuttleengine.OutcomeAsking:
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: shuttle run is asking: %s", p.name, burlerEngineLabel, round, attemptToken, result.LastAssistantMessage))
+
+		case shuttleengine.OutcomeDied, shuttleengine.OutcomeTimeout:
+			if attempt == 1 {
+				logger.Warn("shedadapters: burler round attempt died or timed out, retrying", "producer", p.name, "engine", burlerEngineLabel, "round", round, "attempt", attemptToken, "outcome", result.Outcome, "sessionID", result.SessionID)
+				priorResult = result
+				priorToken = attemptToken
+				continue
+			}
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: two consecutive died/timeout outcomes (attempt %s outcome %s session %s run dir %s; attempt %s outcome %s session %s run dir %s)", p.name, burlerEngineLabel, round, priorToken, priorResult.Outcome, priorResult.SessionID, priorResult.RunDir, attemptToken, result.Outcome, result.SessionID, result.RunDir))
+
+		default:
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: unrecognized burler outcome %q", p.name, burlerEngineLabel, round, attemptToken, result.Outcome))
+		}
+	}
+
+	// Unreachable: every path through the loop above returns.
+	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): round %d: attempt loop exited without a verdict", p.name, burlerEngineLabel, round)
 }
