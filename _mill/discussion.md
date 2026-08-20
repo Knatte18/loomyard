@@ -68,9 +68,9 @@ The end state of this task is a working `quarry` binary in its own repo that doe
 
 - Decision: each replaced package gets a named, minimal local equivalent.
   - `configengine.ConfigFile(baseDir, "servers")` — today `filepath.Join(baseDir, "_lyx", "config", "servers.yaml")`. Replaced by the config resolution in `config-and-state-paths`, roughly 30 lines, no YAML template machinery.
-  - `logger.Warn` / `logger.Info` (8 call sites) — replaced by `log/slog` against a package-level handler that writes to stderr and defaults to `slog.LevelWarn`. Note the file-scoped guard in `CONSTRAINTS.md` that pins `lspclient.go` to "stdlib plus `internal/logger`": under `slog` that file becomes stdlib-only, which strengthens rather than weakens the property.
-  - `clihelp.SetExit` (22 call sites), `Execute`, `ExecuteIn`, `GroupRunE`, `NewExitContext` — ported into `internal/cli/` with the `lyxcwd` dependency stripped. `SetExit`/`NewExitContext` are two halves of one mechanism: `NewExitContext` returns a context plus an exit-state handle whose `Code()` the tests read, and `SetExit` writes into that state from a command handler. Port the pair together, along with the exit-state type and its `Code()` method; `cli_test.go` cannot compile without them. The plan must read all five functions and port their semantics exactly, not guess them.
-  - `lyxcwd.CwdFrom`/`WithCwd` — the context-carried cwd-injection seam, used so tests can drive the CLI without `os.Chdir`. Port the seam itself (it is ~30 lines of `context.WithValue` plus an `os.Getwd` fallback), drop everything else. `lyxcwd.Resolve` disappears: it exists to find a lyx hub, and quarry has none.
+  - `logger.Warn` (6 call sites) / `logger.Info` (1) — replaced by `log/slog` against a package-level handler that writes to stderr and defaults to `slog.LevelWarn`. Note the file-scoped guard in `CONSTRAINTS.md` that pins `lspclient.go` to "stdlib plus `internal/logger`": under `slog` that file becomes stdlib-only, which strengthens rather than weakens the property.
+  - `clihelp.SetExit` (21 call sites), `Execute`, `ExecuteIn`, `GroupRunE`, `NewExitContext` — ported into `internal/cli/` with the `lyxcwd` dependency stripped. `SetExit`/`NewExitContext` are two halves of one mechanism: `NewExitContext` returns a context plus an exit-state handle whose `Code()` the tests read, and `SetExit` writes into that state from a command handler. Port the pair together, along with the exit-state type and its `Code()` method; `cli_test.go` cannot compile without them. The plan must read all five functions and port their semantics exactly, not guess them.
+  - `lyxcwd.CwdFrom` (4 call sites) — the read half of the context-carried cwd-injection seam, used so tests can drive the CLI without `os.Chdir`. Port the seam itself (it is ~30 lines of `context.WithValue` plus an `os.Getwd` fallback), drop everything else. Note `lyxcwd.WithCwd` — the *write* half — has **zero** call sites in scout: it is called by `clihelp.ExecuteIn`, so it arrives as part of the `clihelp` replacement above rather than as a separate port, and `cli.go:930`'s comment about it panicking on an empty directory describes `ExecuteIn`'s contract, not scout's own code. `lyxcwd.Resolve` (1 call site) disappears entirely: it exists to find a lyx hub, and quarry has none.
   - `gitkit`/`hubforge` test fixtures — replaced by `t.TempDir()`-based fixtures. The tests using them build a workspace to run a language server against; they do not need a hub, a fabric, or a wiki.
 - Rationale: naming the replacement shape per package is what lets mill-plan write batches that can be verified independently rather than one undifferentiated "port scout" card.
 - Rejected: a single compatibility shim package re-exporting Loomyard's API surface — preserves the coupling in spirit and leaves dead code behind.
@@ -249,18 +249,30 @@ Key files in `internal/scoutengine`:
 
 ### The exact used surface of the shared packages
 
-Measured, not assumed:
+**Methodology.** Counts below are call sites in **production code**, then in **test code**, counted as the call form `Symbol(` on lines that are not `//` comments. An earlier draft of this table counted bare `Symbol` occurrences including comment mentions and was wrong by up to 4x on several rows; the numbers here are the corrected measurement. They describe the port's surface, not a checklist a batch should assert against — `go build` and `go test` are the real gate.
 
-| Package | Symbols scout uses |
-|---|---|
-| `configengine` | `ConfigFile` (3 sites), `ConfigDir` (2 sites, both in `load_test.go:19-20`) |
-| `clihelp` | `SetExit` (22), `Execute` (2), `ExecuteIn` (2), `GroupRunE` (1), `NewExitContext` (3, all in `cli_test.go:345,471,510`) — plus the unexported exit-state type `NewExitContext` returns and its `Code()` method, which `cli_test.go` calls |
-| `output` | `Err` (17), `Ok` (9) |
-| `lyxdirs` | `DotLyxDirName` (3) |
-| `lock` | `AcquireWriteLock`, `TryAcquireWriteLock` |
-| `proc` | `KillPID` (6), `IsAlive` (2), `DetachBreakaway` (2) |
-| `logger` | `Warn` (7), `Info` (1) |
-| `lyxcwd` | `CwdFrom` (8), `Resolve` (2), `WithCwd` (1) — CLI only |
+| Package | Symbols scout uses | prod | test |
+|---|---|---:|---:|
+| `configengine` | `ConfigFile` | 1 | 2 |
+| | `ConfigDir` | 0 | 2 |
+| `clihelp` | `SetExit` | 21 | 0 |
+| | `Execute` | 1 | 0 |
+| | `ExecuteIn` | 1 | 0 |
+| | `GroupRunE` (as a value, `RunE: clihelp.GroupRunE`, not a call) | 1 | 0 |
+| | `NewExitContext` + the exit-state type it returns and its `Code()` method | 0 | 3 |
+| `output` | `Err` | 14 | 0 |
+| | `Ok` | 7 | 0 |
+| `lyxdirs` | `DotLyxDirName` (a constant, not a call) | 2 | 0 |
+| `lock` | `AcquireWriteLock` | 1 | 4 |
+| | `TryAcquireWriteLock` | 1 | 6 |
+| `proc` | `KillPID` | 1 | 0 |
+| | `IsAlive` | 1 | 2 |
+| | `DetachBreakaway` | 1 | 0 |
+| `logger` | `Warn` | 6 | 0 |
+| | `Info` | 1 | 0 |
+| `lyxcwd` | `CwdFrom` | 4 | 0 |
+| | `Resolve` | 1 | 0 |
+| | `WithCwd` | 0 | 0 |
 | `gitkit` | `HermeticGitEnv`, imported by exactly one file: `internal/scoutcli/testmain_test.go` |
 | `hubforge` | `NewHub`, `SeedConfig`, imported by exactly one file: `internal/scoutcli/cli_integration_test.go` |
 
@@ -378,7 +390,7 @@ The three lists below are derived from the actual import sets, not from filename
 1. **Config path resolution.** Table-driven over the four precedence tiers: explicit `--config`, `$QUARRY_CONFIG`, `os.UserConfigDir()` default, and nothing-set-anywhere. The default tier is exercised by redirecting the `userConfigDir` seam, never by setting `$XDG_CONFIG_HOME` — see `machine-global-roots-need-a-test-seam`. Absent file at every tier must fall back to built-ins with no error, matching today's `LoadRegistry`. A present-but-malformed file must still error, and an empty/comments-only file must still yield built-ins (today's `io.EOF` special case).
 2. **State path resolution and workspace key.** The key must be deterministic for the same absolute target directory and distinct for different ones, including two directories sharing a basename. Assert the constructed socket path stays under 108 bytes for a realistically deep target path. Assert `--state-dir` and `$QUARRY_STATE_DIR` override in the right order.
 3. **The `clihelp` replacement.** `SetExit` has 22 call sites and is the exit-code carrier; its semantics must be pinned by tests before the call sites are repointed.
-4. **The cwd-injection seam.** `WithCwd`/`CwdFrom` — that an injected cwd is honoured, that absent injection falls back to the process cwd, and that the CLI never calls `os.Chdir`.
+4. **The cwd-injection seam.** `WithCwd`/`CwdFrom` — that an injected cwd is honoured, that absent injection falls back to the process cwd, and that the CLI never calls `os.Chdir`. The seam arrives through the `clihelp` replacement (`ExecuteIn` is its only writer), so test it at that boundary rather than as a standalone package.
 
 **Task-wide verification, in order:**
 
