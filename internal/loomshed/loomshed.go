@@ -22,6 +22,7 @@ import (
 // loom's own producer table is what New assembles from them.
 const (
 	NamePreflight          = "Preflight"
+	NameLoomPreflight      = "Loom-Preflight"
 	NameDiscussionWrite    = "Discussion-Write"
 	NameDiscussionValidate = "Discussion-Validate"
 	NameDiscussionReview   = "Discussion-Review"
