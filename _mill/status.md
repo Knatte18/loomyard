@@ -53,7 +53,9 @@ batches:
     commit_sha: c63cd94db7580bea01c5240bafb0549a4fb2f178
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: port-cli
-    state: pending
+    state: running
+    implementer_session: 8cb3cacf-0fad-42b9-b600-0331b982e502
+    start_sha: 334c6b15b76e51c7248362ccf370c5fe6ae640fe
     verify_baseline_failures: ["FAIL\t./... [setup failed]"]
   - name: quarry-live-and-equivalence
     state: pending
