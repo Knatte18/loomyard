@@ -340,6 +340,47 @@ func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
 		}
 		assertConflictsMarshalsAsArray(t, "MergeAbort", res)
 	})
+
+	// The error returns, which the two success subtests above do not reach. Every verb has roughly a
+	// dozen of them, they all returned a zero MergeResult, and a zero MergeResult marshals with
+	// "conflicts": null — so the property the type's godoc promises held on the paths a test happened
+	// to name and nowhere else. Each arm below picks a refusal that needs no mid-merge fixture, so
+	// what is under test is the return shape rather than the refusal.
+	t.Run("MergeInGuardRefusal", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.MergeIn("no-such-branch")
+		if err == nil {
+			t.Fatal("MergeIn(no-such-branch) error = nil; want a guard refusal — this subtest is about the error return's shape")
+		}
+		assertConflictsMarshalsAsArray(t, "MergeIn error return", res)
+	})
+
+	t.Run("MergeGuardRefusal", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.Merge("no-such-branch", fabricengine.MergeOptions{})
+		if err == nil {
+			t.Fatal("Merge(no-such-branch) error = nil; want a guard refusal")
+		}
+		assertConflictsMarshalsAsArray(t, "Merge error return", res)
+	})
+
+	t.Run("MergeContinueNoMergeInProgress", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.MergeContinue("")
+		if !errors.As(err, new(*fabricengine.ErrNoMergeInProgress)) {
+			t.Fatalf("MergeContinue() error = %v (%T); want *fabricengine.ErrNoMergeInProgress", err, err)
+		}
+		assertConflictsMarshalsAsArray(t, "MergeContinue error return", res)
+	})
+
+	t.Run("MergeAbortNoMergeInProgress", func(t *testing.T) {
+		_, f, _, _, _, _ := newMergePairFixture(t, ".")
+		res, err := f.MergeAbort()
+		if !errors.As(err, new(*fabricengine.ErrNoMergeInProgress)) {
+			t.Fatalf("MergeAbort() error = %v (%T); want *fabricengine.ErrNoMergeInProgress", err, err)
+		}
+		assertConflictsMarshalsAsArray(t, "MergeAbort error return", res)
+	})
 }
 
 // mergeCrucibleWarpConflictFixture builds a pair left mid-merge by a real MergeIn that conflicted on

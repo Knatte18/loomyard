@@ -23,6 +23,21 @@ import (
 // conflicts returns, so a caller's JSON never sees a "null" conflicts field.
 var mergeNoConflicts = []string{}
 
+// finalizeMergeResult stamps the two envelope-shaping fields a merge verb's result must carry on
+// EVERY return: the accumulated mutation record, and a non-nil Conflicts slice.
+// It runs from each verb's own deferred call on the named result, which is the only place that sees
+// every return site at once. Setting the sentinel at the individual return sites instead is what
+// left the property half-true: the success paths were spelled out one by one and the roughly two
+// dozen `return MergeResult{}, err` guard refusals and mid-flight failures were not, so every error
+// return of all four verbs handed back a nil slice that marshals as `"conflicts": null` — the exact
+// null-versus-[] distinction MergeResult's own godoc promises a consumer never has to make.
+func finalizeMergeResult(res *MergeResult, rec *Mutations) {
+	res.Mutations = rec.Snapshot()
+	if res.Conflicts == nil {
+		res.Conflicts = mergeNoConflicts
+	}
+}
+
 // MergeOptions controls a merge verb's behavior: Squash selects a squash merge (batch 4's Merge
 // only — MergeIn never squashes), and Message overrides the conclude commit's message.
 type MergeOptions struct {
@@ -33,8 +48,9 @@ type MergeOptions struct {
 // MergeResult reports what a merge verb did on the pair. AlreadyUpToDate reports the degenerate
 // no-op where both sides' resolved source SHA was already an ancestor of that side's HEAD.
 // Conflicts lists the unified, worktree-relative paths a merge attempt left conflicted — empty,
-// never nil, when there are none. Committed reports whether the pair now carries this merge's
-// conclude-commit.
+// never nil, when there are none, on every return of every verb including the error ones, which
+// finalizeMergeResult is what guarantees. Committed reports whether the pair now carries this
+// merge's conclude-commit.
 // Both flags are derived from the merge-state record's own fields (mergeState.landedConcludeCommit
 // and mergeState.bothSidesAlreadyUpToDate), never hardcoded per return site: a merge that
 // fast-forwarded both sides fabricates no commit and reports Committed false, and a call that finds
@@ -55,7 +71,7 @@ type MergeResult struct {
 // MergeAbort. MergeIn never squashes.
 func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
-	defer func() { res.Mutations = rec.Snapshot() }()
+	defer func() { finalizeMergeResult(&res, rec) }()
 
 	l, err := lyxcwd.ResolveWorktree(f.warpPath)
 	if err != nil {
@@ -283,7 +299,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 // lock is the only thing that can.
 func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
-	defer func() { res.Mutations = rec.Snapshot() }()
+	defer func() { finalizeMergeResult(&res, rec) }()
 
 	l, err := lyxcwd.ResolveWorktree(f.warpPath)
 	if err != nil {

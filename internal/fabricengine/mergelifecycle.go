@@ -226,7 +226,7 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // of the same calls reports.
 func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
-	defer func() { res.Mutations = rec.Snapshot() }()
+	defer func() { finalizeMergeResult(&res, rec) }()
 
 	// The lock comes FIRST, before the record is read and before any guard is evaluated. Evaluating
 	// them ahead of the lock read a state another lock holder could change before this call could
@@ -313,7 +313,7 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 // MergeResult{} (Committed false).
 func (f *Fabric) MergeAbort() (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
-	defer func() { res.Mutations = rec.Snapshot() }()
+	defer func() { finalizeMergeResult(&res, rec) }()
 
 	// The lock comes FIRST, before the record is read and before the conclude-landed guard is
 	// evaluated. This ordering is what makes the guard able to see a conclude that lands while this
