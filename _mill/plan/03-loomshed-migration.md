@@ -44,7 +44,7 @@ Named segments arrive with the review-producer tasks, and forcing loom's existin
   Do not rename `Deps.MaxBounces` and do not add any import to this file.
 - **Commit:** `feat(loomshed): route all 12 rows through explicit OnDone`
 
-### Card 13: Assert the `OnDone` chain exhaustively and that `New` passes `validate`
+### Card 13: Assert the `OnDone` chain exhaustively and re-read the existing validation test
 
 - **Context:**
   - `internal/loomshed/loomshed.go`
@@ -61,11 +61,13 @@ Named segments arrive with the review-producer tasks, and forcing loom's existin
   Extend `TestNew_ProducerTable`'s per-row loop to assert `got.OnDone` against `want.onDone` alongside the existing name and `OnStuck` assertions, so the whole routing table is pinned exhaustively rather than sampled.
   The exhaustive assertion is the named mitigation for this task's accepted silent-terminal risk: an omitted `OnDone` is indistinguishable from an intended terminal and would end a real run quietly at that row, so a test that pins every row's successor is what turns that silence into a failure.
   Also assert in the same loop that every row's `Segment` is the empty string and every row's `MaxBounces` is zero, so a future row that quietly acquires either has to be declared here first.
-  Add a test asserting that the `*shedengine.Shed` returned by `New` passes `shedengine`'s own validation.
-  `validate` is unexported, so drive it through the exported surface: seed a status file whose `current_producer` names `NameFinalize` and whose state is done, then call `Run` and assert it returns no error — the already-done short-circuit sits after the read gate and `Run` calls `validate` before anything else, so a validation failure surfaces as the returned error while no producer is ever invoked.
-  Build the deps for that test with the existing `testDeps` helper and seed through the production `Seed`, never by hand-writing JSON.
-  Do not redeclare `fakeAlwaysDoneProducer`, `testDeps`, `testLandingDeps`, or `wantProducerTable`.
-- **Commit:** `test(loomshed): pin the full OnDone chain and that New passes validation`
+  Do **not** add a new test asserting that the `*shedengine.Shed` returned by `New` passes `shedengine`'s own validation — `TestNew_PassesShedValidation` already exists in this same file and already does exactly that, driving `Run` to exercise the unexported validation indirectly.
+  A second test of the same property would either collide on the obvious name or silently displace the existing scenario's coverage.
+  Instead, re-read that existing test against the new semantics and update its explanatory comment.
+  Its assertion still holds unchanged and must not be weakened: exactly one producer bounces in that scenario, its guarded artifact never appears on disk so it never returns done, and the run still blocks once that producer's own budget is spent.
+  What the comment must stop saying is that a single shared budget of three is exhausted between two producers — the budget belongs to the bouncing producer alone, and the producer it bounces to consumes none of it.
+  Do not redeclare `fakeAlwaysDoneProducer`, `testDeps`, `testLandingDeps`, or `wantProducerTable`, and do not rename or delete any existing test in this file.
+- **Commit:** `test(loomshed): pin the full OnDone chain across all 12 rows`
 
 ### Card 14: Re-read the bounce and sequence scenarios against per-producer semantics
 
