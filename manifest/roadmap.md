@@ -84,9 +84,11 @@ No build order is implied between these items.
    folds into `Finalize`'s own contract rather than a separate producer — `Shed` has no slots for it to occupy.
    See [designs/raddle.md](designs/raddle.md).
 
-1. **webster: parallel card execution** — worktree-per-card concurrent forking with a DAG;
-   explored twice (pre- and during vacation discussion), rejected both times for git-index-race and mid-flight-visibility hazards.
-   See [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md).
+1. **webster: parallel card/batch execution** — earlier concurrent-forking-in-one-tree shape rejected twice for git-index-race and mid-flight-visibility hazards (forks sharing one working tree/index).
+   A 2026-08-20 discussion landed on a structurally different shape that may dodge both: DAG-independent groups (a batch, possibly one card) each get their own `fabric`-spawned worktree, running the existing `Preflight → Webster → Finalize` row set unchanged, with `Webster`'s `Geometry.PlanDir` (already told, not derived — see the Told-Geometry Invariant) pointed at the source plan and a new batch-filter selecting the one group to run; merge-back reuses `fabric`'s existing merge machinery, not new infrastructure.
+   Genuinely own worktree per lane (own git index/HEAD) is what the old shape lacked — grouping granularity (one card vs. several) is orthogonal and does not by itself determine safety.
+   Not yet a plan: needs the DAG source (see `scout-backed plan symbol fields` below) and a design writeup reconciling this with `designs/webster-parallel-execution.md`'s still-open questions (typical-plan wave-width evidence, the batchifier/planner change needed to emit groups).
+   See [designs/webster-parallel-execution.md](designs/webster-parallel-execution.md) (status banner there is now stale — written for the rejected shape, not this one).
 
 1. **Tenter + Hardener** — behavior-based hardening of a live-substrate module (the archetype: `reed` driving real tmux), on-demand and post-loom, off the `shuttle → burler → perch → loom` spine.
    `Hardener` is the full campaign (`Shed` + `Tenter`, worktree-spawn via `fabric` + safe-merge-back).
