@@ -3,7 +3,7 @@
 ```yaml
 task: 'preflight: split into two Shed rows -- a generic one, and loom''s own'
 slug: 'preflight-loom-agnostic'
-approved: false
+approved: true
 started: '20260820-090852'
 parent: 'main'
 root: ""

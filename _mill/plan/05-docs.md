@@ -61,7 +61,8 @@ The one that was doubly wrong, the smoke suite's "eight of its thirteen rows", w
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add one line to the module tree for `internal/preflightshed`, placed beside its two neighbours — the `internal/landingshed` line and the `internal/preflight` line — describing it as the general `Preflight` `ShedProducer` over `internal/preflight`'s tier-1/tier-2 checks, shared by reference across producer lists.
+- **Requirements:** Add one line to the module tree for `internal/preflightshed`, placed immediately above the `internal/preflight` line — the layer it wraps, and the more semantically relevant of its two neighbours; the `internal/landingshed` line is four entries further up, with `mergeresolve`, `hubgeom` and `standalonegeom` between them, so there is no single position adjacent to both.
+  Describe it as the general `Preflight` `ShedProducer` over `internal/preflight`'s tier-1/tier-2 checks, shared by reference across producer lists.
   Match the surrounding lines' box-drawing prefix, column alignment and one-line-per-entry style exactly; this block is an aligned ASCII tree and a mis-padded entry is visible.
   Extend the precondition-and-geometry paragraph further down, which today names `internal/preflight` as the tier-1/tier-2 precondition layer and `internal/hubgeom`/`internal/standalonegeom` as its two `Geometry` constructors: add `internal/preflightshed` as the producer-shaped wrapper that lets a `Shed` producer list name that layer as a row, and keep the existing cross-reference to the Told-Geometry Invariant.
   Confirm rather than edit the module-tree line for `internal/loomshed`, which reads "loom's own 13-row producer list" — that count is wrong today and correct after this task, so it needs no change.

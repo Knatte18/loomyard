@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussion-fix-r3  '2026-08-20T08:49:32Z'
 discussion-fix-r5  '2026-08-20T08:59:33Z'
 discussed  '2026-08-20T08:59:33Z'
 planning  '2026-08-20T09:18:50Z'
+plan-fix-r1  '2026-08-20T09:25:18Z'
 ```
