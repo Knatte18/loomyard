@@ -4,7 +4,7 @@
 task: "Extract scout into its own standalone repo"
 batch: "port-cli"
 number: 4
-cards: 9
+cards: 10
 verify: go -C /home/knatte/Code/quarry/wts/quarry test ./...
 depends-on: [3]
 ```

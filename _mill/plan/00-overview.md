@@ -90,10 +90,10 @@ batches:
   a closed-set token rewrite is deterministic and reviewable as a diff.
 - **Applies to:** batches 3, 4, 5.
 
-### Decision: dependency budget is exactly four external modules
+### Decision: dependency budget is three direct modules plus cobra's own indirects
 
-- **Decision:** quarry's `go.mod` requires `github.com/spf13/cobra`, `gopkg.in/yaml.v3`, `github.com/gofrs/flock`, and cobra's own `github.com/spf13/pflag`/`github.com/inconshreveable/mousetrap` indirects.
-  A batch that would add a fifth direct dependency stops and reports instead of adding it.
+- **Decision:** quarry's `go.mod` declares exactly three direct requires — `github.com/spf13/cobra`, `gopkg.in/yaml.v3`, and `github.com/gofrs/flock` — plus whatever indirects cobra pulls in on its own (`github.com/spf13/pflag` and `github.com/inconshreveable/mousetrap`), which arrive with it rather than being chosen.
+  A batch that would add a fourth direct dependency stops and reports instead of adding it.
 - **Rationale:** the whole point of splitting the nine shared Loomyard packages into copy-verbatim leaves and narrow local replacements is to keep quarry from becoming a Loomyard clone.
 - **Applies to:** all batches.
 

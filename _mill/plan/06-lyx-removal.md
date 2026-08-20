@@ -220,10 +220,10 @@ Batch-local decisions:
   - `docs/benchmarks/test-suite-timing.md`
 - **Creates:** none
 - **Deletes:**
-  - `docs/research/scout-spike.md`
-  - `docs/research/scout-multilang.md`
-  - `docs/research/scout-agent-usage-findings.md`
   - `docs/benchmarks/scout-vs-grep.md`
+  - `docs/research/scout-agent-usage-findings.md`
+  - `docs/research/scout-multilang.md`
+  - `docs/research/scout-spike.md`
 - **Moves:** none
 - **Requirements:** Before anything else, read the port log's batch 5 go/no-go line.
   If it says no-go, stop this card and this batch and report;
@@ -247,18 +247,22 @@ Batch-local decisions:
   - `docs/overview.md`
 - **Edits:** none
 - **Creates:** none
-- **Deletes:** none
+- **Deletes:**
+  - `docs/research/quarry-port-log.md`
 - **Moves:** none
 - **Requirements:** This card writes nothing;
   it is the gate that decides whether the deletion is finished, and it must be run after every other card in this batch.
   Run the token sweep: `grep -rli 'scout' --exclude-dir=.git --exclude-dir=_mill .`, which returned 73 files before this batch and must now return only files that are deliberate historical mentions.
-  Examine every remaining hit and, for each, either fix it or record in the batch's final commit message why it stays;
+  Examine every remaining hit and classify it as a deliberate historical mention that stays;
   the sweep is not done while an unexamined hit remains.
+  This card fixes nothing.
+  If a hit turns out to need a real edit, that is a gap in cards 39 through 45 rather than something this gate patches — stop and report which card should have covered it, so the fix lands in the card that owns the file and is reviewed as part of that card's diff.
   Then run the count-oriented sweep, which no `scout` grep will ever surface, because these facts encode a module count rather than the module's name: search for `thirteen`, `twelve`, and their digit forms across `CONSTRAINTS.md`, `docs/overview.md`, and `cmd/lyx/`, and confirm every seam-module count now reads twelve where it read thirteen and eleven where it read twelve.
   Also confirm the tier-tag list in `cmd/lyx/tierpurity_test.go` and in `CONSTRAINTS.md`'s Test Tier Purity section no longer names `scout`, and that the module lists in `cmd/lyx/main.go`, `cmd/lyx/helptree_test.go`, and `README.md` agree with each other.
   Finish with the whole gate: `go build ./...`, `go test ./...`, `go test -tags integration ./...`, and `golangci-lint run` if it is installed.
-  Report the surviving hit count and the list of justified mentions.
-- **Commit:** none
+  Then close the port log: delete `docs/research/quarry-port-log.md`, which existed only to give each quarry-side batch a task-worktree commit and to carry batch 5's go/no-go verdict into this batch.
+  That deletion is what this card commits, and its commit message is where the sweep's results are recorded durably — the surviving hit count and one line per justified historical mention, naming the file and why it stays.
+- **Commit:** `chore: close the quarry port log after the completeness sweep`
 
 ## Batch Tests
 

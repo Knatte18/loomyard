@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-fix-r1
 slug: scout-extract-standalone-repo
 branch: scout-extract-standalone-repo
 plan: _mill/plan
@@ -19,4 +19,6 @@ discussion-fix-r4  '2026-08-20T09:36:46Z'
 discussion-fix-r5  '2026-08-20T09:47:18Z'
 discussed  '2026-08-20T09:47:18Z'
 planning  '2026-08-20T10:02:59Z'
+plan-review-r1  '2026-08-20T10:41:43Z'
+plan-fix-r1  '2026-08-20T10:41:43Z'
 ```

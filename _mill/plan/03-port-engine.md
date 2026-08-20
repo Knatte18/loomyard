@@ -65,6 +65,26 @@ Batch-local decisions:
   - `internal/scoutengine/registry.go`
   - `internal/scoutengine/symbol.go`
   - `internal/scoutengine/toolchain.go`
+  - `internal/scoutengine/daemonstate_test.go`
+  - `internal/scoutengine/definition_test.go`
+  - `internal/scoutengine/detect_test.go`
+  - `internal/scoutengine/ensureserver_integration_test.go`
+  - `internal/scoutengine/ensureserver_test.go`
+  - `internal/scoutengine/load_test.go`
+  - `internal/scoutengine/lspclient_guard_test.go`
+  - `internal/scoutengine/lspclient_test.go`
+  - `internal/scoutengine/position_test.go`
+  - `internal/scoutengine/refs_integration_test.go`
+  - `internal/scoutengine/refs_test.go`
+  - `internal/scoutengine/registry_test.go`
+  - `internal/scoutengine/scoutdaemon_test.go`
+  - `internal/scoutengine/seam_enforcement_test.go`
+  - `internal/scoutengine/supervised_integration_test.go`
+  - `internal/scoutengine/supervised_scout_test.go`
+  - `internal/scoutengine/supervised_test.go`
+  - `internal/scoutengine/symbol_test.go`
+  - `internal/scoutengine/toolchain_integration_test.go`
+  - `internal/scoutengine/toolchain_test.go`
 - **Edits:** none
 - **Creates:**
   - `/home/knatte/Code/quarry/wts/quarry/quarry/daemonstate.go`
@@ -211,8 +231,10 @@ Batch-local decisions:
   - `internal/scoutengine/doc.go`
 - **Edits:**
   - `/home/knatte/Code/quarry/wts/quarry/quarry/doc.go`
+  - `/home/knatte/Code/quarry/wts/quarry/quarry/ensureserver.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/refs.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/registry.go`
+  - `/home/knatte/Code/quarry/wts/quarry/quarry/toolchain.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/definition_test.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/ensureserver_test.go`
   - `/home/knatte/Code/quarry/wts/quarry/quarry/refs_test.go`
@@ -228,6 +250,9 @@ Batch-local decisions:
   Where it points at the research documents, repoint at their quarry `docs/` locations.
   The remaining files carry one to six occurrences each, mostly in comments and fixture names.
   Do not change any test's assertions or subjects in this card — it is a comment and identifier-naming sweep only, and a behavioural change made here would be invisible in the port diff.
+  Two production files are in this card's `Edits:` even though cards 14 and 16 already touched them, because those cards' scopes were narrower than the vocabulary they leave behind.
+  In `ensureserver.go`, card 14 rewrote only the parameter rename and the file header, leaving six doc-comment mentions untouched — at the source's lines 40, 160, 257, 260, 357, and 496, describing a daemon lyx spawned to outlive the call, a lyx-owned supervised daemon, this worktree's future lyx invocations, the `.lyx/scout/<lang>/` directory, and a Windows Job Object lyx itself created.
+  In `toolchain.go`, card 16 rewrote the two path joins and the citation, leaving the same line's mention of routing through `internal/lyxcwd` and the Cwd Resolution Invariant, which quarry does not have.
   Finish by running `grep -ric 'lyx' /home/knatte/Code/quarry/wts/quarry/quarry/` and confirming every remaining hit is zero;
   files card 18 through 22 rewrite are allowed to still carry hits at the end of this card, so run the grep again after card 22 rather than treating a non-zero count here as a blocker.
 - **Commit:** `docs(quarry): sweep lyx vocabulary out of the ported engine`
