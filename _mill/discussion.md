@@ -185,6 +185,14 @@ This is the last row in loom's list that is structurally shared but implemented 
   Claiming membership would be false.
 - Rejected: adding the allowlist test — it would either fail immediately or have to allowlist the very import the invariant exists to exclude.
 
+### preflightshed-ctx-helper-shape
+
+- Decision: `internal/preflightshed`'s context helpers take the two-argument form `entryErr(ctx, name)` / `cancelErr(ctx, name)`, modelled on `internal/loomshed/ctx.go`, not `internal/shedadapters/ctx.go`'s three-argument form with an engine label.
+- Rationale: `shedadapters` carries the engine label because one package wraps three different engines (`shuttle`, `perch`, `Webster`) and its error text has to say which one failed.
+  `preflightshed` wraps exactly one thing, `preflight.Check`, and will keep wrapping one thing — a label whose value is constant across every call site is noise in the error string.
+  The two-function entry/exit split itself is shared by both files and is what gets copied.
+- Rejected: the three-argument form — it would carry a permanently-constant argument, and this codebase treats a parameter with one possible value as a design smell rather than future-proofing.
+
 ### test-tier-migration
 
 - Decision: seed-check coverage moves from Tier 2 to Tier 1.
@@ -210,7 +218,7 @@ Both facts are load-bearing: the first dictates the new coherence rules, the sec
 - `internal/loomengine/coherence.go` — `checkCoherence` gains the two told-name parameters; `coherence.go:41` and `coherence.go:91` lose their literals.
 - `internal/loomengine/report.go:51-55` — `CheckSeedUnreadable` doc narrowed.
 - `internal/loomengine/export_test.go` — deleted.
-- `internal/preflightshed/` — new package: `doc.go`, the producer, its `ctx` entry/cancel helpers (model on `internal/shedadapters/ctx.go:14-30`, which is the established two-function `entryErr`/`cancelErr` shape; `internal/loomshed/ctx.go` is the same idea without the engine label).
+- `internal/preflightshed/` — new package: `doc.go`, the producer, and its two-argument `entryErr(ctx, name)` / `cancelErr(ctx, name)` helpers copied from `internal/loomshed/ctx.go` rather than `internal/shedadapters/ctx.go:14-30`'s three-argument form — see the `preflightshed-ctx-helper-shape` decision.
 - `internal/loomshed/loomshed.go` — `NameLoomPreflight` constant; row 2 inserted after row 1 in `New`'s `producers` slice; the doc comments at lines 1, 15, 82, 85-96 updated for 13 rows and the new row's backing and `OnStuck`.
 - `internal/loomshed/preflight.go` → `loompreflight.go` — row 2's producer, mapping `CheckSeed`'s `Report` onto `Done`/`Stuck`/error exactly as the existing wrapper maps `Preflight`'s (`preflight.go:44-65`).
 - `internal/loomshed/stub.go:2,12` — row-count wording.
@@ -312,4 +320,5 @@ If it is, every Tier-1 `loomshed` test that runs the list needs `loomshed.Seed` 
 - **Q:** What happens to `internal/loomshed/preflight.go`? **A:** [auto-pick] Repurposed as row 2's home, renamed `loompreflight.go`. **Why:** one producer per file, matching the package's existing layout.
 - **Q:** What is the verify command? **A:** [auto-pick] `go test ./... -count=1` then `go test -tags integration ./... -count=1`. **Why:** the repo's two standard tiers; the split touches both.
 - **Q:** Does `internal/preflightshed` get a Told-Geometry allowlist test? **A:** [auto-pick] No. **Why:** it deliberately resolves geometry through `preflight.Check`, so it is a tier-2 resolver, not a told package; claiming membership would be false.
+- **Q:** Which context-helper shape does `internal/preflightshed` use — `shedadapters`' three-argument form with an engine label, or `loomshed`'s two-argument form? **A:** [auto-pick] The two-argument form. **Why:** `shedadapters` carries the label because one package wraps three engines; `preflightshed` wraps exactly one, so the label would be a permanently-constant argument. Raised by the orchestrator review as the one unpinned ambiguity.
 - **Q:** Does `CONSTRAINTS.md` change? **A:** [auto-pick] Yes — line 64's tier-3 bullet retargets from `loomengine.Preflight` to `loomengine.CheckSeed` and states that tier 3 is now a separate producer row. **Why:** the invariant currently names a symbol this task deletes.
