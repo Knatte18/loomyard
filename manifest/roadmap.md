@@ -48,7 +48,7 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
-   `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no scout inventory available yet," not as an error.
+   `Plan-Sweep` stays a stub (see Someday below) — this task's `Plan-Write` must treat `Plan-Sweep`'s empty stub output as "no quarry inventory available yet," not as an error.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch (does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria) as the rubric for a new `Plan-Bouncer` instance (placeholder name, see `Discussion-Review producer` above for the pattern), covering the seed-call focus pass too.
@@ -135,7 +135,6 @@ No build order is implied between these items.
    Bulk is what makes provider-side context caching (e.g. Gemini's explicit cache) pay off, and only if modelled as one shared prefix + N distinct suffixes, never N full prompts.
 
 1. **semantic-index** — semantic search over docstrings/comments (Enzyme-inspired: catalysts + embeddings + temporal decay), to find code by concept rather than literal keyword.
-   The "deferred idea" `scout-redesign.md` already refers to.
    Genuinely speculative, not yet designed in depth.
    See [designs/semantic-index.md](designs/semantic-index.md).
 
@@ -145,7 +144,7 @@ No build order is implied between these items.
 1. **board: curation/triage automation** — the GitHub-issue-intake and periodic-triage workflow originally scoped in `designs/board-weft-storage.md`'s Curation flow section, deferred out of `board: move storage to weft:main`: an automated skill that ingests GitHub issues and extracts a logical next task from the manifest, promoting it via `promote-note` (which already ships as a plain mechanical CLI primitive — this item is the automation layer on top, not the primitive itself).
    See [designs/curation-triage.md](designs/curation-triage.md).
 
-1. **scout-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified `scout`; both `scout` and the loom Planner have since shipped, unblocking but not yet scoping this.
+1. **scout-backed plan symbol fields** — `loom-plan-spec.md` deliberately deferred `creates-symbols`/`edits-symbols`/`reads-symbols` fields pending a verified code-intelligence lookup tool; that tool (now `quarry`, an external Go module dependency) and the loom Planner have since shipped, unblocking but not yet scoping this.
    Named prerequisite for `webster: parallel card execution`'s parked DAG scheduler.
    See [designs/scout-plan-symbol-fields.md](designs/scout-plan-symbol-fields.md).
 
@@ -157,9 +156,6 @@ No build order is implied between these items.
 1. **discussion-format / plan-format: classify review findings by kind** — carry a finding-class dimension (`design`, `scope`, `decision`, `consistency`) on review findings, and scope each review stage to what its downstream stage cannot catch better.
    See [designs/review-finding-classification.md](designs/review-finding-classification.md).
 
-1. **scout: narrow the `"resolution":"complete"` trust-marker promise, or scope out cross-package interface-method noise** — `docs/benchmarks/scout-vs-grep.md` found a case where `refs` on an interface method returned `"resolution":"complete"` while most hits were real but irrelevant cross-package noise.
-   Not yet designed.
-
 1. **fabric: ordinary-monorepo verb surface** — against plain git, `fabric` is still missing `log`, `show`, `branch` (create/list/delete), `tag`, `stash`, `reset` (non-hard), `revert`, `restore`, `rm`/`mv`, `rebase`, `cherry-pick`, and `blame`.
    None blocks `Finalize`/`Hardener` today; scope by actual need when a consumer needs one, never by completing the list for its own sake.
    See the `fabric: merge-conflict primitive` item's audit findings.
@@ -169,9 +165,9 @@ No build order is implied between these items.
 
 1. **fabric: surface merge-in-progress in `lyx fabric status`** — `MergeInProgress` ships as Go API only; folding it into the `status` verb's output is a small follow-up.
 
-1. **loom: build `Plan-Sweep` for real** — stays a stub past the split-out `loom: Plan-Write producer` item above; deferred because `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout` — see the Someday `scout` items below, including the open question of whether `scout` stays part of this repo at all.
-   Mechanical scout inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-scout-inventory-spec`.
-   Partial building blocks: `scoutengine.References` and symbol lookup exist, but no ready-made "inventory" function — needs new composition, not a new engine.
+1. **loom: build `Plan-Sweep` for real** — stays a stub past the split-out `loom: Plan-Write producer` item above; deferred because quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry — see the Someday `scout-backed plan symbol fields` item below.
+   Mechanical quarry inventory over the approved `decision-record.md`, feeding `Plan-Write`; spec in `designs/loom.md#plan-sweep-detail--the-quarry-inventory-spec`.
+   Partial building blocks: quarry's reference-lookup and symbol-lookup APIs exist as an external dependency, but no ready-made "inventory" function — needs new composition, not a new engine.
 
 1. **finalize: the discrepancy-document conflict shape** — `finalize.md` originally sketched a second Fabric-to-Finalize conflict artifact, a precomputed "discrepancy document" for a divergence Fabric cannot express as a git conflict.
    Only the ordinary-git-conflict shape shipped; the document shape is not built.
@@ -203,7 +199,7 @@ No build order is implied between these items.
 1. **producers standalone: producer engines** — `burlerengine`+`perchengine` and `websterengine`+`webstercli` convert to told geometry; Webster also gains its own standalone CLI entry (`--stencils-dir`/`--target-dir`/`--plan-dir`).
    See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant) and the `internal/hubgeom` and `internal/standalonegeom` package documentation.
 
-1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository; the optional `scoutengine` uniformity pass landed alongside it.
+1. **producers standalone: the standalone CLI path** — `burlercli`/`perchcli` branch around `lyxcwd.Resolve` and take `--stencils-dir`/`--target-dir`, so `lyx burler run --profile p.yaml` works in a directory that is not a git repository; the optional quarry uniformity pass landed alongside it.
    See the [Told-Geometry Invariant](../CONSTRAINTS.md#told-geometry-invariant).
 
 1. **lyxtest builds real fabric hubs — invert the dependency** — hub fixtures are now built by really cloning (`internal/gitkit`/`internal/hubforge`), never hand-assembled.
@@ -260,7 +256,7 @@ No build order is implied between these items.
 1. **webster: rewrite for flat card list** — fork-per-card, consumes the flat card-list plan format via `internal/planparser` (sole parser) and `internal/batcher`.
    See the `internal/websterengine` package documentation.
 
-1. **plan-format: flat card list** — a card carries `What:`, five typed file-op fields, and `Depends-on:`; symbol fields wait for `scout`.
+1. **plan-format: flat card list** — a card carries `What:`, five typed file-op fields, and `Depends-on:`; symbol fields wait for quarry.
    See [contracts/specs/loom-plan-spec.md](../contracts/specs/loom-plan-spec.md).
 
 1. **built-in CLI help** — self-documenting `lyx`/`lyx <module>`/`lyx <module> <cmd> --help`.
@@ -274,11 +270,6 @@ No build order is implied between these items.
 
 1. **dev/test `lyx.exe` separated from production deploy** — a second deploy target (`deploy-dev`/`deploy-dev.cmd`) so review/sandbox tooling never overwrites the stable production binary with an in-progress test build.
    See CONSTRAINTS.md's Dev/Prod Binary Separation invariant.
-
-1. **scout: LSP-backed code intelligence — V1 Go-only, built for multi-language** — deterministic "where is this defined / used" lookups, replacing blind grepping.
-   `lyx` is an LSP **client**, never a server.
-   Two entry points: an in-process Go API and `lyx scout refs|definition|symbol`.
-   See the `internal/scoutengine` package documentation.
 
 1. **Treadle: shared round-loop engine, combined with the `perch` rewrite** — generalized `perch`'s round loop into `internal/treadleengine`, a shared engine with a pluggable `RoundRunner` seam; `perch` rewritten onto it in the same task, behavior/CLI unchanged from the outside.
    See the `internal/treadleengine` package documentation.
@@ -313,13 +304,13 @@ No build order is implied between these items.
   and a new `##` heading starts a new block.
   So Planned, Someday, and Done each render as their own 1, 2, 3, … with **zero number edits ever needed** — inserting, removing, or reordering items anywhere just works.
 - **Numbers are not stable cross-reference IDs** (the same number exists in all three sections).
-  Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's `scout` item") — every reference elsewhere in this file and in `designs/*.md` already does this.
+  Cross-reference by **bold item name** instead (e.g. "the Planned `board` item," "Someday's `raddle` item") — every reference elsewhere in this file and in `designs/*.md` already does this.
 - **Entries are short — a name plus one or two sentences of what/why, never a design writeup.**
   Detail belongs in the entry's own `designs/<name>.md` while the item is Planned or Someday.
   Delete that doc once the module ships (see the [documentation lifecycle](../docs/overview.md#documentation-lifecycle)) — a Done entry instead points at the module's own package documentation, which is where its durable detail lives from then on.
   If an entry keeps growing past a couple of sentences, that is a signal to move the growth into the doc it points to, not to let the entry itself grow.
 - Move an item from Planned or Someday to Done, with a link to its module doc if one exists, when it ships — no renumbering needed anywhere.
-- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout`, `raddle`, `webster: parallel card execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
+- Someday items get a `designs/<name>.md` doc when there's real design behind them (`scout-backed plan symbol fields`, `raddle`, `webster: parallel card execution`, `hardener`, `warp-visibility`, `semantic-index` above do);
   trivial ones don't need one until they're promoted to Planned.
-- This file is the single home for everything not scheduled, whether firmly committed to (`scout`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
+- This file is the single home for everything not scheduled, whether firmly committed to (`warp-visibility`, `raddle`) or genuinely speculative (`hardener`, the shuttle `Spec` ideas) — no separate long-term-ideas file.
   Add new speculative ideas directly to Someday.

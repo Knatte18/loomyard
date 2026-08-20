@@ -84,7 +84,6 @@ All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..
   `lyx config <module> --set key=value` writes values non-interactively.
 - **fabric** — the sole warp↔weft git-coordination module, unifying topology (clone, dual-worktree add/remove, coordinated checkout, reconcile, status, prune, cleanup) and weft content-sync (`status|commit|push|pull|sync`) in one command tree.
 - **ide** — one-shot IDE launcher for worktrees, with an interactive menu.
-- **scout** — multi-language code-intelligence lookups over LSP (`lyx scout refs|definition|symbol`), a uniform path across five languages (Go, Python, C#, TypeScript, Rust) instead of a Go-only in-process approach.
 - **reed** — the tmux overlay + strand bookkeeping + render. (Superseded `muxpoc`, the proof-of-concept it was built from — `muxpoc` proved the risky parts, then was deleted once `reed` shipped.)
 - **shuttle** — runs one LLM agent as an interactive tmux strand over a file contract, via a swappable provider engine (Claude today).
 - **selfreport** — file bugs/enhancements against the repo via go-github, authenticated through `internal/githubclient` (`gh` is a fallback token source, not the transport).

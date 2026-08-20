@@ -41,7 +41,3 @@ Within the group, three additionally carry a hard `depends_on` on the "Perch →
 ## Blocked on the three review-producer tasks finishing
 
 - **Bouncer → Perch: rename, and retire `internal/perchengine`/`internal/treadleengine`** (Someday) — deliberately sequenced last, to avoid "which Perch do you mean" confusion mid-rewrite; needs the design proven on `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer` first, not on the two write tasks in the same group above.
-
-## Not yet a wiki task
-
-Scout-extraction-to-its-own-repo (discussed, not yet created) would be independent of everything above if and when it is spawned — no code in this repo currently imports `internal/scoutengine` outside its own package.
