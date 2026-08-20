@@ -2,7 +2,7 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** 2026-08-20, before round 4 spawn.
+**Last refreshed:** 2026-08-20, after round 4's verification, before round 5 spawn.
 
 ## What this task is
 
@@ -18,10 +18,12 @@ Exactly four rounds, model + effort fixed in advance, UNLESS convergence is reac
 
 | Round | Model | Effort | Tag | Status |
 |---:|---|---|---|---|
-| r4 | Opus | medium | `opus-medium-r4` | seeded, about to spawn |
-| r5 | Fable | high | `fable-high-r5` | pending |
+| r4 | Opus | medium | `opus-medium-r4` | **done, independently verified** — 7 findings (1 BLOCKING, 2 MEDIUM, 2 LOW, 2 NIT), all fixed, all sabotage-proven, BLOCKING fix live-redriven in all 3 directions |
+| r5 | Fable | high | `fable-high-r5` | seeded, about to spawn |
 | r6 | Opus | high | `opus-high-r6` | pending |
 | r7 | Opus | medium | `opus-medium-r7` | pending, only if not converged by r6 |
+
+Round 4 hit a genuine watchdog stall (600s no-progress) after an earlier tool-use rejection; recovered by resuming the same agent from its transcript rather than spawning fresh — its commits were already intact per-fix. Not a deliberate operator stop; logged here per the method's "genuine stall" recovery path (same class as the reed campaign's round 1).
 
 Round numbering continues from the prior campaign's r1–r3 (this campaign's round 4 was originally planned as `opus-high-r4` and never spawned; the operator has now replaced that single-round plan with this four-round rotation instead — the numbering stays continuous, the model/effort assignment does not match the original plan).
 Hard Rule 2 (explicit effort pick required before every spawn) is satisfied for all four by this table.
@@ -48,11 +50,50 @@ Convergence = a safety-pass round (self-reports nothing new) AND the orchestrato
 - SPEC lives only in git history: `git show 3b800bc8:_mill/discussion.md` + `3b800bc8:_mill/plan/0*.md`; rejected alternatives at `967916ea:_mill/discussion-meta.md`.
 - Full round 1–3 history (findings, sabotage proofs, live-drive recipes): `git show archive/fabric-merge-crucible-hardening~1:_mill/fabric-merge-review-HANDOFF.md`.
 
-## Round 4 (`opus-medium-r4`) — seeded, not yet spawned
+## Round 4 (`opus-medium-r4`) — COMPLETE, independently verified
 
-Seed commit: (this file + the review prompt, committed together before spawn).
-Prompt: `_mill/fabric-merge-review-prompt.md`, residual = V1 (BLOCKING) + V2 (MEDIUM), explicit acceptance bars for both, plus "review the whole merge surface as an ordinary round, not just these two" instruction and the "refusal-shaped predicate repurposed as a positive claim" lesson as its high-yield focus.
+Seed commit `9e6d6e5c`. Round commits `505d50a3` → `142c99a3` (8 commits): review report, F2 (V2), F1 (V1), F3, F5, F4+F6, sandbox F20 coverage, fixer report.
+Reports: `_mill/fabric-merge-review-opus-medium-r4.md`, `_mill/fabric-merge-review-opus-medium-r4-fixer-report.md`.
+Self-verdict READY TO MERGE. **The orchestrator's independent verification agrees — this is the first round in either campaign instalment whose self-verdict held up completely.**
+
+Findings: BLOCKING 1 (R4-F1 = V1) · MEDIUM 2 (R4-F2 = V2, R4-F3) · LOW 2 (R4-F4, R4-F5) · NIT 2 (R4-F6, R4-F7). All fixed, nothing deferred as unfixed. Two genuine coverage gaps stated plainly rather than claimed closed: Windows path behaviour (still unexecuted, still needs a Windows host) and round 2's 45-row per-site adjudication (not re-walked, not required this round).
+
+### What the orchestrator verified itself
+
+**Gates, from cold on the committed tree, run twice (once mid-verification after sabotage/revert cycles, once final) — all green:**
+`go build ./...`; `go vet ./...`; `go test -count=5` across `fabricengine`/`fabriccli`/`gitrepo`/`cmd/lyx`; `go test -tags integration -count=1 -timeout 30m` (fabricengine ~47-50s, fabriccli ~3.5-4.4s, gitrepo ~1.9-2.6s).
+
+**Sabotage proofs — every one run by the orchestrator, watched to fail at the intended assertion, then restored to an empty diff:**
+
+| # | Mechanism sabotaged | Test(s) | Result |
+|---|---|---|---|
+| S1 | `sideConcludeAlreadyLanded` reverted to the ambiguous HEAD-moved-only read (R4-F1) | `TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted`, `TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted` | both failed at `committed true, error <nil>; want *ErrMergeIncomplete` |
+| S2 | a `mergeReason*` constant declared in `mergeguards.go` instead of `mergeerrors.go` (R4-F2) | `TestMergeVocabulary_GuardReasonSetMatchesConstBlock`, `TestMergeVocabulary_GuardReasonSetIsDeclaredInOneFile` | both failed correctly; first sabotage attempt (const before `package`) was a build break and was redone after the import block, per the method's "a build break is not a proof" rule |
+| S3 | `Merge`'s weft write lock moved back to after the pre-merge sync (pre-fix order, R4-F3) | `TestMerge_PreMergeSyncRunsInsideTheWriteLock` | failed at `Stat(...) while the lock was held = <nil>; want not-exist` |
+
+**The BLOCKING fix (R4-F1/V1) re-driven live by the orchestrator, freshly deployed binary (`142c99a3`), three fresh hubs, all three directions:**
+
+- **Adversarial** (hub2): conflicted `merge-in feat`, `git merge --abort` + one unrelated commit, then `lyx fabric merge --continue` → `{"error":"...merge conclude did not finish...","ok":false}`, record retained, `git merge-base --is-ancestor <feat-source> HEAD` confirms `feat` NOT merged. `merge --abort` afterwards also refuses (`merge conclude already landed`) — both verbs consistent, honestly stuck. Exactly what the round claimed.
+- **Legitimate** (hub3): conflicted `merge-in feat2`, resolved by hand, `git commit --no-edit` while `MERGE_HEAD` still live, then `merge --continue` → `committed:true` naming the hand-landed SHA, HEAD unmoved (the hand-landed commit itself, no second commit fabricated), record cleared.
+- **Squash** (hub4): `merge feat3 --squash` with a failing `pre-commit` hook, hand-landed squash conclude via plain `git commit` (confirmed one parent), `merge --continue` → refuses (`merge conclude did not finish`), record retained (`squash: true`, `warp_committed: ""`), HEAD left at the hand-landed commit untouched.
+
+Docs (`doc.go`'s "# The merge surface") read as accurate against the new code — the claim-vs-refusal asymmetry, the parentage evidence, squash non-adoption, and the corrected plain-git recovery instructions are all present and match what was driven live.
+
+### RESIDUAL — what verification left standing
+
+**None found.** This is the first round in either campaign instalment to survive independent verification with zero residual. One thing to hand to round 5 rather than treat as closed: round 4's own flagged judgement call — `parents[0] == start` makes adoption refuse a legitimate recovery if the operator did anything else on the branch first before hand-landing the conclude. Safe direction, documented, but an ergonomics tradeoff a fresh reviewer should independently re-examine rather than inherit as settled.
+
+### Honest limits of this verification
+
+- Windows path behaviour in `weftPathVisible`/`unifyConflictPaths` remains unexecuted by every round and the orchestrator, on every campaign. Linux host, reasoned about, never driven.
+- The N-way concurrent amplifier was not run — not required for this module (see the round prompt's "Merge bar" section).
+- Scratch hubs (`hub1`–`hub4`, plus the round's own `h1`–`h4`) live under the session scratchpad, outside the repo. `git status` in the worktree is clean throughout.
+
+## Round 5 (`fable-high-r5`) — seeded, not yet spawned
+
+Seed commit: (this file + the re-seeded review prompt, committed together before spawn).
+No residual to close — round 4 closed everything it found and the orchestrator's independent verification agrees. Prompt seeded as an ordinary independent adversarial pass (not a declared safety pass — one clean round does not establish convergence per the operator's 4-round plan), carrying forward the parents[0]==start ergonomics question for re-examination and the two honest coverage gaps.
 
 ## Next action
 
-Spawn round 4: `subagent_type: crucible-reviewer-medium`, `model: opus`, prompt = "Read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.", tag `opus-medium-r4`. Wait for completion, then independently verify per the protocol in `crucible/orchestrator-prompt.md` before re-seeding round 5.
+Spawn round 5: `subagent_type: crucible-reviewer-high`, `model: fable`, prompt = "Read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.", tag `fable-high-r5`. Wait for completion, then independently verify per the protocol in `crucible/orchestrator-prompt.md` before deciding whether to re-seed round 6 (Opus/high) or, if round 5 is a genuine safety pass agreeing with round 4's clean result, consider convergence.
