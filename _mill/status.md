@@ -54,7 +54,9 @@ batches:
     commit_sha: 558c2b7aa43ae091c612addc2ef96e407cfb7007
     verify_baseline_failures: []
   - name: BurlerProducer
-    state: pending
+    state: running
+    implementer_session: 5ff2c8e9-25b5-4251-9a82-25cc65909c14
+    start_sha: 35fd4d943e02d3b06cff14f7fb2c7c95848e2c15
     verify_baseline_failures: []
   - name: docs
     state: pending
