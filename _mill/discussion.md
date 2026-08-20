@@ -106,8 +106,16 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 ### Artifact naming and paths
 
 - Decision: the Bouncer writes its three files flat in `RunDir`, named `round-<N>-bouncer-verdict.md`, `round-<N>-bouncer-ledger.md`, and `round-<N>-focus.md`, where `N` is the round the file pertains to.
-  The seed call writes only `round-1-focus.md`.
-  A judge call for round `N` writes `round-<N>-bouncer-verdict.md` and `round-<N>-bouncer-ledger.md`, and — only when the verdict is `BLOCKING` — `round-<N+1>-focus.md`.
+  The seed call's spawn declares exactly one output file, `round-1-focus.md`.
+  A judge call for round `N` declares exactly three, **unconditionally**: `round-<N>-bouncer-verdict.md`, `round-<N>-bouncer-ledger.md`, and `round-<N+1>-focus.md`.
+  The judge writes all three on every call, including when its verdict is `APPROVED` — in that case `round-<N+1>-focus.md` is simply never read, because the segment exits.
+- **The spawn's `OutputFiles` list is unconditional, and this is load-bearing.**
+  `shuttleengine` classifies a run `done` only when *every* `Spec.OutputFiles` entry exists — `allOutputFilesExist` at `internal/shuttleengine/wait.go:279`, consulted at `wait.go:222`; a run whose files are not all present is classified `OutcomeAsking` instead.
+  So a three-entry list whose third entry the judge writes "only when `BLOCKING`" would make every `APPROVED` run classify non-`done`, fall into this design's own fail-safe degradation, and return `Stuck` — making `Done` unreachable and the segment unable to ever approve anything.
+  Writing an unused focus file on approval is a few hundred wasted bytes; a conditional output file is a producer that cannot terminate.
+  The judge template states this explicitly: always write all three, and on `APPROVED` write the focus file with empty `exclude_lenses` and empty `focus`.
+- Rejected for the focus file's authorship: having the *Bouncer* render `round-<N+1>-focus.md` itself after parsing a `BLOCKING` verdict, keeping the spawn at two output files.
+  It satisfies the file contract equally well, but the focus file's whole purpose is to carry the judge's own assessment of which lenses found nothing — content only the LLM has — so the Bouncer would have to smuggle it out through the ledger's frontmatter and re-render it, which is one more format and one more failure point for no gain.
 - Rationale: flat-in-run-dir with a `round-<token>-<kind>.md` shape is the convention `treadleengine/roundfiles.go` already established and every existing artifact follows, so an operator reading a run dir sees one naming scheme, not two.
   The `bouncer-` infix keeps the verdict and ledger distinguishable from a round producer's own files in the same directory.
   Numbering the focus file by the round it *targets* (rather than the round that wrote it) means the round producer reads `round-<its own N>-focus.md` with no off-by-one reasoning.
@@ -116,16 +124,24 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 ### Three modes, told apart by file existence only
 
 - Decision: `Call` resolves its mode from two file-existence questions and nothing else — no state is threaded through `Call(ctx)`.
-  Let `N = ResolveRound(RunDir, ReportName)` (see "An exported round-resolution helper" below).
-  - `N == 0` (no report exists at all) → **seed call**: write `round-1-focus.md`, return `Stuck` unconditionally with an empty pointer and no verdict.
-  - `N >= 1` and `round-<N>-bouncer-verdict.md` is **absent** → **judge call**: read the report plus the previous round's ledger (when one exists), spawn the judge, parse its verdict, and return `Done` on `APPROVED` or `Stuck` on `BLOCKING`.
-  - `N >= 1` and `round-<N>-bouncer-verdict.md` is **present** → **re-bounce**: round `N` has already been judged, so the round producer handed control back without producing a new report.
-    Spawn nothing, log a `logger.Warn` naming the producer and round `N`, and return `Stuck` with `round-<N>-bouncer-ledger.md` as the pointer.
+  Let `N = ResolveRound(RunDir, ReportName)` (see "An exported round-resolution helper" below), and let **`judged(N)`** be the predicate defined immediately after this list.
+  - `N == 0` and `round-1-focus.md` **absent** → **seed call**: spawn, write `round-1-focus.md`, return `Stuck` with an empty pointer and no verdict.
+  - `N == 0` and `round-1-focus.md` **present** → **re-bounce**: the segment was already seeded and the round producer handed control back without producing round 1's report.
+    Spawn nothing, log a `logger.Warn`, return `Stuck` with an empty pointer (no ledger exists yet).
+  - `N >= 1` and **not** `judged(N)` → **judge call**: read the report plus the previous round's ledger (when one exists), spawn the judge, parse its verdict, and return `Done` on `APPROVED` or `Stuck` on `BLOCKING`.
+  - `N >= 1` and `judged(N)` → **re-bounce**: round `N` is settled, so the round producer handed control back without producing a new report.
+    Spawn nothing, log a `logger.Warn` naming the producer and round `N`, and return `Stuck` with `round-<N>-bouncer-ledger.md` as the pointer — which `judged(N)` guarantees exists.
+
+  **`judged(N)`** is true only when all three hold: `round-<N>-bouncer-verdict.md` exists, `round-<N>-bouncer-ledger.md` exists, **and** the verdict file parses cleanly.
+  Anything less means a judge call for round `N` started and did not finish — most plausibly a spawn that wrote the verdict but not the ledger, which `shuttleengine` classifies non-`done` (see the unconditional-`OutputFiles` note under "Artifact naming and paths"), degrading to `Stuck` and leaving a verdict file on disk with no ledger beside it.
+  A partially-written round is **not** judged, so the next `Call` re-judges it, archiving the debris on the way in via the ordinary stale-output step.
+  Re-judging costs one more session; treating the debris as a settled verdict would silently accept a round no judge ever finished assessing, and — because `Shed` never stats a pointer — would then report a ledger path pointing at nothing.
+  Requiring the *parse* as well as the file, rather than existence alone, is what makes a truncated or malformed verdict re-judged rather than permanently mistaken for a decision.
 - Rationale: `ShedProducer.Call(ctx)` has no parameter to carry mode in, by design — the seam is deliberately minimal.
   File existence is the same discriminator already needed to fix the `Discussion-Validate`/`Plan-Validate` findings-discarded-on-`Stuck` gap, so this is an established pattern rather than a new one.
   It also survives a crash-restart for free: the disk state *is* the mode.
 
-  The third mode is not hypothetical, and consulting the report file alone would be a live bug.
+  The re-bounce mode is not hypothetical, and consulting the report file alone would be a live bug.
   The roadmap pins the round producer to return `Stuck` with `OnStuck` at the Bouncer *unconditionally* — it "always returns `Stuck` ..., never `Done`", including on its own degraded paths.
   So a round producer that bounces back without writing a report leaves the highest report at `N`, whose verdict already exists;
   a report-file-only discriminator would then re-spawn a full judge call on an already-judged round, archive the prior verdict and ledger, pay for the session a second time, and repeat until the bounce budget is exhausted — burning the whole budget on LLM calls that re-decide a settled round.
@@ -145,6 +161,33 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
   This decision is a documentation and constructor-doc obligation in this task, not code: the wiring lives in the three `loom` tasks.
   `shedengine.validate()` already requires a non-empty `OnStuck` to name a target sharing the same `Segment`, so the pair must share a `Segment` label.
 - Rejected: nothing — the roadmap pins this shape.
+
+### The constructor surface — a config struct, validated, returning an error
+
+- Decision: the constructor is `NewBouncer(cfg BouncerConfig) (*Bouncer, error)`, and `BouncerConfig` carries exactly these fields:
+
+  | Field | Meaning | Validation |
+  |---|---|---|
+  | `Name` | log-field and error-text identity only — never compared, parsed, or used for control flow | non-empty |
+  | `RunDir` | absolute run dir every artifact path is joined onto | non-empty, absolute |
+  | `ReportName` | `func(round int) string` naming the round producer's report artifact | non-nil |
+  | `StencilsDir` | absolute, already-resolved stencils directory | non-empty, absolute |
+  | `RubricStencil` | stencil *name* of this instance's rubric | non-empty |
+  | `Model` | model the judge spawn runs as | may be empty (defers to the provider default) |
+  | `Effort` | reasoning-effort override for the judge spawn | may be empty (defers to the provider default) |
+  | `Shuttle` | the seam the two spawns run through | non-nil |
+  | `Now` | injected clock, for the archive filename's same-second collision suffix only | nil defaults to `time.Now` |
+
+  `Model` and `Effort` are **told, never resolved here**: the Bouncer receives an already-resolved `(model, effort)` pair and threads it into `shuttleengine.Spec.Model`/`.Effort` verbatim.
+  It never parses a model-spec string, never loads `models.yaml`, and never consults a config file.
+  Resolution happens once, at the caller's own config-load time — which for the three `loom` instances means `loom`'s per-phase config, not any engine-general config file.
+- Rationale: nine inputs with real invariants is past the point where a positional constructor reads well, and two of them (`RunDir`, `StencilsDir`) must be absolute — a rule that has to be enforced *somewhere*, and the only alternative to the constructor is discovering it mid-`Call` inside an unattended run.
+  Returning an `error` is a deliberate deviation from this package's three existing constructors, which return a bare pointer;
+  the deviation is worth calling out in the package doc, and it is justified because those three either validate nothing (`SingleLLMProducer`, whose `Spec` is validated downstream by `shuttleengine`) or take already-constructed engines that validated themselves.
+  Keeping `Model`/`Effort` told rather than resolved follows the rule `perchengine`'s own doc states for the whole stack — knowledge of phases and lifecycle collects in the product layer, and the engines beneath it stay phase-agnostic.
+  `Name` being log-and-error-text-only is the package's existing convention for exactly the reason it documents: `Call(ctx)` carries no identity, and two instances of one adapter type in one producer list is the expected shape — which here is not merely expected but certain, since `loom` instantiates three.
+- Rejected: (a) a positional `NewBouncer(name, runDir, reportName, stencilsDir, rubric, model, effort, shuttle, now)` — nine positional arguments, four of them `string`, is a call site where a transposition compiles silently.
+  (b) Validating lazily at first `Call` — turns a wiring typo into a mid-run failure, and `Shed` would record it as an engine-level error rather than surfacing it at construction.
 
 ### Failure posture — fail-safe toward another round, never toward approval
 
@@ -177,11 +220,17 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 **Budget semantics, and the seed call's off-by-one.**
 `shedengine.episodeStuckCount` (`run.go:275`) counts every `Stuck` a producer authored since that producer's own most recent `Done`, walking the persisted history backward and skipping entries authored by other producers.
 The Bouncer returns `Done` only on approval, and approval exits the segment — so within one segment episode the Bouncer never authors a `Done`, and its episode never resets.
-The seed call's unconditional `Stuck` therefore permanently consumes one unit of the budget: **a Bouncer configured with `MaxBounces: N` performs `N-1` judged rounds, not `N`.**
-The boundary itself is pinned in `shedengine` and restated per-producer — a budget of three performs three bounce-backs and blocks on the fourth `Stuck` (`run.go:198-199`).
-This is stated here rather than compensated for in code, deliberately: silently adding one inside the Bouncer would make `MaxBounces` mean something different for this producer than for every other one in the list, which is worse than an off-by-one an operator can read.
-The three `loom` wiring tasks size `MaxBounces` against this rule, and the constructor's doc comment must state it so the next reader does not have to re-derive it.
-Note also that a re-bounce (the third mode above) consumes budget on the same terms, which is exactly what makes it safely terminating.
+The seed call's unconditional `Stuck` therefore permanently consumes one unit of the budget.
+
+The resulting rule, which is what the three `loom` wiring tasks and the constructor doc comment must be told: **a Bouncer configured with `MaxBounces: N` gets `N` judged rounds, and the `N`th one blocks the run if it comes back `BLOCKING`.**
+Deriving it: the budget check at `run.go:197` counts `st.History` — the slice read *before* this call's `Stuck` is appended, deliberately and with a comment saying so — and blocks when that count already equals the budget.
+So `Stuck` number `N+1` is the one that blocks, and the Bouncer's `Stuck` sequence is [seed, reject round 1, reject round 2, ...].
+With `N = 1`: the seed bounces, the round producer runs round 1, and the Bouncer's judge call for round 1 *runs* — returning `Done` if it approves, or blocking the run with its `Stuck` if it does not.
+One judged round, not zero.
+Generally, `N` rounds are judged and the `N`th rejection is what exhausts the budget.
+
+This is documented rather than compensated for in code, deliberately: silently adding one inside the Bouncer would make `MaxBounces` mean something different for this producer than for every other one in the list, which is worse than an offset an operator can read about.
+Note also that a re-bounce consumes budget on exactly the same terms, which is what makes that mode safely terminating rather than a free loop.
 
 ### Stale outputs — archive, using the existing shared helper
 
@@ -380,19 +429,26 @@ Scenarios `Call` must cover:
 
 - **Seed call, happy path** — empty run dir; returns `Stuck`, empty pointer, nil error; `round-1-focus.md` exists and parses; exactly one spawn against the *seed* template; no verdict or ledger file written.
 - **Seed call, spawn fails** — every failure mode in turn (stencil read, fill, `Run` error, non-`done` outcome, agent wrote nothing, agent wrote an unparseable focus file); each returns `Stuck` with nil error, and `round-1-focus.md` exists with `round: 1` and both lists empty.
-- **Judge call, `APPROVED`** — returns `Done` with the ledger path as the pointer; verdict and ledger files written; *no* `round-<N+1>-focus.md` written.
+- **Judge call, `APPROVED`** — returns `Done` with the ledger path as the pointer; all three files written, `round-<N+1>-focus.md` included and carrying empty `exclude_lenses`/`focus`.
 - **Judge call, `BLOCKING`** — returns `Stuck` with the ledger path as the pointer; verdict, ledger, and `round-<N+1>-focus.md` all written.
 - **Judge call, every degradation path** — returns `Stuck`, nil error, a `Warn` logged.
   Enumerate them individually rather than as one case: stencil read failure, rubric stencil read failure, fill failure, `Run` error, each non-`done` shuttle outcome, unreadable verdict file, unparseable verdict file, unparseable ledger file.
   Assert explicitly in each that the outcome is not `Done` — this is the one property that must never regress.
-- **Re-bounce mode** — round `N`'s report *and* verdict both present: returns `Stuck` with `round-<N>-bouncer-ledger.md` as the pointer, nil error, and a `Warn` logged; assert the fake `Shuttle` was **never called**, since spending an LLM session here is the whole failure this mode exists to prevent.
+- **Re-bounce, post-seed** — no report exists but `round-1-focus.md` does: returns `Stuck` with an **empty** pointer, nil error, a `Warn` logged, and the fake `Shuttle` never called; assert `round-1-focus.md` is left byte-identical, not archived and not re-seeded.
+- **Re-bounce, post-judgment** — `judged(N)` holds: returns `Stuck` with `round-<N>-bouncer-ledger.md` as the pointer, nil error, and a `Warn` logged; assert the fake `Shuttle` was **never called**, since spending an LLM session here is the whole failure this mode exists to prevent.
   Also assert the existing verdict and ledger files are left untouched — not archived, not rewritten.
+- **`judged(N)` is not satisfied by debris** — three cases, each of which must produce a *judge call* (fake `Shuttle` invoked) rather than a re-bounce: verdict present, ledger absent; ledger present, verdict absent; both present but the verdict unparseable.
+  Assert in each that the debris is archived on the way in, so the spawn's `OutputFiles` are clear and `Spec.validate` does not reject them.
+- **Unconditional `OutputFiles`** — assert the recorded judge `Spec.OutputFiles` has exactly three entries on *both* an `APPROVED` and a `BLOCKING` round, and that `round-<N+1>-focus.md` exists after an `APPROVED` round too.
+  This is the guard against the conditional-output-file regression that would make `Done` unreachable.
 - **Pointer discipline** — one case per outcome asserting the exists-or-empty rule: `Done` and `BLOCKING`-`Stuck` name a ledger that exists on disk; the seed call and every degraded judge path report an empty pointer; the re-bounce names a ledger that exists.
 - **Previous ledger handling** — a valid prior ledger's path reaches the prompt; a *malformed* prior ledger degrades to the no-prior-ledger marker with a `Warn`, and the judge still runs; the no-prior-ledger case fills the "(none)" literal rather than an empty string.
 - **Stale outputs** — a pre-existing verdict/ledger/focus file at a target path is archived before the spawn, and the spawn then succeeds rather than tripping `Spec.validate`.
 - **Cancellation** — an already-cancelled context at entry returns an error with nothing started (assert the fake `Shuttle` was never called); a context cancelled during the run returns an error on every path *except* a genuinely parsed verdict, which returns its mapped outcome and pointer regardless.
-- **Constructor validation** — a relative `RunDir`, an empty producer name, a nil `Shuttle`, an empty rubric stencil name, and a nil report-name function each fail loud.
-  A nil `now` defaults to `time.Now`.
+- **Constructor validation** — one case per rule in the `BouncerConfig` table: empty `Name`; empty and relative `RunDir`; nil `ReportName`; empty and relative `StencilsDir`; empty `RubricStencil`; nil `Shuttle`.
+  Each returns an error naming the offending field.
+  Empty `Model` and empty `Effort` are *accepted* (they defer to the provider default) — assert that explicitly, so a later tightening does not silently break the default-model path.
+  A nil `Now` defaults to `time.Now`.
 
 Also required: a case in `contracts/stencils/registry_test.go` covering the two new stencils, so registry completeness holds.
 
@@ -418,4 +474,9 @@ The other three adapters have none, and adding one here would cross the Test Tie
 - **Q:** Is the round-resolution scan exported? **A:** [auto-pick] yes, exported from `internal/shedadapters`. **Why:** the Burler-round producer must resolve the same round from the same convention or the two halves of a segment silently disagree; exporting it in the task that defines the convention is what prevents the later task from duplicating and drifting.
 - **Q:** [review r1] Does the seed call's unconditional `Stuck` consume a bounce, and if so, is that compensated for? **A:** [auto-pick] yes it consumes one, and it is documented rather than compensated: `MaxBounces: N` yields `N-1` judged rounds. **Why:** `episodeStuckCount` never resets within a segment episode because the Bouncer's only `Done` exits the segment; silently adding one inside the Bouncer would make `MaxBounces` mean something different for this producer than for every other one in the list, which is worse than a documented off-by-one.
 - **Q:** [review r1] What exactly does the exported round-resolution helper return, and what happens on a gap in the report sequence? **A:** [auto-pick] pinned in this discussion — `ResolveRound(runDir, reportName) (int, error)`, contiguous scan from round 1, `0` for "nothing run yet", error only on an unreadable run dir; a gap stops the scan, so reports 1 and 3 with 2 absent returns `1`. **Why:** "round to judge" and "round to write" are both plausible readings of a bare helper and differ by one on identical disk state, so leaving the return shape unpinned would let the two consumers drift while sharing the same code; contiguity is what the segment produces by construction, and stopping at the gap fails safe by re-judging rather than skipping.
+- **Q:** [review r2] What is the judge spawn's `OutputFiles` list, given the focus file was described as conditional? **A:** [auto-pick] exactly three entries, unconditionally, with the judge writing all three on every call including `APPROVED`. **Why:** `shuttleengine` classifies a run `done` only when every `OutputFiles` entry exists (`wait.go:222,279`), so a conditionally-written third entry would make every approval classify non-`done`, degrade to `Stuck`, and render `Done` unreachable — the segment could never approve anything.
+- **Q:** [review r2] Does `MaxBounces: N` yield `N` or `N-1` judged rounds? **A:** [auto-pick] `N` — the `N`th judged round blocks the run if it comes back `BLOCKING`. **Why:** the budget check at `run.go:197` counts history read *before* the current `Stuck` is appended (deliberately, per its own comment), so `Stuck` number `N+1` blocks; with the seed as `Stuck` #1 that leaves exactly `N` rounds judged. The earlier `N-1` claim was derived from a post-append reading and was wrong.
+- **Q:** [review r2] What stops the seed call from re-seeding when the round producer bounces back at round 1 without writing a report? **A:** [auto-pick] the seed discriminator also consults `round-1-focus.md`; present means a re-bounce with an empty pointer, not a second seed spawn. **Why:** the roadmap's unconditional-`Stuck` rule makes this reachable, and without the guard the seed mode reproduces exactly the paid-re-spawn loop the re-bounce mode was introduced to prevent.
+- **Q:** [review r2] Is a round with a verdict file but no ledger "already judged"? **A:** [auto-pick] no — `judged(N)` requires verdict present, ledger present, *and* the verdict parsing; anything less is debris from an unfinished judge call and gets re-judged. **Why:** a spawn that wrote the verdict but not the ledger classifies non-`done` and degrades, so verdict-presence alone would accept a round no judge finished assessing and then report a pointer to a ledger that does not exist — which `Shed` never stats and therefore never catches.
+- **Q:** [review r2] What is the constructor's full parameter set, and where do `Model`/`Effort` come from? **A:** [auto-pick] a validated `BouncerConfig` struct through `NewBouncer(cfg) (*Bouncer, error)`, with `Model`/`Effort` told as an already-resolved pair by the caller. **Why:** nine inputs including two that must be absolute paths is past the point where positional arguments are safe, and validating at first `Call` would turn a wiring typo into a mid-run engine-level failure; keeping model resolution in the product layer follows the rule that engines beneath `loom` stay phase-agnostic.
 - **Q:** [review r1] What happens when the round producer bounces back without writing a new report, leaving the highest report already judged? **A:** [auto-pick] a third mode — re-bounce: spawn nothing, log a `Warn`, return `Stuck` with the existing ledger as pointer. **Why:** the roadmap pins the round producer to return `Stuck` unconditionally including on its own degraded paths, so this is reachable in normal operation; a report-file-only discriminator would re-judge a settled round, archive its verdict, and burn the entire bounce budget on paid LLM calls that decide nothing.
