@@ -30,13 +30,20 @@ implementing  '2026-08-20T09:26:03Z'
 ```yaml
 batches:
   - name: preflightshed-package
-    state: pending
+    state: running
+    implementer_session: 82d66d57-4f06-45ae-8964-3c0763176041
+    start_sha: f4e2b5a32ee13d9428cd23bc74f064600a0eb8b5
+    verify_baseline_failures: []
   - name: loomengine-checkseed
     state: pending
+    verify_baseline_failures: []
   - name: wire-two-rows
     state: pending
+    verify_baseline_failures: []
   - name: delete-composite
     state: pending
+    verify_baseline_failures: []
   - name: docs
     state: pending
+    verify_baseline_failures: []
 ```
