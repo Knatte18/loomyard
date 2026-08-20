@@ -98,8 +98,14 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 // TestResume_CrashRecoveryRecallsUnconditionally proves the re-call is unconditional: after a run
 // that reaches its terminal row, resetting current_producer back to Preflight -- as if Preflight's
 // output already exists from the first pass -- still makes a fresh Shed call it again, rather than
-// skip it. Both runs end shedengine.RunBlocked at Publish (see sequence_test.go's wantSequenceOrder
-// doc comment for why); this test's own point is the re-call count, not the terminal state.
+// skip it.
+//
+// The two runs do not end at the same halted row: the first run ends shedengine.RunBlocked at
+// Publish (see sequence_test.go's wantSequenceOrder doc comment for why). After
+// resetCurrentProducer(..., NamePreflight, false), the second run re-calls row 1, Shed advances to
+// row 2, and row 2 finds a history carrying the first run's later producers -- exactly the
+// half-finished shape the fresh-start rule rejects -- so the second run blocks at Loom-Preflight
+// instead. This test's own point is the re-call count, not the terminal state.
 func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
 	counting := &countingProducer{}
@@ -318,7 +324,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 
 // TestCancellation_RealProducersReturnErrorNotStuck asserts the one obligation shedengine cannot
 // enforce for itself: every real producer this task builds -- the discussion validator, the plan
-// validator, the batch gate, the Webster wrapper, and the Preflight wrapper -- returns a non-nil
+// validator, the batch gate, the Webster wrapper, and loom's own seed row -- returns a non-nil
 // error rather than shedengine.Stuck when called under an already-cancelled context. A Stuck under
 // a cancelled context is indistinguishable to Shed from a genuine verdict and would silently
 // consume bounce budget for what was actually an operator stop.
@@ -338,7 +344,7 @@ func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
 		{NamePlanValidate, newPlanValidate(NamePlanValidate, deps.AnchorPath, deps.WorktreeRoot)},
 		{NameBatchifier, newBatchifier(NameBatchifier, deps.AnchorPath)},
 		{NameWebster, newWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, websterengine.RunDeps{})},
-		{NamePreflight, NewPreflightProducer(deps.AnchorPath)},
+		{NameLoomPreflight, newLoomPreflight(NameLoomPreflight, deps.StatusPath, deps.StatusLockPath)},
 	}
 
 	for _, tt := range producers {
