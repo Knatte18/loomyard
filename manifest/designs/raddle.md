@@ -52,7 +52,7 @@ If another task's merge landed in parent partway through regeneration, the docs 
 Same "advance only on confirmed success" discipline the `Warp-SHA` trailer mechanism uses elsewhere in `fabric` for recording a baseline, extended to cover the compute step, not just the write step.
 
 **Decided:** raddle has no reserved phase slot of its own in [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) — regeneration is folded into `Finalize`'s own contract instead, landed at [shed.md](shed.md) and [loom.md](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
-See [landing.md](landing.md#raddle-regeneration--part-of-the-merge-not-a-step-before-it) for Finalize's side of the contract.
+See [internal/landingshed](../../internal/landingshed/doc.go) for Finalize's side of the contract.
 
 ## Staleness tracking, via `fabric`
 

@@ -6,6 +6,7 @@ package loomshed
 import (
 	"fmt"
 
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -16,9 +17,9 @@ import (
 // task, so every row below is built from these constants, never a repeated string literal.
 //
 // NamePublish and NameFinalize are not loom's own producers -- both are generic ShedProducers
-// shared by reference with Hardener's own list (see manifest/designs/landing.md) -- but the name
-// constants live here regardless, same as every other row, because loom's own producer table is
-// what New assembles from them.
+// shared by reference with Hardener's own list (see internal/landingshed's own package
+// documentation) -- but the name constants live here regardless, same as every other row, because
+// loom's own producer table is what New assembles from them.
 const (
 	NamePreflight          = "Preflight"
 	NameDiscussionWrite    = "Discussion-Write"
@@ -70,6 +71,12 @@ type Deps struct {
 	// because the lazy wrapper around them (websterProducer) is owned here.
 	WebsterRun  shedadapters.WebsterRunner
 	WebsterDeps websterengine.RunDeps
+
+	// Landing is the told-value passthrough for landingshed.Deps, backing rows 12 (Publish) and 13
+	// (Finalize). It is a single passthrough rather than landing's fields flattened into this
+	// struct, deliberately: that keeps landing-specific fields out of Deps, and gives a future
+	// sibling product the same struct to fill from its own geometry with no duplication.
+	Landing landingshed.Deps
 }
 
 // New builds loom's 12-row producer list in table order and returns a *shedengine.Shed carrying it
@@ -80,11 +87,13 @@ type Deps struct {
 // Discussion-Review (stub, bouncing to Discussion-Write); 5 Plan-Write (stub, ""); 6 Plan-Validate
 // (real, bouncing to Plan-Write); 7 Plan-Review (stub, bouncing to Plan-Write); 8 Batchifier (real,
 // ""); 9 Webster (the lazy wrapper, ""); 10 Webster-Review (stub, bouncing to Webster); 11 Publish
-// (stub, ""); 12 Finalize (stub, ""). Every gate and validator bounces back to the producer whose
+// (real, ""); 12 Finalize (real, ""). Every gate and validator bounces back to the producer whose
 // artifact it guards, and a gate whose guarded artifact is produced by no row in the list escalates
 // instead -- Preflight gates git and filesystem state and Batchifier gates the batch config, neither
 // of which any row writes, so there is nothing to bounce to and a human is the only thing that can
-// fix either.
+// fix either. Publish and Finalize share that same escalate-only posture: neither bounces, because nothing in the list produces what these two gate
+// -- an unresolvable conflict against the parent's current state, an unreachable remote service, a
+// drifting parent, and a pull request awaiting human review are all things only a human fixes.
 //
 // Plan-Sweep is deliberately not a row here: its scout-inventory work is deferred (see
 // manifest/roadmap.md's Someday "loom: build Plan-Sweep for real" item) and it has no consumer --
@@ -94,10 +103,21 @@ type Deps struct {
 //
 // New returns an error when deps.Preflight is nil, since a nil row would otherwise panic at the
 // call step rather than failing loud; it does not otherwise pre-validate, because shedengine.Run
-// validates every field before it touches anything.
+// validates every field before it touches anything. Building the Publish and Finalize rows can
+// itself fail -- both constructors reject a nil closure in deps.Landing -- and New surfaces that
+// construction failure rather than discarding it.
 func New(deps Deps) (*shedengine.Shed, error) {
 	if deps.Preflight == nil {
 		return nil, fmt.Errorf("loomshed: deps.Preflight must not be nil")
+	}
+
+	publish, err := landingshed.NewPublish(deps.Landing)
+	if err != nil {
+		return nil, fmt.Errorf("loomshed: build Publish row: %w", err)
+	}
+	finalize, err := landingshed.NewFinalize(deps.Landing)
+	if err != nil {
+		return nil, fmt.Errorf("loomshed: build Finalize row: %w", err)
 	}
 
 	producers := []shedengine.ProducerDef{
@@ -111,8 +131,8 @@ func New(deps Deps) (*shedengine.Shed, error) {
 		{Name: NameBatchifier, Producer: newBatchifier(NameBatchifier, deps.AnchorPath), OnStuck: ""},
 		{Name: NameWebster, Producer: newWebsterProducer(NameWebster, deps.AnchorPath, deps.WebsterRun, deps.WebsterDeps), OnStuck: ""},
 		{Name: NameWebsterReview, Producer: newStub(NameWebsterReview), OnStuck: NameWebster},
-		{Name: NamePublish, Producer: newStub(NamePublish), OnStuck: ""},
-		{Name: NameFinalize, Producer: newStub(NameFinalize), OnStuck: ""},
+		{Name: NamePublish, Producer: publish, OnStuck: ""},
+		{Name: NameFinalize, Producer: finalize, OnStuck: ""},
 	}
 
 	return &shedengine.Shed{

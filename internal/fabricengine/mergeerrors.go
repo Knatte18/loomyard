@@ -40,6 +40,22 @@ func (e *MergeGuardError) Error() string {
 	return "fabricengine: merge preconditions failed: " + strings.Join(e.Reasons, "; ")
 }
 
+// WorktreeDirty reports whether e's aggregated reasons include the dirty-worktree guard reason.
+// It is the supported way for a caller outside this package to recognize the condition: the
+// guard-reason constants themselves are a closed, unexported set, pinned verbatim by this file's
+// own comment and by two of this package's tests, so an outside caller has no literal to match
+// against and would otherwise have to hardcode the reason text -- with nothing to catch that text
+// drifting later. WorktreeDirty keeps the coupling inside the package that owns the constant, where
+// the existing pinning tests already cover it.
+func (e *MergeGuardError) WorktreeDirty() bool {
+	for _, r := range e.Reasons {
+		if r == mergeReasonWorktreeDirty {
+			return true
+		}
+	}
+	return false
+}
+
 // newMergeGuardError builds a *MergeGuardError from reasons, sorting and deduplicating them first
 // so the reported list never reveals evaluation order or arity.
 func newMergeGuardError(reasons []string) *MergeGuardError {

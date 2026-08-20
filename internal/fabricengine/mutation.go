@@ -20,7 +20,7 @@ import (
 type Kind string
 
 // The fixed set of mutation kinds fabric records.
-// Seven are auto-recorded by the destruction gate (destroy.go); the remaining ten are
+// Seven are auto-recorded by the destruction gate (destroy.go); the remaining eleven are
 // hand-recorded at their success sites, since no chokepoint covers them.
 const (
 	// KindPathRemoved records removePath's deletion of a single path or a directory tree.
@@ -66,6 +66,10 @@ const (
 	// KindMergeStaged records a merge verb's MergeStart call that observably changed a checkout's
 	// state (staged, conflicted, or fast-forwarded) — never an already-up-to-date no-op.
 	KindMergeStaged Kind = "merge_staged"
+	// KindMergeResolvedStaged records one side's staging of agent-resolved conflict paths; Target is
+	// that side's checkout path. It is recorded only after the staging call observably succeeded —
+	// never on the empty-paths no-op.
+	KindMergeResolvedStaged Kind = "merge_resolved_staged"
 	// KindMergeCommitted records a merge verb's conclude-commit landing on one side; Detail is the
 	// new SHA.
 	KindMergeCommitted Kind = "merge_committed"
