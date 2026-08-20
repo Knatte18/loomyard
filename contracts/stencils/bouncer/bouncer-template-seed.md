@@ -1,7 +1,8 @@
 <!-- This is the Bouncer's seed prompt: the focus-setting pass that runs before any round has been
-     reviewed. It is filled via internal/stencil.Fill (bouncer.go's runSeed, reached from Call) and
-     handed to the shuttle as the agent's entire instruction set -- the call runs as a single
-     clean-room agent told only "read this file and do exactly what it says".
+     reviewed. It is filled via internal/stencil.Fill (bouncer.go's seedCall, which calls
+     runSeedSpawn, reached from Call) and handed to the shuttle as the agent's entire instruction
+     set -- the call runs as a single clean-room agent told only "read this file and do exactly
+     what it says".
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires all four non-empty and there are no {{if}}/{{range}} conditionals anywhere
      in this file (a required marker inside a conditional branch would render silently blank when
