@@ -270,8 +270,16 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 
 // TestBounceRouting_BudgetExhaustionBlocks drives Discussion-Validate genuinely and repeatedly
 // Stuck (its decision record stays absent for the whole run, so Discussion-Write's own Done never
-// fixes it), with a small Deps.MaxBounces, and asserts the bounce budget is consumed and exhausting
-// it blocks -- MaxBounces+1 Stuck entries, then shedengine.RunBlocked.
+// fixes it), with a small Deps.MaxBounces, and asserts Discussion-Validate's own bounce budget is
+// consumed and exhausting it blocks -- MaxBounces+1 Stuck entries authored by Discussion-Validate,
+// then shedengine.RunBlocked.
+//
+// The budget here is per-producer and episode-scoped, counted from the persisted history[] --
+// never a run-wide counter. Discussion-Validate's decision record is absent for the whole run, so
+// it never returns Done, and its episode (the run of its own history entries since its last Done)
+// is therefore the whole run: every Stuck entry it authors counts. Discussion-Write, the producer
+// it bounces to, consumes none of Discussion-Validate's budget -- each producer's episode count is
+// its own.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
 	deps.MaxBounces = 2
@@ -297,6 +305,12 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 		t.Errorf("Run() Reason = %q; want %q", result.Reason, "bounce budget exhausted")
 	}
 
+	// Discussion-Validate's own per-producer, episode-scoped budget (deps.MaxBounces, since
+	// neither Discussion-Validate nor Shed itself sets a MaxBounces of its own) performs
+	// MaxBounces bounce-backs to Discussion-Write and blocks on the next Stuck -- one more than
+	// the budget -- because the blocking Stuck entry is itself appended to history before the
+	// inner switch decides whether to bounce or block, so it counts toward the total even though
+	// it is the one that triggers the block rather than one the budget check let through.
 	stuckCount := 0
 	for _, e := range result.History {
 		if e.Producer == NameDiscussionValidate && e.Outcome == shedengine.Stuck {
