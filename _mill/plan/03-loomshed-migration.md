@@ -48,7 +48,9 @@ Named segments arrive with the review-producer tasks, and forcing loom's existin
 
 - **Context:**
   - `internal/loomshed/loomshed.go`
+  - `internal/loomshed/fixture_test.go`
   - `internal/shedengine/producer.go`
+  - `internal/shedengine/shed.go`
   - `internal/shedengine/validate.go`
   - `internal/shedengine/run.go`
   - `_mill/discussion.md`

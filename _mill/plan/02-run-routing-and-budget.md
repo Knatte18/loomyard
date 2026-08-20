@@ -127,6 +127,7 @@ A single producer with `OnStuck` naming itself keeps each assertion pinning the 
   - `internal/shedengine/testsupport_test.go`
   - `internal/shedengine/run.go`
   - `internal/shedengine/producer.go`
+  - `internal/shedengine/shed.go`
   - `internal/shedengine/status.go`
   - `_mill/discussion.md`
 - **Edits:**
@@ -176,6 +177,7 @@ A single producer with `OnStuck` naming itself keeps each assertion pinning the 
   - `internal/shedengine/testsupport_test.go`
   - `internal/shedengine/run.go`
   - `internal/shedengine/producer.go`
+  - `internal/shedengine/shed.go`
   - `internal/shedengine/run_routing_test.go`
   - `_mill/discussion.md`
 - **Edits:**
