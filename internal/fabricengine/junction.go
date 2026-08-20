@@ -191,9 +191,9 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 			// _lyx/ in the repo and start writing" the natural operator
 			// mistake this guard exists to catch.
 			// `.lyx` is the one exception: content under it is always lyx's own
-			// machine-local scratch (the logger, reed, shuttle, and
-			// burler all write it unconditionally), so "never touch what might
-			// be the user's hand-authored content" does not apply there.
+			// machine-local scratch, written unconditionally by several of lyx's
+			// own subsystems, so "never touch what might be the user's
+			// hand-authored content" does not apply there.
 			// Every worktree in existence today has a real `.lyx` for exactly
 			// that reason, so without this adoption branch the first
 			// `reconcile` after `.lyx` joined the wired name-set would
@@ -230,9 +230,8 @@ func seedLyxJunction(rec *Mutations, l *lyxcwd.Location, slug string, names []st
 // adoptDotLyxContent merges every entry from the warp-side real directory at link into the weft-side
 // target, then removes the now-empty warp directory and creates the junction in its place.
 // It is the only path seedLyxJunction takes for `.lyx`: every worktree in existence before this
-// change holds a real `.lyx` (the logger, reed, shuttle, and burler all write it
-// unconditionally), so without adoption the first `reconcile` after `.lyx` joined the wired name-set
-// would hard-error everywhere.
+// change holds a real `.lyx` (several of lyx's own subsystems write it unconditionally), so without
+// adoption the first `reconcile` after `.lyx` joined the wired name-set would hard-error everywhere.
 //
 // A directory present on BOTH sides is merged, recursively, rather than refused. That is not a
 // convenience: adoption's own steady state produces the collision. `lyx fabric unwire` removes the
