@@ -1,4 +1,4 @@
-// loomshed.go implements Deps and New: loom's own 12-row producer list assembled behind a
+// loomshed.go implements Deps and New: loom's own 13-row producer list assembled behind a
 // *shedengine.Shed.
 
 package loomshed
@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// The twelve producer names, verbatim per manifest/designs/loom.md's producer table. The name is
+// The thirteen producer names, verbatim per manifest/designs/loom.md's producer table. The name is
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
@@ -80,19 +80,22 @@ type Deps struct {
 	Landing landingshed.Deps
 }
 
-// New builds loom's 12-row producer list in table order and returns a *shedengine.Shed carrying it
+// New builds loom's 13-row producer list in table order and returns a *shedengine.Shed carrying it
 // plus the four told Shed fields.
 //
-// The twelve rows, with their backing and OnStuck target: 1 Preflight (deps.Preflight, ""); 2
-// Discussion-Write (stub, ""); 3 Discussion-Validate (real, bouncing to Discussion-Write); 4
-// Discussion-Review (stub, bouncing to Discussion-Write); 5 Plan-Write (stub, ""); 6 Plan-Validate
-// (real, bouncing to Plan-Write); 7 Plan-Review (stub, bouncing to Plan-Write); 8 Batchifier (real,
-// ""); 9 Webster (the lazy wrapper, ""); 10 Webster-Review (stub, bouncing to Webster); 11 Publish
-// (real, ""); 12 Finalize (real, ""). Every gate and validator bounces back to the producer whose
-// artifact it guards, and a gate whose guarded artifact is produced by no row in the list escalates
-// instead -- Preflight gates git and filesystem state and Batchifier gates the batch config, neither
-// of which any row writes, so there is nothing to bounce to and a human is the only thing that can
-// fix either. Publish and Finalize share that same escalate-only posture: neither bounces, because nothing in the list produces what these two gate
+// The thirteen rows, with their backing and OnStuck target: 1 Preflight (deps.Preflight, ""); 2
+// Loom-Preflight (real, ""); 3 Discussion-Write (stub, ""); 4 Discussion-Validate (real, bouncing to
+// Discussion-Write); 5 Discussion-Review (stub, bouncing to Discussion-Write); 6 Plan-Write (stub,
+// ""); 7 Plan-Validate (real, bouncing to Plan-Write); 8 Plan-Review (stub, bouncing to Plan-Write);
+// 9 Batchifier (real, ""); 10 Webster (the lazy wrapper, ""); 11 Webster-Review (stub, bouncing to
+// Webster); 12 Publish (real, ""); 13 Finalize (real, ""). Every gate and validator bounces back to
+// the producer whose artifact it guards, and a gate whose guarded artifact is produced by no row in
+// the list escalates instead -- Preflight gates git and filesystem state and Batchifier gates the
+// batch config, neither of which any row writes, so there is nothing to bounce to and a human is the
+// only thing that can fix either. Loom-Preflight shares that same escalate-only posture for its own
+// reason: no row in the list produces loom's own status file, so there is nothing to bounce to and a
+// human is the only thing that can fix an incoherent or half-finished seed. Publish and Finalize
+// share that same escalate-only posture: neither bounces, because nothing in the list produces what these two gate
 // -- an unresolvable conflict against the parent's current state, an unreachable remote service, a
 // drifting parent, and a pull request awaiting human review are all things only a human fixes.
 //
@@ -123,6 +126,7 @@ func New(deps Deps) (*shedengine.Shed, error) {
 
 	producers := []shedengine.ProducerDef{
 		{Name: NamePreflight, Producer: deps.Preflight, OnStuck: ""},
+		{Name: NameLoomPreflight, Producer: newLoomPreflight(NameLoomPreflight, deps.StatusPath, deps.StatusLockPath), OnStuck: ""},
 		{Name: NameDiscussionWrite, Producer: newStub(NameDiscussionWrite), OnStuck: ""},
 		{Name: NameDiscussionValidate, Producer: newDiscussionValidate(NameDiscussionValidate, deps.DecisionRecordPath, deps.SupportLogPath), OnStuck: NameDiscussionWrite},
 		{Name: NameDiscussionReview, Producer: newStub(NameDiscussionReview), OnStuck: NameDiscussionWrite},
