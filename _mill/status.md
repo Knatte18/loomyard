@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-preflightshed-package
+phase: approved-loomengine-checkseed
 slug: preflight-loom-agnostic
 branch: preflight-loom-agnostic
 plan: _mill/plan
@@ -24,6 +24,7 @@ plan-fix-r1  '2026-08-20T09:25:18Z'
 planned  '2026-08-20T09:25:28Z'
 implementing  '2026-08-20T09:26:03Z'
 approved-preflightshed-package  '2026-08-20T09:38:47Z'
+approved-loomengine-checkseed  '2026-08-20T09:45:26Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ batches:
     commit_sha: 00e134b56f93a437dff30314e2a61fc3f4adf7cc
     verify_baseline_failures: []
   - name: loomengine-checkseed
-    state: running
+    state: approved
     implementer_session: 8c8637a4-4502-4554-95e5-628608416e49
     start_sha: 7656c430c3e1a226224b43666695707fa5740fa5
+    commit_sha: a07d1f4e724fb04497ba22c947deb52483b3adcb
     verify_baseline_failures: []
   - name: wire-two-rows
     state: pending
