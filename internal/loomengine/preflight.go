@@ -147,7 +147,10 @@ func runCheck4(report Report, l *lyxcwd.Location) (Report, error) {
 			if uerr != nil {
 				report.AddFailure(CheckSeedIncoherent, fmt.Sprintf("product does not decode as loom's status shape: %s", uerr.Error()))
 			} else {
-				for _, f := range checkCoherence(shed, product) {
+				// These two literals are transitional: batch 4 deletes this function
+				// outright, and internal/loomshed is what tells the real names to
+				// CheckSeed.
+				for _, f := range checkCoherence(shed, product, "Preflight", []string{"Preflight"}) {
 					report.AddFailure(f.Check, f.Reason)
 				}
 			}
