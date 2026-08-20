@@ -8,23 +8,19 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// wantSequenceOrder is the row 1-12 name sequence a clean Run over buildSequenceFixture must
-// produce, ending in Publish's own Stuck verdict rather than reaching row 13. Asserted against this
-// literal expected list rather than a computed one, so a reordering in loomshed.go's producer table
-// is a test failure rather than a silently-agreeing derivation.
+// wantSequenceOrder is the row 1-11 name sequence a clean Run over buildSequenceFixture must
+// produce. Asserted against this literal expected list rather than a computed one, so a reordering
+// in loomshed.go's producer table is a test failure rather than a silently-agreeing derivation.
 //
-// The sequence stops at Publish deliberately: driving both producers' own merge logic through a
-// real engine run needs a genuine two-worktree pair and therefore git, which this batch's own
-// decision keeps out of this package's untagged tier. buildSequenceFixture's landing passthrough
-// makes Publish's told-skip gate report Stuck before it ever touches its resolver, and Publish's
-// OnStuck is "" (escalate, never bounce), so the run blocks there and Finalize's Call is never
-// invoked at all.
+// The sequence stops at Publish (row 11) deliberately: Publish's OnStuck is "" (escalate), so a
+// Stuck verdict blocks the run and row 12 (Finalize) is never invoked. Driving both producers'
+// real merge logic through a Shed run needs a genuine two-worktree pair and therefore git, which
+// this batch's own decision keeps out of this package's untagged tier.
 var wantSequenceOrder = []string{
 	NamePreflight,
 	NameDiscussionWrite,
 	NameDiscussionValidate,
 	NameDiscussionReview,
-	NamePlanSweep,
 	NamePlanWrite,
 	NamePlanValidate,
 	NamePlanReview,
@@ -34,9 +30,9 @@ var wantSequenceOrder = []string{
 	NamePublish,
 }
 
-// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the real list runs rows
-// 1 through 12 in order and blocks on Publish's own told-skip Stuck verdict, never reaching
-// Finalize -- see wantSequenceOrder's own doc comment for why.
+// TestSequence_FullRunBlocksAtPublish is the task's own verify requirement: the 12-row list runs
+// rows 1 through 11 (Preflight through Publish) and blocks on Publish's Stuck verdict, never
+// reaching Finalize (row 12) -- see wantSequenceOrder's own doc comment for why.
 func TestSequence_FullRunBlocksAtPublish(t *testing.T) {
 	_, deps := buildSequenceFixture(t)
 
