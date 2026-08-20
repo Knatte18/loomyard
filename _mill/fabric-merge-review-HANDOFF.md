@@ -154,34 +154,71 @@ Findings: BLOCKING 2 (R1, R2) · LOW 1 (R5) · NIT 1 (R3) · withdrawn-on-eviden
 - The verification hubs under the session scratchpad (`vhub1`, `vhub2`, `vhub3`) could not be deleted — `rm -rf` is refused by this session's sandbox. They are outside the repo in an ephemeral session directory; `git status` in the worktree is clean. Not cleaned, and said so rather than worked around.
 - One stray `lyx reed header --blocking` process belongs to the **`reed-shuttle-crucible-hardening`** worktree. Left alone under worktree isolation. Do not reap it.
 
-## Round 3 (`fable-medium-r3`) — RUNNING
+## Round 3 (`fable-medium-r3`) — COMPLETE, independently verified, and NOT clean
 
-Re-seed commit `ab8dd9f9` (prompt rewritten for residuals A–C + handoff carrying r2's full verification record).
-Spawned as `crucible-reviewer-medium` on **Fable / medium**, per the operator's fixed rotation. No round commits yet at the time of writing.
+Re-seed commit `ab8dd9f9`. Round commits `7ef1b63c` → `d26d62c5` (6 commits).
+Sequencing held: the whole review was committed (`da0b8d5d`) before the first production edit (`5bd09bd9`).
+Reports: `_mill/fabric-merge-review-fable-medium-r3.md` (98 lines), `-fixer-report.md` (46 lines).
+Self-verdict READY. **The orchestrator's verification does not agree** — see V1 below.
 
-Identify this round by its round tag and by `git log`, never by an internal agent ID — those are ephemeral and mean nothing in a fresh session. If you are a new orchestrator and need to reach the running agent, use `ListAgents`; if it is gone, read `_mill/fabric-merge-review-fable-medium-r3.md` (committed incrementally) to see how far it got and pick up from there rather than restarting the round.
+Findings claimed and fixed: B1 (MEDIUM, residual B), A1 (MEDIUM, residual A), A2 (LOW), C1 (NIT, residual C, closed by record).
+Round 3 was the campaign's first non-Opus round.
 
-Its assignment is residuals A–C, which are stated in full in the "RESIDUAL" section above and in the round prompt. Residual A is the primary and is the interesting one: it was found by sabotaging a *test* rather than a fix.
+### What the orchestrator verified itself
 
-**Model-rotation note.** This is the first non-Opus round of the campaign. Rotation is the point — a different model fails differently — but calibrate the verification accordingly and do not soften any step of the protocol for it. In particular, re-derive its sabotage proofs yourself rather than reading its table; that has now caught something in both prior rounds.
+**Gates, from cold on the committed tree — all green, tiers named:**
+`go build ./...`; `go vet` on the three packages; `go test -count=5` hermetic across `fabricengine`/`fabriccli`/`gitrepo`/`cmd/lyx`; `go test -tags integration -count=1 -timeout 40m` (fabricengine 45.5 s, fabriccli 5.0 s, gitrepo 2.9 s).
+
+**Sabotage proofs — each run by the orchestrator, watched to fail at the intended assertion, then restored to an empty diff:**
+
+| # | Mechanism sabotaged | Test | Result |
+|---|---|---|---|
+| S1 | adoption arm neutered (`sideConcludeAlreadyLanded` always reports not-landed) | `TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking` | failed at the intended assertion — `error = merge conclude did not finish; want adoption to finish the merge` |
+| S2 | a tenth constant added to the const block in `mergeerrors.go` | `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` | **failed** — the exact sabotage that left the whole tier green before r3. Residual A is genuinely closed for this shape |
+| S3 | a `mergeReason*` constant declared in `mergeguards.go` instead, and used in production code | whole hermetic tier | **STAYED GREEN — see residual V2** |
+| S4 | an existing member's value reworded in the const block | `TestMergeVocabulary_GuardReasonSetMatchesConstBlock` | failed on the verbatim-value comparison |
+
+**B1 re-driven live**, deployed binary at `491b6719`, fresh hubs, both directions:
+
+- **Legitimate case** (`bhub1`) — conflicted `merge-in`, operator resolves and plain-git commits (byte-identical to a crash between conclude's commit and the record save), then `merge --continue`: `ok:true, committed:true`, one `merge_committed` mutation carrying the hand-landed SHA, **warp HEAD unmoved** (no second commit fabricated), merge source really an ancestor of HEAD, operator's resolution intact, record cleared, `merge --abort` afterwards reports `no merge in progress`. The fix does what it claims.
+- **Adversarial case** (`ahub2`) — see V1. It does more than it claims.
+
+### RESIDUAL — what verification left standing
+
+1. **V1 — BLOCKING, and a regression introduced by this round.** r3's adoption arm asserts a positive (`committed:true`, record deleted) on a predicate that cannot tell *the conclude* from *any other commit*.
+   Driven live on `ahub2`: conflicted fabric merge → operator hand-runs `git merge --abort` in the warp checkout (clears `MERGE_HEAD`, HEAD back to start) → operator makes one **unrelated** commit → `lyx fabric merge --continue` returns
+   `{"already_up_to_date":false,"committed":true,"mutations":[{"kind":"merge_committed","target":"warp-bare","detail":"81b0651d…"}],"ok":true}`
+   — where `81b0651d` is the unrelated commit. The merge source is **not** an ancestor of HEAD, `conflict.txt` still holds the trunk content, and the record is deleted, so nothing is left to inspect. Fabric reports a merge that never happened and silently drops the source's changes.
+   **Proven to be a regression, not a pre-existing hole:** with the adoption arm disabled (S1 patch, redeployed, same scenario on `ahub3`) the identical state returns `merge conclude did not finish; run MergeContinue again` with the record **retained** — an honest, recoverable failure. r3 converted it into a silent false success.
+   The hazard is adjacent to the fix's own advice: r3 rewrote `doc.go` to tell operators to hand-commit with git and let `MergeContinue` adopt, which invites plain git into exactly that checkout.
+   **The discriminator exists and is cheap, and the seed prompt named it** — "a merge commit whose second parent is the merge source". r3 dropped it without arguing why. Measured live: the real conclude is a 2-parent merge commit; the falsely-adopted commit has one parent. A squash merge concludes to a single parent, so the squash arm needs its own decision (refuse to adopt, most likely) rather than the same check.
+   Note the asymmetry r3's rationale misses: R2's `concludeLandedReason` trusts this same reading to **refuse** an abort — safe in the ambiguous case. Adoption spends the same ambiguity on **claiming success**. Same predicate, opposite risk direction.
+2. **V2 — MEDIUM.** The new AST closure test parses `mergeerrors.go` only. A `mergeReason*` constant declared anywhere else in the package — `mergeguards.go` is the natural place, next to the guard that consumes it — escapes the pinned-map equality check *and* the side-free/path-free assertions the pinned map now drives. Proven by S3: declared it in `mergeguards.go`, used it in production code, whole hermetic tier green.
+   Strictly smaller than residual A was, and in the same shape: the closure claim is real, but scoped narrower than its doc comment reads. Fix is a few lines — parse the package's non-test files rather than one file, or assert no `mergeReason*` is declared outside `mergeerrors.go`.
+
+**A1/A2 and C1 are accepted as closed.** A1's detection is proven by the exact sabotage that previously went unseen (S2) plus verbatim-value drift (S4); A2's single-source refactor removes the hand-list that had drifted to 7 of 9. C1 is a report-accuracy note against a prior round's report, correctly recorded rather than edited.
+
+### Honest limits of this verification
+
+- Windows path behaviour in `weftPathVisible`/`unifyConflictPaths` remains unexecuted by every round and by the orchestrator. Linux host, reasoned about, never driven.
+- The N-way concurrent amplifier was not run. Deliberate: the merge bar is single-instance correctness.
+- V1 was driven in the **non-squash** shape only. The squash shape is reasoned about (single-parent conclude ⇒ no discriminator available), not driven.
+- Verification hubs under the session scratchpad (`ahub1`–`ahub3`, `bhub1`) could not be deleted — this session's sandbox refuses `rm -rf`. They are outside the repo in an ephemeral session directory; the worktree itself is clean.
+- One stray `lyx reed header --blocking` process belongs to the **`reed-shuttle-crucible-hardening`** worktree. Left alone under worktree isolation. Do not reap it.
+
+## Campaign status: STOPPED AFTER ROUND 3 (operator's call, 2026-08-20)
+
+The operator ended the rotation after r3; **r4 (Opus / high) was never spawned**.
+
+**Merge-readiness verdict: NOT READY.** Rounds 1 and 2 are closed and verified. Round 3 closed its three assigned residuals — two of them properly — but introduced V1, a silent false-success regression in the exact class this campaign exists to eliminate. r3's own READY verdict was reached without driving the adversarial direction of its own fix.
+
+That is also the campaign's clearest single lesson: **the round that closes a residual is the round most likely to open a new one**, and a fix that converts a refusal-shaped predicate into a claim-shaped one inverts its risk direction. The orchestrator protocol caught it in all three rounds; the round's self-verdict was wrong in this one.
 
 ## Next action
 
-**While r3 runs:** stay off the tree and off `git add`/`git commit` entirely. Keep refreshing this file on disk. Do not read the round's raw transcript. A `killed`/`stopped by user` notification is the operator being deliberate — note it and keep waiting. A `failed` notification with a watchdog/stall reason is a genuine harness death: resume the same agent from its transcript, and if a round stalls a **second** time switch to a narrow targeted fixer rather than resuming a third time.
+Two options, operator's call:
 
-**When r3 finishes,** run the same protocol that has now caught something in both rounds:
+1. **Narrow targeted fixer** (recommended) — not a full crucible round. Scope: V1 only, or V1 + V2. V1's fix is the second-parent check the seed prompt already named, plus an explicit decision for the squash arm; V2's is a few lines widening the AST scan. Then the orchestrator re-drives `ahub2`'s adversarial scenario and re-runs S3, and both must flip.
+2. **Revert `5bd09bd9`** and leave residual B open as round 2 had it. Wedged-but-honest was the prior behaviour, and round 2's reasoning for accepting it stands on its own; r3's live drive did legitimately show the documented plain-git escape hatch does not work, so the `doc.go` correction in that commit is worth keeping even if the adoption arm goes.
 
-1. Commit the handoff refresh once the tree is the orchestrator's again.
-2. Read r3's "What was tested" in full before characterising its work at all.
-3. Gates from cold, tiers named in your own record. Never accept a green claim that does not name its tag.
-4. **Sabotage-prove every new test yourself**, including the companion direction. Sabotage the *tests* too, not only the fixes — that is what found residual A. A build break is not a proof; redo it a different way.
-5. Re-drive every BLOCKING fix live on a freshly built hub against a freshly deployed binary (`./deploy-dev`). The recipe, written out rather than pointed at — the session scratchpad is shared and round agents overwrite files there, so a path reference rots:
-   - Export `GIT_CONFIG_GLOBAL` (a file carrying `[init] defaultBranch = main` plus a `user.name`/`user.email`) **before the first `git init`**. Get this wrong and the weft bare defaults to `master`, so the pair is `main`/`master-weft` and every fabric verb fails on an invalid `main-weft` reference.
-   - `git init --bare` a warp and a weft; `git init` a seed, commit into it, push it to the warp bare as `main`.
-   - From an empty work dir: `lyx fabric clone <weft-bare> <warp-bare>`. That yields `<work>/<warpname>-HUB/` containing the prime pair `warp-bare` + `warp-bare-weft`.
-   - The prime pair is enough for every merge scenario — do not bother with `lyx fabric add`, which needs cwd inside a repo and adds nothing here.
-   - Sandbox constraints: inline `cd <dir> && …` is refused, so put the `cd` inside a script file or use `env -C`; `rm -rf` is refused, so scratch hubs cannot be cleaned up and that must be stated honestly rather than worked around.
-   **Check every fixture for silent degradation** before trusting a scenario — assert the precondition the scenario depends on, the way the good tests do with `t.Fatal`.
-6. Re-seed from whatever verification leaves standing — derived from the residue, never "review it again" — and spawn r4 as **Opus / high**, tag `opus-high-r4`.
-
-**Convergence bar:** a safety pass that finds nothing, the orchestrator's own gates, and the sabotage proofs all agreeing, across rotated models. State the limits in the verdict rather than claiming more: Windows path behaviour, the N-way amplifier, and any class whose zero came from a method never shown able to detect.
+Do **not** merge this branch as it stands.
