@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-file-contracts
+phase: approved-stencils
 slug: shedadapters-generic-bouncer-producer
 branch: shedadapters-generic-bouncer-producer
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-review-r4  '2026-08-20T16:13:46Z'
 planned  '2026-08-20T16:13:56Z'
 implementing  '2026-08-20T16:14:23Z'
 approved-file-contracts  '2026-08-20T16:20:59Z'
+approved-stencils  '2026-08-20T16:25:14Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ batches:
     commit_sha: 71664f4b1dcc59f5dc0d64108e9699d7cd28179f
     verify_baseline_failures: []
   - name: stencils
-    state: running
+    state: approved
     implementer_session: 01a496e6-425b-4917-94ea-f107cab2d685
     start_sha: a9cc0da526d58e5d156b0fdc2279ca47c9aedab9
+    commit_sha: 8bc8308e9569aa648affc292d56aedfc16ec73d0
     verify_baseline_failures: []
   - name: bouncer-producer
     state: pending
