@@ -7,7 +7,7 @@ For the recorded numbers themselves, see that file — this one is the "how", no
 ## The two tiers
 
 The suite is split into two tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.**
-"Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, real cross-compilation, and real external-binary spawn (a language-server process, or similar — the category the `scout` tag exists for).
+"Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, and real cross-compilation.
 A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in Tier 1.
 
 - **Tier 1 — the default offline loop** (`go test ./...`): pure-unit and static-guard tests only.
@@ -23,10 +23,9 @@ A test that is merely slow — a big table-driven case, a large in-memory fixtur
 
 > **Tier 2 is not a regression of Tier 1.** The heavy git work used to run inside the default loop and made it slow (~82 s historically); the two-tier split moved that work behind `-tags integration`. Same work, now off the default path. When reading a timing table, compare _down_ a column (is this package fast in the loop I run?), never _across_ (Tier 1 vs Tier 2 are not comparable — Tier 2 is the superset).
 
-Two further opt-in tags exist alongside `integration`, each gating a distinct kind of live substrate rather than widening `integration` itself:
+One further opt-in tag exists alongside `integration`, gating a distinct kind of live substrate rather than widening `integration` itself:
 
-- **`scout`** (`go test -tags scout ./...`): the real-external-binary-spawn substrate category above, split out on its own tag because it needs a language-server binary (`gopls`/`pyright`/`csharp-ls`, depending on language) on `$PATH` that most environments don't have installed — see the `## Commands` example below.
-- **`smoke`** (`go test -tags smoke ./...`): a third, pre-existing opt-in tag, distinct from both `integration` and `scout`.
+- **`smoke`** (`go test -tags smoke ./...`): a pre-existing opt-in tag, distinct from `integration`.
   It requires a real logged-in `claude` session on `$PATH` and exercises live agent-session behavior no hermetic test can cover.
 
 ## Commands
@@ -44,11 +43,6 @@ go test ./... -count=1 -json
 
 # One package, verbose, with per-test seconds.
 go test ./internal/fabricengine -count=1 -v
-
-# Scout — real external-language-server-binary substrate. Manual-only: hidden
-# behind its own tag, requires gopls/pyright/csharp-ls on $PATH depending on
-# language, no CI wiring exists in this repo for it.
-go test -tags scout ./... -count=1
 ```
 
 `-count=1` disables the test cache so every run is honest;

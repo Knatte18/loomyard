@@ -74,7 +74,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
   otherwise it is a *review obligation*.
   The two lists below are not exhaustive — they enumerate the packages converted by the producers-standalone waves.
 - **Machine-enforced:** `internal/tokenvocab`, `internal/pattern`, `internal/buildinfo`, `internal/standalonestate` (each via `leaf_enforcement_test.go`'s `TestLeafInvariant_AllowlistOnly`), `internal/shedengine` (`seam_enforcement_test.go`'s `TestProducerSeamInvariant_AllowlistOnly`), `internal/treadleengine` (`seam_enforcement_test.go`'s `TestRunnerSeamInvariant_AllowlistOnly`), `internal/loomshed`, `internal/landingshed`, `internal/mergeresolve` (each via `seam_enforcement_test.go`'s `TestToldGeometryInvariant_AllowlistOnly`).
-- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`, `internal/scoutengine`.
+- **Review obligation** (no machine guard for the told-geometry property): `internal/planparser`, `internal/configengine`, `internal/shuttleengine`, `internal/reedengine`, `internal/burlerengine`, `internal/perchengine`, `internal/websterengine`.
 - **`internal/hubgeom`/`internal/standalonegeom` are adapters, not told packages** — they legitimately import `internal/lyxcwd` (hubgeom) or build from told strings (standalonegeom).
   They are bound instead by the adapter-direction rule above, which is itself a review obligation.
 - **Enforced by** the seven tests named above, for the machine-enforced half;
@@ -192,21 +192,6 @@ producers adapt onto the package's own `ShedProducer` seam in their own packages
 - `Derive` creates nothing on disk.
 - **Enforced by** `internal/standalonestate/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`); the no-`filepath.Abs` half is a review obligation rather than a machine check.
 
-## Scout Engine-Seam Invariant
-
-`internal/scoutengine` never imports `internal/output`, `cobra`, or any `internal/*cli` package.
-It returns typed `(T, error)` and never touches `io.Writer`, exit codes, or the output envelope;
-`internal/scoutcli` maps engine results into that envelope.
-
-- `scoutcli` → `scoutengine` is the only allowed direction.
-- No import allowlist.
-  Scout draws on the shared-infrastructure layer as freely as `websterengine`, `perchengine`, and `loomengine` do.
-  Policed as a banned list on direct imports only, never the transitive closure — a banned package reached through a permitted one is not caught, by design. `internal/clihelp` is named explicitly because it carries cobra without matching the `*cli` suffix.
-- **Narrower file-scoped guard.** `internal/scoutengine/lspclient.go` imports stdlib plus `internal/logger` and nothing else, keeping the ported stdio LSP client liftable back out of lyx.
-  The rule is that allowed set exactly. `internal/logger` itself imports `internal/lyxcwd` and `internal/proc`, so the file must never be described as stdlib-only or hermetic — it is neither.
-- **Enforced by** `internal/scoutengine/seam_enforcement_test.go` (`TestEngineSeamInvariant_BannedImports`) for the banned list,
-  and `internal/scoutengine/lspclient_guard_test.go` (`TestLSPClientGuard_StdlibAndLoggerOnly`) for the file-scoped guard.
-
 ## Pattern Leaf Invariant
 
 `internal/pattern` production code imports only stdlib, `internal/lyxdirs`, `internal/stencilstore`, and `internal/stencil` — never `websterengine`, `burlerengine`, `loomengine`, or any other feature package.
@@ -237,7 +222,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
 
 - **Seam.**
   Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int` = `clihelp.Execute(Command(), out, args)`.
-  Twelve of the thirteen seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
+  Eleven of the twelve seam modules also carry `RunCLIIn(cwd string, out io.Writer, args []string) int`, which delegates `RunCLI` as `RunCLIIn("", out, args)` — the empty string means "read the process cwd", and any other value seeds `cwd` into the execution context via `clihelp.ExecuteIn`.
   `internal/selfreportcli` is the one seam module without `RunCLIIn`: it references `lyxcwd` nowhere, so a `RunCLIIn` there would accept a cwd argument nothing reads.
 - **Alias shape.**
   A module may register an alias command beside its own subtree, as a second root child, via a separately-named exported constructor.
@@ -266,7 +251,7 @@ Every lyx CLI module is a cobra subtree assembled under one root in `cmd/lyx/mai
   Litmus: returns `(T, error)` with no cobra/`io.Writer`/exit codes ⇒ engine.
   Skip the engine only for trivial wrappers or a throwaway proof-of-concept meant to be deleted.
   **Named deviation:** `stencilcli`'s domain kernel is `internal/stencilstore`, not `stencilengine` — `internal/stencil` already holds the singular name and the top-level `stencils` package holds the plural, so a `stencilengine` would make three packages one character apart, and `stencilstore` says what the package actually is.
-- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all thirteen modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the twelve modules that carry it, both at compile time.
+- **Enforced by** `cmd/lyx/drift_test.go` (non-empty `Short` only), `helptree_test.go`, `registration_test.go`, `longlist_test.go`, and `cmd/lyx/seamsignature_test.go`, which pins the `RunCLI(io.Writer, []string) int` seam shape across all twelve modules and the `RunCLIIn(string, io.Writer, []string) int` seam shape across the eleven modules that carry it, both at compile time.
 
 ## Shuttle Provider-Seam Invariant
 
@@ -437,7 +422,7 @@ Every inline markdown link (`[text](target)`) in a `.md` file under `manifest/` 
   Not reached: external `http`/`https`/`mailto` URLs, never fetched;
   reference-style links (`[text][ref]`) and `<...>` autolinks, out of grammar by decision, not by oversight;
   link-shaped text inside fenced code blocks, deliberately skipped;
-  prose mentions of a filename that are not markdown links — `manifest/roadmap.md:98`'s `scout-redesign.md` reference is a live example this task leaves standing;
+  prose mentions of a filename that are not markdown links — `manifest/roadmap.md`'s bare `loom-plan-spec.md` mention (naming it as a structural format spec, not linking it) is a live example this task leaves standing;
   and `.md` files outside `manifest/` and `docs/` as **scan sources**, so `README.md`, `CLAUDE.md`, and `internal/**/*.md` have their own outgoing links checked by nobody.
 - **The allowlist's self-expiring contract.**
   Keyed by `(file, target)`, never by line number, with every entry naming its owning task.
@@ -465,7 +450,7 @@ The durable Info+ trace-file sink captures these regardless of verbosity or env-
 - A spawned pane/child must never re-exec `os.Executable()` while running under `go test`: a Go test binary invoked with positional arguments does not error on them, so the arguments are silently ignored and the full suite runs unfiltered.
   Guarded by `reedengine`'s `headerLaunchLine` (suppresses header re-exec when `testing.Testing()`) and `gitkit.HermeticGitEnv` (`refuseCLIReexec` refuses any test binary invoked with a leading positional argument).
 - A retry loop around a real process spawn must cap attempt COUNT, not only elapsed time — a fast-failing spawn burns a time-only budget in far more attempts than it was sized for. `maxBootAttempts` in `internal/reedengine/lifecycle.go` is the pattern: track an attempt counter, exit on whichever of (time, count) is hit first.
-- Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/shuttleengine/wait.go`, `internal/burlerengine/engine.go`, `internal/scoutengine/ensureserver.go`.
+- Known instrumented call sites: `internal/reedengine/lifecycle.go`, `internal/shuttleengine/run.go`, `internal/shuttleengine/wait.go`, `internal/burlerengine/engine.go`.
 - **A live-substrate module's operational messages all belong on `internal/logger`, not only the spawn and teardown lines themselves.**
   A retry, a probe that could not read the substrate, and a cleanup that skipped are exactly the events an operator goes looking for after the fact, and the stdlib `log` package reaches neither the durable trace file nor a trace correlation id — so a bare `log.Printf` there loses the only record that the unhappy path happened at all.
   `internal/shuttleengine` pins this for itself with a source scan (`run_test.go`'s `TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger`);
@@ -479,7 +464,7 @@ Every registered lyx module must be exercised by the black-box sandbox suite or 
   A scenario in any suite file (`tools/sandbox/*SUITE.md`) that drives a specific module declares it with a `**Covers:** <module>[, <module>...]` line.
   Coverage is checked at module granularity against the live cobra root (`newRoot().Commands()`, skipping `help`/`completion`).
 - **Allowlist.**
-  Modules intentionally never sandbox-exercised are named on `excludedModules` with a one-line reason: `ide`, `selfreport`, `scout` today.
+  Modules intentionally never sandbox-exercised are named on `excludedModules` with a one-line reason: `ide`, `selfreport` today.
 - **Exists ⇒ covered or excluded.**
   A new registered module needs either a `**Covers:**` scenario or a new allowlist entry with a reason.
 - **Enforced by** `cmd/lyx/sandbox_coverage_test.go` (`TestSandboxCoverage_AllModulesCoveredOrExcluded`).
@@ -489,7 +474,7 @@ Every registered lyx module must be exercised by the black-box sandbox suite or 
 Untagged test files perform no expensive spawns — no `git init`/`git worktree add`/fixture-tree copies;
 Tier 1 stays offline and fast.
 
-- A test file whose first non-empty line is not a `//go:build` constraint mentioning `integration`, `smoke`, or `scout` is "untagged" and must not call `gitexec.Run` (which also matches `gitexec.RunGit`), `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
+- A test file whose first non-empty line is not a `//go:build` constraint mentioning `integration` or `smoke` is "untagged" and must not call `gitexec.Run` (which also matches `gitexec.RunGit`), `exec.Command`/`exec.CommandContext`, `gitkit.Copy*`, or `hubforge.NewHub`.
   Raw substring match — a comment or string-literal mention also trips it.
 - Substrate definition (real git/tmux/filesystem/cross-compile/external-binary spawn) lives in `docs/benchmarks/running-tests.md`'s "## The two tiers" section.
 - Allowlist: `internal/proc` (its tests must spawn), `cmd/lyx/tierpurity_test.go` itself (carries the banned tokens as test data).
@@ -555,8 +540,8 @@ An instruction file — a producer's own prompt or skill — must never duplicat
   strict is `{fabricengine, boardengine, loomengine}`.
 - **A third class, explicitly outside this invariant's guard subject: own-loader modules.**
   These never call either entry point — they resolve the path with `configengine.ConfigFile` and read the file themselves with their own absent-file fallback.
-  `internal/burlerengine` (`burler.yaml`, absent file returns a zero `Config`, bypassing `Load` because `MissingKeys` would misfire on its open-ended lenses/fans key set), `internal/modelspec` (`models.yaml`, absent file returns `builtins()`;
-  it cannot call a logging `Load` at all, being capped by the Modelspec Leaf Invariant), and `internal/scoutengine` (`servers.yaml`, absent file returns `builtins()`) already have the degrading behaviour and are deliberately not repointed.
+  `internal/burlerengine` (`burler.yaml`, absent file returns a zero `Config`, bypassing `Load` because `MissingKeys` would misfire on its open-ended lenses/fans key set) and `internal/modelspec` (`models.yaml`, absent file returns `builtins()`;
+  it cannot call a logging `Load` at all, being capped by the Modelspec Leaf Invariant) already have the degrading behaviour and are deliberately not repointed.
   A set-equality grep over the two entry-point tokens is structurally blind to them — without this clause the invariant would read as though the two pinned sets enumerate every module config in the repo, which they do not.
 - **Absence is typed, not textual.** `FindBaseDir` wraps the exported `configengine.ErrNotInitialized` sentinel on its absent-`_lyx/` branch and deliberately does not wrap it on a stat failure, so a degrading caller falls back only on `errors.Is(err, ErrNotInitialized)`.
   The four strict callers still use the older `strings.Contains(err.Error(), "not initialized")` rewrap;

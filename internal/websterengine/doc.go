@@ -44,7 +44,7 @@
 //
 //	if card.HasSymbolFields() {
 //	    // Mechanism 1: DAG from plan-internal cross-matching (dead code
-//	    // until scout lands and a planner starts populating symbol
+//	    // until quarry lands and a planner starts populating symbol
 //	    // fields)
 //	} else {
 //	    // v0: declared order
@@ -52,7 +52,7 @@
 //
 // HasSymbolFields() is unreachable in v0 — plan-format cards carry no
 // symbol fields yet — so this costs nothing today and turns the eventual
-// scout-driven rollout into "the planner starts populating fields,"
+// quarry-driven rollout into "the planner starts populating fields,"
 // never a webster code change.
 //
 // # Fork-return contract: OK/FAILED, a head SHA, an informational deviation list

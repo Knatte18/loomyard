@@ -4,7 +4,7 @@
 // path resolves as a transient and every transient path resolves under .lyx at the mirrored
 // subpath of the _lyx-rooted content it relates to.
 // It lives in cmd/lyx because this is the only package that may import every owning module at
-// once (loomengine, websterengine, perchengine, treadleengine, scoutengine,
+// once (loomengine, websterengine, perchengine, treadleengine,
 // logger, planparser), the same reason constructoranchoring_test.go lives here.
 // It stays untagged: every constructor exercised here is pure filepath.Join arithmetic over a
 // hand-built *lyxcwd.Location, so no process is spawned and no fixture tree is copied, per the
@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/perchengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/scoutengine"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -79,8 +78,6 @@ func transientSet(l *lyxcwd.Location) []namedPath {
 		{"loomengine.LoomDriverLog", loomengine.LoomDriverLog(l)},
 		{"loomengine.LoomBootstrapLock", loomengine.LoomBootstrapLock(l)},
 		{"logger.LogsDir", logger.LogsDir(l)},
-		{"scoutengine.DaemonStateFile", scoutengine.DaemonStateFile(l.AnchorPath(), "go")},
-		{"scoutengine.DaemonLock", scoutengine.DaemonLock(l.AnchorPath(), "go")},
 		{"perchengine.PauseFlagPath", perchengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
 		{"treadleengine.PauseFlagPath", treadleengine.PauseFlagPath(filepath.Join(perchengine.ScratchDir(l.AnchorPath()), "blk"))},
 	}

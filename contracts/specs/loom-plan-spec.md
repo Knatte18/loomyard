@@ -119,7 +119,7 @@ It references only other cards in the **same plan** — never a claim about exte
 Three reasons to include it now:
 
 1. Human-readable context at escalation time (if card 5 fails, is card 6 known to depend on it?).
-2. Forward-compatible input for a future DAG mechanism (a cross-check layer once scout-derived edges exist, analogous to how `SHAExists` cross-checks a stored git reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
+2. Forward-compatible input for a future DAG mechanism (a cross-check layer once quarry-derived edges exist, analogous to how `SHAExists` cross-checks a stored git reference — see [`internal/fabricengine`](../../internal/fabricengine/doc.go)).
 3. **A cheap, mechanical, pre-review order-validation gate:** it powers the `depends-on-order` check — a card whose `Depends-on:` names a *later* card in the declared order, names itself, or names an id referencing no existing card is flagged before any LLM-based review runs, at zero cost.
 
 ## Card path resolution: `root:` and `//`
@@ -179,17 +179,17 @@ The plan-level `## verify:` is the single integration suite run once at the end 
 ## Deferred / forward-compat
 
 The symbol fields — `creates-symbols`/`edits-symbols`/`reads-symbols` — are **deliberately omitted in v0**, not just left optional.
-They depend on a working, planner-side-verified `scout`, which is deprioritized (see the roadmap's Someday list).
+They depend on a working, planner-side-verified `quarry`, which is deprioritized (see the roadmap's Someday list).
 Adding them now as unused optional fields would create confusion later;
-better to add them explicitly once `scout` is actually ready.
-See [`internal/scoutengine`](../../internal/scoutengine/doc.go) for what they'd depend on.
+better to add them explicitly once `quarry` is actually ready.
+See [quarry](https://github.com/Knatte18/quarry) for what they'd depend on.
 
 **The derived `changes-files` union** — the union of the typed file-op fields (`Edits:` ∪ `Creates:` ∪ `Deletes:` ∪ both `Moves:` endpoints) — is the artifact webster's future contract-verification compares actual changed files against (a fork reports `OK, SHA <x>` or a deviation note;
 a file-list mismatch against `changes-files` is always informational, never blocking on its own).
 See `internal/websterengine`'s package documentation for the verification semantics.
 
 The detailed continuous-DAG-update / symbol-matching / SCC-merging **scheduling** design is summarized in `internal/websterengine`'s package documentation ("Declared order now, a dead DAG seam for later") — v0 runs strictly in declared order;
-the eventual DAG scheduler waits on scout-backed symbol fields.
+the eventual DAG scheduler waits on quarry-backed symbol fields.
 
 A parked, more aggressive parallel-execution idea also exists — see [../../manifest/designs/webster-parallel-execution.md](../../manifest/designs/webster-parallel-execution.md).
 
@@ -344,4 +344,4 @@ the `//`-prefixed entries (`rows.go`, `envelope.go`, `helptree_test.go`) stay wo
 - [webster-spec.md](webster-spec.md#the-summary-artifact--_lyxwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
 - `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
-- [`internal/scoutengine`](../../internal/scoutengine/doc.go) — the module the symbol fields depend on.
+- [quarry](https://github.com/Knatte18/quarry) — the external module the symbol fields depend on.

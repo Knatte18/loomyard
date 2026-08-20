@@ -4,7 +4,7 @@
 // remote or mutates the working tree. It exposes the small set of semantic
 // operations (current SHA, stage+commit, changed-files-since, SHA existence,
 // push, pull, hard reset) that every consumer of a git-backed repo (fabric,
-// raddle, scout, webster) would otherwise reimplement by parsing raw git
+// raddle, webster) would otherwise reimplement by parsing raw git
 // stdout itself.
 //
 // # Relationship to internal/gitexec — the two-backend boundary
@@ -133,8 +133,8 @@
 // diff-since-SHA, current-SHA, push, fast-forward pull, SHA-validated hard
 // reset, and the CurrentBranch/CheckoutDetached/RestoreBranch
 // trio below. StageAllAndCommit is a separate wildcard-stage variant provided as board's
-// opt-in exception, not a relaxation of the explicit-list default — fabric, raddle, and
-// scout keep using explicit-list StageAndCommit (called via fabricengine's own
+// opt-in exception, not a relaxation of the explicit-list default — fabric and
+// raddle keep using explicit-list StageAndCommit (called via fabricengine's own
 // board-facing commit wrapper on board's behalf, not boardengine calling
 // gitrepo directly). Merge start/conclude and conflicted-path enumeration
 // (MergeStart, MergeConclude, ConflictedFiles, MergeHeadPresent, HeadDetached,

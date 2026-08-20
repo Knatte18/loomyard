@@ -184,7 +184,7 @@ func TestEnforcement(t *testing.T) {
 
 			// Check the file for banned tokens. Comments are stripped first so
 			// that a file which merely *names* a banned token in an explanatory
-			// comment (e.g. scoutcli/cli.go documenting why lyxcwd.Getwd
+			// comment (e.g. a doc comment documenting why lyxcwd.Getwd
 			// is the only permitted os.Getwd caller) is not falsely flagged; the
 			// guard is about real code usage, not prose.
 			if isBanned(stripGoComments(data)) {

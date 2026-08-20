@@ -53,7 +53,7 @@ Method throughout: median of 3 warm runs per tier, `go build ./...` first.
 ### Where the time goes
 
 On Windows the Tier 2 floor is **I/O-bound**: `internal/fabricengine`'s real git-worktree work, throttled by AV and NTFS.
-On Linux and on the 9800X3D under WSL2 that work is nearly free, so the floor **inverts to time-bound** — tests that sit in real wall-clock grace/deadline windows (`buildercli`'s poll deadlines, `scoutengine`'s retry timeouts) and therefore do not shrink with faster I/O.
+On Linux and on the 9800X3D under WSL2 that work is nearly free, so the floor **inverts to time-bound** — tests that sit in real wall-clock grace/deadline windows (`buildercli`'s poll deadlines) and therefore do not shrink with faster I/O.
 
 The Intel 155U under WSL2 is the exception: it stays I/O-bound, with `internal/fabricengine` alone at ~30.8 s of a ~34.9 s wall-clock.
 Cortex is verified absent inside the VM, and the host-side agent is an unlikely explanation — real-time scanning hooks file open/create/close, and WSL2 opens `ext4.vhdx` once for the life of the distro, so guest-internal git churn produces no Windows-visible file operations.
