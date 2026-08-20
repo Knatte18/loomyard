@@ -1,13 +1,15 @@
-// Package shedadapters holds the three shedengine.ShedProducer adapters that let a Shed-built
-// product drive shuttle, perch, and Webster as ordinary producers in its own flat producer list.
-// SingleLLMProducer wraps one shuttleengine run, PerchProducer wraps one perchengine block, and
-// WebsterProducer wraps one websterengine multi-spawn run; each is a thin translation layer over an
+// Package shedadapters holds the four shedengine.ShedProducer adapters that let a Shed-built
+// product drive shuttle, perch, Webster, and one burlerengine round as ordinary producers in its
+// own flat producer list.
+// SingleLLMProducer wraps one shuttleengine run, PerchProducer wraps one perchengine block,
+// WebsterProducer wraps one websterengine multi-spawn run, and BurlerProducer wraps one
+// burlerengine A-review/B-fix round as a single Shed row; each is a thin translation layer over an
 // already-shipped engine, never a second implementation of that engine's own loop.
 //
 // # Outcome mapping
 //
 // Each adapter maps its wrapped engine's own verdict onto shedengine's two-value Outcome contract,
-// Done or Stuck, and reports the output pointer differently because the three engines report success
+// Done or Stuck, and reports the output pointer differently because the four engines report success
 // differently:
 //
 //   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
@@ -23,6 +25,15 @@
 //     Webster's own "stuck" outcome, and a websterengine.ErrMasterAsking error, both map to Stuck
 //     with an empty pointer.
 //     Webster's own "paused" outcome reaching Call out of band is an engine-level error.
+//   - BurlerProducer: a completed round -- shuttleengine.OutcomeDone reached within the bounded
+//     retry -- maps to Stuck, never Done, reporting the round's own review path as the pointer.
+//     That Stuck is a routine hand-off to the segment's Bouncer via OnStuck, never a real stuck
+//     condition: a round producer has no independent notion of "finished," only the judge does.
+//     Every non-done shuttle outcome that survives the bounded retry -- OutcomeAsking, two
+//     consecutive OutcomeDied/OutcomeTimeout results, or an unrecognized outcome -- is an
+//     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
+//     the round artifacts on disk, and a failed round returning Stuck with no review written would
+//     be misread as a seed call.
 //
 // # Told, never derived
 //
@@ -35,6 +46,9 @@
 // SingleLLMProducer additionally takes an injected clock, a nil now defaulting to the real
 // time.Now; the injected clock resolves only the archive filename's same-second collision suffix,
 // never Shed's own history[].at field.
+// BurlerProducer is told an absolute run directory and an already-constructed runner, and takes the
+// same injected clock SingleLLMProducer does, resolving only the archive filename's same-second
+// collision suffix the same way.
 //
 // # The perch run-id scheme
 //
@@ -49,6 +63,25 @@
 // one that has never started) is reused verbatim, so perch's own in-flight crash-resume survives
 // unchanged.
 //
+// # The round-artifact convention
+//
+// This is the binding two-sided contract between BurlerProducer and its segment's Bouncer, pinned
+// here durably rather than only in manifest/roadmap.md, so it survives independently of the roadmap
+// entry that is deleted when the Bouncer item completes.
+// Artifact paths are flat inside the told run directory, one canonical pair per round with no
+// attempt suffix: round-<N>-review.md and round-<N>-fixer-report.md, with N a positive decimal
+// integer carrying no leading zeros.
+// A retry writes to the same two paths, because a retry is a second try at the one artifact the
+// round owes rather than a second artifact.
+// The presence of both files means, and only means, that round N completed and produced a usable
+// review; the round producer uses exactly that pair predicate to decide whether to advance, and the
+// Bouncer uses exactly that pair predicate to tell its seed call from its judge call.
+// The structured next-round directive is JSON at round-<N>-focus.json beside them, whose token names
+// the round the directives are for, not the round that produced them: a Bouncer rejecting round N
+// writes the file for round N+1, and the seed call writes the file for round 1.
+// Reading that file is fail-safe end to end, degrading to "no directive" with a warning rather than
+// erroring, including at application time when a well-formed directive cannot be honoured.
+//
 // # Shared cancellation rule
 //
 // Every adapter checks ctx.Err() at Call entry and returns immediately without starting anything.
@@ -62,6 +95,15 @@
 // Call's own context and passed into its PerchFactory), because perch's pause seam is the only one
 // of the three shaped as a caller-supplied callback.
 //
+// BurlerProducer does not need this section's success exception at all -- not that it reads the
+// exception differently.
+// internal/shedengine/producer.go binds every implementation to surface cancellation as a non-nil
+// error and never as Stuck, so this producer always errors under cancellation, including on a
+// completed round.
+// The exception's purpose -- never discarding a paid-for artifact -- is served instead by an archive
+// carve-out: a completed-then-cancelled round keeps its two files, so from-disk round resolution
+// advances past it on the next call, and only the re-derivable in-memory verdict is dropped.
+//
 // # Limitations
 //
 // SingleLLMProducer never reattaches to a live shuttle session: on a stale output file it archives
@@ -72,6 +114,9 @@
 // is observed only once the run reaches a terminal outcome or its own configured deadline elapses --
 // bounded by the shuttle spec's own timeout for SingleLLMProducer, and by Webster's own whole-run
 // timeout for WebsterProducer.
+// BurlerProducer likewise installs no mid-run cancellation bridge, because burlerengine exposes no
+// pause seam, so a cancel is observed only once the round reaches a terminal outcome or its own
+// RunOpts.Timeout elapses.
 //
 // The standalone perch pause verb (`lyx perch pause --run-id <id>`) is a silent no-op against a run
 // dir PerchProducer is driving: the pause callback the adapter installs is the context-cancellation
