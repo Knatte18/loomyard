@@ -16,8 +16,10 @@ import (
 
 // The closed set of guard-reason strings a *MergeGuardError may carry.
 // Pinned verbatim from the discussion's safety-guards-are-aggregated-and-side-free decision:
-// adding a member is a same-commit change to this list and to the vocabulary assertion that covers
-// it, and no member may name a side, carry a path, or imply an order.
+// adding a member is a same-commit change to this list and to pinnedMergeReasons in
+// mergevocab_test.go — enforced mechanically by
+// TestMergeVocabulary_GuardReasonSetMatchesConstBlock, which parses this const block — and no
+// member may name a side, carry a path, or imply an order.
 // Membership is earned by being an *aggregatable precondition* — one of several reasons a single
 // *MergeGuardError may carry at once. A terminal, standalone disposition with nothing to aggregate
 // alongside it belongs in the typed error surface below instead: "no merge in progress" was once a
