@@ -798,3 +798,49 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 		t.Errorf("warp HEAD after the refusal = %q; want the operator's hand-landed commit %q left untouched", got, handLandedSHA)
 	}
 }
+
+// TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate pins that MergeContinue derives
+// BOTH result flags from the merge record, the same rule MergeIn and Merge follow.
+// Committed was already derived; AlreadyUpToDate was hardcoded to its zero value at MergeContinue's
+// single return, so a resumed record whose two sides both recorded up_to_date came back
+// already_up_to_date:false where the equivalent single-shot call returns true.
+// That record shape is reachable rather than theoretical: MergeIn/Merge's up-to-date probe runs
+// before the write lock by design, so a call that loses that race records up_to_date on both sides,
+// and a crash before its conclude leaves precisely this record behind. The fixture writes it
+// directly, which is the same on-disk state that crash produces.
+func TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	warpStart := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	weftStart := fabricengine.CurrentSHAForTest(t, h.PrimeWeft())
+	if err := fabricengine.SaveMergeStateForTest(f, fabricengine.MergeStateForTest{
+		Verb:        "merge-in",
+		Source:      "feature",
+		WarpStart:   warpStart,
+		WeftStart:   weftStart,
+		WarpSource:  warpStart,
+		WeftSource:  weftStart,
+		WarpOutcome: "up_to_date",
+		WeftOutcome: "up_to_date",
+		StartedAt:   time.Now(),
+	}); err != nil {
+		t.Fatalf("SaveMergeStateForTest() error = %v", err)
+	}
+
+	res, err := openFreshFabric(t, h.PrimeWorktree()).MergeContinue("")
+	if err != nil {
+		t.Fatalf("MergeContinue() over a both-sides-up-to-date record: error = %v", err)
+	}
+	if !res.AlreadyUpToDate {
+		t.Errorf("MergeContinue().AlreadyUpToDate = false; want true — both recorded outcomes are up_to_date, and the flag is read off the record")
+	}
+	if res.Committed {
+		t.Errorf("MergeContinue().Committed = true; want false — no side had anything to conclude")
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != warpStart {
+		t.Errorf("warp HEAD = %q; want unchanged %q — an up_to_date side is never concluded", got, warpStart)
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(f); err != nil || exists {
+		t.Errorf("MergeRecordExistsForTest() after MergeContinue = (%v, %v); want (false, nil)", exists, err)
+	}
+}

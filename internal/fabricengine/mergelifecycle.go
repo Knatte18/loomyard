@@ -205,9 +205,15 @@ func mergeAttemptIncompleteReason(st *mergeState) []string {
 // never discloses evaluation order.
 // Otherwise it acquires the combined write lock, runs concludeMergeSides with msg as the optional
 // message override, records correspondence, deletes the merge-state record, and returns a
-// MergeResult whose Committed is read off the record's own conclude-SHA fields — true when the pair
-// carries this merge's conclude-commit, false when both sides only fast-forwarded or never moved
-// and no commit was ever fabricated.
+// MergeResult whose Committed and AlreadyUpToDate are BOTH read off the record's own fields, never
+// hardcoded per return site — Committed true when the pair carries this merge's conclude-commit and
+// false when both sides only fast-forwarded or never moved, AlreadyUpToDate true when the attempt
+// had recorded both sides already carrying the resolved source.
+// AlreadyUpToDate is reachable here and not merely defensive: MergeIn/Merge's own pre-lock
+// up-to-date probe is deliberately unlocked, so a call that loses that race records up_to_date on
+// both sides, and a crash before its conclude leaves exactly that record for MergeContinue to
+// resume. Hardcoding false there made the resumed call disagree with what a strictly sequential run
+// of the same calls reports.
 func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -266,7 +272,11 @@ func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error) {
 		return MergeResult{}, err
 	}
 
-	return MergeResult{Conflicts: mergeNoConflicts, Committed: st.landedConcludeCommit()}, nil
+	return MergeResult{
+		AlreadyUpToDate: st.bothSidesAlreadyUpToDate(),
+		Conflicts:       mergeNoConflicts,
+		Committed:       st.landedConcludeCommit(),
+	}, nil
 }
 
 // MergeAbort discards an in-progress merge, restoring both sides to their pre-merge SHAs: with no

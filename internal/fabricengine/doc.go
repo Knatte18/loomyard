@@ -955,6 +955,9 @@
 // false, and a call that finds the work already done *after* taking the write lock — the loser of a
 // race the unlocked pre-lock probe deliberately does not close — reports `AlreadyUpToDate` true,
 // which is what a strictly sequential run of the same two calls reports.
+// "Every return site" includes `MergeContinue`'s, which is the one that resumes such a record after
+// a crash: it derives both flags from the same fields rather than answering `AlreadyUpToDate` false
+// by construction, so a resumed call and a sequential one agree.
 //
 // **"Already up to date" means git had nothing to do, not that the trees already agreed.** A merge
 // whose source is not an ancestor of HEAD but whose result tree equals HEAD's own tree — the shape
