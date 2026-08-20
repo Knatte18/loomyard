@@ -19,8 +19,8 @@ Up to four rounds in the first instalment, model + effort fixed in advance:
 | Round | Model | Effort | Tag | Status |
 |---:|---|---|---|---|
 | r1 | Opus | medium | `opus-medium-r1` | **done, verified** — 9 findings, 9 fixed; verification left 3 residuals |
-| r2 | Opus | medium | `opus-medium-r2` | **running** — Job 1 in progress, 4 findings recorded so far |
-| r3 | Fable | medium | `fable-medium-r3` | not started |
+| r2 | Opus | medium | `opus-medium-r2` | **done, verified** — 2 BLOCKING + 1 LOW + 1 NIT, all fixed, residual 1 closed; verification left 3 new residuals |
+| r3 | Fable | medium | `fable-medium-r3` | **running** — residuals A–C |
 | r4 | Opus | high | `opus-high-r4` | not started |
 
 Hard Rule 2 (explicit effort pick required before every spawn) is satisfied for all four by that instruction.
@@ -154,11 +154,16 @@ Findings: BLOCKING 2 (R1, R2) · LOW 1 (R5) · NIT 1 (R3) · withdrawn-on-eviden
 - The verification hubs under the session scratchpad (`vhub1`, `vhub2`, `vhub3`) could not be deleted — `rm -rf` is refused by this session's sandbox. They are outside the repo in an ephemeral session directory; `git status` in the worktree is clean. Not cleaned, and said so rather than worked around.
 - One stray `lyx reed header --blocking` process belongs to the **`reed-shuttle-crucible-hardening`** worktree. Left alone under worktree isolation. Do not reap it.
 
-## Round 3 (`fable-medium-r3`) — next
+## Round 3 (`fable-medium-r3`) — RUNNING
 
-Prompt re-seeded (this commit) with residuals A–C, the CLOSED-AND-VERIFIED list covering rounds 1 and 2, and the three deferred items.
-Spawn: `Agent` → `subagent_type: crucible-reviewer-medium`, `model: fable`, tag `fable-medium-r3`, prompt = read `_mill/fabric-merge-review-prompt.md` and do exactly what it says.
-Then r4 as **Opus / high**, tag `opus-high-r4`, per the operator's fixed plan.
+Re-seed commit `ab8dd9f9` (prompt rewritten for residuals A–C + handoff carrying r2's full verification record).
+Spawned as `crucible-reviewer-medium` on **Fable / medium**, per the operator's fixed rotation. No round commits yet at the time of writing.
+
+Identify this round by its round tag and by `git log`, never by an internal agent ID — those are ephemeral and mean nothing in a fresh session. If you are a new orchestrator and need to reach the running agent, use `ListAgents`; if it is gone, read `_mill/fabric-merge-review-fable-medium-r3.md` (committed incrementally) to see how far it got and pick up from there rather than restarting the round.
+
+Its assignment is residuals A–C, which are stated in full in the "RESIDUAL" section above and in the round prompt. Residual A is the primary and is the interesting one: it was found by sabotaging a *test* rather than a fix.
+
+**Model-rotation note.** This is the first non-Opus round of the campaign. Rotation is the point — a different model fails differently — but calibrate the verification accordingly and do not soften any step of the protocol for it. In particular, re-derive its sabotage proofs yourself rather than reading its table; that has now caught something in both prior rounds.
 
 ## Next action
 
@@ -170,7 +175,12 @@ Then r4 as **Opus / high**, tag `opus-high-r4`, per the operator's fixed plan.
 2. Read r3's "What was tested" in full before characterising its work at all.
 3. Gates from cold, tiers named in your own record. Never accept a green claim that does not name its tag.
 4. **Sabotage-prove every new test yourself**, including the companion direction. Sabotage the *tests* too, not only the fixes — that is what found residual A. A build break is not a proof; redo it a different way.
-5. Re-drive every BLOCKING fix live on a freshly built hub against a freshly deployed binary. Hub recipe is in `scratchpad/mkhub.sh`: `GIT_CONFIG_GLOBAL` with `init.defaultBranch = main` must be exported **before** the first `git init`, or the weft defaults to `master` and the pair is invalid. Then `lyx fabric clone <weft-bare> <warp-bare>` from a work dir; the prime pair is `warp-bare`/`warp-bare-weft` and is enough — `fabric add` needs cwd inside a repo. Use `env -C` or a `cd` inside a script file; this sandbox refuses inline `cd <dir> && …` and refuses `rm -rf`.
+5. Re-drive every BLOCKING fix live on a freshly built hub against a freshly deployed binary (`./deploy-dev`). The recipe, written out rather than pointed at — the session scratchpad is shared and round agents overwrite files there, so a path reference rots:
+   - Export `GIT_CONFIG_GLOBAL` (a file carrying `[init] defaultBranch = main` plus a `user.name`/`user.email`) **before the first `git init`**. Get this wrong and the weft bare defaults to `master`, so the pair is `main`/`master-weft` and every fabric verb fails on an invalid `main-weft` reference.
+   - `git init --bare` a warp and a weft; `git init` a seed, commit into it, push it to the warp bare as `main`.
+   - From an empty work dir: `lyx fabric clone <weft-bare> <warp-bare>`. That yields `<work>/<warpname>-HUB/` containing the prime pair `warp-bare` + `warp-bare-weft`.
+   - The prime pair is enough for every merge scenario — do not bother with `lyx fabric add`, which needs cwd inside a repo and adds nothing here.
+   - Sandbox constraints: inline `cd <dir> && …` is refused, so put the `cd` inside a script file or use `env -C`; `rm -rf` is refused, so scratch hubs cannot be cleaned up and that must be stated honestly rather than worked around.
    **Check every fixture for silent degradation** before trusting a scenario — assert the precondition the scenario depends on, the way the good tests do with `t.Fatal`.
 6. Re-seed from whatever verification leaves standing — derived from the residue, never "review it again" — and spawn r4 as **Opus / high**, tag `opus-high-r4`.
 
