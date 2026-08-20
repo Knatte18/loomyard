@@ -32,7 +32,7 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 | 3 | `Discussion-Write` | simple | LLM | — (starting point) | `_lyx/discussion/` (`decision-record.md` + `support-log.md`), shape pinned in the producer's own stencil (`contracts/stencils/loom/loom-template-discussion.md`) |
 | 4 | `Discussion-Validate` | simple | mechanical | `_lyx/discussion/` → [validation checks](#discussion-producer-detail--validation-checks-and-review-rubric) below | pass/fail |
 | 5 | `Discussion-Review` | bespoke | LLM/`perch` | `_lyx/discussion/` (both files) → [review rubric](#discussion-producer-detail--validation-checks-and-review-rubric) below | verdict (APPROVED/stuck) + review file |
-| 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | scout inventory (internal artifact, not gated) |
+| 6 | `Plan-Sweep` | simple | mechanical | `_lyx/discussion/decision-record.md` (approved) | quarry inventory (internal artifact, not gated) |
 | 7 | `Plan-Write` | simple | LLM | `_lyx/discussion/decision-record.md` (**never** `support-log.md`) + `Plan-Sweep`'s inventory | `_lyx/plan/`, shape pinned in `contracts/stencils/loom/loom-template-plan.md` |
 | 8 | `Plan-Validate` | simple | mechanical | `_lyx/plan/` → `loom-plan-spec.md`'s existing hard-fail checks (e.g. `depends-on-order`) | pass/fail |
 | 9 | `Plan-Review` | bespoke | LLM/`perch` | `_lyx/plan/` → `loom-plan-spec.md` | verdict + review file |
@@ -101,15 +101,15 @@ Do not flag any of the following as a finding:
 - **Incomplete call-site or cross-reference enumeration.**
   That enumeration belongs to the compiler and to `Plan-Sweep`'s mechanical inventory, not to `Discussion-Review`.
 
-## Plan-Sweep detail — the scout-inventory spec
+## Plan-Sweep detail — the quarry-inventory spec
 
 **Build order note:** `Plan-Sweep` is not built in `loom: phase-machine scaffolding` — it stays a stub there, alongside `Plan-Write`, its only consumer.
 Building a real `Plan-Sweep` before `Plan-Write` is real would have nothing to feed.
-Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item), `Plan-Sweep` stays a stub past that point too — deferred to its own Someday roadmap item, since `scout`-backed work is low-priority project-wide right now and this is the only row in the initiative that touches `scout`.
+Unlike `Plan-Write` (its own split-out `loom: Plan-Write producer` roadmap item), `Plan-Sweep` stays a stub past that point too — deferred to its own Someday roadmap item, since quarry-backed work is low-priority project-wide right now and this is the only row in the initiative that touches quarry.
 `Discussion-Validate` and `Plan-Validate`, which do land in scaffolding, carry no such dependency.
 
 `Plan-Sweep` (row 6) is `simple`/`mechanical` like `Discussion-Validate` — no judgment, exhaustively defined by the checks below, not a smaller version of what `Plan-Write` (the LLM) does.
-Its job is grounding, not selection: hand `Plan-Write` real `scout` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
+Its job is grounding, not selection: hand `Plan-Write` real `quarry` lookups for whatever the decision record already named, so the writing agent starts from resolved definitions/references instead of re-grepping blind.
 
 **Deterministic extraction.**
 The repo's own doc convention is the extraction rule: every code identifier, file path, and symbol name in `decision-record.md`'s prose is backtick-quoted, the same convention this doc and every other `manifest/designs/*.md` file already follows.
@@ -117,16 +117,16 @@ The repo's own doc convention is the extraction rule: every code identifier, fil
 
 **Resolution, not selection.**
 Each collected span is classified mechanically, by shape, not meaning: a span containing `/` or a `.go`/`.md`-style extension is treated as a path and checked for existence on disk;
-anything else is treated as a symbol name and looked up through `scoutengine`'s existing symbol lookup, then enumerated via `scoutengine.References`.
-A span that resolves to nothing — a prose word that happened to be backtick-quoted, a symbol `scout` can't find — is silently dropped, never a failure;
+anything else is treated as a symbol name and looked up through `quarry`'s existing symbol lookup, then enumerated via its `References` API.
+A span that resolves to nothing — a prose word that happened to be backtick-quoted, a symbol `quarry` can't find — is silently dropped, never a failure;
 `Plan-Sweep` has no pass/fail outcome of its own (the table's Output column already marks it "not gated").
 
 **No persisted artifact.**
-Unlike `Discussion-Write`'s output, the inventory is never written to `_lyx/plan/` or anywhere else — it costs nothing to recompute (a handful of `scout` lookups, not an LLM call), so `Shed`'s resume-on-output-files model doesn't apply to it: on resume, `Plan-Sweep` just reruns before `Plan-Write` starts, exactly like the first pass.
+Unlike `Discussion-Write`'s output, the inventory is never written to `_lyx/plan/` or anywhere else — it costs nothing to recompute (a handful of `quarry` lookups, not an LLM call), so `Shed`'s resume-on-output-files model doesn't apply to it: on resume, `Plan-Sweep` just reruns before `Plan-Write` starts, exactly like the first pass.
 This also means it needs no format-contract doc under `contracts/`; the shape below is `Plan-Write`'s own prompt-assembly concern, not a pinned cross-producer contract.
 
 **Shape handed to `Plan-Write`.**
-A flat list, one entry per resolved span: the original span text, its kind (`path` or `symbol`), and — for a symbol — its definition site(s) plus reference sites from `scoutengine.References`.
+A flat list, one entry per resolved span: the original span text, its kind (`path` or `symbol`), and — for a symbol — its definition site(s) plus reference sites from `quarry`'s `References` API.
 Deduplicated and sorted;
 order carries no meaning `Plan-Write` should read into it.
 

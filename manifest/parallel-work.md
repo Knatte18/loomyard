@@ -37,5 +37,4 @@ Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, 
 
 ## Blocked on the three review-producer tasks above
 
-- **Bouncer → Perch: rename, retire `internal/perchengine`/`internal/treadleengine`** (Someday) — needs the design proven on all three first.
-
+- **Bouncer → Perch: rename, and retire `internal/perchengine`/`internal/treadleengine`** (Someday) — deliberately sequenced last, to avoid "which Perch do you mean" confusion mid-rewrite; needs the design proven on `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer` first, not on the two write tasks in the same group above.
