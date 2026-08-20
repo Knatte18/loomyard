@@ -143,9 +143,11 @@ func (p *Publish) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	defer cancel()
 
 	prs, _, err := client.PullRequests.List(queryCtx, owner, repo, &github.PullRequestListOptions{
-		State: "all",
-		Head:  fmt.Sprintf("%s:%s", owner, p.deps.TaskBranch),
-		Base:  p.deps.ParentBranch,
+		State:     "all",
+		Head:      fmt.Sprintf("%s:%s", owner, p.deps.TaskBranch),
+		Base:      p.deps.ParentBranch,
+		Sort:      "created",
+		Direction: "desc",
 	})
 	if err != nil {
 		return p.stuckOrCancelled(ctx, publishGitHubErrorReason("query existing pull request", err))
