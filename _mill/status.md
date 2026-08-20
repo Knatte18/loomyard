@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-manifest-docs
+phase: holistic-reviewing
 slug: shedadapters-generic-bouncer-producer
 branch: shedadapters-generic-bouncer-producer
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-stencils  '2026-08-20T16:25:14Z'
 approved-bouncer-producer  '2026-08-20T16:36:05Z'
 approved-judge-replay-coverage  '2026-08-20T16:44:34Z'
 approved-manifest-docs  '2026-08-20T16:49:09Z'
+holistic-reviewing  '2026-08-20T16:49:42Z'
 ```
 
 ## Batches
