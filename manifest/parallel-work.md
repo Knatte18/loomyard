@@ -1,14 +1,17 @@
 # Parallel work map
 
-A snapshot of which `roadmap.md` Planned items can be spawned in parallel right now, and which are genuinely blocked.
-Recompute this whenever tasks land or the roadmap changes — it is a point-in-time reading of the dependency graph, not durable content, and carries no status banner of its own for that reason (delete or regenerate freely).
+Which `roadmap.md` Planned items can spawn in parallel right now.
+Point-in-time — recompute when tasks land or the roadmap changes.
+No status banner; delete or regenerate freely.
 
-## The actual constraint
+Constraint is semantic, not file overlap: does task B need something task A creates.
+Several items below touch `internal/loomshed/loomshed.go` — expected, resolved at merge time, not a blocker.
 
-File overlap is **not** the constraint — several items below touch `internal/loomshed/loomshed.go`, and that is expected, not a blocker: conflicts there get resolved at merge time (`mill-merge-in`), the same way the `loomshed.Deps.Landing` field / `loom-session-bootstrap` overlap flagged earlier this session already is.
-The real constraint is semantic: does task B need a type, function, or constructor that task A *creates* to do its own work meaningfully — not just "do they touch the same file."
+## Spawned
 
-## Running now
+- **shedengine: per-producer bounce budget + explicit `OnDone` routing** (`shedengine-segments-bounce-budget`)
+- **preflight: split into two Shed rows** (`preflight-loom-agnostic`)
+- **scout: extract into its own standalone repo** (`scout-extract-standalone-repo`) — independent of everything else on this map; nothing outside `internal/scoutengine` imports it except `internal/scoutcli`.
 
 Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, the `fabric-merge-crucible-hardening` crucible campaign (wiki-tracked only, no `roadmap.md` entry), and now `shedengine: per-producer bounce budget + explicit OnDone routing` have all landed. Priority now shifts to the remainder of the "Perch → Shed flattening" group below.
 
@@ -25,21 +28,14 @@ Nothing — `landing: Publish + Finalize producers`, `loom: session bootstrap`, 
 - **shedadapters: Burler-round producer**
 - **Bouncer: the generic review-gate producer**
 
-## Deliberately last — the LLM-prompt-content group
+## Blocked by policy — LLM-prompt-content group
 
-Not a dependency ordering, a policy one: `roadmap.md` holds all five of `loom`'s content-producer tasks back until everything else above has landed, because they are the only items in this initiative that touch LLM-prompt content.
-Within the group, three additionally carry a hard `depends_on` on the "Perch → Shed flattening" trio above — their *wiring* half cannot be built before those exist, only their rubric-writing half could start early if split out further (not done here, each task is scoped as one unit).
+`roadmap.md` holds all five back until the flattening group lands, since they're the only items touching LLM-prompt content.
 
-- **loom: Discussion-Write producer** — no code `depends_on`, held back by policy only.
-- **loom: Plan-Write producer** — same.
-- **loom: Discussion-Review producer** — policy + hard `depends_on` on the flattening trio.
-- **loom: Plan-Review producer** — same.
-- **loom: Webster-Review producer** — same.
+- **loom: Discussion-Write producer** / **loom: Plan-Write producer** — no code dependency, policy only.
+- **loom: Discussion-Review producer** / **loom: Plan-Review producer** / **loom: Webster-Review producer** — policy + hard `depends_on` on the flattening trio.
 
-## Blocked on the three review-producer tasks finishing
+## Blocked on the three review-producer tasks above
 
-- **Bouncer → Perch: rename, and retire `internal/perchengine`/`internal/treadleengine`** (Someday) — deliberately sequenced last, to avoid "which Perch do you mean" confusion mid-rewrite; needs the design proven on `loom: Discussion-Review producer`/`Plan-Review producer`/`Webster-Review producer` first, not on the two write tasks in the same group above.
+- **Bouncer → Perch: rename, retire `internal/perchengine`/`internal/treadleengine`** (Someday) — needs the design proven on all three first.
 
-## Not yet a wiki task
-
-Scout-extraction-to-its-own-repo (discussed, not yet created) would be independent of everything above if and when it is spawned — no code in this repo currently imports `internal/scoutengine` outside its own package.
