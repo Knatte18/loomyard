@@ -88,7 +88,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		StatusPath:     loomengine.LoomStatusFile(location),
 		LockPath:       loomengine.LoomRunLock(location),
 		StatusLockPath: loomengine.LoomStatusLock(location),
-		// MaxBounces is left zero so shedengine.Shed's own default applies.
+		// MaxBounces is left zero so shedengine.Shed's own default applies. "Default" here means
+		// the inherited per-producer default every ProducerDef.MaxBounces of 0 falls back to
+		// (which itself falls back to shedengine's internal default of ten), not a run-wide
+		// total -- the budget itself is per-producer and episode-scoped, counted from the
+		// persisted history rather than held in memory.
 		AnchorPath:         anchorPath,
 		WorktreeRoot:       location.WorktreePath(),
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
