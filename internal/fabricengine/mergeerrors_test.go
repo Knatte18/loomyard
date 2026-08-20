@@ -146,3 +146,42 @@ func assertNoVocabularyLeak(t *testing.T, label, s string) {
 		}
 	}
 }
+
+// TestMergeGuardError_WorktreeDirty pins the accessor's coupling to the unexported
+// mergeReasonWorktreeDirty constant: a guard error built with the dirty-worktree reason reports
+// true, one built with any other single reason reports false, and one carrying the dirty reason
+// alongside others still reports true. Placing this coverage here, rather than in the consumer
+// (internal/landingshed), is what makes the cross-package coupling pinned rather than merely
+// conventional -- this package's own tier asserts the accessor tracks the constant, and the
+// consumer's own tier asserts it branches on the accessor.
+func TestMergeGuardError_WorktreeDirty(t *testing.T) {
+	tests := []struct {
+		name    string
+		reasons []string
+		want    bool
+	}{
+		{
+			name:    "dirty reason alone",
+			reasons: []string{mergeReasonWorktreeDirty},
+			want:    true,
+		},
+		{
+			name:    "a different single reason",
+			reasons: []string{mergeReasonAlreadyInProgress},
+			want:    false,
+		},
+		{
+			name:    "dirty reason alongside others",
+			reasons: []string{mergeReasonAlreadyInProgress, mergeReasonWorktreeDirty, mergeReasonNotSynced},
+			want:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &MergeGuardError{Reasons: tt.reasons}
+			if got := err.WorktreeDirty(); got != tt.want {
+				t.Errorf("WorktreeDirty() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
