@@ -1,16 +1,18 @@
-// Package shedadapters holds the four shedengine.ShedProducer adapters that let a Shed-built
-// product drive shuttle, perch, Webster, and one burlerengine round as ordinary producers in its
-// own flat producer list.
+// Package shedadapters holds the five shedengine.ShedProducer adapters that let a Shed-built
+// product drive shuttle, perch, Webster, one burlerengine round, and the generic review-gate
+// Bouncer as ordinary producers in its own flat producer list.
 // SingleLLMProducer wraps one shuttleengine run, PerchProducer wraps one perchengine block,
 // WebsterProducer wraps one websterengine multi-spawn run, and BurlerProducer wraps one
-// burlerengine A-review/B-fix round as a single Shed row; each is a thin translation layer over an
-// already-shipped engine, never a second implementation of that engine's own loop.
+// burlerengine A-review/B-fix round as a single Shed row: each of these four is a thin translation
+// layer over an already-shipped engine, never a second implementation of that engine's own loop.
+// Bouncer is the one member of this package for which that is false: it is new logic over
+// shuttleengine, composing its own prompt from stencils rather than translating an already-shipped
+// engine's loop.
 //
 // # Outcome mapping
 //
-// Each adapter maps its wrapped engine's own verdict onto shedengine's two-value Outcome contract,
-// Done or Stuck, and reports the output pointer differently because the four engines report success
-// differently:
+// Each adapter maps its own verdict onto shedengine's two-value Outcome contract, Done or Stuck,
+// and reports the output pointer differently because the five adapters report success differently:
 //
 //   - SingleLLMProducer: shuttleengine.OutcomeDone maps to Done, reporting the first entry of the
 //     evaluated Spec's OutputFiles as the pointer's path.
@@ -34,6 +36,18 @@
 //     engine-level error, not Stuck, because the Bouncer tells its seed call from its judge call by
 //     the round artifacts on disk, and a failed round returning Stuck with no review written would
 //     be misread as a seed call.
+//   - Bouncer: Call resolves into one of four modes -- seed, re-bounce, judge, or replay -- and its
+//     harvest step acts on a judgment that provably happened (a verdict and ledger that both exist
+//     and parse) regardless of what the shuttle run itself reported. A parsed APPROVED verdict maps
+//     to Done, and a parsed BLOCKING verdict maps to Stuck, both reporting the round's ledger path
+//     as the pointer; every other path -- the seed call, the re-bounce, every degraded path --
+//     reports an empty pointer. This is a deliberate delta versus PerchProducer, which reports an
+//     empty pointer because a gate producer's verdict is re-derived rather than read back: the
+//     Bouncer's ledger is a real cross-round artifact a human reads, and hiding it on a BLOCKING
+//     Stuck would hide it exactly when an operator most needs it. The exists-or-empty rule matters
+//     because Shed never stats a pointer, so a pointer naming an unwritten file is caught nowhere
+//     and is simply persisted into the history for a human to read as though the artifact were
+//     there.
 //
 // # Told, never derived
 //
@@ -49,6 +63,14 @@
 // BurlerProducer is told an absolute run directory and an already-constructed runner, and takes the
 // same injected clock SingleLLMProducer does, resolving only the archive filename's same-second
 // collision suffix the same way.
+// Bouncer's own told inputs are RunDir, StencilsDir, the resolved (Model, Effort, Version) triple,
+// and the report-name convention as a function. NewBouncer is the second validating,
+// error-returning constructor in the package, after NewPerchProducer, in contrast with the two
+// that return a bare pointer: NewSingleLLMProducer, whose Spec is validated downstream by
+// shuttleengine, and NewWebsterProducer. NewBouncer takes the error-returning shape because
+// BouncerConfig carries eleven inputs with real invariants, two of which must be absolute paths,
+// and validating lazily at first Call would turn a wiring typo into a mid-run failure in an
+// unattended segment.
 //
 // # The perch run-id scheme
 //
@@ -86,23 +108,30 @@
 //
 // Every adapter checks ctx.Err() at Call entry and returns immediately without starting anything.
 // On exit, a cancelled context replaces every result except a genuine success verdict -- shuttle's
-// OutcomeDone, perch's OutcomeApproved, or Webster's "done" -- which is returned as shedengine.Done
-// with its pointer regardless of cancellation.
+// OutcomeDone, perch's OutcomeApproved, Webster's "done", the Bouncer's own harvested verdict, or
+// a BurlerProducer's completed round -- which is returned as its mapped shedengine.Done or
+// shedengine.Stuck with its pointer regardless of cancellation.
 // This exception exists because converting a finished success into the context error would make Shed
 // record no history entry for it, so the next Call would archive a valid artifact and pay for the
 // same LLM session twice; a finished artifact and a paid-for session are never discarded.
+// For SingleLLMProducer, PerchProducer, and WebsterProducer, this principle applies as-is.
+// For the Bouncer, the genuine-success exception covers a *harvested* verdict, not only a
+// shuttleengine completion: a verdict and ledger that both exist and parse are returned as their
+// mapped outcome and pointer even when the run that produced them reported an error, a non-done
+// outcome, or arrived after the context was cancelled.
+// For BurlerProducer, the completion exception is narrower: a completed round's artifacts survive
+// cancellation, but the verdict itself is not returned as Stuck (see the note below).
 // Only PerchProducer installs a mid-run bridge (a pauseRequested callback built fresh over each
 // Call's own context and passed into its PerchFactory), because perch's pause seam is the only one
-// of the three shaped as a caller-supplied callback.
+// of the five shaped as a caller-supplied callback.
 //
-// BurlerProducer does not need this section's success exception at all -- not that it reads the
-// exception differently.
-// internal/shedengine/producer.go binds every implementation to surface cancellation as a non-nil
-// error and never as Stuck, so this producer always errors under cancellation, including on a
-// completed round.
-// The exception's purpose -- never discarding a paid-for artifact -- is served instead by an archive
-// carve-out: a completed-then-cancelled round keeps its two files, so from-disk round resolution
-// advances past it on the next call, and only the re-derivable in-memory verdict is dropped.
+// BurlerProducer's cancellation behavior is governed by the seam obligation in
+// internal/shedengine/producer.go that every implementation surface cancellation as a non-nil
+// error and never as Stuck: this producer always errors under cancellation, including on a
+// completed round. The exception's purpose -- never discarding a paid-for artifact -- is served
+// instead by an archive carve-out: a completed-then-cancelled round keeps its two files, so
+// from-disk round resolution advances past it on the next call, and only the re-derivable
+// in-memory verdict is dropped.
 //
 // # Limitations
 //
@@ -114,9 +143,10 @@
 // is observed only once the run reaches a terminal outcome or its own configured deadline elapses --
 // bounded by the shuttle spec's own timeout for SingleLLMProducer, and by Webster's own whole-run
 // timeout for WebsterProducer.
-// BurlerProducer likewise installs no mid-run cancellation bridge, because burlerengine exposes no
-// pause seam, so a cancel is observed only once the round reaches a terminal outcome or its own
-// RunOpts.Timeout elapses.
+// BurlerProducer and Bouncer likewise install no mid-run cancellation bridge: BurlerProducer because
+// burlerengine exposes no pause seam (so a cancel is observed only once the round reaches a terminal
+// outcome or its own RunOpts.Timeout elapses), and Bouncer for similar reasons at the shuttleengine
+// layer (see the Shared cancellation rule above for both).
 //
 // The standalone perch pause verb (`lyx perch pause --run-id <id>`) is a silent no-op against a run
 // dir PerchProducer is driving: the pause callback the adapter installs is the context-cancellation
@@ -124,4 +154,9 @@
 // reads and reports success regardless.
 // The remedy is never that verb against an adapter-driven run -- it is the product's own pause path,
 // cancelling the context handed to Shed's run loop.
+//
+// The Bouncer accepts one further soft spot: ledger carry-forward is enforced by the judge prompt
+// alone, so a misbehaving judge can drop an entry with nothing at the Go layer catching it; closing
+// that would require diffing the new ledger's key set against the previous one and deciding what a
+// missing key means, which is a feature rather than a one-line addition.
 package shedadapters

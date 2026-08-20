@@ -90,6 +90,33 @@ func TestRegistry_MatchesOnDiskTree(t *testing.T) {
 	}
 }
 
+// TestRegistry_IncludesBouncerStencils pins the two generic Bouncer prompt templates by name, so a
+// later accidental removal fails with a message naming the Bouncer rather than as a diff in the
+// generic on-disk-tree comparison TestRegistry_MatchesOnDiskTree already performs.
+func TestRegistry_IncludesBouncerStencils(t *testing.T) {
+	reg := Registry()
+
+	names := reg.Names()
+	nameSet := make(map[string]bool, len(names))
+	for _, name := range names {
+		nameSet[name] = true
+	}
+
+	for _, name := range []string{"bouncer-template-seed", "bouncer-template-judge"} {
+		if !nameSet[name] {
+			t.Errorf("Registry().Names() = %v; want it to contain %q", names, name)
+			continue
+		}
+		def, known := reg.Default(name)
+		if !known {
+			t.Errorf("Registry().Default(%q) = _, false; want true", name)
+		}
+		if len(def) == 0 {
+			t.Errorf("Registry().Default(%q) = <empty>, %v; want non-empty bytes", name, known)
+		}
+	}
+}
+
 // TestRegistry_DefaultsAndRelPathAreConsistent verifies every registered entry's Default returns
 // non-empty bytes, and that stencilstore.RelPath(name) resolves to the file's actual relative path --
 // pinning the family-from-first-token derivation against the on-disk layout.
