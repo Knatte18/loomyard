@@ -299,14 +299,17 @@ This is not a new pattern: it mirrors two seams that already exist in this codeb
 - `internal/treadleengine`'s `RoundRunner` seam (`internal/perchengine`'s burler adapter is its reference consumer).
 - `internal/batcher`'s `Batcher` interface (multiple batchifier implementations behind one interface, resolved by name via `Select`).
 
-Applied one level up: every producer satisfies a `ShedProducer` interface, and — critically — **`Shed` needs not one adapter per producer, but one per distinct engine type**:
+Applied one level up: every producer satisfies a `ShedProducer` interface, and — critically — **`Shed` needs not one adapter per producer, but one per distinct engine type, plus one entry per producer that is itself new logic over an already-adapted engine rather than a translation of a different one**:
 
 - **A mechanical Go-function producer** needs no translation adapter at all — a plain Go function already satisfies `ShedProducer` directly.
 - **A `SingleLLMProducer`** is one generic, reusable `ShedProducer` implementation for the "simple, single-agent-spawn, LLM" case: the parameterization lives entirely in the caller's own `shuttleengine.Spec` source, which the adapter evaluates once per call and never templates itself. Two concrete producers configuring this same generic type is not two adapters — it is one adapter, instantiated twice with different `Spec` sources, unified today via the shared `shuttleengine.Spec` → `shuttle.Run` pattern.
-- **`perch`** needs one adapter, reusable by every review-gate producer regardless of which artifact it reviews.
+- **The Bouncer** is `shuttleengine`-backed like `SingleLLMProducer`, but templating its own prompt from a rubric stencil and a generic template, with judge-specific work before and after the spawn — the first member of the second kind named above, new logic over an already-adapted engine rather than a translation of a different one.
+- **`perch`** needs one adapter, reusable by every review-gate producer regardless of which artifact it reviews — the Burler/Bouncer pair now supersedes it for review gates; see the Someday **`Bouncer → Perch`** item in `manifest/roadmap.md` for perch's own fate.
 - **A black-box multi-spawn engine** (e.g. `Webster`'s own verb-driven form) needs its own adapter, one per such engine, not one per producer that happens to use it.
 
-So the adapter count scales with the number of distinct *engines* in play, never with the number of producers — see [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for how many concrete adapters `loom`'s own list currently needs.
+So the adapter count scales with the number of distinct *engines* in play, plus one entry per producer that is new logic over an already-adapted engine rather than a translation of a different one — never with the number of producers outright.
+That distinction is what keeps the original rule true for the cases it was written about: `SingleLLMProducer`, `perch`, and `Webster` are each still exactly one adapter per engine, and the Bouncer is the qualification the rule needed once a second kind of member joined the package.
+See [loom.md's producer table](loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots) for how many concrete adapters `loom`'s own list currently needs.
 
 This split cuts on **engine type** — which code drives the producer, and therefore how many adapters must be built — whereas the simple/bespoke typology in [Producer contract vs. producer definition](#producer-contract-vs-producer-definition) above cuts on **atomicity and crash-recovery ownership**.
 The two axes are independent and need not align: a producer can be mechanical-and-simple, mechanical-and-bespoke (pure Go on its happy path but owning an internal multi-step process on an exceptional one), or LLM-and-either.

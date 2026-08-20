@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/gofrs/flock v0.8.1
+	github.com/google/go-cmp v0.7.0
 	github.com/google/go-github/v75 v75.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9

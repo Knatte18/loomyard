@@ -48,6 +48,17 @@ var BurlerStep2Review []byte
 //go:embed burler/burler-step-3-fix.md
 var BurlerStep3Fix []byte
 
+// BouncerTemplateSeed is the Bouncer's shipped-default seed prompt: the focus-setting pass that
+// runs before any round has been reviewed.
+//
+//go:embed bouncer/bouncer-template-seed.md
+var BouncerTemplateSeed []byte
+
+// BouncerTemplateJudge is the Bouncer's shipped-default per-round judge prompt.
+//
+//go:embed bouncer/bouncer-template-judge.md
+var BouncerTemplateJudge []byte
+
 // TreadleTemplateJudgeCircling is treadle's shipped-default per-round circling-check judge prompt.
 //
 //go:embed treadle/treadle-template-judge-circling.md
@@ -128,6 +139,8 @@ var entries = []registryEntry{
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-step-2-review", &BurlerStep2Review},
 	{"burler-step-3-fix", &BurlerStep3Fix},
+	{"bouncer-template-seed", &BouncerTemplateSeed},
+	{"bouncer-template-judge", &BouncerTemplateJudge},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
 	{"treadle-template-triage", &TreadleTemplateTriage},
