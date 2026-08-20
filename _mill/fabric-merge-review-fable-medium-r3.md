@@ -89,3 +89,10 @@ Reproduced r2's enumeration sweep verbatim (the `ext()` awk extent resolver + er
 Destructive arithmetic re-derived from the table's own rows: MergeIn 10–13 (4) + Merge 20–23 (4) + concludeMergeSides 27–31 (5) + MergeContinue 38–41 (4) = **17**, of which 27/28/30/31 invisible (**4**) → 13 visible. Consistent with the summary block.
 Rows spot-checked against the current tree (rows 1, 7, 10–13, 20–23, 24, 26, 27/28/30/31, 34, 38–41, 44, 45): every `next continue`/`next abort` verdict is right, and every DESTRUCTIVE abort arm is now covered by R2's `concludeLandedReason` guard (verified live for the invisible arm in the residual-B drive above).
 One inaccuracy found, safe direction: row 24 claims MergeContinue "refuses (F1) if an outcome is empty, **else concludes a half-reset pair**" — the else arm is unreachable, because `selfAbortMergeAttempt` is only ever invoked from a `MergeStart` error return, and the failing side's outcome is by construction still empty at every one of its four call sites, so F1 always refuses. Report-accuracy NIT in a prior round's orchestrator-owned report; no code is wrong and the guard is unaffected. Not escalated.
+
+## Post-fix verdict
+
+All four findings closed in-round (B1, A1, A2 by code; C1 by record — see the fixer report).
+Final gates green from the finished tree: hermetic `-count=5` across fabricengine/fabriccli/gitrepo/cmd/lyx, full `-tags integration` across the three packages (42.1s/4.1s/2.2s), golangci-lint clean.
+The B1 wedge was re-driven live end to end on the deployed binary and now recovers by adoption; A1's detection was proven by the exact sabotage that previously went unseen.
+**Merge-readiness: READY.** No open residuals from this round; the one deliberate open item inherited from round 2 (residual B) is now closed rather than re-deferred.
