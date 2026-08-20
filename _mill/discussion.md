@@ -25,7 +25,7 @@ This is the last row in loom's list that is structurally shared but implemented 
 
 **In:**
 
-- A new package `internal/preflightshed` holding the generic row-1 producer: a content-free `shedengine.ShedProducer` wrapping `internal/preflight.Check`, taking `cwd` and nothing else.
+- A new package `internal/preflightshed` holding the generic row-1 producer: a content-free `shedengine.ShedProducer` wrapping `internal/preflight.Check`, taking a told row name and `cwd` and nothing else.
 - A new row 2 in loom's producer list, `Loom-Preflight`, carrying today's check-4 content as its own independent producer, built inside `internal/loomshed`.
 - Retargeting the check-4 logic in `internal/loomengine` from a `*lyxcwd.Location` onto told absolute paths, exported as `CheckSeed`.
 - Deleting `loomengine.Preflight`, `loomengine.checkResolved`, `loomengine.runCheck4`, and the `CheckResolvedForTest` export shim — nothing calls them after the split.
@@ -53,7 +53,7 @@ This is the last row in loom's list that is structurally shared but implemented 
 
 ### row-1-home
 
-- Decision: the generic row-1 producer lives in a new package, `internal/preflightshed`, exposing `NewPreflight(cwd string) shedengine.ShedProducer`.
+- Decision: the generic row-1 producer lives in a new package, `internal/preflightshed`, exposing `NewPreflight(name, cwd string) shedengine.ShedProducer` (the two-argument form is pinned by the `preflightshed-takes-a-told-name` decision below).
 - Rationale: mirrors `internal/landingshed`'s `<domain>shed` naming for "the `Shed` producers for \<domain\>", which `internal/loomshed` already imports by reference (`loomshed.go:114-121`); `Hardener` imports the new one the same way.
   It keeps `internal/preflight` free of a `shedengine` dependency, which matters because `cmd/lyx`'s pre-run consumes that package for `ResolveMode`.
 - Rejected: putting the producer in `internal/preflight` itself (drags `shedengine` into the `cmd/lyx` pre-run path); putting it in `internal/shedadapters` (its package doc pins "no adapter calls lyxcwd, os.Getwd, or git", which a preflight producer transitively violates through `preflight.Check` → `lyxcwd.Resolve` → `git rev-parse`).
@@ -91,6 +91,19 @@ This is the last row in loom's list that is structurally shared but implemented 
   Repointing at tier 2 rather than at the row-1 producer is deliberate: the assertion is about a *specific check ID*, and the producer collapses the whole report to `Done`/`Stuck`, which would lose exactly the discrimination the test exists for.
   The call must discard the second return value.
 - Rejected: keeping `Preflight` as a thin deprecated composite purely to spare one test call site.
+
+### tier12-checkid-aliases-are-deleted
+
+- Decision: the five tier-1/2 check-ID **constant** aliases in `internal/loomengine/report.go:28-43` — `CheckGeometry`, `CheckWorktreeClean`, `CheckFabricReady`, `CheckFabricSync`, `CheckJunction` — are deleted.
+  The three **type** aliases above them (`CheckID`, `Failure`, `Report`, `report.go:16-26`) are kept, because `CheckSeed` returns `Report` and the alias is what keeps `loomengine.Report` and `preflight.Report` the identical type across the package boundary.
+  The four loom-specific constants (`CheckSeedMissing`, `CheckSeedUnreadable`, `CheckSeedIncoherent`, `CheckHalfFinished`, `report.go:47-63`) are also kept — they are what `CheckSeed` reports.
+- Rationale: `report.go:28-29` states the aliases' entire purpose — "re-exposed as const aliases of the ones `internal/preflight` declares, so existing callers of these names keep compiling unchanged".
+  After the split there are no such callers.
+  A repo-wide grep for `loomengine.Check{Geometry,WorktreeClean,FabricReady,FabricSync,Junction}` returns hits in exactly two places: `internal/loomengine/preflight_integration_test.go` (retired by `test-tier-migration`) and `internal/loomcli/smoke_test.go:645` (repointed at `preflight.CheckWorktreeClean` by `delete-the-composite`).
+  Zero survive.
+  A compatibility shim whose compatibility population is empty is dead weight, and leaving it invites a future caller to reach tier-1/2 identities through loom rather than through `internal/preflight`, which is the coupling this whole task is undoing.
+- Rejected: keeping them for a future `Hardener` — `Hardener` will not import `internal/loomengine` at all; it reaches these constants through `internal/preflight` directly, which is the point of the split.
+- Rejected: keeping them unexamined — the review found them undisposed, and an alias set that survives by omission is how the next split inherits the same problem.
 
 ### coherence-names-are-told
 
@@ -240,14 +253,15 @@ Both facts are load-bearing: the first dictates the new coherence rules, the sec
 - `internal/loomengine/preflight.go` — `Preflight`, `checkResolved`, `runCheck4` deleted; `CheckSeed` added in their place (or in a new `seed.go`, planner's call).
   It keeps the `os.MkdirAll(filepath.Dir(lockPath), 0o755)` guard at `preflight.go:114-116` verbatim, including its comment: `internal/lock` opens with `O_CREATE` but never creates parents, and without it a missing-`.lyx` worktree escalates to a hard infra error instead of honouring the report-not-error contract.
   It also keeps the TOCTOU guard at `preflight.go:128-134` (stat succeeded but `ReadJSONStrict` reports not-found → synthesize a non-nil error, never `Report{}, nil`).
-- `internal/loomengine/coherence.go` — `checkCoherence` gains the two told-name parameters; `coherence.go:41` and `coherence.go:91` lose their literals.
-- `internal/loomengine/report.go:51-55` — `CheckSeedUnreadable` doc narrowed.
+- `internal/loomengine/coherence.go` — `checkCoherence` gains the two told-name parameters, and `coherence.go:41` and `coherence.go:91` lose their literals.
+  Three prose blocks in the same file assert the one-row world and are false after the split, so they change with the code rather than being left behind: the file header (`coherence.go:1-5`, "the fresh-start invariants Preflight enforces"); `coherence.go:38-40`, which argues that "check 4 is only ever reached while Preflight's own gate holds, and that gate is only satisfied by the very first producer in loom's list — so a coherent seed's `current_producer` must always name it"; and `coherence.go:84-89`, whose "a `Stuck` outcome at row 1 (`Preflight` itself) leaves one `Preflight` entry behind" now has to cover row 2's own entry too.
+- `internal/loomengine/report.go` — three separate edits: the file header comment (`report.go:1-7`) describes the deleted `Preflight` and "the four preconditions", and is rewritten for `CheckSeed`; the five tier-1/2 const aliases (`report.go:28-43`) are deleted per `tier12-checkid-aliases-are-deleted`; `CheckSeedUnreadable`'s doc (`report.go:51-55`) is narrowed, and `CheckSeedMissing`'s (`report.go:48-50`) gains the unreachable-through-Shed note per `checkseedmissing-stays-but-is-unreachable-through-shed`.
 - `internal/loomengine/export_test.go` — deleted.
 - `internal/preflightshed/` — new package: `doc.go`, the producer, and its two-argument `entryErr(ctx, name)` / `cancelErr(ctx, name)` helpers copied from `internal/loomshed/ctx.go` rather than `internal/shedadapters/ctx.go:14-30`'s three-argument form — see the `preflightshed-ctx-helper-shape` decision.
 - `internal/loomshed/loomshed.go` — `NameLoomPreflight` constant; row 2 inserted after row 1 in `New`'s `producers` slice; the doc comments at lines 1, 15, 82, 85-96 updated for 13 rows and the new row's backing and `OnStuck`.
 - `internal/loomshed/preflight.go` → `loompreflight.go` — row 2's producer, mapping `CheckSeed`'s `Report` onto `Done`/`Stuck`/error exactly as the existing wrapper maps `Preflight`'s (`preflight.go:44-65`).
 - `internal/loomshed/stub.go:2,12` — row-count wording.
-- `internal/loomcli/wiring.go:96-99` — `Preflight:` now takes `preflightshed.NewPreflight(cwd)`; the comment explaining why the adapter and not the bare function is used needs rewording, since the bare function is gone.
+- `internal/loomcli/wiring.go:96-99` — `Preflight:` now takes `preflightshed.NewPreflight(loomshed.NamePreflight, cwd)`; the comment explaining why the adapter and not the bare function is used needs rewording, since the bare function is gone.
 
 **Tests that change.**
 
@@ -281,8 +295,9 @@ Both facts are load-bearing: the first dictates the new coherence rules, the sec
 - `CONSTRAINTS.md:64` — tier-3 bullet, per the decision above.
 - `contracts/specs/loom-status-spec.md:31,77,82` — the check-4 section: line 77's "`shed.current_producer` must equal `"Preflight"` — the only way check 4 is ever reached" becomes the row-2 name, and line 82's fresh-start rule gains the second tolerated name.
   Line 33's *seed* shape is unchanged — a fresh seed still carries `current_producer: "Preflight"`.
-- `internal/fabricengine/doc.go:484`, `internal/fabricengine/warpclean.go:2`, `internal/fabricengine/warpclean.go:17` — three production comments naming `loomengine.Preflight` as the caller they exist for.
-  Each is repointed at whichever half now does that job: `doc.go:484`'s "a caller like `loomengine.Preflight` switches on `HealthReason.Cause`" and `warpclean.go`'s two "used by `loomengine.Preflight`" notes all describe tier-2 work, so all three become `preflight.CheckResolved`.
+- `internal/fabricengine/doc.go:484`, `internal/fabricengine/drift.go:17`, `internal/fabricengine/warpclean.go:2`, `internal/fabricengine/warpclean.go:17` — four production comments naming `loomengine.Preflight` as the caller they exist for.
+  This enumeration is **closed, not sampled**: it is the full result of a repo-wide grep for the symbol `loomengine.Preflight` across non-test `.go` files, so a planner adding a fifth site should first re-run that grep rather than assume the list drifted.
+  Each is repointed at whichever half now does that job: `doc.go:484`'s "a caller like `loomengine.Preflight` switches on `HealthReason.Cause`", `drift.go:17`'s "letting a caller like `loomengine.Preflight` classify the failure without parsing a display string", and `warpclean.go`'s two "used by `loomengine.Preflight`" notes all describe tier-2 work, so all four become `preflight.CheckResolved`.
   Same class as the `stale-row-count-references` decision — a comment naming a deleted symbol is a doc defect, and the Documentation Lifecycle puts it in this commit.
 - `manifest/roadmap.md:66-71` — the Planned item moves to Done; its "13 rows to 14" wording is superseded by this discussion's reconciliation and should not be copied forward.
 
@@ -333,8 +348,13 @@ Without a smoke-tag compile step the stated verify command would report green ov
    Row 2 present at index 1 with `OnStuck: ""`; the full 13-row order; a clean run reaching `Publish` and blocking there.
 4. `internal/preflightshed` producer tests.
    Tier 1 for the contract shape — a fake is not possible here since the producer calls `preflight.Check` directly, so the outcome-mapping coverage is Tier 2 against a `hubforge` hub, inherited from the two existing tests in `internal/loomshed/preflight_integration_test.go`: all preconditions pass → `Done`; an untracked file in the warp worktree → `Stuck`.
-   Add the context-cancellation cases the `shedadapters` adapters each carry: cancelled at entry → error without starting; cancelled during → error on the non-success path.
-   These inherit the coverage of the `{NamePreflight, NewPreflightProducer(...)}` entry leaving `internal/loomshed/resume_test.go:318-328`, so the assertion shape there (a cancelled `Call` returns a non-nil error and neither `Done` nor `Stuck`) is the shape to carry over.
+   Add the two context-cancellation cases the `shedadapters` adapters each carry, at **different tiers**:
+   - *cancelled at entry* → error without starting anything.
+     **Tier 1** — `entryErr` returns before `preflight.Check` is ever called, so nothing spawns.
+     This is the case `internal/loomshed/resume_test.go:318-328` covers today, and the assertion shape carries over verbatim: a cancelled `Call` returns a non-nil error and an outcome that is neither `Done` nor `Stuck`.
+   - *cancelled during* → error on the non-success path.
+     **Tier 2**, alongside the outcome-mapping tests — reaching `cancelErr` requires `preflight.Check` to have run to completion with a non-OK report, which spawns git and needs a `hubforge` hub.
+     There is no Tier-1 route to it, because the producer holds no injectable seam between entry and the `preflight.Check` call.
 5. `internal/loomshed` row-2 producer test (Tier 1, new).
    Outcome mapping only, over a `t.TempDir` status file: coherent seed → `Done`; incoherent seed → `Stuck`; unreadable-for-infra-reasons → error.
    Deliberately **not** a re-test of the check set — that is `loomengine`'s job, and duplicating it would couple this package's tests to another package's checks, the same reasoning `internal/loomshed/preflight_integration_test.go:10-12` already records.
@@ -346,9 +366,14 @@ Without a smoke-tag compile step the stated verify command would report green ov
 - A broken fabric blocks at row 1 and never reaches row 2, so no phantom seed verdict is ever reported (this is what replaces `check3BlocksSeed`).
 - `internal/loomcli`'s bootstrap smoke path still seeds, spawns, and reaches a blocked state — `smoke_test.go`'s `TestSmokeBootstrap_CleanlinessOrderingAfterSeedCommit` is the specific regression home for loom's own seed dirtying the weft and failing loom's own first precondition row, and inserting a row changes which row that is.
 
-**Known risk the planner must confirm before writing batches:** whether `internal/loomshed`'s Tier-1 fixtures (`testDeps`, `buildSequenceFixture`) currently write a status file coherent enough for a *real* row 2 to pass.
-Today row 2 does not exist and row 1 is a fake in those fixtures, so the seed may be minimal.
-If it is, every Tier-1 `loomshed` test that runs the list needs `loomshed.Seed` against its temp dir.
+**Fixture-seed status — checked, and mostly fine.**
+This was carried as an open risk and has since been verified, so the planner does not need to re-derive it.
+`buildSequenceFixture` already calls `loomshed.Seed(statusPath, statusLockPath, "fixture-slug", "fixture-parent")` (`internal/loomshed/fixture_test.go:106`), which writes a genuinely coherent fresh seed — `current_producer: "Preflight"`, `state: running`, empty history, `start_sha` null (`seed.go:52-57`).
+Every Tier-1 test that actually runs the list (`sequence_test.go`, `resume_test.go`) builds from that fixture, so a real row 2 passes against it unchanged.
+
+The one gap: `testDeps` (`loomshed_test.go:42-47`) writes **no** status file at all — it only names paths under a `t.TempDir`.
+That is harmless today because no test using `testDeps` calls `Run`; they all stop at `New`.
+The planner must keep it that way, or seed it: the moment a `testDeps`-based test runs the list, it fails at `shedengine`'s step-1 read gate (`run.go:81-83`) before reaching any producer — which would look like a row-2 failure and is not one.
 
 ## Q&A log
 
