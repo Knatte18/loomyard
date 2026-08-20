@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-fields-and-validation
+phase: approved-run-routing-and-budget
 slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r4  '2026-08-20T09:51:32Z'
 planned  '2026-08-20T09:51:42Z'
 implementing  '2026-08-20T09:52:16Z'
 approved-engine-fields-and-validation  '2026-08-20T09:56:20Z'
+approved-run-routing-and-budget  '2026-08-20T10:06:49Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ batches:
     commit_sha: e271dd7c8274b314ca856c351e029b76c9347e46
     verify_baseline_failures: []
   - name: run-routing-and-budget
-    state: running
+    state: approved
     implementer_session: 086a8a90-f86b-410b-9c52-879e09834bbc
     start_sha: 0c07028a736b53719ef48e22092bf24e01d4a644
+    commit_sha: 3bd6133401aeb4287281d351dd80042c8f572277
     verify_baseline_failures: []
   - name: loomshed-migration
     state: pending
