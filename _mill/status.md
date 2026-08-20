@@ -55,7 +55,9 @@ batches:
     commit_sha: f634e64d344bad45a260ee2adf4088775e3b003f
     verify_baseline_failures: []
   - name: judge-replay-coverage
-    state: pending
+    state: running
+    implementer_session: f66f6c9e-12a8-4033-a6c1-bb34ff9a51ca
+    start_sha: a90ad1134eea63f92a37f87d72670637acd75d57
     verify_baseline_failures: []
   - name: manifest-docs
     state: pending
