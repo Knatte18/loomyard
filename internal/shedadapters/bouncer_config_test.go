@@ -10,10 +10,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
+// bouncerFixtureStampHash is the fake but well-formed 64-lowercase-hex sha256 newBouncerStencilsFixture
+// stamps every fixture file with, via stencilstore.ApplyStamp -- realistic in shape, never checked
+// for correctness by anything this fixture feeds.
+const bouncerFixtureStampHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 // newBouncerStencilsFixture builds a stencils fixture directory under t.TempDir(), writing each
 // named stencil at <dir>/bouncer/<name>.md, matching stencilstore.RelPath's family-from-first-token
 // derivation, and giving each file a realistic leading <!-- lyx-stencil: sha256=... --> stamp
-// banner. Batches 3 and 4's later test files reuse this helper.
+// banner via stencilstore.ApplyStamp -- which merges into an existing leading comment rather than
+// nesting a second one, so a body already carrying its own leading comment (as the shipped bouncer
+// templates do) still ends up with exactly one banner for stencil.Fill's leading-comment strip to
+// remove. Batches 3 and 4's later test files reuse this helper.
 func newBouncerStencilsFixture(t *testing.T, stencils map[string]string) string {
 	t.Helper()
 
@@ -24,8 +32,8 @@ func newBouncerStencilsFixture(t *testing.T, stencils map[string]string) string 
 		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(absPath), err)
 		}
-		content := "<!-- lyx-stencil: sha256=0000000000000000000000000000000000000000000000000000000000000000 -->\n" + body
-		if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+		content := stencilstore.ApplyStamp([]byte(body), bouncerFixtureStampHash)
+		if err := os.WriteFile(absPath, content, 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", absPath, err)
 		}
 	}
