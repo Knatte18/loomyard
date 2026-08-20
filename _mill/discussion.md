@@ -30,7 +30,7 @@ Landing this while the task already touches `ProducerDef`/`validate()` is cheape
 - `internal/shedengine/run.go` — `Done` routes via `OnDone` only; `indexAfter` and the physically-last check deleted; the run-wide `bouncesRemaining` counter replaced by a per-producer count derived from `Status.History`.
 - `internal/shedengine/validate.go` — three new rules (`OnDone` must exist, `OnDone` must not self-reference, `OnStuck` must share `Segment`) plus a negative per-producer `MaxBounces` rule.
 - `internal/shedengine/shed.go` — `Shed.MaxBounces`'s doc comment: it becomes the inherited default for `ProducerDef.MaxBounces: 0`, not a run-wide total.
-- `internal/loomshed/loomshed.go` — an explicit `OnDone` on all 12 rows preserving today's linear behavior; `New`'s doc comment updated.
+- `internal/loomshed/loomshed.go` — an explicit `OnDone` on all 12 rows preserving today's linear behavior; `New`'s doc comment and `Deps.MaxBounces`'s field doc updated.
 - Tests, new or substantially rewritten: `internal/shedengine/run_routing_test.go`, `internal/shedengine/validate_test.go`, `internal/loomshed/resume_test.go`, `internal/loomshed/loomshed_test.go`.
 - Tests, mechanical re-wiring only (every scenario that relies on sequential `Done` advance needs an explicit `OnDone` chain, but no scenario changes meaning): `internal/shedengine/run_pause_test.go`, `internal/shedengine/run_persist_test.go`, `internal/shedengine/testsupport_test.go` (a linear-chain builder helper), `internal/loomshed/fixture_test.go`, `internal/loomshed/sequence_test.go`.
   Any other package whose tests drive a `Shed` to completion is in scope for the same mechanical re-wiring — `go test ./...` is the authority, not this list.
@@ -135,7 +135,7 @@ Landing this while the task already touches `ProducerDef`/`validate()` is cheape
 ### `Shed.MaxBounces` keeps its name
 
 - Decision: `Shed.MaxBounces` stays named as-is and becomes "the default a `ProducerDef.MaxBounces` of `0` inherits", with its doc comment rewritten.
-  `loomshed.Deps.MaxBounces` and `internal/loomcli/wiring.go` are untouched.
+  No identifier is renamed, so `loomshed.Deps.MaxBounces` and `internal/loomcli/wiring.go` keep their names and call shapes — but their *doc comments* are in scope, since both describe the old run-wide semantics.
 - Rationale: the roadmap item pins this convention ("0 = inherit `Shed`'s own default, same convention `Shed.MaxBounces` already uses"), and the rename would ripple through `Deps`, `wiring.go`, and three test files for a doc-comment-sized gain.
 - Rejected: renaming to `DefaultMaxBounces` — defensible, since the semantics genuinely changed from total to per-producer default, but out of proportion to the benefit.
 
@@ -165,6 +165,7 @@ Nothing in this task needs a new import.
 
 - `internal/shedengine/producer.go` (44 lines) — `ProducerDef` is the last declaration; today `Name`, `Producer`, `OnStuck`.
   Each field carries a doc comment explaining what it is for, not merely what it is; the three new fields follow that.
+  The struct-level comment at `:34` ("the seam plus the two things the list needs around it") is rewritten in the same edit — see the doc-falsification inventory below.
 - `internal/shedengine/run.go` (320 lines) — `Run`'s six-step loop.
   The bounce counter is initialised at the top (`bouncesRemaining := s.MaxBounces`, with the `0 → defaultMaxBounces` fallback) and lives across loop iterations.
   The `switch` after the producer call has five arms: `callErr != nil && ctx.Err() != nil`, `callErr != nil`, `outcome == Stuck`, `outcome == Done`, `default`.
@@ -199,12 +200,21 @@ Do not redeclare these.
 - `internal/loomshed/loomshed_test.go:99` and `internal/loomshed/fixture_test.go:118` set/assert `MaxBounces`; `loomshed_test.go` also asserts the assembled row shape, which now includes `OnDone`.
 - `internal/loomcli/wiring.go:91` leaves `MaxBounces` zero with a comment about the internal default — still accurate, worth re-reading.
 
-**Docs carrying statements this task falsifies:**
+**Docs carrying statements this task falsifies.**
+The list below is a starting inventory, not a closed set — it was enumerated by hand and a hand-enumerated list is exactly what goes stale.
+The plan must run a **grep sweep** over `internal/**/*.go` doc comments, `manifest/designs/*.md`, and `contracts/specs/*.md` for at least: `in what order`, `next entry`, `next, separate producer`, `next producer in the list`, `bounce budget`, `MaxBounces`, `last entry`, `bounces back` — and commit a disposition (rewrite, or "still accurate because …") for **every** hit, rather than working from the enumeration alone.
 
-- `manifest/designs/shed.md` — `### The Shed loop — exact mechanics` (step 6's `Done` bullet: "advance `current_producer` to the next entry… Past the last entry"), the whole **Bounce-budget: a single total cap across the whole run, not per-producer** paragraph (which argues *against* a per-producer budget on the grounds that an A↔B cycle would run `2×budget` — that argument is now overridden and the doc must say so, not silently drop it), the `ProducerDef`/`Shed` code block, the `MaxBounces` prose under it, and the validation bullet list under "What `Run` does before step 1".
-- `manifest/designs/loom.md:45` — "On `stuck`, `Shed` bounces back to an earlier producer in the list" plus its surrounding sequential framing.
-- `internal/shedengine/doc.go` and `internal/loomshed/loomshed.go`'s `New` doc comment, per above.
+Known hits:
+
+- `manifest/designs/shed.md` — `### The Shed loop — exact mechanics` (step 6's `Done` bullet at `:85`: "advance `current_producer` to the next entry… Past the last entry"), the whole **Bounce-budget: a single total cap across the whole run, not per-producer** paragraph (which argues *against* a per-producer budget on the grounds that an A↔B cycle would run `2×budget` — that argument is now overridden and the doc must say so, not silently drop it), the `ProducerDef`/`Shed` code block, the `MaxBounces` prose under it, the validation bullet list under "What `Run` does before step 1", `:11` ("purely which producers are in the list, in what order"), and `:43` ("Review… is always the next, separate producer in the list").
+- `manifest/designs/loom.md` — `:45` ("On `stuck`, `Shed` bounces back to an earlier producer in the list") plus its surrounding sequential framing, `:22` (same "in what order" phrasing as `shed.md:11`), and `:55` (same "next, separate producer in the list" phrasing as `shed.md:43`).
+- `internal/shedengine/doc.go` — `:5` ("in its list and in what order") specifically, not merely "check the file": the sentence is falsified by this task's own "the producer list becomes pure storage… with zero routing meaning", and the whole file is re-read for the sequential-routing and run-wide-budget framing.
+- `internal/shedengine/producer.go:34` — `ProducerDef`'s **struct-level** doc comment, "the seam plus the two things the list needs around it", which is arithmetically false at five fields. In scope alongside the three new per-field comments.
+- `internal/loomshed/loomshed.go` — both `New`'s doc comment (the row enumeration) and `Deps.MaxBounces`'s own field doc at `:50-52` ("MaxBounces is Shed's own told bounce budget"), which goes stale exactly as `Shed.MaxBounces`'s does: it is now an inherited per-producer default, not a run-wide budget.
+- `internal/loomcli/wiring.go:91` — re-read; the "left zero so shedengine.Shed's own default applies" comment is probably still accurate, but "default" now means something different.
 - `manifest/roadmap.md` moves only on completing a planned item — this task completes Planned item 1, so it moves to Shipped per that file's own Maintenance section.
+
+The "in what order" family deserves its own note: those sentences are about what distinguishes `loom` from `Hardener` (which producers, in which sequence), not about routing mechanics, so several of them may survive with a small qualification rather than a rewrite — but each needs the qualification decided, not assumed.
 
 ## Constraints
 
