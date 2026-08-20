@@ -116,6 +116,12 @@ Verdict: KEEP, unchanged. (a) The refused shape — operator lands extra commits
 - **Four stuck `MergeContinue` states** (first instalment r2 rows 27/28/30/31): F2's fix touches `MergeContinue`'s locking, so the adoption-adjacent integration tests (`TestMergeContinue_InvisibleLandedConclude*`, `*_UnrelatedCommit*`, `*_SquashConclude*`) will be re-run and must stay green post-fix; no behavioral change to those states intended.
 - **45-row post-record error-return table**: not re-walked (not required; not touched).
 
+## Cross-check against prior-round material (read only after the findings list above was complete and committed)
+
+- r4's seven findings (R4-F1..F7): none regressed — the full hermetic + integration gates pass, S1/S3/S4 sabotage checks prove the r4-era mechanisms still detect, and the adoption arm's three directions were re-driven (legitimate adoption live on hub2; adversarial one-parent and squash shapes by the existing tests; the two NEW parentage directions by F7's tests).
+- One r4 fixer-report inaccuracy found: R4-F4's row claims its fix landed in "godoc + doc.go", but commit `bc4d1cdd` touched only mergestage.go/merge.go/mergeguards.go — doc.go was never updated. F3 closes the actual gap.
+- Neither F2 nor F5 was adjudicated by any prior round (checked both instalments' reports for the shapes).
+
 ## Scope verdict
 
 The as-built surface delivers the SPEC: two verbs, recorded merge, lifecycle quartet, unified side-free conflict reporting, SHA-labelled markers, aggregated guards, sibling refusals, gated two-sided resets, correspondence recording, CLI mirror with envelope/exit parity. `MergeStageResolved` is a post-SPEC addition serving `mergeresolve`, deliberately narrow. No silently-dropped SPEC requirement found. Over-reach: none found.
