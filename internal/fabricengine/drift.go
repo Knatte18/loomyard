@@ -14,7 +14,7 @@ import (
 )
 
 // HealthCause names the specific condition a failed Healthy check found, letting a caller like
-// loomengine.Preflight classify the failure without parsing a display string.
+// preflight.CheckResolved classify the failure without parsing a display string.
 type HealthCause string
 
 // The closed set of causes Healthy can report, one per drift shape drift.go detects.

@@ -481,8 +481,8 @@
 // ever holding the weft path or the command-spelling pattern itself — fabric owns every word in the
 // answer.
 // `Healthy(l)` returns a typed `HealthReason` (drift.go) rather than a string a caller would have to
-// substring-match, so a caller like `loomengine.Preflight` switches on `HealthReason.Cause` instead
-// of parsing prose.
+// substring-match, so a caller like `preflight.CheckResolved` switches on `HealthReason.Cause`
+// instead of parsing prose.
 //
 // # The mutation record
 //
