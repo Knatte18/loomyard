@@ -64,15 +64,6 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 	}
 	defer runLock.Release()
 
-	// The bounce counter is per-Run-call and in-memory by design -- deliberately unpersisted, so a
-	// crash-restart or a human-resumed blocked run starts again with the full budget, because
-	// every event that resets it is a new human-initiated invocation, which is exactly the outcome
-	// the budget exists to force.
-	bouncesRemaining := s.MaxBounces
-	if bouncesRemaining == 0 {
-		bouncesRemaining = defaultMaxBounces
-	}
-
 	for {
 		// Step 1, the read gate. A found of false is a hard error: Shed never seeds a status
 		// file.
@@ -200,10 +191,12 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 					Reason:         reason,
 					History:        nextHistory,
 				}, nil
-			case bouncesRemaining <= 0:
-				// The boundary is pinned exactly: MaxBounces bounces are permitted, and the
-				// next Stuck that would otherwise route is the one refused, so a budget of
-				// three performs three bounce-backs and blocks on the fourth Stuck.
+			// The count argument is st.History, the slice read at step 1, and never
+			// nextHistory: a post-append read shifts the boundary by one and would look
+			// like an off-by-one bug rather than the semantic change it would actually be.
+			case episodeStuckCount(st.History, def.Name) >= effectiveMaxBounces(def, s.MaxBounces):
+				// The boundary is pinned exactly, restated per-producer: a budget of three
+				// performs three bounce-backs and blocks on the fourth Stuck.
 				reason := "bounce budget exhausted"
 				if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false); err != nil {
 					return Result{}, err
@@ -215,7 +208,6 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 					History:        nextHistory,
 				}, nil
 			default:
-				bouncesRemaining--
 				if err := s.persist(def.OnStuck, StateRunning, "", nextHistory, false); err != nil {
 					return Result{}, err
 				}
@@ -269,6 +261,45 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 // the struct shape the design pins, for a value tests assert structurally instead of by literal.
 func nowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// episodeStuckCount walks history backward from the end and counts the Stuck entries authored by
+// name within its current episode: the run of entries since name's own most recent Done. It
+// returns immediately at the first entry whose Producer equals name and whose Outcome is Done, and
+// otherwise counts the entries whose Producer equals name and whose Outcome is Stuck; entries
+// authored by other producers are skipped and never terminate the scan, so a Done by some other
+// producer does not end this producer's episode.
+// A done entry written by the hard-failure arm also terminates the scan, and that is accepted
+// rather than special-cased: the engine records the verdict a producer actually returned, and
+// state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
+func episodeStuckCount(history []HistoryEntry, name string) int {
+	count := 0
+	for i := len(history) - 1; i >= 0; i-- {
+		entry := history[i]
+		if entry.Producer != name {
+			continue
+		}
+		if entry.Outcome == Done {
+			return count
+		}
+		if entry.Outcome == Stuck {
+			count++
+		}
+	}
+	return count
+}
+
+// effectiveMaxBounces resolves def's own bounce budget, inheriting at two levels: def.MaxBounces
+// when it is greater than zero, else shedMax when that is greater than zero, else
+// defaultMaxBounces. A zero value never means "no bounces allowed" at either level.
+func effectiveMaxBounces(def ProducerDef, shedMax int) int {
+	if def.MaxBounces > 0 {
+		return def.MaxBounces
+	}
+	if shedMax > 0 {
+		return shedMax
+	}
+	return defaultMaxBounces
 }
 
 // persist is the single write path for the whole loop: one state.UpdateJSON call whose mutate
