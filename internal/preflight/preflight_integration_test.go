@@ -257,13 +257,13 @@ func TestCheckResolved_BranchMismatch(t *testing.T) {
 	assertCheckSet(t, report, preflight.CheckFabricSync)
 }
 
-// TestPreflight_JunctionBroken asserts that all three of Healthy's junction-drift shapes — missing,
-// not-a-link, and points-elsewhere — classify as junction, via Healthy's typed Cause rather than a
-// substring match.
+// TestCheckResolved_BrokenJunction asserts that all three of Healthy's junction-drift shapes —
+// missing, not-a-link, and points-elsewhere — classify as junction, via Healthy's typed Cause
+// rather than a substring match.
 // Each drift shape is exercised against BOTH junctions (_lyx and a second, non-_lyx junction) so the
 // classification is proven to hold for the second, non-_lyx junction too — not just the one Healthy's
 // underlying loop was originally written and tested against.
-func TestPreflight_JunctionBroken(t *testing.T) {
+func TestCheckResolved_BrokenJunction(t *testing.T) {
 	t.Parallel()
 
 	shapes := []struct {
@@ -344,7 +344,7 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 // TestCheckResolved_ConfigLoadFailed asserts the CauseConfigLoadFailed/CheckJunction equivalence
 // pinned by healthy-typed-reason: a repo-wide fabric.yaml that fails to load classifies as
 // CheckJunction (not a distinct CheckID of its own), same as the three junction-drift shapes
-// TestPreflight_JunctionBroken covers.
+// TestCheckResolved_BrokenJunction covers.
 func TestCheckResolved_ConfigLoadFailed(t *testing.T) {
 	t.Parallel()
 
