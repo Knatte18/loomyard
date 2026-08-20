@@ -24,7 +24,7 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 **In:**
 
 - A new `Bouncer` producer at `internal/shedadapters/bouncer.go`, satisfying `shedengine.ShedProducer`, with one exported constructor.
-- Its two-mode `Call`: the **seed call** (report artifact for the current round absent) and the **judge call** (report artifact present), told apart by file existence alone.
+- Its three-mode `Call`: the **seed call** (no report exists), the **judge call** (the highest contiguous round's report exists and has no verdict yet), and the **re-bounce** (that round's verdict already exists) — told apart by file existence alone.
 - Fail-loud parsers, in-package, for the three file contracts this producer owns: the bouncer verdict, the finding-identity ledger, and the structured next-round focus file.
 - A writer for the structured focus file, used both by the seed call's mechanical fallback and by any path that must synthesise an empty-exclusions focus file.
 - Two new generic stencil templates, `contracts/stencils/bouncer/bouncer-template-seed.md` and `contracts/stencils/bouncer/bouncer-template-judge.md`, registered in `contracts/stencils/stencils.go`.
@@ -113,16 +113,26 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
   Numbering the focus file by the round it *targets* (rather than the round that wrote it) means the round producer reads `round-<its own N>-focus.md` with no off-by-one reasoning.
 - Rejected: a `bouncer/` subdirectory under the run dir — an extra directory level for three files, and it splits one segment's artifacts across two places for a human reading them.
 
-### Two modes, told apart by file existence only
+### Three modes, told apart by file existence only
 
-- Decision: `Call` branches on whether the round producer's report artifact for the current round exists.
-  Absent → seed call: write `round-1-focus.md`, return `Stuck` unconditionally, with an empty verdict.
-  Present → judge call: read the report plus the previous round's ledger (when one exists), spawn the judge, parse its verdict, and return `Done` on `APPROVED` or `Stuck` on `BLOCKING`.
-  No state is threaded through `Call(ctx)` to distinguish the modes.
+- Decision: `Call` resolves its mode from two file-existence questions and nothing else — no state is threaded through `Call(ctx)`.
+  Let `N = ResolveRound(RunDir, ReportName)` (see "An exported round-resolution helper" below).
+  - `N == 0` (no report exists at all) → **seed call**: write `round-1-focus.md`, return `Stuck` unconditionally with an empty pointer and no verdict.
+  - `N >= 1` and `round-<N>-bouncer-verdict.md` is **absent** → **judge call**: read the report plus the previous round's ledger (when one exists), spawn the judge, parse its verdict, and return `Done` on `APPROVED` or `Stuck` on `BLOCKING`.
+  - `N >= 1` and `round-<N>-bouncer-verdict.md` is **present** → **re-bounce**: round `N` has already been judged, so the round producer handed control back without producing a new report.
+    Spawn nothing, log a `logger.Warn` naming the producer and round `N`, and return `Stuck` with `round-<N>-bouncer-ledger.md` as the pointer.
 - Rationale: `ShedProducer.Call(ctx)` has no parameter to carry mode in, by design — the seam is deliberately minimal.
   File existence is the same discriminator already needed to fix the `Discussion-Validate`/`Plan-Validate` findings-discarded-on-`Stuck` gap, so this is an established pattern rather than a new one.
   It also survives a crash-restart for free: the disk state *is* the mode.
-- Rejected: a mode field on the producer struct mutated across calls — an in-memory flag that a process restart silently resets, which is the exact failure the persisted-bounce-budget decision in `shedengine` overturned.
+
+  The third mode is not hypothetical, and consulting the report file alone would be a live bug.
+  The roadmap pins the round producer to return `Stuck` with `OnStuck` at the Bouncer *unconditionally* — it "always returns `Stuck` ..., never `Done`", including on its own degraded paths.
+  So a round producer that bounces back without writing a report leaves the highest report at `N`, whose verdict already exists;
+  a report-file-only discriminator would then re-spawn a full judge call on an already-judged round, archive the prior verdict and ledger, pay for the session a second time, and repeat until the bounce budget is exhausted — burning the whole budget on LLM calls that re-decide a settled round.
+  Consulting verdict presence turns that into a cheap, logged, zero-cost bounce that still ticks the budget, so the segment terminates on the same boundary it always would have, just without paying for it.
+- Rejected: (a) a mode field on the producer struct mutated across calls — an in-memory flag that a process restart silently resets, which is the exact failure the persisted-bounce-budget decision in `shedengine` overturned.
+  (b) Discriminating on report *mtime* versus verdict mtime — works, but makes correctness depend on filesystem timestamp granularity and on nothing ever rewriting a file in place, where plain existence needs neither.
+  (c) Treating a re-bounce as a hard error — an infrastructure hiccup in the round producer would kill an unattended run, and `Stuck` already routes it back to the producer that can retry.
 
 ### The Bouncer is the segment's entry point, and never falls through
 
@@ -164,6 +174,15 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
   Re-implementing a ladder inside the Bouncer would restore the nested loop the flattening exists to delete, and would leave two independent termination authorities disagreeing about when a segment is done.
 - Rejected: porting treadle's `round_caps` ladder — re-imports the complexity this initiative is removing.
 
+**Budget semantics, and the seed call's off-by-one.**
+`shedengine.episodeStuckCount` (`run.go:275`) counts every `Stuck` a producer authored since that producer's own most recent `Done`, walking the persisted history backward and skipping entries authored by other producers.
+The Bouncer returns `Done` only on approval, and approval exits the segment — so within one segment episode the Bouncer never authors a `Done`, and its episode never resets.
+The seed call's unconditional `Stuck` therefore permanently consumes one unit of the budget: **a Bouncer configured with `MaxBounces: N` performs `N-1` judged rounds, not `N`.**
+The boundary itself is pinned in `shedengine` and restated per-producer — a budget of three performs three bounce-backs and blocks on the fourth `Stuck` (`run.go:198-199`).
+This is stated here rather than compensated for in code, deliberately: silently adding one inside the Bouncer would make `MaxBounces` mean something different for this producer than for every other one in the list, which is worse than an off-by-one an operator can read.
+The three `loom` wiring tasks size `MaxBounces` against this rule, and the constructor's doc comment must state it so the next reader does not have to re-derive it.
+Note also that a re-bounce (the third mode above) consumes budget on the same terms, which is exactly what makes it safely terminating.
+
 ### Stale outputs — archive, using the existing shared helper
 
 - Decision: before each spawn, `Call` archives any already-existing files among the spawn's `OutputFiles`, via this package's existing `archiveStaleOutputs` helper and the same injected clock convention `SingleLLMProducer` uses (a nil `now` defaults to `time.Now`; the clock resolves only the archive filename's same-second collision suffix).
@@ -176,10 +195,14 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
 
 - Decision: `Call` checks `entryErr(ctx, ...)` at entry and returns immediately without starting anything.
   On exit, `cancelErr` replaces every result *except* a genuinely parsed verdict, which is returned as its mapped `Done`/`Stuck` with its pointer regardless of cancellation.
-  The `OutputPointer.Path` is the bouncer ledger path on both `Done` and `Stuck` from a judge call, and empty from a seed call.
+  The `OutputPointer.Path` is the bouncer ledger path **only when a ledger was actually written and parsed** — that is, on `Done`, and on the `BLOCKING` `Stuck` of a completed judge call.
+  Every other path reports an empty pointer: the seed call, every degraded judge path (which returns `Stuck` without a ledger having been written), and the re-bounce mode's pointer to a prior round's ledger is the one exception — that ledger provably exists, since its round was judged, so the re-bounce reports it.
+  Stated as a rule: the pointer names a file the Bouncer has verified exists, or it is empty; it is never a path that merely *would* have been written.
   No mid-run cancellation bridge is installed.
 - Rationale: the entry/exit rule is the package's stated shared cancellation rule and the reasoning transfers directly — converting a finished verdict into the context error would make `Shed` record no history entry, so the next `Call` would archive a valid artifact and pay for the same LLM session twice.
-  The pointer choice deliberately *differs* from `PerchProducer`, which reports an empty pointer on the grounds that a gate producer's verdict is always re-derived rather than read back; the Bouncer's ledger is a real cross-round artifact a human reads, and hiding it on `Stuck` would hide it exactly when an operator most needs it.
+  The pointer choice deliberately *differs* from `PerchProducer`, which reports an empty pointer on the grounds that a gate producer's verdict is always re-derived rather than read back; the Bouncer's ledger is a real cross-round artifact a human reads, and hiding it on a `BLOCKING` `Stuck` would hide it exactly when an operator most needs it.
+  The exists-or-empty rule matters because `Shed` never stats a pointer — `OutputPointer`'s own doc is explicit that `Shed` "never introspects Path's contents, never validates it, and never stats it to make a control-flow decision".
+  So a pointer naming an unwritten file is not caught anywhere; it is simply persisted into `history[].output` and read later by an operator or a status renderer as though the artifact were there.
   This delta must be stated explicitly in the package doc so a later reader does not read it as drift.
   No mid-run bridge because `shuttleengine` exposes no such seam — the same limitation `SingleLLMProducer` and `WebsterProducer` already document.
 - Rejected: empty pointer on `Stuck`, ledger path on `Done` — matches `PerchProducer` cosmetically while losing the artifact in the case that matters.
@@ -195,12 +218,34 @@ It is also one of the two pieces the Someday `Tenter` review-loop is expected to
   Per the Producer Pointer-Rule Invariant, both templates *point at* the three file-format contracts rather than restating them, so editing the format in one place changes what the producer and its consumers both do.
 - Rejected: one template with a mode marker — saves a file, costs prompt clarity in the two places clarity matters most.
 
-### An exported round-resolution helper
+### An exported round-resolution helper — signature and semantics pinned here
 
-- Decision: the round-resolution scan is an exported function in `internal/shedadapters`, not an unexported method on the Bouncer.
+- Decision: the round-resolution scan is an exported function in `internal/shedadapters`, not an unexported method on the Bouncer, and its exact contract is pinned in this discussion rather than left to the plan or to either consumer:
+
+  ```go
+  // ResolveRound returns the highest round N for which reportName(N) names an existing file
+  // inside runDir, scanning upward from 1 and stopping at the first absent round.
+  // It returns 0 when reportName(1) does not exist. It returns an error only when runDir
+  // itself is unreadable -- never for an absent report, which is an ordinary answer.
+  func ResolveRound(runDir string, reportName func(round int) string) (int, error)
+  ```
+
+  Semantics, binding on both halves of a segment:
+  - **The scan is contiguous.** It stops at the first absent round and never looks past the gap.
+    With reports for rounds 1 and 3 present and round 2 absent, `ResolveRound` returns `1`, and round 3's report is treated as though it did not exist.
+  - **`0` means "no round has been run yet"** — the Bouncer's seed case. It is a legal, non-error answer.
+  - **The Bouncer's "round to judge" is the return value itself.**
+  - **The round producer's "round to write" is the return value plus one.**
+    The two consumers differ by exactly one on identical disk state, and that difference is expressed at the call sites rather than by two functions.
+  - **An unreadable `runDir` is an error**, not a silent `0` — a mistyped or not-yet-created run dir must never look like a fresh segment about to be seeded.
 - Rationale: the Burler-round producer must resolve *the same* round number from *the same* on-disk convention, or the two halves of a segment disagree about which round they are in — a bug that would surface as a silently skipped or double-judged round.
   Exporting it now, in the task that defines the convention, is what prevents the later task from duplicating and drifting.
-- Rejected: keeping it unexported and letting the Burler item write its own — guarantees drift between two functions that must agree exactly.
+  Pinning the return *shape* matters as much as exporting the function: "round to judge" and "round to write" are both plausible readings of a bare `ResolveRound`, and two consumers that each pick a different one would drift while sharing the same code.
+  Contiguity is the right gap rule because contiguity is what the segment produces by construction — round `N+1`'s report is only ever written after round `N` was judged — so a gap means something wrote out of band, and the contiguous prefix is the only part of the sequence the segment itself authored.
+  Stopping at the gap also fails in the safe direction: the next judge call re-judges the highest *contiguous* round rather than skipping over an unjudged one.
+- Rejected: (a) keeping it unexported and letting the Burler item write its own — guarantees drift between two functions that must agree exactly.
+  (b) Returning the highest existing report regardless of gaps — silently skips judging every round inside the gap, which is the exact failure mode the helper exists to prevent.
+  (c) Returning `(round, isSeed bool)` — encodes one consumer's question into a signature both must share; `0` already carries it without privileging the Bouncer's reading.
 
 ## Technical context
 
@@ -228,7 +273,11 @@ The budget is per-producer and episode-scoped, counted from persisted `history[]
 Read `runJudgeCall` in particular — it is the reference for the whole sequence: `stencilstore.Read` for the template, `stencil.Fill` with a `map[string]string` of marker values, a `shuttleengine.Spec` carrying `Prompt`, `OutputFiles`, `Model`, `Effort`, `Role`, and `Round`, then `sh.Run`, then read and parse the output file, with every step degrading to a `Warn` plus a fallback.
 Note `previousHandoffMarker` there: `stencil.Fill` has no conditionals and requires every marker to resolve to *some* value, so a "none yet" case needs its own literal (`"(none)"`) rather than an empty string.
 The Bouncer's previous-ledger marker needs the same treatment.
-Declare a package-local `Shuttle` interface (`Run(shuttleengine.Spec) (shuttleengine.Result, error)`) with a `var _ Shuttle = (*shuttleengine.Runner)(nil)` compile-time proof, exactly as both `judge.go` and `singlellm.go` do.
+**Do not declare a `Shuttle` interface.**
+`internal/shedadapters/singlellm.go:22-27` already declares `type Shuttle interface { Run(shuttleengine.Spec) (shuttleengine.Result, error) }` and its `var _ Shuttle = (*shuttleengine.Runner)(nil)` compile-time proof **in this same package**, so a second declaration of either is a compile error.
+The Bouncer reuses both as they stand and adds neither.
+(`treadleengine/judge.go` declares its own only because it is a different package.)
+The Bouncer's own struct holds a `Shuttle` field exactly as `SingleLLMProducer` does, and the same package-level fake serves both adapters' tests.
 
 **Parser posture** is `internal/burlerengine/verdict.go` (`ParseReview`) and `internal/treadleengine/judgeverdict.go`/`handoff.go`.
 Both use the same `splitFrontmatter` shape: the file must open with a `---` line and have a closing `---` line, the header between them must be non-empty and valid YAML, and everything after is unconstrained prose.
@@ -285,7 +334,10 @@ From `CONSTRAINTS.md`:
   Noted so the plan does not mistakenly apply A-before-B round discipline to the Bouncer itself; the Bouncer is the judge, not a round.
 - **Config Strictness Invariant** — the three file contracts here are agent-written artifacts, not config files, so they follow the yaml-strictness-split's *lenient* side (no `KnownFields`), matching `reviewHeader` and `judgeHeader`.
   Do not apply strict decoding.
-- **Live-Substrate Spawn Observability** — the Bouncer starts OS processes indirectly via `shuttleengine`; check whether this invariant imposes logging obligations on the spawning call site and honor them if so.
+- **Live-Substrate Spawn Observability** — disposition, not a check to defer: the Bouncer starts no OS process itself.
+  The spawn and teardown `logger.Info` lines belong to `internal/shuttleengine/run.go`, which `CONSTRAINTS.md` already lists as an instrumented call site, so the Bouncer adds no spawn/teardown logging — the same disposition all three sibling adapters reached.
+  What *does* bind the Bouncer is the invariant's last bullet: a live-substrate module's operational messages all belong on `internal/logger`, never on stdlib `log`, because a retry, an unreadable probe, or a skipped cleanup is exactly what an operator goes looking for afterwards and `log.Printf` reaches neither the durable trace file nor a trace correlation id.
+  Every fail-safe degradation, the re-bounce, and the seed-call fallback therefore log via `logger.Warn` with the producer name, the round, and the cause — which is what this design already specifies throughout.
 - **Documentation Lifecycle** and the repo's `CLAUDE.md` task-completion rule — a task introducing cross-cutting infrastructure updates its docs in the same commit.
   → `internal/shedadapters/doc.go` and `manifest/designs/shed.md` land with the code.
   `manifest/roadmap.md` moves because this is a planned item completing.
@@ -316,9 +368,10 @@ TDD candidates — write these before the implementation, in this order:
 2. **The focus-file writer, round-tripped through the focus parser.**
    Property-shaped: what the writer emits, the parser accepts and yields back unchanged.
    Include the empty-exclusions seed shape explicitly, since that is the seed call's fallback output and the round producer's round-1 input.
-3. **The exported round-resolution helper.**
+3. **The exported `ResolveRound` helper.**
    Filesystem-only, no spawn.
-   Cover: empty run dir → round 1, seed mode; only round 1's report present → judge round 1; rounds 1–3 present → judge round 3; a gap in the sequence (1 and 3 present, 2 absent) → pin and assert the chosen behavior explicitly, since both halves of a segment depend on agreeing about it; a run dir that does not exist → an error, not a silent round 1.
+   Cover: empty run dir → `0`, nil error; only round 1's report present → `1`; rounds 1–3 present → `3`; a gap in the sequence (1 and 3 present, 2 absent) → `1`, asserting explicitly that round 3 is *not* returned, since the contiguity rule is what both halves of a segment depend on agreeing about; a run dir that does not exist → an error, not a silent `0`.
+   Also assert both derived readings against one disk state in the same test — "round to judge" is the return value and "round to write" is the return value plus one — so the two consumers' contract is exercised, not just the scan.
 4. **`Call`, against a fake `Shuttle`.**
    The fake records the `Spec` it received and returns a scripted `Result`, with a hook to write the output files the real agent would have written.
    Assert on the recorded `Spec` — that `OutputFiles` are absolute, that the filled prompt contains the rubric text, and that `Role`/`Round` are set — not only on the returned outcome.
@@ -332,6 +385,9 @@ Scenarios `Call` must cover:
 - **Judge call, every degradation path** — returns `Stuck`, nil error, a `Warn` logged.
   Enumerate them individually rather than as one case: stencil read failure, rubric stencil read failure, fill failure, `Run` error, each non-`done` shuttle outcome, unreadable verdict file, unparseable verdict file, unparseable ledger file.
   Assert explicitly in each that the outcome is not `Done` — this is the one property that must never regress.
+- **Re-bounce mode** — round `N`'s report *and* verdict both present: returns `Stuck` with `round-<N>-bouncer-ledger.md` as the pointer, nil error, and a `Warn` logged; assert the fake `Shuttle` was **never called**, since spending an LLM session here is the whole failure this mode exists to prevent.
+  Also assert the existing verdict and ledger files are left untouched — not archived, not rewritten.
+- **Pointer discipline** — one case per outcome asserting the exists-or-empty rule: `Done` and `BLOCKING`-`Stuck` name a ledger that exists on disk; the seed call and every degraded judge path report an empty pointer; the re-bounce names a ledger that exists.
 - **Previous ledger handling** — a valid prior ledger's path reaches the prompt; a *malformed* prior ledger degrades to the no-prior-ledger marker with a `Warn`, and the judge still runs; the no-prior-ledger case fills the "(none)" literal rather than an empty string.
 - **Stale outputs** — a pre-existing verdict/ledger/focus file at a target path is archived before the spawn, and the spawn then succeeds rather than tripping `Spec.validate`.
 - **Cancellation** — an already-cancelled context at entry returns an error with nothing started (assert the fake `Shuttle` was never called); a context cancelled during the run returns an error on every path *except* a genuinely parsed verdict, which returns its mapped outcome and pointer regardless.
@@ -360,3 +416,6 @@ The other three adapters have none, and adding one here would cross the Test Tie
 - **Q:** How is the per-instance rubric supplied? **A:** [auto-pick] as a stencil *name*, read via `stencilstore.Read` from the told `StencilsDir` at call time. **Why:** the Stencil Ownership Invariant forbids embedded bytes as a live read path; taking rubric bytes in the constructor would bypass hash stamping and edit detection.
 - **Q:** Is a real-spawn smoke test needed? **A:** [auto-pick] no — fake-`Shuttle` table tests only. **Why:** the other three adapters have none, and a real spawn adds no coverage the fake does not already give while crossing a test-tier boundary.
 - **Q:** Is the round-resolution scan exported? **A:** [auto-pick] yes, exported from `internal/shedadapters`. **Why:** the Burler-round producer must resolve the same round from the same convention or the two halves of a segment silently disagree; exporting it in the task that defines the convention is what prevents the later task from duplicating and drifting.
+- **Q:** [review r1] Does the seed call's unconditional `Stuck` consume a bounce, and if so, is that compensated for? **A:** [auto-pick] yes it consumes one, and it is documented rather than compensated: `MaxBounces: N` yields `N-1` judged rounds. **Why:** `episodeStuckCount` never resets within a segment episode because the Bouncer's only `Done` exits the segment; silently adding one inside the Bouncer would make `MaxBounces` mean something different for this producer than for every other one in the list, which is worse than a documented off-by-one.
+- **Q:** [review r1] What exactly does the exported round-resolution helper return, and what happens on a gap in the report sequence? **A:** [auto-pick] pinned in this discussion — `ResolveRound(runDir, reportName) (int, error)`, contiguous scan from round 1, `0` for "nothing run yet", error only on an unreadable run dir; a gap stops the scan, so reports 1 and 3 with 2 absent returns `1`. **Why:** "round to judge" and "round to write" are both plausible readings of a bare helper and differ by one on identical disk state, so leaving the return shape unpinned would let the two consumers drift while sharing the same code; contiguity is what the segment produces by construction, and stopping at the gap fails safe by re-judging rather than skipping.
+- **Q:** [review r1] What happens when the round producer bounces back without writing a new report, leaving the highest report already judged? **A:** [auto-pick] a third mode — re-bounce: spawn nothing, log a `Warn`, return `Stuck` with the existing ledger as pointer. **Why:** the roadmap pins the round producer to return `Stuck` unconditionally including on its own degraded paths, so this is reachable in normal operation; a report-file-only discriminator would re-judge a settled round, archive its verdict, and burn the entire bounce budget on paid LLM calls that decide nothing.
