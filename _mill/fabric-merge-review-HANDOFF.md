@@ -2,7 +2,7 @@
 
 Off-limits to round agents: this file matches the `fabric-merge-review-*` pattern the round prompt declares unreadable.
 
-**Last refreshed:** during round 2's Job 1, at commit `7e251055`. Written to disk, NOT committed — a round is live, so Hard Rule 3 keeps the orchestrator off `git add`/`git commit`. Commit this refresh once r2 finishes.
+**Last refreshed:** 2026-08-20, after round 3's verification, at commit `457ed179`. The campaign is stopped after r3 by the operator; this file is the closing record.
 
 ## What this campaign is
 
@@ -20,8 +20,8 @@ Up to four rounds in the first instalment, model + effort fixed in advance:
 |---:|---|---|---|---|
 | r1 | Opus | medium | `opus-medium-r1` | **done, verified** — 9 findings, 9 fixed; verification left 3 residuals |
 | r2 | Opus | medium | `opus-medium-r2` | **done, verified** — 2 BLOCKING + 1 LOW + 1 NIT, all fixed, residual 1 closed; verification left 3 new residuals |
-| r3 | Fable | medium | `fable-medium-r3` | **running** — residuals A–C |
-| r4 | Opus | high | `opus-high-r4` | not started |
+| r3 | Fable | medium | `fable-medium-r3` | **done, verified** — 2 MEDIUM + 1 LOW + 1 NIT, all closed; verification found the B1 fix regressed (V1, blocking) and left V2 |
+| r4 | Opus | high | `opus-high-r4` | **never spawned** — operator stopped the rotation after r3 |
 
 Hard Rule 2 (explicit effort pick required before every spawn) is satisfied for all four by that instruction.
 Do not deviate from this list without the operator saying so.
@@ -52,7 +52,7 @@ Green baseline is the starting condition, not evidence. The whole point of this 
 
 `_mill/fabric-merge-review-PRECOUNT.md`, written before round 1 was spawned, never shown to a round.
 Six counted classes, each with its blind spots named. Expect to be corrected by a round; that is the round working.
-**Not yet checked against r1's numbers** — do that during verification, and read r1's enumeration table (report line ~297) against pre-count classes 3 and 6 in particular.
+Checked during round 2's verification: the orchestrator's hand-read 27 in-class / 12 post-conclude was corrected upward by r2 to 41 / 17, and r3 independently reproduced r2's sweep at the same raw total of 94. The pre-count was the less accurate number, as expected.
 
 ## Round 1 (`opus-medium-r1`) — COMPLETE, and independently verified
 
