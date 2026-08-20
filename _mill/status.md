@@ -42,7 +42,9 @@ batches:
     commit_sha: e271dd7c8274b314ca856c351e029b76c9347e46
     verify_baseline_failures: []
   - name: run-routing-and-budget
-    state: pending
+    state: running
+    implementer_session: 086a8a90-f86b-410b-9c52-879e09834bbc
+    start_sha: 0c07028a736b53719ef48e22092bf24e01d4a644
     verify_baseline_failures: []
   - name: loomshed-migration
     state: pending
