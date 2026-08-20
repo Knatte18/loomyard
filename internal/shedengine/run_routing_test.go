@@ -364,3 +364,133 @@ func TestRun_UnrecognisedOutcome(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_EmptyOnDoneFinishesFromNonLastPosition(t *testing.T) {
+	// A three-row list whose first row has an empty OnDone finishes the whole run on that
+	// row's Done -- the producer list carries no positional meaning once Done routes by
+	// OnDone.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	a := fixedOutcomeProducer(Done, "")
+	b := fixedOutcomeProducer(Done, "")
+	c := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnDone: ""},
+		{Name: "B", Producer: b, OnDone: "C"},
+		{Name: "C", Producer: c, OnDone: ""},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunDone {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
+	}
+	if result.HaltedProducer != "A" {
+		t.Errorf("Result.HaltedProducer = %q; want %q", result.HaltedProducer, "A")
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	if got.State != StateDone {
+		t.Errorf("persisted State = %q; want %q", got.State, StateDone)
+	}
+	if got.CurrentProducer != "A" {
+		t.Errorf("persisted CurrentProducer = %q; want %q", got.CurrentProducer, "A")
+	}
+
+	if b.calls != 0 {
+		t.Errorf("b.calls = %d; want 0 -- B is never reached", b.calls)
+	}
+	if c.calls != 0 {
+		t.Errorf("c.calls = %d; want 0 -- C is never reached", c.calls)
+	}
+}
+
+func TestRun_OnDoneSkipsForward(t *testing.T) {
+	// A three-row list whose first row's OnDone names the third row skips the middle row
+	// entirely.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	a := fixedOutcomeProducer(Done, "")
+	b := fixedOutcomeProducer(Done, "")
+	c := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnDone: "C"},
+		{Name: "B", Producer: b, OnDone: ""},
+		{Name: "C", Producer: c, OnDone: ""},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunDone {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunDone)
+	}
+
+	if b.calls != 0 {
+		t.Errorf("b.calls = %d; want 0 -- B is skipped entirely", b.calls)
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	wantNames := []string{"A", "C"}
+	if len(got.History) != len(wantNames) {
+		t.Fatalf("len(History) = %d; want %d (%v)", len(got.History), len(wantNames), wantNames)
+	}
+	for i, name := range wantNames {
+		if got.History[i].Producer != name {
+			t.Errorf("History[%d].Producer = %q; want %q", i, got.History[i].Producer, name)
+		}
+	}
+}
+
+func TestRun_OnDoneRoutesBackward(t *testing.T) {
+	// A later row's OnDone names an earlier row, and the run continues from there. A is the
+	// backward re-entry target: counter-driven, it reports Done on its first call so the
+	// chain advances to B, then Stuck (with no OnStuck target) on its second call -- the call
+	// B's backward OnDone routes back to -- so the run terminates by blocking rather than
+	// looping forever.
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+
+	a := &funcProducer{}
+	a.fn = func(ctx context.Context) (Outcome, OutputPointer, error) {
+		if a.calls == 1 {
+			return Done, OutputPointer{}, nil
+		}
+		return Stuck, OutputPointer{}, nil
+	}
+	b := fixedOutcomeProducer(Done, "")
+	shed.Producers = []ProducerDef{
+		{Name: "A", Producer: a, OnDone: "B"},
+		{Name: "B", Producer: b, OnDone: "A"},
+	}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
+
+	result, err := shed.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run(...) = _, %v; want nil error", err)
+	}
+	if result.Outcome != RunBlocked {
+		t.Errorf("Result.Outcome = %q; want %q", result.Outcome, RunBlocked)
+	}
+	if a.calls != 2 {
+		t.Errorf("a.calls = %d; want 2 -- the backward re-entry must run A again", a.calls)
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	wantNames := []string{"A", "B", "A"}
+	if len(got.History) != len(wantNames) {
+		t.Fatalf("len(History) = %d; want %d (%v)", len(got.History), len(wantNames), wantNames)
+	}
+	for i, name := range wantNames {
+		if got.History[i].Producer != name {
+			t.Errorf("History[%d].Producer = %q; want %q", i, got.History[i].Producer, name)
+		}
+	}
+	if got.History[0].Outcome != Done || got.History[1].Outcome != Done || got.History[2].Outcome != Stuck {
+		t.Errorf("History outcomes = %+v; want [done done stuck]", got.History)
+	}
+}
