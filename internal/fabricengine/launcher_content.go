@@ -1,5 +1,5 @@
 // launcher_content.go builds the byte content and file mode for launcher scripts (ide,
-// fabric-checkout, ide-menu) as pure, GOOS-parameterized functions.
+// fabric-checkout, ide-menu, run) as pure, GOOS-parameterized functions.
 // Keeping this logic build-tag-free lets it be unit-tested on the Windows warp for both the Windows
 // (.cmd) and non-Windows (.sh) branches;
 // only the OS I/O in launchers.go depends on the real runtime.GOOS.
