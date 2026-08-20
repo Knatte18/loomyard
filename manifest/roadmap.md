@@ -36,7 +36,7 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
 
 1. **loom: Discussion-Review producer** — write `Discussion-Review`'s missing "what to check" rubric half (the "what not to flag" half already exists) as the rubric for a new `Discussion-Bouncer` instance (placeholder name — renaming to `Perch` is its own later Someday task, see below), instantiating the `Bouncer` producer above with it. The rubric must also cover the Bouncer's seed-call focus-setting pass (see the `Bouncer` item above), not only post-round judgment.
    Replace the `Discussion-Review` stub with a `Discussion-Bouncer`/`Discussion-Burler` segment: `Discussion-Bouncer` (an instance of `Bouncer: the generic review-gate producer` above) is the segment's entry point — its seed call sets initial focus, then every later call judges a round. `Discussion-Burler` (an instance of `shedadapters: Burler-round producer` above) runs one A-review→B-fix round and always hands back to `Discussion-Bouncer` (`Stuck`, `OnStuck: Discussion-Bouncer`), never advancing on its own. `Discussion-Bouncer`'s `OnStuck: Discussion-Burler` covers both the seed call and a rejection; its `OnDone` (approved) exits the segment. Both rows share `Segment: "Discussion-Review"` — the segment's shared name is what the rest of loom's docs/status-display keep referring to as "Discussion-Review," unchanged from today's outward framing even though it is now two rows, not one opaque `perch`-backed row — and physical list position no longer implies anything about this flow (see `shedengine: per-producer bounce budget + explicit OnDone routing` above).
-   Depends on the three "Perch → Shed flattening" items above.
+   Depends on the two "Perch → Shed flattening" items above.
    See [designs/loom.md](designs/loom.md#discussion-producer-detail--validation-checks-and-review-rubric).
 
 1. **loom: Plan-Write producer** — replace the `Plan-Write` stub with a real `SingleLLMProducer` around the already-built prompt (`loom-template-plan.md`).
@@ -45,12 +45,12 @@ What "loom: write and wire in the real LLM producers" split into — one prompt/
 
 1. **loom: Plan-Review producer** — write `Plan-Review`'s rubric from scratch (does not exist today; `loom-plan-spec.md` is a structural format spec, not review judgment criteria) as the rubric for a new `Plan-Bouncer` instance (placeholder name, see `Discussion-Review producer` above for the pattern), covering the seed-call focus pass too.
    Replace the `Plan-Review` stub with a `Plan-Bouncer`/`Plan-Burler` segment, same shape as `Discussion-Review producer` above: `Plan-Bouncer` is the entry point, `Segment: "Plan-Review"`, `OnStuck: Plan-Burler` from both the seed call and on rejection, `OnDone` exits the segment.
-   Depends on the three "Perch → Shed flattening" items above.
+   Depends on the two "Perch → Shed flattening" items above.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 1. **loom: Webster-Review producer** — write `Webster-Review`'s rubric from scratch (same gap, same reason as `Plan-Review`) as the rubric for a new `Webster-Bouncer` instance (placeholder name, same pattern), covering the seed-call focus pass too.
    Replace the `Webster-Review` stub with a `Webster-Bouncer`/`Webster-Burler` segment: `Webster-Bouncer` is the entry point, `Segment: "Webster-Review"`, `OnStuck: Webster-Burler` from both the seed call and on rejection, `OnDone` exits the segment — same shape as the other two review-producer items above, against the full diff rather than a single artifact.
-   Depends on the three "Perch → Shed flattening" items above.
+   Depends on the two "Perch → Shed flattening" items above.
    See [designs/loom.md](designs/loom.md#the-phase-machine--a-flat-producer-list-no-predefined-slots).
 
 ### Loom infrastructure cleanup
