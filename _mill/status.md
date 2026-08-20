@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-loomshed-migration  '2026-08-20T10:11:17Z'
 approved-docs-sweep  '2026-08-20T10:18:56Z'
 holistic-reviewing  '2026-08-20T10:19:21Z'
 holistic-fixing  '2026-08-20T10:23:50Z'
+holistic-reviewing  '2026-08-20T10:25:48Z'
 ```
 
 ## Batches
