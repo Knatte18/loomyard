@@ -3,7 +3,7 @@
 ```yaml
 task: "Extract scout into its own standalone repo"
 slug: "scout-extract-standalone-repo"
-approved: false
+approved: true
 started: "20260820-095202"
 parent: "main"
 root: ""

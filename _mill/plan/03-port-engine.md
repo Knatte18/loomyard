@@ -352,7 +352,8 @@ Batch-local decisions:
 - **Moves:** none
 - **Requirements:** `seam_enforcement_test.go` scans every non-test file in the package for banned imports;
   retarget its banned list from Loomyard paths to quarry's: `github.com/Knatte18/quarry/internal/output`, any `github.com/spf13/cobra` import, and any import path containing `/internal/` and ending in `cli`.
-  The `internal/clihelp` entry has no quarry equivalent — that package's surface was absorbed into `internal/cli` in batch 2, which the `/internal/`-plus-`cli`-suffix rule already covers — so drop the separate entry rather than leaving it matching nothing.
+  Drop the separate `internal/clihelp` entry, but not because the `/internal/`-plus-`cli`-suffix rule subsumes it — it does not, since `strings.HasSuffix` on a path ending in `clihelp` tests against `help`, not `cli`, so the two checks are independent.
+  Drop it because quarry has no package by that name at all: `clihelp`'s used surface was absorbed into `internal/cli` in batch 2, so the entry would match nothing and would only mislead a later reader into thinking a real package is being guarded against.
   Keep the zero-files-scanned guard that fails the test when it finds nothing to check;
   it is what stops the invariant going green by accident after a directory rename.
   `lspclient_guard_test.go` today allows stdlib plus `github.com/Knatte18/loomyard/internal/logger`. Card 12 made that file stdlib-only, so tighten the guard: delete the `allowedLyxImport` constant and its use, and assert stdlib-only.
