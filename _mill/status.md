@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-engine-fields-and-validation
 slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-fix-r3  '2026-08-20T09:44:16Z'
 plan-fix-r4  '2026-08-20T09:51:32Z'
 planned  '2026-08-20T09:51:42Z'
 implementing  '2026-08-20T09:52:16Z'
+approved-engine-fields-and-validation  '2026-08-20T09:56:20Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-08-20T09:52:16Z'
 ```yaml
 batches:
   - name: engine-fields-and-validation
-    state: running
+    state: approved
     implementer_session: 32dd9167-a0f5-49ee-8f2f-8597412693f3
     start_sha: 569888269ea72bf7f2e670ff3ea3a2faf8c1b842
+    commit_sha: e271dd7c8274b314ca856c351e029b76c9347e46
     verify_baseline_failures: []
   - name: run-routing-and-budget
     state: pending
