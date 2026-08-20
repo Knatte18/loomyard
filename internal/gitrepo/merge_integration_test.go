@@ -621,3 +621,144 @@ func TestMergeResolveSHA_UnknownRefReturnsError(t *testing.T) {
 		t.Fatal("ResolveSHA(no-such-ref-anywhere) error = nil; want an error")
 	}
 }
+
+// TestMergeStart_HostileMergeFFConfig pins finding F4: an operator's own `merge.ff` setting must not
+// change what MergeStart does.
+// With `merge.ff = only` the plain `git merge --no-commit <ref>` MergeStart used to run aborted every
+// non-fast-forward merge with `fatal: Not possible to fast-forward`, which MergeStart classified as a
+// genuine error, so every fabric merge into a target that had moved self-aborted and failed. With
+// `merge.ff = false` the reverse holds: a fast-forward would fabricate a merge commit and be
+// classified MergeStaged instead of MergeFastForwarded.
+func TestMergeStart_HostileMergeFFConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		mergeFF     string
+		diverge     bool
+		wantOutcome gitrepo.MergeOutcome
+	}{
+		{name: "FFOnlyDoesNotBreakARealMerge", mergeFF: "only", diverge: true, wantOutcome: gitrepo.MergeStaged},
+		{name: "FFFalseDoesNotSuppressAFastForward", mergeFF: "false", diverge: false, wantOutcome: gitrepo.MergeFastForwarded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir, repo := newRepo(t)
+			writeFile(t, dir, "base.txt", "base\n")
+			commitAll(t, dir, "base")
+
+			checkoutNewBranch(t, dir, "feature")
+			writeFile(t, dir, "feature.txt", "feature\n")
+			commitAll(t, dir, "feature edit")
+			checkoutBranch(t, dir, "main")
+			if tt.diverge {
+				writeFile(t, dir, "main.txt", "main\n")
+				commitAll(t, dir, "main edit")
+			}
+
+			gitkit.MustRun(t, dir, "git", "config", "merge.ff", tt.mergeFF)
+
+			outcome, err := repo.MergeStart("feature", false)
+			if err != nil {
+				t.Fatalf("MergeStart(feature, false) with merge.ff=%s error = %v; want nil — fabric pins --ff so the operator's config cannot reach it", tt.mergeFF, err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("MergeStart(feature, false) with merge.ff=%s outcome = %v; want %v", tt.mergeFF, outcome, tt.wantOutcome)
+			}
+		})
+	}
+}
+
+// TestMergeStart_EmptyResultTree_ClassifiedStagedNotAlreadyUpToDate pins crucible round
+// opus-medium-r2's finding R1: a real, non-fast-forward merge whose result tree happens to equal
+// HEAD's own tree must classify as MergeStaged, not MergeAlreadyUpToDate.
+// The fixture is the everyday shape a cherry-pick, backport, or duplicated hand-edit produces: the
+// source branch and the current branch each reach the same content independently, so the source is
+// not an ancestor of HEAD, yet merging it stages nothing and moves no HEAD. Before the fix,
+// classification read only those two signals and returned MergeAlreadyUpToDate while git had
+// written a live MERGE_HEAD -- so fabric reported a clean no-op, deleted its merge-state record,
+// and abandoned a merge in progress that no fabric verb could then clear.
+// The squash subtest is the companion direction: squash writes no MERGE_HEAD and genuinely has
+// nothing to commit, so it must keep classifying as MergeAlreadyUpToDate.
+func TestMergeStart_EmptyResultTree_ClassifiedStagedNotAlreadyUpToDate(t *testing.T) {
+	tests := []struct {
+		name           string
+		squash         bool
+		wantOutcome    gitrepo.MergeOutcome
+		wantMergeHead  bool
+		wantConcludeOK bool
+	}{
+		{name: "NormalMergeIsStagedWithLiveMergeHead", squash: false, wantOutcome: gitrepo.MergeStaged, wantMergeHead: true, wantConcludeOK: true},
+		{name: "SquashHasNothingToDoAndStaysAlreadyUpToDate", squash: true, wantOutcome: gitrepo.MergeAlreadyUpToDate, wantMergeHead: false, wantConcludeOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir, repo := newRepo(t)
+			writeFile(t, dir, "shared.txt", "base\n")
+			commitAll(t, dir, "base")
+
+			checkoutNewBranch(t, dir, "feature")
+			writeFile(t, dir, "shared.txt", "same change\n")
+			commitAll(t, dir, "feature: same change")
+			checkoutBranch(t, dir, "main")
+			writeFile(t, dir, "shared.txt", "same change\n")
+			commitAll(t, dir, "main: same change, reached independently")
+
+			// The fixture is only meaningful if the source is genuinely not an ancestor: an
+			// ancestor would be a real already-up-to-date merge and prove nothing.
+			featureSHA, err := repo.ResolveSHA("feature")
+			if err != nil {
+				t.Fatalf("ResolveSHA(feature) error = %v", err)
+			}
+			headSHA, err := repo.CurrentSHA()
+			if err != nil {
+				t.Fatalf("CurrentSHA() error = %v", err)
+			}
+			ancestor, err := repo.IsAncestor(featureSHA, headSHA)
+			if err != nil {
+				t.Fatalf("IsAncestor(feature, HEAD) error = %v", err)
+			}
+			if ancestor {
+				t.Fatal("fixture broken: feature is an ancestor of HEAD, so this is a genuine already-up-to-date merge")
+			}
+
+			headBefore, err := repo.CurrentSHA()
+			if err != nil {
+				t.Fatalf("CurrentSHA() error = %v", err)
+			}
+
+			outcome, err := repo.MergeStart("feature", tt.squash)
+			if err != nil {
+				t.Fatalf("MergeStart(feature, %t) error = %v; want nil", tt.squash, err)
+			}
+			if outcome != tt.wantOutcome {
+				t.Errorf("MergeStart(feature, %t) outcome = %v; want %v", tt.squash, outcome, tt.wantOutcome)
+			}
+			if got := mergeHeadPresentOnDisk(t, dir); got != tt.wantMergeHead {
+				t.Errorf("MERGE_HEAD present = %t; want %t", got, tt.wantMergeHead)
+			}
+			if _, _, code, _ := runGit(t, dir, "diff", "--cached", "--quiet"); code != 0 {
+				t.Errorf("git diff --cached --quiet exit = %d; want 0 — this fixture's whole point is that the merge stages nothing", code)
+			}
+			if got, _ := repo.CurrentSHA(); got != headBefore {
+				t.Errorf("CurrentSHA() = %q; want unchanged %q — this fixture's whole point is that HEAD does not move", got, headBefore)
+			}
+
+			// A MergeStaged classification is only honest if the merge really is concludable.
+			if !tt.wantConcludeOK {
+				return
+			}
+			if err := repo.MergeConclude(""); err != nil {
+				t.Fatalf("MergeConclude(\"\") error = %v; want nil — a MergeStaged outcome must be concludable", err)
+			}
+			if mergeHeadPresentOnDisk(t, dir) {
+				t.Error("MERGE_HEAD still present after MergeConclude; the merge was not concluded")
+			}
+			parents, _, _, err := runGit(t, dir, "rev-list", "--parents", "-n1", "HEAD")
+			if err != nil {
+				t.Fatalf("git rev-list --parents error = %v", err)
+			}
+			if got := len(strings.Fields(parents)); got != 3 {
+				t.Errorf("conclude commit has %d parents (rev-list --parents fields = %d); want a two-parent merge commit", got-1, got)
+			}
+		})
+	}
+}

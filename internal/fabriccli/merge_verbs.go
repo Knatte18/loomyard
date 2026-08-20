@@ -3,6 +3,8 @@
 // Both verbs join the weft-verb family: weft_verbs.go's weftVerbNames set and PersistentPreRunE
 // resolve the pair handle they need exactly as commit/pull do, so addMergeVerbs reaches that handle
 // indirectly through a getter closure rather than a value captured at registration time.
+// Flag combinations that would be silently ignored rather than obeyed (--squash or -m alongside
+// --abort) are rejected in a pre-flight check, before any handle is touched.
 
 package fabriccli
 
@@ -56,7 +58,12 @@ Conflicts are a result, not a failure to run again differently: a merge-in
 that conflicts leaves the pair mid-merge, concluded with
 "lyx fabric merge --continue" (the engine's MergeContinue) once every
 conflict is resolved, or abandoned with "lyx fabric merge --abort" (the
-engine's MergeAbort). This lifecycle is shared with "lyx fabric merge" — both
+engine's MergeAbort).
+
+A conflict result and a hard failure both exit 1 with "ok": false, so a
+script must not tell them apart by exit status. The discriminator is the
+envelope: a conflict result, and only a conflict result, carries a
+"conflicts" array of worktree-relative paths. This lifecycle is shared with "lyx fabric merge" — both
 verbs continue and abort the same way — but the two verbs are not symmetric:
 merge-in resolves conflicts in this worktree, merge does not.
 
@@ -89,7 +96,9 @@ every conflict has been resolved in the worktree. --abort (the engine's
 MergeAbort) discards an in-progress merge, restoring both sides to their
 pre-merge state. --continue and --abort are mutually exclusive, and neither
 takes a positional branch argument; --squash applies only to the default
-merge mode and is rejected alongside either of them.
+merge mode and is rejected alongside either of them. -m gives the
+conclude-commit its message, so it applies to the default mode and to
+--continue, and is rejected alongside --abort, which has no commit to name.
 
 Example:
   lyx fabric merge-in my-task
@@ -124,6 +133,14 @@ Example:
 				// Nothing was mutated at this pre-flight validation point, so a bare output.Err
 				// carries no record — the pre-flight carve-out.
 				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: --squash cannot be combined with --continue or --abort"))
+				return nil
+			}
+			// -m is the message override for the conclude-commit, so it is meaningful for --continue
+			// and meaningless for --abort, which discards it. Rejecting it is the same pre-flight
+			// carve-out as --squash above: silently ignoring a flag the caller passed is worse than
+			// refusing it, since the caller cannot tell the difference from a message that landed.
+			if abortFlag && message != "" {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "usage: -m cannot be combined with --abort"))
 				return nil
 			}
 

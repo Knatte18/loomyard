@@ -2,7 +2,8 @@
 // verb writes before it mutates anything and MergeAbort/MergeContinue read back to recover a
 // crashed or resolving-in-progress merge — plus the foreign-state probes the sibling-verb guards
 // (card 13) and the four mutating merge verbs use to detect git-level merge state fabric did not
-// itself start.
+// itself start, plus the hub-wide scan Remove uses to refuse tearing down a pair some other
+// pair's merge is currently consuming.
 // The record is never exported and never serialized into a public result type: warp/weft field
 // naming is legal here, since fabricengine is in the Fabric Vocabulary Invariant's owner set.
 
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -64,6 +66,28 @@ func mergeOutcomeString(outcome gitrepo.MergeOutcome) string {
 	default:
 		return ""
 	}
+}
+
+// landedConcludeCommit reports whether the conclude phase has actually put a commit on either side
+// of this merge — read straight off the record's own conclude-SHA fields, which concludeMergeSides
+// writes as each side lands.
+// It is what MergeResult.Committed is derived from, so the flag answers "does the pair now carry
+// this merge's conclude-commit" rather than "did control reach the end of the happy path". A merge
+// that fast-forwarded both sides fabricates no commit and reports false; a resumed MergeContinue
+// whose sides both landed on an earlier call reports true, since the pair does carry them.
+func (st *mergeState) landedConcludeCommit() bool {
+	return st.WarpCommitted != "" || st.WeftCommitted != ""
+}
+
+// bothSidesAlreadyUpToDate reports whether the attempt found both sides already carrying the
+// resolved source — the degenerate no-op, observed after the write lock was taken rather than by the
+// pre-lock probe.
+// The two answers differ exactly when another process landed the same merge in between, which is a
+// race the lock deliberately does not close (the pre-lock probe is unlocked by design); deriving
+// MergeResult.AlreadyUpToDate from here makes the loser of that race report what a strictly
+// sequential run of the same two calls reports.
+func (st *mergeState) bothSidesAlreadyUpToDate() bool {
+	return st.WarpOutcome == mergeOutcomeAlreadyUpToDate && st.WeftOutcome == mergeOutcomeAlreadyUpToDate
 }
 
 // mergeStatePath returns the merge-state record's on-disk path: the fixed mergeStateFileName
@@ -159,6 +183,43 @@ func mergeBlocksMutation(warpPath, weftPath string) (bool, error) {
 		return false, nil
 	}
 	return f.mergeRecordExists()
+}
+
+// mergeSourceInFlight reports whether any pair in l's hub holds a merge record whose Source is
+// warpBranch — that is, whether some pair elsewhere in the hub is mid-merge ON this branch.
+// mergeBlocksMutation answers the other question, "is THIS pair mid-merge", and the two are
+// genuinely different subjects: tearing a pair down while a merge somewhere else is consuming its
+// branches deletes the weft branch that merge is resolving against, with no warning to the operator
+// that they just removed the subject of a merge in progress.
+// Records live at <weft gitdir>/fabric-merge.json, which is the weft repo's own .git for the prime
+// pair and .git/worktrees/<name>/ for every linked pair, so both shapes are globbed. Each candidate
+// is read through internal/state's locked reader, exactly as loadMergeState does — never a raw
+// os.ReadFile, which could observe a torn record another process is mid-write on.
+// A hub whose weft repo root cannot be resolved reports false rather than blocking, matching
+// mergeBlocksMutation's own already-half-broken-pair rule: refusing there would make a broken hub
+// impossible to finish tearing down.
+func mergeSourceInFlight(l *lyxcwd.Location, warpBranch string) (bool, error) {
+	weftRepoRoot, err := WeftRepoRoot(l)
+	if err != nil {
+		return false, nil
+	}
+
+	primeRecord := filepath.Join(weftRepoRoot, ".git", mergeStateFileName)
+	linkedRecords, err := filepath.Glob(filepath.Join(weftRepoRoot, ".git", "worktrees", "*", mergeStateFileName))
+	if err != nil {
+		return false, fmt.Errorf("fabricengine: scan merge records under %s: %w", weftRepoRoot, err)
+	}
+
+	for _, path := range append([]string{primeRecord}, linkedRecords...) {
+		st, found, err := state.ReadJSON[mergeState](path, path+".lock")
+		if err != nil {
+			return false, fmt.Errorf("fabricengine: read merge state %s: %w", path, err)
+		}
+		if found && st.Source == warpBranch {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // foreignMergeStatePresent reports whether git-level merge state exists on either side that fabric

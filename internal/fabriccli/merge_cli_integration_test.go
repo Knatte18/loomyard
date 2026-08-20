@@ -279,3 +279,74 @@ func TestRunCLI_MergeInAlreadyUpToDate(t *testing.T) {
 		t.Errorf("RunCLI(merge-in) [already up to date] already_up_to_date = %v; want true", envelope["already_up_to_date"])
 	}
 }
+
+// TestRunCLI_MergeRejectsFlagsItWouldOtherwiseIgnore pins finding F8: "merge --abort -m <msg>" used
+// to be accepted and the message silently discarded, since -m is MergeAbort's no-op while being
+// MergeContinue's real message override. A caller cannot tell a discarded message from a landed one,
+// so the pre-flight rejects it the same way it already rejects --squash alongside --abort.
+// Driven through RunCLIIn against a real pair rather than a bare cobra tree, so the check is proven
+// to sit ahead of the engine call.
+func TestRunCLI_MergeRejectsFlagsItWouldOtherwiseIgnore(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "MessageWithAbort",
+			args:    []string{"merge", "--abort", "-m", "ignored message"},
+			wantErr: "usage: -m cannot be combined with --abort",
+		},
+		{
+			name:    "SquashWithAbort",
+			args:    []string{"merge", "--abort", "--squash"},
+			wantErr: "usage: --squash cannot be combined with --continue or --abort",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := hubforge.NewHub(t, ".")
+
+			var out bytes.Buffer
+			exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &out, tt.args)
+			if exitCode != 1 {
+				t.Fatalf("RunCLI(%v) = %d; want 1\noutput: %s", tt.args, exitCode, out.String())
+			}
+			envelope := decodeResult(t, &out)
+			if ok, _ := envelope["ok"].(bool); ok {
+				t.Errorf("RunCLI(%v) ok = true; want false", tt.args)
+			}
+			if got, _ := envelope["error"].(string); got != tt.wantErr {
+				t.Errorf("RunCLI(%v) error = %q; want %q", tt.args, got, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestRunCLI_MergeContinueAcceptsMessage pins the other half of finding F8's rule: -m stays
+// meaningful for --continue, so the rejection above must be scoped to --abort alone.
+func TestRunCLI_MergeContinueAcceptsMessage(t *testing.T) {
+	h := hubforge.NewHub(t, ".")
+
+	setupConflictingDivergenceCLI(t, h.PrimeWorktree(), "feature", "conflict.txt")
+	branchAtCurrentHEADCLI(t, h.PrimeWeft(), "feature-weft")
+
+	var mergeInOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &mergeInOut, []string{"merge-in", "feature"}); exitCode != 1 {
+		t.Fatalf("RunCLI(merge-in feature) = %d; want 1 (conflict)\noutput: %s", exitCode, mergeInOut.String())
+	}
+
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "conflict.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatalf("write resolution: %v", err)
+	}
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "add", "conflict.txt")
+
+	const wantSubject = "crucible: chosen merge message"
+	var continueOut bytes.Buffer
+	if exitCode := fabriccli.RunCLIIn(h.PrimeWorktree(), &continueOut, []string{"merge", "--continue", "-m", wantSubject}); exitCode != 0 {
+		t.Fatalf("RunCLI(merge --continue -m) = %d; want 0\noutput: %s", exitCode, continueOut.String())
+	}
+	if got := strings.TrimSpace(gitOutputCLI(t, h.PrimeWorktree(), "log", "-1", "--format=%s")); got != wantSubject {
+		t.Errorf("conclude-commit subject = %q; want %q — -m must still reach MergeContinue", got, wantSubject)
+	}
+}

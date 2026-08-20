@@ -864,26 +864,133 @@
 //
 // **The lifecycle quartet and crash recovery.** `MergeIn`/`Merge` start an attempt; `MergeContinue`
 // concludes one once every conflict is resolved in the worktree; `MergeAbort` discards one,
-// restoring both sides to their pre-merge SHAs unconditionally, including a side that only
-// fast-forwarded or never moved. Every state-changing step re-persists the record before it acts, so
+// restoring both sides to their pre-merge SHAs — including a side that only fast-forwarded or never
+// moved, but never a side whose conclude already landed (see below). Every state-changing step
+// re-persists the record before it acts, so
 // a crash mid-attempt leaves a record a resumed `MergeContinue`/`MergeAbort` can still read and act
 // on — there is no window where the record and the checkouts can drift silently out of reach of the
 // quartet.
+//
+// **Not every crash is continuable, and the record says which.** A side's outcome is persisted only
+// once that side's `MergeStart` has returned, so a crash before the first `MergeStart` or between
+// the two leaves an empty outcome for a side the attempt never reached. `MergeContinue` refuses such
+// a record outright with the guard reason `merge attempt did not reach both sides`, *before* landing
+// anything: concluding what it can would commit one side of a merge whose other side was never
+// started, leaving the pair non-corresponding with no way to finish it. `MergeAbort` is the one
+// correct recovery there, and it always works, because it restores from the recorded pre-merge SHAs
+// rather than from how far the attempt got.
+//
+// **And not every crash is abortable, for the mirror-image reason.** The conclude phase lands warp
+// first, then weft, so a conclude that fails on the second side — a policy hook, `commit.gpgsign`
+// with no key, a full disk — returns `*ErrMergeIncomplete` and deliberately retains the record with
+// the first side's commit already in it. Restoring from the recorded pre-merge SHAs there would
+// discard a commit that really landed, and in the `MergeIn`-with-conflicts flow that commit carries
+// the operator's own hand-written resolutions, reset away under `force: true`. So `MergeAbort`
+// refuses such a record with the guard reason `merge conclude already landed`, and `MergeContinue`
+// is the one correct recovery — it skips a side whose committed SHA is recorded, so a resumed run is
+// idempotent. Idempotency extends to a conclude the record never learned about: a crash between a
+// side's `git commit` and the record re-save leaves the commit landed with the recorded SHA still
+// empty, and re-running `git commit` there would fail forever on a clean tree. A resumed
+// `MergeContinue` detects that shape — HEAD moved off the recorded pre-merge SHA with no live
+// `MERGE_HEAD` — and adopts the landed commit into the record instead of re-committing, so it
+// finishes exactly the states `MergeAbort` refuses to destroy. The two refusals are exact mirrors:
+// whichever way an attempt is half-finished, exactly
+// one verb of the pair will finish it and neither will destroy anything.
+// The precondition is deliberately wider than the recorded conclude SHA. A side counts as possibly
+// concluded when its recorded SHA is set **or** its recorded outcome is `staged`/`conflicted` and its
+// HEAD has moved off its recorded pre-merge SHA — because the record learns a conclude SHA only after
+// the commit, the `CurrentSHA` read, and the record re-save have all succeeded, so a failure at
+// either of the last two leaves a landed commit the record never mentions. Reading HEAD closes that:
+// an `up_to_date` side is never concluded and cannot move, a `fast_forwarded` side moved legitimately
+// and is still reset, an empty-outcome side never started, and only a `staged`/`conflicted` side can
+// have had a commit put on it by anything but the conclude.
+// If the underlying git failure cannot be fixed by retrying, plain git in the two checkouts is the
+// last resort — resolve and commit each unfinished side by hand, then run `MergeContinue`, whose
+// adoption arm accounts for the hand-landed commits and clears the record. Plain git alone can
+// never finish the job: the record lives in the weft gitdir where no git command touches it, and
+// while it exists every guarded sibling verb keeps refusing.
+//
+// **Both checkouts must be on a branch.** A merge verb refuses with the aggregated guard reason
+// `checkout is not on a branch` while either side has HEAD pointing straight at a commit. The
+// asymmetry is what makes this a precondition rather than a curiosity: a conclude-commit landed on a
+// detached HEAD is reachable from no ref and disappears at the next checkout, while the paired
+// repo's half of the same merge — whose own HEAD was on a branch — is already final, and the verb
+// has deleted its own record on the way out, so `MergeAbort` cannot put it back. Refusing before the
+// attempt starts is the only point at which that divergence is still recoverable. This matters in
+// practice because `Fabric.CheckoutDetached`/`RestoreBranch` exist and webster's integration bisect
+// drives them (`internal/websterengine/integration.go`).
+//
+// **What the result flags mean.** `MergeResult.Committed` reports whether the pair now carries this
+// merge's conclude-commit, and `AlreadyUpToDate` whether the attempt found both sides already
+// carrying the resolved source. Both are read off the merge-state record's own fields rather than
+// hardcoded per return site, which is what makes them answer honestly in the two cases that used to
+// lie: a merge that fast-forwarded both sides fabricates no commit at all and reports `Committed`
+// false, and a call that finds the work already done *after* taking the write lock — the loser of a
+// race the unlocked pre-lock probe deliberately does not close — reports `AlreadyUpToDate` true,
+// which is what a strictly sequential run of the same two calls reports.
+//
+// **"Already up to date" means git had nothing to do, not that the trees already agreed.** A merge
+// whose source is not an ancestor of HEAD but whose result tree equals HEAD's own tree — the shape
+// a cherry-pick, backport, or duplicated hand-edit produces — is a real merge: git writes
+// `MERGE_HEAD` and `git commit` would land a proper two-parent commit for it. `gitrepo.MergeStart`
+// classifies it `MergeStaged` on the `MERGE_HEAD` probe, so fabric concludes it and reports
+// `Committed` true. Treating it as up-to-date was a defect, not a shortcut: fabric reported a clean
+// no-op, deleted its own record, and left a live `MERGE_HEAD` in both checkouts that no fabric verb
+// would then clear — `MergeAbort` included, since with the record gone the state reads as foreign.
+// The squash form is the one case where an empty result really is nothing to do: `git merge
+// --squash` writes no `MERGE_HEAD` and has no commit to make, so both sides report `up_to_date` and
+// `AlreadyUpToDate` comes back true from the derived field, with the pre-lock probe having said
+// otherwise. That is a single-process, race-free route to the derived flag, and it is what
+// `TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord` exercises.
 //
 // **Conflict reporting.** Conflicted paths surface as one flat, lexically sorted, deduplicated list
 // of unified, worktree-relative paths — never raw per-repo paths, which would leak the warp/weft
 // split, and never absolute paths, which is not what `git merge` hands an operator. A path either
 // side's conflict resolves to something outside the single visible worktree tree is unmappable, and
 // that self-aborts the whole attempt with `*ErrUnmergeableState` rather than reporting a path that
-// would mislead the operator about where to look.
+// would mislead the operator about where to look. `MergeResult.Conflicts` is empty, never nil, on
+// every path that carries no conflict, so a consumer's JSON never has to distinguish `[]` from
+// `null`.
+//
+// **A conflict result is not a failure, and a script tells them apart by the envelope.** At the CLI
+// both a conflicted merge and a hard error exit 1 with `"ok": false` — the shared envelope has no
+// third outcome and no distinct exit code. The discriminator is the payload: a conflict result, and
+// only a conflict result, carries a `conflicts` array (`errConflictsWithRecord`), and it reports
+// `partial: false` even with a non-empty mutation record, since the engine returned no error.
 //
 // **SHA-labelled conflict markers.** Every merge names a SHA, never a branch, in its conflict
 // markers on both sides — resolving the weft side's own SHA independently, rather than reusing the
 // warp source's marker text, so a marker never leaks the fact that a second repo exists underneath.
 //
-// **Sibling refusals and the write lock's scope.** Every other mutating fabric verb refuses with
-// `*ErrMergeInProgress` while a merge record exists, so a pair mid-merge cannot be pulled, committed,
-// or torn down out from under the resolution in progress. The combined `.weft/weft.write.lock`
+// **Sibling refusals and the write lock's scope.** Exactly four sibling verbs carry an explicit
+// refusal, and they are the four whose write would corrupt or be corrupted by a live merge:
+// `Commit`, `Pull`, `Topology.Checkout` and `Topology.Remove` all return `*ErrMergeInProgress` while
+// a merge record exists (`Commit` additionally refuses foreign git-level merge state with no record),
+// so a pair mid-merge cannot be pulled, committed, or torn down out from under the resolution in
+// progress. `Remove` guards two distinct subjects: the pair being removed being mid-merge itself,
+// and — via `mergeSourceInFlight` — some *other* pair in the hub being mid-merge on this pair's
+// branches, which would otherwise delete the weft branch that merge is resolving against.
+// The rest of the mutating surface is deliberately unguarded and safe for stated reasons rather than
+// by omission: the push family (`PushWeft`, `PushWarpAt`, `CoalescePushBothAt`, `SpawnDetachedPush`)
+// pushes a committed branch tip an uncommitted merge has not moved; `Cleanup` cannot touch a
+// checked-out weft branch and a mid-merge pair is materialized by definition; `Prune` only acts on a
+// pair whose warp worktree is already gone; `Reconcile`, the junction verbs and the hook installer
+// touch filesystem links, never an index or a ref; `Add` builds a new pair off a branch tip;
+// `RebuildIndex` rewrites an explicitly rebuildable cache; `RecordCorrespondence` must stay
+// unguarded, since the merge verbs call it themselves while their own record is still live; and
+// `ResetHard`'s `force: false` plus tracked-dirtiness gate already refuses against a merge worktree,
+// which is dirty by definition.
+// `CheckoutDetached`/`RestoreBranch` are the one knowing exception — raw primitives driven only by
+// webster's integration bisect, and left unguarded because a merge-record probe does not belong in a
+// primitive this doc classes as raw. The attached-HEAD precondition above is *not* what closes them:
+// that precondition stops a merge from starting while a checkout is detached, and says nothing about
+// detaching a checkout that is already mid-merge, which is the order these two primitives can
+// produce. What actually closes the dangerous part is git: `checkout --detach` refuses outright
+// while unmerged index entries exist, so the long window — an operator sitting on conflict markers —
+// is unreachable. The narrow window that stays open is the resolved-but-not-concluded one (index
+// clean, `MERGE_HEAD` live, record live), where the detach succeeds and drops `MERGE_HEAD`, stranding
+// the record. That is a known, accepted hazard belonging to the caller that drives the bisect, not to
+// the merge primitive. The combined `.weft/weft.write.lock`
 // covers only the mutating steps of a merge call — starting the attempt and concluding it — never
 // the resolution window itself: an operator may take arbitrarily long editing conflict markers
 // between `MergeIn`/`Merge` and `MergeContinue` with the lock released, exactly as plain git leaves a
