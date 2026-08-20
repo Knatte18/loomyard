@@ -37,7 +37,9 @@ batches:
     commit_sha: 00e134b56f93a437dff30314e2a61fc3f4adf7cc
     verify_baseline_failures: []
   - name: loomengine-checkseed
-    state: pending
+    state: running
+    implementer_session: 8c8637a4-4502-4554-95e5-628608416e49
+    start_sha: 7656c430c3e1a226224b43666695707fa5740fa5
     verify_baseline_failures: []
   - name: wire-two-rows
     state: pending
