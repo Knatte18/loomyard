@@ -121,19 +121,20 @@ Feeding stale positions to both binaries returns a not-found error from each, an
 
 ### Card 38: fix the internal/cli test-isolation race found by finalize's regression replay
 
-- **Context:**
-  - `/home/knatte/Code/quarry/wts/quarry/internal/cli/paths_test.go`
+- **Context:** none
 - **Edits:**
+  - `/home/knatte/Code/quarry/wts/quarry/internal/cli/paths_test.go`
   - `/home/knatte/Code/quarry/wts/quarry/internal/cli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** See `## Prior failure` above for the full diagnosis.
-  `TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd` (`cli_test.go:146`) is the one test in the file that does not call the file's own `withIsolatedPathSeams(t)` helper, so under `t.Parallel()` it can observe another test's (`paths_test.go`'s `TestResolveConfigPath_UserConfigDirError`) temporarily-mutated package-level `userConfigDir` seam and fail with a spurious `"cli: resolve user config dir: permission denied"` error instead of exercising the `--target-dir` resolution it actually tests.
-  Add `withIsolatedPathSeams(t)` to this test, exactly as every other test in the file already does, so it resolves against an isolated temp root regardless of what any other parallel test in the package is doing to the shared seam.
-  Do not remove `t.Parallel()` from either test — the fix is isolating this test's seam, not de-parallelizing the suite.
+  `TestResolveConfigPath_UserConfigDirError` and `TestResolveStateDir_UserCacheDirError` (`paths_test.go`) each mutate a package-level seam (`userConfigDir`/`userCacheDir`) directly, and `TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd` (`cli_test.go:146`) mutates the same seams indirectly via `withIsolatedPathSeams(t)`.
+  Round 2's shipped fix (quarry commit `3cd5064`) removed `t.Parallel()` from all three tests rather than the isolate-the-seam fix originally specified here, because isolating the seam alone does not stop the race: every other seam-mutating test in this package (e.g. `TestResolveStateDir_UserCacheDirError` itself) already omits `t.Parallel()` for the identical reason — a test that overwrites a package-level var for the duration of its run cannot safely run concurrently with anything else that reads that var, isolated helper or not.
+  De-parallelizing the three mutator tests is therefore the correct fix, not a deviation to avoid; this card's original instruction to preserve `t.Parallel()` while merely adding `withIsolatedPathSeams(t)` was insufficient because `withIsolatedPathSeams` only redirects where the temp files land — it does not stop the assignment to the shared `userConfigDir`/`userCacheDir` function variables from racing with a sibling parallel test's read of those same variables.
+  Remove `t.Parallel()` from `TestResolveConfigPath_UserConfigDirError` and `TestResolveStateDir_UserCacheDirError` in `paths_test.go`, and from `TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd` in `cli_test.go`, each with a comment stating it is deliberate and why, matching the convention every other seam-mutating test in the package already follows.
   After the fix, run `go -C /home/knatte/Code/quarry/wts/quarry test -tags lsp ./... -count=1` (this batch's `verify:` command) repeatedly (at least 5 times, since a race can pass by chance) to confirm the flake is actually gone, not just not-hit this run.
-- **Commit:** `test(cli): isolate TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd from the userConfigDir seam race`
+- **Commit:** `test(cli): remove t.Parallel() from tests that mutate package-level path seams`
 
 ## Batch Tests
 

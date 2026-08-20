@@ -15,7 +15,7 @@ This batch removes scout from Loomyard entirely: both packages, the `lyx scout` 
 It is one batch because a partial deletion does not compile — the module list, the seam-signature pins, the help-tree expectations, and the sandbox exclusion list all reference the same two packages — and because splitting it would leave an intermediate commit with a broken build.
 
 It runs only after batch 5 proved quarry equivalent.
-Card 45's first act is to re-read the port log's go/no-go line, and the batch stops there if it says no-go.
+Card 46's first act is to re-read the port log's go/no-go line, and the batch stops there if it says no-go.
 
 Batch-local decisions:
 
@@ -23,11 +23,11 @@ Batch-local decisions:
 - `manifest/designs/scout-plan-symbol-fields.md` **stays**. It is a loom design that happens to consume scout, so it belongs to the consumer;
   only its links are repointed at quarry.
 - No lyx-side replacement is added. No shell-out to a `quarry` binary, no optional binary detection, no vendored artifact, and no external Go module dependency on quarry in `cmd/lyx`. The subcommand is deleted outright.
-- The enumeration in the discussion is a list of known high-risk sites, not a complete inventory — it was hand-built and found incomplete on review. Card 46 re-runs the enumeration and is the batch's real completeness gate.
+- The enumeration in the discussion is a list of known high-risk sites, not a complete inventory — it was hand-built and found incomplete on review. Card 47 re-runs the enumeration and is the batch's real completeness gate.
 
 ## Cards
 
-### Card 38: delete the two scout packages
+### Card 39: delete the two scout packages
 
 - **Context:** none
 - **Edits:** none
@@ -81,7 +81,7 @@ Batch-local decisions:
   If `go mod tidy` turns out to be needed at all, it belongs in card 46 after the whole deletion is in.
 - **Commit:** `refactor: delete internal/scoutengine and internal/scoutcli`
 
-### Card 39: unwire the scout subcommand from the lyx root command
+### Card 40: unwire the scout subcommand from the lyx root command
 
 - **Context:** none
 - **Edits:**
@@ -94,7 +94,7 @@ Batch-local decisions:
   Add no replacement: no shell-out, no binary detection, no vendored artifact.
 - **Commit:** `refactor(cmd): remove the scout subcommand from lyx`
 
-### Card 40: update the cmd/lyx invariant tests
+### Card 41: update the cmd/lyx invariant tests
 
 - **Context:**
   - `docs/benchmarks/running-tests.md`
@@ -125,7 +125,7 @@ Batch-local decisions:
   the help-tree, seam-signature, and sandbox-coverage tests are machine guards that will fail loudly if any of this is incomplete, so lean on them rather than re-deriving their expectations by hand.
 - **Commit:** `test(cmd): drop scout from the lyx invariant tests`
 
-### Card 41: remove scout from CONSTRAINTS.md
+### Card 42: remove scout from CONSTRAINTS.md
 
 - **Context:** none
 - **Edits:**
@@ -143,7 +143,7 @@ Batch-local decisions:
   Repoint the prose-mention example that cites a `scout-redesign.md` reference in the roadmap: pick a live example that is not scout-related, and cite it in a form that does not pin a line number, since the current citation is already stale by forty lines and this task's own roadmap edit shifts it again.
 - **Commit:** `docs: remove the scout engine-seam invariant and scout references from CONSTRAINTS`
 
-### Card 42: remove scout from the overview
+### Card 43: remove scout from the overview
 
 - **Context:** none
 - **Edits:**
@@ -159,7 +159,7 @@ Batch-local decisions:
   `TestEnforcement_MarkdownLinks` is a machine guard on exactly that and will fail if a link is left pointing at a deleted path.
 - **Commit:** `docs: remove scout from the overview module table and counts`
 
-### Card 43: remove scout from the README, roadmap, and parallel-work notes
+### Card 44: remove scout from the README, roadmap, and parallel-work notes
 
 - **Context:** none
 - **Edits:**
@@ -183,7 +183,7 @@ Batch-local decisions:
   `manifest/roadmap.md` moves here because this task completes a planned item, which is one of the two cases that legitimately moves the roadmap.
 - **Commit:** `docs: remove scout from the README, roadmap, and parallel-work notes`
 
-### Card 44: reword the remaining prose and code-comment mentions
+### Card 45: reword the remaining prose and code-comment mentions
 
 - **Context:** none
 - **Edits:**
@@ -214,7 +214,7 @@ Batch-local decisions:
   `manifest/designs/scout-plan-symbol-fields.md` stays in this repo — it is a loom design about consuming the tool, and it belongs to the consumer — so reword it to describe quarry as an external dependency and repoint all its links, but do not delete it.
 - **Commit:** `docs: reword remaining scout mentions to name quarry as an external tool`
 
-### Card 45: retire the scout test tier from the benchmark docs and delete the moved documents
+### Card 46: retire the scout test tier from the benchmark docs and delete the moved documents
 
 - **Context:**
   - `docs/research/quarry-port-log.md`
@@ -238,7 +238,7 @@ Batch-local decisions:
   Confirm afterwards with `go test ./cmd/lyx/... -run TestEnforcement_MarkdownLinks` that no surviving document links a deleted path.
 - **Commit:** `docs: retire the scout test tier and delete the moved research documents`
 
-### Card 46: two-sweep completeness gate
+### Card 47: two-sweep completeness gate
 
 - **Context:**
   - `_mill/discussion.md`
@@ -280,5 +280,5 @@ The help-tree test catches a module list that disagrees with the root command's 
 The seam-signature test catches a count that was not decremented.
 `tierpurity_test.go` catches an untagged test that still names the retired tag.
 
-Card 46 adds the two checks no machine guard performs: the token sweep across all file types, and the count-oriented sweep for prose that encodes thirteen modules without naming any of them.
+Card 47 adds the two checks no machine guard performs: the token sweep across all file types, and the count-oriented sweep for prose that encodes thirteen modules without naming any of them.
 It also runs `go test -tags integration ./...`, which `verify:` does not, and which the configured done gate runs again at task completion.
