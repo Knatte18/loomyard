@@ -80,7 +80,8 @@ It is untagged and its only reason to exist is `gitkit.HermeticGitEnv()` for tha
   - `internal/preflight/preflight_integration_test.go`
   - `internal/loomengine/seed_test.go`
   - `CONSTRAINTS.md`
-- **Edits:** none
+- **Edits:**
+  - `cmd/lyx/cwdmutation_test.go`
 - **Creates:** none
 - **Deletes:**
   - `internal/loomengine/preflight_integration_test.go`
