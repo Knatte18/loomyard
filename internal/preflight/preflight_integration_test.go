@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -338,6 +339,90 @@ func TestPreflight_JunctionBroken(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestCheckResolved_ConfigLoadFailed asserts the CauseConfigLoadFailed/CheckJunction equivalence
+// pinned by healthy-typed-reason: a repo-wide fabric.yaml that fails to load classifies as
+// CheckJunction (not a distinct CheckID of its own), same as the three junction-drift shapes
+// TestPreflight_JunctionBroken covers.
+func TestCheckResolved_ConfigLoadFailed(t *testing.T) {
+	t.Parallel()
+
+	h, _ := setupFixture(t)
+
+	configPath := configengine.ConfigFile(fabricengine.BoardDir(h.Location.HubPath), "fabric")
+	if err := os.WriteFile(configPath, []byte("not: [valid: yaml"), 0o644); err != nil {
+		t.Fatalf("corrupt repo-wide fabric config: %v", err)
+	}
+
+	report, err := preflight.CheckResolved(h.Location)
+	if err != nil {
+		t.Fatalf("CheckResolved: %v", err)
+	}
+	assertCheckSet(t, report, preflight.CheckJunction)
+}
+
+// TestCheckResolved_MissingOptionalJunctionIsAJunctionFault covers a worktree whose optional
+// junction was never wired at all: _lyx is fully healthy, but the second, non-_lyx junction is
+// entirely absent (simulated here by removing it from an otherwise-healthy fixture, rather than
+// corrupting it — the fixture never had it, full stop).
+// CheckResolved must classify this as CheckJunction, never CheckFabricSync, and blocks the run
+// (report.OK == false). A single Reconcile repairs it (adds the missing junction and materialises
+// its fabric-side target) rather than reporting already-healthy; and a fresh CheckResolved afterward
+// reports OK.
+func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
+	t.Parallel()
+
+	h, slug := setupFixture(t)
+
+	// Simulate the missing-optional-junction state: this worktree's second,
+	// non-_lyx junction was never wired, even though _lyx is fully healthy.
+	extraLink := filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel, "_extra")
+	if err := fslink.Remove(extraLink); err != nil {
+		t.Fatalf("remove the optional junction to simulate a worktree missing it: %v", err)
+	}
+
+	report, err := preflight.CheckResolved(h.Location)
+	if err != nil {
+		t.Fatalf("CheckResolved: %v", err)
+	}
+	assertCheckSet(t, report, preflight.CheckJunction)
+
+	// One Reconcile call repairs the missing junction: it must report
+	// JunctionRepointed (the repair happened), never AlreadyHealthy.
+	topology := fabricengine.NewTopology(fabricengine.Config{})
+	result, err := topology.Reconcile(h.Location)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	var found bool
+	for _, pair := range result.Pairs {
+		if pair.WarpWorktree != filepath.ToSlash(h.Location.WorktreePath()) {
+			continue
+		}
+		found = true
+		if pair.Action != fabricengine.ReconcileActionJunctionRepointed {
+			t.Errorf("Reconcile Action = %q; want %q", pair.Action, fabricengine.ReconcileActionJunctionRepointed)
+		}
+		if pair.Error != "" {
+			t.Errorf("Reconcile Error = %q; want empty", pair.Error)
+		}
+	}
+	if !found {
+		t.Fatalf("Reconcile result has no pair for the worktree %s: %+v", h.Location.WorktreePath(), result.Pairs)
+	}
+
+	// The junction now resolves.
+	if isLink, err := fslink.IsLink(extraLink); err != nil || !isLink {
+		t.Fatalf("optional junction %s not restored by Reconcile: isLink=%v err=%v", extraLink, isLink, err)
+	}
+
+	// A fresh CheckResolved now reports OK: the remedy this batch documents.
+	report, err = preflight.CheckResolved(h.Location)
+	if err != nil {
+		t.Fatalf("CheckResolved after Reconcile: %v", err)
+	}
+	assertCheckSet(t, report)
 }
 
 // TestCheck_SubpathAnchoredHubIsNotRejected asserts that a legitimately subpath-anchored repo is
