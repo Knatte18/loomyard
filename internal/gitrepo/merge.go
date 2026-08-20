@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 )
@@ -230,6 +231,45 @@ func (r *Repo) MergeFFOnly(ref string) error {
 		return fmt.Errorf("gitrepo: merge --ff-only %s in %s: %w", ref, r.path, err)
 	}
 	return nil
+}
+
+// CommitParents returns sha's parent SHAs in git's own recorded order — first parent first, so
+// parents[0] is the branch the merge was made ON and parents[1:] are the merged-in tips.
+// A root commit returns an empty, never nil, slice.
+// It exists so a caller can tell a merge commit apart from an ordinary one, and tell WHICH merge a
+// given merge commit is, by exact parentage rather than by inference from HEAD movement:
+// fabricengine's conclude-adoption arm needs positive evidence that the commit sitting on a
+// checkout is this merge's own conclude and not some unrelated commit an operator landed while the
+// merge record was live.
+// Returns ErrInvalidSHA when sha is not a valid hex object name, mirroring FileAtRevision's own
+// argument pre-check.
+// This is a go-git read of on-disk state, so it stays off the gitrepo Client Boundary Invariant's
+// pinned CLI list.
+func (r *Repo) CommitParents(sha string) ([]string, error) {
+	if !validSHA(sha) {
+		return nil, ErrInvalidSHA
+	}
+
+	repo, err := r.goGit()
+	if err != nil {
+		return nil, err
+	}
+
+	commit, err := lookupObjectRetrying(r, repo, func() (*object.Commit, error) {
+		return repo.CommitObject(plumbing.NewHash(sha))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: read commit %s in %s: %w", sha, r.path, err)
+	}
+
+	r.goGitMu.RLock()
+	defer r.goGitMu.RUnlock()
+
+	parents := make([]string, 0, len(commit.ParentHashes))
+	for _, parent := range commit.ParentHashes {
+		parents = append(parents, parent.String())
+	}
+	return parents, nil
 }
 
 // ResolveSHA resolves an arbitrary ref — a branch, a remote-tracking ref such as

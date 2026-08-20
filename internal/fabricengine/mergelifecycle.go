@@ -21,9 +21,12 @@ import (
 // Idempotency also covers a conclude the record never learned about: a crash (or I/O failure)
 // between a side's `git commit` and the record re-save leaves that side's commit landed with its
 // recorded SHA still empty, and re-running `git commit` there fails forever on a clean tree.
-// sideConcludeAlreadyLanded detects that shape — HEAD moved off the recorded pre-merge SHA with no
-// live MERGE_HEAD — and the landed commit is adopted into the record instead of re-committed, so
-// MergeContinue finishes exactly the states MergeAbort's concludeLandedReason refuses to destroy.
+// sideConcludeAlreadyLanded detects that shape — by git parentage, not by HEAD movement alone — and
+// the landed commit is adopted into the record instead of re-committed, so MergeContinue finishes
+// the states MergeAbort's concludeLandedReason refuses to destroy.
+// The two are deliberately not exact mirrors: concludeLandedReason over-refuses on an ambiguous
+// read, while adoption refuses on one, so a squash record and a HEAD that moved for some other
+// reason stay honestly stuck rather than being claimed as a successful conclude.
 // Every caller must have established that both recorded outcomes are non-empty first: an empty
 // outcome means MergeStart never ran on that side, and concluding it would commit one side of a
 // merge whose other side does not exist. MergeIn and Merge satisfy that by construction;
@@ -41,7 +44,7 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	if st.WarpOutcome != mergeOutcomeFastForwarded && st.WarpOutcome != mergeOutcomeAlreadyUpToDate && st.WarpCommitted == "" {
-		sha, landed, err := sideConcludeAlreadyLanded(f.warp, st.WarpStart)
+		sha, landed, err := sideConcludeAlreadyLanded(f.warp, st.WarpStart, st.WarpSource, st.Squash)
 		if err != nil {
 			return err
 		}
@@ -64,7 +67,7 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	}
 
 	if st.WeftOutcome != mergeOutcomeFastForwarded && st.WeftOutcome != mergeOutcomeAlreadyUpToDate && st.WeftCommitted == "" {
-		sha, landed, err := sideConcludeAlreadyLanded(f.weft, st.WeftStart)
+		sha, landed, err := sideConcludeAlreadyLanded(f.weft, st.WeftStart, st.WeftSource, st.Squash)
 		if err != nil {
 			return err
 		}
@@ -89,20 +92,47 @@ func concludeMergeSides(f *Fabric, rec *Mutations, st *mergeState, msg string) e
 	return nil
 }
 
-// sideConcludeAlreadyLanded reports whether one side already carries a conclude-commit its record
-// never learned about, returning the landed SHA for adoption when it does.
+// sideConcludeAlreadyLanded reports whether one side already carries THIS merge's conclude-commit
+// under a record that never learned about it, returning the landed SHA for adoption when it does.
 // The shape it detects is the crash between a side's `git commit` and the record re-save: the
 // caller's arm has already established the side's outcome is staged/conflicted with no recorded
-// conclude SHA, so HEAD moved off its recorded pre-merge start with no live MERGE_HEAD means the
-// commit landed and only the bookkeeping is missing — the same reading concludeLandedReason's
-// per-side predicate trusts when it refuses MergeAbort, minus the states a live MERGE_HEAD still
-// makes concludable.
+// conclude SHA, so a commit really landed there and only the bookkeeping is missing.
+//
+// Adoption demands positive, discriminating evidence — it is a CLAIM, not a refusal, and the two
+// resolve an ambiguity in opposite directions. concludeLandedReason's sideConcludeMayHaveLanded
+// reads "HEAD moved off the recorded pre-merge start" to REFUSE MergeAbort, which is safe when the
+// read is ambiguous because the cost of over-refusing is a stuck merge the operator can inspect.
+// Reading the same ambiguous signal to claim a successful adopt is not safe, and was a real defect:
+// the signal is satisfied by ANY commit landed on the checkout while the record was live, so an
+// operator's plain `git merge --abort` followed by one unrelated commit made MergeContinue adopt
+// that unrelated commit, report committed:true naming it, and delete the record — leaving the merge
+// source un-merged with nothing left to inspect. A silent false success.
+//
+// The evidence is git's own parentage, and it is exact rather than heuristic. fabric starts a
+// non-squash merge with `git merge --ff --no-commit <sourceSHA>`, so git writes exactly that SHA
+// into MERGE_HEAD and the resulting conclude-commit has exactly two parents: the pre-merge start
+// first, the merge source second. All five of these must hold before a commit is adopted:
+//   - HEAD moved off the recorded pre-merge start,
+//   - no live MERGE_HEAD (the merge is finished, not still concludable),
+//   - the record is not a squash (see below),
+//   - the record carries a resolved source SHA for this side,
+//   - HEAD is a merge commit whose first parent is the recorded start and one of whose remaining
+//     parents is the recorded source SHA.
+//
+// A squash conclude is deliberately never adopted. `git merge --squash` writes no MERGE_HEAD and
+// its conclude is an ORDINARY one-parent commit, so it carries no evidence distinguishing it from
+// any other commit an operator might have landed — the non-squash predicate cannot be silently
+// inherited there. Refusing keeps the honest, pre-fix behaviour: the re-run `git commit` fails on
+// the clean tree and *ErrMergeIncomplete comes back with the record retained.
+// An empty recorded source SHA — a record written by a binary older than this evidence — refuses
+// for the same reason: no evidence is not satisfied evidence.
+//
 // Adoption is recorded as KindMergeCommitted by the caller even though this call ran no `git
 // commit`: the commit is this merge's own conclude, and the resumed call is the first one whose
 // record can honestly account for it.
 // Probe failures propagate raw rather than as *ErrMergeIncomplete — nothing has been mutated yet,
 // matching MergeContinue's own pre-lock probes.
-func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start string) (sha string, landed bool, err error) {
+func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start, sourceSHA string, squash bool) (sha string, landed bool, err error) {
 	head, err := repo.CurrentSHA()
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: resolve HEAD to classify conclude state: %w", err)
@@ -117,7 +147,23 @@ func sideConcludeAlreadyLanded(repo *gitrepo.Repo, start string) (sha string, la
 	if mergeHeadPresent {
 		return "", false, nil
 	}
-	return head, true, nil
+	if squash || sourceSHA == "" {
+		return "", false, nil
+	}
+
+	parents, err := repo.CommitParents(head)
+	if err != nil {
+		return "", false, fmt.Errorf("fabricengine: read commit parents to classify conclude state: %w", err)
+	}
+	if len(parents) < 2 || parents[0] != start {
+		return "", false, nil
+	}
+	for _, parent := range parents[1:] {
+		if parent == sourceSHA {
+			return head, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 // mergeStateOrForeignErr resolves the disposition shared by MergeContinue and MergeAbort when no

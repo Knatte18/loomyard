@@ -144,13 +144,15 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	defer func() { _ = fileLock.Release() }()
 
 	st := &mergeState{
-		Verb:      "merge-in",
-		Source:    source,
-		Squash:    false,
-		Message:   "",
-		WarpStart: warpStart,
-		WeftStart: weftStart,
-		StartedAt: time.Now(),
+		Verb:       "merge-in",
+		Source:     source,
+		Squash:     false,
+		Message:    "",
+		WarpStart:  warpStart,
+		WeftStart:  weftStart,
+		WarpSource: sources.warpSHA,
+		WeftSource: sources.weftSHA,
+		StartedAt:  time.Now(),
 	}
 	if err := f.saveMergeState(st); err != nil {
 		return MergeResult{}, err
@@ -354,13 +356,15 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	// Pre-merge SHAs are captured after the sync step, so MergeAbort returns the pair to its synced
 	// state, never undoing a legitimate upstream advance.
 	st := &mergeState{
-		Verb:      "merge",
-		Source:    source,
-		Squash:    opts.Squash,
-		Message:   opts.Message,
-		WarpStart: warpStart,
-		WeftStart: weftStart,
-		StartedAt: time.Now(),
+		Verb:       "merge",
+		Source:     source,
+		Squash:     opts.Squash,
+		Message:    opts.Message,
+		WarpStart:  warpStart,
+		WeftStart:  weftStart,
+		WarpSource: sources.warpSHA,
+		WeftSource: sources.weftSHA,
+		StartedAt:  time.Now(),
 	}
 	if err := f.saveMergeState(st); err != nil {
 		return MergeResult{}, err

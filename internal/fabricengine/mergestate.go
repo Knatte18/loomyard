@@ -28,6 +28,14 @@ const mergeStateFileName = "fabric-merge.json"
 // mergeState is the on-disk record a merge verb writes before it mutates anything and
 // MergeAbort/MergeContinue/MergeInProgress read back — the checkpoint recovering a crashed or
 // resolving-in-progress merge.
+//
+// WarpSource/WeftSource are the resolved per-side SHAs the attempt merges, recorded alongside the
+// caller's branch name in Source because only the SHAs are usable as evidence later: a branch name
+// can be re-pointed between the crash and the resume, while the SHA fabric handed `git merge` is
+// exactly what git wrote into MERGE_HEAD and therefore exactly what a genuine conclude-commit
+// carries as its second parent. sideConcludeAlreadyLanded is what consumes them.
+// A record written by an older binary carries them empty; every consumer treats empty as "no
+// evidence available" and refuses to make a positive claim, never as "evidence satisfied".
 type mergeState struct {
 	Verb          string    `json:"verb"`   // "merge-in" | "merge"
 	Source        string    `json:"source"` // caller-supplied branch
@@ -35,6 +43,8 @@ type mergeState struct {
 	Message       string    `json:"message"`
 	WarpStart     string    `json:"warp_start"` // pre-merge HEAD SHAs
 	WeftStart     string    `json:"weft_start"`
+	WarpSource    string    `json:"warp_source"` // the resolved SHA each side actually merges
+	WeftSource    string    `json:"weft_source"`
 	WarpOutcome   string    `json:"warp_outcome"` // staged|conflicted|fast_forwarded|up_to_date
 	WeftOutcome   string    `json:"weft_outcome"`
 	WarpCommitted string    `json:"warp_committed"` // conclude SHAs, set as each lands

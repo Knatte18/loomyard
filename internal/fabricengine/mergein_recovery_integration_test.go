@@ -625,3 +625,176 @@ func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testin
 		t.Errorf("MergeRecordExistsForTest() after adoption = (%v, %v); want (false, nil)", exists, err)
 	}
 }
+
+// resolveSHAForTest resolves ref to a full SHA in dir via plain git — the independent read a test
+// uses to name a commit fabric itself resolved, rather than trusting fabric's own answer.
+func resolveSHAForTest(t *testing.T, dir, ref string) string {
+	t.Helper()
+
+	cmd := exec.Command("git", "rev-parse", ref)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-parse %s in %s: %v", ref, dir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// isAncestorForTest reports whether ancestor is reachable from descendant in dir, via plain
+// `git merge-base --is-ancestor` — how a test proves a merge source really did (or really did not)
+// get merged.
+func isAncestorForTest(t *testing.T, dir, ancestor, descendant string) bool {
+	t.Helper()
+
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", ancestor, descendant)
+	cmd.Dir = dir
+	return cmd.Run() == nil
+}
+
+// abortMergeAndLandUnrelatedCommit reproduces the adversarial shape MergeContinue's adoption arm
+// must refuse: an operator discards the in-progress git merge with plain `git merge --abort` and
+// then lands one commit of their own, while fabric's merge record is still live and still says this
+// side's conclude never happened.
+// The resulting HEAD satisfies "moved off the recorded pre-merge start, with no live MERGE_HEAD"
+// exactly as a real crashed-after-commit conclude does — that ambiguity is the whole point — and it
+// returns the unrelated SHA so the caller can assert fabric never claims it.
+func abortMergeAndLandUnrelatedCommit(t *testing.T, dir, filename string) string {
+	t.Helper()
+
+	gitkit.MustRun(t, dir, "git", "merge", "--abort")
+	commitOnCurrentBranch(t, dir, filename, "nothing to do with the merge\n", "unrelated operator commit")
+	return fabricengine.CurrentSHAForTest(t, dir)
+}
+
+// TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted is the adversarial direction of
+// the conclude-adoption arm.
+// Adoption is a positive CLAIM about which commit a checkout carries, so it must rest on
+// discriminating evidence — git's own parentage — rather than on the same ambiguous "HEAD moved,
+// no live MERGE_HEAD" read that MergeAbort's concludeLandedReason uses to REFUSE. Keying adoption
+// on that read alone made this exact sequence return ok/committed true naming the operator's
+// unrelated commit, delete the record, and leave the merge source un-merged with nothing left to
+// inspect: a silent false success.
+// The correct disposition is honestly stuck — *ErrMergeIncomplete with the record retained, so the
+// operator can still see what fabric thinks is happening.
+func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupConflictingDivergence(t, h.PrimeWorktree(), "feature", "clash.txt")
+	setupConflictingDivergence(t, h.PrimeWeft(), "feature-weft", "_lyx/weft-clash.txt")
+
+	res, err := f.MergeIn("feature")
+	if err != nil {
+		t.Fatalf("MergeIn(feature) error = %v", err)
+	}
+	if len(res.Conflicts) != 2 {
+		t.Fatalf("MergeIn(feature).Conflicts = %v; want both sides conflicted — the scenario needs a real conclude pending on each side", res.Conflicts)
+	}
+
+	sourceWarpSHA := resolveSHAForTest(t, h.PrimeWorktree(), "feature")
+	unrelatedWarpSHA := abortMergeAndLandUnrelatedCommit(t, h.PrimeWorktree(), "warp-unrelated.txt")
+	unrelatedWeftSHA := abortMergeAndLandUnrelatedCommit(t, h.PrimeWeft(), "_lyx/weft-unrelated.txt")
+
+	// Precondition, asserted rather than assumed: the record must still be live and must still show
+	// neither side concluded, or the scenario is not the one this test names.
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if st.WarpCommitted != "" || st.WeftCommitted != "" {
+		t.Fatalf("recorded conclude SHAs = (%q, %q); want both empty", st.WarpCommitted, st.WeftCommitted)
+	}
+	if st.WarpStart == unrelatedWarpSHA {
+		t.Fatalf("warp HEAD did not move off the recorded start %q; the ambiguous signal this test exercises is not present", st.WarpStart)
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	contRes, err := fresh.MergeContinue("")
+
+	var incompleteErr *fabricengine.ErrMergeIncomplete
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("MergeContinue() over an operator's unrelated commit: (committed %v, error %v (%T)); want *fabricengine.ErrMergeIncomplete and no adoption", contRes.Committed, err, err)
+	}
+	if contRes.Committed {
+		t.Errorf("MergeContinue().Committed = true; want false — no conclude for this merge has landed")
+	}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — nothing was concluded", entry)
+		}
+	}
+
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil) — the record is the operator's only remaining handle on this merge", exists, err)
+	}
+	if isAncestorForTest(t, h.PrimeWorktree(), sourceWarpSHA, unrelatedWarpSHA) {
+		t.Fatalf("feature (%q) is an ancestor of the unrelated commit (%q); the fixture did not actually leave the source un-merged", sourceWarpSHA, unrelatedWarpSHA)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWeft()); got != unrelatedWeftSHA {
+		t.Errorf("weft HEAD after the refusal = %q; want the operator's own commit %q left untouched", got, unrelatedWeftSHA)
+	}
+}
+
+// TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted drives the squash shape of the same
+// question, which prior rounds reasoned about but never executed.
+// `git merge --squash` writes no MERGE_HEAD and its conclude is an ORDINARY one-parent commit, so
+// the parentage evidence a non-squash conclude carries — first parent the pre-merge start, second
+// parent the merge source — does not exist for a squash. There is therefore nothing to tell a
+// hand-landed squash conclude apart from any other commit, and adoption must refuse rather than
+// silently inherit the non-squash predicate.
+// The refusal is honest, not lossy: the record is retained and *ErrMergeIncomplete comes back, which
+// is exactly the behaviour that held before an adoption arm existed at all.
+func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
+	h, f, _, _, _, _ := newMergePairFixture(t, ".")
+
+	setupCleanNonFastForward(t, h.PrimeWorktree(), "feature", "warp-branch.txt", "warp-current.txt")
+	setupCleanNonFastForward(t, h.PrimeWeft(), "feature-weft", "weft-branch.txt", "weft-current.txt")
+
+	// Sabotage the warp conclude so Merge stops with the record retained and warp_outcome staged —
+	// the state a crash between `git merge --squash` and the conclude commit leaves.
+	installFailingPreCommitHook(t, h.PrimeWorktree())
+	_, err := f.Merge("feature", fabricengine.MergeOptions{Squash: true})
+	var incompleteErr *fabricengine.ErrMergeIncomplete
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("Merge(feature, squash) with the warp conclude sabotaged: error = %v (%T); want *fabricengine.ErrMergeIncomplete", err, err)
+	}
+	removePreCommitHook(t, h.PrimeWorktree())
+
+	st, found, err := fabricengine.LoadMergeStateForTest(f)
+	if err != nil || !found {
+		t.Fatalf("LoadMergeStateForTest() = (_, %v, %v); want found", found, err)
+	}
+	if !st.Squash {
+		t.Fatalf("merge state Squash = false; the squash shape this test names was not recorded")
+	}
+	if st.WarpCommitted != "" {
+		t.Fatalf("merge state WarpCommitted = %q; want empty — the warp conclude must not have landed yet", st.WarpCommitted)
+	}
+	warpStart := st.WarpStart
+
+	// The operator finishes the squash by hand, exactly as doc.go's plain-git last resort describes.
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "commit", "-q", "-m", "hand-landed squash conclude")
+	handLandedSHA := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree())
+	if handLandedSHA == warpStart {
+		t.Fatalf("warp HEAD did not move; the hand-landed squash conclude this test needs is not present")
+	}
+
+	fresh := openFreshFabric(t, h.PrimeWorktree())
+	contRes, err := fresh.MergeContinue("")
+	if !errors.As(err, &incompleteErr) {
+		t.Fatalf("MergeContinue() over a hand-landed squash conclude: (committed %v, error %v (%T)); want *fabricengine.ErrMergeIncomplete — a squash carries no evidence to adopt on", contRes.Committed, err, err)
+	}
+	if contRes.Committed {
+		t.Errorf("MergeContinue().Committed = true; want false")
+	}
+	for _, entry := range contRes.Mutated().Entries() {
+		if entry.Kind == fabricengine.KindMergeCommitted {
+			t.Errorf("MergeContinue() recorded %v; want no KindMergeCommitted — a squash conclude is never adopted", entry)
+		}
+	}
+	if exists, err := fabricengine.MergeRecordExistsForTest(fresh); err != nil || !exists {
+		t.Errorf("MergeRecordExistsForTest() after the refusal = (%v, %v); want (true, nil)", exists, err)
+	}
+	if got := fabricengine.CurrentSHAForTest(t, h.PrimeWorktree()); got != handLandedSHA {
+		t.Errorf("warp HEAD after the refusal = %q; want the operator's hand-landed commit %q left untouched", got, handLandedSHA)
+	}
+}

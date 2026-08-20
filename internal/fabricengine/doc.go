@@ -891,11 +891,31 @@
 // idempotent. Idempotency extends to a conclude the record never learned about: a crash between a
 // side's `git commit` and the record re-save leaves the commit landed with the recorded SHA still
 // empty, and re-running `git commit` there would fail forever on a clean tree. A resumed
-// `MergeContinue` detects that shape — HEAD moved off the recorded pre-merge SHA with no live
-// `MERGE_HEAD` — and adopts the landed commit into the record instead of re-committing, so it
-// finishes exactly the states `MergeAbort` refuses to destroy. The two refusals are exact mirrors:
-// whichever way an attempt is half-finished, exactly
-// one verb of the pair will finish it and neither will destroy anything.
+// `MergeContinue` detects that shape and adopts the landed commit into the record instead of
+// re-committing, so it finishes the states `MergeAbort` refuses to destroy.
+//
+// **Adoption is a claim, so it demands evidence a refusal does not.** `MergeAbort`'s guard and
+// `MergeContinue`'s adoption arm both look at the same ambiguous signal — HEAD has moved off the
+// recorded pre-merge SHA and no `MERGE_HEAD` is live — and they must resolve that ambiguity in
+// OPPOSITE directions. For the guard, the ambiguity is safe: over-refusing an abort leaves a merge
+// stuck in a state an operator can still inspect. For adoption it is not: the signal is satisfied by
+// ANY commit landed on that checkout while the record was live, so keying adoption on it alone made
+// an operator's plain `git merge --abort` followed by one unrelated commit come back `committed:
+// true` naming that unrelated commit, with the record deleted and the merge source still un-merged.
+// A silent false success, and the reason the two are deliberately NOT exact mirrors.
+// Adoption therefore rests on git's own parentage rather than on HEAD movement. fabric starts a
+// non-squash merge with `git merge --ff --no-commit <sourceSHA>` and records that resolved
+// per-side SHA in the merge record, so a genuine conclude-commit is a merge commit whose first
+// parent is the recorded pre-merge SHA and one of whose remaining parents is that recorded source
+// SHA, exactly. Nothing short of all of that is adopted.
+// **A squash conclude is never adopted at all.** `git merge --squash` writes no `MERGE_HEAD` and its
+// conclude is an ordinary one-parent commit, so it carries no evidence distinguishing it from any
+// other commit — there is nothing there to be sure about, and the non-squash predicate is not
+// silently inherited. A crashed squash conclude stays honestly stuck: `*ErrMergeIncomplete`, record
+// retained. So does a record written by a binary predating the recorded source SHAs; no evidence is
+// not satisfied evidence.
+// Within those bounds the two refusals still cover every half-finished attempt between them, and
+// neither destroys anything.
 // The precondition is deliberately wider than the recorded conclude SHA. A side counts as possibly
 // concluded when its recorded SHA is set **or** its recorded outcome is `staged`/`conflicted` and its
 // HEAD has moved off its recorded pre-merge SHA — because the record learns a conclude SHA only after
@@ -905,8 +925,15 @@
 // and is still reset, an empty-outcome side never started, and only a `staged`/`conflicted` side can
 // have had a commit put on it by anything but the conclude.
 // If the underlying git failure cannot be fixed by retrying, plain git in the two checkouts is the
-// last resort — resolve and commit each unfinished side by hand, then run `MergeContinue`, whose
-// adoption arm accounts for the hand-landed commits and clears the record. Plain git alone can
+// last resort — but it has to produce the same commit fabric would have: resolve each unfinished
+// side and commit it while git's own `MERGE_HEAD` is still live (`git commit --no-edit`, never
+// `git merge --abort` first), so the resulting commit really is a merge of this merge's source.
+// `MergeContinue`'s adoption arm then accounts for the hand-landed commits and clears the record.
+// A side whose `MERGE_HEAD` is already gone is put back first — `git reset --hard` to that side's
+// recorded `warp_start`/`weft_start`, then `git merge` its recorded `warp_source`/`weft_source` —
+// because adoption checks the FIRST parent too, so a conclude landed on top of some other commit is
+// a merge of a different base and is not adopted. A squash attempt has no hand-landed route at all,
+// since adoption never accepts a one-parent conclude. Plain git alone can
 // never finish the job: the record lives in the weft gitdir where no git command touches it, and
 // while it exists every guarded sibling verb keeps refusing.
 //
