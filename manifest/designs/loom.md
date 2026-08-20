@@ -19,7 +19,8 @@ The orchestrator is the **`loom`** module (`lyx loom run`); the gate engine is t
 `Shed` (see [shed.md](shed.md)) has no predefined slots — no Preflight-slot, no Producer-slot, no shared Finalize.
 It is a generic engine that walks one ordered, flat list of **producers**, honoring resume/crash-recovery/pause uniformly across the whole list;
 atomicity — one mechanical action or LLM session — binds **simple** producers only, per the carve-out in [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition).
-`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list, in what order.
+`loom`'s own identity is entirely this list, nothing else — what makes `loom` "loom" (versus, say, `Hardener`) is purely which producers are in the list.
+The list's order is display and enumeration order only, never routing — see [`shed.md`'s bounce-budget and routing sections](shed.md#the-shed-loop--exact-mechanics) for the full argument; this doc does not restate it.
 The table's `Kind` column records each producer's simple/bespoke typology;
 see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition) for the carve-out that defines it.
 Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` instance — see [`shed.md`'s engine-adapters section](shed.md#engine-adapters--a-thin-shared-seam-not-one-per-producer) for that generic type — configured here by its own Input pointer, Output pointer, and instruction file, nothing more:
@@ -42,7 +43,7 @@ Every row whose `Type` is `LLM` and `Kind` is `simple` is a `SingleLLMProducer` 
 
 `Preflight` is **built**, as `internal/loomengine.Preflight` — engine-only, no cobra module yet (see [module decomposition](#module-decomposition)).
 It validates the four preconditions over git/filesystem state: worktree geometry and at-root (cwd resolution via `internal/lyxcwd`, sibling/Prime lookup via `internal/fabricengine`), the warp worktree is clean, weft pairing is present **and in sync** — warp branch == weft branch, via `warp`'s drift detection — and `_lyx/loom/status.json` exists and is a coherent fresh seed (no half-finished prior run).
-On `stuck`, `Shed` bounces back to an earlier producer in the list (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`) or escalates to a human — never "keep fixing symptoms."
+On `stuck`, `Shed` bounces to this producer's own explicit `OnStuck` target (e.g. `Plan-Review`'s stuck routes back to `Plan-Write`), which may sit anywhere in the list, or escalates to a human when none is set — never "keep fixing symptoms." The same explicitness now governs the done direction too: `Done` routes via this producer's own `OnDone`, not by list position — see [`shed.md`'s routing and bounce-budget sections](shed.md#the-shed-loop--exact-mechanics) for the full design, not restated here.
 
 **Raddle folds into `Finalize`'s own contract** — not a separate producer, and not a separate step after Webster the way earlier drafts of this doc had it.
 `Finalize` is not `loom`'s own (see rows 12–13 above and [internal/landingshed](../../internal/landingshed/doc.go)), so this fold is a fact about `Finalize` itself, inherited by every `Shed` list that names it — not something `loom` defines.
@@ -52,7 +53,7 @@ Raddle-regeneration (git-diff-targeted docs over `git diff <start-SHA>..HEAD`, b
 Each row's Input and Output, in the normal case, are *pointers* into a format-contract file defining the consumed/produced artifact's shape, never a restated copy of its content.
 This is a producer-*authoring* convention, not a `Shed`-level mechanism — `Shed` itself never reads Input or Output through a pointer at all (see [`shed.md`'s producer contract vs. producer definition](shed.md#producer-contract-vs-producer-definition)); it is [CONSTRAINTS.md](../../CONSTRAINTS.md)'s Producer Pointer-Rule Invariant that enforces it, by review, over instruction files and format-contract docs.
 The thin-Input carve-out (a chain-head producer, human intent instead of an artifact) and thin-Output carve-out (a gate producer's pass/fail signal, or a terminal producer's no-downstream-consumer) apply to specific rows of the table above — see `shed.md`'s own section for both, stated once rather than restated here.
-Review is never a property attached to the producer it reviews — it is always the next, separate producer in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
+Review is never a property attached to the producer it reviews — it stays a separate producer, reached by explicit routing rather than by position in the list, consistent with `perch` already being "its own module... reused for every phase... and standalone" (see [the gate](#the-gate) below).
 
 **The phase-machine skeleton is testable against fake phases before real producers are wired in**, the same fake-tested approach `perch` used against a fake `burler`.
 Build order follows from this as a deliberate operator decision, not just a testing technique: every `mechanical` row `loom` itself owns (plus `Webster`, already shipped) is built for real first, every `LLM`/`LLM+perch` row stays a stub until then.
