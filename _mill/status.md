@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-fix-r3
 slug: shedengine-segments-bounce-budget
 branch: shedengine-segments-bounce-budget
 plan: _mill/plan
@@ -23,4 +23,5 @@ plan-review-r1  '2026-08-20T09:25:55Z'
 plan-fix-r1  '2026-08-20T09:25:55Z'
 plan-review-r2  '2026-08-20T09:34:01Z'
 plan-fix-r2  '2026-08-20T09:34:01Z'
+plan-fix-r3  '2026-08-20T09:44:16Z'
 ```

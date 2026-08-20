@@ -110,7 +110,7 @@ The same applies to the run-wide cap: the old doc argued *against* a per-produce
   Keep the file's semantic-line-break style.
 - **Commit:** `docs(spec): note that history[] is budget-bearing and must not be truncated`
 
-### Card 19: Move the roadmap item to Done and correct the parallel-work scope claim
+### Card 19: Move the roadmap item to Done and resnapshot the parallel-work map
 
 - **Context:**
   - `manifest/designs/shed.md`
@@ -124,9 +124,14 @@ The same applies to the run-wide cap: the old doc argued *against* a per-produce
 - **Moves:** none
 - **Requirements:** In `manifest/roadmap.md`, move the Planned item named "shedengine: per-producer bounce budget + explicit `OnDone` routing" — the first item under the Perch to Shed flattening group — into the Done section.
   Follow that file's own Maintenance rules: every item is written literally as a `1.` and numbering is automatic, so no renumbering is needed anywhere; the moved entry is shortened to a name plus one or two sentences of what and why, and points at the module's own package documentation rather than carrying a design writeup.
-  Leave the remaining Planned items in that group untouched, including the following item's cross-reference to this one by bold name.
-  In `manifest/parallel-work.md`, correct the scope claim on the entry for this same task, which states it is `internal/shedengine` only — the mandatory loom producer-list migration falsifies that, and the corrected line must name both packages.
-  Re-read the same file's dependency note about downstream tasks reading this task's fields; it describes the coupling accurately and needs no change unless the wording assumes the task is still unshipped.
+  Leave the remaining Planned items in that group untouched.
+  Two of them refer back to this one and both must survive the move intact: the item immediately after it points back as "(previous item)", and a later item in the real-LLM-producers group points back by this item's full bold name.
+  Neither wording is falsified by the move — a Done item is still a legitimate referent — so change neither.
+  `manifest/parallel-work.md` is a point-in-time snapshot of which Planned items can be spawned in parallel, and its own header says to recompute it whenever tasks land, so the edit here is to bring it in line with this task having shipped rather than to correct a sentence in place.
+  Remove this task's bullet from the no-caveats section, since a shipped task is no longer something to start.
+  Update the running-now paragraph so it names this task as landed, in the same shape it already uses for the previously-landed group.
+  Update the light-caveat paragraph below it: its whole caveat is that two downstream tasks are cleanest once this task lands, and that precondition is now satisfied, so the paragraph must say the dependency is met rather than continue to describe a wait.
+  Do not correct the removed bullet's `internal/shedengine`-only scope claim in place — the bullet is deleted, so there is nothing left to correct, and the claim was false anyway once the loom producer-list migration became mandatory.
   Keep both files' semantic-line-break style.
 - **Commit:** `docs(roadmap): ship the per-producer bounce budget item`
 

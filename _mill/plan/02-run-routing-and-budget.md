@@ -89,9 +89,9 @@ A single producer with `OnStuck` naming itself keeps each assertion pinning the 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add one helper to `internal/shedengine/testsupport_test.go` so the mechanical `OnDone` re-wiring across three test files stays uniform rather than hand-written per scenario.
-  Name it `linearChain` and give it the signature `linearChain(names []string, producers []ShedProducer) []ProducerDef`.
+  Name it `linearChain` and give it the signature `linearChain(t *testing.T, names []string, producers []ShedProducer) []ProducerDef`, with `t` first, matching every other helper in this file.
   It returns one `ProducerDef` per name, in order, with `OnDone` set to the following name and the last entry's `OnDone` left empty, so the built list reproduces today's sequential advance exactly.
-  It fails loud rather than guessing when the two slices differ in length — take a `*testing.T` as its first parameter, call `t.Helper()`, and `t.Fatalf` on a mismatch, matching the style every other helper in this file uses.
+  It fails loud rather than guessing when the two slices differ in length — call `t.Helper()` first, then `t.Fatalf` on a mismatch, matching the style every other helper in this file uses.
   Its doc comment must say that the empty `OnDone` on the last entry is what finishes the run, and that the helper exists so a scenario that only needs "these producers, in this order" does not restate the chain by hand.
   Do not redeclare `funcProducer`, `fixedOutcomeProducer`, `newTestShed`, `seedStatus`, `readStatus`, `commonSeed`, `assertRFC3339UTC`, or `assertHistoryNonDecreasing`.
   Do not add any import beyond what the file already has.
