@@ -418,6 +418,97 @@ func TestProfile_Validate_ClusterFanPopulatesLensesInOrder(t *testing.T) {
 	}
 }
 
+// TestProfileValidate_ClusterExclude table-drives Profile.ClusterExclude
+// through validate: the no-exclusion happy path, a single-name drop, an
+// absent-name no-op, a duplicate-name no-op, an exclude-everything no-op,
+// and the ClusterExclude-without-ClusterFan error.
+func TestProfileValidate_ClusterExclude(t *testing.T) {
+	tests := []struct {
+		name          string
+		clusterFan    string
+		excludeLenses []string
+		wantErr       bool
+		errSubstr     string
+		wantNames     []string
+	}{
+		{
+			name:          "no exclusion behaves as today",
+			clusterFan:    "standard",
+			excludeLenses: nil,
+			wantNames:     []string{"style", "security"},
+		},
+		{
+			name:          "exclusion drops the named lens",
+			clusterFan:    "standard",
+			excludeLenses: []string{"style"},
+			wantNames:     []string{"security"},
+		},
+		{
+			name:          "exclusion naming an absent lens is a no-op",
+			clusterFan:    "standard",
+			excludeLenses: []string{"ghost"},
+			wantNames:     []string{"style", "security"},
+		},
+		{
+			name:          "duplicate name is harmless",
+			clusterFan:    "standard",
+			excludeLenses: []string{"style", "style"},
+			wantNames:     []string{"security"},
+		},
+		{
+			name:          "excluding every lens keeps the full fan",
+			clusterFan:    "standard",
+			excludeLenses: []string{"style", "security"},
+			wantNames:     []string{"style", "security"},
+		},
+		{
+			name:          "clusterexclude without clusterfan is an error",
+			clusterFan:    "",
+			excludeLenses: []string{"style"},
+			wantErr:       true,
+			errSubstr:     "ClusterExclude",
+		},
+	}
+
+	cfg := testClusterFanConfig()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, p := newValidProfileFixture(t)
+			p.ClusterFan = tt.clusterFan
+			p.ClusterExclude = tt.excludeLenses
+
+			err := p.validate(root, cfg)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("validate() = nil; want error containing %q", tt.errSubstr)
+				}
+				if !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("validate() error = %q; want substring %q", err.Error(), tt.errSubstr)
+				}
+				if !strings.HasPrefix(err.Error(), "burler: ") {
+					t.Errorf("validate() error = %q; want burler: -prefixed message", err.Error())
+				}
+				if n := strings.Count(err.Error(), "burler: "); n != 1 {
+					t.Errorf("validate() error = %q; want exactly one %q prefix, found %d", err.Error(), "burler: ", n)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("validate() = %v; want nil", err)
+			}
+			gotNames := make([]string, len(p.clusterLenses))
+			for i, lens := range p.clusterLenses {
+				gotNames[i] = lens.Name
+			}
+			if diffStrings(gotNames, tt.wantNames) {
+				t.Errorf("clusterLenses names = %v; want %v", gotNames, tt.wantNames)
+			}
+		})
+	}
+}
+
 // diffStrings reports whether got and want differ in length or content
 // (order-sensitive — resolvePaths preserves input order).
 func diffStrings(got, want []string) bool {
